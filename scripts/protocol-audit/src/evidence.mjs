@@ -49,8 +49,43 @@ export function eventSequence(raw, stream) {
   } catch (error) { return [{ error: error.code || 'invalid_stream', path: error.path }] }
 }
 
-export function failureCategory({ kind, issues = [], httpStatuses = [], sdk, error, record } = {}) {
-  if (httpStatuses.includes(429)) return 'rate_limited'
+// Inspect only explicit error containers. Arbitrary generated text is never an
+// error classifier, including text that happens to mention a quota or failure.
+export function providerFailures(raw) {
+  let frames
+  try { const value = typeof raw === 'string' ? JSON.parse(raw) : raw; frames = Array.isArray(value) ? value : [value] }
+  catch { try { frames = parseSSE(raw).map(frame => frame.value) } catch { return [] } }
+  const failures = []
+  for (const [frame, value] of frames.entries()) {
+    const payload = value?.response?.error ?? value?.error ?? (value?.type === 'error' ? value : undefined)
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) continue
+    const fields = Object.fromEntries(['type', 'code', 'message', 'param', 'status'].filter(key => typeof payload[key] === 'string' || (key === 'code' && Number.isInteger(payload[key]))).map(key => [key, payload[key]]))
+    if (!Object.keys(fields).length) continue
+    failures.push({ frame, eventType: value?.type, ...fields })
+  }
+  return failures
+}
+
+export function failureAnalysis({ kind, issues = [], httpStatuses = [], record, providerErrors = [], providerError, error } = {}) {
+  const upstream = record?.providerFailures ?? (providerErrors.length ? providerErrors : providerError ? [{ ...providerError }] : [])
+  const secondary = record?.conversionIssues?.filter(issue => issue.severity === 'error') || []
+  const isRateLimit = httpStatuses.includes(429) || record?.errorKind === 'rate_limit' || upstream.some(failure =>
+    ['gateway_concurrency_limit', 'rate_limit_exceeded', 'rate_limit_error', 'RESOURCE_EXHAUSTED'].includes(failure.code) ||
+    ['rate_limit_error', 'rate_limit'].includes(failure.type) || failure.status === 'RESOURCE_EXHAUSTED' || failure.code === 429)
+  return {
+    primary: upstream[0] || (record?.error ? { category: record.errorKind, message: record.error } : error),
+    providerFailures: upstream, secondaryIssues: secondary, issues,
+    isRateLimit,
+    clientHttpStatuses: httpStatuses,
+    upstreamHttpStatuses: kind === 'direct' ? httpStatuses : record?.upstreamHttpStatus ? [record.upstreamHttpStatus] : [],
+    logicalStatus: record?.statusCode,
+  }
+}
+
+export function failureCategory(input = {}) {
+  const { kind, issues = [], sdk, error, record } = input
+  if (failureAnalysis(input).isRateLimit) return 'rate_limited'
+  if (error?.code === 'timeout' && input.source === 'source-code') return 'verification_incomplete'
   if (issues.some(i => i.code === 'request_budget') || error?.code === 'request_budget') return 'budget_exhausted'
   const failures = record?.conversionIssues?.filter(i => i.severity === 'error') || []
   // The gateway also records contract violations raised while reading the

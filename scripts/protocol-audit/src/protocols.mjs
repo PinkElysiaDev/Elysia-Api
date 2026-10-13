@@ -260,7 +260,7 @@ export function inspectReply(protocol, raw, stream, requireUsage = true) {
   const c = checks(result)
   for (const [i, frame] of frames.entries()) {
     const value = frame.value
-    if (frame.type === 'error' || value?.type === 'error' || value?.error) c.require(false, `/frames/${i}`, value?.error?.message || value?.message || 'Upstream stream error', 'stream_error')
+    if (frame.type === 'error' || value?.type === 'error' || value?.error || value?.response?.status === 'failed') c.require(false, `/frames/${i}`, value?.response?.error?.message || value?.error?.message || value?.message || 'Upstream stream error', 'stream_error')
     if (value && typeof value.type === 'string' && frame.type && frame.type !== 'data' && frame.type !== value.type) c.require(false, `/frames/${i}/type`, 'SSE event name and JSON type disagree')
   }
   if (result.issues.length) return result
@@ -337,7 +337,12 @@ export function inspectReply(protocol, raw, stream, requireUsage = true) {
     }
     c.require(!!start && !!final, '/', 'Missing response.created or terminal response', 'truncated_stream')
     if (final) {
-      if (start) c.require(start.id === final.id && start.created_at === final.created_at, '/', 'Response identity or timestamp changed', 'stream_lifecycle')
+      if (start) for (const key of ['id', 'model', 'created_at']) {
+        const before = start[key], after = final[key], path = `/response/${key}`
+        if (before === undefined) c.require(false, path, after === undefined ? 'Field is missing from initial and final response' : 'Field was missing initially and appeared later', 'stream_missing_initial_field')
+        else if (after === undefined) c.require(false, path, 'Field is missing from final response', 'stream_missing_final_field')
+        else c.require(before === after, path, 'Previously established field changed', 'stream_identity_changed')
+      }
       inspectObject(protocol, final, result, { requireUsage })
       if (text) c.require(text === result.text, '/output', 'Text deltas disagree with final output', 'stream_content_mismatch')
     }

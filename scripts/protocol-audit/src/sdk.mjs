@@ -20,7 +20,30 @@ export function packageVersion(name) {
   throw new Error(`Cannot determine SDK version: ${name}`)
 }
 
-export async function consume(protocol, { baseUrl, apiKey, model, expectedText = 'OK', timeoutMs = defaults.timeoutMs, maxOutputTokens = defaults.maxOutputTokens, maxResponseBytes = defaults.maxResponseBytes, safetySettings, signal, onExchange = async () => {} }, stream) {
+export function sdkVariants(protocol) {
+  if (protocol === 'chat' || protocol === 'responses') return ['openai', '@ai-sdk/openai']
+  if (protocol === 'anthropic') return ['@anthropic-ai/sdk', '@ai-sdk/anthropic']
+  assert.equal(protocol, 'gemini', 'Unknown SDK protocol')
+  return ['@google/genai']
+}
+
+// Each SDK owns its request and capture state. Failure in one never prevents
+// another SDK from being exercised, and no failed generation is retried.
+export async function consume(protocol, options, stream) {
+  const names = options.sdkName ? [options.sdkName] : sdkVariants(protocol)
+  const results = [], failures = []
+  for (const name of names) {
+    assert.ok(sdkVariants(protocol).includes(name), `Unsupported SDK ${name} for ${protocol}`)
+    const result = { name, version: packageVersion(name), status: 'running' }
+    try { await consumeOne(protocol, { ...options, sdkName: name }, stream); result.status = 'passed' }
+    catch (error) { result.status = 'failed'; result.error = { message: error.message, code: error.code }; failures.push(error) }
+    results.push(result)
+  }
+  if (failures.length) throw Object.assign(new AggregateError(failures, failures.map(e => e.message).join('; ')), { sdk: results })
+  return results
+}
+
+async function consumeOne(protocol, { baseUrl, apiKey, model, sdkName, expectedText = 'OK', timeoutMs = defaults.timeoutMs, maxOutputTokens = defaults.maxOutputTokens, maxResponseBytes = defaults.maxResponseBytes, safetySettings, signal, onExchange = async () => {} }, stream) {
   assert.ok(typeof expectedText === 'string' && expectedText.length > 0, 'SDK expected text must be nonempty')
   const used = [], pending = [], transportErrors = []
   const version = name => { used.push({ name, version: packageVersion(name) }) }
@@ -59,7 +82,7 @@ export async function consume(protocol, { baseUrl, apiKey, model, expectedText =
   try {
     const prompt = `Reply exactly ${expectedText}.`
     const options = { prompt: [{ role: 'user', content: [{ type: 'text', text: prompt }] }], maxOutputTokens, abortSignal: signal }
-    if (protocol === 'chat' || protocol === 'responses') {
+    if (sdkName === 'openai') {
       version('openai')
       const client = new OpenAI({ apiKey, baseURL: `${baseUrl}/v1`, maxRetries: 0, timeout: timeoutMs, fetch: capture })
       if (protocol === 'chat') {
@@ -71,15 +94,17 @@ export async function consume(protocol, { baseUrl, apiKey, model, expectedText =
         const result = stream ? await client.responses.stream(params, { signal }).finalResponse() : await client.responses.create(params, { signal })
         assert.ok(result.output.filter(o => o.type === 'message').map(o => visibleText(o.content, 'output_text')).join('').includes(expectedText))
       }
+    } else if (sdkName === '@ai-sdk/openai') {
       version('@ai-sdk/openai')
       const provider = createOpenAI({ apiKey, baseURL: `${baseUrl}/v1`, fetch: capture })
       await checkAI(protocol === 'chat' ? provider.chat(model) : provider.responses(model), stream, options, expectedText)
-    } else if (protocol === 'anthropic') {
+    } else if (sdkName === '@anthropic-ai/sdk') {
       version('@anthropic-ai/sdk')
       const client = new Anthropic({ apiKey, baseURL: baseUrl, maxRetries: 0, timeout: timeoutMs, fetch: capture })
       const params = { model, max_tokens: maxOutputTokens, messages: [{ role: 'user', content: prompt }] }
       const result = stream ? await client.messages.stream(params, { signal }).finalMessage() : await client.messages.create(params, { signal })
       assert.ok(visibleText(result.content).includes(expectedText))
+    } else if (sdkName === '@ai-sdk/anthropic') {
       version('@ai-sdk/anthropic')
       await checkAI(createAnthropic({ apiKey, baseURL: `${baseUrl}/v1`, fetch: capture })(model), stream, options, expectedText)
     } else {

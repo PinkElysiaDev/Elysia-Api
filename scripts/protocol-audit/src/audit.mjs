@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process'
 import { parseTree } from 'jsonc-parser'
 import { protocols, scenarios, AuditError, endpoint, requestBody, followupBody, inspectReply, inspectModels } from './protocols.mjs'
 import { mapConcurrent, serialize } from './concurrency.mjs'
-import { eventSequence, failureCategory } from './evidence.mjs'
+import { eventSequence, failureCategory, failureAnalysis, providerFailures } from './evidence.mjs'
 import { atomicFile } from './report-file.mjs'
 
 export const defaults = { concurrency: 32, timeoutMs: 180000, maxResponseBytes: 16 * 1024 * 1024, maxRequests: 512, maxOutputTokens: 32768, requireUsage: true }
@@ -169,7 +169,7 @@ export async function exchange(url, body, headers, settings, signal, { method, r
   return { status: response?.status ?? null, headers: response ? Object.fromEntries(['content-type', 'x-request-id', 'request-id', 'x-elysia-request-id', 'retry-after'].map(k => [k, response.headers.get(k)]).filter(([, v]) => v !== null)) : {}, raw: Buffer.concat(chunks).toString('utf8'), bytes, firstByteMs, elapsedMs: Math.round(performance.now() - started), error }
 }
 
-export async function codeCheck(item, configDir, maxBytes, signal, env) {
+export async function codeCheck(item, configDir, maxBytes, signal, env, onProgress = () => {}) {
   return await new Promise(resolveResult => {
     const child = spawn(item.command[0], item.command.slice(1), { cwd: resolve(configDir, item.cwd || '.'), env: { ...process.env, ...env }, shell: false, detached: process.platform !== 'win32', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
     let chunks = [], bytes = 0, reason, finished = false, killTimer
@@ -190,7 +190,18 @@ export async function codeCheck(item, configDir, maxBytes, signal, env) {
       if (room > 0) { const part = data.subarray(0, room); chunks.push(part); bytes += part.length }
       if (data.length > room) stop('log_too_large')
     }
-    child.stdout.on('data', collect); child.stderr.on('data', collect)
+    let progressBuffer = ''
+    child.stdout.on('data', data => {
+      collect(data)
+      progressBuffer += data.toString('utf8')
+      const lines = progressBuffer.split('\n'); progressBuffer = lines.pop()
+      if (progressBuffer.length > 65536) progressBuffer = ''
+      for (const line of lines) {
+        let event
+        try { event = JSON.parse(line) } catch { continue }
+        if (event.Package && !event.Test && ['start', 'pass', 'fail', 'skip'].includes(event.Action)) onProgress({ package: event.Package, action: event.Action })
+      }
+    }); child.stderr.on('data', collect)
     const finish = (code, error) => {
       if (finished) return
       finished = true; clearTimeout(timer); clearTimeout(killTimer); signal?.removeEventListener('abort', abort)
@@ -282,8 +293,11 @@ export async function runAudit(input, { outputDir, env = process.env, signal, on
         const type = outcome.headers['content-type'] || ''
         if (task.stream && !type.toLowerCase().includes('text/event-stream')) throw new AuditError('content_type', `Expected text/event-stream, received ${type}`)
         const reply = task.scenario === 'models' ? inspectModels(task.protocol, outcome.raw, task.model) : inspectReply(task.protocol, outcome.raw, task.stream, config.requireUsage)
+        item.providerErrors = providerFailures(outcome.raw)
         item.issues.push(...reply.issues); item.warnings.push(...reply.warnings)
+        if (item.providerErrors.length && !item.issues.some(i => i.code === 'stream_error')) item.issues.push({ code: 'provider_failure', path: '/error', message: item.providerErrors[0].message || 'Provider declared a failure' })
         if (reply.usage) (item.usage ||= []).push(reply.usage)
+        if (reply.issues.length || item.providerErrors.length) { item.unexecutedRounds = task.maximumRequests - round; break }
         if (task.scenario === 'models') { item.modelFound = reply.modelFound; item.modelCount = reply.modelCount }
         else if (round === 1 && ['tools', 'tools_auto'].includes(task.scenario)) {
           if (!reply.calls.length) item.issues.push({ code: 'tool_call_missing', path: '', message: 'Model did not return the requested audit_echo call' })
@@ -305,7 +319,10 @@ export async function runAudit(input, { outputDir, env = process.env, signal, on
     finally { release(unused) }
     item.elapsedMs = Math.round(performance.now() - started); item.finishedAt = new Date().toISOString()
     item.status = item.issues.length ? 'failed' : 'passed'
-    if (item.status === 'failed') item.failureCategory = failureCategory({ ...item, record: item.calls?.at(-1)?.record })
+    if (item.status === 'failed') {
+      const input = { ...item, record: item.calls?.at(-1)?.record }
+      item.failureCategory = failureCategory(input); item.failure = failureAnalysis(input)
+    }
     log(`END ${item.id} ${item.status} elapsedMs=${item.elapsedMs}${item.issues.length ? ` issues=${JSON.stringify(item.issues)}` : ''}`)
     await save(); onProgress(clean({ id: item.id, status: item.status, issues: item.issues }))
   })

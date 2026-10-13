@@ -11,7 +11,7 @@ import { runAudit, planAudit, redactor, codeCheck, exchange, runLogger } from '.
 import { protocols, requestBody, followupBody, endpoint, inspectReply } from './protocols.mjs'
 import { localInstance } from './local.mjs'
 import { mapConcurrent, serialize } from './concurrency.mjs'
-import { eventSequence, failureCategory, persistedCall, requestSelection } from './evidence.mjs'
+import { eventSequence, failureCategory, failureAnalysis, providerFailures, persistedCall, requestSelection } from './evidence.mjs'
 import { regressionCases, assertNativeSystemRequest } from './regressions.mjs'
 import { atomicFile } from './report-file.mjs'
 
@@ -93,7 +93,7 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
   const git = args => { const r = spawnSync('git', args, { cwd: plan.root, encoding: 'utf8' }); return r.status === 0 ? r.stdout.trim() : '' }
   const report = { startedAt: new Date().toISOString(), status: 'running', runtime: { node: process.version, platform: process.platform, arch: process.arch }, project: { root: plan.root, commit: git(['rev-parse', 'HEAD']), dirty: !!git(['status', '--porcelain']) }, groups: plan.groups, configuration: { ...input, concurrency: plan.api.concurrency, targets: plan.api.targets }, cases: [] }
   const save = serialize(async () => {
-    report.counts = Object.fromEntries(['passed', 'failed', 'blocked', 'skipped', 'not_applicable', 'running'].map(status => [status, report.cases.filter(c => !c.summary && c.status === status).length]))
+    report.counts = Object.fromEntries(['passed', 'failed', 'incomplete', 'blocked', 'skipped', 'not_applicable', 'running'].map(status => [status, report.cases.filter(c => !c.summary && c.status === status).length]))
     const snapshot = clean(report)
     for (const [name, body] of [['report.json', JSON.stringify(snapshot, null, 2)], ['report.md', reportMarkdown(snapshot)]]) {
       await atomicFile(join(outputDir, name), body + '\n')
@@ -113,7 +113,11 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
     await save(); const start = performance.now()
     try { item.actual = await currentCase.run(item, () => fn(item)) || '符合预期'; item.status = 'passed' }
     catch (error) { item.status = error.code === 'blocked' ? 'blocked' : signal?.aborted ? 'skipped' : 'failed'; item.error = { code: error.code || error.name, message: error.message, stack: error.stack }; if (error.sdk) item.sdk = error.sdk; if (error.backendLog) await evidence('backend.log', error.backendLog, item); if (error.startupFailure) await evidence('startup-failure.json', error.startupFailure, item) }
-    if (item.status === 'failed') item.failureCategory = failureCategory({ ...item, record: item.calls?.at(-1)?.record })
+    if (item.error?.code === 'timeout' && source === 'source-code') item.status = 'incomplete'
+    if (['failed', 'incomplete'].includes(item.status)) {
+      const input = { ...item, record: item.calls?.at(-1)?.record }
+      item.failureCategory = failureCategory(input); item.failure = failureAnalysis(input)
+    }
     item.elapsedMs = Math.round(performance.now() - start); item.finishedAt = new Date().toISOString()
     log(`END ${item.id} ${item.status} elapsedMs=${item.elapsedMs}${item.error ? ` error=${item.error.stack || item.error.message}` : ''}`)
     await save(); onProgress(clean(`${item.status}: ${item.id}${item.error ? ` — ${item.error.message}` : ''}`))
@@ -123,7 +127,10 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
     const active = currentCase.getStore()
     log(`COMMAND START ${active.id} cwd=${cwd} argv=${JSON.stringify(argv)}`)
     const isolatedEnv = { ...env, ...Object.fromEntries(Object.keys({ ...process.env, ...env }).filter(k => k.startsWith('ELYSIA_') || k === 'UPDATE_AGENT_CLI_DOCS').map(k => [k, ''])) }
-    const result = await codeCheck({ command: argv, cwd, timeoutMs }, plan.root, plan.api.maxResponseBytes, signal, isolatedEnv)
+    const result = await codeCheck({ command: argv, cwd, timeoutMs }, plan.root, plan.api.maxResponseBytes, signal, isolatedEnv, progress => {
+      const message = `COMMAND PROGRESS ${active.id} ${progress.action} ${progress.package}`
+      log(message); onProgress(message)
+    })
     const path = await evidence(`${name}.log`, result.raw)
     log(`COMMAND END ${active.id} exit=${result.exitCode} evidence=${path}`)
     active.command = argv; active.cwd = cwd; active.exitCode = result.exitCode
@@ -164,7 +171,7 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
       sourceId: record?.sourceId, modelId: record?.modelId,
       policyHashes: [...new Set([record?.conversionPolicyHash, ...(record?.conversionIssues?.map(i => i.policyHash) || [])].filter(Boolean))],
       // Keep a small classification view; the full redacted record lives in evidence.
-      record: record ? { error: record.error, errorKind: record.errorKind, conversionIssues: record.conversionIssues, protocolUsage: record.protocolUsage } : undefined,
+      record: record ? { error: record.error, errorKind: record.errorKind, statusCode: record.statusCode, providerFailures: providerFailures(record.providerResponse?.content), conversionIssues: record.conversionIssues, protocolUsage: record.protocolUsage } : undefined,
     }
     result.evidence = await evidence('call-record.json', { ...trace, round, protocol, taskId, requestSelection: requestSelection(request?.body), events: eventSequence(response.raw || response.body || '', stream) }, owner)
     // Make the full record available for assertions without copying bodies into reports.
@@ -206,9 +213,9 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
     for (const current of plan.groups) {
       log(`GROUP ${current}`); onProgress(`Running group: ${current}`)
       const routes = [], sdkTasks = []
-      let consume
+      let consume, sdkVariants
       if (current === 'sdk') {
-        try { consume = (await import('./sdk.mjs')).consume } catch (error) {
+        try { ({ consume, sdkVariants } = await import('./sdk.mjs')) } catch (error) {
           await check(current, 'dependencies', 'SDK 依赖可加载', async () => { throw blocked(`请先执行 npm install --prefix scripts/protocol-audit：${error.message}`) }); continue
         }
       }
@@ -319,9 +326,9 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
             checkReply(await call('anthropic', id, false, {}, second), 'anthropic', { ...replyOptions, expectedText: marker })
           })
         }
-        if (current === 'sdk') for (const ingress of protocols) for (const stream of plan.api.streams) sdkTasks.push(() => run(`${ingress}-${stream ? 'sse' : 'json'}`, '实际 SDK 发送请求并消费真实网关响应', async item => {
+        if (current === 'sdk') for (const ingress of protocols) for (const stream of plan.api.streams) for (const sdkName of sdkVariants(ingress)) sdkTasks.push(() => run(`${ingress}-${stream ? 'sse' : 'json'}/${sdkName}`, '实际 SDK 发送请求并消费真实网关响应', async item => {
           needRoute()
-          item.sdk = await consume(ingress, { baseUrl: instance.baseUrl, apiKey: instance.token, model: id, ...plan.api, signal, onExchange: async detail => {
+          item.sdk = await consume(ingress, { baseUrl: instance.baseUrl, apiKey: instance.token, model: id, ...plan.api, sdkName, signal, onExchange: async detail => {
             const path = await evidence('sdk-http.json', { caseId: item.id, ...detail }, item)
             ;(item.calls ||= []).push(await captureCall(detail.response || {}, { request: detail.request, owner: item, protocol: ingress }))
             ;(item.httpStatuses ||= []).push(detail.response?.status)
@@ -380,7 +387,7 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
       if (current === 'sdk') await mapConcurrent(sdkTasks, plan.api.concurrency, task => task())
       if (current === 'code') {
         const defaults = [
-          { id: 'backend-tests', command: ['go', 'test', './...', '-count=1'], cwd: 'backend' },
+          { id: 'backend-tests', command: ['go', 'test', '-json', './...', '-count=1', '-timeout=45m'], cwd: 'backend', timeoutMs: 3600000 },
           { id: 'backend-vet', command: ['go', 'vet', './...'], cwd: 'backend' },
           { id: 'frontend-types', command: [process.execPath, join(plan.root, 'node_modules/typescript/bin/tsc'), '--noEmit'], cwd: 'packages/webui' },
           { id: 'frontend-lint', command: [process.execPath, join(plan.root, 'node_modules/eslint/bin/eslint.js'), '.', '--ext', 'ts,tsx', '--max-warnings', '0'], cwd: 'packages/webui' },

@@ -275,14 +275,15 @@ for (const protocol of ['chat', 'responses', 'anthropic', 'gemini']) test(`${pro
   const body = JSON.stringify({ error: { message: 'provider unavailable' } })
   const f = await endpoint(t, body, false, 503)
   await assert.rejects(consume(protocol, f.options, false), /provider unavailable/)
-  assert.equal(f.captured.length, 1); assert.equal(f.captured[0].response.status, 503); assert.equal(f.captured[0].response.body, body)
+  assert.equal(f.captured.length, protocol === 'gemini' ? 1 : 2)
+  for (const captured of f.captured) { assert.equal(captured.response.status, 503); assert.equal(captured.response.body, body) }
 })
 
 test('SDK timeout retains partial response and the transport error', { skip: !consume && 'SDK dependencies unavailable' }, async t => {
   const f = await endpoint(t, 'partial-response', false, 200, true)
   await assert.rejects(consume('chat', { ...f.options, timeoutMs: 150 }, false))
-  assert.equal(f.captured.length, 1); assert.equal(f.captured[0].response.body, 'partial-response')
-  assert.ok(f.captured[0].error)
+  assert.equal(f.captured.length, 2)
+  for (const captured of f.captured) { assert.equal(captured.response.body, 'partial-response'); assert.ok(captured.error) }
 })
 
 test('SDK response limit retains bounded evidence and fails the case', { skip: !consume && 'SDK dependencies unavailable' }, async t => {
