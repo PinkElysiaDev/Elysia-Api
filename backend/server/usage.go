@@ -103,7 +103,10 @@ type usageRecord struct {
 	RequestWarnings      []string                   `json:"requestWarnings,omitempty"`
 	Stream               bool                       `json:"stream"`
 	StatusCode           int                        `json:"statusCode"`
-	Error                string                     `json:"error,omitempty"`
+	// UpstreamHTTPStatus is the observed status of the final attempt, independent
+	// of a logical generation failure carried inside a successful HTTP stream.
+	UpstreamHTTPStatus int    `json:"upstreamHttpStatus,omitempty"`
+	Error              string `json:"error,omitempty"`
 	// ErrorKind 是错误归类（ErrorKind* 常量），供面板筛选/展示；空表示未归类。
 	ErrorKind          string           `json:"errorKind,omitempty"`
 	FirstByteMs        int64            `json:"firstByteMs"`

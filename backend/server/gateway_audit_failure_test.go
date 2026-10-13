@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -61,6 +62,25 @@ func TestGatewayAuditFailureDetailsReachAllClients(t *testing.T) {
 			}
 			if stream && out.Result().Trailer.Get(gatewayStreamErrorTrailer) == "" || !stream && out.Code != 400 {
 				t.Fatal(out.Code, out.Header())
+			}
+			records := latestUsageRecords(t, s)
+			if len(records) == 0 {
+				t.Fatal("missing persisted failure")
+			}
+			raw, _, err := s.store.GetUsageRecordJSON(t.Context(), records[0].RequestID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var saved usageRecord
+			if err := json.Unmarshal(raw, &saved); err != nil {
+				t.Fatal(err)
+			}
+			if stream {
+				if saved.UpstreamHTTPStatus != 200 || saved.StatusCode != 429 || out.Code != 200 {
+					t.Fatal(saved.UpstreamHTTPStatus, saved.StatusCode, out.Code)
+				}
+			} else if saved.UpstreamHTTPStatus != 400 || saved.StatusCode != 400 {
+				t.Fatal(saved.UpstreamHTTPStatus, saved.StatusCode)
 			}
 		}
 	}

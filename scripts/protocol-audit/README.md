@@ -195,7 +195,7 @@ node scripts/protocol-audit/run.mjs --config /path/to/config.json --out /path/to
 
 命令按参数数组直接执行，`&&`、`$VAR` 和 Shell 通配符不会自动展开。Go 全量测试内部超时为 45 分钟，外层为 60 分钟，日志持续记录包进度；其他命令默认 10 分钟。外层超时标为 incomplete（验收未完成），不会算通过或跳过。非零退出、无法启动或输出超限仍明确失败。内置代码检查清除继承的 Elysia live 测试开关，避免额外启用付费测试。
 
-SDK 组按 SDK 名称独立调度、记录版本与执行状态，官方 SDK 失败不会阻止 Vercel 用例。失败记录中的 `failure` 同时保留供应商主因和次级转换／契约问题，HTTP 200 流内限流仍计失败；`clientHttpStatuses`、`upstreamHttpStatuses` 和 `logicalStatus` 分别表示客户端实测 HTTP、上游实测 HTTP 与调用逻辑状态。当前调用记录未提供上游实际 HTTP 时，该数组为空，不从逻辑状态推断。
+SDK 组按 SDK 名称独立调度、记录版本与执行状态，官方 SDK 失败不会阻止 Vercel 用例。失败记录中的 `failure` 同时保留供应商主因和次级转换／契约问题，HTTP 200 流内限流仍计失败；`clientHttpStatuses`、`upstreamHttpStatuses` 和 `logicalStatus` 分别表示客户端实测 HTTP、上游实测 HTTP 与调用逻辑状态。调用记录的 `upstreamHttpStatus` 保存最后一次尝试实际收到的上游 HTTP 状态。旧记录缺少它时，上游状态数组为空，不从逻辑状态推断。
 
 ### 详细日志与状态
 

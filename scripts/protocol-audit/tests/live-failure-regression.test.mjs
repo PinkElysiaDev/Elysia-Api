@@ -37,6 +37,7 @@ test('HTTP 200 nested provider limits retain secondary conversion failures and s
   assert.deepEqual(result.clientHttpStatuses, [200])
   assert.deepEqual(result.upstreamHttpStatuses, [])
   assert.equal(result.logicalStatus, 429)
+  assert.deepEqual(failureAnalysis({ ...input, record: { ...record, upstreamHttpStatus: 200 } }).upstreamHttpStatuses, [200])
   assert.deepEqual(providerFailures('{"output_text":"rate_limit_error"}'), [])
   assert.deepEqual(providerFailures('{"error":{"details":{"private":"secret"}}}'), [])
 })

@@ -149,6 +149,7 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 }
 
 func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate) error {
+	record.UpstreamHTTPStatus = 0
 	defer s.protocolUses.acquire(candidate.binding.ProtocolID, candidate.compiled.Hash())()
 	defer s.protocolUses.acquire(record.SourceFormat, record.IngressRevision)()
 	prepareCandidateRecord(record, candidate, plan.request)
@@ -204,6 +205,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 		return err
 	}
 	defer response.Body.Close()
+	record.UpstreamHTTPStatus = response.StatusCode
 	record.TargetEndpoint = response.Request.URL.EscapedPath()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		body, err := protocol.ReadBoundedBody(response.Body, candidate.compiled.ResourceLimits().BufferBytes)
