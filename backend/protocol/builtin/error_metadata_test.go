@@ -22,6 +22,17 @@ func TestAuditHTTPFailureDiagnosticUsesResponseStage(t *testing.T) {
 	}
 }
 
+func TestAuditNumericOpenAIErrorCodeIsAProviderContractViolation(t *testing.T) {
+	for _, codec := range []string{Chat, Responses} {
+		from := shippedProjectionProtocol(t, codec)
+		_, err := from.DecodeHTTPFailure(t.Context(), 524, []byte(`{"error":{"code":524,"message":"Synthetic upstream timeout"}}`), p.EvaluationContext{})
+		var conversion *p.ConversionError
+		if !errors.As(err, &conversion) || conversion.Issues[0].Code != p.UpstreamContractViolation || conversion.Issues[0].Path != "/error/code" || conversion.Issues[0].Direction != p.DecodeResponse {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestAuditFailureProjectionMatrix(t *testing.T) {
 	for _, source := range []string{Chat, Responses} {
 		from := shippedProjectionProtocol(t, source)

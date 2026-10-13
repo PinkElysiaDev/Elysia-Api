@@ -104,7 +104,7 @@ func (adapter module) decodeFailure(value p.Value, options p.EvaluationContext) 
 				code, err = optionalString(fields["code"])
 			}
 			if err != nil {
-				return p.Value{}, err
+				return p.Value{}, p.IssuesError([]p.ConversionIssue{{Code: p.UpstreamContractViolation, Severity: p.SeverityError, Stage: "decode.error", Path: "/error/code", Reason: "provider error code requires a string or null"}})
 			}
 			switch code {
 			case "invalid_api_key":
