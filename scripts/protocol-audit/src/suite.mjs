@@ -14,6 +14,7 @@ import { mapConcurrent, serialize } from './concurrency.mjs'
 import { eventSequence, failureCategory, failureAnalysis, providerFailures, persistedCall, requestSelection } from './evidence.mjs'
 import { regressionCases, assertNativeSystemRequest } from './regressions.mjs'
 import { atomicFile } from './report-file.mjs'
+import { cancellationProbe, assertCancellationRecord } from './cancellation.mjs'
 
 export const groups = ['daily', 'protocol', 'sdk', 'errors', 'persistence', 'code']
 const toolDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -343,11 +344,23 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
             ['invalid-json', '非法 JSON 返回 400，后续正常调用成功', () => call(protocol, id, false, { rawBody: '{bad json', expected: 400 })],
             ['cancel', '客户端取消流式请求后仍可正常调用', async () => {
               const abort = new AbortController()
-              const result = await call(protocol, id, true, { requestSignal: AbortSignal.any([abort.signal, ...(signal ? [signal] : [])]), onChunk: () => abort.abort() })
-              assert.equal(result.status, 200, result.raw.slice(0, 1500)); assert.ok(abort.signal.aborted && result.bytes > 0, '未收到可取消的流内容')
+              const probe = cancellationProbe(protocol, () => abort.abort())
+              const body = requestBody(protocol, id, true, 'text', '', plan.api.maxOutputTokens)
+              const prompt = 'Count from 1 to 200, one number per line, without skipping any number.'
+              if (protocol === 'gemini') body.contents[0].parts[0].text = prompt
+              else body[protocol === 'responses' ? 'input' : 'messages'][0].content = prompt
+              const result = await call(protocol, id, true, { requestSignal: AbortSignal.any([abort.signal, ...(signal ? [signal] : [])]), onChunk: chunk => probe.push(chunk) }, body)
               if (result.error && result.error.code !== 'interrupted') throw result.error
+              assert.equal(result.status, 200, result.raw.slice(0, 1500))
+              assert.ok(abort.signal.aborted && probe.hasContent && !probe.hasTerminal, '未在正常生成内容与完成事件之间取消')
+              assertCancellationRecord(currentCase.getStore().calls.at(-1))
             }],
-          ]) await run(name, expected, async () => { needRoute(); await fn(); await recovery() })
+          ]) {
+            if (name === 'cancel') {
+              await run(name, '收到正常生成内容后取消，调用记录确认取消且无上游错误', async () => { needRoute(); await fn() })
+              await run('cancel-recovery', '取消场景后独立验证正常调用', async () => { needRoute(); await recovery() })
+            } else await run(name, expected, async () => { needRoute(); await fn(); await recovery() })
+          }
         }
         if (current === 'persistence') {
           let called = false

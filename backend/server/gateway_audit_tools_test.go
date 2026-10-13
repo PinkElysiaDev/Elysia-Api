@@ -14,11 +14,17 @@ import (
 	"testing"
 )
 
-func TestGatewayAuditToolRoundTrips(t *testing.T)         { auditGatewayToolRoundTrips(t, false) }
-func TestGatewayAuditParallelToolRoundTrips(t *testing.T) { auditGatewayToolRoundTrips(t, true) }
-func auditGatewayToolRoundTrips(t *testing.T, parallel bool) {
+func TestGatewayAuditToolRoundTrips(t *testing.T)         { auditGatewayToolRoundTrips(t, false, false) }
+func TestGatewayAuditParallelToolRoundTrips(t *testing.T) { auditGatewayToolRoundTrips(t, true, false) }
+func TestGatewayChatStartupParallelToolRoundTrips(t *testing.T) {
+	auditGatewayToolRoundTrips(t, true, true)
+}
+func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) {
 	ids := []string{protocol.PresetChatCompletionsID, protocol.PresetResponsesID, protocol.PresetAnthropicID, protocol.PresetGeminiID}
 	for _, upstreamID := range ids {
+		if hasStartupPrelude && upstreamID != protocol.PresetChatCompletionsID {
+			continue
+		}
 		t.Run(upstreamID, func(t *testing.T) {
 			s, _ := newProtocolAdminTestServer(t)
 			activateDiscoveryPresets(t, s)
@@ -34,6 +40,26 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel bool) {
 				}
 				if parallel && !second {
 					wire := auditParallelToolFixture(t, upstreamID, streaming)
+					if streaming && hasStartupPrelude {
+						var first protocol.Value
+						for _, line := range strings.Split(wire, "\n") {
+							if strings.HasPrefix(line, "data: {") {
+								first, _ = protocol.ParseValue([]byte(strings.TrimPrefix(line, "data: ")))
+								break
+							}
+						}
+						fields, err := first.ReadObject()
+						if err != nil {
+							t.Error(err)
+							w.WriteHeader(500)
+							return
+						}
+						prefix := protocol.Object{"object": protocol.StringValue("chat.completion.chunk"), "id": fields["id"], "created": fields["created"], "model": fields["model"], "choices": mustProtocolValue(t, `[{"index":0,"delta":{"role":"assistant","content":""}}]`)}
+						actual, _ := protocol.EncodeValue(prefix)
+						prefix["id"] = protocol.StringValue("synthetic-prelude")
+						prelude, _ := protocol.EncodeValue(prefix)
+						wire = fmt.Sprintf("data: %s\n\ndata: %s\n\n%s", prelude.Bytes(), actual.Bytes(), wire)
+					}
 					if streaming {
 						w.Header().Set("Content-Type", "text/event-stream")
 					} else {

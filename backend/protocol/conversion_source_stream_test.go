@@ -78,6 +78,30 @@ func TestChatStartupIdentityCorrection(t *testing.T) {
 	}
 }
 
+func TestChatStartupIdentityEscapedTags(t *testing.T) {
+	state := startupState(t, "compatible", true)
+	escape := strings.NewReplacer("chat.completion.chunk", `\u0063hat.completion.chunk`, "assistant", `\u0061ssistant`)
+	first := startupValue(t, escape.Replace(startupFirst))
+	second := startupValue(t, escape.Replace(startupSecond))
+	if batch, err := state.Push(t.Context(), first, nil); err != nil || len(batch) != 0 {
+		t.Fatal(batch, err)
+	}
+	batch, err := state.Push(t.Context(), second, nil)
+	if err != nil || len(batch) != 2 {
+		t.Fatal(batch, err)
+	}
+	original, _ := first.ReadObject()
+	corrected, _ := batch[0].Value.ReadObject()
+	if corrected["id"] != StringValue("provider") || batch[1].Value != second {
+		t.Fatal(batch)
+	}
+	for field, value := range original {
+		if field != "id" && corrected[field] != value {
+			t.Fatalf("JSON representation changed outside identity correction: %s", field)
+		}
+	}
+}
+
 func TestChatStartupIdentityBoundaries(t *testing.T) {
 	for _, test := range []struct {
 		name, from, to string

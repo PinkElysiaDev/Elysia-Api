@@ -70,9 +70,13 @@ Responses 消息使用独立的 `item.started` / `item.finished`；内容事件�
 
 ## 配置和管理
 
+Chat 启动身份兼容使用 `source_event` 阶段的 `chat_stream_identity` 动作（默认规则 ID `chat-stream-identity`）。上游实际使用 Chat 事件解码模块、目标实际使用四种内置事件编码模块时，兼容模式默认启用，包括同协议与旧自定义模块。仅暂存首条精确匹配的空 assistant 启动帧；第二条同模型空启动帧改变 ID 时，以第二帧 ID 和创建时间修改首帧，然后保留原顺序送入解码。正文、工具、思考、非空用量、未知字段或后续身份改变不适用。严格模式拒绝实际修改，禁用规则后不暂存。原始日志仍保留供应商帧，修改记录为 `lossy_compatible`，不影响计量。
+
+`source_event` 只开放上述专用动作；通用字段修改和表达式仍限于原有阶段。预览请求须传 `sequence:true` 和 JSON 帧数组，source 指上游、target 指客户端。网关、只读预览与组合验证使用同一处理器；独立协议验证继续要求标准流身份一致。解码前处理确保同协议原生快照不会恢复首帧旧 ID。取消和读取失败丢弃暂存，不生成成功结束或重试请求。
+
 页面为 `/protocols/conversions`。模型源和模型绑定页面提供覆盖入口。优先级是引擎默认、协议对、模型源、模型；同 ID 完整覆盖，禁用规则停止继承。执行顺序必须明确，同阶段的重复顺序拒绝编译。未完成的规则仍可保存为草稿。
 
-阶段为 `ingress`、`request`、`response`、`event`、`wire`。动作注册表包含 `request_projection`、`responses_include`、`usage_projection`、`reasoning_controls` 和 `gemini_safety_settings`；schema 返回适用阶段、目标编码器枚举及说明，页面提供对应选择器。`responses_include` 和 `usage_projection` 的 `value` 为实际目标模块名：`openai-chat`、`responses`、`anthropic` 或 `gemini`；其他动作按 schema 使用各自的参数结构。原有 `set`、`remove`、`transform`、`warn`、`reject`、`signatures`、`stream_options`、`tool_result_object`、`buffer_node`、`provider_signature` 继续使用。`transform` 使用受限表达式引擎，不执行 JavaScript。普通规则不能创建或重新关联来源、作用域和签名资源。
+阶段为 `ingress`、`request`、`source_event`、`response`、`event`、`wire`。动作注册表包含 `request_projection`、`responses_include`、`usage_projection`、`reasoning_controls` 和 `gemini_safety_settings`；schema 返回适用阶段、目标编码器枚举及说明，页面提供对应选择器。`responses_include` 和 `usage_projection` 的 `value` 为实际目标模块名：`openai-chat`、`responses`、`anthropic` 或 `gemini`；其他动作按 schema 使用各自的参数结构。原有 `set`、`remove`、`transform`、`warn`、`reject`、`signatures`、`stream_options`、`tool_result_object`、`buffer_node`、`provider_signature` 继续使用。`transform` 使用受限表达式引擎，不执行 JavaScript。普通规则不能创建或重新关联来源、作用域和签名资源。
 
 `responses_storage`（请求阶段，含来源、目标和降级选项）和 `anthropic_usage_envelope`（响应／事件阶段，无参数）可通过规则表单或完整 JSON 编辑。禁用补齐规则后，最终格式检查仍会拒绝不完整输出。
 

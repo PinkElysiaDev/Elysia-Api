@@ -165,7 +165,8 @@ func chatStartupIdentity(value Value, isFirst bool) (chatStartup, bool) {
 		allowed = append(allowed, "service_tier")
 	}
 	identity := chatStartup{fields: fields}
-	if !hasOnlyFields(fields, allowed...) || fields["object"] != StringValue("chat.completion.chunk") ||
+	var object string
+	if !hasOnlyFields(fields, allowed...) || fields["object"].Decode(&object) != nil || object != "chat.completion.chunk" ||
 		fields["id"].Decode(&identity.id) != nil || identity.id == "" ||
 		fields["model"].Decode(&identity.model) != nil || identity.model == "" ||
 		fields["created"].IsZero() || fields["created"].IsNull() || fields["created"].Decode(&identity.created) != nil || identity.created < 0 ||
@@ -189,7 +190,8 @@ func chatStartupIdentity(value Value, isFirst bool) (chatStartup, bool) {
 		return chatStartup{}, false
 	}
 	delta, err := choice["delta"].ReadObject()
-	if err != nil || !hasOnlyFields(delta, "role", "content") || delta["role"] != StringValue("assistant") ||
+	var role string
+	if err != nil || !hasOnlyFields(delta, "role", "content") || delta["role"].Decode(&role) != nil || role != "assistant" ||
 		(delta["content"] != StringValue("") && (isFirst || !delta["content"].IsZero())) {
 		return chatStartup{}, false
 	}
