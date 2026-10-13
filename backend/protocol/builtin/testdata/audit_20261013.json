@@ -1,0 +1,19 @@
+{
+  "safety_buffering": {"type":"response.created","sequence_number":0,"safety_buffering":false,"response":{"id":"response_audit","object":"response","model":"audit-model","created_at":1,"status":"in_progress","output":[]}},
+  "unknown_failure": {"type":"***.failed","sequence_number":0,"response":{"id":"response_audit","object":"response","model":"audit-model","created_at":1,"status":"failed","output":[],"error":{"code":"gateway_concurrency_limit","message":"Synthetic account concurrency limit"}}},
+  "upstream_error": {"error":{"type":"upstream_error","message":"Synthetic upstream unavailable"}},
+  "rate_limit": {"error":{"type":"rate_limit_error","code":"gateway_concurrency_limit","message":"Synthetic account concurrency limit"}},
+  "tool_choice_request": {"model":"audit-model","messages":[{"role":"user","content":"Call audit_echo"}],"tools":[{"type":"function","function":{"name":"audit_echo","parameters":{"type":"object","properties":{"value":{"type":"integer"}}}}}],"tool_choice":{"type":"function","function":{"name":"audit_echo"}}},
+  "tool_choice_failure": {"error":{"type":"invalid_request_error","code":null,"param":"","message":"Missing required parameter: 'tool_choice.name'."}},
+  "output_text": {"id":"response_audit","object":"response","model":"audit-model","created_at":1,"status":"completed","output":[{"type":"message","id":"message_audit","role":"assistant","status":"completed","content":[{"type":"output_text","text":"AUDIT_OK","annotations":[]}]}],"output_text":"AUDIT_OK","usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3}},
+  "heartbeat": {"type":"response.output_text.delta","SSE-Keep-Alive":true,"item_id":"SSE-Keep-Alive","output_index":0,"content_index":0,"delta":""},
+  "changed_chat_identity": [
+    {"id":"response_first","object":"chat.completion.chunk","model":"audit-model","created":1,"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]},
+    {"id":"response_first","object":"chat.completion.chunk","model":"audit-model","created":1,"choices":[{"index":0,"delta":{"content":" "},"finish_reason":null}]},
+    {"id":"response_second","object":"chat.completion.chunk","model":"audit-model","created":1,"choices":[{"index":0,"delta":{"content":"AUDIT_OK"},"finish_reason":null}]}
+  ],
+  "incomplete_start": {"type":"response.created","sequence_number":0,"response":{"id":"response_audit","object":"response","status":"in_progress","output":[]}},
+  "invalid_usage_tail": {"id":"","object":"chat.completion.chunk","model":"","created":0,"choices":[],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}},
+  "direct_http_failure": {"status":500,"body":"Synthetic upstream transport failure"},
+  "code_check_timeout": {"exitCode":null,"error":{"code":"timeout","message":"Code check stopped: timeout"},"elapsedMs":600145}
+}
