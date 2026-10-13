@@ -401,6 +401,10 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 			if rule.Match.matches(route, value) {
 				value, err = c.metadataValue(phase, value, route, rule, sink)
 			}
+		case rule.Action == "error_metadata":
+			if rule.Match.matches(route, value) {
+				value, err = c.errorMetadataValue(phase, value, route, rule, sink)
+			}
 		case rule.Action == "usage_projection":
 			if rule.Match.matches(route, value) {
 				value, err = c.projectUsageValue(phase, value, route, rule, sink)

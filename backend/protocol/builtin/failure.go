@@ -93,8 +93,8 @@ func (adapter module) decodeFailure(value p.Value, options p.EvaluationContext) 
 		// OpenAI also uses server_error as the type itself. It denotes the
 		// existing server category; treating it as a vendor extension would
 		// replace a real provider outage with an unsupported conversion error.
-		serverTypeAlias := (adapter.name == Chat || adapter.name == Responses) && typeName == "server_error"
-		if category != "" && (typeName == canonicalType || serverTypeAlias) {
+		isTypeAlias := (adapter.name == Chat || adapter.name == Responses) && (typeName == "server_error" || typeName == "upstream_error")
+		if category != "" && (typeName == canonicalType || isTypeAlias) {
 			known = append(known, "type")
 		}
 		if adapter.name == Chat || adapter.name == Responses {
@@ -113,10 +113,18 @@ func (adapter module) decodeFailure(value p.Value, options p.EvaluationContext) 
 				category = ErrorClassModelNotFound
 			case "server_is_overloaded":
 				category = ErrorClassOverloaded
+			case "gateway_concurrency_limit":
+				category = ErrorClassRateLimit
+				result["code"] = fields["code"]
 			default:
 				result["code"] = fields["code"]
 			}
 			result["param"] = fields["param"]
+			if !fields["param"].IsZero() && !fields["param"].IsNull() {
+				if _, err := stringValue(fields["param"]); err != nil {
+					return p.Value{}, unsupported("/error/param", "provider error param requires a string or null")
+				}
+			}
 			if category == ErrorClassModelNotFound && fields["param"] == p.StringValue("model") {
 				delete(result, "param")
 			}

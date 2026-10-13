@@ -195,7 +195,7 @@ func classFromOpenAIType(t string) ErrorClass {
 		return ErrorClassRateLimit
 	case "service_unavailable_error":
 		return ErrorClassOverloaded
-	case "api_error":
+	case "api_error", "upstream_error":
 		return ErrorClassUpstream
 	case "server_error":
 		return ErrorClassServer

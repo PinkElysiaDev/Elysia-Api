@@ -89,6 +89,14 @@ func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 		prefix    string
 	}{{EncodeResponse, ConversionResponse, "response"}, {EncodeEvent, ConversionEvent, "event"}} {
 		if codec := ingress.Codec(entry.direction); knownConversionCodec(codec) {
+			decode := DecodeResponse
+			if entry.direction == EncodeEvent {
+				decode = DecodeEvent
+			}
+			if sourceCodec := upstream.Codec(decode); knownConversionCodec(sourceCodec) {
+				value, _ := EncodeValue(errorProjectionOptions{SourceCodec: sourceCodec, TargetCodec: codec})
+				p.Rules = append(p.Rules, ConversionRule{ID: entry.prefix + "-error-metadata", Order: 215, Enabled: true, Phase: entry.phase, Action: "error_metadata", Value: value})
+			}
 			if !nativeConversionPair(ingress, upstream, entry.direction) {
 				p.Rules = append(p.Rules, ConversionRule{ID: entry.prefix + "-shape", Order: 230, Enabled: true, Phase: entry.phase, Action: "response_shape", Value: StringValue(codec)})
 				p.Rules = append(p.Rules, ConversionRule{ID: entry.prefix + "-envelope", Order: 320, Enabled: true, Phase: entry.phase, Action: "response_envelope", Value: StringValue(codec)})

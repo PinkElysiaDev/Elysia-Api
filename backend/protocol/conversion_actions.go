@@ -18,6 +18,7 @@ type conversionAction struct {
 // Build fresh editor schemas so callers cannot mutate compiler constraints.
 func conversionActionCatalog() []conversionAction {
 	return []conversionAction{
+		{name: "error_metadata", phases: []ConversionPhase{ConversionResponse, ConversionEvent}, valueSchema: map[string]any{"type": "object", "required": []string{"sourceCodec", "targetCodec"}, "properties": map[string]any{"sourceCodec": map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}, "targetCodec": map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}}}, description: "将已识别错误的 code、param 投影到目标错误。无结构字段的目标在兼容模式保留为明确的消息附注并诊断，严格模式拒绝结构变化；空 param 规范化。未知扩展不作省略，同协议保持原形态。", isWholeValue: true},
 		{name: "set", phases: conversionPhases()},
 		{name: "remove", phases: conversionPhases()},
 		{name: "transform", phases: conversionPhases()},
@@ -85,6 +86,11 @@ func (action conversionAction) validate(rule ConversionRule) error {
 		return fmt.Errorf("%s matches the complete semantic value, not an individual node", action.name)
 	}
 	switch action.name {
+	case "error_metadata":
+		var options errorProjectionOptions
+		if rule.Value.Decode(&options) != nil || !knownConversionCodec(options.SourceCodec) || !knownConversionCodec(options.TargetCodec) {
+			return fmt.Errorf("error_metadata requires sourceCodec and targetCodec")
+		}
 	case "request_projection":
 		var options requestProjectionOptions
 		if rule.Value.Decode(&options) != nil || !knownConversionCodec(options.TargetCodec) || (options.SourceCodec != "" && !knownConversionCodec(options.SourceCodec)) {

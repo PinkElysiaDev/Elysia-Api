@@ -233,7 +233,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	}
 	updateRecordProtocolUsage(record, semantic.Usage)
 	if err := protocol.CheckGenerationOutcome(semantic); err != nil {
-		return encodeGatewayFailure(c.Request.Context(), http.StatusBadGateway, semantic, plan.ingress, options)
+		return projectGatewayFailure(c.Request.Context(), http.StatusBadGateway, semantic, plan.ingress, candidate, options)
 	}
 	if err := protocol.IssuesError(protocol.CheckModelResponse(semantic, candidate.compiled, candidate.binding, candidate.scope)); err != nil {
 		return err

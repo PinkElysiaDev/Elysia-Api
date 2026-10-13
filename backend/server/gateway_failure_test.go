@@ -103,7 +103,7 @@ func TestGatewayUnmappedFailureKeepsProviderMessageAndConversionIssue(t *testing
 		req.Header.Set("Authorization", "Bearer gateway-test-token")
 		rec := httptest.NewRecorder()
 		s.engine.ServeHTTP(rec, req)
-		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), message) || !strings.Contains(rec.Body.String(), "/error/code") {
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), message) || !strings.Contains(rec.Body.String(), "vendor_tool_choice_detail") || strings.Contains(rec.Body.String(), "unsupported_capability") {
 			t.Fatalf("provider cause masked: %d %s", rec.Code, rec.Body.String())
 		}
 		if calls.Load() != before+1 {

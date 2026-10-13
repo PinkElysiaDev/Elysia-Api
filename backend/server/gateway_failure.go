@@ -27,7 +27,23 @@ func mapGatewayHTTPFailure(ctx context.Context, record *usageRecord, status int,
 		return &upstreamHTTPFailure{&gatewayFailure{status, err}}
 	}
 	updateRecordProtocolUsage(record, response.Usage)
-	return &upstreamHTTPFailure{encodeGatewayFailure(ctx, status, response, ingress, options)}
+	return &upstreamHTTPFailure{projectGatewayFailure(ctx, status, response, ingress, candidate, options)}
+}
+
+func projectGatewayFailure(ctx context.Context, status int, response *protocol.Response, ingress *protocol.Compiled, candidate gatewayCandidate, options protocol.EvaluationContext) *gatewayFailure {
+	original := protocol.CheckGenerationOutcome(response)
+	projected, err := candidate.conversion.Response(ctx, response, candidate.conversionContext(ingress, true), options.Diagnostics)
+	if err != nil {
+		return &gatewayFailure{status, errors.Join(original, err)}
+	}
+	failure := encodeGatewayFailure(ctx, status, projected, ingress, options)
+	var upstream *upstreamFailure
+	if errors.As(failure.cause, &upstream) {
+		upstream.cause = original
+	} else {
+		failure.cause = errors.Join(original, failure.cause)
+	}
+	return failure
 }
 
 func encodeGatewayFailure(ctx context.Context, status int, response *protocol.Response, ingress *protocol.Compiled, options protocol.EvaluationContext) *gatewayFailure {
