@@ -116,6 +116,9 @@ func (adapter module) decodeFailure(value p.Value, options p.EvaluationContext) 
 			case "gateway_concurrency_limit":
 				category = ErrorClassRateLimit
 				result["code"] = fields["code"]
+			case "upstream_error":
+				category = ErrorClassUpstream
+				result["code"] = fields["code"]
 			default:
 				result["code"] = fields["code"]
 			}

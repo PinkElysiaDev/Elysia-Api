@@ -44,3 +44,21 @@ func TestAuditSourceIdentityIsCheckedBeforeProjection(t *testing.T) {
 		}
 	}
 }
+
+func TestAuditCodeOnlyUpstreamFailureKeepsPrimaryCategory(t *testing.T) {
+	from := shippedProjectionProtocol(t, Responses)
+	frame := testValue(t, `{"type":"***.failed","response":{"status":"failed","error":{"code":"upstream_error","message":"Synthetic unavailable"}}}`)
+	_, err := from.DecodeFrame(t.Context(), frame, p.EvaluationContext{State: p.NewEvaluationState()})
+	var failure *p.GenerationFailure
+	if !errors.As(err, &failure) {
+		t.Fatal(err)
+	}
+	fields, parseErr := failure.Payload.ReadObject()
+	if parseErr != nil || fields["category"] != p.StringValue(string(ErrorClassUpstream)) || fields["code"] != p.StringValue("upstream_error") {
+		t.Fatal(fields, err)
+	}
+	var contract *p.ConversionError
+	if !errors.As(err, &contract) || contract.Issues[0].Path != "/type" {
+		t.Fatal(err)
+	}
+}
