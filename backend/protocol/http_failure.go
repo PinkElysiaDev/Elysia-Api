@@ -27,7 +27,11 @@ func (compiled *Compiled) DecodeHTTPFailure(ctx context.Context, status int, bod
 		return nil, err
 	}
 	if CheckGenerationOutcome(response) == nil {
-		return nil, compiled.runtimeError(DecodeResponse, streamIssue(UpstreamContractViolation, "/error", "non-success HTTP body did not decode to a declared generation failure"))
+		return nil, compiled.runtimeError(DecodeResponse, IssuesError([]ConversionIssue{{
+			Code: UpstreamContractViolation, Severity: SeverityError, Direction: DecodeResponse, Stage: "decode.response", Path: "/error",
+			Reason:     "non-success HTTP body did not decode to a declared generation failure",
+			Suggestion: "Correct the upstream HTTP error body or the declared response failure mapping.",
+		}}))
 	}
 	return response, nil
 }

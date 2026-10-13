@@ -1,11 +1,26 @@
 package builtin
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
 )
+
+func TestAuditHTTPFailureDiagnosticUsesResponseStage(t *testing.T) {
+	from := shippedProjectionProtocol(t, Chat)
+	_, err := from.DecodeHTTPFailure(t.Context(), 524, []byte("{}"), p.EvaluationContext{})
+	var conversion *p.ConversionError
+	if !errors.As(err, &conversion) {
+		t.Fatal(err)
+	}
+	for _, issue := range conversion.Issues {
+		if issue.Direction != p.DecodeResponse || issue.Stage != "decode.response" || issue.Path != "/error" || issue.Protocol.DefinitionID != p.PresetChatCompletionsID {
+			t.Fatal(issue)
+		}
+	}
+}
 
 func TestAuditFailureProjectionMatrix(t *testing.T) {
 	for _, source := range []string{Chat, Responses} {
