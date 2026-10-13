@@ -103,6 +103,12 @@ func (stream *streamModule) DecodeEvents(ctx context.Context, input p.Value, opt
 	if err != nil {
 		return nil, err
 	}
+	if stream.name == Responses {
+		isHeartbeat, err := stream.consumeResponsesHeartbeat(fields, options)
+		if err != nil || isHeartbeat {
+			return []p.Event{}, err
+		}
+	}
 	var events []p.Event
 	switch stream.name {
 	case Chat:

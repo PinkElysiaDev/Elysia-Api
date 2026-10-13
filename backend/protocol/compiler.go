@@ -26,10 +26,11 @@ type EvaluationContext struct {
 	State               *EvaluationState
 	// Diagnostics collects non-blocking conversion issues for this request.
 	// It is gateway-owned; mappings can report through it but cannot read it.
-	Diagnostics   *DiagnosticSink
-	identity      Identity
-	requires      []string
-	compoundFrame bool
+	Diagnostics      *DiagnosticSink
+	identity         Identity
+	requires         []string
+	compoundFrame    bool
+	transportControl *bool
 	// ResolveRequestScope is supplied by the gateway after model/authorization
 	// lookup. Definitions cannot execute it or replace its returned binding.
 	ResolveRequestScope func(*Request) (Scope, error)
@@ -38,6 +39,14 @@ type EvaluationContext struct {
 // Identity returns the immutable definition identity stamped by execution.
 // Callers and mapping expressions cannot impersonate another wire revision.
 func (options EvaluationContext) Identity() Identity { return options.identity }
+
+// ConsumeTransportControl prevents a verified payload-free transport frame
+// from being replayed as a generation event. Authored mappings cannot set it.
+func (options EvaluationContext) ConsumeTransportControl() {
+	if options.transportControl != nil {
+		*options.transportControl = true
+	}
+}
 
 // DefinitionRequires selects explicitly versioned module semantics. Older
 // definitions retain their authored contract without rewriting their fixtures.

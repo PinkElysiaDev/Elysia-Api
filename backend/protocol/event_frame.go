@@ -24,12 +24,14 @@ func (compiled *Compiled) DecodeFrame(ctx context.Context, frame Value, options 
 
 func (compiled *Compiled) decodeFrame(ctx context.Context, direction Direction, frame Value, options EvaluationContext) (*EventFrame, error) {
 	options.compoundFrame = true
+	isTransportControl := false
+	options.transportControl = &isTransportControl
 	events, err := compiled.decodeEvents(ctx, direction, frame, options)
 	if err != nil {
 		return nil, err
 	}
 	result := &EventFrame{Events: events, encoderHash: compiled.mappings[eventEncoder(direction)].definitionHash, decoderHash: compiled.mappings[direction].definitionHash}
-	if compiled.native.Preserve {
+	if compiled.native.Preserve && !isTransportControl {
 		result.native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: direction, Scope: options.Scope}, Value: frame}
 		encoded, err := EncodeValue(events)
 		if err != nil {

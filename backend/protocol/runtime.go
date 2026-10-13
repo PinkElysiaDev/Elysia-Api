@@ -159,11 +159,14 @@ func (compiled *Compiled) DecodeClientEvents(ctx context.Context, frame Value, o
 
 func (compiled *Compiled) decodeEvents(ctx context.Context, direction Direction, frame Value, options EvaluationContext) (result []Event, err error) {
 	defer func() { err = compiled.runtimeError(direction, err) }()
+	if options.transportControl == nil {
+		options.transportControl = new(bool)
+	}
 	events, err := compiled.decodeEventValues(ctx, direction, frame, options)
 	if err != nil {
 		return nil, err
 	}
-	if len(events) == 0 && !options.compoundFrame {
+	if len(events) == 0 && !options.compoundFrame && !*options.transportControl {
 		return nil, streamIssue(UpstreamContractViolation, "/events", "a wire event must produce at least one semantic event")
 	}
 	if compiled.native.Preserve && len(events) > 1 && !options.compoundFrame {
@@ -177,7 +180,7 @@ func (compiled *Compiled) decodeEvents(ctx context.Context, direction Direction,
 			return nil, err
 		}
 		event.Native = nil
-		if compiled.native.Preserve && (!options.compoundFrame || event.Type == NativeEvent) {
+		if compiled.native.Preserve && !*options.transportControl && (!options.compoundFrame || event.Type == NativeEvent) {
 			event.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: direction, Scope: options.Scope}, Value: frame}
 		}
 		target := compiled.target(direction, options)
