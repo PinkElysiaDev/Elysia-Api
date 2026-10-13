@@ -78,8 +78,9 @@ func (compiled *Compiled) checkDecodedResponsesContext(request *Request) error {
 }
 
 func (c *CompiledConversion) normalized(rule ConversionRule, route ConversionContext, at, reason string, sink *DiagnosticSink) {
+	direction := map[ConversionPhase]Direction{ConversionIngress: DecodeRequest, ConversionRequest: EncodeRequest, ConversionResponse: EncodeResponse, ConversionEvent: EncodeEvent}[rule.Phase]
 	sink.Add(ConversionIssue{Code: ConversionNormalized, Severity: SeverityInfo, Fidelity: "preserved",
-		Protocol: route.Target, Direction: EncodeRequest, Stage: "conversion.request", Path: at, Reason: reason,
+		Protocol: route.Target, Direction: direction, Stage: "conversion." + string(rule.Phase), Path: at, Reason: reason,
 		RuleID: rule.ID, PolicyHash: c.Hash, PolicyRevision: c.RuleRevisions[rule.ID], Evidence: c.Origins[rule.ID]})
 }
 

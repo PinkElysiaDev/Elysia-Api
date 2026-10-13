@@ -20,6 +20,9 @@ type ResponseMetadata struct {
 // MetadataFieldType is shared by JSON and SSE decoders. Stateful references,
 // credentials, signatures and counters are deliberately absent from this list.
 func MetadataFieldType(codec, location, name string) string {
+	if codec == "responses" && location == "event:response.created" && name == "safety_buffering" {
+		return "safety-buffering"
+	}
 	if codec == "responses" && name == "obfuscation" {
 		switch location {
 		case "event:response.output_text.delta", "event:response.refusal.delta", "event:response.function_call_arguments.delta", "event:response.custom_tool_call_input.delta", "event:response.reasoning_text.delta", "event:response.reasoning_summary_text.delta":
@@ -131,11 +134,17 @@ func ValidateMetadataValue(codec, location, name string, v Value, at string) err
 	if kind == "" {
 		return streamIssue(UnsupportedCapability, at, "unknown response metadata")
 	}
-	if v.IsNull() && kind != "padding-string" {
+	if v.IsNull() && kind != "padding-string" && kind != "safety-buffering" {
 		return nil
 	}
 	ok := false
 	switch kind {
+	case "safety-buffering":
+		var enabled bool
+		if v.IsNull() || v.Decode(&enabled) != nil {
+			return streamIssue(InvalidInput, at, "safety_buffering requires a boolean")
+		}
+		ok = true
 	case "turn-tags", "timed-turn-tags":
 		fields, err := v.ReadObject()
 		if err != nil {
@@ -262,6 +271,13 @@ func (c *CompiledConversion) projectMetadata(items []ResponseMetadata, codec str
 		}
 		if item.Codec == codec {
 			out = append(out, item)
+			continue
+		}
+		if MetadataFieldType(item.Codec, item.Location, item.Name) == "safety-buffering" {
+			if string(item.Value.Bytes()) != "false" {
+				return nil, streamIssue(UnsupportedCapability, item.Path, "active source safety buffering has no declared target mapping")
+			}
+			c.normalized(rule, route, item.Path, "inactive source safety buffering carries no buffered content; target output remains unchanged", sink)
 			continue
 		}
 		if MetadataFieldType(item.Codec, item.Location, item.Name) == "padding-string" {
