@@ -83,7 +83,7 @@ func (stream *streamModule) Convert(ctx context.Context, direction p.Direction, 
 		if err != nil {
 			return p.Value{}, err
 		}
-		frames, err = stream.renderMetadata(frames, &event)
+		frames, err = stream.renderMetadata(frames, &event, options)
 		if err != nil {
 			return p.Value{}, err
 		}

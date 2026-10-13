@@ -20,8 +20,11 @@ type ResponseMetadata struct {
 // MetadataFieldType is shared by JSON and SSE decoders. Stateful references,
 // credentials, signatures and counters are deliberately absent from this list.
 func MetadataFieldType(codec, location, name string) string {
-	if codec == "responses" && location == "event:response.created" && name == "safety_buffering" {
-		return "safety-buffering"
+	if codec == "responses" && name == "safety_buffering" {
+		switch location {
+		case "event:response.created", "event:response.in_progress", "event:response.output_text.delta", "event:response.completed":
+			return "safety-buffering"
+		}
 	}
 	if codec == "responses" && name == "obfuscation" {
 		switch location {

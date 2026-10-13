@@ -30,7 +30,7 @@ func mergeResponseMetadata(left, right []p.ResponseMetadata) []p.ResponseMetadat
 
 // Metadata has explicit node ownership. A metadata-only update emits a frame
 // for that same item; it never waits for an unrelated subsequent text delta.
-func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event) ([]p.Value, error) {
+func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event, options p.EvaluationContext) ([]p.Value, error) {
 	var local []p.ResponseMetadata
 	var choiceMetadata []p.ResponseMetadata
 	var frameMetadata []p.ResponseMetadata
@@ -238,6 +238,18 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event) ([]
 		frames[i] = object(f)
 	}
 	for _, m := range frameMetadata {
+		if event != nil && event.Type == p.ResponseFinished && len(frames) == 0 {
+			// The terminal is held for late usage. Its frame metadata stays on
+			// the pending event and is rendered with that single terminal.
+			continue
+		}
+		if m.Location == "event:response.in_progress" && len(frames) == 0 && event != nil && event.Type == p.MetadataUpdated && event.Response != nil {
+			response, err := stream.module.encodeResponse(event.Response, options)
+			if err != nil {
+				return nil, err
+			}
+			frames = append(frames, object(p.Object{"type": p.StringValue("response.in_progress"), "response": response}))
+		}
 		attached := false
 		for i, frame := range frames {
 			fields, _ := frame.ReadObject()
@@ -248,7 +260,7 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event) ([]
 			}
 		}
 		if !attached {
-			return nil, unsupported(m.Path, "event padding has no corresponding target delta")
+			return nil, unsupported(m.Path, "event metadata has no corresponding target frame")
 		}
 	}
 	metadata, _ := p.EncodeValue(stream.metadata)

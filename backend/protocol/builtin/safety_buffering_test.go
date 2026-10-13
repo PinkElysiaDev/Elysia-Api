@@ -89,9 +89,44 @@ func TestResponsesSafetyBufferingTypeAndLocation(t *testing.T) {
 			t.Fatal(raw, err)
 		}
 	}
-	for _, location := range []string{"response", "event:response.completed", "event:keepalive"} {
+	for _, location := range []string{"response", "event:response.failed", "event:keepalive", "event:response.function_call_arguments.delta"} {
 		if p.MetadataFieldType(Responses, location, "safety_buffering") != "" {
 			t.Fatal(location)
+		}
+	}
+}
+
+func TestResponsesSafetyBufferingThroughoutStream(t *testing.T) {
+	raw := responsesPaddedTextFrames()
+	progress := strings.Replace(raw[0], "response.created", "response.in_progress", 1)
+	raw = append([]string{raw[0], progress}, raw[1:]...)
+	for i, body := range raw {
+		fields, _ := testValue(t, body).ReadObject()
+		if p.MetadataFieldType(Responses, "event:"+strings.Trim(string(fields["type"].Bytes()), "\""), "safety_buffering") != "" {
+			fields["safety_buffering"] = testValue(t, "false")
+		}
+		delete(fields, "sequence_number")
+		raw[i] = string(object(fields).Bytes())
+	}
+	for _, target := range []string{Responses, Chat, Anthropic, Gemini} {
+		frames := auditConvertFrames(t, Responses, target, raw)
+		count := 0
+		for _, frame := range frames {
+			if strings.Contains(string(frame.Bytes()), "\"safety_buffering\":false") {
+				count++
+			}
+		}
+		if target == Responses && count < 4 || target != Responses && count != 0 {
+			t.Fatal(target, count)
+		}
+	}
+	for _, name := range []string{"response.created", "response.in_progress", "response.output_text.delta", "response.completed"} {
+		for _, value := range []string{"true", "null", "42", "\"false\""} {
+			fields := p.Object{"type": p.StringValue(name), "safety_buffering": testValue(t, value)}
+			_, _, err := (&streamModule{module: module{name: Responses}}).splitFrameMetadata(object(p.Object{"/": object(p.Object{"safety_buffering": fields["safety_buffering"]})}), fields["type"])
+			if value != "true" && err == nil {
+				t.Fatal(name, value)
+			}
 		}
 	}
 }

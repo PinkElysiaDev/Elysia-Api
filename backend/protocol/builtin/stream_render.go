@@ -646,8 +646,9 @@ func (stream *streamModule) Finish(ctx context.Context, options p.EvaluationCont
 		}
 		frames = append(frames, object(p.Object{"type": p.StringValue("response." + statusName), "response": value}))
 	}
+	terminal := stream.pending
 	stream.pending = nil
-	frames, err = stream.renderMetadata(frames, nil)
+	frames, err = stream.renderMetadata(frames, terminal, options)
 	if err != nil {
 		return nil, err
 	}

@@ -56,12 +56,19 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 					_ = sample.Input.Decode(&frames)
 					if upstreamID == protocol.PresetResponsesID {
 						frames = auditMultipartResponsesFrames(frames)
+						progress, _ := frames[0].ReadObject()
+						progress["type"] = protocol.StringValue("response.in_progress")
+						progressFrame, _ := protocol.EncodeValue(progress)
+						frames = append([]protocol.Value{frames[0], progressFrame}, frames[1:]...)
 						fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"SSE-Keep-Alive\":true,\"item_id\":\"SSE-Keep-Alive\",\"output_index\":0,\"content_index\":0,\"delta\":\"\"}\n\n")
 					}
-					for _, frame := range frames {
+					for frameIndex, frame := range frames {
 						body, _ := frame.ReadObject()
 						if upstreamID == protocol.PresetResponsesID {
-							if body["type"] == protocol.StringValue("response.created") {
+							var kind string
+							_ = body["type"].Decode(&kind)
+							body["sequence_number"], _ = protocol.EncodeValue(frameIndex)
+							if protocol.MetadataFieldType("responses", "event:"+kind, "safety_buffering") != "" {
 								body["safety_buffering"], _ = protocol.ParseValue([]byte("false"))
 							}
 							// The message phase arrives after content_part.done.

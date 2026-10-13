@@ -60,6 +60,13 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		}
 		return events, nil
 	case "response.in_progress":
+		if !fields["safety_buffering"].IsZero() {
+			response, err := stream.module.decodeResponse(fields["response"], options)
+			if err != nil {
+				return nil, err
+			}
+			return []p.Event{{Type: p.MetadataUpdated, Response: response, Usage: response.Usage}}, nil
+		}
 		response, err := fields["response"].ReadObject()
 		if err != nil {
 			return nil, err
