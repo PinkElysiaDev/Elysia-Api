@@ -1075,6 +1075,7 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 		Data:         encoded,
 		DurationMs:   time.Since(started).Milliseconds(),
 		SecretValues: result.SecretValues,
+		RedactedData: result.RedactedData,
 	}
 	if encodeErr != nil {
 		info = rejectToolResult(info)
@@ -1159,6 +1160,7 @@ func (e *Engine) persistToolResult(ctx context.Context, sessionID string, info T
 	live := limitToolResult(info, e.opts.ToolResultStoreLimit, direction)
 	live.Input = stored.Input
 	live.SecretValues = nil
+	live.RedactedData = nil
 	seq, err := e.store.AppendMessage(ctx, sessionID, RoleToolResult, stored, "", nil)
 	if err != nil {
 		emitEvent(events, Event{Type: EventStatus, Text: fmt.Sprintf("工具结果落库失败: %v", err)})

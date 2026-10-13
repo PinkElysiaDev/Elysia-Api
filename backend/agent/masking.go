@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -101,12 +102,41 @@ const secretValueMask = "***"
 // MaskSecretText 把文本里出现的已知明文密钥值替换为 ***（值来自工具自身
 // 产物，见 ToolResult.SecretValues——精确按值匹配，不会误伤其它内容）。
 func MaskSecretText(text string, secrets []string) string {
+	type span struct{ start, end int }
+	var matches []span
 	for _, secret := range secrets {
-		if secret != "" {
-			text = strings.ReplaceAll(text, secret, secretValueMask)
+		if secret == "" {
+			continue
+		}
+		for offset := 0; offset < len(text); {
+			index := strings.Index(text[offset:], secret)
+			if index < 0 {
+				break
+			}
+			start := offset + index
+			matches = append(matches, span{start, start + len(secret)})
+			offset = start + 1
 		}
 	}
-	return text
+	if len(matches) == 0 {
+		return text
+	}
+	sort.Slice(matches, func(i, j int) bool { return matches[i].start < matches[j].start })
+	var masked strings.Builder
+	previous, current := 0, matches[0]
+	for _, next := range matches[1:] {
+		if next.start <= current.end {
+			current.end = max(current.end, next.end)
+			continue
+		}
+		masked.WriteString(text[previous:current.start])
+		masked.WriteString(secretValueMask)
+		previous, current = current.end, next
+	}
+	masked.WriteString(text[previous:current.start])
+	masked.WriteString(secretValueMask)
+	masked.WriteString(text[current.end:])
+	return masked.String()
 }
 
 // MaskSecretData masks declared secrets without rounding JSON numbers. Invalid

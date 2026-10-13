@@ -53,7 +53,7 @@ func TestToolResultWriteFailureKeepsModelCopyRedacted(t *testing.T) {
 func (tool *secretResultTool) Meta() ToolMeta { return ToolMeta{ConcurrentSafe: tool.isParallel} }
 
 func TestToolSecretsStayOutOfModelAndHistory(t *testing.T) {
-	for _, mode := range []string{"serial", "parallel", "approval", "truncated"} {
+	for _, mode := range []string{"serial", "parallel", "approval", "truncated", "prepared"} {
 		t.Run(mode, func(t *testing.T) {
 			secret := "private-marker-" + strings.Repeat("secret", 40)
 			data := json.RawMessage(`{"key":"` + secret + `","count":9007199254740993}`)
@@ -61,6 +61,10 @@ func TestToolSecretsStayOutOfModelAndHistory(t *testing.T) {
 			first := &secretResultTool{fakeTool: &fakeTool{name: "first", gated: mode == "approval", result: ToolResult{OK: true, Summary: secret, Data: data, SecretValues: []string{secret}}}, isParallel: mode == "parallel"}
 			if first.gated {
 				first.permKey = "live_test"
+			}
+			if mode == "prepared" {
+				first.result.Data = json.RawMessage(`{"key":"private-marker-fragment","count":9007199254740993}`)
+				first.result.RedactedData = json.RawMessage(`{"key":"***","count":9007199254740993}`)
 			}
 			tools := []Tool{first}
 			calls := []FunctionCall{toolCall("one", "first", `{}`)}

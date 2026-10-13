@@ -55,7 +55,7 @@ func (t *elysiaCLITool) Execute(ctx context.Context, tctx agent.ToolContext, arg
 }
 
 func agentResultFromCLI(result CLIResult) agent.ToolResult {
-	return agent.ToolResult{OK: result.OK, Summary: result.Summary, Data: result.Data, SecretValues: result.SecretValues}
+	return agent.ToolResult{OK: result.OK, Summary: result.Summary, Data: result.Data, SecretValues: result.SecretValues, RedactedData: result.RedactedData}
 }
 
 type agentCLIContext struct{ inner agent.ToolContext }

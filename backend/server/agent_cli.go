@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/elysia-api/backend/agent"
 )
 
 // elysia CLI：把既有工具面收敛为单一 elysia_cli 入口的命令路由层。命令表里的
@@ -1099,7 +1101,7 @@ func (s *Server) runCLIWithOptions(ctx context.Context, tctx CLIContext, script 
 	if err != nil {
 		return CLIError("脚本解析失败: "+err.Error(), "parse_failed")
 	}
-	var output strings.Builder
+	var outputs []cliStatementOutput
 	succeeded, failed := 0, 0
 	skipChain := false // && 链跳过模式：直到 ;/换行 边界恢复执行
 	// 批内逐命令进度：批处理对模型是一次 elysia_cli 调用，没有逐条上报时前端
@@ -1121,10 +1123,10 @@ func (s *Server) runCLIWithOptions(ctx context.Context, tctx CLIContext, script 
 		if hasProgress {
 			reporter.ReportProgress(fmt.Sprintf("正在执行（%d/%d）：%s", index+1, total, redactCLICommandLine(segment.raw)))
 		}
-		cmdOutput, ok, statementSecrets := s.runOneCLIStatement(ctx, tctx, segment.raw, allowInternal)
-		output.WriteString(cmdOutput)
-		batchSecrets = append(batchSecrets, statementSecrets...)
-		if ok {
+		output := s.runOneCLIStatement(ctx, tctx, segment.raw, allowInternal)
+		outputs = append(outputs, output)
+		batchSecrets = append(batchSecrets, output.secrets...)
+		if output.isOK {
 			succeeded++
 		} else {
 			failed++
@@ -1135,7 +1137,11 @@ func (s *Server) runCLIWithOptions(ctx context.Context, tctx CLIContext, script 
 		}
 	}
 	summary := fmt.Sprintf("执行 %d 条命令：%d 成功、%d 失败", succeeded+failed, succeeded, failed)
-	text := clampCLIOutput(output.String())
+	var live, redacted strings.Builder
+	for _, output := range outputs {
+		live.WriteString(output.render(nil))
+		redacted.WriteString(output.render(batchSecrets))
+	}
 	exitCode := 0
 	if ctx.Err() != nil {
 		summary += "；执行已取消或超时，部分命令可能已完成"
@@ -1143,52 +1149,55 @@ func (s *Server) runCLIWithOptions(ctx context.Context, tctx CLIContext, script 
 	if failed > 0 || ctx.Err() != nil {
 		exitCode = 1
 	}
+	redactedData, _ := json.Marshal(map[string]any{"output": clampCLIOutput(redacted.String()), "exitCode": exitCode})
 	return CLIResult{OK: exitCode == 0, Summary: summary,
-		Data:         map[string]any{"output": text, "exitCode": exitCode},
+		Data:         map[string]any{"output": clampCLIOutput(live.String()), "exitCode": exitCode},
+		RedactedData: redactedData,
 		SecretValues: batchSecrets,
 	}
 }
 
 // runOneCLIStatement 执行单条语句，返回渲染后的文本块与成败。
-func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw string, allowInternal bool) (string, bool, []string) {
-	var out strings.Builder
+func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw string, allowInternal bool) cliStatementOutput {
+	output := cliStatementOutput{}
 	// 回显打码：输出会随 tool_result 落库并回放给模型，敏感 flag 的值
 	// 不允许经此二次出站（模型自己发的命令，原文在它的上下文里）。
-	out.WriteString("$ " + redactCLICommandLine(raw) + "\n")
+	output.prefix = "$ " + redactCLICommandLine(raw) + "\n"
 	statement, err := cliParseStatement(raw)
 	if err != nil {
-		out.WriteString("错误: " + err.Error() + "\n\n")
-		return out.String(), false, nil
+		output.text = "错误: " + err.Error()
+		return output
 	}
+	output.statement = statement
 	if isCLIHelpArgs(statement.args) {
 		// help 输出同样支持 grep/head 管道（help 文本可能上百行）。
 		helpArgs := statement.args
 		if len(helpArgs) > 0 {
 			helpArgs = helpArgs[1:]
 		}
-		out.WriteString(applyCLIPipes(renderCLIHelp(helpArgs), statement) + "\n\n")
-		return out.String(), true, nil
+		output.text, output.isOK = renderCLIHelp(helpArgs), true
+		return output
 	}
 	if allowInternal && len(statement.args) >= 3 && statement.args[0] == "session" && statement.args[1] == "title" && len(statement.pipes) == 0 {
 		encoded, _ := json.Marshal(map[string]any{"title": strings.Join(statement.args[2:], " ")})
 		result := normalizeCLIResult((&updateTitleTool{}).Execute(ctx, tctx, encoded))
-		out.WriteString(renderCLIResult(result, statement) + "\n\n")
-		return out.String(), result.OK, nil
+		output.text, output.isOK = renderCLIResult(result, cliStatement{}), result.OK
+		return output
 	}
 	inv, err := cliResolve(statement.args)
 	if err != nil {
-		out.WriteString("错误: " + err.Error() + "\n\n")
-		return out.String(), false, nil
+		output.text = "错误: " + err.Error()
+		return output
 	}
 	args, err := inv.command.mapper(inv)
 	if err != nil {
-		out.WriteString("错误: " + err.Error() + "\n\n")
-		return out.String(), false, nil
+		output.text = "错误: " + err.Error()
+		return output
 	}
 	encoded, err := json.Marshal(args)
 	if err != nil {
-		out.WriteString("错误: 参数序列化失败: " + err.Error() + "\n\n")
-		return out.String(), false, nil
+		output.text = "错误: 参数序列化失败: " + err.Error()
+		return output
 	}
 	handler := inv.command.handler(s)
 	// 语句级超时：批级预算内按 handler 配置收紧，未声明时使用默认值。
@@ -1200,9 +1209,20 @@ func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw st
 		defer cancel()
 	}
 	result := normalizeCLIResult(handler.Execute(execCtx, tctx, encoded))
-	text := renderCLIResult(result, statement)
-	out.WriteString(text + "\n\n")
-	return out.String(), result.OK, result.SecretValues
+	output.text, output.isOK, output.secrets = renderCLIResult(result, cliStatement{}), result.OK, result.SecretValues
+	return output
+}
+
+// cliStatementOutput retains original text until all batch secrets are known.
+type cliStatementOutput struct {
+	prefix, text string
+	statement    cliStatement
+	isOK         bool
+	secrets      []string
+}
+
+func (output cliStatementOutput) render(secrets []string) string {
+	return agent.MaskSecretText(output.prefix, secrets) + applyCLIPipes(agent.MaskSecretText(output.text, secrets), output.statement) + "\n\n"
 }
 
 // renderCLIResult 把单条命令的 CLIResult 渲染为文本（含管道过滤）。

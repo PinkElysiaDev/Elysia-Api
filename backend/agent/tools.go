@@ -126,6 +126,8 @@ type ToolResult struct {
 	// token）：现场 SSE 事件保留原值（明文仅此一次交付给用户），落库与回放
 	// 出口按值精确打码，防止明文永久存进会话历史并逐轮回传模型。
 	SecretValues []string
+	// RedactedData is prepared before tool-owned lossy rendering, if any.
+	RedactedData json.RawMessage
 }
 
 // MarshalData validates tool-owned JSON before any delivery or persistence.

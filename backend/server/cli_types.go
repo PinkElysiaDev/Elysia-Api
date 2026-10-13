@@ -27,6 +27,7 @@ type CLIResult struct {
 	// SecretValues 声明结果里出现的明文密钥（如 key create 生成的 token）：
 	// 现场事件保留原值交付一次，落库/回放出口按值精确打码（见 agent.ToolResult）。
 	SecretValues []string
+	RedactedData json.RawMessage
 }
 
 func CLIError(summary, code string) CLIResult {

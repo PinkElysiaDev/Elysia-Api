@@ -9,11 +9,12 @@ func rejectToolResult(info ToolResultInfo) ToolResultInfo {
 	info.Summary = invalidToolResultSummary
 	info.Data = json.RawMessage(`{"error":"invalid_tool_result"}`)
 	info.SecretValues = nil
+	info.RedactedData = nil
 	return info
 }
 
 func validateToolResult(info ToolResultInfo) ToolResultInfo {
-	if len(info.Data) > 0 && !json.Valid(info.Data) {
+	if (len(info.Data) > 0 && !json.Valid(info.Data)) || (info.RedactedData != nil && !json.Valid(info.RedactedData)) {
 		return rejectToolResult(info)
 	}
 	return info
@@ -22,6 +23,10 @@ func validateToolResult(info ToolResultInfo) ToolResultInfo {
 // redactToolResult runs before truncation so a cut through a secret cannot
 // defeat exact-value masking. This copy is shared by storage and model calls.
 func redactToolResult(info ToolResultInfo) ToolResultInfo {
+	if info.RedactedData != nil {
+		info.Data = info.RedactedData
+	}
+	info.RedactedData = nil
 	info.Input = MaskSecretInputs(info.Input)
 	if len(info.SecretValues) > 0 {
 		info.Summary = MaskSecretText(info.Summary, info.SecretValues)
