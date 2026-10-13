@@ -7,5 +7,6 @@ export const phases: Record<ConversionPhase, string> = {
   request: '候选请求',
   response: '响应',
   event: '流式事件',
+  source_event: '上游流帧（解码前）',
   wire: '编码后',
 }

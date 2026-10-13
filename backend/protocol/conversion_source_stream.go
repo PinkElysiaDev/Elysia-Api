@@ -111,6 +111,44 @@ func (state *SourceEventState) Finish(readErr error) []SourceFrame {
 	return nil
 }
 
+// Sequence uses the same bounded processor for previews and combination proofs.
+// The returned array contains wire frames, not decoded semantic events.
+func (state *SourceEventState) Sequence(ctx context.Context, input Value) (Value, error) {
+	frames, err := input.readArray()
+	if err != nil || input.IsNull() {
+		return Value{}, streamIssue(InvalidInput, "/input", "source_event requires an array of wire frames")
+	}
+	var output []Value
+	buffered := 0
+	appendFrames := func(batch []SourceFrame) error {
+		for _, frame := range batch {
+			buffered += len(frame.Value.raw)
+			if buffered > state.limits.BufferBytes {
+				return streamIssue(LimitExceeded, "/input", "source event sequence exceeds preview buffer limit")
+			}
+			output = append(output, frame.Value)
+		}
+		return nil
+	}
+	for _, frame := range frames {
+		batch, err := state.Push(ctx, frame, nil)
+		if err != nil {
+			return Value{}, err
+		}
+		if err := appendFrames(batch); err != nil {
+			state.Finish(err)
+			return Value{}, err
+		}
+	}
+	if err := appendFrames(state.Finish(nil)); err != nil {
+		return Value{}, err
+	}
+	if output == nil {
+		output = []Value{}
+	}
+	return EncodeValue(output)
+}
+
 type chatStartup struct {
 	id, model string
 	created   int64

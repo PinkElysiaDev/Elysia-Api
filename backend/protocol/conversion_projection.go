@@ -30,7 +30,7 @@ func (s *Service) ResolvePreviewConversion(route ConversionContext, phase Conver
 	created, _ := EncodeValue(1)
 	route.Delivery = &DeliveryState{ID: StringValue("response_preview"), Created: created}
 	ingress, upstream := source, target
-	if phase == ConversionResponse || phase == ConversionEvent {
+	if phase == ConversionResponse || phase == ConversionEvent || phase == ConversionSourceEvent {
 		ingress, upstream = target, source
 	}
 	layers := []ConversionPolicy{DefaultConversionPolicy(ingress, upstream)}
@@ -46,6 +46,9 @@ func (s *Service) ResolvePreviewConversion(route ConversionContext, phase Conver
 func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 	p := ConversionPolicy{SchemaVersion: 1, ID: "engine-default", Name: "引擎默认", Mode: "compatible", Rules: []ConversionRule{},
 		Continuation: &ContinuationSettings{ClientCarrier: true, Persist: true, RetentionSeconds: 7 * 24 * 3600, TurnsPerSession: 64, MaxBytes: 512 << 20, RecordBytes: 8 << 20}}
+	if upstream.Codec(DecodeEvent) == "openai-chat" && knownConversionCodec(ingress.Codec(EncodeEvent)) {
+		p.Rules = append(p.Rules, ConversionRule{ID: "chat-stream-identity", Order: 100, Enabled: true, Phase: ConversionSourceEvent, Action: "chat_stream_identity"})
+	}
 	if codec := upstream.Codec(EncodeRequest); knownConversionCodec(codec) {
 		p.Usage = &ConversionUsageSettings{CollectUpstreamUsage: true}
 		sourceCodec := ingress.Codec(DecodeRequest)

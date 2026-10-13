@@ -140,11 +140,18 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 			if sample.Direction != DecodeEvent || !sample.Sequence || sample.ExpectedIssue != "" {
 				continue
 			}
+			prepared, err := prepareCombinationSourceEvents(ctx, ingress, upstream, sample)
+			if err != nil {
+				report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: EncodeEvent})
+				report.Issues = append(report.Issues, sampleIssues(upstream, sample, "/combination/source-events", err)...)
+				continue
+			}
+			sample = prepared
 			isSkipped, observed := inspectBindingSample(ctx, upstream, sample, capabilities, &report, EncodeEvent)
 			if isSkipped {
 				continue
 			}
-			err := verifyEventCombination(ctx, ingress, upstream, sample)
+			err = verifyEventCombination(ctx, ingress, upstream, sample)
 			if recordEnvelopeRejection(conversion, err, VerificationCheck{SampleID: sample.ID, Direction: EncodeEvent}, &report) {
 				continue
 			}
@@ -266,7 +273,30 @@ func inspectBindingSample(ctx context.Context, compiled *Compiled, sample Sample
 	return false, capabilities
 }
 
+func prepareCombinationSourceEvents(ctx context.Context, ingress, upstream *Compiled, sample Sample) (Sample, error) {
+	conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion)
+	route := ConversionContext{Source: upstream.Identity(), Target: ingress.Identity(), Transport: SSE}
+	if conversion != nil {
+		route = conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), SSE)
+	}
+	route.Scope = sample.Scope
+	if sample.Sequence && sample.Direction == DecodeEvent {
+		var err error
+		sample.Input, err = NewSourceEventState(conversion, route, upstream, ingress, verificationDiagnostics(ctx)).Sequence(ctx, sample.Input)
+		if err != nil {
+			return sample, err
+		}
+	}
+	return sample, nil
+}
+
 func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sample Sample) error {
+	conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion)
+	route := ConversionContext{Source: upstream.Identity(), Target: ingress.Identity(), Transport: SSE, Scope: sample.Scope}
+	if conversion != nil {
+		route = conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), SSE)
+		route.Scope = sample.Scope
+	}
 	result, err := executeEventFixture(ctx, upstream, sample)
 	if err != nil {
 		return err
@@ -276,13 +306,7 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 	// presentation preference.
 	yes := true
 	options.ClientOutput = &ClientOutput{IncludeUsage: &yes}
-	conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion)
 	projected := []Event{}
-	route := ConversionContext{Source: upstream.Identity(), Target: ingress.Identity(), Transport: SSE}
-	if conversion != nil {
-		route = conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), SSE)
-	}
-	route.Scope = options.Scope
 	eventState := NewConversionEventState(conversion, route)
 	convertedFrames := []*EventFrame{}
 	for _, frame := range result.frames {

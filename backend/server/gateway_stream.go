@@ -26,6 +26,7 @@ type gatewayStream struct {
 	options            protocol.EvaluationContext
 	route              protocol.ConversionContext
 	eventState         *protocol.ConversionEventState
+	sourceState        *protocol.SourceEventState
 	carriers           *builtin.ContinuationStream
 	collector          *protocol.ResponseCollector
 	sourceReplay       *protocol.EventReplay
@@ -77,6 +78,7 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		limits: limits, options: options, route: route, eventState: eventState, carriers: carriers,
 		collector: collector, sourceReplay: sourceReplay, replay: replay,
 		wireValidation: wireValidation, finalValidation: finalValidation}
+	stream.sourceState = protocol.NewSourceEventState(candidate.conversion, route, candidate.compiled, plan.ingress, options.Diagnostics)
 	err = protocol.ReadFrames(c.Request.Context(), response.Body, candidate.operation, candidate.compiled.ResourceLimits().BufferBytes, stream.consumeFrame)
 	return stream.finish(err)
 }
@@ -121,6 +123,19 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 
 func (stream *gatewayStream) consumeFrame(frame protocol.Value, metadata protocol.Object) error {
 	stream.record.appendStreamEvent(string(frame.Bytes()))
+	prepared, err := stream.sourceState.Push(stream.context.Request.Context(), frame, metadata)
+	if err != nil {
+		return err
+	}
+	for _, source := range prepared {
+		if err := stream.consumeSourceFrame(source.Value, source.Metadata); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (stream *gatewayStream) consumeSourceFrame(frame protocol.Value, metadata protocol.Object) error {
 	stream.options.Values = metadata
 	decoded, err := stream.candidate.compiled.DecodeFrame(stream.context.Request.Context(), frame, stream.options)
 	if err != nil {
@@ -235,6 +250,11 @@ func (stream *gatewayStream) consumeFrame(frame protocol.Value, metadata protoco
 }
 
 func (stream *gatewayStream) finish(err error) error {
+	for _, pending := range stream.sourceState.Finish(err) {
+		if err = stream.consumeSourceFrame(pending.Value, pending.Metadata); err != nil {
+			break
+		}
+	}
 	if err == nil {
 		var tail []protocol.Event
 		tail, err = stream.eventState.Drain()

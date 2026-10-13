@@ -214,10 +214,11 @@ func (s *Server) adminConversionActivate(c *gin.Context) {
 
 func (s *Server) adminConversionPreview(c *gin.Context) {
 	var input struct {
-		Policy  protocol.ConversionPolicy  `json:"policy"`
-		Phase   protocol.ConversionPhase   `json:"phase"`
-		Context protocol.ConversionContext `json:"context"`
-		Input   protocol.Value             `json:"input"`
+		Policy   protocol.ConversionPolicy  `json:"policy"`
+		Phase    protocol.ConversionPhase   `json:"phase"`
+		Sequence bool                       `json:"sequence"`
+		Context  protocol.ConversionContext `json:"context"`
+		Input    protocol.Value             `json:"input"`
 	}
 	if err := decodeProtocolAdminBody(c, &input); err != nil {
 		respondProtocolError(c, err)
@@ -239,6 +240,8 @@ func (s *Server) adminConversionPreview(c *gin.Context) {
 	sink := &protocol.DiagnosticSink{}
 	var output any
 	switch input.Phase {
+	case protocol.ConversionSourceEvent:
+		output, err = service.PreviewSourceEvents(c.Request.Context(), policy, input.Context, input.Input, input.Sequence, sink)
 	case protocol.ConversionRequest:
 		var request protocol.Request
 		if err = input.Input.Decode(&request); err == nil {

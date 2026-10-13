@@ -43,7 +43,11 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 			route, err = conversion.PreviewRecovery(input.ConversionPhase, input.Input, route)
 		}
 		if err == nil {
-			output, err = conversion.ApplyValue(ctx, input.ConversionPhase, input.Input, route, sink)
+			if input.ConversionPhase == ConversionSourceEvent {
+				output, err = service.PreviewSourceEvents(ctx, conversion, route, input.Input, input.Sequence, sink)
+			} else {
+				output, err = conversion.ApplyValue(ctx, input.ConversionPhase, input.Input, route, sink)
+			}
 		}
 		issues := sink.Issues()
 		if err != nil {
@@ -114,6 +118,20 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 		return PreviewResult{Issues: sampleIssues(compiled, Sample{}, "/preview", err)}
 	}
 	return PreviewResult{Output: output, Semantic: value, Issues: []ConversionIssue{}}
+}
+
+// PreviewSourceEvents resolves installed modules before applying source rules.
+func (service *Service) PreviewSourceEvents(ctx context.Context, conversion *CompiledConversion, route ConversionContext, input Value, isSequence bool, sink *DiagnosticSink) (Value, error) {
+	if !isSequence {
+		return Value{}, streamIssue(InvalidInput, "/sequence", "source_event requires sequence: true")
+	}
+	view := service.View()
+	source, hasSource := view.Pin(route.Source.DefinitionID)
+	target, hasTarget := view.Pin(route.Target.DefinitionID)
+	if !hasSource || !hasTarget || source.Identity() != route.Source || target.Identity() != route.Target {
+		return Value{}, streamIssue(InvalidInput, "/context", "preview protocol selection changed; reload the preview")
+	}
+	return NewSourceEventState(conversion, route, source, target, sink).Sequence(ctx, input)
 }
 
 // Preview validates an unsaved definition and executes its typed adapter.

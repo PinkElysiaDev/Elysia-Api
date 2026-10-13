@@ -75,7 +75,15 @@ func (stream *streamModule) splitFrameMetadata(extra p.Value, kind p.Value) (p.V
 		return p.Value{}, nil, err
 	}
 	var metadata []p.ResponseMetadata
-	for path, value := range locations {
+	// Stable ownership order keeps replay and composition evidence independent
+	// of Go map iteration when a frame carries response and choice metadata.
+	paths := make([]string, 0, len(locations))
+	for path := range locations {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		value := locations[path]
 		fields, err := value.ReadObject()
 		if err != nil {
 			return p.Value{}, nil, err
