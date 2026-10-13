@@ -3,6 +3,8 @@ package protocol
 import (
 	"fmt"
 	"math"
+	"sort"
+	"strings"
 )
 
 // CheckResponse validates observable response semantics before client encoding.
@@ -56,8 +58,10 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 		return check.issues
 	}
 	if event.Unmapped != nil {
-		check.require(NativeExtensionsCapability, "/unmapped")
-		check.native(event.Unmapped, "/unmapped")
+		for _, path := range unmappedEventPaths(event.Unmapped) {
+			check.require(NativeExtensionsCapability, path)
+			check.native(event.Unmapped, path)
+		}
 	}
 	if !event.ParentID.IsZero() {
 		check.requireName(event.ParentID, "/parentId")
@@ -140,4 +144,31 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 		check.issues = append(check.issues, CheckRequest(event.Request, target, limits)...)
 	}
 	return check.issues
+}
+
+// Built-in collectors retain the original container pointer for every unknown
+// field. Opaque custom values keep the semantic path instead of guessing one.
+func unmappedEventPaths(native *Native) []string {
+	if native.Source.Path != "/frame/extensions" {
+		return []string{"/unmapped"}
+	}
+	containers, err := native.Value.ReadObject()
+	if err != nil {
+		return []string{"/unmapped"}
+	}
+	var paths []string
+	for container, value := range containers {
+		fields, err := value.ReadObject()
+		if err != nil || !strings.HasPrefix(container, "/") {
+			return []string{"/unmapped"}
+		}
+		for name := range fields {
+			paths = append(paths, strings.TrimSuffix(container, "/")+"/"+escapePointer(name))
+		}
+	}
+	if len(paths) == 0 {
+		return []string{"/unmapped"}
+	}
+	sort.Strings(paths)
+	return paths
 }
