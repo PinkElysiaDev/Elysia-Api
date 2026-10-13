@@ -64,6 +64,11 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		if err != nil {
 			return nil, err
 		}
+		if !response["output_text"].IsZero() {
+			if _, err := stream.module.decodeResponse(fields["response"], options); err != nil {
+				return nil, err
+			}
+		}
 		usage, err := stream.decodeUsageUpdate(response["usage"])
 		if err != nil {
 			return nil, err

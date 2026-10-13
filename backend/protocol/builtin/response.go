@@ -106,8 +106,16 @@ func (adapter module) decodeResponse(input p.Value, options p.EvaluationContext)
 		}
 	case Responses:
 		known = append(known, "output", "incomplete_details")
+		for _, field := range response.Metadata {
+			if field.Name == "output_text" && (fields["output"].IsZero() || fields["output"].IsNull()) {
+				return nil, unsupported("/output", "output_text requires an explicit output array")
+			}
+		}
 		response.Content, err = adapter.decodeMessages(fields["output"], "/output", p.DecodeResponse, options, history)
 		if err != nil {
+			return nil, err
+		}
+		if err = p.ValidateResponseOutputText(response); err != nil {
 			return nil, err
 		}
 		response.Attributes["finishReason"], err = decodeResponsesFinish(response, fields["incomplete_details"])

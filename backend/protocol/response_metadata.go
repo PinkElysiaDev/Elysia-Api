@@ -38,6 +38,8 @@ func MetadataFieldType(codec, location, name string) string {
 			}
 		case "responses":
 			switch name {
+			case "output_text":
+				return "derived-text"
 			case "service_tier", "user", "safety_identifier", "prompt_cache_key", "prompt_cache_retention", "truncation":
 				return "string"
 			case "store", "background", "parallel_tool_calls":
@@ -134,11 +136,17 @@ func ValidateMetadataValue(codec, location, name string, v Value, at string) err
 	if kind == "" {
 		return streamIssue(UnsupportedCapability, at, "unknown response metadata")
 	}
-	if v.IsNull() && kind != "padding-string" && kind != "safety-buffering" {
+	if v.IsNull() && kind != "padding-string" && kind != "safety-buffering" && kind != "derived-text" {
 		return nil
 	}
 	ok := false
 	switch kind {
+	case "derived-text":
+		var text string
+		if v.IsNull() || v.Decode(&text) != nil {
+			return streamIssue(InvalidInput, at, "output_text requires a string")
+		}
+		ok = true
 	case "safety-buffering":
 		var enabled bool
 		if v.IsNull() || v.Decode(&enabled) != nil {
@@ -271,6 +279,10 @@ func (c *CompiledConversion) projectMetadata(items []ResponseMetadata, codec str
 		}
 		if item.Codec == codec {
 			out = append(out, item)
+			continue
+		}
+		if MetadataFieldType(item.Codec, item.Location, item.Name) == "derived-text" {
+			c.normalized(rule, route, item.Path, "verified output_text duplicates the ordered visible output; emitted once in target content", sink)
 			continue
 		}
 		if MetadataFieldType(item.Codec, item.Location, item.Name) == "safety-buffering" {
@@ -536,6 +548,9 @@ func (c *CompiledConversion) metadataValue(phase ConversionPhase, input Value, r
 	response := func(r *Response) error {
 		if r == nil {
 			return nil
+		}
+		if err := ValidateResponseOutputText(r); err != nil {
+			return err
 		}
 		var err error
 		r.Metadata, err = c.projectMetadata(r.Metadata, codec, phase, route, rule, sink)
