@@ -18,12 +18,13 @@ type conversionAction struct {
 // Build fresh editor schemas so callers cannot mutate compiler constraints.
 func conversionActionCatalog() []conversionAction {
 	return []conversionAction{
+		{name: "chat_stream_identity", phases: []ConversionPhase{ConversionSourceEvent}, description: "暂存一条精确匹配的 Chat 空启动帧。仅当第二条也是同模型空启动帧且 ID 改变时，以第二帧 ID 和创建时间统一首帧；兼容模式诊断，严格模式拒绝。后续身份变化仍拒绝。", isWholeValue: true},
 		{name: "error_metadata", phases: []ConversionPhase{ConversionResponse, ConversionEvent}, valueSchema: map[string]any{"type": "object", "required": []string{"sourceCodec", "targetCodec"}, "properties": map[string]any{"sourceCodec": map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}, "targetCodec": map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}}}, description: "将已识别错误的 code、param 投影到目标错误。无结构字段的目标在兼容模式保留为明确的消息附注并诊断，严格模式拒绝结构变化；空 param 规范化。未知扩展不作省略，同协议保持原形态。", isWholeValue: true},
-		{name: "set", phases: conversionPhases()},
-		{name: "remove", phases: conversionPhases()},
-		{name: "transform", phases: conversionPhases()},
-		{name: "warn", phases: conversionPhases()},
-		{name: "reject", phases: conversionPhases()},
+		{name: "set", phases: valueConversionPhases()},
+		{name: "remove", phases: valueConversionPhases()},
+		{name: "transform", phases: valueConversionPhases()},
+		{name: "warn", phases: valueConversionPhases()},
+		{name: "reject", phases: valueConversionPhases()},
 		{name: "signatures", phases: []ConversionPhase{ConversionRequest, ConversionResponse, ConversionEvent}, description: "将外协议 signature 与 encrypted_content 纳入认证续传；成功封装后诊断为可恢复，恢复仍校验身份、账号、模型及原节点。不转换文件或会话引用，不将加密内容冒充供应商签名。"},
 		{name: "stream_options", phases: []ConversionPhase{ConversionRequest}, valueSchema: map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}, description: "处理客户端用量输出和工具输入分片偏好。value 指定实际目标编码器时，对无法表达的工具流式时序偏好进行信息级有损诊断，严格模式拒绝；非流式或默认空值按无效果规范化。未知扩展仍需明确映射。", codecValue: "optional", isWholeValue: true},
 		{name: "request_projection", phases: []ConversionPhase{ConversionRequest}, valueSchema: map[string]any{"type": "object", "required": []string{"targetCodec"}, "default": map[string]any{"targetCodec": "responses"}, "properties": map[string]any{"sourceCodec": map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}, "targetCodec": map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}}}, description: "保留可映射的缓存提示、跟踪元数据和工具 strict；源编码器用于保持工具默认语义，未知来源不推断。兼容模式信息级省略无法映射的已知提示，工具 strict 损失保留警告；严格模式拒绝实际损失。未知缓存策略、扩展和资源不作省略。", isWholeValue: true},
@@ -48,6 +49,10 @@ func conversionActionCatalog() []conversionAction {
 }
 
 func conversionPhases() []ConversionPhase {
+	return append(valueConversionPhases(), ConversionSourceEvent)
+}
+
+func valueConversionPhases() []ConversionPhase {
 	return []ConversionPhase{ConversionIngress, ConversionRequest, ConversionResponse, ConversionEvent, ConversionWire}
 }
 
@@ -86,6 +91,10 @@ func (action conversionAction) validate(rule ConversionRule) error {
 		return fmt.Errorf("%s matches the complete semantic value, not an individual node", action.name)
 	}
 	switch action.name {
+	case "chat_stream_identity":
+		if rule.Path != "" || !rule.Value.IsZero() || rule.Expression != nil || rule.Match.Path != "" || rule.Match.Present != nil {
+			return fmt.Errorf("chat_stream_identity accepts route conditions only; its field boundaries are fixed")
+		}
 	case "error_metadata":
 		var options errorProjectionOptions
 		if rule.Value.Decode(&options) != nil || !knownConversionCodec(options.SourceCodec) || !knownConversionCodec(options.TargetCodec) {

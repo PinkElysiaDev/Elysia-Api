@@ -13,11 +13,12 @@ import (
 type ConversionPhase string
 
 const (
-	ConversionIngress  ConversionPhase = "ingress"
-	ConversionRequest  ConversionPhase = "request"
-	ConversionResponse ConversionPhase = "response"
-	ConversionEvent    ConversionPhase = "event"
-	ConversionWire     ConversionPhase = "wire"
+	ConversionIngress     ConversionPhase = "ingress"
+	ConversionRequest     ConversionPhase = "request"
+	ConversionResponse    ConversionPhase = "response"
+	ConversionEvent       ConversionPhase = "event"
+	ConversionSourceEvent ConversionPhase = "source_event"
+	ConversionWire        ConversionPhase = "wire"
 )
 
 // ConversionPolicy is separate from the immutable wire definition. Rules never
@@ -318,6 +319,9 @@ func (c *CompiledConversion) issueSeverity(rule ConversionRule, phase Conversion
 	if phase == ConversionRequest {
 		issue.Direction = EncodeRequest
 	}
+	if phase == ConversionSourceEvent {
+		issue.Protocol, issue.Direction = ctx.Source, DecodeEvent
+	}
 	if severity == SeverityError {
 		issue.Code = ConversionRejected
 		issue.Fidelity = "rejected"
@@ -335,6 +339,9 @@ func (c *CompiledConversion) issueSeverity(rule ConversionRule, phase Conversion
 // minted through expressions; the separately authenticated continuation module
 // is the only restoration authority.
 func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPhase, input Value, route ConversionContext, sink *DiagnosticSink) (Value, error) {
+	if phase == ConversionSourceEvent {
+		return Value{}, streamIssue(InvalidInput, "/sequence", "source_event requires a frame sequence")
+	}
 	if !slices.Contains(conversionPhases(), phase) {
 		return Value{}, streamIssue(InvalidInput, "/phase", "unknown conversion phase")
 	}
