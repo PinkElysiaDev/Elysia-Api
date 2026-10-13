@@ -81,3 +81,56 @@ func TestResponsesOutputTextBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestResponsesOutputTextPolicyAndCustomModules(t *testing.T) {
+	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
+	base := shippedProjectionProtocol(t, Responses).Definition()
+	base.ID = "legacy-response-copy"
+	raw, _ := p.EncodeValue(base)
+	from, issues := compiler.Compile(raw.Bytes())
+	if err := p.IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	to := shippedProjectionProtocol(t, Chat)
+	for _, mode := range []string{"compatible", "strict"} {
+		for _, enabled := range []bool{true, false} {
+			policy := p.DefaultConversionPolicy(to, from)
+			policy.Mode = mode
+			for i := range policy.Rules {
+				if policy.Rules[i].Action == "response_metadata" {
+					policy.Rules[i].Enabled = enabled
+				}
+			}
+			conversion, err := p.ResolveConversion(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := from.DecodeResponse(t.Context(), liveAuditFixture(t, "output_text").Bytes(), p.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Isolate duplicate text from unrelated resource/shape projection.
+			response.Attributes = nil
+			response.Content[0].ID, response.Content[0].Status = p.Value{}, p.Value{}
+			projected, err := conversion.Response(t.Context(), response, p.ConversionContext{}, nil)
+			if err == nil {
+				_, err = to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+			}
+			if (err == nil) != enabled {
+				t.Fatal(mode, enabled, err)
+			}
+		}
+	}
+	base.Directions[p.EncodeResponse] = p.Mapping{Transform: &p.Expression{Op: "read", Path: ""}}
+	base.Directions[p.EncodeEvent] = p.Mapping{Transform: &p.Expression{Op: "read", Path: ""}}
+	raw, _ = p.EncodeValue(base)
+	handwritten, issues := compiler.Compile(raw.Bytes())
+	if err := p.IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	for _, rule := range p.DefaultConversionPolicy(handwritten, from).Rules {
+		if rule.Phase != p.ConversionRequest && (rule.Action == "response_metadata" || rule.Action == "error_metadata") {
+			t.Fatal("inferred a handwritten target", rule)
+		}
+	}
+}

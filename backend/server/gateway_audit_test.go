@@ -43,6 +43,7 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 							body["system_fingerprint"], _ = protocol.ParseValue([]byte("null"))
 						case protocol.PresetResponsesID:
 							body["store"], _ = protocol.ParseValue([]byte("false"))
+							body["output_text"] = protocol.StringValue("hi")
 							addAuditMessagePhase(body)
 						}
 						value, _ := protocol.EncodeValue(body)
@@ -55,10 +56,14 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 					_ = sample.Input.Decode(&frames)
 					if upstreamID == protocol.PresetResponsesID {
 						frames = auditMultipartResponsesFrames(frames)
+						fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"SSE-Keep-Alive\":true,\"item_id\":\"SSE-Keep-Alive\",\"output_index\":0,\"content_index\":0,\"delta\":\"\"}\n\n")
 					}
 					for _, frame := range frames {
 						body, _ := frame.ReadObject()
 						if upstreamID == protocol.PresetResponsesID {
+							if body["type"] == protocol.StringValue("response.created") {
+								body["safety_buffering"], _ = protocol.ParseValue([]byte("false"))
+							}
 							// The message phase arrives after content_part.done.
 							if body["type"] == protocol.StringValue("response.output_item.done") {
 								item, _ := body["item"].ReadObject()
@@ -66,6 +71,9 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 								body["item"], _ = protocol.EncodeValue(item)
 							}
 							if response, err := body["response"].ReadObject(); err == nil {
+								if body["type"] == protocol.StringValue("response.completed") {
+									response["output_text"] = protocol.StringValue("hi")
+								}
 								addAuditMessagePhase(response)
 								body["response"], _ = protocol.EncodeValue(response)
 							}
@@ -219,6 +227,34 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 						}
 						if text.String() != "hi" {
 							t.Fatalf("content changed: %q", text.String())
+						}
+						if upstreamID == protocol.PresetResponsesID && ingressID != protocol.PresetResponsesID {
+							records := latestUsageRecords(t, s)
+							if len(records) == 0 {
+								t.Fatal("missing conversion evidence")
+							}
+							raw, _, err := s.store.GetUsageRecordJSON(t.Context(), records[0].RequestID)
+							if err != nil {
+								t.Fatal(err)
+							}
+							var record usageRecord
+							if err := json.Unmarshal(raw, &record); err != nil {
+								t.Fatal(err)
+							}
+							wanted := map[string]bool{"/output_text": false}
+							if stream {
+								wanted["/safety_buffering"] = false
+							}
+							for _, issue := range record.ConversionIssues {
+								if _, ok := wanted[issue.Path]; ok && issue.Code == protocol.ConversionNormalized && issue.PolicyHash == record.ConversionPolicyHash {
+									wanted[issue.Path] = true
+								}
+							}
+							for path, found := range wanted {
+								if !found {
+									t.Fatal(path, record.ConversionIssues)
+								}
+							}
 						}
 						if dir := os.Getenv("ELYSIA_AUDIT_CAPTURE"); dir != "" {
 							if e := os.MkdirAll(dir, 0700); e != nil {
