@@ -381,7 +381,10 @@ func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHa
 		}
 		// 待批动作已消费完毕：清掉 pending，避免恢复后残留的旧动作被二次
 		// 批准（paused 时不清——那时的 pending 是本次新写入的）。
-		_ = e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{ClearPending: true})
+		if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{ClearPending: true}); err != nil {
+			e.failTurn(ctx, sessionID, events, fmt.Sprintf("清除已处理审批失败: %v", err))
+			return
+		}
 	}
 
 	e.modelLoop(ctx, sessionID, session, handle, conversation, started, events)
@@ -479,18 +482,23 @@ func (e *Engine) resumeQuestion(ctx context.Context, sessionID string, resume *P
 func (e *Engine) resumePlan(ctx context.Context, sessionID string, session *Session, decision ApprovalDecision, conversation []conversationTurn, events chan Event) ([]conversationTurn, bool, error) {
 	if decision.Approved {
 		off := false
-		if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{SettingsPlanMode: &off}); err == nil {
-			session.Settings.PlanMode = false
+		if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{SettingsPlanMode: &off}); err != nil {
+			return conversation, false, fmt.Errorf("关闭计划模式失败: %w", err)
 		}
+		session.Settings.PlanMode = false
 		note := "用户已确认方案，计划模式已关闭。请按方案逐步执行。"
-		_, _ = e.store.AppendMessage(ctx, sessionID, RoleSystem, SystemContent{Kind: "info", Text: note}, "", nil)
+		if _, err := e.store.AppendMessage(ctx, sessionID, RoleSystem, SystemContent{Kind: "info", Text: note}, "", nil); err != nil {
+			return conversation, false, fmt.Errorf("写入方案确认失败: %w", err)
+		}
 		return append(conversation, textTurn(RoleUser, note)), false, nil
 	}
 	feedback := strings.TrimSpace(decision.Note)
 	if feedback == "" {
 		feedback = "用户认为方案需要修改，请先询问具体意见。"
 	}
-	_, _ = e.store.AppendMessage(ctx, sessionID, RoleUser, UserContent{Text: feedback}, "", nil)
+	if _, err := e.store.AppendMessage(ctx, sessionID, RoleUser, UserContent{Text: feedback}, "", nil); err != nil {
+		return conversation, false, fmt.Errorf("写入方案反馈失败: %w", err)
+	}
 	return append(conversation, textTurn(RoleUser, feedback)), false, nil
 }
 
@@ -510,20 +518,19 @@ func (e *Engine) resumeApprovalPrefix(ctx context.Context, sessionID string, ses
 		decisionText = "approved"
 	}
 	if decision.BaseURL != "" || decision.APIKey != "" {
-		if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{TestBaseURL: decision.BaseURL, TestAPIKey: decision.APIKey}); err == nil {
-			// 内存副本必须同步两字段：本轮恢复路径马上用这个 session 构造
-			// 工具上下文（TestTarget），只同步 BaseURL 会让首次批准的实测
-			// 拿旧/空 key 跑（曾有这样的不对称 bug）。
-			if decision.BaseURL != "" {
-				session.TestBaseURL = decision.BaseURL
-			}
-			if decision.APIKey != "" {
-				session.TestAPIKey = decision.APIKey
-			}
+		if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{TestBaseURL: decision.BaseURL, TestAPIKey: decision.APIKey}); err != nil {
+			return conversation, false, fmt.Errorf("保存测试目标失败: %w", err)
+		}
+		// The approved tool must use the target and credential just committed.
+		if decision.BaseURL != "" {
+			session.TestBaseURL = decision.BaseURL
+		}
+		if decision.APIKey != "" {
+			session.TestAPIKey = decision.APIKey
 		}
 	}
 	if _, err := e.store.AppendMessage(ctx, sessionID, RoleApproval, ApprovalContent{Decision: decisionText, Names: names, Note: decision.Note}, "", nil); err != nil {
-		return nil, false, fmt.Errorf("写入审批记录失败: %v", err)
+		return nil, false, fmt.Errorf("写入审批记录失败: %w", err)
 	}
 	if !decision.Approved {
 		// 拒绝：为每个待定调用合成拒绝结果，模型据此改道。
@@ -652,7 +659,10 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 		}
 		if session.PlanReady {
 			session.PlanReady = false
-			e.pauseForPlan(ctx, sessionID, session, result.Text, events)
+			if err := e.pauseForPlan(ctx, sessionID, session, result.Text, events); err != nil {
+				e.failTurn(ctx, sessionID, events, err.Error())
+				return
+			}
 			paused = true
 			return
 		}
@@ -720,8 +730,8 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 	for index < len(calls) {
 		call := calls[index]
 		if call.Name == ToolNameAskUser {
-			if e.pauseForQuestion(ctx, sessionID, calls[index:], reason, events) {
-				return true, nil
+			if isPaused, err := e.pauseForQuestion(ctx, sessionID, calls[index:], reason, events); isPaused || err != nil {
+				return isPaused, err
 			}
 		}
 		tool := e.tools.Get(call.Name)
@@ -803,29 +813,30 @@ func (e *Engine) parallelEligible(session *Session, call FunctionCall, approvedI
 }
 
 // pauseForPlan 在计划模式方案定稿后暂停，等用户确认或给出修改意见。
-func (e *Engine) pauseForPlan(ctx context.Context, sessionID string, session *Session, reason string, events chan Event) {
+func (e *Engine) pauseForPlan(ctx context.Context, sessionID string, session *Session, reason string, events chan Event) error {
 	pending := &PendingAction{Kind: PendingKindPlan, Reason: reason, Plan: append([]PlanStep(nil), session.Plan...), PlanSummary: session.PlanSummary}
 	waiting := StatusWaitingApproval
 	if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
-		return
+		return fmt.Errorf("保存待确认方案失败: %w", err)
 	}
 	emitTerminal(ctx, events, Event{Type: EventApprovalPending, Approval: MaskedPendingAction(pending)})
+	return nil
 }
 
 // pauseForQuestion 把 ask_user 变成 question 型暂停。参数不合法时返回 false，
 // 让后续路径按未知或普通工具处理。
-func (e *Engine) pauseForQuestion(ctx context.Context, sessionID string, remaining []FunctionCall, reason string, events chan Event) bool {
+func (e *Engine) pauseForQuestion(ctx context.Context, sessionID string, remaining []FunctionCall, reason string, events chan Event) (bool, error) {
 	question, ok := e.opts.ParseAsk(remaining[0])
 	if !ok {
-		return false
+		return false, nil
 	}
 	pending := &PendingAction{Kind: PendingKindQuestion, Calls: append([]FunctionCall(nil), remaining...), Reason: reason, Question: &question}
 	waiting := StatusWaitingApproval
 	if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
-		return false
+		return false, fmt.Errorf("保存待回答问题失败: %w", err)
 	}
 	emitTerminal(ctx, events, Event{Type: EventApprovalPending, Approval: MaskedPendingAction(pending)})
-	return true
+	return true, nil
 }
 
 func canRunParallel(tool Tool) bool {
