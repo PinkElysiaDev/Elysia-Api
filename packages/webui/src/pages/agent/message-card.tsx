@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export interface MessageActions {
+  isDisabled?: boolean;
   onRetry: (message: AgentMessage) => void;
   onEditResend: (message: AgentMessage) => void;
 }
@@ -69,6 +70,7 @@ export function MessageCard({
               size="iconSm"
               aria-label="编辑后重发"
               title="编辑后重发"
+              disabled={actions.isDisabled}
               onClick={() => actions.onEditResend(message)}
             >
               <Pencil className="h-3.5 w-3.5" />

@@ -51,7 +51,8 @@ async function openAgent(page: Page, messages: AgentMessage[] = [], pendingActio
     const data = path.endsWith('/seq') ? { seq: 1 }
       : path.endsWith('/agent/sessions') ? { items: hasSecondSession ? [session, { ...session, id: 'next-session', title: 'Second selected session' }] : [session] }
         : path.endsWith('/sessions/regression') ? { session, messages }
-          : path.endsWith('/models') ? { items: [{ id: 'test', sourceId: 'test', name: 'test-model', enabled: true, type: 'llm', maxTokens: 100000 }] }
+          : path.endsWith('/agent/models') ? { items: [{ modelId: 'test', sourceId: 'test', modelName: 'test-model', available: true, canRepair: false }] }
+            : path.endsWith('/models') ? { items: [{ id: 'test', sourceId: 'test', name: 'test-model', enabled: true, type: 'llm', maxTokens: 100000 }] }
             : path.endsWith('/model-sources') ? { items: [{ id: 'test', name: 'Test', enabled: true }] }
               : { items: [], total: 0 }
     await route.fulfill({ json: { ok: true, data } })
@@ -149,12 +150,13 @@ for (const operation of ['rename', 'settings', 'clear', 'delete', 'create'] as c
 
 for (const isFailure of [false, true]) {
   test(`settings save owns same-session interaction until ${isFailure ? 'failure' : 'success'}`, async ({ page }) => {
-    const session = await openAgent(page)
+    const history = [message(1, 'user', { text: 'first question' }), message(2, 'assistant', { text: 'first answer' }), message(3, 'user', { text: 'last question' }), message(4, 'assistant', { text: 'last answer' })]
+    const session = await openAgent(page, history)
     let release!: () => void
     const pending = new Promise<void>((resolve) => { release = resolve })
     let mutations = 0
     await page.route('**/api/admin/agent/sessions/regression', async (route) => {
-      if (route.request().method() === 'GET') return route.fulfill({ json: { ok: true, data: { session, messages: [] } } })
+      if (route.request().method() === 'GET') return route.fulfill({ json: { ok: true, data: { session, messages: history } } })
       mutations++
       await pending
       if (isFailure) {
@@ -173,16 +175,48 @@ for (const isFailure of [false, true]) {
     await expect(full).toBeDisabled()
     await expect(page.getByTitle('思考开关与推理强度')).toBeDisabled()
     await expect(page.getByRole('button', { name: /^发送（/ })).toBeDisabled()
+    const historyActions = page.getByRole('button', { name: /^(重试本轮|编辑后重发)$/ })
+    await expect(historyActions).toHaveCount(4)
+    for (const button of await historyActions.all()) await expect(button).toBeDisabled()
     await page.getByPlaceholder('请描述你的任务').press('Enter')
     expect(await page.evaluate(() => (window as StreamWindow).agentTestStreams?.length ?? 0)).toBe(0)
     release()
     await expect(full).toBeEnabled()
+    for (const button of await historyActions.all()) await expect(button).toBeEnabled()
     await expect(automatic).toHaveAttribute('aria-checked', isFailure ? 'false' : 'true')
     await expect(page.getByPlaceholder('请描述你的任务')).toHaveValue('keep this draft')
     if (isFailure) await expect(page.getByText('Synthetic settings failure', { exact: true })).toBeVisible()
     expect(mutations).toBe(1)
   })
 }
+
+test('an open model picker disables its options during a settings save', async ({ page }) => {
+  const session = await openAgent(page)
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => { release = resolve })
+  let mutations = 0
+  await page.route('**/api/admin/agent/sessions/regression', async (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: { ok: true, data: { session, messages: [] } } })
+    mutations++
+    await pending
+    Object.assign(session.settings, route.request().postDataJSON().settings)
+    await route.fulfill({ json: { ok: true, data: session } })
+  })
+  await page.getByRole('button', { name: 'test-model', exact: true }).click()
+  const option = page.getByRole('option', { name: 'test-model', exact: true })
+  await expect(option).toBeEnabled()
+  // Keyboard activation leaves the model picker open (only pointer/Escape dismisses it).
+  await page.getByTitle('权限控制：审批频繁程度与计划模式').press('Enter')
+  await page.getByRole('menuitemradio', { name: /^自动编辑/ }).press('Enter')
+  await expect.poll(() => mutations).toBe(1)
+  await expect(option).toBeVisible()
+  await expect(option).toBeDisabled()
+  await page.getByPlaceholder('搜索模型或源名…').press('Enter')
+  await expect(page.getByRole('dialog', { name: '选择模型', exact: true })).toBeVisible()
+  expect(mutations).toBe(1)
+  release()
+  await expect(option).toBeEnabled()
+})
 
 test('settings save invalidates an older poll and suspends new detail reads', async ({ page }) => {
   await page.addInitScript(() => {

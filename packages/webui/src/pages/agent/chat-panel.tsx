@@ -269,6 +269,7 @@ export function ChatPanel({
 
   const messageActions = useMemo(
     () => ({
+      isDisabled: busy || isSavingSettings,
       onRetry: (message: AgentMessage) => {
         if (turnPending || !canSend()) return;
         const content = message.content as {
@@ -294,7 +295,7 @@ export function ChatPanel({
         setEditingMessage({ seq: message.seq, text: content.text ?? "" });
       },
     }),
-    [busy, turnPending, canSend, onSend, documents, setDocuments],
+    [busy, isSavingSettings, turnPending, canSend, onSend, documents, setDocuments],
   );
 
   // 与 live.error 同文案的最后一条系统错误消息 seq（渲染抑制用，见消息流注释）。

@@ -129,7 +129,7 @@ function TurnActions({ user, text, actions, disabled }: {
     <div className="flex items-center gap-0.5 pb-1" aria-label="本轮操作">
       {text ? <CopyButton value={text} aria-label="复制本轮正文" title="复制本轮正文" /> : null}
       {actions ? (
-        <Button variant="ghost" size="iconSm" aria-label="重试本轮" title="重试本轮" disabled={disabled} onClick={() => actions.onRetry(user)}>
+        <Button variant="ghost" size="iconSm" aria-label="重试本轮" title="重试本轮" disabled={disabled || actions.isDisabled} onClick={() => actions.onRetry(user)}>
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
       ) : null}
