@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -75,12 +76,12 @@ func (s *Server) protocolAgentEngine() *agent.Engine {
 			newAgentUserContentRenderer(s),
 			agentSystemPrompt,
 			agent.Options{
-			MaxModelCalls: 30,
-			// 运行配置页可改、热生效（会话级设置仍可逐会话覆盖）。
-			ModelCallLimit: func() int { return s.config.ResolveAgentToolLoopLimit() },
-			TurnTimeout:   10 * time.Minute,
-			ParseAsk:      parseAskQuestion,
-		},
+				MaxModelCalls: 30,
+				// 运行配置页可改、热生效（会话级设置仍可逐会话覆盖）。
+				ModelCallLimit: func() int { return s.config.ResolveAgentToolLoopLimit() },
+				TurnTimeout:    10 * time.Minute,
+				ParseAsk:       parseAskQuestion,
+			},
 		)
 		// 启动对账：上一进程崩溃/被杀遗留的 running 会话复位为 idle，否则
 		// UI 会永远挡在不存在的轮次上（waiting_approval 保留可恢复）。
@@ -333,9 +334,20 @@ func (s *Server) adminClearAgentMessages(c *gin.Context) {
 	}
 	id := strings.TrimSpace(c.Param("id"))
 	afterSeq := 0
-	if raw := strings.TrimSpace(c.Query("afterSeq")); raw != "" {
-		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 0 {
-			afterSeq = parsed
+	query, err := url.ParseQuery(c.Request.URL.RawQuery)
+	if err != nil {
+		respondFail(c, http.StatusBadRequest, "invalid_after_seq", "afterSeq 必须是唯一的非负整数")
+		return
+	}
+	if values, exists := query["afterSeq"]; exists {
+		if len(values) != 1 {
+			respondFail(c, http.StatusBadRequest, "invalid_after_seq", "afterSeq 必须是唯一的非负整数")
+			return
+		}
+		afterSeq, err = strconv.Atoi(values[0])
+		if err != nil || afterSeq < 0 {
+			respondFail(c, http.StatusBadRequest, "invalid_after_seq", "afterSeq 必须是唯一的非负整数")
+			return
 		}
 	}
 	if engine := s.protocolAgentEngine(); engine != nil && engine.IsRunning(id) {
