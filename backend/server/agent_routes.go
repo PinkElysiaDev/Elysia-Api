@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -208,7 +209,7 @@ func (s *Server) adminGetAgentSession(c *gin.Context) {
 	id := strings.TrimSpace(c.Param("id"))
 	session, err := store.GetAgentSession(c.Request.Context(), id)
 	if err != nil {
-		respondFail(c, http.StatusNotFound, "not_found", fmt.Sprintf("会话 %q 不存在", id))
+		respondAgentSessionReadError(c, id, err)
 		return
 	}
 	messages, err := store.ListMessages(c.Request.Context(), id)
@@ -227,6 +228,16 @@ func (s *Server) adminGetAgentSession(c *gin.Context) {
 		}
 	}
 	respondOK(c, gin.H{"session": view, "messages": messages})
+}
+
+// respondAgentSessionReadError distinguishes missing rows from failed reads;
+// a cancelled or unavailable store does not prove that a session was deleted.
+func respondAgentSessionReadError(c *gin.Context, id string, err error) {
+	if errors.Is(err, sql.ErrNoRows) {
+		respondFail(c, http.StatusNotFound, "not_found", fmt.Sprintf("会话 %q 不存在", id))
+		return
+	}
+	respondFail(c, http.StatusInternalServerError, "session_read_failed", err.Error())
 }
 
 type agentSessionUpdatePayload struct {
@@ -285,7 +296,7 @@ func (s *Server) adminRestoreAgentDraft(c *gin.Context) {
 	}
 	session, err := store.GetAgentSession(c.Request.Context(), id)
 	if err != nil {
-		respondFail(c, http.StatusNotFound, "not_found", fmt.Sprintf("会话 %q 不存在", id))
+		respondAgentSessionReadError(c, id, err)
 		return
 	}
 	if len(session.DraftRestore) == 0 {
