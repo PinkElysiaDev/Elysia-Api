@@ -56,6 +56,11 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 		s.estimateGatewayAttempt(record, request)
 	}
 	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}
+	defer func() {
+		if record != nil {
+			record.appendConversionIssues(options.Diagnostics.Issues())
+		}
+	}()
 	body, err := candidate.compiled.EncodeRequest(ctx, request, options)
 	if err != nil {
 		return nil, err
@@ -113,30 +118,8 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if err != nil {
 		return nil, err
 	}
-	err = protocol.ReadFrames(ctx, response.Body, candidate.operation, limits.BufferBytes, func(frame protocol.Value, metadata protocol.Object) error {
-		if record != nil {
-			record.appendStreamEvent(string(frame.Bytes()))
-		}
-		options.Values = metadata
-		decoded, err := candidate.compiled.DecodeFrame(ctx, frame, options)
-		if err != nil {
-			return err
-		}
-		if record != nil {
-			if err := observeHostedTools(record, candidate.compiled, frame.Bytes()); err != nil {
-				return err
-			}
-		}
+	source, err := newProtocolSourceStream(ctx, candidate, candidate.compiled, candidate.conversionContext(candidate.compiled, true), options, record, func(decoded *protocol.EventFrame, _ protocol.Object) error {
 		for _, event := range decoded.Events {
-			if err := protocol.IssuesError(protocol.CheckModelEvent(event, candidate.compiled, candidate.binding, candidate.scope)); err != nil {
-				return err
-			}
-			if record != nil {
-				updateRecordProtocolUsage(record, event.Usage)
-				if event.Response != nil {
-					updateRecordProtocolUsage(record, event.Response.Usage)
-				}
-			}
 			kind, delta, err := collector.Consume(event)
 			if err != nil {
 				return err
@@ -147,6 +130,14 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 		}
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	err = protocol.ReadFrames(ctx, response.Body, candidate.operation, limits.BufferBytes, source.Push)
+	err = source.Finish(err)
+	if err != nil && source.terminalFailure != nil {
+		err = errors.Join(source.terminalFailure, err)
+	}
 	if err == nil {
 		var result *protocol.Response
 		result, err = collector.Finish()

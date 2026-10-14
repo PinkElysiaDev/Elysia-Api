@@ -26,10 +26,9 @@ type gatewayStream struct {
 	options            protocol.EvaluationContext
 	route              protocol.ConversionContext
 	eventState         *protocol.ConversionEventState
-	sourceState        *protocol.SourceEventState
+	source             *protocolSourceStream
 	carriers           *builtin.ContinuationStream
 	collector          *protocol.ResponseCollector
-	sourceReplay       *protocol.EventReplay
 	replay             *protocol.EventReplay
 	wireValidation     protocol.EvaluationContext
 	finalValidation    *protocol.WireStreamValidation
@@ -57,10 +56,6 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 	if options.ClientOutput == nil {
 		options.ClientOutput = &protocol.ClientOutput{}
 	}
-	sourceReplay, err := protocol.NewEventReplay(protocol.Target{Protocol: candidate.compiled.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: candidate.binding.Capabilities}, candidate.compiled.ResourceLimits())
-	if err != nil {
-		return err
-	}
 	target := protocol.Target{Protocol: plan.ingress.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: plan.ingress.Capabilities(protocol.EncodeEvent)}
 	replay, err := protocol.NewEventReplay(target, limits)
 	if err != nil {
@@ -76,10 +71,13 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 	}
 	stream := &gatewayStream{server: s, context: c, record: record, plan: plan, candidate: candidate,
 		limits: limits, options: options, route: route, eventState: eventState, carriers: carriers,
-		collector: collector, sourceReplay: sourceReplay, replay: replay,
+		collector: collector, replay: replay,
 		wireValidation: wireValidation, finalValidation: finalValidation}
-	stream.sourceState = protocol.NewSourceEventState(candidate.conversion, route, candidate.compiled, plan.ingress, options.Diagnostics)
-	err = protocol.ReadFrames(c.Request.Context(), response.Body, candidate.operation, candidate.compiled.ResourceLimits().BufferBytes, stream.consumeFrame)
+	stream.source, err = newProtocolSourceStream(c.Request.Context(), candidate, plan.ingress, route, options, record, stream.consumeSourceFrame)
+	if err != nil {
+		return err
+	}
+	err = protocol.ReadFrames(c.Request.Context(), response.Body, candidate.operation, candidate.compiled.ResourceLimits().BufferBytes, stream.source.Push)
 	return stream.finish(err)
 }
 
@@ -121,51 +119,9 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 	return nil
 }
 
-func (stream *gatewayStream) consumeFrame(frame protocol.Value, metadata protocol.Object) error {
-	stream.record.appendStreamEvent(string(frame.Bytes()))
-	prepared, err := stream.sourceState.Push(stream.context.Request.Context(), frame, metadata)
-	if err != nil {
-		return err
-	}
-	for _, source := range prepared {
-		if err := stream.consumeSourceFrame(source.Value, source.Metadata); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (stream *gatewayStream) consumeSourceFrame(frame protocol.Value, metadata protocol.Object) error {
+func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, metadata protocol.Object) error {
 	stream.options.Values = metadata
-	decoded, err := stream.candidate.compiled.DecodeFrame(stream.context.Request.Context(), frame, stream.options)
-	if err != nil {
-		return err
-	}
-	if err := observeHostedTools(stream.record, stream.candidate.compiled, frame.Bytes()); err != nil {
-		return err
-	}
-	// Validate the whole provider frame before using same-frame usage in a client start.
-	for _, event := range decoded.Events {
-		if event.Type == protocol.OperationFailed || event.Type == protocol.OperationCancelled {
-			status := "failed"
-			if event.Type == protocol.OperationCancelled {
-				status = "cancelled"
-			}
-			stream.terminalFailure = &protocol.GenerationFailure{Payload: event.Error, Status: protocol.StringValue(status)}
-		}
-		if event.Response != nil {
-			// Two layers, different consumers: CheckGenerationOutcome rejects a
-			// terminal response whose status/error disagree (the streaming
-			// equivalent of an HTTP failure); CheckModelEvent below applies the
-			// declared model contract and upstream capabilities to every event.
-			if err := protocol.CheckGenerationOutcome(event.Response); err != nil {
-				return err
-			}
-		}
-		if err := protocol.IssuesError(protocol.CheckModelEvent(event, stream.candidate.compiled, stream.candidate.binding, stream.candidate.scope)); err != nil {
-			return err
-		}
-	}
+	var err error
 	originalEvents, _ := protocol.EncodeValue(decoded.Events)
 	acceptedEvents := []protocol.Event{}
 	deliveryEvents := decoded.Events
@@ -173,10 +129,6 @@ func (stream *gatewayStream) consumeSourceFrame(frame protocol.Value, metadata p
 		deliveryEvents = protocol.DeliveryFrameEvents(decoded.Events)
 	}
 	for eventIndex, event := range decoded.Events {
-		if _, err := stream.sourceReplay.Consume(event); err != nil {
-			return stream.candidate.compiled.AnnotateSourceEventError(err)
-		}
-		updateRecordProtocolUsage(stream.record, stream.sourceReplay.Usage())
 		if stream.collector != nil {
 			if _, _, captureErr := stream.collector.Consume(event); captureErr != nil {
 				if err := stream.candidate.continuation.warning("continuation stream collection unavailable: " + captureErr.Error()); err != nil {
@@ -250,11 +202,8 @@ func (stream *gatewayStream) consumeSourceFrame(frame protocol.Value, metadata p
 }
 
 func (stream *gatewayStream) finish(err error) error {
-	for _, pending := range stream.sourceState.Finish(err) {
-		if err = stream.consumeSourceFrame(pending.Value, pending.Metadata); err != nil {
-			break
-		}
-	}
+	err = stream.source.Finish(err)
+	stream.terminalFailure = stream.source.terminalFailure
 	if err == nil {
 		var tail []protocol.Event
 		tail, err = stream.eventState.Drain()
@@ -280,9 +229,6 @@ func (stream *gatewayStream) finish(err error) error {
 					break
 				}
 			}
-		}
-		if err == nil {
-			err = stream.candidate.compiled.AnnotateSourceEventError(stream.sourceReplay.Finish())
 		}
 		if err == nil {
 			err = stream.replay.Finish()
