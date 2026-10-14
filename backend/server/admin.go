@@ -827,6 +827,7 @@ func (s *Server) adminUpsertToken(c *gin.Context) {
 	}
 	var payload struct {
 		storage.APIToken
+		Enabled *bool `json:"enabled"`
 		// NewName 非空且 ≠ 路径名时执行重命名（其余字段照常更新）。
 		NewName string `json:"newName,omitempty"`
 	}
@@ -838,45 +839,23 @@ func (s *Server) adminUpsertToken(c *gin.Context) {
 	if name := c.Param("name"); name != "" {
 		item.Name = name
 	}
-	// 「留空即不变」：编辑时未提供的字段保留原值（token 明文、绑定组、
-	// 作用域）——否则仅改名的局部更新会顺手清掉远程访问 Key 的作用域。
-	// 显式传空数组仍是合法的「清空」语义（前端总是显式携带完整值）。
-	isNew := true
-	if existing, found, err := store.FindAPITokenByName(c.Request.Context(), item.Name); err == nil && found {
-		isNew = false
-		if strings.TrimSpace(item.Token) == "" {
-			item.Token = existing.Token
+	isNew := c.Request.Method == http.MethodPost
+	saved, err := store.SaveAPIToken(c.Request.Context(), item.Name, storage.APITokenUpdate{
+		NewName: payload.NewName, Token: item.Token, Enabled: payload.Enabled, AllowedGroups: item.AllowedGroups, Scopes: item.Scopes,
+	}, isNew)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, storage.ErrTokenExists) {
+			status = http.StatusConflict
 		}
-		if item.AllowedGroups == nil {
-			item.AllowedGroups = existing.AllowedGroups
+		if errors.Is(err, storage.ErrTokenNotFound) {
+			status = http.StatusNotFound
 		}
-		if item.Scopes == nil {
-			item.Scopes = existing.Scopes
-		}
-	}
-	// 新建时空 token 是死行（hash 为空、认证永远不命中）：直接拒绝而不是
-	// 落一条不可用的记录。编辑路径的「留空即不变」不受影响。
-	if isNew && strings.TrimSpace(item.Token) == "" {
-		respondFail(c, 400, "invalid_token", "token must not be empty when creating a new API token")
+		respondFail(c, status, "save_token_failed", err.Error())
 		return
-	}
-	if err := store.UpsertAPIToken(c.Request.Context(), item); err != nil {
-		respondFail(c, 400, "save_token_failed", err.Error())
-		return
-	}
-	// 重命名放在字段更新之后（改名失败不影响已保存的属性改动）。
-	if newName := strings.TrimSpace(payload.NewName); newName != "" && newName != item.Name {
-		if err := store.RenameAPIToken(c.Request.Context(), item.Name, newName); err != nil {
-			respondFail(c, 409, "rename_token_failed", err.Error())
-			return
-		}
-		item.Name = newName
 	}
 	s.invalidateRouteCache()
-	// 回读落库值（不变式可能改写过绑定组），避免回显请求体造成口径差。
-	if stored, found, err := store.FindAPITokenByName(c.Request.Context(), item.Name); err == nil && found {
-		item = stored
-	}
+	item = saved
 	item.Token = maskSecret(item.Token)
 	action := map[bool]string{true: "created", false: "updated"}[isNew]
 	s.logSystemEvent("info", "api token "+action, map[string]any{"tokenName": item.Name})

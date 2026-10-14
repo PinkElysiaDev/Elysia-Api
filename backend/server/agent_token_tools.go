@@ -114,13 +114,10 @@ func (t *createAPIKeyTool) Execute(ctx context.Context, tctx CLIContext, args js
 	if params.Enabled != nil {
 		item.Enabled = *params.Enabled
 	}
-	if existing, found, _ := store.FindAPITokenByName(ctx, name); found {
-		return CLIResult{OK: false,
-			Summary: fmt.Sprintf("已存在同名 API Key %q，如需修改请用 elysia key update", existing.Name),
-			Data:    map[string]any{"error": "duplicate_name", "name": existing.Name}}
-	}
-	if err := store.UpsertAPIToken(ctx, item); err != nil {
-		return CLIError("创建失败: "+err.Error(), "persist_failed")
+	var err error
+	item, err = store.SaveAPIToken(ctx, name, storage.APITokenUpdate{Token: secret, Enabled: &item.Enabled, AllowedGroups: params.AllowedGroups}, true)
+	if err != nil {
+		return CLIError(err.Error(), "persist_failed")
 	}
 	t.server.invalidateRouteCache()
 	// 明文是本次操作的交付物，仅在结果里完整返回这一次；SecretValues 声明后
@@ -165,40 +162,14 @@ func (t *updateAPIKeyTool) Execute(ctx context.Context, tctx CLIContext, args js
 	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
 		return badRequest
 	}
-	existing, found, err := store.FindAPITokenByName(ctx, strings.TrimSpace(params.Name))
+	item, err := store.SaveAPIToken(ctx, strings.TrimSpace(params.Name), storage.APITokenUpdate{
+		NewName: params.NewName, Token: params.NewSecret, Enabled: params.Enabled, AllowedGroups: params.AllowedGroups, RequireInferenceKey: true,
+	}, false)
 	if err != nil {
-		return CLIError("查询失败: "+err.Error(), "lookup_failed")
-	}
-	if !found {
-		return CLIError(fmt.Sprintf("API Key %q 不存在", params.Name), "not_found")
-	}
-	if existing.HasScope(storage.TokenScopeAgent) {
-		return CLIError(fmt.Sprintf("%q 是远程访问 Key（AI 助手专用），请在运行配置页管理", params.Name), "agent_key_managed_elsewhere")
-	}
-	// 改名先行：目标名被占用即报错返回，其余字段都未动。
-	if newName := strings.TrimSpace(params.NewName); newName != "" && newName != existing.Name {
-		if err := store.RenameAPIToken(ctx, existing.Name, newName); err != nil {
-			return CLIError("改名失败: "+err.Error(), "rename_failed")
-		}
-		existing.Name = newName
-	}
-	item := existing
-	if params.Enabled != nil {
-		item.Enabled = *params.Enabled
-	}
-	// allowedGroups 未传（nil）保留原授权；传了（含空数组）整体替换。
-	if params.AllowedGroups != nil {
-		item.AllowedGroups = params.AllowedGroups
-	}
-	if strings.TrimSpace(params.NewSecret) != "" {
-		item.Token = strings.TrimSpace(params.NewSecret)
-	}
-	if err := store.UpsertAPIToken(ctx, item); err != nil {
-		return CLIError("保存失败: "+err.Error(), "persist_failed")
+		return CLIError(err.Error(), "persist_failed")
 	}
 	t.server.invalidateRouteCache()
-	updated, _, _ := store.FindAPITokenByName(ctx, item.Name)
-	return CLIResult{OK: true, Summary: fmt.Sprintf("API Key %q 已更新", item.Name), Data: agentTokenView(updated)}
+	return CLIResult{OK: true, Summary: fmt.Sprintf("API Key %q updated", item.Name), Data: agentTokenView(item)}
 }
 
 // ---- delete_api_key（门控 delete）----

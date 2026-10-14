@@ -195,6 +195,13 @@ func decodeStringSlice(raw string) []string {
 }
 
 func (s *Store) UpsertAPIToken(ctx context.Context, item APIToken) error {
+	return s.writeAPIToken(ctx, s.db, item, true)
+}
+
+func (s *Store) writeAPIToken(ctx context.Context, executor interface {
+	protocolSQLExecutor
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, item APIToken, isUpsert bool) error {
 	if strings.TrimSpace(item.Name) == "" {
 		return errors.New("token name is required")
 	}
@@ -202,7 +209,7 @@ func (s *Store) UpsertAPIToken(ctx context.Context, item APIToken) error {
 	tokenHash := hashToken(item.Token)
 	if tokenHash != "" {
 		var existingName string
-		err := s.db.QueryRowContext(ctx, `SELECT name FROM api_tokens WHERE token_hash = ? AND name != ?`, tokenHash, item.Name).Scan(&existingName)
+		err := executor.QueryRowContext(ctx, `SELECT name FROM api_tokens WHERE token_hash = ? AND name != ?`, tokenHash, item.Name).Scan(&existingName)
 		if err == nil {
 			return fmt.Errorf("token already used by API key %q, choose a different value", existingName)
 		} else if !errors.Is(err, sql.ErrNoRows) {
@@ -232,7 +239,11 @@ func (s *Store) UpsertAPIToken(ctx context.Context, item APIToken) error {
 		return err
 	}
 	now := nowString()
-	_, err = s.db.ExecContext(ctx, `INSERT INTO api_tokens(name, token, token_hash, enabled, allowed_groups_json, scopes, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET token=excluded.token, token_hash=excluded.token_hash, enabled=excluded.enabled, allowed_groups_json=excluded.allowed_groups_json, scopes=excluded.scopes, updated_at=excluded.updated_at`, item.Name, stored, tokenHash, sqlBoolToInt(item.Enabled), string(allowedGroups), string(scopes), now, now)
+	query := `INSERT INTO api_tokens(name, token, token_hash, enabled, allowed_groups_json, scopes, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`
+	if isUpsert {
+		query += ` ON CONFLICT(name) DO UPDATE SET token=excluded.token, token_hash=excluded.token_hash, enabled=excluded.enabled, allowed_groups_json=excluded.allowed_groups_json, scopes=excluded.scopes, updated_at=excluded.updated_at`
+	}
+	_, err = executor.ExecContext(ctx, query, item.Name, stored, tokenHash, sqlBoolToInt(item.Enabled), string(allowedGroups), string(scopes), now, now)
 	return err
 }
 
