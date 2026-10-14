@@ -38,55 +38,14 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 			if !rule.Match.matches(route, value) {
 				continue
 			}
-			var req Request
-			if err = decodeContract(value.Bytes(), &req); err == nil {
-				if rule.Action == "system_instruction_hoist" {
-					err = c.hoistSystem(&req, route, rule, sink)
-				} else if rule.Action == "chat_history" || rule.Action == "assistant_history" {
-					err = c.assistantHistory(&req, route, rule, sink)
-				} else if rule.Action == "reasoning_controls" {
-					err = c.reasoningControls(&req, route, rule, sink)
-					var options reasoningOptions
-					if err == nil {
-						err = rule.Value.Decode(&options)
-						reasoningTarget = options.TargetCodec
-					}
-				} else if rule.Action == "responses_storage" {
-					err = c.responsesStorage(&req, route, rule, sink)
-				} else if rule.Action == "responses_include" {
-					err = c.responsesInclude(&req, route, rule, sink)
-				} else if rule.Action == "gemini_safety_settings" {
-					err = c.geminiSafetySettings(&req, route, rule, sink)
-				} else if rule.Action == "request_projection" {
-					err = c.requestProjection(&req, route, rule, sink)
-				} else if rule.Action == "responses_context" {
-					err = c.responsesContext(&req, route, rule, sink)
-				} else {
-					err = c.streamOptions(&req, route, rule, sink)
-				}
-				if err == nil {
-					value, err = EncodeValue(req)
-				}
+			var resolvedTarget string
+			value, resolvedTarget, err = c.applyRequestAction(value, route, rule, sink)
+			if resolvedTarget != "" {
+				reasoningTarget = resolvedTarget
 			}
-		case rule.Action == "anthropic_usage_envelope":
+		case rule.Action == "anthropic_usage_envelope" || rule.Action == "response_shape" || rule.Action == "response_envelope" || rule.Action == "response_metadata" || rule.Action == "error_metadata" || rule.Action == "usage_projection":
 			if rule.Match.matches(route, value) {
-				value, err = c.envelopeUsageValue(phase, value, route, rule, sink)
-			}
-		case rule.Action == "response_shape" || rule.Action == "response_envelope":
-			if rule.Match.matches(route, value) {
-				value, err = c.responseValue(rule.Action, phase, value, route, rule, sink)
-			}
-		case rule.Action == "response_metadata":
-			if rule.Match.matches(route, value) {
-				value, err = c.metadataValue(phase, value, route, rule, sink)
-			}
-		case rule.Action == "error_metadata":
-			if rule.Match.matches(route, value) {
-				value, err = c.errorMetadataValue(phase, value, route, rule, sink)
-			}
-		case rule.Action == "usage_projection":
-			if rule.Match.matches(route, value) {
-				value, err = c.projectUsageValue(phase, value, route, rule, sink)
+				value, err = c.applyResponseAction(phase, value, route, rule, sink)
 			}
 		case rule.Action == "signatures" || rule.Match.NodeKind != "":
 			value, err = c.applyNodeRule(ctx, phase, value, route, sink, rule)
@@ -129,6 +88,63 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 		}
 	}
 	return value, nil
+}
+
+// Each matching request action decodes the value produced by the preceding
+// rule. Keeping this boundary preserves authored rule ordering and precision.
+func (c *CompiledConversion) applyRequestAction(value Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, string, error) {
+	var request Request
+	if err := decodeContract(value.Bytes(), &request); err != nil {
+		return Value{}, "", err
+	}
+	var err error
+	var reasoningTarget string
+	switch rule.Action {
+	case "system_instruction_hoist":
+		err = c.hoistSystem(&request, route, rule, sink)
+	case "chat_history", "assistant_history":
+		err = c.assistantHistory(&request, route, rule, sink)
+	case "reasoning_controls":
+		err = c.reasoningControls(&request, route, rule, sink)
+		if err == nil {
+			var options reasoningOptions
+			err = rule.Value.Decode(&options)
+			reasoningTarget = options.TargetCodec
+		}
+	case "responses_storage":
+		err = c.responsesStorage(&request, route, rule, sink)
+	case "responses_include":
+		err = c.responsesInclude(&request, route, rule, sink)
+	case "gemini_safety_settings":
+		err = c.geminiSafetySettings(&request, route, rule, sink)
+	case "request_projection":
+		err = c.requestProjection(&request, route, rule, sink)
+	case "responses_context":
+		err = c.responsesContext(&request, route, rule, sink)
+	case "stream_options":
+		err = c.streamOptions(&request, route, rule, sink)
+	}
+	if err != nil {
+		return Value{}, "", err
+	}
+	value, err = EncodeValue(request)
+	return value, reasoningTarget, err
+}
+
+func (c *CompiledConversion) applyResponseAction(phase ConversionPhase, value Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, error) {
+	switch rule.Action {
+	case "anthropic_usage_envelope":
+		return c.envelopeUsageValue(phase, value, route, rule, sink)
+	case "response_shape", "response_envelope":
+		return c.responseValue(rule.Action, phase, value, route, rule, sink)
+	case "response_metadata":
+		return c.metadataValue(phase, value, route, rule, sink)
+	case "error_metadata":
+		return c.errorMetadataValue(phase, value, route, rule, sink)
+	case "usage_projection":
+		return c.projectUsageValue(phase, value, route, rule, sink)
+	}
+	return Value{}, fmt.Errorf("unsupported response conversion action %q", rule.Action)
 }
 
 func (c *CompiledConversion) applyRule(ctx context.Context, phase ConversionPhase, input Value, route ConversionContext, sink *DiagnosticSink, rule ConversionRule) (Value, error) {
