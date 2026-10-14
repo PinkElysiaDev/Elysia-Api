@@ -20,7 +20,7 @@ type protocolSourceStream struct {
 }
 
 func newProtocolSourceStream(ctx context.Context, candidate gatewayCandidate, target *protocol.Compiled, route protocol.ConversionContext, options protocol.EvaluationContext, record *usageRecord, consume func(*protocol.EventFrame, protocol.Object) error) (*protocolSourceStream, error) {
-	replay, err := protocol.NewEventReplay(protocol.Target{Protocol: candidate.compiled.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: candidate.binding.Capabilities}, candidate.compiled.ResourceLimits())
+	replay, err := protocol.NewEventReplay(protocol.Target{Codec: candidate.compiled.Codec(protocol.DecodeEvent), Protocol: candidate.compiled.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: candidate.binding.Capabilities}, candidate.compiled.ResourceLimits())
 	if err != nil {
 		return nil, err
 	}

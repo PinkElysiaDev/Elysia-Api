@@ -63,6 +63,23 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 			check.native(event.Unmapped, path)
 		}
 	}
+	if state := event.ResponsesTurnState; state != nil {
+		if event.Type != MetadataUpdated || event.Response != nil || event.Item != nil || event.Usage != nil || !event.Delta.IsZero() || len(event.Metadata) != 0 {
+			check.add(InvalidInput, ResponsesTurnStatePath, "", "turn state must remain isolated from generation data")
+		}
+		if err := ValidateResponsesTurnStateFrame(state.Frame); err != nil {
+			check.add(InvalidInput, ResponsesTurnStatePath, "", err.Error())
+		}
+		if len(state.Frame.Bytes()) > limits.BufferBytes {
+			check.add(LimitExceeded, ResponsesTurnStatePath, "", "turn state exceeds frame limit")
+		}
+		if target.Codec != "responses" || state.Source.Direction != DecodeEvent {
+			check.add(UnsupportedCapability, ResponsesTurnStatePath, "", "target has no Responses turn-state control channel; an explicit conversion rule is required")
+		}
+		if !CheckScope(state.Source.Scope, target.Scope) {
+			check.add(ResourceScopeMismatch, ResponsesTurnStatePath, "", "turn-state scope differs from target")
+		}
+	}
 	if !event.ParentID.IsZero() {
 		check.requireName(event.ParentID, "/parentId")
 		switch event.Type {

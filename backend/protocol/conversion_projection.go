@@ -49,6 +49,9 @@ func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 	if upstream.Codec(DecodeEvent) == "openai-chat" && knownConversionCodec(ingress.Codec(EncodeEvent)) {
 		p.Rules = append(p.Rules, ConversionRule{ID: "chat-stream-identity", Order: 100, Enabled: true, Phase: ConversionSourceEvent, Action: "chat_stream_identity"})
 	}
+	if codec := ingress.Codec(EncodeEvent); upstream.Codec(DecodeEvent) == "responses" && knownConversionCodec(codec) {
+		p.Rules = append(p.Rules, ConversionRule{ID: "responses-turn-state", Order: 210, Enabled: true, Phase: ConversionEvent, Action: "responses_turn_state", Value: StringValue(codec)})
+	}
 	if codec := upstream.Codec(EncodeRequest); knownConversionCodec(codec) {
 		p.Usage = &ConversionUsageSettings{CollectUpstreamUsage: true}
 		sourceCodec := ingress.Codec(DecodeRequest)

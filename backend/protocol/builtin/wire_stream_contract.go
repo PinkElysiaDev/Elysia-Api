@@ -145,6 +145,15 @@ func (stream *streamModule) ValidateWireEvent(frame p.Value) error {
 		}
 	case Responses:
 		kind, _ := stringValue(fields["type"])
+		if kind == "response.metadata" {
+			if s.terminal {
+				return wireStreamIssue("/type", "turn-state control arrived after terminal")
+			}
+			return p.ValidateResponsesTurnStateFrame(frame)
+		}
+		if kind == "response.completed" || kind == "response.incomplete" || kind == "response.failed" {
+			s.terminal = true
+		}
 		if kind == "response.created" {
 			if s.started {
 				return wireStreamIssue("/type", "Responses stream repeats response.created")

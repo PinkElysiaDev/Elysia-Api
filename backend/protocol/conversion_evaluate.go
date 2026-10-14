@@ -43,7 +43,7 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 			if resolvedTarget != "" {
 				reasoningTarget = resolvedTarget
 			}
-		case rule.Action == "anthropic_usage_envelope" || rule.Action == "response_shape" || rule.Action == "response_envelope" || rule.Action == "response_metadata" || rule.Action == "error_metadata" || rule.Action == "usage_projection":
+		case rule.Action == "anthropic_usage_envelope" || rule.Action == "response_shape" || rule.Action == "response_envelope" || rule.Action == "response_metadata" || rule.Action == "error_metadata" || rule.Action == "usage_projection" || rule.Action == "responses_turn_state":
 			if rule.Match.matches(route, value) {
 				value, err = c.applyResponseAction(phase, value, route, rule, sink)
 			}
@@ -133,6 +133,8 @@ func (c *CompiledConversion) applyRequestAction(value Value, route ConversionCon
 
 func (c *CompiledConversion) applyResponseAction(phase ConversionPhase, value Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, error) {
 	switch rule.Action {
+	case "responses_turn_state":
+		return c.projectResponsesTurnState(value, rule, sink)
 	case "anthropic_usage_envelope":
 		return c.envelopeUsageValue(phase, value, route, rule, sink)
 	case "response_shape", "response_envelope":
@@ -304,7 +306,7 @@ func protectConversionProvenance(before, after Value) error {
 				return err
 			}
 			for key, child := range fields {
-				if key == "source" || key == "native" || key == "scope" || key == "resources" || key == "thoughtSignature" || key == "signature" || key == "encrypted_content" || key == "elysia_continuation" {
+				if key == "source" || key == "native" || key == "scope" || key == "resources" || key == "thoughtSignature" || key == "signature" || key == "encrypted_content" || key == "elysia_continuation" || key == "responsesTurnState" {
 					id := key + ":" + hashValue(child)
 					if key == "resources" {
 						owner := Object{}

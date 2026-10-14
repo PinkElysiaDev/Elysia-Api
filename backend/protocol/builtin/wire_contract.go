@@ -348,6 +348,9 @@ func (adapter module) validateResponsesWireContract(direction p.Direction, value
 		return e
 	}
 	_ = fields["type"].Decode(&kind)
+	if kind == "response.metadata" {
+		return p.ValidateResponsesTurnStateFrame(value)
+	}
 	if kind == "error" {
 		return nil
 	}

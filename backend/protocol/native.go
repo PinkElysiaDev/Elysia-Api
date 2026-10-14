@@ -48,6 +48,7 @@ type Mutation struct {
 
 // Target contains the pinned wire and resource identity used for conversion.
 type Target struct {
+	Codec        string // installed direction module; never inferred from a family label
 	Protocol     Identity
 	Direction    Direction
 	Scope        Scope

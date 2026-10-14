@@ -40,13 +40,14 @@ type Media struct {
 
 // Event associates deltas and snapshots with stable session/response/item IDs.
 type Event struct {
-	Metadata      []ResponseMetadata `json:"metadata,omitempty"`
-	SchemaVersion int                `json:"schemaVersion"`
-	Source        Identity           `json:"source"`
-	Type          EventType          `json:"type"`
-	SessionID     Value              `json:"sessionId,omitzero"`
-	ResponseID    Value              `json:"responseId,omitzero"`
-	ItemID        Value              `json:"itemId,omitzero"`
+	ResponsesTurnState *ResponsesTurnState `json:"responsesTurnState,omitempty"`
+	Metadata           []ResponseMetadata  `json:"metadata,omitempty"`
+	SchemaVersion      int                 `json:"schemaVersion"`
+	Source             Identity            `json:"source"`
+	Type               EventType           `json:"type"`
+	SessionID          Value               `json:"sessionId,omitzero"`
+	ResponseID         Value               `json:"responseId,omitzero"`
+	ItemID             Value               `json:"itemId,omitzero"`
 	// ParentID references an open message's semantic ItemID. Index remains a
 	// response-wide item identity; child order is its order of ItemStarted events.
 	ParentID Value     `json:"parentId,omitzero"`

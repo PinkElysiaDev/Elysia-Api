@@ -226,6 +226,9 @@ func (compiled *Compiled) stampNative(native *Native, direction Direction, scope
 }
 
 func (compiled *Compiled) stampEventProvenance(event *Event, direction Direction, scope Scope) error {
+	if state := event.ResponsesTurnState; state != nil {
+		state.Source = Provenance{Protocol: compiled.identity, Direction: direction, Scope: scope, Path: ResponsesTurnStatePath}
+	}
 	compiled.stampNative(event.Unmapped, direction, scope)
 	if event.Request != nil {
 		event.Request.SchemaVersion, event.Request.Source = SemanticSchemaVersion, compiled.identity
@@ -385,7 +388,7 @@ func stampResourceScope(resource *Resource, scope Scope) error {
 }
 
 func (compiled *Compiled) target(direction Direction, options EvaluationContext) Target {
-	return Target{Protocol: compiled.identity, Direction: direction, Scope: options.Scope, Capabilities: compiled.mappings[direction].capabilities}
+	return Target{Codec: compiled.Codec(direction), Protocol: compiled.identity, Direction: direction, Scope: options.Scope, Capabilities: compiled.mappings[direction].capabilities}
 }
 
 func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Direction, native *Native, output Value, options EvaluationContext) (Value, error) {

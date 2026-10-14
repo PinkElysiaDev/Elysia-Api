@@ -33,7 +33,7 @@ func (c *Compiled) NewWireStreamValidation(scope Scope) (*WireStreamValidation, 
 	if err != nil {
 		return nil, err
 	}
-	v.replay, err = NewEventReplay(Target{Protocol: c.identity, Direction: EncodeEvent, Scope: scope, Capabilities: c.Capabilities(EncodeEvent)}, c.limits)
+	v.replay, err = NewEventReplay(Target{Codec: c.Codec(EncodeEvent), Protocol: c.identity, Direction: EncodeEvent, Scope: scope, Capabilities: c.Capabilities(EncodeEvent)}, c.limits)
 	return v, err
 }
 

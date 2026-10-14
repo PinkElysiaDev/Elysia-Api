@@ -51,12 +51,12 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 	var collector *protocol.ResponseCollector
 	if candidate.continuation != nil {
 		candidate.continuation.sink = options.Diagnostics
-		collector, _ = protocol.NewResponseCollector(protocol.Target{Protocol: candidate.compiled.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: candidate.binding.Capabilities}, limits)
+		collector, _ = protocol.NewResponseCollector(protocol.Target{Codec: candidate.compiled.Codec(protocol.DecodeEvent), Protocol: candidate.compiled.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: candidate.binding.Capabilities}, limits)
 	}
 	if options.ClientOutput == nil {
 		options.ClientOutput = &protocol.ClientOutput{}
 	}
-	target := protocol.Target{Protocol: plan.ingress.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: plan.ingress.Capabilities(protocol.EncodeEvent)}
+	target := protocol.Target{Codec: plan.ingress.Codec(protocol.EncodeEvent), Protocol: plan.ingress.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: plan.ingress.Capabilities(protocol.EncodeEvent)}
 	replay, err := protocol.NewEventReplay(target, limits)
 	if err != nil {
 		return err

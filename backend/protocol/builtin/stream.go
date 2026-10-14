@@ -79,6 +79,21 @@ func (stream *streamModule) Convert(ctx context.Context, direction p.Direction, 
 		if err := input.Decode(&event); err != nil {
 			return p.Value{}, err
 		}
+		if state := event.ResponsesTurnState; state != nil {
+			if stream.name != Responses {
+				return p.Value{}, unsupported(p.ResponsesTurnStatePath, "target has no turn-state control channel")
+			}
+			if err := p.ValidateResponsesTurnStateFrame(state.Frame); err != nil {
+				return p.Value{}, err
+			}
+			fields, _ := state.Frame.ReadObject()
+			if err := stream.observeResponsesSequence(fields["sequence_number"]); err != nil {
+				return p.Value{}, err
+			}
+			// Control frames retain their original optional sequence. Numbering
+			// a missing value would change the provider's opaque control envelope.
+			return array([]p.Value{state.Frame}), nil
+		}
 		frames, err := stream.encodeEvent(event, options)
 		if err != nil {
 			return p.Value{}, err
@@ -107,6 +122,18 @@ func (stream *streamModule) DecodeEvents(ctx context.Context, input p.Value, opt
 		return nil, err
 	}
 	if stream.name == Responses {
+		if fields["type"].IsString("response.metadata") {
+			if err := p.ValidateResponsesTurnStateFrame(input); err != nil {
+				return nil, err
+			}
+			if stream.isFinished || stream.hasFailed {
+				return nil, unsupported("/type", "turn-state control arrived after terminal")
+			}
+			if err := stream.observeResponsesSequence(fields["sequence_number"]); err != nil {
+				return nil, err
+			}
+			return []p.Event{{SchemaVersion: p.SemanticSchemaVersion, Source: options.Identity(), Type: p.MetadataUpdated, ResponsesTurnState: &p.ResponsesTurnState{Frame: input, Source: p.Provenance{Protocol: options.Identity(), Direction: p.DecodeEvent, Scope: options.Scope, Path: p.ResponsesTurnStatePath}, FrameNumber: stream.sourceFrameNumber}}}, nil
+		}
 		isHeartbeat, err := stream.consumeResponsesHeartbeat(fields, options)
 		if err != nil || isHeartbeat {
 			return []p.Event{}, err
@@ -151,6 +178,9 @@ func (stream *streamModule) DecodeEvents(ctx context.Context, input p.Value, opt
 		events[0].Unmapped = stream.module.native(extra, "/frame/extensions", p.DecodeEvent, options)
 	}
 	for index := range events {
+		if events[index].Type == p.OperationFailed || events[index].Type == p.OperationCancelled {
+			stream.hasFailed = true
+		}
 		events[index].SchemaVersion = p.SemanticSchemaVersion
 		events[index].Source = options.Identity()
 		if events[index].ResponseID.IsZero() {

@@ -44,17 +44,49 @@ func TestReviewConversionEquivalence(t *testing.T) {
 			for _, mode := range []string{"compatible", "strict"} {
 				policy := p.DefaultConversionPolicy(to, from)
 				policy.Mode = mode
+				// Keep the dev69 policy identity frozen. dev70 adds a dedicated
+				// control action; its effect on existing samples is checked below
+				// separately from the historical hashes.
+				current, err := p.ResolveConversion(policy)
+				if err != nil {
+					t.Fatal(err)
+				}
+				legacyRules := make([]p.ConversionRule, 0, len(policy.Rules))
+				for _, rule := range policy.Rules {
+					if rule.Action != "responses_turn_state" {
+						legacyRules = append(legacyRules, rule)
+					}
+				}
+				policy.Rules = legacyRules
 				conversion, err := p.ResolveConversion(policy)
 				if err != nil {
 					t.Fatal(err)
 				}
 				name := source + "/" + target + "/" + mode
-				check(name+"/combination", p.VerifyBindingCombination(t.Context(), to, from, nil, conversion))
+				report := p.VerifyBindingCombination(t.Context(), to, from, nil, conversion)
+				report.CompilerVersion = "2.0.0-dev.69"
+				check(name+"/combination", report)
 				for _, sample := range from.Definition().Samples {
 					if sample.Direction != p.DecodeRequest && sample.Direction != p.DecodeResponse && sample.Direction != p.DecodeEvent {
 						continue
 					}
-					check(name+"/"+sample.ID, observeReviewConversion(t, from, to, conversion, sample))
+					observation := observeReviewConversion(t, from, to, conversion, sample)
+					check(name+"/"+sample.ID, observation)
+					modern := observeReviewConversion(t, from, to, current, sample)
+					modern.PolicyHash = observation.PolicyHash
+					for i := range modern.Issues {
+						if modern.Issues[i].PolicyHash == current.Hash {
+							modern.Issues[i].PolicyHash = conversion.Hash
+						}
+						if revision := conversion.RuleRevisions[modern.Issues[i].RuleID]; revision != "" {
+							modern.Issues[i].PolicyRevision = revision
+						}
+					}
+					before, _ := json.Marshal(observation)
+					after, _ := json.Marshal(modern)
+					if string(before) != string(after) {
+						t.Errorf("dev70 changed existing sample %s/%s:\n%s\n%s", name, sample.ID, before, after)
+					}
 				}
 				if source == Responses {
 					check(name+"/padded-stream", observeReviewConversion(t, from, to, conversion, p.Sample{Direction: p.DecodeEvent, Sequence: true, Input: testValue(t, "["+strings.Join(responsesPaddedTextFrames(), ",")+"]")}))
