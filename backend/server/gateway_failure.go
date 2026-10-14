@@ -13,6 +13,47 @@ import (
 // generated while translating a successful HTTP response. Only the former may retry.
 type upstreamHTTPFailure struct{ *gatewayFailure }
 
+// failureDiagnostics keeps secondary failures inspectable without including an
+// unrecognized provider body or decoder internals in the public error message.
+type failureDiagnostics struct{ primary, secondary error }
+
+func (failure *failureDiagnostics) Error() string { return failure.primary.Error() }
+func (failure *failureDiagnostics) Unwrap() []error {
+	return []error{failure.primary, failure.secondary}
+}
+
+func attachFailureDiagnostics(primary, secondary error) error {
+	if secondary == nil {
+		return primary
+	}
+	return &failureDiagnostics{primary, secondary}
+}
+
+// decodeUpstreamHTTPFailure gives authored mappings first refusal. An HTTP
+// rejection remains a failure even if its body is outside the declared wire.
+func decodeUpstreamHTTPFailure(ctx context.Context, status int, body []byte, compiled *protocol.Compiled, options protocol.EvaluationContext) (*protocol.Response, error) {
+	response, err := compiled.DecodeHTTPFailure(ctx, status, body, options)
+	if err == nil {
+		return response, nil
+	}
+	return fallbackHTTPFailure(status, body), err
+}
+
+func fallbackHTTPFailure(status int, body []byte) *protocol.Response {
+	message := fmt.Sprintf("上游请求失败（HTTP %d）", status)
+	if status == 524 {
+		wire, parseErr := protocol.ParseValue(body)
+		fields, objectErr := wire.ReadObject()
+		var hasCloudflareError bool
+		var bodyStatus int
+		if parseErr == nil && objectErr == nil && fields["cloudflare_error"].Decode(&hasCloudflareError) == nil && hasCloudflareError && fields["status"].Decode(&bodyStatus) == nil && bodyStatus == status && fields["error_name"].IsString("origin_response_timeout") {
+			message = "上游源站响应超时（HTTP 524）"
+		}
+	}
+	payload, _ := protocol.EncodeValue(protocol.Object{"category": protocol.StringValue(string(builtin.ClassFromStatus(status))), "message": protocol.StringValue(message)})
+	return &protocol.Response{SchemaVersion: 1, Error: payload}
+}
+
 func generationFailureClass(err error) builtin.ErrorClass {
 	var failure *protocol.GenerationFailure
 	if !errors.As(err, &failure) {
@@ -44,12 +85,11 @@ func canRetryGeneration(err error) bool {
 // mapGatewayHTTPFailure preserves the actual HTTP status and runs the declared
 // response directions. An invalid failure mapping retains its diagnostics.
 func mapGatewayHTTPFailure(ctx context.Context, record *usageRecord, status int, body []byte, ingress *protocol.Compiled, candidate gatewayCandidate, options protocol.EvaluationContext) error {
-	response, err := candidate.compiled.DecodeHTTPFailure(ctx, status, body, options)
-	if err != nil {
-		return &upstreamHTTPFailure{&gatewayFailure{status, err}}
-	}
+	response, secondary := decodeUpstreamHTTPFailure(ctx, status, body, candidate.compiled, options)
 	updateRecordProtocolUsage(record, response.Usage)
-	return &upstreamHTTPFailure{projectGatewayFailure(ctx, status, response, ingress, candidate, options)}
+	failure := projectGatewayFailure(ctx, status, response, ingress, candidate, options)
+	failure.cause = attachFailureDiagnostics(failure.cause, secondary)
+	return &upstreamHTTPFailure{failure}
 }
 
 func projectGatewayFailure(ctx context.Context, status int, response *protocol.Response, ingress *protocol.Compiled, candidate gatewayCandidate, options protocol.EvaluationContext) *gatewayFailure {

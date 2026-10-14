@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/gin-gonic/gin"
 )
 
@@ -36,6 +37,43 @@ func declareResponseFailures(t *testing.T, definition protocol.Definition, field
 		protocol.Sample{ID: "failure.decode", Direction: protocol.DecodeResponse, Input: wire, Expected: semantic},
 		protocol.Sample{ID: "failure.encode", Direction: protocol.EncodeResponse, Input: semantic, Expected: wire})
 	return definition
+}
+
+func TestHTTPFailureKeepsStatusAndSafePrimaryCause(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	activateDiscoveryPresets(t, s)
+	service, _ := s.protocolService()
+	for _, sourceID := range []string{protocol.PresetChatCompletionsID, protocol.PresetResponsesID, protocol.PresetAnthropicID, protocol.PresetGeminiID} {
+		source, _ := service.Pin(sourceID)
+		for _, targetID := range []string{protocol.PresetChatCompletionsID, protocol.PresetResponsesID, protocol.PresetAnthropicID, protocol.PresetGeminiID} {
+			target, _ := service.Pin(targetID)
+			for _, fixture := range []struct{ body, message string }{
+				{`{"cloudflare_error":true,"status":524,"error_name":"origin_response_timeout","private":"must-not-leak"}`, "上游源站响应超时"},
+				{`{"cloudflare_error":true,"status":523,"error_name":"origin_response_timeout","private":"must-not-leak"}`, "上游请求失败"},
+				{`{"cloudflare_error":true,"status":"524","error_name":"origin_response_timeout"}`, "上游请求失败"},
+				{`<html>must-not-leak</html>`, "上游请求失败"},
+				{"", "上游请求失败"},
+			} {
+				record := &usageRecord{UpstreamHTTPStatus: 524}
+				err := mapGatewayHTTPFailure(t.Context(), record, 524, []byte(fixture.body), target, gatewayCandidate{compiled: source}, protocol.EvaluationContext{})
+				var failure *gatewayFailure
+				var issue *protocol.ConversionError
+				if !errors.As(err, &failure) || failure.status != 524 || generationFailureClass(err) != builtin.ErrorClassUpstream || canRetryGeneration(err) {
+					t.Fatalf("lost HTTP primary: %s -> %s: %v", sourceID, targetID, err)
+				}
+				if !errors.As(err, &issue) || len(issue.Issues) == 0 {
+					t.Fatalf("lost secondary decode diagnostics: %v", err)
+				}
+				out := httptest.NewRecorder()
+				request, _ := gin.CreateTestContext(out)
+				request.Request = httptest.NewRequest("POST", "/gateway/"+targetID, nil)
+				s.failGateway(request, record, 502, err)
+				if out.Code != 524 || record.ErrorKind != "upstream" || len(record.ConversionIssues) == 0 || !strings.Contains(out.Body.String(), fixture.message) || strings.Contains(out.Body.String(), "must-not-leak") || strings.Contains(err.Error(), "HTTP 524: HTTP 524:") {
+					t.Fatalf("unsafe or obscured failure: %s -> %s: %d %s; %+v", sourceID, targetID, out.Code, out.Body.String(), record)
+				}
+			}
+		}
+	}
 }
 
 func TestCustomHTTPFailuresUseDeclaredResponseDirections(t *testing.T) {

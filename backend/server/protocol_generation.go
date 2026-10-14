@@ -78,20 +78,25 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	defer response.Body.Close()
 	if record != nil {
 		record.StatusCode = response.StatusCode
+		record.UpstreamHTTPStatus = response.StatusCode
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		body, err := protocol.ReadBoundedBody(response.Body, limits.BufferBytes)
 		if err != nil {
-			return nil, err
+			return nil, &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(fallbackHTTPFailure(response.StatusCode, nil)), err)}}
 		}
 		if record != nil {
 			record.ProviderResponse = record.sanitizeBody(body)
 		}
-		result, decodeErr := candidate.compiled.DecodeHTTPFailure(ctx, response.StatusCode, body, options)
-		if decodeErr != nil {
-			return nil, &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, decodeErr}}
+		result, secondary := decodeUpstreamHTTPFailure(ctx, response.StatusCode, body, candidate.compiled, options)
+		if record != nil {
+			updateRecordProtocolUsage(record, result.Usage)
+			var conversion *protocol.ConversionError
+			if errors.As(secondary, &conversion) {
+				record.appendConversionIssues(conversion.Issues)
+			}
 		}
-		return result, &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, protocol.CheckGenerationOutcome(result)}}
+		return result, &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(result), secondary)}}
 	}
 	if candidate.operation.Transport == protocol.HTTPJSON {
 		body, err := protocol.ReadBoundedBody(response.Body, limits.BufferBytes)

@@ -210,7 +210,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		body, err := protocol.ReadBoundedBody(response.Body, candidate.compiled.ResourceLimits().BufferBytes)
 		if err != nil {
-			return err
+			return &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(fallbackHTTPFailure(response.StatusCode, nil)), err)}}
 		}
 		record.ProviderResponse = record.sanitizeBody(body)
 		return mapGatewayHTTPFailure(c.Request.Context(), record, response.StatusCode, body, plan.ingress, candidate, options)
