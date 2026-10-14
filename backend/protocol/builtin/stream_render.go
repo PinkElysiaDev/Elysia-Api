@@ -502,7 +502,7 @@ func (stream *streamModule) encodeItemEnd(key string, item *streamItem, options 
 				parts = append(parts, part)
 			}
 			status := node.Status
-			if status.IsZero() || status == p.StringValue("in_progress") {
+			if status.IsZero() || status.IsString("in_progress") {
 				status = p.StringValue("completed")
 			}
 			message := p.Object{"id": item.wireID, "type": p.StringValue("message"), "role": node.Role, "status": status, "content": array(parts)}
@@ -513,7 +513,7 @@ func (stream *streamModule) encodeItemEnd(key string, item *streamItem, options 
 		}
 		if node.Kind == p.ToolCallNode || node.Kind == p.ReasoningNode {
 			node.ID = item.wireID
-			if node.Status.IsZero() || node.Status == p.StringValue("in_progress") {
+			if node.Status.IsZero() || node.Status.IsString("in_progress") {
 				node.Status = p.StringValue("completed")
 			}
 		}
@@ -587,7 +587,7 @@ func (stream *streamModule) Finish(ctx context.Context, options p.EvaluationCont
 			}
 			if node.Kind == p.ToolCallNode || node.Kind == p.ReasoningNode || node.Kind == p.MessageNode {
 				node.ID = item.wireID
-				if node.Status.IsZero() || node.Status == p.StringValue("in_progress") {
+				if node.Status.IsZero() || node.Status.IsString("in_progress") {
 					node.Status = p.StringValue("completed")
 				}
 			} else {

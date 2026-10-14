@@ -68,7 +68,7 @@ func (adapter module) ValidateWireOutput(direction p.Direction, value p.Value) e
 				return e
 			}
 		}
-		if m["type"] != p.StringValue("message") || m["role"] != p.StringValue("assistant") {
+		if !m["type"].IsString("message") || !m["role"].IsString("assistant") {
 			return invalid(base, "expected an assistant message")
 		}
 		var content []p.Value
@@ -81,7 +81,7 @@ func (adapter module) ValidateWireOutput(direction p.Direction, value p.Value) e
 			if err != nil {
 				return err
 			}
-			if block["type"] == p.StringValue("thinking") {
+			if block["type"].IsString("thinking") {
 				for _, key := range []string{"thinking", "signature"} {
 					var value string
 					if block[key].IsNull() || block[key].Decode(&value) != nil {
@@ -96,7 +96,7 @@ func (adapter module) ValidateWireOutput(direction p.Direction, value p.Value) e
 	if err != nil {
 		return err
 	}
-	if fields["type"] == p.StringValue("error") {
+	if fields["type"].IsString("error") {
 		_, err := obj(fields["error"], "/error")
 		return err
 	}

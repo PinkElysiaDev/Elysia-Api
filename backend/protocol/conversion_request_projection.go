@@ -144,11 +144,11 @@ func (c *CompiledConversion) requestProjection(req *Request, route ConversionCon
 			case "key":
 				known, supported = intent.Location == "request", openAI
 			case "retention":
-				known = intent.Location == "request" && (intent.Value.IsNull() || intent.Value == StringValue("in_memory") || intent.Value == StringValue("24h"))
+				known = intent.Location == "request" && (intent.Value.IsNull() || intent.Value.IsString("in_memory") || intent.Value.IsString("24h"))
 				supported = openAI
 			case "breakpoint":
 				fields, _ := intent.Value.ReadObject()
-				known = intent.Value.IsNull() || (len(fields) == 1 && fields["type"] == StringValue("ephemeral") && (intent.TTL.IsZero() || intent.TTL.IsNull() || intent.TTL == StringValue("5m") || intent.TTL == StringValue("1h")))
+				known = intent.Value.IsNull() || (len(fields) == 1 && fields["type"].IsString("ephemeral") && (intent.TTL.IsZero() || intent.TTL.IsNull() || intent.TTL.IsString("5m") || intent.TTL.IsString("1h")))
 				supported = codec == "anthropic"
 			}
 			if !known && (intent.Kind == "breakpoint" || intent.Kind == "key" || intent.Kind == "retention") && (route.Source.Family != route.Target.Family || route.Source.WireVersion != route.Target.WireVersion) {

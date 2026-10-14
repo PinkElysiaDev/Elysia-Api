@@ -70,7 +70,7 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 		}
 		node.Kind, node.Payload = p.ReasoningNode, fields[textKey]
 		known = append(known, textKey, "signature")
-		if signature := fields["signature"]; !signature.IsZero() && signature != p.StringValue("") {
+		if signature := fields["signature"]; !signature.IsZero() && !signature.IsString("") {
 			node.Resources = append(node.Resources, p.Resource{Kind: "signature", ID: signature, Scope: options.Scope})
 		}
 	case "redacted_thinking":
@@ -88,7 +88,7 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 			}
 			// ToolCallNode is a direct client-executed call. Programmatic
 			// callers and any extra caller fields retain their extension guard.
-			if len(caller) == 1 && caller["type"] == p.StringValue("direct") {
+			if len(caller) == 1 && caller["type"].IsString("direct") {
 				known = append(known, "caller")
 			}
 		}
@@ -226,7 +226,7 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 
 func mediaSourceKeys(value p.Value) []string {
 	fields, _ := value.ReadObject() // decodeMedia has already validated this object.
-	if fields["type"] == p.StringValue("url") {
+	if fields["type"].IsString("url") {
 		return []string{"type", "url"}
 	}
 	return []string{"type", "data", "media_type"}

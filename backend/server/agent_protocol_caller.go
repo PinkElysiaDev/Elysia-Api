@@ -171,7 +171,7 @@ func agentResultFromProtocol(response *protocol.Response) (*agent.CallResult, er
 					reasoning.WriteString(value)
 				}
 			case protocol.ToolCallNode:
-				if response.Status == protocol.StringValue("incomplete") {
+				if response.Status.IsString("incomplete") {
 					continue
 				}
 				if node.Input == nil || node.Input.Kind != protocol.JSONInput || !node.Input.Value.IsObject() {

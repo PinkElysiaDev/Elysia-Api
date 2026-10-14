@@ -40,7 +40,7 @@ func ParseCacheBilling(value Value) (bool, error) {
 			known = false
 		}
 	}
-	if fields["basis"] != StringValue("disclosed_billing_allocation") {
+	if !fields["basis"].IsString("disclosed_billing_allocation") {
 		known = false
 	}
 	return known, nil

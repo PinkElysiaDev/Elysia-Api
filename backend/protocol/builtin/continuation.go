@@ -44,7 +44,7 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
 			}
 			typ, _ := stringValue(b["type"])
 			if typ == "thinking" && add(b["signature"]) {
-				if b["thinking"].IsZero() || b["thinking"] == p.StringValue("") {
+				if b["thinking"].IsZero() || b["thinking"].IsString("") {
 					continue
 				}
 				delete(b, "signature")
@@ -73,10 +73,10 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
 			out = append(out, message)
 			continue
 		}
-		if family == "openai_responses" && m["type"] == p.StringValue("reasoning") && add(m["encrypted_content"]) {
+		if family == "openai_responses" && m["type"].IsString("reasoning") && add(m["encrypted_content"]) {
 			continue
 		}
-		if m["role"] == p.StringValue("assistant") {
+		if m["role"].IsString("assistant") {
 			if family == "openai_chat" {
 				var carriers []p.Value
 				if v := m["elysia_continuation"]; !v.IsZero() {

@@ -76,7 +76,7 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 			// In a tool-only assistant message, a scalar null/empty content is
 			// Chat's no-text envelope, not a separate part before the tool call.
 			// Preserve the native wire value, including null versus empty string.
-			if role == "assistant" && len(calls) > 0 && (content.IsNull() || content == p.StringValue("")) {
+			if role == "assistant" && len(calls) > 0 && (content.IsNull() || content.IsString("")) {
 				node.Children = nil
 			}
 			for callIndex, callValue := range calls {
@@ -115,7 +115,7 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 				node.Children = append(node.Children, p.Node{Kind: p.ToolCallNode, Name: function["name"], CallID: call["id"], Input: &p.ToolInput{Kind: p.JSONInput, Value: arguments}, Native: adapter.native(callValue, fmt.Sprintf("%s/tool_calls/%d", location, callIndex), direction, options), Attributes: attributes})
 			}
 			known = append(known, "tool_calls", "reasoning_content", "refusal")
-			if reasoning := fields["reasoning_content"]; !reasoning.IsZero() && !reasoning.IsNull() && reasoning != p.StringValue("") {
+			if reasoning := fields["reasoning_content"]; !reasoning.IsZero() && !reasoning.IsNull() && !reasoning.IsString("") {
 				node.Children = append([]p.Node{{Kind: p.ReasoningNode, Payload: reasoning}}, node.Children...)
 			}
 			// Chat SDK history includes refusal:null for ordinary assistant
@@ -169,7 +169,7 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 	if direction == p.EncodeRequest && (adapter.name == Anthropic || adapter.name == Gemini) {
 		count, bare := 0, false
 		for i, n := range nodes {
-			if n.Kind == p.ReasoningNode || n.Kind == p.ToolCallNode || (n.Kind == p.MessageNode && n.Role == p.StringValue("assistant")) {
+			if n.Kind == p.ReasoningNode || n.Kind == p.ToolCallNode || (n.Kind == p.MessageNode && n.Role.IsString("assistant")) {
 				count++
 				bare = bare || n.Kind != p.MessageNode
 				if count > 1 && bare {
@@ -320,11 +320,11 @@ func hasNativeSystemMessage(node p.Node, options p.EvaluationContext) bool {
 		return false
 	}
 	fields, err := node.Native.Value.ReadObject()
-	return err == nil && fields["role"] == p.StringValue("system")
+	return err == nil && fields["role"].IsString("system")
 }
 
 func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, options p.EvaluationContext) ([]p.Value, error) {
-	if direction == p.EncodeRequest && node.Role == p.StringValue("assistant") {
+	if direction == p.EncodeRequest && node.Role.IsString("assistant") {
 		previous, thoughts := -1, 0
 		for _, child := range node.Children {
 			rank := 1
@@ -423,7 +423,7 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 	}
 	if len(content) == 1 && direction == p.EncodeResponse {
 		block, _ := content[0].ReadObject()
-		if block["type"] == p.StringValue("text") {
+		if block["type"].IsString("text") {
 			fields["content"] = block["text"]
 		} else {
 			fields["content"] = array(content)

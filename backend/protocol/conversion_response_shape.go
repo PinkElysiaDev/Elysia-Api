@@ -102,7 +102,7 @@ func (c *CompiledConversion) responseShape(r *Response, phase ConversionPhase, r
 					}
 					n.ID, n.Status = Value{}, Value{}
 				}
-				if len(nodes) > 1 && n.Role == StringValue("assistant") && len(n.Attributes) == 0 && len(n.Cache) == 0 && len(n.Resources) == 0 && len(n.Metadata) == 0 {
+				if len(nodes) > 1 && n.Role.IsString("assistant") && len(n.Attributes) == 0 && len(n.Cache) == 0 && len(n.Resources) == 0 && len(n.Metadata) == 0 {
 					if err := c.issue(rule, phase, route, at, "target merges ordered message boundaries within one assistant turn", sink, true); err != nil {
 						return nil, err
 					}
@@ -237,7 +237,7 @@ func (c *CompiledConversion) responseValue(action string, phase ConversionPhase,
 		}
 		if e.Item != nil && e.Item.Kind == MessageNode {
 			n := e.Item
-			if len(n.Children) > 0 || len(n.Attributes) > 0 || len(n.Metadata) > 0 || len(n.Cache) > 0 || len(n.Resources) > 0 || !n.Payload.IsZero() || (n.Role != StringValue("assistant") && !n.Role.IsZero()) {
+			if len(n.Children) > 0 || len(n.Attributes) > 0 || len(n.Metadata) > 0 || len(n.Cache) > 0 || len(n.Resources) > 0 || !n.Payload.IsZero() || (!n.Role.IsString("assistant") && !n.Role.IsZero()) {
 				return Value{}, streamIssue(UnsupportedCapability, "/item", "message container has data requiring an explicit projection")
 			}
 			if err := c.issue(rule, phase, route, "/item", "target cannot retain this message container identity, status and boundary", sink, true); err != nil {

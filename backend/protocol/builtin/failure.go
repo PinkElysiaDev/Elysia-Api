@@ -128,7 +128,7 @@ func (adapter module) decodeFailure(value p.Value, options p.EvaluationContext) 
 					return p.Value{}, unsupported("/error/param", "provider error param requires a string or null")
 				}
 			}
-			if category == ErrorClassModelNotFound && fields["param"] == p.StringValue("model") {
+			if category == ErrorClassModelNotFound && fields["param"].IsString("model") {
 				delete(result, "param")
 			}
 			known = append(known, "code", "param")
@@ -136,7 +136,7 @@ func (adapter module) decodeFailure(value p.Value, options p.EvaluationContext) 
 		// Some compatible providers repeat the canonical category in code.
 		// It adds no independent detail. Preserve the original same-wire shape
 		// through the native snapshot, while foreign targets use the category.
-		if category != "" && typeName == canonicalType && fields["code"] == p.StringValue(typeName) {
+		if category != "" && typeName == canonicalType && fields["code"].IsString(typeName) {
 			delete(result, "code")
 			known = append(known, "code")
 		}

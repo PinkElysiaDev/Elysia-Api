@@ -12,7 +12,7 @@ func (stream *streamModule) consumeResponsesHeartbeat(fields p.Object, options p
 		return false, p.IssuesError([]p.ConversionIssue{{Code: p.UpstreamContractViolation, Severity: p.SeverityError, Stage: "decode.event", Path: path, Reason: "Responses transport heartbeat must contain only the declared empty sentinel delta"}})
 	}
 	var isKeepAlive bool
-	if fields[responsesHeartbeatSentinel].Decode(&isKeepAlive) != nil || !isKeepAlive || fields["type"] != p.StringValue("response.output_text.delta") || fields["item_id"] != p.StringValue(responsesHeartbeatSentinel) || fields["delta"] != p.StringValue("") {
+	if fields[responsesHeartbeatSentinel].Decode(&isKeepAlive) != nil || !isKeepAlive || !fields["type"].IsString("response.output_text.delta") || !fields["item_id"].IsString(responsesHeartbeatSentinel) || !fields["delta"].IsString("") {
 		return reject("/" + responsesHeartbeatSentinel)
 	}
 	for _, key := range []string{"output_index", "content_index"} {

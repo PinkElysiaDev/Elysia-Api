@@ -36,6 +36,16 @@ func StringValue(value string) Value {
 	return Value{raw: string(raw)}
 }
 
+// IsString compares decoded string content without changing the stored wire bytes.
+// Absent, null and non-string values never match, including an empty string.
+func (value Value) IsString(expected string) bool {
+	if value.IsNull() {
+		return false
+	}
+	var text string
+	return value.Decode(&text) == nil && text == expected
+}
+
 // IsZero reports absence, allowing encoding/json's omitzero to preserve null.
 func (value Value) IsZero() bool { return value.raw == "" }
 

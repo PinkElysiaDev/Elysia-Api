@@ -78,7 +78,7 @@ func comparableStreamOutput(nodes []Node) []Node {
 		node.Native = nil
 		node.ID, node.Status = Value{}, Value{}
 		node.Children = comparableStreamOutput(node.Children)
-		if node.Kind == MessageNode && (node.Role.IsZero() || node.Role == StringValue("assistant")) && len(node.Attributes) == 0 && len(node.Cache) == 0 && len(node.Resources) == 0 && node.Payload.IsZero() && node.Input == nil && node.Name.IsZero() && node.CallID.IsZero() {
+		if node.Kind == MessageNode && (node.Role.IsZero() || node.Role.IsString("assistant")) && len(node.Attributes) == 0 && len(node.Cache) == 0 && len(node.Resources) == 0 && node.Payload.IsZero() && node.Input == nil && node.Name.IsZero() && node.CallID.IsZero() {
 			if len(node.Children) == 0 {
 				output = append(output, node)
 				continue

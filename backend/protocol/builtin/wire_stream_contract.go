@@ -69,7 +69,7 @@ func (stream *streamModule) ValidateWireEvent(frame p.Value) error {
 		return err
 	}
 	// Failures need neither an assistant role nor an earlier successful start.
-	if fields["type"] == p.StringValue("error") || (!fields["error"].IsZero() && !fields["error"].IsNull()) {
+	if fields["type"].IsString("error") || (!fields["error"].IsZero() && !fields["error"].IsNull()) {
 		return nil
 	}
 	s := &stream.wire

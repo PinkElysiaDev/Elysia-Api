@@ -55,7 +55,7 @@ func (adapter module) decodeReasoningPart(value p.Value, kind, path string) (p.N
 	if err != nil {
 		return p.Node{}, reasoningInputError(path, "reasoning part must be an object")
 	}
-	if part["type"] != p.StringValue(kind) {
+	if !part["type"].IsString(kind) {
 		return p.Node{}, reasoningInputError(path+"/type", "expected "+kind)
 	}
 	if _, err := stringValue(part["text"]); err != nil {

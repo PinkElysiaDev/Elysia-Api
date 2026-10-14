@@ -33,7 +33,7 @@ func (failure *GenerationFailure) Error() string {
 // CheckGenerationOutcome is for execution consumers. Definition verification
 // can still round-trip error responses as valid, deliberately failing outcomes.
 func CheckGenerationOutcome(response *Response) error {
-	if (!response.Error.IsZero() && !response.Error.IsNull()) || response.Status == StringValue("failed") || response.Status == StringValue("cancelled") || response.Status == StringValue("canceled") {
+	if (!response.Error.IsZero() && !response.Error.IsNull()) || response.Status.IsString("failed") || response.Status.IsString("cancelled") || response.Status.IsString("canceled") {
 		return &GenerationFailure{Payload: response.Error, Status: response.Status}
 	}
 	return nil

@@ -187,7 +187,7 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event, opt
 				attached := false
 				for i, v := range frames {
 					f, _ := v.ReadObject()
-					if f["type"] == p.StringValue("response.output_text.delta") {
+					if f["type"].IsString("response.output_text.delta") {
 						f["logprobs"] = m.Value
 						frames[i] = object(f)
 						attached = true
@@ -253,7 +253,7 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event, opt
 		attached := false
 		for i, frame := range frames {
 			fields, _ := frame.ReadObject()
-			if fields["type"] == p.StringValue(strings.TrimPrefix(m.Location, "event:")) {
+			if fields["type"].IsString(strings.TrimPrefix(m.Location, "event:")) {
 				fields[m.Name] = m.Value
 				frames[i] = object(fields)
 				attached = true
@@ -304,7 +304,7 @@ func (stream *streamModule) attachFrameMetadata(events []p.Event, metadata []p.R
 		}
 		found := false
 		for i, e := range events {
-			if e.Type == p.ItemDelta && e.ItemID == p.StringValue("text") {
+			if e.Type == p.ItemDelta && e.ItemID.IsString("text") {
 				events[i].Metadata = append(events[i].Metadata, m)
 				found = true
 				break

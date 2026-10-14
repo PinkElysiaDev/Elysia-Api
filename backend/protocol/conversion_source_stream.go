@@ -192,7 +192,7 @@ func chatStartupIdentity(value Value, isFirst bool) (chatStartup, bool) {
 	delta, err := choice["delta"].ReadObject()
 	var role string
 	if err != nil || !hasOnlyFields(delta, "role", "content") || delta["role"].Decode(&role) != nil || role != "assistant" ||
-		(delta["content"] != StringValue("") && (isFirst || !delta["content"].IsZero())) {
+		(!delta["content"].IsString("") && (isFirst || !delta["content"].IsZero())) {
 		return chatStartup{}, false
 	}
 	return identity, true

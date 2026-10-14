@@ -21,7 +21,7 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 		if err != nil {
 			return v
 		}
-		if !sequence || (f["type"] != p.StringValue("function_call") && f["type"] != p.StringValue("custom_tool_call") && f["type"] != p.StringValue("reasoning")) {
+		if !sequence || (!f["type"].IsString("function_call") && !f["type"].IsString("custom_tool_call") && !f["type"].IsString("reasoning")) {
 			return v
 		}
 		if f["status"].IsZero() {
@@ -63,7 +63,7 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 		case p.StringValue("response.output_item.added"), p.StringValue("response.output_item.done"):
 			if !f["item"].IsZero() {
 				name := "completed"
-				if f["type"] == p.StringValue("response.output_item.added") {
+				if f["type"].IsString("response.output_item.added") {
 					name = "in_progress"
 				}
 				f["item"] = status(f["item"], name)
@@ -74,9 +74,9 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 				f["part"] = repair(f["part"])
 			}
 		}
-		if f["object"] == p.StringValue("response") && !f["output"].IsZero() {
+		if f["object"].IsString("response") && !f["output"].IsZero() {
 			f["output"] = repair(f["output"])
-			if f["status"] == p.StringValue("completed") || f["status"] == p.StringValue("incomplete") {
+			if f["status"].IsString("completed") || f["status"].IsString("incomplete") {
 				var nodes []p.Value
 				if f["output"].Decode(&nodes) == nil {
 					for i := range nodes {
@@ -290,7 +290,7 @@ func repairChatToolFrames(value p.Value) (p.Value, bool) {
 	changed := false
 	for i, frame := range frames {
 		f, err := frame.ReadObject()
-		if err != nil || f["object"] != p.StringValue("chat.completion.chunk") {
+		if err != nil || !f["object"].IsString("chat.completion.chunk") {
 			continue
 		}
 		choices, _ := readArray(f["choices"])
@@ -309,7 +309,7 @@ func repairChatToolFrames(value p.Value) (p.Value, bool) {
 				}
 				key := string(ch["index"].Bytes()) + ":" + string(entry["index"].Bytes())
 				previous, exists := seen[key]
-				if !exists && entry["type"] == p.StringValue("function") && !entry["id"].IsZero() && !fn["name"].IsZero() {
+				if !exists && entry["type"].IsString("function") && !entry["id"].IsZero() && !fn["name"].IsZero() {
 					seen[key] = identity{entry["id"], fn["name"]}
 				} else if exists && entry["type"].IsZero() {
 					if entry["id"] == previous.id {

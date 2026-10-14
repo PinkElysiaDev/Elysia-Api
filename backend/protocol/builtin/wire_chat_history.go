@@ -19,10 +19,10 @@ func validateChatToolSequence(messages []p.Value) error {
 			return err
 		}
 		at := fmt.Sprintf("/messages/%d", i)
-		if len(pending) > 0 && m["role"] != p.StringValue("tool") {
+		if len(pending) > 0 && !m["role"].IsString("tool") {
 			return fail(at+"/role", "Chat requires results for all outstanding tool calls immediately after the assistant call message")
 		}
-		if m["role"] == p.StringValue("tool") {
+		if m["role"].IsString("tool") {
 			id := m["tool_call_id"]
 			if !pending[id] {
 				return fail(at+"/tool_call_id", "tool result must match an outstanding call in the immediately preceding assistant turn")
@@ -33,7 +33,7 @@ func validateChatToolSequence(messages []p.Value) error {
 		if err != nil {
 			return err
 		}
-		if len(calls) > 0 && m["role"] != p.StringValue("assistant") {
+		if len(calls) > 0 && !m["role"].IsString("assistant") {
 			return fail(at+"/tool_calls", "only assistant messages may issue tool calls")
 		}
 		for j, v := range calls {

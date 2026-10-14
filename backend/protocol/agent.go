@@ -295,7 +295,7 @@ func verifyAgentToolResult(ctx context.Context, compiled *Compiled, model Value,
 		}
 	}
 	visit(decoded.Content)
-	if len(calls) != 1 || len(results) != 1 || calls[0].CallID != StringValue("agent_verify_call") || results[0].CallID != calls[0].CallID || calls[0].Name != StringValue("agent_verify") || calls[0].Input == nil || !equalValues(calls[0].Input.Value, arguments) || !equalValues(results[0].Payload, payload) {
+	if len(calls) != 1 || len(results) != 1 || !calls[0].CallID.IsString("agent_verify_call") || results[0].CallID != calls[0].CallID || !calls[0].Name.IsString("agent_verify") || calls[0].Input == nil || !equalValues(calls[0].Input.Value, arguments) || !equalValues(results[0].Payload, payload) {
 		return fmt.Errorf("agent tool history loses its arguments, result payload or call association")
 	}
 	return nil

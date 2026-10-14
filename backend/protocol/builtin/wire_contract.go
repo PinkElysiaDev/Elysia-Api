@@ -19,7 +19,7 @@ func (adapter module) validateWireContract(direction p.Direction, value p.Value)
 	if direction == p.EncodeRequest {
 		return adapter.validateRequestWireContract(value, fields)
 	}
-	if adapter.name == Responses && direction == p.EncodeEvent && fields["type"] == p.StringValue("error") {
+	if adapter.name == Responses && direction == p.EncodeEvent && fields["type"].IsString("error") {
 		if err := requireWireInteger(fields["sequence_number"], "/sequence_number"); err != nil {
 			return err
 		}
@@ -107,7 +107,7 @@ func (adapter module) validateRequestWireContract(value p.Value, fields p.Object
 				if err != nil {
 					return err
 				}
-				if adapter.name == Responses && !m["type"].IsZero() && m["type"] != p.StringValue("message") {
+				if adapter.name == Responses && !m["type"].IsZero() && !m["type"].IsString("message") {
 					continue
 				}
 				var role string
@@ -133,7 +133,7 @@ func (adapter module) validateRequestWireContract(value p.Value, fields p.Object
 							if e != nil {
 								return wireContractError(fmt.Sprintf("%s/content/%d", base, j), "expected content block")
 							}
-							if block["type"] == p.StringValue("input_text") {
+							if block["type"].IsString("input_text") {
 								return wireContractError(fmt.Sprintf("%s/content/%d/type", base, j), "assistant history requires output_text, not input_text")
 							}
 						}
@@ -152,7 +152,7 @@ func (adapter module) validateRequestWireContract(value p.Value, fields p.Object
 			if e != nil {
 				return e
 			}
-			if m["role"] != p.StringValue("user") && m["role"] != p.StringValue("assistant") && m["role"] != p.StringValue("system") {
+			if !m["role"].IsString("user") && !m["role"].IsString("assistant") && !m["role"].IsString("system") {
 				return wireContractError(fmt.Sprintf("/messages/%d/role", i), "Anthropic messages require a user, assistant or system role")
 			}
 		}
@@ -168,7 +168,7 @@ func (adapter module) validateRequestWireContract(value p.Value, fields p.Object
 				return e
 			}
 			role := m["role"]
-			if !role.IsZero() && role != p.StringValue("user") && role != p.StringValue("model") {
+			if !role.IsZero() && !role.IsString("user") && !role.IsString("model") {
 				return wireContractError(fmt.Sprintf("/contents/%d/role", i), "Gemini contents only accept user or model")
 			}
 		}
@@ -194,7 +194,7 @@ func (adapter module) validateChatWireContract(direction p.Direction, fields p.O
 	if direction == p.EncodeEvent {
 		object = "chat.completion.chunk"
 	}
-	if fields["object"] != p.StringValue(object) {
+	if !fields["object"].IsString(object) {
 		return wireContractError("/object", "unexpected Chat object type")
 	}
 	for _, k := range []string{"id", "model", "object"} {
@@ -226,7 +226,7 @@ func (adapter module) validateChatWireContract(direction p.Direction, fields p.O
 		if e != nil {
 			return e
 		}
-		if direction == p.EncodeResponse && m["role"] != p.StringValue("assistant") {
+		if direction == p.EncodeResponse && !m["role"].IsString("assistant") {
 			return wireContractError(base+"/message/role", "Chat response requires assistant role")
 		}
 	}
@@ -240,12 +240,12 @@ func (adapter module) validateResponsesWireContract(direction p.Direction, value
 		if e != nil {
 			return e
 		}
-		if f["type"] == p.StringValue("output_text") || f["type"] == p.StringValue("reasoning_text") || f["type"] == p.StringValue("summary_text") {
+		if f["type"].IsString("output_text") || f["type"].IsString("reasoning_text") || f["type"].IsString("summary_text") {
 			var text string
 			if f["text"].IsNull() || f["text"].Decode(&text) != nil {
 				return wireContractError(base+"/text", "text part requires a string")
 			}
-			if f["type"] != p.StringValue("output_text") {
+			if !f["type"].IsString("output_text") {
 				return nil
 			}
 			_, e = readWireArray(f["annotations"], base+"/annotations")
@@ -261,7 +261,7 @@ func (adapter module) validateResponsesWireContract(direction p.Direction, value
 		if e = requireWireString(f["id"], base+"/id"); e != nil {
 			return e
 		}
-		if f["type"] == p.StringValue("reasoning") {
+		if f["type"].IsString("reasoning") {
 			for _, field := range []string{"summary", "content"} {
 				if field == "content" && f[field].IsZero() {
 					continue
@@ -280,7 +280,7 @@ func (adapter module) validateResponsesWireContract(direction p.Direction, value
 					if field == "content" {
 						kind = "reasoning_text"
 					}
-					if entry["type"] != p.StringValue(kind) {
+					if !entry["type"].IsString(kind) {
 						return wireContractError(at+"/type", "reasoning part has the wrong text representation")
 					}
 					if err := part(value, at); err != nil {
@@ -289,13 +289,13 @@ func (adapter module) validateResponsesWireContract(direction p.Direction, value
 				}
 			}
 		}
-		if f["type"] == p.StringValue("message") {
+		if f["type"].IsString("message") {
 			if phase := f["phase"]; !phase.IsZero() {
 				if err := p.ValidateMetadataValue(Responses, "message", "phase", phase, base+"/phase"); err != nil {
 					return wireContractError(base+"/phase", "message phase must be commentary, final_answer or null")
 				}
 			}
-			if f["role"] != p.StringValue("assistant") {
+			if !f["role"].IsString("assistant") {
 				return wireContractError(base+"/role", "Responses output message requires assistant role")
 			}
 			if e = requireWireString(f["status"], base+"/status"); e != nil {
@@ -318,7 +318,7 @@ func (adapter module) validateResponsesWireContract(direction p.Direction, value
 		if e != nil {
 			return e
 		}
-		if f["object"] != p.StringValue("response") {
+		if !f["object"].IsString("response") {
 			return wireContractError(base+"/object", "unexpected Responses object type")
 		}
 		for _, k := range []string{"id", "object", "model", "status"} {

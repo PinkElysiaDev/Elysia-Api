@@ -47,7 +47,7 @@ func (c *CompiledConversion) toolResult(n *Node, route ConversionContext, rule C
 	if err != nil {
 		return err
 	}
-	if n.Children == nil && (rule.Action == "tool_result_object" || rule.Value == StringValue("openai-chat") || rule.Value == StringValue("responses")) && !n.Payload.IsZero() && !n.Payload.IsNull() {
+	if n.Children == nil && (rule.Action == "tool_result_object" || rule.Value.IsString("openai-chat") || rule.Value.IsString("responses")) && !n.Payload.IsZero() && !n.Payload.IsNull() {
 		if blocks, err := n.Payload.readArray(); err == nil && len(blocks) == 0 {
 			n.Payload = StringValue("")
 			c.normalized(rule, route, at+"/payload", "empty tool result blocks normalized to empty text", sink)

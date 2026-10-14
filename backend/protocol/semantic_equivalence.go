@@ -20,9 +20,9 @@ func comparableConversation(nodes []Node) []Node {
 			}
 		}
 		for _, child := range node.Children {
-			isCall := child.Kind == ToolCallNode && node.Role == StringValue("assistant")
-			isResult := child.Kind == ToolResultNode && (node.Role == StringValue("user") || node.Role == StringValue("tool"))
-			isThinking := child.Kind == ReasoningNode && node.Role == StringValue("assistant")
+			isCall := child.Kind == ToolCallNode && node.Role.IsString("assistant")
+			isResult := child.Kind == ToolResultNode && (node.Role.IsString("user") || node.Role.IsString("tool"))
+			isThinking := child.Kind == ReasoningNode && node.Role.IsString("assistant")
 			if isCall || isResult || isThinking {
 				flush()
 				result = append(result, child)

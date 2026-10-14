@@ -49,7 +49,7 @@ func (stream *streamModule) validateSourceIdentity(fields p.Object) error {
 
 func (stream *streamModule) rejectUnknownFailedEvent(fields p.Object, options p.EvaluationContext) error {
 	response, err := fields["response"].ReadObject()
-	if err != nil || response["status"] != p.StringValue("failed") {
+	if err != nil || !response["status"].IsString("failed") {
 		return nil
 	}
 	contract := p.IssuesError([]p.ConversionIssue{{Code: p.UpstreamContractViolation, Severity: p.SeverityError, Stage: "decode.event", Path: "/type", Reason: fmt.Sprintf("provider frame %d: unknown event type declares a failed response; expected response.failed", stream.sourceFrameNumber)}})

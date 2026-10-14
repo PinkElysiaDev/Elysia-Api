@@ -38,14 +38,14 @@ func (accounting *ToolAccounting) Observe(identity p.Identity, wire []byte) erro
 	if err != nil {
 		return err
 	}
-	if kind := fields["type"]; kind == p.StringValue("response.output_item.done") {
+	if kind := fields["type"]; kind.IsString("response.output_item.done") {
 		var index int
 		if err := fields["output_index"].Decode(&index); err != nil || fields["output_index"].IsNull() {
 			index = -1
 		}
 		return accounting.observeItem(index, fields["item"])
 	}
-	if kind := fields["type"]; kind == p.StringValue("response.completed") || kind == p.StringValue("response.incomplete") {
+	if kind := fields["type"]; kind.IsString("response.completed") || kind.IsString("response.incomplete") {
 		fields, err = fields["response"].ReadObject()
 		if err != nil {
 			return err

@@ -150,7 +150,7 @@ func (c *CompiledConversion) assistantHistory(request *Request, route Conversion
 		return nil
 	}
 	for i, node := range request.Content {
-		if node.Kind == ReasoningNode || node.Kind == ToolCallNode || (node.Kind == MessageNode && node.Role == StringValue("assistant")) {
+		if node.Kind == ReasoningNode || node.Kind == ToolCallNode || (node.Kind == MessageNode && node.Role.IsString("assistant")) {
 			if len(pending) == 0 {
 				start = i
 			}

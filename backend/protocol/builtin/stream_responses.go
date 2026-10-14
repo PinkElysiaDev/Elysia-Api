@@ -258,7 +258,7 @@ func (stream *streamModule) decodeGeminiFrame(fields p.Object, options p.Evaluat
 			// assistant item. Creating one breaks the following tool-result turn.
 			// Signed or annotated parts, and empty parts before terminal, retain
 			// their identity because a later signature may belong to them.
-			if len(partFields) == 1 && partFields["text"] == p.StringValue("") && !candidate["finishReason"].IsZero() && !candidate["finishReason"].IsNull() {
+			if len(partFields) == 1 && partFields["text"].IsString("") && !candidate["finishReason"].IsZero() && !candidate["finishReason"].IsNull() {
 				continue
 			}
 			// A signature-only part applies only to the immediately preceding
@@ -558,7 +558,7 @@ func (stream *streamModule) finishResponsesResponse(fields p.Object, options p.E
 			return nil, unsupported("/response/output", "terminal snapshot omitted a started message")
 		}
 		item, err := output[index].ReadObject()
-		if err != nil || item["type"] != p.StringValue("message") {
+		if err != nil || !item["type"].IsString("message") {
 			return nil, unsupported("/response/output", "terminal snapshot replaced a started message")
 		}
 	}

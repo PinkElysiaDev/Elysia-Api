@@ -26,7 +26,7 @@ func (stream *streamModule) decodeSummaryFrame(kind, key string, fields p.Object
 		if err != nil {
 			return nil, err
 		}
-		if part["type"] != p.StringValue("summary_text") {
+		if !part["type"].IsString("summary_text") {
 			return nil, unsupported("/part/type", "unsupported reasoning summary part")
 		}
 		if _, err := stringValue(part["text"]); err != nil {
@@ -56,7 +56,7 @@ func (stream *streamModule) decodeSummaryFrame(kind, key string, fields p.Object
 			if err != nil {
 				return nil, err
 			}
-			if part["type"] != p.StringValue("summary_text") {
+			if !part["type"].IsString("summary_text") {
 				return nil, unsupported("/part/type", "unsupported reasoning summary part")
 			}
 			value = part["text"]

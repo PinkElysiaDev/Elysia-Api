@@ -12,7 +12,7 @@ func (c *CompiledConversion) hoistSystem(request *Request, route ConversionConte
 	seenConversation := false
 	changed := false
 	for i, node := range request.Content {
-		if node.Kind != MessageNode || (node.Role != StringValue("system") && node.Role != StringValue("developer")) {
+		if node.Kind != MessageNode || (!node.Role.IsString("system") && !node.Role.IsString("developer")) {
 			seenConversation = true
 			conversation = append(conversation, node)
 			continue
@@ -24,7 +24,7 @@ func (c *CompiledConversion) hoistSystem(request *Request, route ConversionConte
 		if field := systemInstructionMetadataField(node); field != "" {
 			return c.rejectSystemHoist(rule, route, at+field)
 		}
-		if seenConversation || node.Role == StringValue("developer") {
+		if seenConversation || node.Role.IsString("developer") {
 			if err := c.issue(rule, ConversionRequest, route, at, "system/developer instruction moved to top-level system; its scope or role precedence changes", sink, true); err != nil {
 				return err
 			}

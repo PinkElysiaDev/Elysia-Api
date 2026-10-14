@@ -45,7 +45,7 @@ func systemStructure(request *protocol.Request) []systemNodeStructure {
 		}
 	}
 	for index, node := range request.Content {
-		if node.Role == protocol.StringValue("system") || node.Role == protocol.StringValue("developer") {
+		if node.Role.IsString("system") || node.Role.IsString("developer") {
 			visit(node, fmt.Sprintf("/content/%d", index))
 		}
 	}

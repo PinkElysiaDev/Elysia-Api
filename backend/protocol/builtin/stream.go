@@ -318,7 +318,7 @@ func (stream *streamModule) decodeChatFrame(fields p.Object, options p.Evaluatio
 				// start a content item. Otherwise role/terminal chunks invent an
 				// empty assistant turn between a tool call and its result.
 				// The native frame still preserves the original empty field.
-				if part.field == "content" && content == p.StringValue("") {
+				if part.field == "content" && content.IsString("") {
 					continue
 				}
 				batch, err := stream.textEvents(part.key, part.kind, content)

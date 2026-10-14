@@ -200,7 +200,7 @@ func ValidateMetadataValue(codec, location, name string, v Value, at string) err
 			return streamIssue(InvalidInput, at+"/cyber", "expected standard, daybreak_blue or daybreak_red access program")
 		}
 	case "message-phase":
-		ok = v == StringValue("commentary") || v == StringValue("final_answer")
+		ok = v.IsString("commentary") || v.IsString("final_answer")
 	case "string", "reference":
 		var s string
 		ok = v.Decode(&s) == nil
@@ -356,7 +356,7 @@ func mapPublicMetadata(item ResponseMetadata, codec string) (ResponseMetadata, b
 			if err != nil {
 				return item, false, err
 			}
-			if fields["type"] != StringValue("url_citation") {
+			if !fields["type"].IsString("url_citation") {
 				return item, false, streamIssue(UnsupportedCapability, fmt.Sprintf("%s/%d", item.Path, i), "non-URL citation requires a resource mapping")
 			}
 			if item.Codec == "openai-chat" {

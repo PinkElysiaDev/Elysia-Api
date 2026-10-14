@@ -362,7 +362,7 @@ func hasNativeInstructions(node p.Node, options p.EvaluationContext) bool {
 }
 
 func encodeNativeInstructions(node p.Node) (p.Value, error) {
-	if node.Kind != p.MessageNode || node.Role != p.StringValue("system") || hasStringMetadata(node) || !node.Payload.IsZero() {
+	if node.Kind != p.MessageNode || !node.Role.IsString("system") || hasStringMetadata(node) || !node.Payload.IsZero() {
 		return p.Value{}, unsupported("/instructions", "modified instructions cannot be represented as a native system string")
 	}
 	if len(node.Children) == 0 && node.Native.Value.IsNull() {

@@ -114,7 +114,7 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 				return p.Value{}, unsupported("/status", "Responses tool output has no separate error flag")
 			}
 			fields["type"], fields["call_id"], fields["output"] = p.StringValue("function_call_output"), node.CallID, payload
-			if node.Attributes["inputKind"] == p.StringValue(string(p.TextInput)) {
+			if node.Attributes["inputKind"].IsString(string(p.TextInput)) {
 				fields["type"] = p.StringValue("custom_tool_call_output")
 			}
 		} else {
@@ -125,7 +125,7 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 		// standard Responses representation is a reasoning item's content.
 		if adapter.name == Responses && node.Native != nil {
 			original, _ := node.Native.Value.ReadObject()
-			if original["type"] == p.StringValue("reasoning_text") && !isNativeBlock(node, "reasoning_text", direction, options) {
+			if original["type"].IsString("reasoning_text") && !isNativeBlock(node, "reasoning_text", direction, options) {
 				return p.Value{}, unsupported("/reasoning", "standalone reasoning_text requires compatible native provenance")
 			}
 		}
@@ -236,7 +236,7 @@ func isNativeBlock(node p.Node, kind string, direction p.Direction, options p.Ev
 		return false
 	}
 	fields, err := node.Native.Value.ReadObject()
-	return err == nil && fields["type"] == p.StringValue(kind)
+	return err == nil && fields["type"].IsString(kind)
 }
 
 func checkResourceProtocol(node p.Node, options p.EvaluationContext) error {
@@ -288,7 +288,7 @@ func (adapter module) encodeMedia(node p.Node, fields p.Object) error {
 	if node.Kind == p.AudioNode && adapter.name == Chat {
 		format := media["format"]
 		for name, mime := range audioFormats {
-			if media["mime"] == p.StringValue(mime) {
+			if media["mime"].IsString(mime) {
 				format = p.StringValue(name)
 				break
 			}
