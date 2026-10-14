@@ -1,16 +1,19 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/elysia-api/backend/config"
-	p "github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/protocol/builtin"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/elysia-api/backend/config"
+	p "github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/protocol/builtin"
 )
 
 func TestCollectorAppliesStartupConversion(t *testing.T) {
@@ -60,9 +63,20 @@ func TestCollectorAppliesStartupConversion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := s.collectProtocolGeneration(t.Context(), candidate, request, nil, nil)
+	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: 1 << 20}}
+	result, err := s.collectProtocolGeneration(t.Context(), candidate, request, record, nil)
 	if err != nil || result == nil {
 		t.Fatalf("enabled startup rule failed: %v", err)
+	}
+	if len(record.ConversionIssues) != 1 {
+		t.Fatalf("collector did not retain normalization diagnostics: %+v", record.ConversionIssues)
+	}
+	issue := record.ConversionIssues[0]
+	if issue.RuleID != "chat-stream-identity" || issue.PolicyHash == "" || issue.Path != "/id" || issue.Direction != p.DecodeEvent || !strings.Contains(issue.Reason, "frame 1") {
+		t.Fatalf("normalization provenance lost: %+v", issue)
+	}
+	if len(record.pendingStreamEvents) == 0 || !strings.Contains(string(record.pendingStreamEvents[0]), "synthetic-prelude") {
+		t.Fatal("original provider frame was replaced in call evidence")
 	}
 	candidate.conversion = nil
 	_, err = s.collectProtocolGeneration(t.Context(), candidate, request, nil, nil)
@@ -104,4 +118,31 @@ func TestCollectorAppliesStartupConversion(t *testing.T) {
 		t.Fatal("missing result")
 	}
 	t.Log("same collector after existing source normalization succeeds")
+
+	for _, ending := range []error{nil, context.Canceled, context.DeadlineExceeded} {
+		t.Run(fmt.Sprint(ending), func(t *testing.T) {
+			consumed := 0
+			source, err := newProtocolSourceStream(t.Context(), candidate, upstream, route, p.EvaluationContext{State: p.NewEvaluationState()}, nil, func(frame *p.EventFrame, _ p.Object) error {
+				consumed += len(frame.Events)
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := source.Push(frames[0], nil); err != nil {
+				t.Fatal(err)
+			}
+			if consumed != 0 {
+				t.Fatal("buffered prelude was delivered early")
+			}
+			err = source.Finish(ending)
+			if ending == nil {
+				if err == nil || consumed == 0 {
+					t.Fatal("clean EOF must release the prelude and reject the incomplete lifecycle")
+				}
+			} else if !errors.Is(err, ending) || consumed != 0 {
+				t.Fatalf("interrupted prelude generated events or lost cause: %d %v", consumed, err)
+			}
+		})
+	}
 }
