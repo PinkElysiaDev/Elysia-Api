@@ -3,7 +3,13 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
+)
+
+const (
+	logReclaimPageLimit = 256
+	logPruneBatchSize   = 500
 )
 
 type CheckpointResult struct {
@@ -24,7 +30,7 @@ func (s *Store) Checkpoint(ctx context.Context, truncate bool) (CheckpointResult
 	if _, err := conn.ExecContext(ctx, `PRAGMA busy_timeout=0`); err != nil {
 		return result, err
 	}
-	defer conn.ExecContext(context.Background(), `PRAGMA busy_timeout=5000`)
+	defer conn.ExecContext(context.Background(), fmt.Sprintf("PRAGMA busy_timeout=%d", sqliteBusyTimeout.Milliseconds()))
 	mode := "PASSIVE"
 	if truncate {
 		mode = "TRUNCATE"
@@ -36,7 +42,7 @@ func (s *Store) Checkpoint(ctx context.Context, truncate bool) (CheckpointResult
 }
 
 func (s *Store) ReclaimLogPages(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `PRAGMA incremental_vacuum(256)`)
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf("PRAGMA incremental_vacuum(%d)", logReclaimPageLimit))
 	if err != nil {
 		return err
 	}
@@ -143,7 +149,7 @@ func (s *Store) PruneLogBatch(ctx context.Context, system bool, policy LogPruneP
 			}
 			bytes += media
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT CAST(`+key+` AS TEXT),content_bytes,`+stamp+` FROM `+table+` ORDER BY `+stamp+`,`+key+` LIMIT 500`)
+		rows, err := tx.QueryContext(ctx, `SELECT CAST(`+key+` AS TEXT),content_bytes,`+stamp+` FROM `+table+` ORDER BY `+stamp+`,`+key+` LIMIT ?`, logPruneBatchSize)
 		if err != nil {
 			return err
 		}

@@ -14,6 +14,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+const sqliteBusyTimeout = 5 * time.Second
+
 func Open(path string) (*Store, error) {
 	return OpenWithKey(path, nil)
 }
@@ -70,7 +72,7 @@ func (s *Store) Ping(ctx context.Context) error {
 func (s *Store) init(ctx context.Context) error {
 	pragmas := []string{
 		"PRAGMA journal_mode=WAL",
-		"PRAGMA busy_timeout=5000",
+		fmt.Sprintf("PRAGMA busy_timeout=%d", sqliteBusyTimeout.Milliseconds()),
 		"PRAGMA foreign_keys=ON",
 		"PRAGMA synchronous=NORMAL",
 		// GROUP BY 的临时 B-tree 进内存而非临时文件；大窗口聚合（日×模型分组）

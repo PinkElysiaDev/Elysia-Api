@@ -14,7 +14,12 @@ import (
 	"github.com/elysia-api/backend/protocol"
 )
 
-const conversionStorageVersion = 2026100801
+const (
+	conversionStorageVersion         = 2026100801
+	continuationExpiryBatchSize      = 256
+	continuationCiphertextSizeFactor = 2
+	continuationEnvelopeAllowance    = 256
+)
 
 // Schema and completion marker share one transaction. Repeated starts only
 // read the marker, with no DDL, history scan or backfill.
@@ -278,7 +283,7 @@ func (s *Store) SaveContinuation(ctx context.Context, r StoredContinuation, limi
 	if !s.codec.enabled() {
 		return fmt.Errorf("persistent continuation requires encryption")
 	}
-	if !strings.HasPrefix(r.Ciphertext, protocol.ContinuationPrefix) || len(r.Ciphertext) > limits.RecordBytes*2+256 || int64(len(r.Ciphertext)) > limits.MaxBytes {
+	if !strings.HasPrefix(r.Ciphertext, protocol.ContinuationPrefix) || len(r.Ciphertext) > limits.RecordBytes*continuationCiphertextSizeFactor+continuationEnvelopeAllowance || int64(len(r.Ciphertext)) > limits.MaxBytes {
 		return fmt.Errorf("continuation record exceeds byte limit")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -287,7 +292,7 @@ func (s *Store) SaveContinuation(ctx context.Context, r StoredContinuation, limi
 	}
 	defer tx.Rollback()
 	now := time.Now().Unix()
-	if _, err := tx.ExecContext(ctx, "DELETE FROM protocol_continuations WHERE id IN (SELECT id FROM protocol_continuations WHERE expires_at<=? LIMIT 256)", now); err != nil {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM protocol_continuations WHERE id IN (SELECT id FROM protocol_continuations WHERE expires_at<=? LIMIT ?)", now, continuationExpiryBatchSize); err != nil {
 		return err
 	}
 	_, err = tx.ExecContext(ctx, "INSERT INTO protocol_continuations(id,owner,session,scope_key,parent,ordinal,digest,ciphertext,bytes,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING", r.ID, r.Owner, r.Session, r.ScopeKey, r.Parent, r.Ordinal, r.Digest, r.Ciphertext, len(r.Ciphertext), time.Now().UnixNano(), r.ExpiresAt)
