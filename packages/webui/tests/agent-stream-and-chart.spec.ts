@@ -102,6 +102,44 @@ test('a stale same-session poll cannot restore an externally completed approval'
   await expect(page.getByPlaceholder('请描述你的任务')).toBeVisible()
 })
 
+test('a refresh started during streaming cannot erase a newer message', async ({ page }) => {
+  const session = await openAgent(page)
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => { release = resolve })
+  let delivered!: () => void
+  const delivery = new Promise<void>((resolve) => { delivered = resolve })
+  let hasRequested = false
+  await page.route('**/api/admin/agent/sessions/regression', async (route) => {
+    hasRequested = true
+    await pending
+    await route.fulfill({ json: { ok: true, data: { session, messages: [] } } })
+    delivered()
+  })
+  const composer = page.getByPlaceholder('请描述你的任务')
+  await composer.fill('stream and refresh')
+  await composer.press('Enter')
+  await page.waitForFunction(() => Boolean((window as StreamWindow).pushAgentEvent))
+  await push(page, { type: 'plan_updated', plan: [{ title: 'refresh during stream', status: 'done' }] })
+  await expect.poll(() => hasRequested).toBe(true)
+  await push(page, { type: 'message', message: message(1, 'assistant', { text: 'newly persisted streamed answer' }) })
+  await expect(page.getByText('newly persisted streamed answer', { exact: true })).toBeVisible()
+  release()
+  await delivery
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  await expect(page.getByText('newly persisted streamed answer', { exact: true })).toBeVisible()
+})
+
+test('a streamed message already present in history is updated once by sequence', async ({ page }) => {
+  await openAgent(page, [message(1, 'assistant', { text: 'saved assistant message' })])
+  const composer = page.getByPlaceholder('请描述你的任务')
+  await composer.fill('continue')
+  await composer.press('Enter')
+  await page.waitForFunction(() => Boolean((window as StreamWindow).pushAgentEvent))
+  await push(page, { type: 'message', message: message(1, 'assistant', { text: 'saved assistant message' }) })
+  await expect(page.locator('[data-seq="1"]')).toHaveCount(1)
+  await expect(page.getByText('saved assistant message', { exact: true })).toBeVisible()
+})
+
 for (const ending of ['finish', 'fail'] as const) {
   test(`an old stream ${ending} cannot end a newer turn in the same session`, async ({ page }) => {
     await openAgent(page)

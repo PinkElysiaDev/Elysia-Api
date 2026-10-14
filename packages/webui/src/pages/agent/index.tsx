@@ -98,7 +98,12 @@ export function AgentPage() {
     useAgentStream(activeId, {
       onMessage: (event: AgentStreamEvent) => {
         if (event.message) {
-          setMessages((current) => [...current, event.message as AgentMessage]);
+          // A stream event is newer than any detail snapshot already in flight.
+          sessionRequest.current++;
+          const message = event.message;
+          setMessages((current) => current.some((item) => item.seq === message.seq)
+            ? current.map((item) => item.seq === message.seq ? message : item)
+            : [...current, message]);
           if (event.message.role === "user") {
             void mutateSessions();
           }
