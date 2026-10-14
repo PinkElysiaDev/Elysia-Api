@@ -384,10 +384,7 @@ export function useAgentStream(
   return { live, send, approve, stop, dismissError, dismissResult, hydrateApproval };
 }
 
-/** 两张待批卡是否指向同一动作（类型 + 调用集合一致）。 */
+/** Question and plan cards may have no calls, so compare the entire action. */
 function samePendingAction(a: AgentPendingAction, b: AgentPendingAction) {
-  if ((a.kind ?? "") !== (b.kind ?? "")) return false
-  const callIds = (pending: AgentPendingAction) =>
-    pending.calls.map((call) => call.id ?? call.name ?? "").join(",")
-  return callIds(a) === callIds(b)
+  return JSON.stringify(a) === JSON.stringify(b)
 }

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { cliCommandOf, type AgentMessage, type AgentStreamEvent } from '../src/lib/agent/types'
+import { cliCommandOf, type AgentMessage, type AgentStreamEvent, type AgentPendingAction } from '../src/lib/agent/types'
 
 type StreamWindow = Window & {
   pushAgentEvent: (event: AgentStreamEvent) => void
@@ -15,9 +15,9 @@ const message = (seq: number, role: AgentMessage['role'], content: unknown): Age
   seq, role, content, createdAt: '2026-09-27T12:00:00Z',
 })
 
-async function openAgent(page: Page, messages: AgentMessage[] = []) {
+async function openAgent(page: Page, messages: AgentMessage[] = [], pendingAction?: AgentPendingAction) {
   const session = {
-    id: 'regression', title: '流式与图表回归检查', mode: 'create', status: 'idle',
+    id: 'regression', title: '流式与图表回归检查', mode: 'create', status: pendingAction ? 'waiting_approval' : 'idle', pendingAction,
     createdAt: '2026-09-27T12:00:00Z', updatedAt: '2026-09-27T12:00:00Z',
     plan: [{ title: '查看用量', status: 'done' }],
     settings: { modelSourceId: 'test', modelName: 'test-model', thinkingEnabled: false },
@@ -55,8 +55,52 @@ async function openAgent(page: Page, messages: AgentMessage[] = []) {
   })
   await page.goto('/#/agent')
   await page.locator('[role="button"]').filter({ has: page.getByText(session.title, { exact: true }) }).press('Enter')
-  await expect(page.getByPlaceholder('请描述你的任务')).toBeVisible()
+  if (!pendingAction) await expect(page.getByPlaceholder('请描述你的任务')).toBeVisible()
+  return session
 }
+
+test('external approval replacement and completion refresh the interaction area', async ({ page }) => {
+  await page.addInitScript(() => {
+    const schedule = window.setInterval
+    window.setInterval = (handler, timeout, ...args) => schedule(handler, timeout === 15000 ? 100 : timeout, ...args)
+  })
+  const session = await openAgent(page, [], { kind: 'question', calls: [], question: { question: 'First external question' } })
+  await expect(page.getByText('First external question', { exact: true })).toBeVisible()
+  session.pendingAction = { kind: 'question', calls: [], question: { question: 'Second external question' } }
+  await expect(page.getByText('Second external question', { exact: true })).toBeVisible()
+  session.status = 'idle'; session.pendingAction = undefined
+  await expect(page.getByPlaceholder('请描述你的任务')).toBeVisible()
+  await expect(page.getByText('Second external question', { exact: true })).not.toBeVisible()
+})
+
+test('a stale same-session poll cannot restore an externally completed approval', async ({ page }) => {
+  await page.addInitScript(() => {
+    const schedule = window.setInterval
+    window.setInterval = (handler, timeout, ...args) => schedule(handler, timeout === 15000 ? 100 : timeout, ...args)
+  })
+  const session = await openAgent(page, [], { kind: 'question', calls: [], question: { question: 'Pending external question' } })
+  await expect(page.getByText('Pending external question', { exact: true })).toBeVisible()
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => { release = resolve })
+  let delivered!: () => void
+  const delivery = new Promise<void>((resolve) => { delivered = resolve })
+  let requests = 0
+  await page.route('**/api/admin/agent/sessions/regression', async (route) => {
+    if (++requests === 1) {
+      await pending
+      await route.fulfill({ json: { ok: true, data: { session, messages: [] } } })
+      delivered()
+      return
+    }
+    await route.fulfill({ json: { ok: true, data: { session: { ...session, status: 'idle', pendingAction: null }, messages: [] } } })
+  })
+  await expect(page.getByPlaceholder('请描述你的任务')).toBeVisible()
+  release()
+  await delivery
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  await expect(page.getByText('Pending external question', { exact: true })).not.toBeVisible()
+  await expect(page.getByPlaceholder('请描述你的任务')).toBeVisible()
+})
 
 for (const ending of ['finish', 'fail'] as const) {
   test(`an old stream ${ending} cannot end a newer turn in the same session`, async ({ page }) => {

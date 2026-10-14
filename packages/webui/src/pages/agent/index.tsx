@@ -74,15 +74,19 @@ export function AgentPage() {
       : null;
 
   const activeIdRef = useRef(activeId);
-  useEffect(() => {
-    activeIdRef.current = activeId;
-  }, [activeId]);
+  const sessionRequest = useRef(0);
+  const selectSession = useCallback((id: string | undefined) => {
+    activeIdRef.current = id;
+    sessionRequest.current++;
+    setActiveId(id);
+  }, []);
 
   const refreshSession = useCallback(async (id: string) => {
+    const requestId = ++sessionRequest.current;
     try {
       const detail = await getAgentSession(id);
       // 快速 A→B 切换时 A 的慢响应不能覆盖已激活的 B。
-      if (activeIdRef.current !== id) return;
+      if (activeIdRef.current !== id || sessionRequest.current !== requestId) return;
       setSession(detail.session);
       setMessages(detail.messages ?? []);
     } catch {
@@ -115,8 +119,13 @@ export function AgentPage() {
       (pending?.kind === "plan" ||
         pending?.kind === "question" ||
         Boolean(pending?.calls?.length));
-    if (hydratable) hydrateApproval(pending);
+    hydrateApproval(hydratable ? pending : null);
   }, [session, hydrateApproval]);
+
+  useEffect(() => {
+    // A polling request started before local SSE cannot replace its new messages.
+    if (live.running) sessionRequest.current++;
+  }, [live.running]);
 
   /** 入口跳转：?mode=create | ?mode=edit&protocol=<id> 自动建会话并进入工作区。 */
   useEffect(() => {
@@ -198,7 +207,7 @@ export function AgentPage() {
       try {
         const created = await createAgentSession(input ?? { mode: "create" });
         await mutateSessions();
-        setActiveId(created.id);
+        selectSession(created.id);
         setSession(created);
         setMessages([]);
         setView("chat");
@@ -206,7 +215,7 @@ export function AgentPage() {
         failToast("创建会话失败")(error);
       }
     },
-    [failToast, mutateSessions],
+    [failToast, mutateSessions, selectSession],
   );
 
   /** 总览卡片 → 进入工作区。 */
@@ -214,10 +223,12 @@ export function AgentPage() {
     (id: string) => {
       setView("chat");
       if (id === activeId) return;
-      setActiveId(id);
+      selectSession(id);
+      setSession(undefined);
+      setMessages([]);
       void refreshSession(id);
     },
-    [activeId, refreshSession],
+    [activeId, refreshSession, selectSession],
   );
 
   const handleDelete = useCallback(
@@ -233,7 +244,7 @@ export function AgentPage() {
         await deleteAgentSession(id);
         void deleteComposerDraft(id);
         if (id === activeId) {
-          setActiveId(undefined);
+          selectSession(undefined);
           setSession(undefined);
           setMessages([]);
         }
@@ -242,7 +253,7 @@ export function AgentPage() {
         failToast("删除失败")(error);
       }
     },
-    [activeId, confirm, failToast, mutateSessions, sessions],
+    [activeId, confirm, failToast, mutateSessions, sessions, selectSession],
   );
 
   /** 总览卡片点标题重命名：与 updateAgentSession settings patch 同链路。 */
