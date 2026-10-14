@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 )
@@ -12,10 +13,12 @@ func TestMappingCancellationRetainsCause(t *testing.T) {
 	for _, deadline := range []bool{false, true} {
 		ctx, cancel := context.WithCancel(context.Background())
 		cause := context.Canceled
+		expectedCode := ExecutionCancelled
 		if deadline {
 			cancel()
 			ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 			cause = context.DeadlineExceeded
+			expectedCode = ExecutionTimeout
 		} else {
 			cancel()
 		}
@@ -29,7 +32,7 @@ func TestMappingCancellationRetainsCause(t *testing.T) {
 			t.Fatal("cancellation became an input error")
 		}
 		_, issues := compiled.Execute(ctx, EncodeEvent, StringValue("test"), EvaluationContext{})
-		if len(issues) != 1 || issues[0].Code == InvalidInput || issues[0].Suggestion != "" {
+		if len(issues) != 1 || issues[0].Code != expectedCode || issues[0].Suggestion != "" || !slices.Contains(DiagnosticCatalog(), expectedCode) {
 			t.Fatalf("incorrect report: %+v", issues)
 		}
 	}

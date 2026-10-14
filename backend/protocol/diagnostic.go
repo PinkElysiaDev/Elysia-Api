@@ -36,6 +36,8 @@ const (
 	ConversionNormalized      IssueCode = "conversion_normalized"
 	ConversionRejected        IssueCode = "conversion_rejected"
 	ContinuationUnavailable   IssueCode = "continuation_unavailable"
+	ExecutionCancelled        IssueCode = "operation_cancelled"
+	ExecutionTimeout          IssueCode = "operation_timeout"
 )
 
 // ConversionIssue locates a compatibility failure without capturing request

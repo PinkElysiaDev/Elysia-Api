@@ -673,9 +673,9 @@ func (compiled *Compiled) Execute(ctx context.Context, direction Direction, inpu
 	if errors.As(err, &conversion) {
 		return Value{}, conversion.Issues
 	}
-	code := IssueCode("operation_cancelled")
+	code := ExecutionCancelled
 	if errors.Is(err, context.DeadlineExceeded) {
-		code = "operation_timeout"
+		code = ExecutionTimeout
 	}
 	return Value{}, []ConversionIssue{{Code: code, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "evaluate", Path: "/", Reason: err.Error()}}
 }
