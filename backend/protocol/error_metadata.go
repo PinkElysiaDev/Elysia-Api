@@ -24,14 +24,21 @@ func (c *CompiledConversion) projectErrorMetadata(value Value, route ConversionC
 		return Value{}, streamIssue(InvalidInput, "/error", "error projection requires an object")
 	}
 	var details []string
-	for _, key := range []string{"code", "param"} {
+	for _, key := range []string{"providerType", "code", "param"} {
 		field := fields[key]
 		if field.IsZero() || field.IsNull() {
 			continue
 		}
 		var text string
+		wireKey := key
+		if key == "providerType" {
+			wireKey = "type"
+		}
 		if err := field.Decode(&text); err != nil {
-			return Value{}, streamIssue(InvalidInput, "/error/"+key, "provider error detail requires a string or null")
+			return Value{}, streamIssue(InvalidInput, "/error/"+wireKey, "provider error detail requires a string or null")
+		}
+		if key == "providerType" && text != "new_api_error" {
+			return Value{}, streamIssue(UnsupportedCapability, "/error/type", "provider wrapper type has no declared projection")
 		}
 		if key == "param" && text == "" {
 			delete(fields, key)
@@ -41,10 +48,10 @@ func (c *CompiledConversion) projectErrorMetadata(value Value, route ConversionC
 		if options.TargetCodec == "openai-chat" || options.TargetCodec == "responses" {
 			continue
 		}
-		if err := c.issue(rule, rule.Phase, route, "/error/"+key, "target has no structured error detail field; preserved in the error message", sink, true); err != nil {
+		if err := c.issue(rule, rule.Phase, route, "/error/"+wireKey, "target has no structured error detail field; preserved in the error message", sink, true); err != nil {
 			return Value{}, err
 		}
-		details = append(details, key+"="+strconv.Quote(text))
+		details = append(details, wireKey+"="+strconv.Quote(text))
 		delete(fields, key)
 	}
 	if len(details) > 0 {

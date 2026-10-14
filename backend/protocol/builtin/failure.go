@@ -94,8 +94,15 @@ func (adapter module) decodeFailure(value p.Value, options p.EvaluationContext) 
 		// existing server category; treating it as a vendor extension would
 		// replace a real provider outage with an unsupported conversion error.
 		isTypeAlias := (adapter.name == Chat || adapter.name == Responses) && (typeName == "server_error" || typeName == "upstream_error")
+		isProviderWrapper := (adapter.name == Chat || adapter.name == Responses) && typeName == "new_api_error"
 		if category != "" && (typeName == canonicalType || isTypeAlias) {
 			known = append(known, "type")
+		}
+		if isProviderWrapper {
+			// The wrapper carries no category: the observed HTTP status or an
+			// independently recognized code supplies that meaning.
+			known = append(known, "type")
+			result["providerType"] = fields["type"]
 		}
 		if adapter.name == Chat || adapter.name == Responses {
 			code := ""
@@ -120,6 +127,9 @@ func (adapter module) decodeFailure(value p.Value, options p.EvaluationContext) 
 				category = ErrorClassUpstream
 				result["code"] = fields["code"]
 			default:
+				result["code"] = fields["code"]
+			}
+			if isProviderWrapper {
 				result["code"] = fields["code"]
 			}
 			result["param"] = fields["param"]
@@ -155,7 +165,12 @@ func (adapter module) decodeFailure(value p.Value, options p.EvaluationContext) 
 		if err := options.Values["httpStatus"].Decode(&status); err != nil {
 			return p.Value{}, err
 		}
-		category = ClassFromStatus(status)
+		if status < 200 || status >= 300 {
+			category = ClassFromStatus(status)
+		}
+	}
+	if category == "" && result["providerType"].IsString("new_api_error") {
+		category = ErrorClassUpstream
 	}
 	if category != "" {
 		result["category"] = p.StringValue(string(category))
@@ -180,7 +195,7 @@ func (adapter module) encodeFailure(value p.Value, options p.EvaluationContext) 
 	}
 	for key := range fields {
 		switch key {
-		case "message", "category", "code", "param", "details":
+		case "message", "category", "code", "param", "details", "providerType":
 		default:
 			if !strings.HasPrefix(key, wireExtensionPrefix) {
 				return p.Value{}, unsupported("/error/"+key, "target has no declared error field mapping")
@@ -192,6 +207,10 @@ func (adapter module) encodeFailure(value p.Value, options p.EvaluationContext) 
 		return p.Value{}, err
 	}
 	category := ErrorClass(categoryText)
+	providerType := fields["providerType"]
+	if !providerType.IsZero() && !providerType.IsString("new_api_error") {
+		return p.Value{}, unsupported("/error/type", "target has no declared provider error type mapping")
+	}
 	status := 0
 	if !options.Values["httpStatus"].IsZero() {
 		if err := options.Values["httpStatus"].Decode(&status); err != nil {
@@ -200,7 +219,7 @@ func (adapter module) encodeFailure(value p.Value, options p.EvaluationContext) 
 	}
 	if category == "" {
 		category = ErrorClassUpstream
-		if status != 0 {
+		if status != 0 && (status < 200 || status >= 300) {
 			category = ClassFromStatus(status)
 		}
 	}
@@ -214,6 +233,9 @@ func (adapter module) encodeFailure(value p.Value, options p.EvaluationContext) 
 		return p.Value{}, err
 	}
 	if adapter.name == Anthropic || adapter.name == Gemini {
+		if !providerType.IsZero() {
+			return p.Value{}, unsupported("/error/type", "target cannot retain the provider error wrapper type")
+		}
 		for _, key := range []string{"code", "param"} {
 			if !fields[key].IsZero() && !fields[key].IsNull() {
 				return p.Value{}, unsupported("/error/"+key, "target has no equivalent provider error field")
@@ -226,6 +248,9 @@ func (adapter module) encodeFailure(value p.Value, options p.EvaluationContext) 
 	switch adapter.name {
 	case Chat, Responses:
 		typeName, code := category.openAITypeCode()
+		if !providerType.IsZero() {
+			output["type"] = providerType
+		}
 		if output["type"].IsZero() {
 			output["type"] = p.StringValue(typeName)
 		}
