@@ -238,6 +238,72 @@ test('external approval replacement and completion refresh the interaction area'
   await expect(page.getByText('Second external question', { exact: true })).not.toBeVisible()
 })
 
+test('another session can save while a pending edit survives an A B A selection', async ({ page }) => {
+  const session = await openAgent(page, [], undefined, true)
+  const nextSession = { ...structuredClone(session), id: 'next-session', title: 'Second selected session' }
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => { release = resolve })
+  let firstWrites = 0, secondWrites = 0
+  await page.route('**/api/admin/agent/sessions/regression', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      firstWrites++
+      await pending
+      Object.assign(session.settings, route.request().postDataJSON().settings)
+      return route.fulfill({ json: { ok: true, data: session } })
+    }
+    return route.fulfill({ json: { ok: true, data: { session, messages: [] } } })
+  })
+  await page.route('**/api/admin/agent/sessions/next-session', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      secondWrites++
+      Object.assign(nextSession.settings, route.request().postDataJSON().settings)
+      return route.fulfill({ json: { ok: true, data: nextSession } })
+    }
+    return route.fulfill({ json: { ok: true, data: { session: nextSession, messages: [] } } })
+  })
+  await page.getByTitle('权限控制：审批频繁程度与计划模式').click()
+  await page.getByRole('menuitemradio', { name: /^自动编辑/ }).click()
+  await expect.poll(() => firstWrites).toBe(1)
+  await page.getByTitle('返回会话总览').click()
+  await page.locator('[role="button"]').filter({ has: page.getByText(nextSession.title, { exact: true }) }).press('Enter')
+  await page.getByTitle('权限控制：审批频繁程度与计划模式').click()
+  await page.getByRole('menuitemradio', { name: /^完全控制/ }).click()
+  await expect.poll(() => secondWrites).toBe(1)
+  await expect(page.getByRole('menuitemradio', { name: /^完全控制/ })).toHaveAttribute('aria-checked', 'true')
+  await page.getByTitle('返回会话总览').click()
+  await page.locator('[role="button"]').filter({ has: page.getByText(session.title, { exact: true }) }).press('Enter')
+  release()
+  await expect(page.getByPlaceholder('请描述你的任务')).toBeVisible()
+  await page.getByTitle('权限控制：审批频繁程度与计划模式').click()
+  await expect(page.getByRole('menuitemradio', { name: /^自动编辑/ })).toHaveAttribute('aria-checked', 'true')
+  expect(firstWrites).toBe(1)
+})
+
+test('an obsolete failed detail request cannot report an error in a new session', async ({ page }) => {
+  await page.addInitScript(() => {
+    const schedule = window.setInterval
+    window.setInterval = (handler, timeout, ...args) => schedule(handler, timeout === 15000 ? 100 : timeout, ...args)
+  })
+  const session = await openAgent(page, [], undefined, true)
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => { release = resolve })
+  let hasRequested = false
+  await page.route('**/api/admin/agent/sessions/regression', async (route) => {
+    hasRequested = true
+    await pending
+    await route.fulfill({ status: 500, json: { ok: false, error: { code: 'session_read_failed', message: 'Obsolete read failure' } } })
+  })
+  await expect.poll(() => hasRequested).toBe(true)
+  const nextSession = { ...session, id: 'next-session', title: 'Second selected session' }
+  await page.route('**/api/admin/agent/sessions/next-session', (route) => route.fulfill({ json: { ok: true, data: { session: nextSession, messages: [message(1, 'assistant', { text: 'New selection history' })] } } }))
+  await page.getByTitle('返回会话总览').click()
+  await page.locator('[role="button"]').filter({ has: page.getByText(nextSession.title, { exact: true }) }).press('Enter')
+  await expect(page.getByText('New selection history', { exact: true })).toBeVisible()
+  release()
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  await expect(page.getByRole('alert')).not.toBeVisible()
+})
+
 test('a stale same-session poll cannot restore an externally completed approval', async ({ page }) => {
   await page.addInitScript(() => {
     const schedule = window.setInterval
