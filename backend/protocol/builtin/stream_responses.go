@@ -109,8 +109,8 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		return []p.Event{event}, err
 	case "response.function_call_arguments.done", "response.custom_tool_call_input.done":
 		item := stream.items[key]
-		if item == nil {
-			return nil, fmt.Errorf("completed input has no tool item")
+		if item == nil || item.node.Kind != p.ToolCallNode || item.node.Input == nil {
+			return nil, unsupported("/item_id", "completed input requires a preceding tool call item")
 		}
 		node := item.node
 		value := fields["input"]
