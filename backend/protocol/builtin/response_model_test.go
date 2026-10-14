@@ -2,12 +2,70 @@ package builtin
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
 )
+
+func TestResponseModelFailureAttribution(t *testing.T) {
+	compiled := shippedProjectionProtocol(t, Chat)
+	for _, scenario := range []string{"source_missing", "source_null", "source_invalid", "source_mapping", "after_mapping", "handwritten"} {
+		t.Run(scenario, func(t *testing.T) {
+			raw := october14Fixture(t, "chat_missing_model")
+			fields, _ := raw.ReadObject()
+			switch scenario {
+			case "source_null":
+				fields["model"] = testValue(t, "null")
+			case "source_invalid":
+				fields["model"] = testValue(t, "42")
+			case "source_mapping", "after_mapping":
+				fields["model"] = p.StringValue("provider-model")
+			}
+			raw, _ = p.EncodeValue(fields)
+			response, err := compiled.DecodeResponse(t.Context(), raw.Bytes(), p.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			route, err := (p.ConversionContext{Transport: p.HTTPJSON, Source: compiled.Identity()}).WithResponseModelOrigin(compiled, compiled, []byte(`{"model":"sent"}`), raw.Bytes())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if scenario == "source_mapping" {
+				response.Model = p.Value{}
+			}
+			if scenario == "handwritten" {
+				route.ResponseModel = nil
+			}
+			wire, err := compiled.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			value := testValue(t, string(wire))
+			if scenario == "after_mapping" {
+				value, err = p.ApplyMutations(value, []p.Mutation{{Op: p.DeleteValue, Path: "/model"}}, p.DefaultLimits())
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			err = route.AttributeResponseModelFailure(compiled.ValidateWireOutput(p.EncodeResponse, value), response, value)
+			var conversion *p.ConversionError
+			if !errors.As(err, &conversion) {
+				t.Fatal("missing final validation", err)
+			}
+			wantSource := scenario == "source_missing" || scenario == "source_null" || scenario == "source_invalid"
+			issue := conversion.Issues[0]
+			if (issue.Code == p.UpstreamContractViolation) != wantSource {
+				t.Fatal(issue)
+			}
+			if wantSource && (issue.Direction != p.DecodeResponse || issue.Protocol != compiled.Identity() || issue.Path != "/model") {
+				t.Fatal(issue)
+			}
+		})
+	}
+}
 
 func october14Fixture(t *testing.T, name string) p.Value {
 	t.Helper()

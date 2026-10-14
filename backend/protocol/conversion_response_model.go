@@ -1,6 +1,9 @@
 package protocol
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // ResponseModelOrigin describes one observed response, independently of later
 // semantic mappings. RequestModel comes from the final outbound wire request.
@@ -8,6 +11,33 @@ type ResponseModelOrigin struct {
 	RequestModel  Value `json:"requestModel,omitzero"`
 	SourcePresent bool  `json:"sourcePresent"`
 	SourceModel   Value `json:"sourceModel,omitzero"`
+}
+
+// AttributeResponseModelFailure attributes a failed model contract to the
+// provider only when both semantic and final wire values still match the
+// observed source. Mapping-created errors retain their target diagnostics.
+func (route ConversionContext) AttributeResponseModelFailure(err error, response *Response, wire Value) error {
+	origin := route.ResponseModel
+	var conversion *ConversionError
+	if origin == nil || response == nil || !errors.As(err, &conversion) || origin.SourceModel != response.Model {
+		return err
+	}
+	fields, readErr := wire.ReadObject()
+	model, isPresent := fields["model"]
+	if readErr != nil || isPresent != origin.SourcePresent || model != origin.SourceModel {
+		return err
+	}
+	issues := append([]ConversionIssue(nil), conversion.Issues...)
+	for index := range issues {
+		issue := &issues[index]
+		if issue.Stage == "wire.output" && issue.Path == "/model" {
+			issue.Code, issue.Protocol, issue.Direction = UpstreamContractViolation, route.Source, DecodeResponse
+			issue.Stage = "decode.response"
+			issue.Reason = "provider response model must be a nonempty string"
+			issue.Suggestion = "Correct the provider response; authored mappings and final output checks remain enforced."
+		}
+	}
+	return &ConversionError{Issues: issues}
 }
 
 func chatResponseModelPair(ingress, upstream *Compiled) bool {

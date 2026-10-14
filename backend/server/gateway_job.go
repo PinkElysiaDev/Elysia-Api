@@ -222,9 +222,7 @@ func (s *Server) writeGatewayJobResult(c *gin.Context, ingress *protocol.Compile
 		return
 	}
 	response := *job.Task.Result
-	if !response.Model.IsZero() {
-		response.Model = protocol.StringValue(job.GroupName)
-	}
+	applyClientModelAlias(&response, protocol.StringValue(job.GroupName))
 	body, err := ingress.EncodeResponse(c.Request.Context(), &response, protocol.EvaluationContext{Scope: protocol.Scope{Provider: job.Task.ModelSourceID, Account: job.SourceAccount, Model: job.Model}})
 	if err != nil {
 		respondProtocolError(c, err)

@@ -244,19 +244,17 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	if err := s.captureContinuationResponse(c, candidate.continuation, semantic); err != nil {
 		return err
 	}
+	route, originErr := candidate.conversionContext(plan.ingress, true).WithResponseModelOrigin(plan.ingress, candidate.compiled, outboundBody, body)
+	if originErr != nil {
+		return originErr
+	}
 	if candidate.conversion != nil {
-		route, originErr := candidate.conversionContext(plan.ingress, true).WithResponseModelOrigin(plan.ingress, candidate.compiled, outboundBody, body)
-		if originErr != nil {
-			return originErr
-		}
 		semantic, err = candidate.conversion.Response(c.Request.Context(), semantic, route, options.Diagnostics)
 		if err != nil {
 			return err
 		}
 	}
-	if !semantic.Model.IsZero() {
-		semantic.Model = plan.request.Model
-	}
+	applyClientModelAlias(semantic, plan.request.Model)
 	body, err = plan.ingress.EncodeResponse(c.Request.Context(), semantic, options)
 	if err != nil {
 		return err
@@ -282,7 +280,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 		return parseErr
 	}
 	if err := plan.ingress.ValidateWireOutput(protocol.EncodeResponse, wireValue); err != nil {
-		return err
+		return route.AttributeResponseModelFailure(err, semantic, wireValue)
 	}
 	if len(body) > plan.ingress.ResourceLimits().BufferBytes {
 		return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.LimitExceeded, Severity: protocol.SeverityError, Stage: "continuation", Path: "/response", Reason: "response including continuation carriers exceeds target buffer limit"}})

@@ -458,6 +458,7 @@
     "backend/server/gateway_job.go",
     "backend/server/gateway_job_executor.go",
     "backend/server/gateway_job_test.go",
+    "backend/server/gateway_model.go",
     "backend/server/gateway_native_failure_test.go",
     "backend/server/gateway_new_api_error_test.go",
     "backend/server/gateway_profiles_test.go",

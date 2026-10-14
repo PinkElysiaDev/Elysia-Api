@@ -205,3 +205,38 @@ func TestGatewayChatMissingResponseModel(t *testing.T) {
 		t.Fatal("missing repair provenance", record.ConversionIssues)
 	}
 }
+
+func TestGatewayChatInvalidResponseModelIsNotAliased(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	activateDiscoveryPresets(t, s)
+	service, _ := s.protocolService()
+	upstream, _ := service.Pin(protocol.PresetChatCompletionsID)
+	var raw []byte
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(raw)
+	}))
+	defer provider.Close()
+	setupGatewayModel(t, s, upstream, provider.URL)
+	for _, model := range []string{"null", `""`, "42", `{}`} {
+		t.Run(model, func(t *testing.T) {
+			fixture, _ := protocol.ParseValue(auditOctober14Fixture(t, "chat_missing_model"))
+			value, _ := protocol.ParseValue([]byte(model))
+			fixture, err := protocol.ApplyMutations(fixture, []protocol.Mutation{{Op: protocol.SetValue, Path: "/model", Value: value}}, protocol.DefaultLimits())
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw = fixture.Bytes()
+			req := httptest.NewRequest("POST", "/gateway/openai-chat-completions/chat/completions", strings.NewReader(`{"model":"group","messages":[{"role":"user","content":"hello"}]}`))
+			req.Header.Set("Authorization", "Bearer gateway-test-token")
+			rec := httptest.NewRecorder()
+			s.engine.ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadGateway {
+				t.Fatalf("invalid provider model was hidden: %d %s", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), "upstream_contract_violation") || !strings.Contains(rec.Body.String(), "decode_response") {
+				t.Fatal("source model failure lost its attribution", rec.Body.String())
+			}
+		})
+	}
+}
