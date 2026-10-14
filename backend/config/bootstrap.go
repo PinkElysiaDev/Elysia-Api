@@ -7,6 +7,8 @@ import (
 	"os"
 )
 
+const panelTokenRandomBytes = 32
+
 // EnsureConfig loads the config at path. If the file does not exist, it writes a
 // default config (with a randomly generated panelAccessToken) to path and loads
 // that instead. The bool result is true when a default config was created on
@@ -23,10 +25,7 @@ func EnsureConfig(path string) (*Config, bool, error) {
 		return nil, false, err
 	}
 
-	token, err := generateRandomToken()
-	if err != nil {
-		return nil, false, err
-	}
+	token := generateRandomToken()
 	if err := writeDefaultConfig(path, token); err != nil {
 		return nil, false, err
 	}
@@ -41,10 +40,10 @@ func EnsureConfig(path string) (*Config, bool, error) {
 // generateRandomToken returns a fresh random panel access token of the form
 // "elysia-<43 url-safe base64 chars>" (32 random bytes). It is suitable as an
 // unguessable first-run credential that the operator should rotate later.
-func generateRandomToken() (string, error) {
-	raw := make([]byte, 32)
+func generateRandomToken() string {
+	raw := make([]byte, panelTokenRandomBytes)
 	_, _ = rand.Read(raw)
-	return "elysia-" + base64.RawURLEncoding.EncodeToString(raw), nil
+	return "elysia-" + base64.RawURLEncoding.EncodeToString(raw)
 }
 
 // writeDefaultConfig writes a minimal bootstrap config to path, mirroring the

@@ -139,9 +139,6 @@ func ReadFrames(ctx context.Context, reader io.Reader, operation Operation, limi
 			isDone = true
 			return nil
 		}
-		if isDone {
-			return fmt.Errorf("upstream frame arrived after transport end marker")
-		}
 		value, err := ParseValue(raw)
 		if err != nil {
 			return fmt.Errorf("invalid upstream event JSON: %w", err)

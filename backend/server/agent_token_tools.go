@@ -33,10 +33,10 @@ func agentTokenView(item storage.APIToken) map[string]any {
 }
 
 // generateAPIKeySecret 生成新令牌明文（32 字节 URL-safe base64）。
-func generateAPIKeySecret() (string, error) {
+func generateAPIKeySecret() string {
 	buf := make([]byte, agentKeySecretBytes)
 	_, _ = rand.Read(buf)
-	return base64.RawURLEncoding.EncodeToString(buf), nil
+	return base64.RawURLEncoding.EncodeToString(buf)
 }
 
 // ---- list_api_keys（只读）----
@@ -101,14 +101,10 @@ func (t *createAPIKeyTool) Execute(ctx context.Context, tctx CLIContext, args js
 		return CLIError("name 必填", "missing_name")
 	}
 	secret := strings.TrimSpace(params.Secret)
-	generated := false
+	isGenerated := false
 	if secret == "" {
-		var err error
-		secret, err = generateAPIKeySecret()
-		if err != nil {
-			return CLIError("生成随机明文失败: "+err.Error(), "random_failed")
-		}
-		generated = true
+		secret = generateAPIKeySecret()
+		isGenerated = true
 	}
 	item := storage.APIToken{Name: name, Token: secret, Enabled: true, AllowedGroups: params.AllowedGroups}
 	if params.Enabled != nil {
@@ -124,7 +120,7 @@ func (t *createAPIKeyTool) Execute(ctx context.Context, tctx CLIContext, args js
 	// 现场事件保留原值交付，落库/回放出口按值打码（此前明文会永久存进会话
 	// 历史并逐轮回传模型，与「仅此一次」的承诺矛盾）。
 	origin := "用户指定"
-	if generated {
+	if isGenerated {
 		origin = "自动生成"
 	}
 	return CLIResult{OK: true,

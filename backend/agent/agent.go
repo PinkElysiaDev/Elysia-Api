@@ -1114,10 +1114,9 @@ func (e *Engine) notePlanReady(session *Session, call FunctionCall, result ToolR
 	}
 }
 
-// watchToolProgress 给长工具发耗时心跳，并套上单独超时：声明了 TimeoutMs
-// 用声明值，否则给默认硬顶——无视 ctx 阻塞在 Execute 里的工具若没有上限，
-// 轮次 goroutine 永不返回，会话会卡在 running 直到进程重启。返回的停止
-// 函数必须在执行结束后调用。
+// watchToolProgress 给长工具发耗时心跳，并设置声明或默认的 context 超时。
+// 工具必须配合 context 取消；它不能强制中断忽略 context 的 Execute。
+// 返回的停止函数必须在执行结束后调用，以免心跳访问已关闭的事件通道。
 func (e *Engine) watchToolProgress(ctx context.Context, call FunctionCall, meta ToolMeta, events chan Event) (context.Context, func()) {
 	execCtx := ctx
 	var cancel context.CancelFunc
@@ -1146,8 +1145,8 @@ func (e *Engine) watchToolProgress(ctx context.Context, call FunctionCall, meta 
 	}()
 	return execCtx, func() {
 		close(stop)
-		cancel() // timeoutMs 已兜到默认值，WithTimeout 恒返回非 nil cancel
-		<-done   // 确保调用方关闭 events 前心跳已经退出。
+		cancel()
+		<-done // 确保调用方关闭 events 前心跳已经退出。
 	}
 }
 
