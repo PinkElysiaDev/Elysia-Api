@@ -21,6 +21,8 @@ import (
 // never opens them or interprets their unversioned fingerprints.
 const protocolSnapshotSetting = "protocol_current_snapshot_v2"
 
+const snapshotCleanupTimeout = 5 * time.Second
+
 type ProtocolSnapshot struct {
 	FormatVersion    int       `json:"formatVersion"`
 	Path             string    `json:"path"`
@@ -83,10 +85,10 @@ func (s *Store) ensureProtocolSnapshot(ctx context.Context, baseline, evidence s
 		return nil, err
 	}
 	temporary := file.Name()
+	defer os.Remove(temporary)
 	if err = file.Close(); err != nil {
 		return nil, err
 	}
-	defer os.Remove(temporary)
 	if _, err = s.db.ExecContext(ctx, `VACUUM INTO ?`, temporary); err != nil {
 		return nil, err
 	}
@@ -129,6 +131,11 @@ func (s *Store) ensureProtocolSnapshot(ctx context.Context, baseline, evidence s
 	if err = os.Rename(temporary, final); err != nil {
 		return nil, err
 	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, s.removeUnreferencedSnapshot(final))
+		}
+	}()
 	snapshot.Path = final
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -162,6 +169,25 @@ func (s *Store) ensureProtocolSnapshot(ctx context.Context, baseline, evidence s
 		return nil, err
 	}
 	return snapshot, nil
+}
+
+// removeUnreferencedSnapshot only accepts the newly created path owned by this
+// attempt. A separate read resolves an uncertain commit before deleting it.
+func (s *Store) removeUnreferencedSnapshot(path string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), snapshotCleanupTimeout)
+	defer cancel()
+	encoded, _ := json.Marshal(path)
+	var isReferenced bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM settings WHERE instr(value, ?) > 0)`, string(encoded)).Scan(&isReferenced); err != nil {
+		return fmt.Errorf("snapshot retained because references could not be checked: %w", err)
+	}
+	if isReferenced {
+		return nil
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove unreferenced snapshot: %w", err)
+	}
+	return nil
 }
 
 func openProtocolSnapshot(path string) (*sql.DB, error) {
