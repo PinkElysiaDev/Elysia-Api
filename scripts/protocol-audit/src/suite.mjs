@@ -11,10 +11,11 @@ import { runAudit, planAudit, redactor, codeCheck, exchange, runLogger } from '.
 import { protocols, requestBody, followupBody, endpoint, inspectReply } from './protocols.mjs'
 import { localInstance } from './local.mjs'
 import { mapConcurrent, serialize } from './concurrency.mjs'
-import { eventSequence, failureCategory, failureAnalysis, providerFailures, persistedCall, requestSelection, describeHTTPFailure } from './evidence.mjs'
+import { eventSequence, failureCategory, failureAnalysis, providerFailures, persistedCall, requestSelection, describeHTTPFailure, failureCounts, compatibilityObservations, finishCompatibilityCoverage, compatibilityCounts } from './evidence.mjs'
 import { regressionCases, assertNativeSystemRequest } from './regressions.mjs'
 import { atomicFile } from './report-file.mjs'
 import { cancellationProbe, assertCancellationRecord } from './cancellation.mjs'
+import { checkPersistence } from './persistence.mjs'
 
 export const groups = ['daily', 'protocol', 'sdk', 'errors', 'persistence', 'code']
 const toolDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -72,12 +73,14 @@ function reportMarkdown(report) {
     if (item.failure) {
       lines.push(`- 上游 HTTP：${cell(item.failure.upstreamHttpStatuses.join(', ')) || '未知'}；客户端 HTTP：${cell(item.failure.clientHttpStatuses.join(', ')) || '未知'}`)
       lines.push(`- 主因：${cell(item.failureCategory)} ${cell(item.failure.primary?.message || '')}`)
+      if (item.failure.transportFailure) lines.push(`- 传输失败：${cell(item.failure.transportFailure.kind)}；阶段：${cell(item.failure.transportFailure.phase)}`)
       for (const issue of item.failure.secondaryIssues) lines.push(`- 次级诊断：${cell(issue.code)} ${cell(issue.path)} ${cell(issue.reason)}`)
     }
     for (const evidence of item.evidence || []) lines.push(`- [证据](${evidence})`)
     lines.push('')
   }
   lines.push('## 覆盖边界', '', '本轮使用配置的真实渠道和真实临时后端；源码检查另行标注。预期错误被正确处理时用例通过。blocked/skipped/running 不代表通过。', '', '不主动制造上游 429、503、超时或断流；实际发生时记录失败，未发生不代表这些异常已验证。取消测试只验证客户端结束请求及后续可用性，无法确认供应商停止生成或计费。日常流程通过管理 API 检查，不包含浏览器交互、长期压测和安装包。证据按已知密钥及签名字段脱敏，分享前请检查其他私有信息。', '')
+  lines.push('## 分类与扩展覆盖', '', `- 主失败：${cell(JSON.stringify(report.failureCounts?.primary || {}))}`, `- 次级问题（可与主失败重叠）：${cell(JSON.stringify(report.failureCounts?.secondary || {}))}`, `- 扩展出现／规则触发／完整消费：${cell(JSON.stringify(report.compatibilityCounts || {}))}`, '', '未出现扩展的普通成功不构成该扩展验收；完整消费不证明跨请求状态恢复。', '')
   return lines.join('\n')
 }
 
@@ -100,6 +103,8 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
   const report = { startedAt: new Date().toISOString(), status: 'running', runtime: { node: process.version, platform: process.platform, arch: process.arch }, project: { root: plan.root, commit: git(['rev-parse', 'HEAD']), dirty: !!git(['status', '--porcelain']) }, groups: plan.groups, configuration: { ...input, concurrency: plan.api.concurrency, targets: plan.api.targets }, cases: [] }
   const save = serialize(async () => {
     report.counts = Object.fromEntries(['passed', 'failed', 'incomplete', 'blocked', 'skipped', 'not_applicable', 'running'].map(status => [status, report.cases.filter(c => !c.summary && c.status === status).length]))
+    report.failureCounts = failureCounts(report.cases)
+    report.compatibilityCounts = compatibilityCounts(report.cases)
     const snapshot = clean(report)
     for (const [name, body] of [['report.json', JSON.stringify(snapshot, null, 2)], ['report.md', reportMarkdown(snapshot)]]) {
       await atomicFile(join(outputDir, name), body + '\n')
@@ -120,6 +125,7 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
     try { item.actual = await currentCase.run(item, () => fn(item)) || '符合预期'; item.status = 'passed' }
     catch (error) { item.status = error.code === 'blocked' ? 'blocked' : signal?.aborted ? 'skipped' : 'failed'; item.error = { code: error.code || error.name, message: error.message, stack: error.stack }; if (error.sdk) item.sdk = error.sdk; if (error.backendLog) await evidence('backend.log', error.backendLog, item); if (error.startupFailure) await evidence('startup-failure.json', error.startupFailure, item) }
     if (item.error?.code === 'timeout' && source === 'source-code') item.status = 'incomplete'
+    finishCompatibilityCoverage(item)
     if (['failed', 'incomplete'].includes(item.status)) {
       const input = { ...item, record: item.calls?.at(-1)?.record }
       item.failureCategory = failureCategory(input); item.failure = failureAnalysis(input)
@@ -177,7 +183,8 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
       sourceId: record?.sourceId, modelId: record?.modelId,
       policyHashes: [...new Set([record?.conversionPolicyHash, ...(record?.conversionIssues?.map(i => i.policyHash) || [])].filter(Boolean))],
       // Keep a small classification view; the full redacted record lives in evidence.
-      record: record ? { error: record.error, errorKind: record.errorKind, statusCode: record.statusCode, upstreamHttpStatus: record.upstreamHttpStatus, providerFailures: providerFailures(record.providerResponse?.content, record.upstreamHttpStatus), conversionIssues: record.conversionIssues, protocolUsage: record.protocolUsage } : undefined,
+      record: record ? { error: record.error, errorKind: record.errorKind, statusCode: record.statusCode, upstreamHttpStatus: record.upstreamHttpStatus, transportFailure: record.transportFailure, providerFailures: providerFailures(record.providerResponse?.content, record.upstreamHttpStatus), conversionIssues: record.conversionIssues, protocolUsage: record.protocolUsage } : undefined,
+      compatibility: compatibilityObservations(record?.providerResponse?.content, record),
     }
     result.evidence = await evidence('call-record.json', { ...trace, round, protocol, taskId, requestSelection: requestSelection(request?.body), events: eventSequence(response.raw || response.body || '', stream) }, owner)
     // Make the full record available for assertions without copying bodies into reports.
@@ -346,7 +353,7 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
           for (const [name, expected, fn] of [
             ['wrong-key', '错误网关令牌返回 401', () => call(protocol, id, false, { token: 'audit-invalid', expected: 401 })],
             ['unknown-model', '无效模型返回 4xx', () => call(protocol, 'audit-model-does-not-exist', false, { expected: [400, 404] })],
-            ['invalid-json', '非法 JSON 返回 400，后续正常调用成功', () => call(protocol, id, false, { rawBody: '{bad json', expected: 400 })],
+            ['invalid-json', '非法 JSON 返回 400', () => call(protocol, id, false, { rawBody: '{bad json', expected: 400 })],
             ['cancel', '客户端取消流式请求后仍可正常调用', async () => {
               const abort = new AbortController()
               const probe = cancellationProbe(protocol, () => abort.abort())
@@ -364,31 +371,17 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
             if (name === 'cancel') {
               await run(name, '收到正常生成内容后取消，调用记录确认取消且无上游错误', async () => { needRoute(); await fn() })
               await run('cancel-recovery', '取消场景后独立验证正常调用', async () => { needRoute(); await recovery() })
-            } else if (['wrong-key', 'unknown-model'].includes(name)) {
+            } else {
               await run(name, expected, async () => { needRoute(); await fn() })
               await run(`${name}-recovery`, '预期拒绝后独立验证正常调用', async () => { needRoute(); await recovery() })
-            } else await run(name, expected, async () => { needRoute(); await fn(); await recovery() })
+            }
           }
         }
         if (current === 'persistence') {
-          let called = false
-          await run('call', '原有源、模型组和令牌调用成功', async () => { needRoute(); await recovery(); called = true })
-          await run('restart', '重启后原有配置和令牌可直接使用', async () => { needRoute(); if (!called) throw blocked('依赖 call 成功'); await instance.restart(); await runtimeEvidence('restart'); await recovery() })
-          await run('update-and-disable', '配置修改保存，禁用阻止调用，重新启用后恢复', async () => {
-            needRoute()
-            await admin(`model-sources/${id}`, { ...source(target, id), name: 'Updated audit source' }, 'PUT')
-            assert.equal((await admin('model-sources')).items.find(s => s.id === id)?.name, 'Updated audit source')
-            await admin(`model-sources/${id}/enabled`, { enabled: false }, 'PATCH')
-            try { const result = await call(protocol, id); assert.ok(!result.error, result.error?.message); assert.ok(result.status >= 400, '禁用源后仍可调用') }
-            finally { await admin(`model-sources/${id}/enabled`, { enabled: true }, 'PATCH') }
-            await recovery()
-          })
-          await run('revoke-token', '删除令牌后立即拒绝该令牌', async () => {
-            needRoute(); const token = randomUUID(); secrets.push(token); clean = redactor(secrets)
-            await admin('api-tokens', { name: `revoke-${id}`, token, enabled: true, allowedGroups: [id], scopes: [] })
-            checkReply(await call(protocol, id, false, { token }), protocol, replyOptions)
-            await admin(`api-tokens/revoke-${id}`, undefined, 'DELETE')
-            await call(protocol, id, false, { token, expected: 401 }); await recovery()
+          const token = randomUUID(); secrets.push(token); clean = redactor(secrets)
+          await checkPersistence({ run, needRoute, admin, recovery, runtimeEvidence, id, token, source: source(target, id),
+            restart: () => instance.restart(), call: options => call(protocol, id, false, options),
+            checkTokenReply: result => checkReply(result, protocol, replyOptions),
           })
         }
       }

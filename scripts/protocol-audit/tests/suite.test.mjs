@@ -64,7 +64,7 @@ test('missing setup blocks dependent daily cases and preserves a readable report
 test('authentication and model rejections have independently recorded recovery cases', async t => {
   const root = await directory(t)
   const report = await runSuite({ projectRoot: join(root, 'missing'), targets: configuredTargets() }, { group:'errors', outputDir:join(root,'result') })
-  for (const name of ['wrong-key', 'unknown-model']) {
+  for (const name of ['wrong-key', 'unknown-model', 'invalid-json']) {
     assert.equal(report.cases.filter(c => c.id.endsWith('/'+name)).length,4)
     assert.equal(report.cases.filter(c => c.id.endsWith('/'+name+'-recovery')).length,4)
   }

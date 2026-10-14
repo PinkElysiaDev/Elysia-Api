@@ -84,6 +84,8 @@ export function describeHTTPFailure(status, raw) {
 export function failureAnalysis({ kind, issues = [], httpStatuses = [], record, providerErrors = [], providerError, error } = {}) {
   const upstream = record?.providerFailures ?? (providerErrors.length ? providerErrors : providerError ? [{ ...providerError }] : [])
   const secondary = record?.conversionIssues?.filter(issue => issue.severity === 'error') || []
+  const transport = record?.transportFailure
+  const secondaryCategories = [...new Set(secondary.map(issue => issue.code === 'upstream_contract_violation' ? 'upstream_contract_failure' : 'gateway_conversion_failure'))]
   const upstreamHttpStatuses = kind === 'direct' ? httpStatuses : record?.upstreamHttpStatus ? [record.upstreamHttpStatus] : []
   const isHTTPTimeout = upstreamHttpStatuses.includes(524)
   const isRateLimit = httpStatuses.includes(429) || record?.errorKind === 'rate_limit' || upstream.some(failure =>
@@ -92,6 +94,8 @@ export function failureAnalysis({ kind, issues = [], httpStatuses = [], record, 
   return {
     primary: isHTTPTimeout ? { ...upstream[0], category: 'upstream_http_timeout', httpStatus: 524, message: upstream[0]?.message || '上游请求失败（HTTP 524）' } : upstream[0] || (record?.error ? { category: record.errorKind, message: record.error } : error),
     providerFailures: upstream, secondaryIssues: secondary, issues,
+    transportFailure: transport,
+    secondaryCategories: [...secondaryCategories, ...(transport && (isHTTPTimeout || upstream.length || upstreamHttpStatuses.some(status => status >= 400)) ? [transport.kind] : [])],
     isRateLimit, isHTTPTimeout,
     clientHttpStatuses: httpStatuses,
     upstreamHttpStatuses,
@@ -106,11 +110,14 @@ export function failureCategory(input = {}) {
   if (analysis.isRateLimit) return 'rate_limited'
   if (error?.code === 'timeout' && input.source === 'source-code') return 'verification_incomplete'
   if (issues.some(i => i.code === 'request_budget') || error?.code === 'request_budget') return 'budget_exhausted'
+  if (record?.errorKind === 'client_canceled') return 'client_canceled'
+  if (analysis.upstreamHttpStatuses.some(status => status >= 400)) return 'upstream_http_failure'
+  if (analysis.providerFailures.length) return 'upstream_generation_failure'
+  if (analysis.transportFailure?.kind === 'upstream_idle_timeout') return 'upstream_idle_timeout'
+  if (analysis.transportFailure) return 'upstream_transport_failure'
   const failures = record?.conversionIssues?.filter(i => i.severity === 'error') || []
-  // The gateway also records contract violations raised while reading the
-  // provider, including non-protocol CDN error bodies. They are failed calls,
-  // but do not establish a defect in the downstream conversion. Keep a mixed
-  // diagnosis classified as conversion failure so this cannot hide one.
+  // Explicit provider/transport failures take precedence. Mixed conversion
+  // defects remain visible in secondaryCategories and their own report totals.
   if (failures.some(i => i.code !== 'upstream_contract_violation')) return 'gateway_conversion_failure'
   if (failures.length) return 'upstream_contract_failure'
   if (issues.length && issues.every(i => ['unexpected_text', 'tool_call_missing', 'tool_call_mismatch'].includes(i.code))) {
@@ -119,9 +126,57 @@ export function failureCategory(input = {}) {
     return kind === 'direct' ? 'model_instruction_mismatch' : 'needs_trace_review'
   }
   if (kind === 'direct') return 'upstream_direct_failure'
-  if (sdk || error?.sdk) return 'sdk_consumption_failure'
+  if ([sdk, error?.sdk].some(entries => Array.isArray(entries) && entries.some(entry => entry.status === 'failed'))) return 'sdk_consumption_failure'
   // An HTTP error alone cannot distinguish provider rejection from gateway failure.
   return 'needs_trace_review'
+}
+
+/** Counts secondary defects separately; totals can overlap primary categories. */
+export function failureCounts(cases) {
+  const primary = {}, secondary = {}
+  for (const item of cases.filter(item => !item.summary && ['failed', 'incomplete'].includes(item.status))) {
+    if (item.failureCategory) primary[item.failureCategory] = (primary[item.failureCategory] || 0) + 1
+    for (const category of item.failure?.secondaryCategories || []) secondary[category] = (secondary[category] || 0) + 1
+  }
+  return { primary, secondary }
+}
+
+/** Records observation separately from rule execution; never includes state values. */
+export function compatibilityObservations(raw, record) {
+  let frames
+  try { const value = typeof raw === 'string' ? JSON.parse(raw) : raw; frames = Array.isArray(value) ? value : [value] }
+  catch { try { frames = parseSSE(raw).map(frame => frame.value) } catch { frames = [] } }
+  const hasEvidence = frames.some(frame => frame && typeof frame === 'object')
+  const observed = {
+    'responses-turn-state': frames.some(frame => frame?.type === 'response.metadata' && Object.keys(frame.headers || {}).some(key => key.toLowerCase() === 'x-codex-turn-state')),
+    'chat-response-model': frames.some(frame => frame?.object === 'chat.completion' && !Object.hasOwn(frame, 'model')),
+    'chat-stream-identity': frames.length >= 2 && frames.slice(0, 2).every(frame => frame?.object === 'chat.completion.chunk') && frames[0].id !== frames[1].id,
+    'responses-heartbeat': frames.some(frame => frame?.['SSE-Keep-Alive'] === true),
+  }
+  return Object.entries(observed).map(([ruleId, extensionObserved]) => ({ ruleId, extensionObserved: hasEvidence ? extensionObserved : null, ruleTriggered: !!record?.conversionIssues?.some(issue => issue.ruleId === ruleId && issue.code === 'conversion_degraded') }))
+}
+
+/** Full consumption is recorded only after protocol or SDK acceptance finishes. */
+export function finishCompatibilityCoverage(item) {
+  for (const exchange of [...(item.compatibilityCoverage || []), ...(item.calls || [])]) {
+    for (const entry of exchange.compatibility || []) entry.fullConsumptionSucceeded = item.status === 'passed' && !exchange.record?.error && !exchange.transportError
+  }
+}
+
+/** Summarizes observed compatibility paths, without treating ordinary success as coverage. */
+export function compatibilityCounts(cases) {
+  const result = {}
+  for (const item of cases.filter(item => !item.summary)) {
+    const exchanges = item.calls?.length ? item.calls : item.compatibilityCoverage || []
+    for (const exchange of exchanges) for (const entry of exchange.compatibility || []) {
+      const counts = result[entry.ruleId] ||= { observed: 0, triggered: 0, consumed: 0, triggeredAndConsumed: 0 }
+      if (entry.extensionObserved) counts.observed++
+      if (entry.ruleTriggered) counts.triggered++
+      if (entry.extensionObserved && entry.fullConsumptionSucceeded) counts.consumed++
+      if (entry.ruleTriggered && entry.fullConsumptionSucceeded) counts.triggeredAndConsumed++
+    }
+  }
+  return result
 }
 
 export function requestSelection(body) {

@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process'
 import { parseTree } from 'jsonc-parser'
 import { protocols, scenarios, AuditError, endpoint, requestBody, followupBody, inspectReply, inspectModels } from './protocols.mjs'
 import { mapConcurrent, serialize } from './concurrency.mjs'
-import { eventSequence, failureCategory, failureAnalysis, providerFailures, describeHTTPFailure } from './evidence.mjs'
+import { eventSequence, failureCategory, failureAnalysis, providerFailures, describeHTTPFailure, failureCounts, compatibilityObservations, finishCompatibilityCoverage, compatibilityCounts } from './evidence.mjs'
 import { atomicFile } from './report-file.mjs'
 
 export const defaults = { concurrency: 32, timeoutMs: 180000, maxResponseBytes: 16 * 1024 * 1024, maxRequests: 512, maxOutputTokens: 32768, requireUsage: true }
@@ -141,6 +141,7 @@ function markdown(report) {
     if (item.failure) {
       lines.push(`- 上游 HTTP：${cell(item.failure.upstreamHttpStatuses.join(', ')) || '未知'}；客户端 HTTP：${cell(item.failure.clientHttpStatuses.join(', ')) || '未知'}`)
       lines.push(`- 主因：${cell(item.failureCategory)} ${cell(item.failure.primary?.message || '')}`)
+      if (item.failure.transportFailure) lines.push(`- 传输失败：${cell(item.failure.transportFailure.kind)}；阶段：${cell(item.failure.transportFailure.phase)}`)
       for (const issue of item.failure.secondaryIssues) lines.push(`- 次级诊断：${cell(issue.code)} ${cell(issue.path)} ${cell(issue.reason)}`)
     }
     for (const error of item.issues) lines.push(`- **${cell(error.code)}** ${cell(error.path)}：${cell(error.message)}`)
@@ -148,6 +149,7 @@ function markdown(report) {
     lines.push('')
   }
   lines.push('## 检查边界', '', '本工具检查常用响应字段、基本 SSE 生命周期、文本、多轮和合成工具往返；不是供应商完整 JSON Schema 或官方 SDK 认证。不执行模型返回的任意工具，不修改网关渠道、模型组或数据库。模型列表仅检查一页。', '', `独立用例最多 ${report.settings.concurrency} 个并行，同一用例的多轮请求保持顺序，不自动重试；请求上限不约束网关内部的重试或计费。证据会脱敏配置引用的密钥、认证字段和已知签名字段，但响应正文仍可能包含其他私有信息，分享前应审阅。`, '')
+  lines.push('## 分类与扩展覆盖', '', `- 主失败：${cell(JSON.stringify(report.failureCounts?.primary || {}))}`, `- 次级问题（可重叠）：${cell(JSON.stringify(report.failureCounts?.secondary || {}))}`, `- 扩展出现／规则触发／完整消费：${cell(JSON.stringify(report.compatibilityCounts || {}))}`, '', '直连扩展仍按供应商原生契约验收；普通成功不代表扩展兼容已经验证。', '')
   return lines.join('\n')
 }
 
@@ -241,6 +243,8 @@ export async function runAudit(input, { outputDir, env = process.env, signal, on
   const report = { startedAt: new Date().toISOString(), runtime: { node: process.version, platform: process.platform, arch: process.arch }, status: 'running', settings: Object.fromEntries(Object.keys(defaults).map(k => [k, config[k]])), maximumPlannedRequests: plan.maximumRequests, requestsSent: 0, cases: plan.cases.map(({ connection: _, ...item }) => ({ ...item, status: 'not_run', issues: [], warnings: [], evidence: [] })) }
   const save = serialize(async () => {
     report.counts = Object.fromEntries(['passed', 'failed', 'skipped', 'not_applicable', 'running', 'not_run'].map(status => [status, report.cases.filter(c => c.status === status).length]))
+    report.failureCounts = failureCounts(report.cases)
+    report.compatibilityCounts = compatibilityCounts(report.cases)
     const snapshot = clean(report)
     await atomicFile(join(outputDir, 'report.json'), JSON.stringify(snapshot, null, 2) + '\n')
     await atomicFile(join(outputDir, 'report.md'), markdown(snapshot))
@@ -292,6 +296,7 @@ export async function runAudit(input, { outputDir, env = process.env, signal, on
         item.evidence.push(path); (item.httpStatuses ||= []).push(outcome.status); await save()
         const trace = await onExchange?.({ task, round, request: evidence.request, response: outcome })
         if (trace) (item.calls ||= []).push(clean(trace))
+        if (task.kind === 'direct') (item.compatibilityCoverage ||= []).push({ round, compatibility: compatibilityObservations(outcome.raw), transportError: !!outcome.error })
         if (task.stream) (item.eventSequences ||= []).push({ round, events: eventSequence(outcome.raw, true) })
         log(`HTTP END ${item.id} round=${round} status=${outcome.status} elapsedMs=${outcome.elapsedMs} evidence=${path}${outcome.error ? ` error=${outcome.error.message}` : ''}`)
         if (outcome.error) throw outcome.error
@@ -330,6 +335,7 @@ export async function runAudit(input, { outputDir, env = process.env, signal, on
     finally { release(unused) }
     item.elapsedMs = Math.round(performance.now() - started); item.finishedAt = new Date().toISOString()
     item.status = item.issues.length ? 'failed' : 'passed'
+    finishCompatibilityCoverage(item)
     if (item.status === 'failed') {
       const input = { ...item, record: item.calls?.at(-1)?.record }
       item.failureCategory = failureCategory(input); item.failure = failureAnalysis(input)

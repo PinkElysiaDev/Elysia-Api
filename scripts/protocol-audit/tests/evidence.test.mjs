@@ -66,7 +66,8 @@ test('failure classification does not call throttling or model instruction failu
   assert.equal(failureCategory({ kind: 'direct', issues: [{ code: 'unexpected_text' }] }), 'model_instruction_mismatch')
   assert.equal(failureCategory({ kind: 'direct', issues: [{ code: 'invalid_type' }] }), 'upstream_direct_failure')
   assert.equal(failureCategory({ sdk: {}, record: { conversionIssues: [{ severity: 'error' }] } }), 'gateway_conversion_failure')
-  assert.equal(failureCategory({ sdk: {} }), 'sdk_consumption_failure')
+  assert.equal(failureCategory({ sdk: {} }), 'needs_trace_review')
+  assert.equal(failureCategory({ sdk: [{ status: 'failed' }] }), 'sdk_consumption_failure')
   assert.equal(failureCategory({ httpStatuses: [502] }), 'needs_trace_review')
   assert.equal(failureCategory({ kind: 'gateway', issues: [{ code: 'tool_call_mismatch' }] }), 'needs_trace_review')
   assert.equal(failureCategory({ issues: [{ code: 'tool_call_mismatch' }], record: { conversionIssues: [{ severity: 'error' }] } }), 'gateway_conversion_failure')
@@ -92,7 +93,7 @@ test('recorded upstream contract violations are distinct from conversion defects
   assert.equal(failureCategory({ httpStatuses: [429], record: { conversionIssues: [upstream] } }), 'rate_limited')
   assert.equal(failureCategory({ error: { message: 'HTTP 524: upstream_contract_violation' } }), 'needs_trace_review')
   assert.equal(failureCategory({ record: { conversionIssues: [{ ...upstream, severity: 'warning' }] } }), 'needs_trace_review')
-  assert.equal(failureCategory({ sdk: {}, record: { conversionIssues: [{ ...upstream, severity: 'warning' }] } }), 'sdk_consumption_failure')
+  assert.equal(failureCategory({ sdk: {}, record: { conversionIssues: [{ ...upstream, severity: 'warning' }] } }), 'needs_trace_review')
 })
 
 test('event order summary contains no text, signature or encrypted state', () => {
