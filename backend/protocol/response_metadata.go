@@ -193,8 +193,8 @@ func ValidateMetadataValue(codec, location, name string, v Value, at string) err
 				return streamIssue(UnsupportedCapability, at+"/"+key, "unknown response access program requires explicit mapping")
 			}
 		}
-		switch fields["cyber"] {
-		case StringValue("standard"), StringValue("daybreak_blue"), StringValue("daybreak_red"):
+		switch {
+		case fields["cyber"].IsString("standard") || fields["cyber"].IsString("daybreak_blue") || fields["cyber"].IsString("daybreak_red"):
 			ok = true
 		default:
 			return streamIssue(InvalidInput, at+"/cyber", "expected standard, daybreak_blue or daybreak_red access program")

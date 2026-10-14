@@ -38,10 +38,10 @@ func (c *Compiled) comparableWireFixture(direction Direction, value Value) Value
 			continue
 		}
 		key := ""
-		switch fields["type"] {
-		case StringValue("message_start"):
+		switch {
+		case fields["type"].IsString("message_start"):
 			key = "message"
-		case StringValue("message_delta"):
+		case fields["type"].IsString("message_delta"):
 			key = "delta"
 		}
 		if key == "" {

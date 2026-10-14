@@ -150,7 +150,7 @@ func (adapter module) decodeResponse(input p.Value, options p.EvaluationContext)
 			if err != nil {
 				return nil, err
 			}
-			if string(reason.Bytes()) == `"stop"` && hasToolCalls(nodes) {
+			if reason.IsString("stop") && hasToolCalls(nodes) {
 				reason = p.StringValue("tool_calls")
 			}
 			if len(candidates) > 1 {

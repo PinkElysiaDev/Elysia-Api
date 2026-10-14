@@ -46,21 +46,21 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 		}
 		f, _ := v.ReadObject()
 		// Only protocol containers, never arbitrary tool arguments or results.
-		switch f["type"] {
-		case p.StringValue("output_text"):
+		switch {
+		case f["type"].IsString("output_text"):
 			if f["annotations"].IsZero() {
 				f["annotations"], _ = p.EncodeValue([]p.Value{})
 				changed = true
 			}
-		case p.StringValue("message"):
+		case f["type"].IsString("message"):
 			if !f["content"].IsZero() {
 				f["content"] = repair(f["content"])
 			}
-		case p.StringValue("response.created"), p.StringValue("response.in_progress"), p.StringValue("response.completed"), p.StringValue("response.incomplete"):
+		case f["type"].IsString("response.created") || f["type"].IsString("response.in_progress") || f["type"].IsString("response.completed") || f["type"].IsString("response.incomplete"):
 			if !f["response"].IsZero() {
 				f["response"] = repair(f["response"])
 			}
-		case p.StringValue("response.output_item.added"), p.StringValue("response.output_item.done"):
+		case f["type"].IsString("response.output_item.added") || f["type"].IsString("response.output_item.done"):
 			if !f["item"].IsZero() {
 				name := "completed"
 				if f["type"].IsString("response.output_item.added") {
@@ -69,7 +69,7 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 				f["item"] = status(f["item"], name)
 				f["item"] = repair(f["item"])
 			}
-		case p.StringValue("response.content_part.added"), p.StringValue("response.content_part.done"):
+		case f["type"].IsString("response.content_part.added") || f["type"].IsString("response.content_part.done"):
 			if !f["part"].IsZero() {
 				f["part"] = repair(f["part"])
 			}

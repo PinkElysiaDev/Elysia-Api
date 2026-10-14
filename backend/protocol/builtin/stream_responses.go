@@ -284,7 +284,7 @@ func (stream *streamModule) startResponsesContent(fields p.Object, outputIndex, 
 	if err != nil {
 		return nil, err
 	}
-	if string(part["type"].Bytes()) == `"refusal"` {
+	if part["type"].IsString("refusal") {
 		node.Kind, node.Payload = p.RefusalNode, part["refusal"]
 	}
 	event, err := stream.itemEvent(p.ItemStarted, contentKey, &node, p.Value{})

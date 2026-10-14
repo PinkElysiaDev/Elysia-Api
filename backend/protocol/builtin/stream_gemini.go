@@ -143,7 +143,7 @@ func (stream *streamModule) decodeGeminiFrame(fields p.Object, options p.Evaluat
 			if err != nil {
 				return nil, err
 			}
-			if string(stream.finish.Bytes()) == `"stop"` {
+			if stream.finish.IsString("stop") {
 				for _, item := range stream.items {
 					if item.node.Kind == p.ToolCallNode {
 						stream.finish = p.StringValue("tool_calls")

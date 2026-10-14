@@ -102,8 +102,8 @@ func (stream *streamModule) captureFrameExtensions(fields p.Object) (p.Value, er
 			if err != nil {
 				return p.Value{}, err
 			}
-			switch item["type"] {
-			case p.StringValue("message"):
+			switch {
+			case item["type"].IsString("message"):
 				// Message metadata was attached by the message decoder. Consume
 				// the same validated fields here instead of duplicating them as opaque.
 				if _, err := stream.module.extractMetadata(item, "message", "/item"); err != nil {
@@ -121,12 +121,12 @@ func (stream *streamModule) captureFrameExtensions(fields p.Object) (p.Value, er
 					}
 					capture(fmt.Sprintf("/item/content/%d", index), part, "type", "text", "refusal", "annotations", "logprobs")
 				}
-			case p.StringValue("function_call"):
+			case item["type"].IsString("function_call"):
 				if _, err := stream.module.extractMetadata(item, "item", "/item"); err != nil {
 					return p.Value{}, err
 				}
 				capture("/item", item, "type", "id", "call_id", "name", "arguments", "status")
-			case p.StringValue("custom_tool_call"):
+			case item["type"].IsString("custom_tool_call"):
 				if _, err := stream.module.extractMetadata(item, "item", "/item"); err != nil {
 					return p.Value{}, err
 				}
