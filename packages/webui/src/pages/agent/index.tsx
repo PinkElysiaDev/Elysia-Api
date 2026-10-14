@@ -4,6 +4,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/page-header";
 import { POLL } from "@/lib/hooks";
+import { ApiError } from "@/lib/api";
 import useSWR from "swr";
 import {
   clearAgentMessages,
@@ -53,6 +54,7 @@ export function AgentPage() {
   const [activeId, setActiveId] = useState<string | undefined>();
   const [session, setSession] = useState<AgentSession | undefined>();
   const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const [sessionError, setSessionError] = useState<string>();
   const pendingUpdates = useRef(new Set<string>());
   const [savingSessions, setSavingSessions] = useState<ReadonlySet<string>>(new Set());
   const isSavingSettings = Boolean(activeId && savingSessions.has(activeId));
@@ -84,6 +86,7 @@ export function AgentPage() {
     activeIdRef.current = id;
     selectionGeneration.current++;
     sessionRequest.current++;
+    setSessionError(undefined);
     setActiveId(id);
   }, []);
   const isCurrentSelection = useCallback((id: string, generation: number) =>
@@ -98,8 +101,14 @@ export function AgentPage() {
       if (activeIdRef.current !== id || sessionRequest.current !== requestId) return;
       setSession(detail.session);
       setMessages(detail.messages ?? []);
-    } catch {
-      /* 会话可能已删除 */
+      setSessionError(undefined);
+    } catch (error) {
+      if (activeIdRef.current !== id || sessionRequest.current !== requestId) return;
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      if (error instanceof ApiError && error.status === 401) return;
+      setSessionError(error instanceof ApiError && error.status === 404
+        ? "会话不存在或已被删除"
+        : error instanceof Error ? error.message : "加载会话失败");
     }
   }, []);
 
@@ -459,6 +468,15 @@ export function AgentPage() {
           }
         />
 
+        {sessionError ? (
+          <div role="alert" className="mx-4 mb-2 flex items-center gap-3 rounded-md border border-destructive/30 px-3 py-2 text-sm">
+            <span className="min-w-0 flex-1">{sessionError}</span>
+            <button type="button" className="shrink-0 underline" disabled={isSavingSettings} onClick={() => activeId && void refreshSession(activeId)}>
+              重试加载
+            </button>
+          </div>
+        ) : null}
+
         {session && draftLoadedFor === session.id ? (
           <div className="-mx-6 flex min-h-0 flex-1 overflow-hidden max-rail:-mx-4">
             <ChatPanel
@@ -513,11 +531,11 @@ export function AgentPage() {
               />
             ) : null}
           </div>
-        ) : (
+        ) : !sessionError ? (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
             正在加载会话…
           </div>
-        )}
+        ) : null}
       </div>
       {confirmDialog}
     </div>

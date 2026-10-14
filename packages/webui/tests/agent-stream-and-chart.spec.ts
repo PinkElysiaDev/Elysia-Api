@@ -15,7 +15,7 @@ const message = (seq: number, role: AgentMessage['role'], content: unknown): Age
   seq, role, content, createdAt: '2026-09-27T12:00:00Z',
 })
 
-async function openAgent(page: Page, messages: AgentMessage[] = [], pendingAction?: AgentPendingAction, hasSecondSession = false) {
+async function openAgent(page: Page, messages: AgentMessage[] = [], pendingAction?: AgentPendingAction, hasSecondSession = false, detailFailure?: { status: number; message: string }) {
   const session = {
     id: 'regression', title: '流式与图表回归检查', mode: 'create', status: pendingAction ? 'waiting_approval' : 'idle', pendingAction,
     createdAt: '2026-09-27T12:00:00Z', updatedAt: '2026-09-27T12:00:00Z',
@@ -45,6 +45,9 @@ async function openAgent(page: Page, messages: AgentMessage[] = [], pendingActio
   })
   await page.route('**/api/admin/**', async (route) => {
     const path = new URL(route.request().url()).pathname
+    if (detailFailure && path.endsWith('/sessions/regression')) {
+      return route.fulfill({ status: detailFailure.status, json: { ok: false, error: { code: 'session_read_failed', message: detailFailure.message } } })
+    }
     const data = path.endsWith('/seq') ? { seq: 1 }
       : path.endsWith('/agent/sessions') ? { items: hasSecondSession ? [session, { ...session, id: 'next-session', title: 'Second selected session' }] : [session] }
         : path.endsWith('/sessions/regression') ? { session, messages }
@@ -55,9 +58,35 @@ async function openAgent(page: Page, messages: AgentMessage[] = [], pendingActio
   })
   await page.goto('/#/agent')
   await page.locator('[role="button"]').filter({ has: page.getByText(session.title, { exact: true }) }).press('Enter')
-  if (!pendingAction) await expect(page.getByPlaceholder('请描述你的任务')).toBeVisible()
+  if (!pendingAction && !detailFailure) await expect(page.getByPlaceholder('请描述你的任务')).toBeVisible()
   return session
 }
+
+for (const status of [404, 500]) {
+  test(`session load ${status} ends loading and can recover without losing history`, async ({ page }) => {
+    const session = await openAgent(page, [], undefined, false, { status, message: 'Synthetic session failure' })
+    await expect(page.getByRole('alert')).toContainText(status === 404 ? '会话不存在' : 'Synthetic session failure')
+    await expect(page.getByText('正在加载会话…', { exact: true })).not.toBeVisible()
+    await page.route('**/api/admin/agent/sessions/regression', (route) => route.fulfill({ json: { ok: true, data: { session, messages: [message(1, 'assistant', { text: 'Recovered session history' })] } } }))
+    await page.getByRole('button', { name: '重试加载' }).click()
+    await expect(page.getByText('Recovered session history', { exact: true })).toBeVisible()
+    await expect(page.getByRole('alert')).not.toBeVisible()
+  })
+}
+
+test('a failed background refresh keeps messages and recovers after retry', async ({ page }) => {
+  await page.addInitScript(() => {
+    const schedule = window.setInterval
+    window.setInterval = (handler, timeout, ...args) => schedule(handler, timeout === 15000 ? 100 : timeout, ...args)
+  })
+  const session = await openAgent(page, [message(1, 'assistant', { text: 'Keep existing history' })])
+  await page.route('**/api/admin/agent/sessions/regression', (route) => route.fulfill({ status: 500, json: { ok: false, error: { code: 'session_read_failed', message: 'Synthetic refresh failure' } } }))
+  await expect(page.getByRole('alert')).toContainText('Synthetic refresh failure')
+  await expect(page.getByText('Keep existing history', { exact: true })).toBeVisible()
+  await page.route('**/api/admin/agent/sessions/regression', (route) => route.fulfill({ json: { ok: true, data: { session, messages: [message(1, 'assistant', { text: 'Keep existing history' })] } } }))
+  await page.getByRole('button', { name: '重试加载' }).click()
+  await expect(page.getByRole('alert')).not.toBeVisible()
+})
 
 for (const operation of ['rename', 'settings', 'clear', 'delete', 'create'] as const) {
   test(`a delayed session ${operation} cannot replace a newer selection`, async ({ page }) => {
@@ -150,7 +179,7 @@ for (const isFailure of [false, true]) {
     await expect(full).toBeEnabled()
     await expect(automatic).toHaveAttribute('aria-checked', isFailure ? 'false' : 'true')
     await expect(page.getByPlaceholder('请描述你的任务')).toHaveValue('keep this draft')
-    if (isFailure) await expect(page.getByText('Synthetic settings failure')).toBeVisible()
+    if (isFailure) await expect(page.getByText('Synthetic settings failure', { exact: true })).toBeVisible()
     expect(mutations).toBe(1)
   })
 }
