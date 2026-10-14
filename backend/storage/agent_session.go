@@ -13,6 +13,11 @@ import (
 	"github.com/elysia-api/backend/agent"
 )
 
+const (
+	agentSessionRandomBytes = 6
+	agentSessionTitleLimit  = 64
+)
+
 // Agent 会话持久化：agent_sessions / agent_messages 两张表。本文件实现
 // agent.Store 接口（引擎读写路径）并提供管理面 CRUD（列表/创建/改设置/删除）。
 // 测试凭证 test_api_key 经 secretCodec 透明加密；引擎读出时解密，管理面
@@ -30,10 +35,7 @@ type AgentSessionUpsert struct {
 
 // CreateAgentSession 创建会话并返回完整聚合。
 func (s *Store) CreateAgentSession(ctx context.Context, input AgentSessionUpsert) (*agent.Session, error) {
-	id, err := newAgentSessionID()
-	if err != nil {
-		return nil, err
-	}
+	id := newAgentSessionID()
 	mode := strings.TrimSpace(input.Mode)
 	if mode == "" {
 		mode = agent.ModeCreate
@@ -194,7 +196,7 @@ func (s *Store) assembleAgentSession(session agent.Session, mode, seed, draft, r
 	session.Settings.AllowSave = agent.NormalizedPermission(session.Settings.AllowSave)
 	session.Settings.AllowDelete = agent.NormalizedPermission(session.Settings.AllowDelete)
 	if withSecret && testAPIKey != "" {
-		plaintext := s.decryptAgentKey(session.ID, testAPIKey)
+		plaintext := s.decryptOrClear("agent test key", session.ID, testAPIKey)
 		session.TestAPIKey = plaintext
 		session.Settings.TestAPIKeySet = plaintext != ""
 	} else {
@@ -213,25 +215,16 @@ func (s *Store) assembleAgentSession(session agent.Session, mode, seed, draft, r
 	return &session, nil
 }
 
-func (s *Store) decryptAgentKey(id, stored string) string {
-	plaintext, err := s.codec.decrypt(stored)
-	if err != nil {
-		return ""
-	}
-	return plaintext
-}
-
 // clampSessionTitle 钳制会话标题长度：update_title 工具限 16 字、首条消息
 // 兜底 24 字，但 PATCH 与引擎路径经此统一封顶，避免 API 调用方写入任意长
 // 标题（展示端只做 CSS 截断）。
 func clampSessionTitle(title string) string {
 	title = strings.TrimSpace(title)
 	runes := []rune(title)
-	const max = 64
-	if len(runes) <= max {
+	if len(runes) <= agentSessionTitleLimit {
 		return title
 	}
-	return string(runes[:max])
+	return string(runes[:agentSessionTitleLimit])
 }
 
 // UpdateAgentSessionSettings 管理面设置更新（PATCH）。SettingsPatch 全指针
@@ -481,10 +474,10 @@ func (s *Store) DeleteAgentSession(ctx context.Context, id string) (bool, error)
 	return affected > 0, nil
 }
 
-func newAgentSessionID() (string, error) {
-	raw := make([]byte, 6)
+func newAgentSessionID() string {
+	raw := make([]byte, agentSessionRandomBytes)
 	_, _ = rand.Read(raw)
-	return "as_" + fmt.Sprintf("%d", time.Now().UnixNano()) + "_" + hex.EncodeToString(raw), nil
+	return "as_" + fmt.Sprintf("%d", time.Now().UnixNano()) + "_" + hex.EncodeToString(raw)
 }
 
 var _ agent.Store = (*Store)(nil)
