@@ -33,6 +33,7 @@ func TestMigratePresetProtocolRenamesV2Registry(t *testing.T) {
 		mustExec(`INSERT INTO protocol_drafts(protocol_id, content_hash, definition, updated_at) VALUES(?,?,?,?)`, id, hash, `{"id":"`+id+`"}`, now)
 		mustExec(`INSERT INTO protocol_activations(protocol_id, revision_hash, generation, activated_at) VALUES(?,?,1,?)`, id, hash, now)
 		mustExec(`INSERT INTO protocol_history(id, protocol_id, content_hash, definition, reason, created_at, archived_at) VALUES(?,?,?,?,?,?,?)`, id+"~h", id, hash, `{"id":"`+id+`"}`, "preset_replaced", now, now)
+		mustExec(`INSERT INTO protocol_verification_reports(protocol_id, revision_hash, compiler_version, samples_hash, kind, report, verified_at) VALUES(?,?,'old-compiler','samples','offline',?,?)`, id, hash, `{"originalProtocol":"`+id+`","counter":9007199254740993}`, now)
 		mustExec(`INSERT INTO model_sources(id, name, base_url, api_key, platform, enabled, auto_fetch_models, created_at, updated_at) VALUES(?,?,?,?,?,1,1,?,?)`, "src-"+id, "s", "https://example.com", "k", "custom:"+id, now, now)
 	}
 	definitionSeed("chat-completions-api", "hash-old")
@@ -45,6 +46,23 @@ func TestMigratePresetProtocolRenamesV2Registry(t *testing.T) {
 	}
 
 	pairs := []ProtocolRenamePair{{OldID: "chat-completions-api", NewID: "openai-chat-completions"}}
+	before, err := store.ProtocolUpgradeBaseline(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `CREATE TRIGGER fail_report_move BEFORE UPDATE OF protocol_id ON protocol_verification_reports BEGIN SELECT RAISE(ABORT,'report move failed'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.MigratePresetProtocolRenames(ctx, pairs); err == nil {
+		t.Fatal("injected evidence failure was ignored")
+	}
+	after, err := store.ProtocolUpgradeBaseline(ctx)
+	if err != nil || after != before {
+		t.Fatalf("failed report move partially committed: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `DROP TRIGGER fail_report_move`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := store.MigratePresetProtocolRenames(ctx, pairs); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -63,13 +81,22 @@ func TestMigratePresetProtocolRenamesV2Registry(t *testing.T) {
 	}
 	// 不同内容哈希各自保留（修订历史不丢）；同键（drafts/activations 的
 	// protocol_id 主键）以新行胜出不重复。
-	wants := map[string]int{"protocol_revisions": 2, "protocol_drafts": 1, "protocol_activations": 1, "protocol_history": 2}
+	wants := map[string]int{"protocol_revisions": 2, "protocol_drafts": 1, "protocol_activations": 1, "protocol_history": 2, "protocol_verification_reports": 2}
 	for table, want := range wants {
 		if oldRows = count(`SELECT COUNT(*) FROM ` + table + ` WHERE protocol_id = 'chat-completions-api'`); oldRows != 0 {
 			t.Fatalf("%s still carries the legacy id", table)
 		}
 		if newRows = count(`SELECT COUNT(*) FROM ` + table + ` WHERE protocol_id = 'openai-chat-completions'`); newRows != want {
 			t.Fatalf("%s new-id rows = %d, want %d", table, newRows, want)
+		}
+	}
+	for index, id := range []string{"chat-completions-api", "openai-chat-completions"} {
+		var report, compiler, samples, verified string
+		if err := store.db.QueryRowContext(ctx, `SELECT report,compiler_version,samples_hash,verified_at FROM protocol_verification_reports WHERE id=?`, index+1).Scan(&report, &compiler, &samples, &verified); err != nil {
+			t.Fatal("report identity changed", err)
+		}
+		if report != `{"originalProtocol":"`+id+`","counter":9007199254740993}` || compiler != "old-compiler" || samples != "samples" || verified != now {
+			t.Fatal("historical evidence changed during rename")
 		}
 	}
 	bindings, err := store.ListProtocolBindings(ctx)

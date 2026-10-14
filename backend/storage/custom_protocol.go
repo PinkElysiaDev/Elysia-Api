@@ -194,9 +194,8 @@ func renameProtocolRegistryIDs(ctx context.Context, tx *sql.Tx, oldID, newID str
 		{"protocol_drafts", `INSERT OR IGNORE INTO protocol_drafts(protocol_id, content_hash, definition, updated_at) SELECT ?, content_hash, definition, updated_at FROM protocol_drafts WHERE protocol_id = ?`, nil},
 		{"protocol_history", `INSERT OR IGNORE INTO protocol_history(id, protocol_id, content_hash, definition, reason, is_draft, created_at, archived_at) SELECT ? || '~' || content_hash, ?, content_hash, definition, reason, is_draft, created_at, archived_at FROM protocol_history WHERE protocol_id = ?`, nil},
 		{"protocol_activations", `INSERT OR IGNORE INTO protocol_activations(protocol_id, revision_hash, generation, activated_at) SELECT ?, revision_hash, generation, activated_at FROM protocol_activations WHERE protocol_id = ?`, nil},
-		{"protocol_verification_reports", `INSERT OR IGNORE INTO protocol_verification_reports(id, protocol_id, revision_hash, compiler_version, samples_hash, kind, report, verified_at) SELECT id, ?, revision_hash, compiler_version, samples_hash, kind, report, verified_at FROM protocol_verification_reports WHERE protocol_id = ?`, nil},
 	}
-	deleteTables := []string{"protocol_activations", "protocol_verification_reports", "protocol_revisions", "protocol_drafts", "protocol_history"}
+	deleteTables := []string{"protocol_activations", "protocol_revisions", "protocol_drafts", "protocol_history"}
 	for _, copy := range copyTables {
 		args := copy.args
 		if args == nil {
@@ -215,6 +214,11 @@ func renameProtocolRegistryIDs(ctx context.Context, tx *sql.Tx, oldID, newID str
 			}
 			return fmt.Errorf("copy %s: %w", copy.table, err)
 		}
+	}
+	// Report IDs are globally unique audit identities. Once the destination
+	// revisions exist, move their foreign keys without copying or rewriting evidence.
+	if _, err := tx.ExecContext(ctx, `UPDATE protocol_verification_reports SET protocol_id=? WHERE protocol_id=?`, newID, oldID); err != nil {
+		return fmt.Errorf("move protocol verification reports: %w", err)
 	}
 	for _, table := range deleteTables {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE protocol_id = ?`, oldID); err != nil {
