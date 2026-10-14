@@ -8,29 +8,74 @@ import (
 func mergeResponseMetadata(left, right []p.ResponseMetadata) []p.ResponseMetadata {
 	out := append([]p.ResponseMetadata(nil), left...)
 	for _, v := range right {
-		found := false
+		hasMatch := false
 		for i := range out {
 			// Response/usage fields have one owner per stream. A decoder may
 			// expose the same snapshot field via /response/name or /name;
 			// Path identifies its diagnostic source, not a second field. Keep
 			// path identity for metadata belonging to distinct choices/items.
-			sameOwner := out[i].Path == v.Path || v.Location == "response" || v.Location == "usage"
-			if out[i].Codec == v.Codec && out[i].Location == v.Location && out[i].Name == v.Name && sameOwner {
+			hasSameOwner := out[i].Path == v.Path || v.Location == "response" || v.Location == "usage"
+			if out[i].Codec == v.Codec && out[i].Location == v.Location && out[i].Name == v.Name && hasSameOwner {
 				out[i] = v
-				found = true
+				hasMatch = true
 				break
 			}
 		}
-		if !found {
+		if !hasMatch {
 			out = append(out, v)
 		}
 	}
 	return out
 }
 
+type streamMetadataGroups struct {
+	local, choices, frames []p.ResponseMetadata
+	item                   *streamItem
+	key                    string
+}
+
 // Metadata has explicit node ownership. A metadata-only update emits a frame
 // for that same item; it never waits for an unrelated subsequent text delta.
 func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event, options p.EvaluationContext) ([]p.Value, error) {
+	groups, err := stream.classifyMetadata(event)
+	if err != nil {
+		return nil, err
+	}
+	extra := stream.renderChatChoiceMetadata(frames, groups.choices)
+	var itemFrames []p.Value
+	switch stream.name {
+	case Chat:
+		itemFrames, err = stream.renderChatItemMetadata(frames, event, groups.item, groups.local)
+	case Responses:
+		itemFrames, err = stream.renderResponsesItemMetadata(frames, event, groups.key, groups.item, groups.local)
+	}
+	if err != nil {
+		return nil, err
+	}
+	extra = append(extra, itemFrames...)
+	if event != nil && event.Type == p.ItemFinished {
+		frames = append(extra, frames...)
+	} else {
+		frames = append(frames, extra...)
+	}
+
+	if err := stream.writeResponseMetadata(frames); err != nil {
+		return nil, err
+	}
+	frames, err = stream.renderEventMetadata(frames, event, groups.frames, options)
+	if err != nil {
+		return nil, err
+	}
+	metadata, _ := p.EncodeValue(stream.metadata)
+	if len(metadata.Bytes()) > stream.limits.BufferBytes {
+		return nil, unsupported("/metadata", "stream metadata exceeds buffer limit")
+	}
+	return frames, nil
+}
+
+// All groups are checked against the target codec, including events without
+// output frames. Later attachment steps operate only on these checked groups.
+func (stream *streamModule) classifyMetadata(event *p.Event) (streamMetadataGroups, error) {
 	var local []p.ResponseMetadata
 	var choiceMetadata []p.ResponseMetadata
 	var frameMetadata []p.ResponseMetadata
@@ -48,7 +93,7 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event, opt
 			// Check even when this event emits no frame (Gemini start, usage
 			// updates). A disabled projection must not silently lose metadata.
 			if m.Codec != stream.name {
-				return nil, unsupported(m.Path, "stream metadata requires target projection")
+				return streamMetadataGroups{}, unsupported(m.Path, "stream metadata requires target projection")
 			}
 			if strings.HasPrefix(m.Location, "event:") {
 				frameMetadata = append(frameMetadata, m)
@@ -66,14 +111,15 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event, opt
 		}
 	}
 	if len(local) > 0 && item == nil {
-		return nil, unsupported("/metadata", "content metadata has no explicit stream item association")
+		return streamMetadataGroups{}, unsupported("/metadata", "content metadata has no explicit stream item association")
 	}
+	return streamMetadataGroups{local: local, choices: choiceMetadata, frames: frameMetadata, item: item, key: key}, nil
+}
+
+func (stream *streamModule) renderChatChoiceMetadata(frames []p.Value, choiceMetadata []p.ResponseMetadata) []p.Value {
 	var extra []p.Value
 	if len(choiceMetadata) > 0 {
-		if stream.name != Chat {
-			return nil, unsupported(choiceMetadata[0].Path, "choice metadata requires target projection")
-		}
-		attached := false
+		isAttached := false
 		for i, frame := range frames {
 			fields, _ := frame.ReadObject()
 			choices, _ := readArray(fields["choices"])
@@ -87,10 +133,10 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event, opt
 			choices[0] = object(choice)
 			fields["choices"] = array(choices)
 			frames[i] = object(fields)
-			attached = true
+			isAttached = true
 			break
 		}
-		if !attached {
+		if !isAttached {
 			fields, _ := stream.chatChunk(object(p.Object{}), p.Value{}, p.Value{}).ReadObject()
 			choices, _ := readArray(fields["choices"])
 			choice, _ := choices[0].ReadObject()
@@ -102,141 +148,150 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event, opt
 			extra = append(extra, object(fields))
 		}
 	}
+	return extra
+}
+
+func (stream *streamModule) renderChatItemMetadata(frames []p.Value, event *p.Event, item *streamItem, local []p.ResponseMetadata) ([]p.Value, error) {
+	var extra []p.Value
 	for _, m := range local {
-		if m.Codec != stream.name {
-			return nil, unsupported(m.Path, "stream metadata requires target projection")
+		// Snapshot logprobs were already delivered by their token deltas.
+		if m.Name == "logprobs" && event.Type != p.ItemDelta {
+			continue
 		}
-		if stream.name == Chat {
-			// Snapshot logprobs were already delivered by their token deltas.
-			if m.Name == "logprobs" && event.Type != p.ItemDelta {
+		delta, choice := p.Object{}, p.Object{}
+		if m.Location == "message" {
+			delta[m.Name] = m.Value
+		} else if m.Location == "choice" {
+			choice[m.Name] = m.Value
+		} else {
+			return nil, unsupported(m.Path, "unsupported Chat metadata owner")
+		}
+		if m.Name == "annotations" {
+			if item.deliveredAnnotations == m.Value {
 				continue
 			}
-			delta, choice := p.Object{}, p.Object{}
-			if m.Location == "message" {
-				delta[m.Name] = m.Value
-			} else if m.Location == "choice" {
-				choice[m.Name] = m.Value
-			} else {
-				return nil, unsupported(m.Path, "unsupported Chat metadata owner")
+			item.deliveredAnnotations = m.Value
+		}
+		isAttached := false
+		for i, v := range frames {
+			fields, _ := v.ReadObject()
+			choices, _ := readArray(fields["choices"])
+			if len(choices) != 1 {
+				continue
 			}
-			if m.Name == "annotations" {
-				if item.deliveredAnnotations == m.Value {
-					continue
+			choiceFields, _ := choices[0].ReadObject()
+			deltaFields, _ := choiceFields["delta"].ReadObject()
+			if deltaFields["content"].IsZero() {
+				continue
+			}
+			for k, v := range choice {
+				choiceFields[k] = v
+			}
+			for k, v := range delta {
+				deltaFields[k] = v
+			}
+			choiceFields["delta"] = object(deltaFields)
+			choices[0] = object(choiceFields)
+			fields["choices"] = array(choices)
+			frames[i] = object(fields)
+			isAttached = true
+			break
+		}
+		if !isAttached {
+			fields, _ := stream.chatChunk(object(delta), p.Value{}, p.Value{}).ReadObject()
+			choices, _ := readArray(fields["choices"])
+			choiceFields, _ := choices[0].ReadObject()
+			for k, v := range choice {
+				choiceFields[k] = v
+			}
+			choices[0] = object(choiceFields)
+			fields["choices"] = array(choices)
+			extra = append(extra, object(fields))
+		}
+	}
+	return extra, nil
+}
+
+func (stream *streamModule) renderResponsesItemMetadata(frames []p.Value, event *p.Event, key string, item *streamItem, local []p.ResponseMetadata) ([]p.Value, error) {
+	var extra []p.Value
+	for _, m := range local {
+		if m.Name == "annotations" {
+			if item.deliveredAnnotations == m.Value {
+				continue
+			}
+			var old, entries []p.Value
+			_ = item.deliveredAnnotations.Decode(&old)
+			_ = m.Value.Decode(&entries)
+			if len(entries) < len(old) {
+				return nil, unsupported(m.Path, "citation snapshot removed previously emitted entries")
+			}
+			for i := range old {
+				if old[i] != entries[i] {
+					return nil, unsupported(m.Path, "citation snapshot rewrote previously emitted entries")
 				}
-				item.deliveredAnnotations = m.Value
 			}
-			attached := false
+			for i := len(old); i < len(entries); i++ {
+				fields, _ := stream.responsesEvent("response.output_text.annotation.added", key, item, "annotation", entries[i]).ReadObject()
+				fields["annotation_index"], _ = p.EncodeValue(i)
+				extra = append(extra, object(fields))
+			}
+			item.deliveredAnnotations = m.Value
+		} else if m.Name == "logprobs" && event.Type == p.ItemDelta {
+			isAttached := false
 			for i, v := range frames {
-				f, _ := v.ReadObject()
-				choices, _ := readArray(f["choices"])
-				if len(choices) != 1 {
-					continue
+				fields, _ := v.ReadObject()
+				if fields["type"].IsString("response.output_text.delta") {
+					fields["logprobs"] = m.Value
+					frames[i] = object(fields)
+					isAttached = true
+					break
 				}
-				ch, _ := choices[0].ReadObject()
-				d, _ := ch["delta"].ReadObject()
-				if d["content"].IsZero() {
-					continue
-				}
-				for k, v := range choice {
-					ch[k] = v
-				}
-				for k, v := range delta {
-					d[k] = v
-				}
-				ch["delta"] = object(d)
-				choices[0] = object(ch)
-				f["choices"] = array(choices)
-				frames[i] = object(f)
-				attached = true
-				break
 			}
-			if !attached {
-				f, _ := stream.chatChunk(object(delta), p.Value{}, p.Value{}).ReadObject()
-				choices, _ := readArray(f["choices"])
-				ch, _ := choices[0].ReadObject()
-				for k, v := range choice {
-					ch[k] = v
-				}
-				choices[0] = object(ch)
-				f["choices"] = array(choices)
-				extra = append(extra, object(f))
-			}
-		} else if stream.name == Responses {
-			if m.Name == "annotations" {
-				if item.deliveredAnnotations == m.Value {
-					continue
-				}
-				var old, entries []p.Value
-				_ = item.deliveredAnnotations.Decode(&old)
-				_ = m.Value.Decode(&entries)
-				if len(entries) < len(old) {
-					return nil, unsupported(m.Path, "citation snapshot removed previously emitted entries")
-				}
-				for i := range old {
-					if old[i] != entries[i] {
-						return nil, unsupported(m.Path, "citation snapshot rewrote previously emitted entries")
-					}
-				}
-				for i := len(old); i < len(entries); i++ {
-					f, _ := stream.responsesEvent("response.output_text.annotation.added", key, item, "annotation", entries[i]).ReadObject()
-					f["annotation_index"], _ = p.EncodeValue(i)
-					extra = append(extra, object(f))
-				}
-				item.deliveredAnnotations = m.Value
-			} else if m.Name == "logprobs" && event.Type == p.ItemDelta {
-				attached := false
-				for i, v := range frames {
-					f, _ := v.ReadObject()
-					if f["type"].IsString("response.output_text.delta") {
-						f["logprobs"] = m.Value
-						frames[i] = object(f)
-						attached = true
-						break
-					}
-				}
-				if !attached {
-					f, _ := stream.responsesEvent("response.output_text.delta", key, item, "delta", p.StringValue("")).ReadObject()
-					f["logprobs"] = m.Value
-					extra = append(extra, object(f))
-				}
+			if !isAttached {
+				fields, _ := stream.responsesEvent("response.output_text.delta", key, item, "delta", p.StringValue("")).ReadObject()
+				fields["logprobs"] = m.Value
+				extra = append(extra, object(fields))
 			}
 		}
 	}
-	if event != nil && event.Type == p.ItemFinished {
-		frames = append(extra, frames...)
-	} else {
-		frames = append(frames, extra...)
-	}
+	return extra, nil
+}
+
+func (stream *streamModule) writeResponseMetadata(frames []p.Value) error {
 	for i, v := range frames {
-		f, _ := v.ReadObject()
+		fields, _ := v.ReadObject()
 		switch stream.name {
 		case Chat:
-			if err := stream.module.writeMetadata(f, stream.metadata, "response"); err != nil {
-				return nil, err
+			if err := stream.module.writeMetadata(fields, stream.metadata, "response"); err != nil {
+				return err
 			}
 		case Responses:
-			if !f["response"].IsZero() {
-				r, _ := f["response"].ReadObject()
+			if !fields["response"].IsZero() {
+				r, _ := fields["response"].ReadObject()
 				if err := stream.module.writeMetadata(r, stream.metadata, "response"); err != nil {
-					return nil, err
+					return err
 				}
-				f["response"] = object(r)
+				fields["response"] = object(r)
 			}
 		case Anthropic, Gemini:
 			usageKey := "usage"
 			if stream.name == Gemini {
 				usageKey = "usageMetadata"
 			}
-			if !f[usageKey].IsZero() {
-				u, _ := f[usageKey].ReadObject()
+			if !fields[usageKey].IsZero() {
+				u, _ := fields[usageKey].ReadObject()
 				if err := stream.module.writeMetadata(u, stream.metadata, "usage"); err != nil {
-					return nil, err
+					return err
 				}
-				f[usageKey] = object(u)
+				fields[usageKey] = object(u)
 			}
 		}
-		frames[i] = object(f)
+		frames[i] = object(fields)
 	}
+	return nil
+}
+
+func (stream *streamModule) renderEventMetadata(frames []p.Value, event *p.Event, frameMetadata []p.ResponseMetadata, options p.EvaluationContext) ([]p.Value, error) {
 	for _, m := range frameMetadata {
 		if event != nil && event.Type == p.ResponseFinished && len(frames) == 0 {
 			// The terminal is held for late usage. Its frame metadata stays on
@@ -250,22 +305,18 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event, opt
 			}
 			frames = append(frames, object(p.Object{"type": p.StringValue("response.in_progress"), "response": response}))
 		}
-		attached := false
+		isAttached := false
 		for i, frame := range frames {
 			fields, _ := frame.ReadObject()
 			if fields["type"].IsString(strings.TrimPrefix(m.Location, "event:")) {
 				fields[m.Name] = m.Value
 				frames[i] = object(fields)
-				attached = true
+				isAttached = true
 			}
 		}
-		if !attached {
+		if !isAttached {
 			return nil, unsupported(m.Path, "event metadata has no corresponding target frame")
 		}
-	}
-	metadata, _ := p.EncodeValue(stream.metadata)
-	if len(metadata.Bytes()) > stream.limits.BufferBytes {
-		return nil, unsupported("/metadata", "stream metadata exceeds buffer limit")
 	}
 	return frames, nil
 }
@@ -288,29 +339,23 @@ func (stream *streamModule) attachFrameMetadata(events []p.Event, metadata []p.R
 			events[len(events)-1].Metadata = append(events[len(events)-1].Metadata, m)
 			continue
 		}
-		if m.Location == "response" || m.Location == "usage" {
+		// Response, usage and candidate metadata do not depend on a text item.
+		if m.Location == "response" || m.Location == "usage" || m.Location == "candidate" {
 			if len(events) == 0 {
 				events = append(events, p.Event{Type: p.MetadataUpdated})
 			}
 			events[0].Metadata = append(events[0].Metadata, m)
 			continue
 		}
-		if m.Location == "candidate" { // Candidate details have no text dependency.
-			if len(events) == 0 {
-				events = append(events, p.Event{Type: p.MetadataUpdated})
-			}
-			events[0].Metadata = append(events[0].Metadata, m)
-			continue
-		}
-		found := false
+		hasMatch := false
 		for i, e := range events {
 			if e.Type == p.ItemDelta && e.ItemID.IsString("text") {
 				events[i].Metadata = append(events[i].Metadata, m)
-				found = true
+				hasMatch = true
 				break
 			}
 		}
-		if !found {
+		if !hasMatch {
 			item := stream.items["text"]
 			if item == nil {
 				if m.Value.IsNull() {
