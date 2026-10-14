@@ -3,6 +3,9 @@ import CryptoKit
 import WebKit
 import os
 
+private let updateRequestTimeout: TimeInterval = 30
+private let updateResourceTimeout: TimeInterval = 15 * 60
+
 // Controller methods share the delegate owner; process and callback lifetimes stay unchanged.
 extension AppDelegate {
     // MARK: 更新
@@ -161,8 +164,8 @@ extension AppDelegate {
             }
         })
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 15 * 60
+        configuration.timeoutIntervalForRequest = updateRequestTimeout
+        configuration.timeoutIntervalForResource = updateResourceTimeout
         updateDownloadDelegate = delegate
         let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: .main)
         updateSession = session
@@ -255,11 +258,7 @@ extension AppDelegate {
     private func updateFailed(_ message: String) {
         updatePhase = .failed
         updateMessage = "更新失败"
-        var detail = message
-        if updateDetail.hasPrefix("已接收") || updateDetail.hasPrefix("正在校验") {
-            detail = "\(message)"
-        }
-        updateDetail = detail
+        updateDetail = message
         // 失败值得重新唤起胶囊（用户之前手关过 ×，也要再看到失败事实）
         updateCapsuleVisible = true
         appLogger.error("更新失败：\(message, privacy: .public)")
