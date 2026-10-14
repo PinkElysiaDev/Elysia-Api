@@ -90,7 +90,7 @@ export function AgentPage() {
     }
   }, []);
 
-  const { live, send, approve, stop, dismissError, hydrateApproval } =
+  const { live, send, approve, stop, dismissError, dismissResult, hydrateApproval } =
     useAgentStream(activeId, {
       onMessage: (event: AgentStreamEvent) => {
         if (event.message) {
@@ -425,6 +425,7 @@ export function AgentPage() {
               live={live}
               onSettingsChange={handleSettingsChange}
               onDismissError={dismissError}
+              onDismissResult={dismissResult}
               onSend={(input: {
                 content?: string;
                 documents?: AgentDocument[];

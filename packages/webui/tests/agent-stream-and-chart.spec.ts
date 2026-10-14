@@ -109,6 +109,37 @@ async function push(page: Page, ...events: AgentStreamEvent[]) {
   await page.evaluate((events) => events.forEach((event) => (window as StreamWindow).pushAgentEvent(event)), events)
 }
 
+for (const dismissal of ['close', 'reload'] as const) {
+  test(`one-time tool result survives turn completion and clears on ${dismissal}`, async ({ page }) => {
+    const persisted: AgentMessage[] = []
+    await openAgent(page, persisted)
+    const composer = page.getByPlaceholder('请描述你的任务')
+    await composer.fill('create a test key')
+    await composer.press('Enter')
+    await page.waitForFunction(() => Boolean((window as StreamWindow).pushAgentEvent))
+    const secret = 'synthetic-one-time-secret'
+    const stored = { callId: 'key', name: 'elysia_cli', ok: true, data: { output: '***' } }
+    persisted.push(message(1, 'user', { text: 'create a test key' }), message(2, 'tool_result', stored))
+    await push(page, { type: 'message', message: persisted[0] },
+      { type: 'tool_call', callId: 'key', name: 'elysia_cli' },
+      { type: 'tool_result', callId: 'key', result: { ...stored, data: { output: secret } }, message: persisted[1] },
+      { type: 'turn_done' })
+    await page.evaluate(() => (window as StreamWindow).finishAgentStream())
+    const group = page.getByRole('button', { name: /^调用工具/ })
+    const row = page.getByRole('button', { name: '查看 elysia_cli 调用详情' })
+    await group.click(); await row.click()
+    await expect(page.locator('[data-seq="2"] pre')).toHaveText(secret)
+    expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain(secret)
+    if (dismissal === 'close') { await row.click(); await row.click() }
+    else {
+      await page.reload()
+      await page.locator('[role="button"]').filter({ has: page.getByText('流式与图表回归检查', { exact: true }) }).press('Enter')
+      await group.click(); await row.click()
+    }
+    await expect(page.locator('[data-seq="2"] pre')).toHaveText('***')
+  })
+}
+
 const bars = '.recharts-bar-rectangle path.recharts-rectangle'
 
 test('only elysia_cli exposes a CLI command preview', () => {

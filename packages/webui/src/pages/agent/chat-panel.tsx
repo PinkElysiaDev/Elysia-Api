@@ -30,6 +30,7 @@ export interface ChatPanelProps {
   onDraftChange?: (draft: { text: string; documents: AgentDocument[] }) => void;
   messages: AgentMessage[];
   live: AgentLiveState;
+  onDismissResult?: (seq: number) => void;
   onSend: (input: {
     content?: string;
     documents?: AgentDocument[];
@@ -72,6 +73,7 @@ export function ChatPanel({
   onOpenContextTab,
   onSettingsChange,
   onDismissError,
+  onDismissResult,
   jumpTarget,
   onActiveTurn,
   turnRail,
@@ -380,6 +382,7 @@ export function ChatPanel({
             <MessageStream
               messages={messages}
               live={live}
+              onDismissResult={onDismissResult}
               actions={messageActions}
               suppressedErrorSeq={suppressedErrorSeq}
               turnPending={turnPending}

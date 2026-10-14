@@ -8,6 +8,7 @@ import type {
   AgentPlanStep,
   AgentStreamEvent,
   AgentTurnUsage,
+  AgentToolResultContent,
 } from "./types";
 
 export interface AgentToolCard {
@@ -29,6 +30,8 @@ export interface AgentLiveState {
   text: string;
   reasoning: string;
   toolCards: AgentToolCard[];
+  /** Session-local results indexed by the persisted message sequence and call ID. */
+  oneTimeResults?: Record<number, AgentToolResultContent>;
   approvalPending: AgentPendingAction | null;
   error: { text: string; retryable: boolean } | null;
   turnUsage: AgentTurnUsage | null;
@@ -107,8 +110,13 @@ function reduce(
     }
     case "tool_result": {
       const callId = event.callId ?? event.result?.callId ?? "";
+      const shouldRetain = event.message?.role === "tool_result" && event.result &&
+        JSON.stringify(event.result) !== JSON.stringify(event.message.content);
       return {
         ...state,
+        oneTimeResults: shouldRetain
+          ? { ...state.oneTimeResults, [event.message!.seq]: event.result! }
+          : state.oneTimeResults,
         toolCards: state.toolCards.map((card) =>
           card.callId === callId && card.status === "running"
             ? {
@@ -228,6 +236,9 @@ export function useAgentStream(
         ...initialState,
         running: true,
         turnUsage: state.turnUsage,
+        oneTimeResults: path === "/messages" && body && typeof body === "object" && "afterSeq" in body
+          ? Object.fromEntries(Object.entries(state.oneTimeResults ?? {}).filter(([seq]) => Number(seq) < Number(body.afterSeq)))
+          : state.oneTimeResults,
       }));
       abortRef.current?.abort();
       const controller = new AbortController();
@@ -343,6 +354,14 @@ export function useAgentStream(
     setLive((state) => ({ ...state, error: null }));
   }, []);
 
+  const dismissResult = useCallback((seq: number) => {
+    setLive((state) => {
+      const results = { ...state.oneTimeResults };
+      delete results[seq];
+      return { ...state, oneTimeResults: results };
+    });
+  }, []);
+
   /** 会话详情回灌审批卡：waiting_approval 状态在刷新/切会话后 SSE 现场已
    *  丢失，不回灌的话待审批轮次从此无法在 UI 上批准。
    *  以轮询到的后端状态为准：远程面（插件/MCP/A2A）批准或轮次结束后
@@ -362,7 +381,7 @@ export function useAgentStream(
     [],
   );
 
-  return { live, send, approve, stop, dismissError, hydrateApproval };
+  return { live, send, approve, stop, dismissError, dismissResult, hydrateApproval };
 }
 
 /** 两张待批卡是否指向同一动作（类型 + 调用集合一致）。 */

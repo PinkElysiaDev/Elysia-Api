@@ -18,6 +18,7 @@ export interface ToolCallEntry {
   progressText?: string;
   elapsedMs?: number;
   durationMs?: number;
+  onDismiss?: () => void;
 }
 
 /** 工具组内的紧凑行：命令优先，参数单行省略，按需展开完整输出。 */
@@ -37,7 +38,7 @@ export function ToolCallRow({ call }: { call: ToolCallEntry }) {
         type="button"
         aria-label={`查看 ${call.name} 调用详情`}
         aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
+        onClick={() => { if (expanded) call.onDismiss?.(); setExpanded((value) => !value) }}
         className="flex w-full min-w-0 items-start gap-2 rounded-md py-1.5 text-left outline-none transition-colors hover:bg-wash/50 hover:text-foreground focus-visible:bg-wash"
       >
         <ChevronRight

@@ -20,6 +20,7 @@ type StreamItem =
 export function MessageStream({
   messages,
   live,
+  onDismissResult,
   actions,
   suppressedErrorSeq,
   turnPending = live.running || Boolean(live.approvalPending),
@@ -27,6 +28,7 @@ export function MessageStream({
 }: {
   messages: AgentMessage[];
   live: AgentLiveState;
+  onDismissResult?: (seq: number) => void;
   actions?: MessageActions;
   suppressedErrorSeq?: number;
   /** 含远程执行与等待审批：这些都属于尚未结束的当前轮。 */
@@ -66,6 +68,8 @@ export function MessageStream({
     }
     if (message.role === "tool_result") {
       const content = message.content as AgentToolResultContent;
+      const temporary = live.oneTimeResults?.[message.seq];
+      const display = temporary?.callId === content.callId ? temporary : content;
       const id = content.callId ? `${turnSeq}:${content.callId}` : `seq:${message.seq}`;
       persistedCalls.add(id);
       const denied = !content.ok && (content.data as { error?: string } | null)?.error === "denied";
@@ -75,8 +79,9 @@ export function MessageStream({
         name: content.name,
         status: denied ? "denied" : content.ok ? "done" : "failed",
         input: content.input,
-        result: content.data,
-        summary: content.summary,
+        result: display.data,
+        summary: display.summary,
+        onDismiss: display !== content ? () => onDismissResult?.(message.seq) : undefined,
         durationMs: content.durationMs,
       });
     } else {
