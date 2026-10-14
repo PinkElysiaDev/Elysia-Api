@@ -7,7 +7,7 @@ const updated: ReasoningCapabilities = { kind: 'budget', disable: true, minBudge
 async function mockBindings(page: Page, initial = true, hasPolicies = false) {
   let binding: ProtocolBindingEntry | undefined = initial ? {
     kind: 'model', sourceId: 'binding-source', modelId: 'private-model',
-    binding: { protocolId: 'chat', revisionHash: 'chat-rev', reasoning: original },
+    binding: { protocolId: 'chat', revisionHash: 'chat-rev', reasoning: original, capabilities: { 'tools.function': false }, transports: ['http_json'], operation: 'generate' },
   } : undefined
   let bindingJSON = binding ? JSON.stringify(binding) : undefined
   let failNext = false
@@ -72,6 +72,14 @@ async function mockBindings(page: Page, initial = true, hasPolicies = false) {
     },
   }
 }
+
+test('saving an unchanged protocol preserves the explicit model contract', async ({ page }) => {
+  const state = await mockBindings(page)
+  const before = structuredClone(state.saved()!.binding)
+  await state.dialog.getByRole('button', { name: '验证并保存模型绑定', exact: true }).click()
+  await expect.poll(state.attempts).toBe(1)
+  expect(state.saved()!.binding).toEqual(before)
+})
 
 test('late policy revisions do not replace a newer binding selection', async ({ page }) => {
   const state = await mockBindings(page, true, true)

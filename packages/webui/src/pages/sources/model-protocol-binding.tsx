@@ -39,14 +39,17 @@ function ModelBindingForm({ model, disabled }: { model: Model; disabled: boolean
     setBusy(true); setError(''); setNotice('')
     try {
       const entry: ProtocolBindingEntry = { kind: 'model', sourceId: model.sourceId ?? '', modelId: model.id, unbound: !selected, binding: {}, conversion: current?.kind === 'model' ? current.conversion : undefined }
-      if (selected) {
+      if (selected && current?.binding.protocolId === selected && !current.unbound) {
+        // Saving the selection is not consent to widen a manually restricted contract.
+        entry.binding = { ...current.binding }
+      } else if (selected) {
         const target = protocols.find((item) => item.id === selected)
         if (!target) throw new Error('请选择当前已启用的协议')
         const revision = (await protocolAPI.revisions(target.id)).find((item) => item.hash === target.revision)
         if (!revision) throw new Error('协议已变化，请重新打开模型设置')
         const definition = JSON.parse(revision.definition) as { operations: Record<string, { kind: string; transport: string }> }
         const capabilities = Object.fromEntries(Object.entries(target.capabilities).filter(([key, supported]) => supported && (model.toolsCapable || !key.startsWith('tools.')) && (model.visionCapable || !['images', 'audio', 'video'].includes(key))))
-        entry.binding = { reasoning: current?.binding.protocolId === target.id ? current.binding.reasoning : undefined, protocolId: target.id, revisionHash: target.revision, capabilities, transports: [...new Set(Object.values(definition.operations).filter((operation) => operation.kind === 'generate').map((operation) => operation.transport))] }
+        entry.binding = { protocolId: target.id, revisionHash: target.revision, capabilities, transports: [...new Set(Object.values(definition.operations).filter((operation) => operation.kind === 'generate').map((operation) => operation.transport))] }
       }
       if (generation.current !== requestId) return
       const saved = await protocolAPI.saveBinding(entry)
