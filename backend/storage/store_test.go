@@ -734,3 +734,21 @@ func TestBackfillProgressBar(t *testing.T) {
 		t.Fatalf("zero total must render empty, got %s", got)
 	}
 }
+
+func TestReconcileNullLegacyDefinition(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "null.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.UpsertCustomProtocol(t.Context(), CustomProtocol{ID: "broken", Config: "null"}); err != nil {
+		t.Fatal(err)
+	}
+	if fixed, err := store.ReconcileCustomProtocolConfigIDs(t.Context()); err != nil || fixed != 0 {
+		t.Fatalf("invalid definition was rewritten: fixed=%d err=%v", fixed, err)
+	}
+	var definition string
+	if err := store.db.QueryRowContext(t.Context(), `SELECT config FROM custom_protocols WHERE id='broken'`).Scan(&definition); err != nil || definition != "null" {
+		t.Fatalf("invalid original must remain available for repair: %q %v", definition, err)
+	}
+}

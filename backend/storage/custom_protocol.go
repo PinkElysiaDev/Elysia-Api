@@ -272,6 +272,9 @@ func rewriteProtocolConfigID(config, wantID string) (rewritten string, changed b
 	if err := json.Unmarshal([]byte(config), &obj); err != nil {
 		return config, false, fmt.Errorf("invalid JSON: %w", err)
 	}
+	if obj == nil {
+		return config, false, fmt.Errorf("protocol definition must be a JSON object")
+	}
 	current := ""
 	if raw, ok := obj["id"]; ok {
 		_ = json.Unmarshal(raw, &current)
