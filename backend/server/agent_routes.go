@@ -33,6 +33,7 @@ const (
 	// sseKeepaliveInterval 是 SSE 空闲时的注释帧间隔。工具执行最长可达
 	// 两分钟且期间零事件，中间代理会把静默连接掐断。
 	sseKeepaliveInterval = 15 * time.Second
+	agentTurnTimeout     = 10 * time.Minute
 )
 
 func (s *Server) setupAgentRoutes(admin *gin.RouterGroup) {
@@ -77,10 +78,10 @@ func (s *Server) protocolAgentEngine() *agent.Engine {
 			newAgentUserContentRenderer(s),
 			agentSystemPrompt,
 			agent.Options{
-				MaxModelCalls: 30,
+				MaxModelCalls: agent.DefaultMaxModelCalls,
 				// 运行配置页可改、热生效（会话级设置仍可逐会话覆盖）。
 				ModelCallLimit: func() int { return s.config.ResolveAgentToolLoopLimit() },
-				TurnTimeout:    10 * time.Minute,
+				TurnTimeout:    agentTurnTimeout,
 				ParseAsk:       parseAskQuestion,
 			},
 		)

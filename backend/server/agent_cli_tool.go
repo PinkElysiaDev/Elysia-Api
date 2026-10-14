@@ -12,7 +12,11 @@ import (
 // elysia_cli is the thin adapter exposed to the built-in Agent. The CLI
 // handlers themselves are independent of agent.Tool; this adapter is where
 // session state, approval probing, and Agent result types meet the CLI.
-const agentToolCLI = "elysia_cli"
+const (
+	agentToolCLI      = "elysia_cli"
+	cliToolTimeoutMS  = 10 * 60 * 1000
+	cliToolModelBytes = 48 * 1024
+)
 
 const cliToolDescription = "执行 Elysia API 网关运维命令。每条命令须以 elysia 开头；" +
 	"首次使用先查 elysia help，具体用法按需查 elysia help <组> [命令]。"
@@ -25,7 +29,7 @@ func (t *elysiaCLITool) Gated() bool           { return false }
 func (t *elysiaCLITool) PermissionKey() string { return "" }
 
 func (t *elysiaCLITool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{RiskLevel: "medium", TimeoutMs: 600_000, PreviewDirection: agent.ClampTail, MaxModelBytes: 48 * 1024}
+	return agent.ToolMeta{RiskLevel: "medium", TimeoutMs: cliToolTimeoutMS, PreviewDirection: agent.ClampTail, MaxModelBytes: cliToolModelBytes}
 }
 
 func (t *elysiaCLITool) Definition() agent.FunctionDefinition {
