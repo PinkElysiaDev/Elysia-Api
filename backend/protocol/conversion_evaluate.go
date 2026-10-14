@@ -43,7 +43,7 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 			if resolvedTarget != "" {
 				reasoningTarget = resolvedTarget
 			}
-		case rule.Action == "anthropic_usage_envelope" || rule.Action == "response_shape" || rule.Action == "response_envelope" || rule.Action == "response_metadata" || rule.Action == "error_metadata" || rule.Action == "usage_projection" || rule.Action == "responses_turn_state":
+		case rule.Action == "chat_response_model" || rule.Action == "anthropic_usage_envelope" || rule.Action == "response_shape" || rule.Action == "response_envelope" || rule.Action == "response_metadata" || rule.Action == "error_metadata" || rule.Action == "usage_projection" || rule.Action == "responses_turn_state":
 			if rule.Match.matches(route, value) {
 				value, err = c.applyResponseAction(phase, value, route, rule, sink)
 			}
@@ -133,6 +133,15 @@ func (c *CompiledConversion) applyRequestAction(value Value, route ConversionCon
 
 func (c *CompiledConversion) applyResponseAction(phase ConversionPhase, value Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, error) {
 	switch rule.Action {
+	case "chat_response_model":
+		var response Response
+		if err := value.Decode(&response); err != nil {
+			return Value{}, err
+		}
+		if err := c.repairChatResponseModel(&response, route, rule, sink); err != nil {
+			return Value{}, err
+		}
+		return EncodeValue(response)
 	case "responses_turn_state":
 		return c.projectResponsesTurnState(value, rule, sink)
 	case "anthropic_usage_envelope":

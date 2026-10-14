@@ -1,0 +1,89 @@
+package protocol
+
+import "context"
+
+// ResponseModelOrigin describes one observed response, independently of later
+// semantic mappings. RequestModel comes from the final outbound wire request.
+type ResponseModelOrigin struct {
+	RequestModel  Value `json:"requestModel,omitzero"`
+	SourcePresent bool  `json:"sourcePresent"`
+	SourceModel   Value `json:"sourceModel,omitzero"`
+}
+
+func chatResponseModelPair(ingress, upstream *Compiled) bool {
+	return ingress.Codec(DecodeRequest) == "openai-chat" && ingress.Codec(EncodeResponse) == "openai-chat" &&
+		upstream.Codec(EncodeRequest) == "openai-chat" && upstream.Codec(DecodeResponse) == "openai-chat"
+}
+
+// WithResponseModelOrigin captures only model fields; it never copies a prompt
+// into conversion context or substitutes the routing model for the sent model.
+func (route ConversionContext) WithResponseModelOrigin(ingress, upstream *Compiled, outbound, source []byte) (ConversionContext, error) {
+	route.ResponseModel = nil
+	if route.Transport != HTTPJSON || !chatResponseModelPair(ingress, upstream) {
+		return route, nil
+	}
+	read := func(body []byte) (Object, error) {
+		value, err := ParseValue(body)
+		if err != nil {
+			return nil, err
+		}
+		return value.ReadObject()
+	}
+	request, err := read(outbound)
+	if err != nil {
+		return route, err
+	}
+	response, err := read(source)
+	if err != nil {
+		return route, err
+	}
+	model, isPresent := response["model"]
+	route.ResponseModel = &ResponseModelOrigin{RequestModel: request["model"], SourcePresent: isPresent, SourceModel: model}
+	return route, nil
+}
+
+func (c *CompiledConversion) repairChatResponseModel(response *Response, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
+	if route.Transport != HTTPJSON || !response.Model.IsZero() || !response.Status.IsString("completed") || (!response.Error.IsZero() && !response.Error.IsNull()) {
+		return nil
+	}
+	origin := route.ResponseModel
+	if origin == nil {
+		return streamIssue(InvalidInput, "/context/responseModel", "model repair requires the observed source field and final outbound request model")
+	}
+	if origin.SourcePresent || !origin.SourceModel.IsZero() {
+		// A mapping removed a field that existed upstream. Repairing it here
+		// would conceal the authored mapping's effect.
+		return nil
+	}
+	var model string
+	if origin.RequestModel.Decode(&model) != nil || model == "" {
+		return streamIssue(InvalidInput, "/context/responseModel/requestModel", "model repair requires a nonempty model from the final outbound request")
+	}
+	if err := c.issue(rule, ConversionResponse, route, "/model", "provider omitted the response model; the outbound request model was substituted and is not an observed provider model", sink, true); err != nil {
+		return err
+	}
+	response.Model = origin.RequestModel
+	return nil
+}
+
+// RepairCollectedResponseModel applies only the source-model repair selected by
+// the collector's policy. Client envelopes and other response rules stay outside
+// the collector, which returns provider semantics rather than client wire output.
+func (c *CompiledConversion) RepairCollectedResponseModel(ctx context.Context, response *Response, route ConversionContext, sink *DiagnosticSink) (*Response, error) {
+	if c == nil {
+		return response, nil
+	}
+	copy := *response
+	for _, rule := range c.Policy.Rules {
+		if !rule.Enabled || rule.Phase != ConversionResponse || rule.Action != "chat_response_model" || !rule.Match.matches(route, Value{}) {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := c.repairChatResponseModel(&copy, route, rule, sink); err != nil {
+			return nil, err
+		}
+	}
+	return &copy, nil
+}

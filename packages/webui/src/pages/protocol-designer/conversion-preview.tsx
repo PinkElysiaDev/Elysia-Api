@@ -54,6 +54,7 @@ export function ConversionPreview({ policyJSON, isValid, busy, registry, action 
         ))}
       </select>
       {phase === 'source_event' && <p className="text-sm text-muted-foreground">输入按接收顺序排列的完整上游 JSON 帧数组；source 为上游协议，target 为客户端协议。仅匹配空启动帧的身份规则，输出仍为帧数组。</p>}
+      {phase === 'response' && <p className="text-sm text-muted-foreground">预览 Chat 缺失模型补齐时，在上下文提供 responseModel，例如 {`{"requestModel":"实际出站模型","sourcePresent":false}`}。源响应已有 model 时，sourcePresent 为 true，并用 sourceModel 保留原值。补齐值不代表供应商确认的模型。</p>}
       <label className="block">
         协议与模型上下文
         <textarea

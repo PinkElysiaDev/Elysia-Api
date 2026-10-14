@@ -477,6 +477,12 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 	if conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion); conversion != nil {
 		route := conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), HTTPJSON)
 		route.Scope = options.Scope
+		if outbound := sample.Context["upstreamRequest"]; !outbound.IsZero() {
+			route, err = route.WithResponseModelOrigin(ingress, upstream, outbound.Bytes(), sample.Input.Bytes())
+			if err != nil {
+				return err
+			}
+		}
 		value, encodeErr := EncodeValue(response)
 		if encodeErr != nil {
 			return encodeErr

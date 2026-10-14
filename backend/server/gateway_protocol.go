@@ -200,6 +200,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	setRecordModel(record, candidate.model, builtin.Platform("custom:"+candidate.binding.ProtocolID))
 	record.UpstreamRevision, record.TargetEndpoint, record.TargetFormat = candidate.compiled.Hash(), candidate.operation.Path, candidate.binding.ProtocolID
 	record.OutgoingBody = record.sanitizeBody(body)
+	outboundBody := body
 	response, err := s.protocolTransport.SendProtocolRequest(c.Request.Context(), candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Identifier()})
 	if err != nil {
 		return err
@@ -244,7 +245,11 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 		return err
 	}
 	if candidate.conversion != nil {
-		semantic, err = candidate.conversion.Response(c.Request.Context(), semantic, candidate.conversionContext(plan.ingress, true), options.Diagnostics)
+		route, originErr := candidate.conversionContext(plan.ingress, true).WithResponseModelOrigin(plan.ingress, candidate.compiled, outboundBody, body)
+		if originErr != nil {
+			return originErr
+		}
+		semantic, err = candidate.conversion.Response(c.Request.Context(), semantic, route, options.Diagnostics)
 		if err != nil {
 			return err
 		}

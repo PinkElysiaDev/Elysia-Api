@@ -44,16 +44,16 @@ func TestReviewConversionEquivalence(t *testing.T) {
 			for _, mode := range []string{"compatible", "strict"} {
 				policy := p.DefaultConversionPolicy(to, from)
 				policy.Mode = mode
-				// Keep the dev69 policy identity frozen. dev70 adds a dedicated
-				// control action; its effect on existing samples is checked below
-				// separately from the historical hashes.
+				// Keep the dev69 policy identity frozen. Later control/model
+				// repair rules are checked against the legacy policy below;
+				// their new policy hashes must not rebaseline wire observations.
 				current, err := p.ResolveConversion(policy)
 				if err != nil {
 					t.Fatal(err)
 				}
 				legacyRules := make([]p.ConversionRule, 0, len(policy.Rules))
 				for _, rule := range policy.Rules {
-					if rule.Action != "responses_turn_state" {
+					if rule.Action != "responses_turn_state" && rule.Action != "chat_response_model" {
 						legacyRules = append(legacyRules, rule)
 					}
 				}
@@ -66,6 +66,21 @@ func TestReviewConversionEquivalence(t *testing.T) {
 				report := p.VerifyBindingCombination(t.Context(), to, from, nil, conversion)
 				report.CompilerVersion = "2.0.0-dev.69"
 				check(name+"/combination", report)
+				modernReport := p.VerifyBindingCombination(t.Context(), to, from, nil, current)
+				modernReport.CompilerVersion, modernReport.PolicyHash = report.CompilerVersion, report.PolicyHash
+				for index := range modernReport.Issues {
+					if modernReport.Issues[index].PolicyHash == current.Hash {
+						modernReport.Issues[index].PolicyHash = conversion.Hash
+					}
+					if revision := conversion.RuleRevisions[modernReport.Issues[index].RuleID]; revision != "" {
+						modernReport.Issues[index].PolicyRevision = revision
+					}
+				}
+				beforeReport, _ := json.Marshal(report)
+				afterReport, _ := json.Marshal(modernReport)
+				if string(beforeReport) != string(afterReport) {
+					t.Errorf("current policy changed existing combination %s:\n%s\n%s", name, beforeReport, afterReport)
+				}
 				for _, sample := range from.Definition().Samples {
 					if sample.Direction != p.DecodeRequest && sample.Direction != p.DecodeResponse && sample.Direction != p.DecodeEvent {
 						continue
@@ -85,7 +100,7 @@ func TestReviewConversionEquivalence(t *testing.T) {
 					before, _ := json.Marshal(observation)
 					after, _ := json.Marshal(modern)
 					if string(before) != string(after) {
-						t.Errorf("dev70 changed existing sample %s/%s:\n%s\n%s", name, sample.ID, before, after)
+						t.Errorf("current policy changed existing sample %s/%s:\n%s\n%s", name, sample.ID, before, after)
 					}
 				}
 				if source == Responses {

@@ -82,6 +82,7 @@ type ConversionSelection struct {
 }
 
 type ConversionContext struct {
+	ResponseModel       *ResponseModelOrigin   `json:"responseModel,omitempty"`
 	InterleavedThinking bool                   `json:"interleavedThinking,omitempty"`
 	Delivery            *DeliveryState         `json:"-"`
 	Scope               Scope                  `json:"-"`
@@ -321,6 +322,9 @@ func (c *CompiledConversion) issueSeverity(rule ConversionRule, phase Conversion
 	if phase == ConversionSourceEvent {
 		issue.Protocol, issue.Direction = ctx.Source, DecodeEvent
 	}
+	if rule.Action == "chat_response_model" {
+		issue.Protocol, issue.Direction = ctx.Source, DecodeResponse
+	}
 	if severity == SeverityError {
 		issue.Code = ConversionRejected
 		issue.Fidelity = "rejected"
@@ -367,6 +371,8 @@ func (c *CompiledConversion) Wire(ctx context.Context, body []byte, route Conver
 }
 
 func (c *CompiledConversion) WithVerificationContext(route ConversionContext) *CompiledConversion {
+	// Observed response fields belong to a single attempt, never a binding proof.
+	route.ResponseModel = nil
 	if route.Reasoning != nil {
 		capability := *route.Reasoning
 		capability.Levels = slices.Clone(capability.Levels)

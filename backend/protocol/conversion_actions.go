@@ -18,6 +18,7 @@ type conversionAction struct {
 // Build fresh editor schemas so callers cannot mutate compiler constraints.
 func conversionActionCatalog() []conversionAction {
 	return []conversionAction{
+		{name: "chat_response_model", phases: []ConversionPhase{ConversionResponse}, description: "仅补齐成功非流式 Chat 原始响应中缺失的 model；使用本次实际出站模型并告警，严格模式拒绝。null、空值、非法类型和映射删除不补齐；需要 responseModel 来源上下文。", isWholeValue: true},
 		{name: "responses_turn_state", phases: []ConversionPhase{ConversionEvent}, valueSchema: map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}, description: "限定处理 response.metadata 的 x-codex-turn-state 控制帧。同协议保留；跨协议兼容模式省略并告警，严格模式拒绝。不提供跨请求轮次状态恢复，未知字段仍拒绝。", codecValue: "required", isWholeValue: true},
 		{name: "chat_stream_identity", phases: []ConversionPhase{ConversionSourceEvent}, description: "暂存一条精确匹配的 Chat 空启动帧。仅当第二条也是同模型空启动帧且 ID 改变时，以第二帧 ID 和创建时间统一首帧；兼容模式诊断，严格模式拒绝。后续身份变化仍拒绝。", isWholeValue: true},
 		{name: "error_metadata", phases: []ConversionPhase{ConversionResponse, ConversionEvent}, valueSchema: map[string]any{"type": "object", "required": []string{"sourceCodec", "targetCodec"}, "properties": map[string]any{"sourceCodec": map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}, "targetCodec": map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}}}, description: "将已识别错误的 code、param 投影到目标错误。无结构字段的目标在兼容模式保留为明确的消息附注并诊断，严格模式拒绝结构变化；空 param 规范化。未知扩展不作省略，同协议保持原形态。", isWholeValue: true},
@@ -92,9 +93,9 @@ func (action conversionAction) validate(rule ConversionRule) error {
 		return fmt.Errorf("%s matches the complete semantic value, not an individual node", action.name)
 	}
 	switch action.name {
-	case "chat_stream_identity":
+	case "chat_stream_identity", "chat_response_model":
 		if rule.Path != "" || !rule.Value.IsZero() || rule.Expression != nil || rule.Match.Path != "" || rule.Match.Present != nil {
-			return fmt.Errorf("chat_stream_identity accepts route conditions only; its field boundaries are fixed")
+			return fmt.Errorf("%s accepts route conditions only; its field boundaries are fixed", action.name)
 		}
 	case "error_metadata":
 		var options errorProjectionOptions

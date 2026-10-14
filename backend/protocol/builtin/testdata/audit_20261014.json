@@ -4,5 +4,18 @@
   "heartbeat": {"type":"response.output_text.delta","item_id":"SSE-Keep-Alive","output_index":0,"content_index":0,"delta":"","SSE-Keep-Alive":true},
   "responses_created": {"type":"response.created","sequence_number":0,"response":{"id":"r","object":"response","model":"m","created_at":100,"status":"in_progress","output":[]}},
   "responses_changed_time": {"type":"response.completed","sequence_number":1,"response":{"id":"r","object":"response","model":"m","created_at":119,"status":"completed","output":[]}},
-  "chat_startup": [{"id":"a","object":"chat.completion.chunk","created":106,"model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]},{"id":"b","object":"chat.completion.chunk","created":100,"model":"m","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}],"service_tier":"auto"}]
+  "chat_startup": [{"id":"a","object":"chat.completion.chunk","created":106,"model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]},{"id":"b","object":"chat.completion.chunk","created":100,"model":"m","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}],"service_tier":"auto"}],
+  "chat_missing_model": {
+    "id": "chatcmpl-synthetic",
+    "object": "chat.completion",
+    "created": 1700000000,
+    "choices": [{"index": 0, "message": {"role": "assistant", "content": "synthetic reply"}, "finish_reason": "stop"}],
+    "usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10},
+    "vendor_integer": 9007199254740993
+  },
+  "new_api_error": {"error": {"type": "new_api_error", "code": "input_tokens_out_of_range", "param": "", "message": "Synthetic provider rejected the input"}},
+  "chat_placeholder_start": [
+    {"id": "chatcmpl-synthetic", "object": "chat.completion.chunk", "created": 1700000000, "model": "synthetic-model", "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": null}]},
+    {"id": "chatcmpl-0", "object": "chat.completion.chunk", "created": 0, "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": null}]}
+  ]
 }

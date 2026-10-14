@@ -71,6 +71,7 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if record != nil {
 		record.OutgoingBody = record.sanitizeBody(body)
 	}
+	outboundBody := body
 	response, err := s.protocolTransport.SendProtocolRequest(ctx, candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Identifier()})
 	if err != nil {
 		return nil, err
@@ -115,6 +116,14 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 				return nil, err
 			}
 			updateRecordProtocolUsage(record, result.Usage)
+		}
+		route, err := candidate.conversionContext(candidate.compiled, true).WithResponseModelOrigin(candidate.compiled, candidate.compiled, outboundBody, body)
+		if err != nil {
+			return nil, err
+		}
+		result, err = candidate.conversion.RepairCollectedResponseModel(ctx, result, route, options.Diagnostics)
+		if err != nil {
+			return nil, err
 		}
 		return result, errors.Join(protocol.CheckGenerationOutcome(result), protocol.IssuesError(protocol.CheckModelResponse(result, candidate.compiled, candidate.binding, candidate.scope)))
 	}
