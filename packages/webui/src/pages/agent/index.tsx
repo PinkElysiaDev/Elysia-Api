@@ -36,6 +36,10 @@ import { useAgentDrafts } from "./use-agent-drafts";
 /** 两个视图共用的满高工作区布局（抵消页面容器的下内边距）。 */
 const WORKSPACE_CLASS = "-mb-14 flex h-[max(560px,calc(100dvh-46px))] min-h-0";
 
+const CONTEXT_PANEL_UNMOUNT_DELAY_MS = 320;
+const APPROVAL_LIST_REFRESH_DELAY_MS = 300;
+const SESSION_LIST_DEDUPLICATION_MS = 2000;
+
 export function AgentPage() {
   const { toast } = useToast();
   const { confirm, dialog: confirmDialog } = useConfirm();
@@ -180,7 +184,7 @@ export function AgentPage() {
       return;
     }
     if (!panelMounted) return;
-    const timer = setTimeout(() => setPanelMounted(false), 320);
+    const timer = setTimeout(() => setPanelMounted(false), CONTEXT_PANEL_UNMOUNT_DELAY_MS);
     return () => clearTimeout(timer);
   }, [visiblePanel, panelMounted]);
 
@@ -326,7 +330,7 @@ export function AgentPage() {
     (decision: { approved: boolean }) => {
       approve(decision);
       // 批准后刷新列表让状态圆点进入 running。
-      window.setTimeout(() => void mutateSessions(), 300);
+      window.setTimeout(() => void mutateSessions(), APPROVAL_LIST_REFRESH_DELAY_MS);
     },
     [approve, mutateSessions],
   );
@@ -476,7 +480,7 @@ function useSWRSessionList() {
   return useSWR("agent-sessions", () => listAgentSessions(), {
     revalidateOnFocus: false,
     shouldRetryOnError: false,
-    dedupingInterval: 2000,
+    dedupingInterval: SESSION_LIST_DEDUPLICATION_MS,
     refreshInterval: POLL.USAGE,
   });
 }

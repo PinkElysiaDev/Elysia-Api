@@ -122,15 +122,15 @@ function MenuOption({
 
 export type PermissionLevel = "confirm" | "auto" | "full";
 
-const PERMISSION_LEVELS: {
+const PERMISSION_LEVELS: Record<PermissionLevel, {
   value: PermissionLevel;
   label: string;
   hint: string;
   allowSave: AgentPermission;
   allowLiveTest: AgentPermission;
   allowDelete: AgentPermission;
-}[] = [
-  {
+}> = {
+  confirm: {
     value: "confirm",
     label: "变更前确认",
     hint: "每次写入、出站与删除都先询问",
@@ -138,7 +138,7 @@ const PERMISSION_LEVELS: {
     allowLiveTest: "ask",
     allowDelete: "ask",
   },
-  {
+  auto: {
     value: "auto",
     label: "自动编辑",
     hint: "自动保存修改，真实出站与删除仍需确认",
@@ -146,7 +146,7 @@ const PERMISSION_LEVELS: {
     allowLiveTest: "ask",
     allowDelete: "ask",
   },
-  {
+  full: {
     value: "full",
     label: "完全控制",
     hint: "全部自动执行，无需确认",
@@ -154,7 +154,7 @@ const PERMISSION_LEVELS: {
     allowLiveTest: "always",
     allowDelete: "always",
   },
-];
+};
 
 function levelFromSettings(settings: AgentSettings): PermissionLevel {
   if (
@@ -178,9 +178,7 @@ export function PermissionMenu({
 }) {
   const planMode = !!settings.planMode;
   const level = levelFromSettings(settings);
-  const levelLabel =
-    PERMISSION_LEVELS.find((item) => item.value === level)?.label ??
-    "变更前确认";
+  const levelLabel = PERMISSION_LEVELS[level].label;
 
   return (
     <MenuShell
@@ -209,7 +207,7 @@ export function PermissionMenu({
             onClick={() => onChange({ settings: { planMode: !planMode } })}
           />
           <div className="my-1 h-px bg-border/60" />
-          {PERMISSION_LEVELS.map((item) => (
+          {Object.values(PERMISSION_LEVELS).map((item) => (
             <MenuOption
               key={item.value}
               disabled={disabled}

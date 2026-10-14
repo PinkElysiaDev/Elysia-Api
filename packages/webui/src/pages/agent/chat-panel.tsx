@@ -215,14 +215,8 @@ export function ChatPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live.error, live.running]);
 
-  const handleSettingsSave = async (patch: {
-    settings?: Partial<AgentSettings>;
-  }) => {
-    await onSettingsChange(patch);
-  };
-
   const handleModelSelect = (source: ModelSource, model: Model) => {
-    void handleSettingsSave({
+    void onSettingsChange({
       settings: { modelSourceId: source.id, modelName: model.name },
     });
   };
@@ -483,7 +477,7 @@ export function ChatPanel({
             onSubmit={handleSubmit}
             onStop={onStop}
             onSend={handleEditSend}
-            onSettingsSave={handleSettingsSave}
+            onSettingsSave={onSettingsChange}
             onModelSelect={handleModelSelect}
           />
         )}
