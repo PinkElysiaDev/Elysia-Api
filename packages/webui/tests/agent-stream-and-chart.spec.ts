@@ -15,7 +15,7 @@ const message = (seq: number, role: AgentMessage['role'], content: unknown): Age
   seq, role, content, createdAt: '2026-09-27T12:00:00Z',
 })
 
-async function openAgent(page: Page, messages: AgentMessage[] = [], pendingAction?: AgentPendingAction) {
+async function openAgent(page: Page, messages: AgentMessage[] = [], pendingAction?: AgentPendingAction, hasSecondSession = false) {
   const session = {
     id: 'regression', title: '流式与图表回归检查', mode: 'create', status: pendingAction ? 'waiting_approval' : 'idle', pendingAction,
     createdAt: '2026-09-27T12:00:00Z', updatedAt: '2026-09-27T12:00:00Z',
@@ -46,7 +46,7 @@ async function openAgent(page: Page, messages: AgentMessage[] = [], pendingActio
   await page.route('**/api/admin/**', async (route) => {
     const path = new URL(route.request().url()).pathname
     const data = path.endsWith('/seq') ? { seq: 1 }
-      : path.endsWith('/agent/sessions') ? { items: [session] }
+      : path.endsWith('/agent/sessions') ? { items: hasSecondSession ? [session, { ...session, id: 'next-session', title: 'Second selected session' }] : [session] }
         : path.endsWith('/sessions/regression') ? { session, messages }
           : path.endsWith('/models') ? { items: [{ id: 'test', sourceId: 'test', name: 'test-model', enabled: true, type: 'llm', maxTokens: 100000 }] }
             : path.endsWith('/model-sources') ? { items: [{ id: 'test', name: 'Test', enabled: true }] }
@@ -57,6 +57,65 @@ async function openAgent(page: Page, messages: AgentMessage[] = [], pendingActio
   await page.locator('[role="button"]').filter({ has: page.getByText(session.title, { exact: true }) }).press('Enter')
   if (!pendingAction) await expect(page.getByPlaceholder('请描述你的任务')).toBeVisible()
   return session
+}
+
+for (const operation of ['rename', 'settings', 'clear', 'delete', 'create'] as const) {
+  test(`a delayed session ${operation} cannot replace a newer selection`, async ({ page }) => {
+    const session = await openAgent(page, [message(1, 'assistant', { text: 'first session history' })], undefined, true)
+    const nextSession = { ...session, id: 'next-session', title: 'Second selected session' }
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => { release = resolve })
+    let delivered!: () => void
+    const delivery = new Promise<void>((resolve) => { delivered = resolve })
+    let hasRequested = false
+    await page.route('**/api/admin/agent/sessions', async (route) => {
+      if (route.request().method() === 'POST') {
+        hasRequested = true
+        await pending
+        await route.fulfill({ json: { ok: true, data: { ...session, id: 'created-late' } } })
+        delivered()
+        return
+      }
+      await route.fulfill({ json: { ok: true, data: { items: [session, nextSession] } } })
+    })
+    await page.route('**/api/admin/agent/sessions/next-session', async (route) => {
+      await route.fulfill({ json: { ok: true, data: { session: nextSession, messages: [message(1, 'assistant', { text: 'second session history' })] } } })
+    })
+    await page.route('**/api/admin/agent/sessions/regression{,/messages?*}', async (route) => {
+      if (route.request().method() === 'GET') return route.fallback()
+      hasRequested = true
+      await pending
+      await route.fulfill({ json: { ok: true, data: { ...session, title: 'Renamed first session', settings: { ...session.settings, planMode: true } } } })
+      delivered()
+    })
+    if (operation === 'clear') await page.getByTitle('清空本会话消息（保留草稿与设置）').click()
+    if (operation === 'settings') {
+      await page.getByTitle('权限控制：审批频繁程度与计划模式').click()
+      await page.getByRole('menuitemradio', { name: /^计划模式/ }).click()
+    }
+    await page.getByTitle('返回会话总览').click()
+    const firstCard = page.locator('[role="button"]').filter({ has: page.getByText(session.title, { exact: true }) })
+    if (operation === 'rename') {
+      await firstCard.getByRole('button', { name: '重命名会话', exact: true }).click()
+      await page.locator('[role="button"] input').fill('Renamed first session')
+      await page.locator('[role="button"] input').press('Enter')
+    }
+    if (operation === 'delete') {
+      await firstCard.getByRole('button', { name: '删除会话', exact: true }).click()
+      await page.getByRole('button', { name: '删除', exact: true }).click()
+    }
+    if (operation === 'create') await page.getByRole('button', { name: '新建任务', exact: true }).click()
+    await expect.poll(() => hasRequested).toBe(true)
+    await page.locator('[role="button"]').filter({ has: page.getByText(nextSession.title, { exact: true }) }).press('Enter')
+    await expect(page.getByText('second session history', { exact: true })).toBeVisible()
+    release()
+    await delivery
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    await expect(page.getByText(nextSession.title, { exact: true })).toBeVisible()
+    await expect(page.getByText('second session history', { exact: true })).toBeVisible()
+    await expect(page.getByText('计划模式', { exact: true })).not.toBeVisible()
+    await expect(page.getByPlaceholder('请描述你的任务')).toBeVisible()
+  })
 }
 
 test('external approval replacement and completion refresh the interaction area', async ({ page }) => {

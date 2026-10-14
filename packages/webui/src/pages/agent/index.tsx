@@ -75,11 +75,16 @@ export function AgentPage() {
 
   const activeIdRef = useRef(activeId);
   const sessionRequest = useRef(0);
+  // Selection ownership survives polling, but expires even after an A → B → A trip.
+  const selectionGeneration = useRef(0);
   const selectSession = useCallback((id: string | undefined) => {
     activeIdRef.current = id;
+    selectionGeneration.current++;
     sessionRequest.current++;
     setActiveId(id);
   }, []);
+  const isCurrentSelection = useCallback((id: string, generation: number) =>
+    activeIdRef.current === id && selectionGeneration.current === generation, []);
 
   const refreshSession = useCallback(async (id: string) => {
     const requestId = ++sessionRequest.current;
@@ -209,9 +214,11 @@ export function AgentPage() {
 
   const createSession = useCallback(
     async (input?: { mode: "create" | "edit"; protocolId?: string }) => {
+      const generation = ++selectionGeneration.current;
       try {
         const created = await createAgentSession(input ?? { mode: "create" });
-        await mutateSessions();
+        void mutateSessions();
+        if (selectionGeneration.current !== generation) return;
         selectSession(created.id);
         setSession(created);
         setMessages([]);
@@ -227,10 +234,11 @@ export function AgentPage() {
   const handleOpen = useCallback(
     (id: string) => {
       setView("chat");
-      if (id === activeId) return;
       selectSession(id);
-      setSession(undefined);
-      setMessages([]);
+      if (id !== activeId) {
+        setSession(undefined);
+        setMessages([]);
+      }
       void refreshSession(id);
     },
     [activeId, refreshSession, selectSession],
@@ -248,7 +256,7 @@ export function AgentPage() {
       try {
         await deleteAgentSession(id);
         void deleteComposerDraft(id);
-        if (id === activeId) {
+        if (id === activeIdRef.current) {
           selectSession(undefined);
           setSession(undefined);
           setMessages([]);
@@ -258,15 +266,19 @@ export function AgentPage() {
         failToast("删除失败")(error);
       }
     },
-    [activeId, confirm, failToast, mutateSessions, sessions, selectSession],
+    [confirm, failToast, mutateSessions, sessions, selectSession],
   );
 
   /** 总览卡片点标题重命名：与 updateAgentSession settings patch 同链路。 */
   const handleRenameSession = useCallback(
     async (id: string, title: string) => {
+      const generation = selectionGeneration.current;
       try {
         const updated = await updateAgentSession(id, { title });
-        if (id === activeId) setSession(updated);
+        if (isCurrentSelection(id, generation)) {
+          sessionRequest.current++;
+          setSession((current) => current && { ...current, title: updated.title });
+        }
         await mutateSessions();
       } catch (error) {
         toast({
@@ -274,7 +286,7 @@ export function AgentPage() {
         });
       }
     },
-    [activeId, mutateSessions, toast],
+    [isCurrentSelection, mutateSessions, toast],
   );
 
   const handleSettingsChange = useCallback(
@@ -283,12 +295,15 @@ export function AgentPage() {
       title?: string;
     }): Promise<boolean> => {
       if (!session) return false;
+      const generation = selectionGeneration.current;
       try {
         const updated = await updateAgentSession(session.id, patch);
+        void mutateSessions();
+        if (!isCurrentSelection(session.id, generation)) return false;
+        sessionRequest.current++;
         setSession((current) =>
-          current ? { ...current, settings: updated.settings } : updated,
+          current && { ...current, settings: updated.settings },
         );
-        await mutateSessions();
         return true;
       } catch (error) {
         toast({
@@ -297,7 +312,7 @@ export function AgentPage() {
         return false;
       }
     },
-    [mutateSessions, session, toast],
+    [isCurrentSelection, mutateSessions, session, toast],
   );
 
   /** 计划模式：确认执行 → 关闭计划模式并以用户消息通知助手开始执行。
@@ -306,19 +321,21 @@ export function AgentPage() {
   const confirmingPlanRef = useRef(false);
   const handleConfirmPlan = useCallback(async () => {
     if (!session || live.running || confirmingPlanRef.current) return;
+    const generation = selectionGeneration.current;
     confirmingPlanRef.current = true;
     try {
       const ok = await handleSettingsChange({ settings: { planMode: false } });
-      if (!ok) return; // PATCH 失败已提示；计划模式仍开启，直接发送只会被门控拒绝
+      if (!ok || !isCurrentSelection(session.id, generation)) return;
       send({ content: "确认执行当前方案，请开始执行。" });
     } finally {
       confirmingPlanRef.current = false;
     }
-  }, [handleSettingsChange, live.running, send, session]);
+  }, [handleSettingsChange, isCurrentSelection, live.running, send, session]);
 
   /** 草稿还原：回滚到最近一轮修改前的还原点。 */
   const handleRestoreDraft = useCallback(async () => {
     if (!session || live.running) return;
+    const generation = selectionGeneration.current;
     const ok = await confirm({
       title: "还原到上一轮修改前？",
       description:
@@ -327,25 +344,32 @@ export function AgentPage() {
     });
     if (!ok) return;
     try {
-      const updated = await restoreAgentDraft(session.id);
-      setSession(updated);
-      toast({ description: "已还原到上一轮修改前的配置" });
+      await restoreAgentDraft(session.id);
+      if (!isCurrentSelection(session.id, generation)) return;
+      await refreshSession(session.id);
+      if (isCurrentSelection(session.id, generation)) {
+        toast({ description: "已还原到上一轮修改前的配置" });
+      }
     } catch (error) {
       failToast("还原失败")(error);
     }
-  }, [confirm, failToast, live.running, session, toast]);
+  }, [confirm, failToast, isCurrentSelection, live.running, refreshSession, session, toast]);
 
   const handleClearHistory = useCallback(async () => {
     if (!session) return;
+    const generation = selectionGeneration.current;
     try {
       await clearAgentMessages(session.id, 0);
+      if (!isCurrentSelection(session.id, generation)) return;
       setMessages([]);
       await refreshSession(session.id);
-      toast({ description: "已清空会话消息" });
+      if (isCurrentSelection(session.id, generation)) {
+        toast({ description: "已清空会话消息" });
+      }
     } catch (error) {
       failToast("清空失败")(error);
     }
-  }, [failToast, refreshSession, session, toast]);
+  }, [failToast, isCurrentSelection, refreshSession, session, toast]);
 
   const handleStop = useCallback(() => {
     void stop();
@@ -415,7 +439,10 @@ export function AgentPage() {
           statusBadge={statusBadge}
           availablePanels={availablePanels}
           activePanel={visiblePanel}
-          onBack={() => setView("list")}
+          onBack={() => {
+            selectionGeneration.current++;
+            setView("list");
+          }}
           onClearHistory={() => void handleClearHistory()}
           onSelectPanel={(tab) =>
             setActiveTab((current) => (current === tab ? null : tab))
