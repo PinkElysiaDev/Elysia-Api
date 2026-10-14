@@ -11,7 +11,7 @@ import { runAudit, planAudit, redactor, codeCheck, exchange, runLogger } from '.
 import { protocols, requestBody, followupBody, endpoint, inspectReply } from './protocols.mjs'
 import { localInstance } from './local.mjs'
 import { mapConcurrent, serialize } from './concurrency.mjs'
-import { eventSequence, failureCategory, failureAnalysis, providerFailures, persistedCall, requestSelection } from './evidence.mjs'
+import { eventSequence, failureCategory, failureAnalysis, providerFailures, persistedCall, requestSelection, describeHTTPFailure } from './evidence.mjs'
 import { regressionCases, assertNativeSystemRequest } from './regressions.mjs'
 import { atomicFile } from './report-file.mjs'
 import { cancellationProbe, assertCancellationRecord } from './cancellation.mjs'
@@ -22,9 +22,9 @@ const blocked = message => Object.assign(new Error(message), { code: 'blocked' }
 
 export function checkReply(result, protocol, { stream = false, expectedText, requireUsage = true } = {}) {
   if (result.error) throw result.error
-  assert.equal(result.status, 200, result.raw.slice(0, 1500))
+  assert.equal(result.status, 200, describeHTTPFailure(result.status, result.raw).message)
   if (stream) assert.match(result.headers['content-type'] || '', /text\/event-stream/i)
-  const reply = inspectReply(protocol, result.raw, stream, requireUsage)
+  const reply = inspectReply(protocol, result.raw, stream, requireUsage, { gatewayCompatibility: true })
   assert.deepEqual(reply.issues, [], JSON.stringify(reply.issues))
   assert.ok(reply.text.trim(), 'Expected a nonempty response')
   if (expectedText !== undefined) assert.ok(reply.text.includes(expectedText), `Expected ${expectedText}, got ${reply.text}`)
@@ -69,6 +69,11 @@ function reportMarkdown(report) {
   lines.push('', '## 失败及未完成项目', '')
   for (const item of report.cases.filter(c => !['passed', 'not_applicable'].includes(c.status))) {
     lines.push(`### ${cell(item.id)}`, '', `状态：${item.status}；${cell(item.error?.message || item.actual || '尚未完成')}`, '')
+    if (item.failure) {
+      lines.push(`- 上游 HTTP：${cell(item.failure.upstreamHttpStatuses.join(', ')) || '未知'}；客户端 HTTP：${cell(item.failure.clientHttpStatuses.join(', ')) || '未知'}`)
+      lines.push(`- 主因：${cell(item.failureCategory)} ${cell(item.failure.primary?.message || '')}`)
+      for (const issue of item.failure.secondaryIssues) lines.push(`- 次级诊断：${cell(issue.code)} ${cell(issue.path)} ${cell(issue.reason)}`)
+    }
     for (const evidence of item.evidence || []) lines.push(`- [证据](${evidence})`)
     lines.push('')
   }
@@ -172,7 +177,7 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
       sourceId: record?.sourceId, modelId: record?.modelId,
       policyHashes: [...new Set([record?.conversionPolicyHash, ...(record?.conversionIssues?.map(i => i.policyHash) || [])].filter(Boolean))],
       // Keep a small classification view; the full redacted record lives in evidence.
-      record: record ? { error: record.error, errorKind: record.errorKind, statusCode: record.statusCode, upstreamHttpStatus: record.upstreamHttpStatus, providerFailures: providerFailures(record.providerResponse?.content), conversionIssues: record.conversionIssues, protocolUsage: record.protocolUsage } : undefined,
+      record: record ? { error: record.error, errorKind: record.errorKind, statusCode: record.statusCode, upstreamHttpStatus: record.upstreamHttpStatus, providerFailures: providerFailures(record.providerResponse?.content, record.upstreamHttpStatus), conversionIssues: record.conversionIssues, protocolUsage: record.protocolUsage } : undefined,
     }
     result.evidence = await evidence('call-record.json', { ...trace, round, protocol, taskId, requestSelection: requestSelection(request?.body), events: eventSequence(response.raw || response.body || '', stream) }, owner)
     // Make the full record available for assertions without copying bodies into reports.
@@ -339,8 +344,8 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
         }))
         if (current === 'errors') {
           for (const [name, expected, fn] of [
-            ['wrong-key', '错误网关令牌返回 401，后续正常调用成功', () => call(protocol, id, false, { token: 'audit-invalid', expected: 401 })],
-            ['unknown-model', '无效模型返回 4xx，后续正常调用成功', () => call(protocol, 'audit-model-does-not-exist', false, { expected: [400, 404] })],
+            ['wrong-key', '错误网关令牌返回 401', () => call(protocol, id, false, { token: 'audit-invalid', expected: 401 })],
+            ['unknown-model', '无效模型返回 4xx', () => call(protocol, 'audit-model-does-not-exist', false, { expected: [400, 404] })],
             ['invalid-json', '非法 JSON 返回 400，后续正常调用成功', () => call(protocol, id, false, { rawBody: '{bad json', expected: 400 })],
             ['cancel', '客户端取消流式请求后仍可正常调用', async () => {
               const abort = new AbortController()
@@ -359,6 +364,9 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
             if (name === 'cancel') {
               await run(name, '收到正常生成内容后取消，调用记录确认取消且无上游错误', async () => { needRoute(); await fn() })
               await run('cancel-recovery', '取消场景后独立验证正常调用', async () => { needRoute(); await recovery() })
+            } else if (['wrong-key', 'unknown-model'].includes(name)) {
+              await run(name, expected, async () => { needRoute(); await fn() })
+              await run(`${name}-recovery`, '预期拒绝后独立验证正常调用', async () => { needRoute(); await recovery() })
             } else await run(name, expected, async () => { needRoute(); await fn(); await recovery() })
           }
         }

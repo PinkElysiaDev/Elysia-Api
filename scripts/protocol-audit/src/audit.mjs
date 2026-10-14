@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process'
 import { parseTree } from 'jsonc-parser'
 import { protocols, scenarios, AuditError, endpoint, requestBody, followupBody, inspectReply, inspectModels } from './protocols.mjs'
 import { mapConcurrent, serialize } from './concurrency.mjs'
-import { eventSequence, failureCategory, failureAnalysis, providerFailures } from './evidence.mjs'
+import { eventSequence, failureCategory, failureAnalysis, providerFailures, describeHTTPFailure } from './evidence.mjs'
 import { atomicFile } from './report-file.mjs'
 
 export const defaults = { concurrency: 32, timeoutMs: 180000, maxResponseBytes: 16 * 1024 * 1024, maxRequests: 512, maxOutputTokens: 32768, requireUsage: true }
@@ -109,9 +109,14 @@ export function redactor(secrets) {
       for (const edit of edits.sort((a,b) => b.offset-a.offset)) result = result.slice(0, edit.offset) + edit.value + result.slice(edit.offset+edit.length)
       return result
     }
+    const hasDataLines = /^data: ?.+/m.test(result)
     result = result.replace(/^(data: ?)(.+)$/gm, (_line, prefix, data) => prefix + text(data))
     result = result.replace(/(Bearer\s+)[^\s"'\\]+/gi, '$1[REDACTED]')
-    return result.replace(/("(?:api[-_]?key|x-api-key|x-goog-api-key|access[-_]?token|refresh[-_]?token|id[-_]?token|token|authorization|proxy-authorization|password|secret|cookie|set-cookie|signature|thoughtSignature|thought_signature|encrypted_content|elysia_continuation|x-codex-turn-state)"\s*:\s*)"(?:\\.|[^"\\])*"/gi, '$1"[REDACTED]"')
+    if (hasDataLines) return result
+    result = result.replace(/("(?:api[-_]?key|x-api-key|x-goog-api-key|access[-_]?token|refresh[-_]?token|id[-_]?token|token|authorization|proxy-authorization|password|secret|cookie|set-cookie|signature|thoughtSignature|thought_signature|encrypted_content|elysia_continuation|x-codex-turn-state)"\s*:\s*)"(?:\\.|[^"\\])*"/gi, '$1"[REDACTED]"')
+    // An interrupted capture may end inside an escaped state string. Discard
+    // the remaining fragment from that key; never retain a secret prefix.
+    return result.replace(/\\*"x-codex-turn-state\\*"\s*:[\s\S]*$/i, '"x-codex-turn-state":"[REDACTED]"')
   }
   const clean = value => {
     if (typeof value === 'string') return text(value)
@@ -133,6 +138,11 @@ function markdown(report) {
   lines.push('', '## 失败详情', '')
   for (const item of report.cases.filter(c => c.status === 'failed')) {
     lines.push(`### ${item.id}`, '')
+    if (item.failure) {
+      lines.push(`- 上游 HTTP：${cell(item.failure.upstreamHttpStatuses.join(', ')) || '未知'}；客户端 HTTP：${cell(item.failure.clientHttpStatuses.join(', ')) || '未知'}`)
+      lines.push(`- 主因：${cell(item.failureCategory)} ${cell(item.failure.primary?.message || '')}`)
+      for (const issue of item.failure.secondaryIssues) lines.push(`- 次级诊断：${cell(issue.code)} ${cell(issue.path)} ${cell(issue.reason)}`)
+    }
     for (const error of item.issues) lines.push(`- **${cell(error.code)}** ${cell(error.path)}：${cell(error.message)}`)
     for (const path of item.evidence || []) lines.push(`- [请求/响应证据](${path})`)
     lines.push('')
@@ -286,13 +296,14 @@ export async function runAudit(input, { outputDir, env = process.env, signal, on
         log(`HTTP END ${item.id} round=${round} status=${outcome.status} elapsedMs=${outcome.elapsedMs} evidence=${path}${outcome.error ? ` error=${outcome.error.message}` : ''}`)
         if (outcome.error) throw outcome.error
         if (outcome.status < 200 || outcome.status >= 300) {
-          let message = outcome.raw.slice(0, 3000)
-          try { const parsed = JSON.parse(outcome.raw); message = parsed.error?.message || parsed.message || message; item.providerError = clean(parsed.error || parsed) } catch { /* Keep a bounded non-JSON error excerpt. */ }
-          throw new AuditError('http_error', `HTTP ${outcome.status}: ${message}`)
+          const failure = describeHTTPFailure(outcome.status, outcome.raw)
+          item.providerErrors = clean(failure.failures)
+          throw new AuditError('http_error', failure.message)
         }
         const type = outcome.headers['content-type'] || ''
         if (task.stream && !type.toLowerCase().includes('text/event-stream')) throw new AuditError('content_type', `Expected text/event-stream, received ${type}`)
-        const reply = task.scenario === 'models' ? inspectModels(task.protocol, outcome.raw, task.model) : inspectReply(task.protocol, outcome.raw, task.stream, config.requireUsage)
+        item.acceptance = task.kind === 'gateway' ? 'gateway_compatibility' : 'provider_native'
+        const reply = task.scenario === 'models' ? inspectModels(task.protocol, outcome.raw, task.model) : inspectReply(task.protocol, outcome.raw, task.stream, config.requireUsage, { gatewayCompatibility: task.kind === 'gateway' })
         item.providerErrors = providerFailures(outcome.raw)
         item.issues.push(...reply.issues); item.warnings.push(...reply.warnings)
         if (item.providerErrors.length && !item.issues.some(i => i.code === 'stream_error')) item.issues.push({ code: 'provider_failure', path: '/error', message: item.providerErrors[0].message || 'Provider declared a failure' })

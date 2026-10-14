@@ -51,12 +51,16 @@ export function eventSequence(raw, stream) {
 
 // Inspect only explicit error containers. Arbitrary generated text is never an
 // error classifier, including text that happens to mention a quota or failure.
-export function providerFailures(raw) {
+export function providerFailures(raw, httpStatus) {
   let frames
   try { const value = typeof raw === 'string' ? JSON.parse(raw) : raw; frames = Array.isArray(value) ? value : [value] }
   catch { try { frames = parseSSE(raw).map(frame => frame.value) } catch { return [] } }
   const failures = []
   for (const [frame, value] of frames.entries()) {
+    if (httpStatus === 524 && value?.cloudflare_error === true && value.status === 524 && value.error_name === 'origin_response_timeout') {
+      failures.push({ frame, type: 'upstream_http_timeout', code: 'origin_response_timeout', httpStatus, message: '上游源站响应超时（HTTP 524）' })
+      continue
+    }
     const payload = value?.response?.error ?? value?.error ?? (value?.type === 'error' ? value : undefined)
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) continue
     const fields = Object.fromEntries(['type', 'code', 'message', 'param', 'status'].filter(key => typeof payload[key] === 'string' || (key === 'code' && Number.isInteger(payload[key]))).map(key => [key, payload[key]]))
@@ -66,25 +70,40 @@ export function providerFailures(raw) {
   return failures
 }
 
+// Only the typed failure message is suitable for summaries. Opaque CDN/HTML
+// bodies remain in redacted evidence, rather than being echoed as the cause.
+export function describeHTTPFailure(status, raw) {
+  const failures = providerFailures(raw, status)
+  const message = failures[0]?.message || `上游请求失败（HTTP ${status}）`
+  const prefix = `HTTP ${status}: `
+  let detail = message
+  while (detail.startsWith(prefix)) detail = detail.slice(prefix.length)
+  return { message: `${prefix}${detail}`, failures }
+}
+
 export function failureAnalysis({ kind, issues = [], httpStatuses = [], record, providerErrors = [], providerError, error } = {}) {
   const upstream = record?.providerFailures ?? (providerErrors.length ? providerErrors : providerError ? [{ ...providerError }] : [])
   const secondary = record?.conversionIssues?.filter(issue => issue.severity === 'error') || []
+  const upstreamHttpStatuses = kind === 'direct' ? httpStatuses : record?.upstreamHttpStatus ? [record.upstreamHttpStatus] : []
+  const isHTTPTimeout = upstreamHttpStatuses.includes(524)
   const isRateLimit = httpStatuses.includes(429) || record?.errorKind === 'rate_limit' || upstream.some(failure =>
     ['gateway_concurrency_limit', 'rate_limit_exceeded', 'rate_limit_error', 'RESOURCE_EXHAUSTED'].includes(failure.code) ||
     ['rate_limit_error', 'rate_limit'].includes(failure.type) || failure.status === 'RESOURCE_EXHAUSTED' || failure.code === 429)
   return {
-    primary: upstream[0] || (record?.error ? { category: record.errorKind, message: record.error } : error),
+    primary: isHTTPTimeout ? { ...upstream[0], category: 'upstream_http_timeout', httpStatus: 524, message: upstream[0]?.message || '上游请求失败（HTTP 524）' } : upstream[0] || (record?.error ? { category: record.errorKind, message: record.error } : error),
     providerFailures: upstream, secondaryIssues: secondary, issues,
-    isRateLimit,
+    isRateLimit, isHTTPTimeout,
     clientHttpStatuses: httpStatuses,
-    upstreamHttpStatuses: kind === 'direct' ? httpStatuses : record?.upstreamHttpStatus ? [record.upstreamHttpStatus] : [],
+    upstreamHttpStatuses,
     logicalStatus: record?.statusCode,
   }
 }
 
 export function failureCategory(input = {}) {
   const { kind, issues = [], sdk, error, record } = input
-  if (failureAnalysis(input).isRateLimit) return 'rate_limited'
+  const analysis = failureAnalysis(input)
+  if (analysis.isHTTPTimeout) return 'upstream_http_timeout'
+  if (analysis.isRateLimit) return 'rate_limited'
   if (error?.code === 'timeout' && input.source === 'source-code') return 'verification_incomplete'
   if (issues.some(i => i.code === 'request_budget') || error?.code === 'request_budget') return 'budget_exhausted'
   const failures = record?.conversionIssues?.filter(i => i.severity === 'error') || []

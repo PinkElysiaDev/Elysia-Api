@@ -42,6 +42,23 @@ test('HTTP 200 nested provider limits retain secondary conversion failures and s
   assert.deepEqual(providerFailures('{"error":{"details":{"private":"secret"}}}'), [])
 })
 
+test('observed upstream 524 remains primary while decode and projection issues stay secondary', async t => {
+  const raw = '{"cloudflare_error":true,"status":524,"error_name":"origin_response_timeout","private":"not-a-public-message"}'
+  const record = { statusCode:524, upstreamHttpStatus:524, providerFailures:providerFailures(raw,524), conversionIssues:[{code:'unsupported_capability',severity:'error',direction:'decode_response',path:'/error'}] }
+  const input = { kind:'gateway',httpStatuses:[524],record }
+  assert.equal(failureCategory(input),'upstream_http_timeout')
+  assert.equal(failureAnalysis(input).primary.httpStatus,524)
+  assert.equal(failureAnalysis(input).secondaryIssues.length,1)
+  assert.doesNotMatch(JSON.stringify(failureAnalysis(input).primary),/not-a-public-message/)
+  assert.equal(providerFailures(raw,200).length,0)
+  const root=await directory(t)
+  const baseUrl=await serve(t,(req,res)=>{req.resume();res.writeHead(524);res.end(raw)})
+  const report=await runAudit({targets:[{id:'test',protocol:'responses',baseUrl,model:'m',auth:'none'}],streams:[false],scenarios:['text'],concurrency:1},{outputDir:join(root,'result')})
+  assert.equal(report.status,'failed')
+  assert.equal(report.cases[0].failureCategory,'upstream_http_timeout')
+  assert.doesNotMatch(report.cases[0].issues[0].message,/not-a-public-message|HTTP 524: HTTP 524:/)
+})
+
 test('a failed official SDK does not prevent Vercel from executing or hide its status', async t => {
   let calls = 0
   const baseUrl = await serve(t, (req, res) => {

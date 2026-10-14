@@ -247,7 +247,7 @@ function addCall(result, id, name, args, path, { encoded = false, requireId = tr
   result.calls.push({ id, name, args })
 }
 
-export function inspectReply(protocol, raw, stream, requireUsage = true) {
+export function inspectReply(protocol, raw, stream, requireUsage = true, { gatewayCompatibility = false } = {}) {
   const result = { issues: [], warnings: [], text: '', history: [], calls: [], usage: null }
   if (!stream) {
     let object
@@ -316,10 +316,16 @@ export function inspectReply(protocol, raw, stream, requireUsage = true) {
       if (frame.type === 'done') continue
       if (!c.object(value, path)) continue
       if (final) c.require(false, path, 'Event after response terminal', 'stream_lifecycle')
+      if (type === 'response.metadata') {
+        const entries = value.headers && typeof value.headers === 'object' && !Array.isArray(value.headers) ? Object.entries(value.headers) : []
+        const isTurnState = Object.keys(value).every(key => ['type', 'headers', 'sequence_number'].includes(key)) && entries.length === 1 && entries[0][0].toLowerCase() === 'x-codex-turn-state' && typeof entries[0][1] === 'string' && entries[0][1].length > 0 && !/[\u0000-\u001f\u007f-\u009f]/u.test(entries[0][1])
+        c.require(gatewayCompatibility && isTurnState, path, gatewayCompatibility ? 'Invalid bounded turn-state control event' : 'Provider control extension is outside native Responses compliance', 'provider_control_extension')
+        if (value.sequence_number !== undefined && c.count(value.sequence_number, `${path}/sequence_number`) && c.require(value.sequence_number > sequence, `${path}/sequence_number`, 'Event sequence did not increase', 'stream_lifecycle')) sequence = value.sequence_number
+        if (gatewayCompatibility && isTurnState) result.warnings.push({ code: 'gateway_control_compatibility', path, message: 'Turn-state control preserved; this does not establish stateful continuation or native compliance' })
+        continue
+      }
       if (!start && type !== 'response.created') c.require(false, path, 'Event before response.created', 'stream_lifecycle')
-      c.count(value.sequence_number, `${path}/sequence_number`)
-      c.require(value.sequence_number > sequence, `${path}/sequence_number`, 'Event sequence did not increase', 'stream_lifecycle')
-      sequence = value.sequence_number
+      if (c.count(value.sequence_number, `${path}/sequence_number`) && c.require(value.sequence_number > sequence, `${path}/sequence_number`, 'Event sequence did not increase', 'stream_lifecycle')) sequence = value.sequence_number
       if (type === 'response.created') {
         c.require(!start, path, 'Duplicate response.created', 'stream_lifecycle')
         start = value.response
