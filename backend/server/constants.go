@@ -23,8 +23,9 @@ const (
 // ErrorKind* 是 usage 记录 errorKind 字段的归类值（供面板筛选/展示）。
 // 未归类的失败保持空串，不参与前端徽标渲染。
 const (
-	ErrorKindClientCanceled = "client_canceled"
-	ErrorKindUpstream       = "upstream" // 上游转发失败/候选耗尽
+	ErrorKindClientCanceled      = "client_canceled"
+	ErrorKindUpstream            = "upstream" // 上游转发失败/候选耗尽
+	ErrorKindUpstreamIdleTimeout = "upstream_idle_timeout"
 )
 
 // RelayMode / ResponsesMode 是 usage 记录的序列化字段值（统计侧按字面比对，

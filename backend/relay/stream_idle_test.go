@@ -40,6 +40,14 @@ func TestStreamIdleCancelsHeadersAndUsageTail(t *testing.T) {
 			if !errors.Is(err, errStreamIdle) {
 				t.Fatalf("silence must fail, not EOF: %v", err)
 			}
+			var idle *StreamIdleError
+			wantPhase := StreamAwaitingResponse
+			if hasHeaders {
+				wantPhase = StreamReadingBody
+			}
+			if !errors.As(err, &idle) || idle.Phase != wantPhase || errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("idle attribution/status semantics changed: %v", err)
+			}
 			select {
 			case <-closed:
 			case <-time.After(time.Second):

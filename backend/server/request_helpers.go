@@ -40,6 +40,7 @@ func writeProtocolError(c *gin.Context, format builtin.FormatType, mErr *builtin
 func setUsageError(record *usageRecord, ctx context.Context, err error) {
 	record.Error = truncateForDisplay(err.Error(), errorDetailTruncateBytes)
 	record.ErrorKind = ErrorKindUpstream
+	recordFailureEvidence(record, err)
 	if record.StatusCode > 0 && record.StatusCode < 400 {
 		record.StatusCode = http.StatusBadGateway
 	}

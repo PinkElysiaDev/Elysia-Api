@@ -10,6 +10,24 @@ import (
 
 var errStreamIdle = errors.New("upstream stream idle timeout")
 
+// StreamIdlePhase identifies the observable HTTP boundary, not an inferred
+// network cause such as DNS, TLS or provider processing.
+type StreamIdlePhase string
+
+const (
+	StreamAwaitingResponse StreamIdlePhase = "awaiting_response"
+	StreamReadingBody      StreamIdlePhase = "reading_body"
+)
+
+// StreamIdleError is the request-local idle deadline. It is distinct from a
+// caller cancellation and does not change the HTTP status or retry policy.
+type StreamIdleError struct{ Phase StreamIdlePhase }
+
+func (err *StreamIdleError) Error() string {
+	return errStreamIdle.Error() + " (" + string(err.Phase) + ")"
+}
+func (err *StreamIdleError) Unwrap() error { return errStreamIdle }
+
 type streamBody struct {
 	io.ReadCloser
 	ctx    context.Context
@@ -19,9 +37,9 @@ type streamBody struct {
 
 // limitStreamRead cancels the HTTP request itself so a stalled network read
 // cannot leave a goroutine behind. Consumer processing time is not upstream idle.
-func limitStreamRead(cancel context.CancelCauseFunc, idle time.Duration) func() {
+func limitStreamRead(cancel context.CancelCauseFunc, idle time.Duration, phase StreamIdlePhase) func() {
 	fired := make(chan struct{})
-	timer := time.AfterFunc(idle, func() { cancel(errStreamIdle); close(fired) })
+	timer := time.AfterFunc(idle, func() { cancel(&StreamIdleError{Phase: phase}); close(fired) })
 	return func() {
 		if !timer.Stop() {
 			<-fired
@@ -31,7 +49,7 @@ func limitStreamRead(cancel context.CancelCauseFunc, idle time.Duration) func() 
 
 func (transport *ProtocolTransport) sendStreamRequest(request *http.Request, idle time.Duration) (*http.Response, error) {
 	ctx, cancel := context.WithCancelCause(request.Context())
-	stop := limitStreamRead(cancel, idle)
+	stop := limitStreamRead(cancel, idle, StreamAwaitingResponse)
 	response, err := transport.streamClient.Do(request.WithContext(ctx))
 	stop()
 	if err != nil || context.Cause(ctx) != nil {
@@ -47,7 +65,7 @@ func (transport *ProtocolTransport) sendStreamRequest(request *http.Request, idl
 }
 
 func (body *streamBody) Read(buffer []byte) (int, error) {
-	stop := limitStreamRead(body.cancel, body.idle)
+	stop := limitStreamRead(body.cancel, body.idle, StreamReadingBody)
 	count, err := body.ReadCloser.Read(buffer)
 	stop()
 	if cause := context.Cause(body.ctx); cause != nil {

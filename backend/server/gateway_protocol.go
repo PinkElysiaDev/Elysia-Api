@@ -150,6 +150,7 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 
 func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate) error {
 	record.UpstreamHTTPStatus = 0
+	record.TransportFailure = nil
 	defer s.protocolUses.acquire(candidate.binding.ProtocolID, candidate.compiled.Hash())()
 	defer s.protocolUses.acquire(record.SourceFormat, record.IngressRevision)()
 	prepareCandidateRecord(record, candidate, plan.request)
@@ -299,18 +300,12 @@ func (s *Server) failGateway(c *gin.Context, record *usageRecord, status int, er
 		status = statusClientClosedRequest
 	}
 	record.StatusCode, record.Error, record.ErrorKind = status, err.Error(), ErrorKindUpstream
+	recordFailureEvidence(record, err)
 	class := generationFailureClass(err)
 	if class != "" {
 		record.ErrorKind = string(class)
 		if failure == nil && status != statusClientClosedRequest {
 			status, record.StatusCode = class.HTTPStatus(), class.HTTPStatus()
-		}
-	}
-	var conversion *protocol.ConversionError
-	if errors.As(err, &conversion) {
-		record.appendConversionIssues(conversion.Issues)
-		if len(conversion.Issues) > 0 && class == "" {
-			record.ErrorKind = string(conversion.Issues[0].Code)
 		}
 	}
 	if status == statusClientClosedRequest {

@@ -42,6 +42,10 @@ func (s *Server) collectProtocolGeneration(ctx context.Context, candidate gatewa
 }
 
 func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate gatewayCandidate, request *protocol.Request, record *usageRecord, onText func(protocol.NodeKind, string)) (*protocol.Response, error) {
+	if record != nil {
+		record.UpstreamHTTPStatus = 0
+		record.TransportFailure = nil
+	}
 	limits := candidate.compiled.ResourceLimits()
 	if err := protocol.IssuesError(protocol.CheckRoute(request, candidate.compiled, candidate.binding, candidate.scope, candidate.operation.Transport)); err != nil {
 		return nil, err
