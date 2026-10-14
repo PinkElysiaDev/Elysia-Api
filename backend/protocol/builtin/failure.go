@@ -138,7 +138,7 @@ func (adapter module) decodeFailure(value p.Value, options p.EvaluationContext) 
 					return p.Value{}, unsupported("/error/param", "provider error param requires a string or null")
 				}
 			}
-			if category == ErrorClassModelNotFound && fields["param"].IsString("model") {
+			if !isProviderWrapper && category == ErrorClassModelNotFound && fields["param"].IsString("model") {
 				delete(result, "param")
 			}
 			known = append(known, "code", "param")

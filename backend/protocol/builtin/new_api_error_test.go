@@ -159,3 +159,34 @@ func TestNewAPIErrorCodeOverridesWrapperStatus(t *testing.T) {
 		}
 	}
 }
+
+func TestNewAPIErrorKeepsModelParameter(t *testing.T) {
+	from := shippedProjectionProtocol(t, Chat)
+	raw := []byte(`{"error":{"type":"new_api_error","code":"model_not_found","param":"model","message":"synthetic"}}`)
+	for _, target := range []string{Chat, Responses, Anthropic, Gemini} {
+		to := shippedProjectionProtocol(t, target)
+		response, err := from.DecodeHTTPFailure(t.Context(), 500, raw, p.EvaluationContext{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		fields, _ := response.Error.ReadObject()
+		if !fields["param"].IsString("model") {
+			t.Fatal("wrapper parameter was normalized away", response.Error)
+		}
+		conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
+		response, err = conversion.Response(t.Context(), response, p.ConversionContext{}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wire, err := to.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(wire), "model") {
+			t.Fatal("parameter lost in projection", target, string(wire))
+		}
+		if (target == Anthropic || target == Gemini) && !strings.Contains(string(wire), "param=") {
+			t.Fatal("parameter detail not projected", target, string(wire))
+		}
+	}
+}
