@@ -70,16 +70,23 @@ func (c *engineToolContext) SetTestTarget(baseURL, apiKey string) error {
 	update := SessionStateUpdate{}
 	if strings.TrimSpace(baseURL) != "" {
 		update.TestBaseURL = baseURL
-		c.session.TestBaseURL = baseURL
 	}
 	if strings.TrimSpace(apiKey) != "" {
 		update.TestAPIKey = apiKey
-		c.session.TestAPIKey = apiKey
 	}
 	if update.TestBaseURL == "" && update.TestAPIKey == "" {
 		return nil
 	}
-	return c.store.UpdateSessionState(c.ctx, c.session.ID, update)
+	if err := c.store.UpdateSessionState(c.ctx, c.session.ID, update); err != nil {
+		return err
+	}
+	if update.TestBaseURL != "" {
+		c.session.TestBaseURL = update.TestBaseURL
+	}
+	if update.TestAPIKey != "" {
+		c.session.TestAPIKey = update.TestAPIKey
+	}
+	return nil
 }
 
 func (c *engineToolContext) SetTitle(title string) error {
