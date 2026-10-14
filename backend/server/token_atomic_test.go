@@ -3,10 +3,11 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"github.com/elysia-api/backend/storage"
 	"net/http"
 	"path/filepath"
 	"testing"
+
+	"github.com/elysia-api/backend/storage"
 )
 
 func TestTokenMutationConflictsAreAtomic(t *testing.T) {
