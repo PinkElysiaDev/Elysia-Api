@@ -52,6 +52,11 @@ func CheckJobTransition(previous, next GenerationJob) error {
 		if next.Task.Status == TaskCompleted && next.Task.Result == nil {
 			return fmt.Errorf("completed job requires a retrieved result")
 		}
+		if next.Task.Status == TaskCompleted {
+			if err := CheckGenerationOutcome(next.Task.Result); err != nil {
+				return err
+			}
+		}
 	default:
 		return fmt.Errorf("unknown generation job phase")
 	}

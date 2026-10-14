@@ -60,7 +60,7 @@ func (coordinator *JobCoordinator) Submit(ctx context.Context, job GenerationJob
 		if reserved.RequestHash != job.RequestHash {
 			return reserved, false, ErrIdempotencyConflict
 		}
-		return reserved, false, nil
+		return classifyJobResult(reserved), false, nil
 	}
 	deadline, stop := context.WithTimeout(ctx, coordinator.operationTimeout)
 	update, operationErr := coordinator.executor.Submit(deadline, reserved, request)
@@ -89,7 +89,7 @@ func (coordinator *JobCoordinator) Read(ctx context.Context, id, owner string) (
 	if job.OwnerHash != owner {
 		return GenerationJob{}, ErrJobNotFound
 	}
-	return job, nil
+	return classifyJobResult(job), nil
 }
 
 // RequestCancel records intent without claiming the provider acknowledged it.
@@ -137,6 +137,7 @@ func (coordinator *JobCoordinator) Tick(ctx context.Context) error {
 		failures = append(failures, err)
 	}
 	for _, job := range pending {
+		job = classifyJobResult(job)
 		if err := coordinator.settlements.SettleJob(ctx, job); err != nil {
 			failures = append(failures, err)
 			continue
@@ -198,6 +199,8 @@ func (coordinator *JobCoordinator) process(ctx context.Context, job GenerationJo
 			job.Task.Result = response
 			job.Usage = MergeUsage(job.Usage, response.Usage)
 			job.Phase = JobTerminal
+			job = classifyJobResult(job)
+			operationErr = CheckGenerationOutcome(response)
 		}
 	case job.Phase == JobPolling:
 		update, operationErr = coordinator.executor.Poll(deadline, job)
@@ -213,6 +216,24 @@ func (coordinator *JobCoordinator) process(ctx context.Context, job GenerationJo
 	}
 	_, err := coordinator.commit(ctx, job)
 	return err
+}
+
+// classifyJobResult also projects legacy completed records without rewriting
+// history or repeating a previously acknowledged settlement.
+func classifyJobResult(job GenerationJob) GenerationJob {
+	if job.Phase != JobTerminal || job.Task.Status != TaskCompleted || job.Task.Result == nil {
+		return job
+	}
+	response := job.Task.Result
+	if err := CheckGenerationOutcome(response); err != nil {
+		job.Task.Status = TaskFailed
+		if response.Status.IsString("cancelled") || response.Status.IsString("canceled") {
+			job.Task.Status = TaskCancelled
+		}
+		job.ProviderError = response.Error
+		job.Issues = jobIssues(job, "result", err)
+	}
+	return job
 }
 
 func (coordinator *JobCoordinator) commit(ctx context.Context, job GenerationJob) (GenerationJob, error) {
