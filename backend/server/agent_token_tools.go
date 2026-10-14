@@ -191,7 +191,10 @@ func (t *deleteAPIKeyTool) Execute(ctx context.Context, tctx CLIContext, args js
 		return badRequest
 	}
 	name := strings.TrimSpace(params.Name)
-	existing, found, _ := store.FindAPITokenByName(ctx, name)
+	existing, found, err := store.FindAPITokenByName(ctx, name)
+	if err != nil {
+		return CLIError("查询失败: "+err.Error(), "lookup_failed")
+	}
 	if !found {
 		return CLIError(fmt.Sprintf("API Key %q 不存在", name), "not_found")
 	}

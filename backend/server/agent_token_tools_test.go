@@ -116,6 +116,23 @@ func TestAPIKeyToolsLifecycle(t *testing.T) {
 	}
 }
 
+func TestDeleteAPIKeyPreservesLookupFailure(t *testing.T) {
+	s := newOpsTestServer(t)
+	if _, err := s.store.SaveAPIToken(t.Context(), "existing", storage.APITokenUpdate{Token: "test-secret"}, true); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	result := (&deleteAPIKeyTool{server: s}).Execute(ctx, &opsTestContext{}, json.RawMessage(`{"name":"existing"}`))
+	encoded, err := result.MarshalData()
+	if err != nil || result.OK || !strings.Contains(string(encoded), `"lookup_failed"`) || !strings.Contains(result.Summary, context.Canceled.Error()) {
+		t.Fatalf("lookup failure was hidden: %+v, %s, %v", result, encoded, err)
+	}
+	if _, isFound, err := s.store.FindAPITokenByName(t.Context(), "existing"); err != nil || !isFound {
+		t.Fatalf("failed lookup changed token: found=%v err=%v", isFound, err)
+	}
+}
+
 func TestDeleteGroupCascadeDisablesTokens(t *testing.T) {
 	s := newOpsTestServer(t)
 	ctx := context.Background()
