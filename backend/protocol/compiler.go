@@ -665,16 +665,37 @@ func (compiled *Compiled) Capabilities(direction Direction) CapabilitySet {
 // Execute evaluates a compiled mapping with finite resources and structured
 // diagnostics. It neither performs I/O nor silently invents missing fields.
 func (compiled *Compiled) Execute(ctx context.Context, direction Direction, input Value, options EvaluationContext) (Value, []ConversionIssue) {
-	fail := func(err error) (Value, []ConversionIssue) {
+	output, err := compiled.executeMapping(ctx, direction, input, options)
+	if err == nil {
+		return output, nil
+	}
+	var conversion *ConversionError
+	if errors.As(err, &conversion) {
+		return Value{}, conversion.Issues
+	}
+	code := IssueCode("operation_cancelled")
+	if errors.Is(err, context.DeadlineExceeded) {
+		code = "operation_timeout"
+	}
+	return Value{}, []ConversionIssue{{Code: code, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "evaluate", Path: "/", Reason: err.Error()}}
+}
+
+// executeMapping retains causes for runtime consumers; Execute exposes diagnostics
+// for authoring callers whose API returns a report instead of a Go error.
+func (compiled *Compiled) executeMapping(ctx context.Context, direction Direction, input Value, options EvaluationContext) (Value, error) {
+	fail := func(err error) (Value, error) {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return Value{}, err
+		}
 		var conversion *ConversionError
 		if errors.As(err, &conversion) {
-			return Value{}, append([]ConversionIssue(nil), conversion.Issues...)
+			return Value{}, err
 		}
 		code := InvalidInput
 		if direction == DecodeResponse || direction == DecodeEvent {
 			code = UpstreamContractViolation
 		}
-		return Value{}, []ConversionIssue{{Code: code, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "evaluate", Path: mappingErrorPath("/directions/"+string(direction), err), Reason: err.Error(), Suggestion: "Correct the input or declared mapping and verify the revision again."}}
+		return Value{}, &ConversionError{cause: err, Issues: []ConversionIssue{{Code: code, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "evaluate", Path: mappingErrorPath("/directions/"+string(direction), err), Reason: err.Error(), Suggestion: "Correct the input or declared mapping and verify the revision again."}}}
 	}
 	if err := ctx.Err(); err != nil {
 		return fail(err)

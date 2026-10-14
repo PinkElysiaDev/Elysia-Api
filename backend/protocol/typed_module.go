@@ -63,8 +63,8 @@ func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 			return output, nil
 		}
 	}
-	output, issues := compiled.Execute(ctx, direction, input, options)
-	if err := IssuesError(issues); err != nil {
+	output, err := compiled.executeMapping(ctx, direction, input, options)
+	if err != nil {
 		return nil, err
 	}
 	var result T
@@ -95,8 +95,7 @@ func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 	if err != nil {
 		return Value{}, err
 	}
-	output, issues := compiled.Execute(ctx, direction, value, options)
-	return output, IssuesError(issues)
+	return compiled.executeMapping(ctx, direction, value, options)
 }
 
 func (compiled *Compiled) decodeEventValues(ctx context.Context, direction Direction, frame Value, options EvaluationContext) ([]Event, error) {
@@ -120,8 +119,8 @@ func (compiled *Compiled) decodeEventValues(ctx context.Context, direction Direc
 			return events, checkTypedLimits(events, compiled.limits)
 		}
 	}
-	output, issues := compiled.Execute(ctx, direction, frame, options)
-	if err := IssuesError(issues); err != nil {
+	output, err := compiled.executeMapping(ctx, direction, frame, options)
+	if err != nil {
 		return nil, err
 	}
 	items, err := eventValues(output)

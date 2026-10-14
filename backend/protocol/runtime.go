@@ -279,8 +279,8 @@ func (compiled *Compiled) encodeEvent(ctx context.Context, direction Direction, 
 	if err != nil {
 		return Value{}, err
 	}
-	output, issues := compiled.Execute(ctx, direction, input, options)
-	if err := IssuesError(issues); err != nil {
+	output, err := compiled.executeMapping(ctx, direction, input, options)
+	if err != nil {
 		return Value{}, err
 	}
 	return compiled.preserveMappedNative(ctx, direction, event.Native, output, options)
@@ -289,6 +289,9 @@ func (compiled *Compiled) encodeEvent(ctx context.Context, direction Direction, 
 func (compiled *Compiled) runtimeError(direction Direction, err error) error {
 	if err == nil {
 		return nil
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
 	}
 	var conversion *ConversionError
 	if errors.As(err, &conversion) {
@@ -431,12 +434,15 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 	if err != nil {
 		return Value{}, err
 	}
-	before, issues := compiled.Execute(ctx, direction, value, options)
-	if err := IssuesError(issues); err != nil {
+	before, err := compiled.executeMapping(ctx, direction, value, options)
+	if err != nil {
 		return Value{}, err
 	}
 	result, err := reconcileNative(ctx, original, before, output, compiled.native, compiled.limits)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return Value{}, err
+		}
 		return Value{}, IssuesError([]ConversionIssue{{Code: InvalidMutation, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "preserve", Path: native.Source.Path, Reason: err.Error(), Suggestion: "Declare stable array identities or apply an explicit native replacement."}})
 	}
 	return result, nil

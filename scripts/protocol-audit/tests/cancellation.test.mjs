@@ -46,10 +46,10 @@ test('persisted contract/provider failure is not masked by aborting the client',
   assert.throws(() => assertCancellationRecord({ available: false }))
 })
 
-test('runtime context cancellation is accepted only with confirmed client cancellation', () => {
+test('confirmed cancellation does not excuse a protocol error diagnostic', () => {
   const cancellation = { code: 'invalid_input', stage: 'runtime', direction: 'encode_event', severity: 'error', reason: 'context canceled' }
   const record = { error: 'invalid_input at /: context canceled', errorKind: 'client_canceled', statusCode: 499, conversionIssues: [cancellation] }
-  assertCancellationRecord({ available: true, record })
+  assert.throws(() => assertCancellationRecord({ available: true, record }))
   for (const changes of [
     { errorKind: 'upstream_error' },
     { statusCode: 502 },

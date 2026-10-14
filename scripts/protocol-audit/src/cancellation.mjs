@@ -39,10 +39,7 @@ export function assertCancellationRecord(trace) {
   if (!trace?.available || !trace.record) throw new AuditError('cancellation_unverified', 'Cancellation call record unavailable')
   const record = trace.record
   const isClientCancellation = record.errorKind === 'client_canceled' && record.statusCode === 499
-  const issue = record.conversionIssues?.find(issue => issue.severity === 'error' && !(
-    isClientCancellation && issue.code === 'invalid_input' && issue.stage === 'runtime' &&
-    ['decode_event', 'encode_event'].includes(issue.direction) && issue.reason === 'context canceled'
-  ))
+  const issue = record.conversionIssues?.find(issue => issue.severity === 'error')
   if (issue || record.providerFailures?.length) throw new AuditError('cancellation_failed', issue?.reason || 'Provider failed before cancellation')
   if (!isClientCancellation) {
     if (record.error) throw new AuditError('cancellation_failed', record.error)

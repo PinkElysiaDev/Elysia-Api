@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -125,11 +126,14 @@ func (compiled *Compiled) DecodeModelPage(ctx context.Context, operation string,
 func (compiled *Compiled) executeOperationMapping(ctx context.Context, mapping compiledMapping, direction Direction, path string, input Value, options EvaluationContext) (Value, error) {
 	view := *compiled
 	view.mappings = map[Direction]compiledMapping{direction: mapping}
-	output, issues := view.Execute(ctx, direction, input, options)
-	for index := range issues {
-		issues[index].Path = path + strings.TrimPrefix(issues[index].Path, "/directions/"+string(direction))
+	output, err := view.executeMapping(ctx, direction, input, options)
+	var conversion *ConversionError
+	if errors.As(err, &conversion) {
+		for index := range conversion.Issues {
+			conversion.Issues[index].Path = path + strings.TrimPrefix(conversion.Issues[index].Path, "/directions/"+string(direction))
+		}
 	}
-	return output, IssuesError(issues)
+	return output, err
 }
 
 func verifyModelSamples(ctx context.Context, compiled *Compiled, report *VerificationReport) {
