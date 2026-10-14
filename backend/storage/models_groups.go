@@ -256,7 +256,12 @@ func updateTokenGroupsTx(ctx context.Context, tx *sql.Tx, transform func(groups 
 			rows.Close()
 			return nil, err
 		}
-		updated, changed := transform(decodeStringSlice(raw))
+		groups, err := decodeStringSlice(raw)
+		if err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("token %q allowed groups: %w", name, err)
+		}
+		updated, changed := transform(groups)
 		if changed {
 			pending = append(pending, pendingToken{name: name, groups: updated})
 		}

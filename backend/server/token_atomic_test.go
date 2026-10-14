@@ -44,3 +44,17 @@ func TestTokenMutationConflictsAreAtomic(t *testing.T) {
 		})
 	}
 }
+
+func TestCorruptTokenAuthorizationCannotPopulateRouteCache(t *testing.T) {
+	s := newOpsTestServer(t)
+	if _, err := s.store.SaveAPIToken(t.Context(), "restricted", storage.APITokenUpdate{Token: "synthetic-restricted", AllowedGroups: []string{"private"}}, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.ExecRaw(t.Context(), `UPDATE api_tokens SET allowed_groups_json='broken-json' WHERE name='restricted'`); err != nil {
+		t.Fatal(err)
+	}
+	s.invalidateRouteCache()
+	if _, isFound := s.findAccessToken("synthetic-restricted"); isFound || s.routeCacheLoaded {
+		t.Fatal("corrupt authorization was accepted into the routing cache")
+	}
+}

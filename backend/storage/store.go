@@ -157,8 +157,13 @@ func (s *Store) scanAPIToken(row interface{ Scan(dest ...any) error }) (APIToken
 	}
 	item.Token = s.decryptOrClear("api token", item.Name, item.Token)
 	item.Enabled = sqlIntToBool(enabled)
-	item.AllowedGroups = decodeStringSlice(allowedGroups)
-	item.Scopes = decodeStringSlice(scopes)
+	var err error
+	if item.AllowedGroups, err = decodeStringSlice(allowedGroups); err != nil {
+		return APIToken{}, fmt.Errorf("token %q allowed groups: %w", item.Name, err)
+	}
+	if item.Scopes, err = decodeStringSlice(scopes); err != nil {
+		return APIToken{}, fmt.Errorf("token %q scopes: %w", item.Name, err)
+	}
 	item.CreatedAt = parseTime(created)
 	item.UpdatedAt = parseTime(updated)
 	return item, nil
@@ -181,17 +186,17 @@ func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 	return items, rows.Err()
 }
 
-// decodeStringSlice 解析 allowed_groups_json 等 JSON 字符串数组列，
-// 解析失败或为空时返回空切片（语义：不限制）。
-func decodeStringSlice(raw string) []string {
+// decodeStringSlice accepts legacy empty columns, but corruption cannot become
+// an unrestricted authorization list.
+func decodeStringSlice(raw string) ([]string, error) {
 	if strings.TrimSpace(raw) == "" {
-		return []string{}
+		return []string{}, nil
 	}
 	var out []string
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return []string{}
+		return nil, err
 	}
-	return out
+	return out, nil
 }
 
 func (s *Store) UpsertAPIToken(ctx context.Context, item APIToken) error {
