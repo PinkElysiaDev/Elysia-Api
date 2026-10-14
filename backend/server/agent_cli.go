@@ -126,7 +126,7 @@ func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw st
 	if allowInternal && len(statement.args) >= 3 && statement.args[0] == "session" && statement.args[1] == "title" && len(statement.pipes) == 0 {
 		encoded, _ := json.Marshal(map[string]any{"title": strings.Join(statement.args[2:], " ")})
 		result := normalizeCLIResult((&updateTitleTool{}).Execute(ctx, tctx, encoded))
-		output.text, output.isOK = renderCLIResult(result, cliStatement{}), result.OK
+		output.result, output.isOK = &result, result.OK
 		return output
 	}
 	inv, err := cliResolve(statement.args)
@@ -154,20 +154,33 @@ func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw st
 		defer cancel()
 	}
 	result := normalizeCLIResult(handler.Execute(execCtx, tctx, encoded))
-	output.text, output.isOK, output.secrets = renderCLIResult(result, cliStatement{}), result.OK, result.SecretValues
+	output.result, output.isOK, output.secrets = &result, result.OK, result.SecretValues
 	return output
 }
 
-// cliStatementOutput retains original text until all batch secrets are known.
+// cliStatementOutput retains structured results until all batch secrets are known.
 type cliStatementOutput struct {
 	prefix, text string
+	result       *CLIResult
 	statement    cliStatement
 	isOK         bool
 	secrets      []string
 }
 
 func (output cliStatementOutput) render(secrets []string) string {
-	return agent.MaskSecretText(output.prefix, secrets) + applyCLIPipes(agent.MaskSecretText(output.text, secrets), output.statement) + "\n\n"
+	text := agent.MaskSecretText(output.text, secrets)
+	if output.result != nil {
+		result := *output.result
+		if len(secrets) > 0 {
+			result.Summary = agent.MaskSecretText(result.Summary, secrets)
+			if result.Data != nil {
+				// Mask semantic strings before JSON escaping can hide their original values.
+				result.Data = json.RawMessage(agent.MaskSecretData(result.Data.(json.RawMessage), secrets))
+			}
+		}
+		text = renderCLIResult(result, cliStatement{})
+	}
+	return agent.MaskSecretText(output.prefix, secrets) + applyCLIPipes(text, output.statement) + "\n\n"
 }
 
 // renderCLIResult 把单条命令的 CLIResult 渲染为文本（含管道过滤）。

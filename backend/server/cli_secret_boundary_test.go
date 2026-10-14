@@ -1,6 +1,8 @@
 package server
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -25,5 +27,27 @@ func TestCLISecretRenderingBeforeLossyOperations(t *testing.T) {
 	result := agentResultFromCLI(CLIResult{Data: map[string]string{"output": "live"}, RedactedData: []byte(`{"output":"***"}`)})
 	if string(result.RedactedData) != `{"output":"***"}` {
 		t.Fatal("adapter dropped prepared model data")
+	}
+}
+
+func TestCLISecretIsMaskedBeforeJSONRendering(t *testing.T) {
+	server := newOpsTestServer(t)
+	secret := `sensitive-before"<value>&\tail`
+	result := server.runCLI(t.Context(), &opsTestContext{}, fmt.Sprintf("elysia key create --name escaped --secret '%s'", secret))
+	if !result.OK {
+		t.Fatalf("create failed: %s", result.Summary)
+	}
+	var stored struct {
+		Output string `json:"output"`
+	}
+	if err := json.Unmarshal(result.RedactedData, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stored.Output, "sensitive-before") || strings.Contains(stored.Output, `\u003cvalue`) {
+		t.Fatal("JSON escaping concealed secret from redaction")
+	}
+	live := result.Data.(map[string]any)["output"].(string)
+	if !strings.Contains(live, secret) {
+		t.Fatal("one-time client output lost the original value")
 	}
 }
