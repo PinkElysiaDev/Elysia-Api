@@ -101,7 +101,7 @@ export function ComposerDock({
             }
             onKeyDown={(event) =>
               submitOnKey(event, () => {
-                if (busy || !editingMessage.text.trim()) return;
+                if (busy || saving || !editingMessage.text.trim()) return;
                 onSend({
                   content: editingMessage.text,
                   afterSeq: editingMessage.seq - 1,
@@ -114,7 +114,7 @@ export function ComposerDock({
             <Button
               size="sm"
               className="h-7 focus-visible:bg-wash"
-              disabled={busy || !editingMessage.text.trim()}
+              disabled={busy || saving || !editingMessage.text.trim()}
               onClick={() => {
                 onSend({
                   content: editingMessage.text,
@@ -175,7 +175,7 @@ export function ComposerDock({
       <div className="flex flex-wrap items-center gap-2 px-2.5 py-2">
         <PermissionMenu
           settings={settings}
-          disabled={busy}
+          disabled={busy || saving}
           onChange={(patch) => void onSettingsSave(patch)}
         />
         <span
@@ -191,12 +191,12 @@ export function ComposerDock({
           <ModelPicker
             sourceId={settings.modelSourceId}
             modelName={settings.modelName}
-            disabled={busy}
+            disabled={busy || saving}
             onSelect={onModelSelect}
           />
           <ThinkingMenu
             settings={settings}
-            disabled={busy}
+            disabled={busy || saving}
             onChange={(patch) => void onSettingsSave(patch)}
           />
           {busy ? (
@@ -219,7 +219,7 @@ export function ComposerDock({
                   ? "请先选择模型"
                   : `发送（${sendKeyHint(sendMode)}；Shift+Enter 换行）`
               }
-              disabled={needsModel || (!text.trim() && documents.length === 0)}
+              disabled={saving || needsModel || (!text.trim() && documents.length === 0)}
               onClick={onSubmit}
             >
               <ArrowUp className="h-4 w-4" />

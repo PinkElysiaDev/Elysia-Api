@@ -118,6 +118,83 @@ for (const operation of ['rename', 'settings', 'clear', 'delete', 'create'] as c
   })
 }
 
+for (const isFailure of [false, true]) {
+  test(`settings save owns same-session interaction until ${isFailure ? 'failure' : 'success'}`, async ({ page }) => {
+    const session = await openAgent(page)
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => { release = resolve })
+    let mutations = 0
+    await page.route('**/api/admin/agent/sessions/regression', async (route) => {
+      if (route.request().method() === 'GET') return route.fulfill({ json: { ok: true, data: { session, messages: [] } } })
+      mutations++
+      await pending
+      if (isFailure) {
+        await route.fulfill({ status: 500, json: { ok: false, error: { code: 'save_failed', message: 'Synthetic settings failure' } } })
+      } else {
+        Object.assign(session.settings, route.request().postDataJSON().settings)
+        await route.fulfill({ json: { ok: true, data: session } })
+      }
+    })
+    await page.getByPlaceholder('请描述你的任务').fill('keep this draft')
+    await page.getByTitle('权限控制：审批频繁程度与计划模式').click()
+    const automatic = page.getByRole('menuitemradio', { name: /^自动编辑/ })
+    const full = page.getByRole('menuitemradio', { name: /^完全控制/ })
+    await automatic.click()
+    await expect.poll(() => mutations).toBe(1)
+    await expect(full).toBeDisabled()
+    await expect(page.getByTitle('思考开关与推理强度')).toBeDisabled()
+    await expect(page.getByRole('button', { name: /^发送（/ })).toBeDisabled()
+    await page.getByPlaceholder('请描述你的任务').press('Enter')
+    expect(await page.evaluate(() => (window as StreamWindow).agentTestStreams?.length ?? 0)).toBe(0)
+    release()
+    await expect(full).toBeEnabled()
+    await expect(automatic).toHaveAttribute('aria-checked', isFailure ? 'false' : 'true')
+    await expect(page.getByPlaceholder('请描述你的任务')).toHaveValue('keep this draft')
+    if (isFailure) await expect(page.getByText('Synthetic settings failure')).toBeVisible()
+    expect(mutations).toBe(1)
+  })
+}
+
+test('settings save invalidates an older poll and suspends new detail reads', async ({ page }) => {
+  await page.addInitScript(() => {
+    const schedule = window.setInterval
+    window.setInterval = (handler, timeout, ...args) => schedule(handler, timeout === 15000 ? 100 : timeout, ...args)
+  })
+  const session = await openAgent(page)
+  const oldSession = structuredClone(session)
+  let releasePoll!: () => void
+  let releaseSave!: () => void
+  const poll = new Promise<void>((resolve) => { releasePoll = resolve })
+  const save = new Promise<void>((resolve) => { releaseSave = resolve })
+  let reads = 0, readsDuringSave = 0, hasSave = false, hasSaved = false
+  await page.route('**/api/admin/agent/sessions/regression', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      hasSave = true
+      await save
+      Object.assign(session.settings, route.request().postDataJSON().settings)
+      hasSaved = true
+      return route.fulfill({ json: { ok: true, data: session } })
+    }
+    if (hasSave && !hasSaved) readsDuringSave++
+    if (++reads === 1) {
+      await poll
+      return route.fulfill({ json: { ok: true, data: { session: oldSession, messages: [] } } })
+    }
+    return route.fulfill({ json: { ok: true, data: { session, messages: [] } } })
+  })
+  await expect.poll(() => reads).toBeGreaterThan(0)
+  await page.getByTitle('权限控制：审批频繁程度与计划模式').click()
+  await page.getByRole('menuitemradio', { name: /^完全控制/ }).click()
+  await expect.poll(() => hasSave).toBe(true)
+  await page.waitForTimeout(250) // More than two accelerated polling intervals.
+  expect(readsDuringSave).toBe(0)
+  releaseSave()
+  await expect(page.getByRole('menuitemradio', { name: /^完全控制/ })).toHaveAttribute('aria-checked', 'true')
+  releasePoll()
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  await expect(page.getByRole('menuitemradio', { name: /^完全控制/ })).toHaveAttribute('aria-checked', 'true')
+})
+
 test('external approval replacement and completion refresh the interaction area', async ({ page }) => {
   await page.addInitScript(() => {
     const schedule = window.setInterval

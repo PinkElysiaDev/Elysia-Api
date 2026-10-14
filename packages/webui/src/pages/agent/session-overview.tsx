@@ -14,6 +14,7 @@ import { EmptyText } from "@/components/ui/states";
 export function SessionOverview({
   sessions,
   draftSessions,
+  savingSessions,
   onOpen,
   onCreate,
   onDelete,
@@ -22,6 +23,7 @@ export function SessionOverview({
   sessions: AgentSession[];
   /** 本机留有未发送文本或附件的会话。 */
   draftSessions?: Set<string>;
+  savingSessions: ReadonlySet<string>;
   onOpen: (id: string) => void;
   onCreate: () => void;
   onDelete: (id: string) => void;
@@ -58,6 +60,7 @@ export function SessionOverview({
           <SessionCard
             key={session.id}
             session={session}
+            isSaving={savingSessions.has(session.id)}
             hasDraft={draftSessions?.has(session.id) ?? false}
             onOpen={() => onOpen(session.id)}
             onDelete={() => onDelete(session.id)}
@@ -75,12 +78,14 @@ export function SessionOverview({
 
 function SessionCard({
   session,
+  isSaving,
   hasDraft,
   onOpen,
   onDelete,
   onEditTitle,
 }: {
   session: AgentSession;
+  isSaving: boolean;
   hasDraft: boolean;
   onOpen: () => void;
   onDelete: () => void;
@@ -89,10 +94,12 @@ function SessionCard({
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
   const startEditing = () => {
+    if (isSaving) return;
     setDraftTitle(session.title ?? "");
     setEditing(true);
   };
   const commitEditing = () => {
+    if (isSaving) return;
     setEditing(false);
     const title = draftTitle.trim();
     if (title && title !== session.title) onEditTitle(title);
@@ -127,6 +134,7 @@ function SessionCard({
           {editing ? (
             <input
               autoFocus
+              disabled={isSaving}
               value={draftTitle}
               maxLength={80}
               onChange={(event) => setDraftTitle(event.target.value)}
@@ -163,6 +171,7 @@ function SessionCard({
           <button
             type="button"
             aria-label={editing ? "确认重命名" : "重命名会话"}
+            disabled={isSaving}
             title={editing ? "确认重命名" : "重命名会话"}
             className={cn(
               "rounded-md p-1 transition-opacity",

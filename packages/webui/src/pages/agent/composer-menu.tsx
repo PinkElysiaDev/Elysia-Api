@@ -73,11 +73,13 @@ export function MenuShell({
 
 function MenuOption({
   selected,
+  disabled,
   label,
   hint,
   onClick,
 }: {
   selected: boolean;
+  disabled?: boolean;
   label: string;
   hint?: string;
   onClick: () => void;
@@ -86,6 +88,7 @@ function MenuOption({
     <button
       type="button"
       role="menuitemradio"
+      disabled={disabled}
       aria-checked={selected}
       onClick={onClick}
       className="flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-wash focus-visible:bg-wash"
@@ -199,6 +202,7 @@ export function PermissionMenu({
       {() => (
         <>
           <MenuOption
+            disabled={disabled}
             selected={planMode}
             label="计划模式"
             hint="先形成方案，确认后才执行修改"
@@ -208,6 +212,7 @@ export function PermissionMenu({
           {PERMISSION_LEVELS.map((item) => (
             <MenuOption
               key={item.value}
+              disabled={disabled}
               selected={level === item.value}
               label={item.label}
               hint={item.hint}
@@ -278,6 +283,7 @@ export function ThinkingMenu({
       {(close) => (
         <>
           <MenuOption
+            disabled={disabled}
             selected={!enabled}
             label="关闭思考"
             onClick={() => {
@@ -288,6 +294,7 @@ export function ThinkingMenu({
           {THINKING_EFFORTS.map((item) => (
             <MenuOption
               key={item.value || "default"}
+              disabled={disabled}
               selected={enabled && effort === item.value}
               label={item.label}
               onClick={() => {

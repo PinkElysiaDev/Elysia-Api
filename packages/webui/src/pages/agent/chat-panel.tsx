@@ -30,6 +30,9 @@ export interface ChatPanelProps {
   onDraftChange?: (draft: { text: string; documents: AgentDocument[] }) => void;
   messages: AgentMessage[];
   live: AgentLiveState;
+  isSavingSettings: boolean;
+  /** Checks the synchronous mutation guard before draft or history changes. */
+  canSend: () => boolean;
   onDismissResult?: (seq: number) => void;
   onSend: (input: {
     content?: string;
@@ -67,6 +70,8 @@ export function ChatPanel({
   onDraftChange,
   messages,
   live,
+  isSavingSettings,
+  canSend,
   onSend,
   onApprove,
   onStop,
@@ -90,7 +95,6 @@ export function ChatPanel({
     seq: number;
     text: string;
   } | null>(null);
-  const [saving, setSaving] = useState(false);
   // 编辑重发期间的草稿附件备份（取消编辑时恢复）。
   const editDraftBackupRef = useRef<AgentDocument[] | null>(null);
   const lastSentRef = useRef<{
@@ -214,12 +218,7 @@ export function ChatPanel({
   const handleSettingsSave = async (patch: {
     settings?: Partial<AgentSettings>;
   }) => {
-    setSaving(true);
-    try {
-      await onSettingsChange(patch);
-    } finally {
-      setSaving(false);
-    }
+    await onSettingsChange(patch);
   };
 
   const handleModelSelect = (source: ModelSource, model: Model) => {
@@ -230,7 +229,7 @@ export function ChatPanel({
 
   const handleSubmit = () => {
     const content = text.trim();
-    if ((!content && documents.length === 0) || busy) return;
+    if ((!content && documents.length === 0) || busy || !canSend()) return;
     // 记录发送前最后一条用户消息 seq：错误回来时若没有新的用户消息落库，
     // 说明是预检失败（400 超限/409 占用），恢复草稿避免用户重打全稿。
     const priorLastUserSeq = messages.reduce(
@@ -268,6 +267,7 @@ export function ChatPanel({
     documents?: AgentDocument[];
     afterSeq?: number;
   }) => {
+    if (!canSend()) return;
     onSend({ ...payload, documents });
     editDraftBackupRef.current = null;
     setDocuments([]);
@@ -276,7 +276,7 @@ export function ChatPanel({
   const messageActions = useMemo(
     () => ({
       onRetry: (message: AgentMessage) => {
-        if (turnPending) return;
+        if (turnPending || !canSend()) return;
         const content = message.content as {
           text?: string;
           documents?: AgentDocument[];
@@ -288,7 +288,7 @@ export function ChatPanel({
         });
       },
       onEditResend: (message: AgentMessage) => {
-        if (busy) return;
+        if (busy || !canSend()) return;
         const content = message.content as {
           text?: string;
           documents?: AgentDocument[];
@@ -300,7 +300,7 @@ export function ChatPanel({
         setEditingMessage({ seq: message.seq, text: content.text ?? "" });
       },
     }),
-    [busy, turnPending, onSend, documents, setDocuments],
+    [busy, turnPending, canSend, onSend, documents, setDocuments],
   );
 
   // 与 live.error 同文案的最后一条系统错误消息 seq（渲染抑制用，见消息流注释）。
@@ -474,7 +474,7 @@ export function ChatPanel({
             addFiles={addFiles}
             busy={busy}
             needsModel={needsModel}
-            saving={saving}
+            saving={isSavingSettings}
             settings={settings}
             usage={usageStat}
             contextLimit={contextLimit}

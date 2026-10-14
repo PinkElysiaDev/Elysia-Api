@@ -53,6 +53,9 @@ export function AgentPage() {
   const [activeId, setActiveId] = useState<string | undefined>();
   const [session, setSession] = useState<AgentSession | undefined>();
   const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const pendingUpdates = useRef(new Set<string>());
+  const [savingSessions, setSavingSessions] = useState<ReadonlySet<string>>(new Set());
+  const isSavingSettings = Boolean(activeId && savingSessions.has(activeId));
   /** 入口引导只跑一次（ref 而非 state：StrictMode 双挂载下 state 守卫会双双通过）。 */
   const bootstrapRef = useRef(false);
   const [activeTab, setActiveTab] = useState<AgentContextTab | null>(null);
@@ -87,6 +90,7 @@ export function AgentPage() {
     activeIdRef.current === id && selectionGeneration.current === generation, []);
 
   const refreshSession = useCallback(async (id: string) => {
+    if (pendingUpdates.current.has(id)) return;
     const requestId = ++sessionRequest.current;
     try {
       const detail = await getAgentSession(id);
@@ -167,7 +171,7 @@ export function AgentPage() {
    *  轮询以免全量替换与流式 append 竞争；远程在跑（会话 running）时
    *  加速到快档。 */
   useEffect(() => {
-    if (!activeId || live.running) return;
+    if (!activeId || live.running || isSavingSettings) return;
     const interval =
       session?.status === "running"
         ? POLL.AGENT_SESSION_FAST
@@ -176,7 +180,7 @@ export function AgentPage() {
       void refreshSession(activeId);
     }, interval);
     return () => window.clearInterval(timer);
-  }, [activeId, live.running, session?.status, refreshSession]);
+  }, [activeId, live.running, isSavingSettings, session?.status, refreshSession]);
 
   /** 切换会话：收起任务资料，重置轮次定位。 */
   useEffect(() => {
@@ -269,24 +273,44 @@ export function AgentPage() {
     [confirm, failToast, mutateSessions, sessions, selectSession],
   );
 
-  /** 总览卡片点标题重命名：与 updateAgentSession settings patch 同链路。 */
-  const handleRenameSession = useCallback(
-    async (id: string, title: string) => {
+  // A synchronous per-session guard also covers clicks before React renders.
+  const saveSession = useCallback(
+    async (id: string, patch: { settings?: Partial<AgentSettings>; title?: string }): Promise<boolean> => {
+      if (pendingUpdates.current.has(id)) return false;
       const generation = selectionGeneration.current;
+      pendingUpdates.current.add(id);
+      setSavingSessions(new Set(pendingUpdates.current));
+      if (activeIdRef.current === id) sessionRequest.current++;
       try {
-        const updated = await updateAgentSession(id, { title });
+        const updated = await updateAgentSession(id, patch);
         if (isCurrentSelection(id, generation)) {
           sessionRequest.current++;
-          setSession((current) => current && { ...current, title: updated.title });
+          setSession((current) => current && {
+            ...current,
+            ...(patch.title !== undefined ? { title: updated.title } : {}),
+            ...(patch.settings ? { settings: updated.settings } : {}),
+          });
         }
-        await mutateSessions();
+        void mutateSessions();
+        return isCurrentSelection(id, generation);
       } catch (error) {
         toast({
-          description: error instanceof Error ? error.message : "重命名失败",
+          description: error instanceof Error ? error.message : "保存会话失败",
         });
+        return false;
+      } finally {
+        pendingUpdates.current.delete(id);
+        setSavingSessions(new Set(pendingUpdates.current));
+        // A fresh read also unblocks A → B → A while the old write was pending.
+        if (activeIdRef.current === id) void refreshSession(id);
       }
     },
-    [isCurrentSelection, mutateSessions, toast],
+    [isCurrentSelection, mutateSessions, refreshSession, toast],
+  );
+
+  const handleRenameSession = useCallback(
+    (id: string, title: string) => saveSession(id, { title }),
+    [saveSession],
   );
 
   const handleSettingsChange = useCallback(
@@ -295,24 +319,9 @@ export function AgentPage() {
       title?: string;
     }): Promise<boolean> => {
       if (!session) return false;
-      const generation = selectionGeneration.current;
-      try {
-        const updated = await updateAgentSession(session.id, patch);
-        void mutateSessions();
-        if (!isCurrentSelection(session.id, generation)) return false;
-        sessionRequest.current++;
-        setSession((current) =>
-          current && { ...current, settings: updated.settings },
-        );
-        return true;
-      } catch (error) {
-        toast({
-          description: error instanceof Error ? error.message : "保存设置失败",
-        });
-        return false;
-      }
+      return saveSession(session.id, patch);
     },
-    [isCurrentSelection, mutateSessions, session, toast],
+    [saveSession, session],
   );
 
   /** 计划模式：确认执行 → 关闭计划模式并以用户消息通知助手开始执行。
@@ -320,7 +329,7 @@ export function AgentPage() {
    * 会重启流（重置现场）然后吃一个假 409。 */
   const confirmingPlanRef = useRef(false);
   const handleConfirmPlan = useCallback(async () => {
-    if (!session || live.running || confirmingPlanRef.current) return;
+    if (!session || live.running || pendingUpdates.current.has(session.id) || confirmingPlanRef.current) return;
     const generation = selectionGeneration.current;
     confirmingPlanRef.current = true;
     try {
@@ -414,6 +423,7 @@ export function AgentPage() {
           <PageHeader title="AI 助手"  />
           <SessionOverview
             sessions={sessions ?? []}
+            savingSessions={savingSessions}
             draftSessions={draftSessions}
             onOpen={handleOpen}
             onCreate={() => void createSession()}
@@ -466,6 +476,8 @@ export function AgentPage() {
               onDraftChange={handleDraftChange}
               messages={messages}
               live={live}
+              isSavingSettings={isSavingSettings}
+              canSend={() => !pendingUpdates.current.has(session.id)}
               onSettingsChange={handleSettingsChange}
               onDismissError={dismissError}
               onDismissResult={dismissResult}
@@ -474,6 +486,7 @@ export function AgentPage() {
                 documents?: AgentDocument[];
                 afterSeq?: number;
               }) => {
+                if (pendingUpdates.current.has(session.id)) return;
                 if (input.afterSeq != null) {
                   setMessages((current) =>
                     current.filter((message) => message.seq <= input.afterSeq!),
@@ -493,7 +506,7 @@ export function AgentPage() {
                 session={session}
                 open={visiblePanel != null}
                 activePanel={visiblePanel ?? lastPanel}
-                busy={live.running || session.status !== "idle"}
+                busy={live.running || isSavingSettings || session.status !== "idle"}
                 onClose={closeContextPanel}
                 onConfirmPlan={() => void handleConfirmPlan()}
                 onRestoreDraft={() => void handleRestoreDraft()}
