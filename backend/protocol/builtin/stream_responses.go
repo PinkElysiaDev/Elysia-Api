@@ -48,43 +48,9 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		// below rejects any additional data instead of silently discarding it.
 		return nil, nil
 	case "response.created":
-		response, err := stream.module.decodeResponse(fields["response"], options)
-		if err != nil {
-			return nil, err
-		}
-		stream.attributes = response.Attributes
-		events := stream.beginResponse(response.ID, response.Model)
-		if len(events) > 0 {
-			events[0].Response.Metadata = response.Metadata
-			events[0].Response.Usage = response.Usage
-		}
-		return events, nil
+		return stream.startResponsesResponse(fields, options)
 	case "response.in_progress":
-		if !fields["safety_buffering"].IsZero() {
-			response, err := stream.module.decodeResponse(fields["response"], options)
-			if err != nil {
-				return nil, err
-			}
-			return []p.Event{{Type: p.MetadataUpdated, Response: response, Usage: response.Usage}}, nil
-		}
-		response, err := fields["response"].ReadObject()
-		if err != nil {
-			return nil, err
-		}
-		if !response["output_text"].IsZero() {
-			if _, err := stream.module.decodeResponse(fields["response"], options); err != nil {
-				return nil, err
-			}
-		}
-		usage, err := stream.decodeUsageUpdate(response["usage"])
-		if err != nil {
-			return nil, err
-		}
-		usage, err = decodeResponsesToolUsage(response, usage)
-		if err != nil || usage == nil {
-			return nil, err
-		}
-		return []p.Event{{Type: p.UsageUpdated, Usage: usage}}, nil
+		return stream.updateResponsesProgress(fields, options)
 	case "response.output_item.added":
 		return stream.startResponsesItem(fields, options, outputIndex, key)
 	case "response.reasoning_summary_part.added", "response.reasoning_summary_text.delta", "response.reasoning_summary_text.done", "response.reasoning_summary_part.done":
@@ -108,43 +74,11 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		event, err := stream.itemEvent(p.ItemDelta, key, nil, fields["delta"])
 		return []p.Event{event}, err
 	case "response.function_call_arguments.done", "response.custom_tool_call_input.done":
-		item := stream.items[key]
-		if item == nil || item.node.Kind != p.ToolCallNode || item.node.Input == nil {
-			return nil, unsupported("/item_id", "completed input requires a preceding tool call item")
-		}
-		node := item.node
-		value := fields["input"]
-		if node.Input.Kind == p.JSONInput {
-			value, err = readJSONArguments(fields["arguments"])
-			if err != nil {
-				return nil, err
-			}
-		}
-		node.Input = &p.ToolInput{Kind: node.Input.Kind, Value: value}
-		event, err := stream.itemEvent(p.ItemSnapshot, key, &node, p.Value{})
-		return []p.Event{event}, err
+		return stream.finishResponsesToolInput(fields, key)
 	case "response.output_text.done", "response.refusal.done":
-		item := stream.items[contentKey]
-		if item == nil {
-			return nil, fmt.Errorf("completed text has no content item")
-		}
-		node := item.node
-		node.Payload = fields["text"]
-		if kind == "response.refusal.done" {
-			node.Payload = fields["refusal"]
-		}
-		text, err := responsePartText(node)
-		if err != nil {
-			return nil, err
-		}
-		if item.textClosed {
-			return nil, unsupported("/content_index", "text completed twice")
-		}
-		item.textClosed, item.closedTextDigest = true, sha256.Sum256([]byte(text))
-		event, err := stream.itemEvent(p.ItemSnapshot, contentKey, &node, p.Value{})
-		return []p.Event{event}, err
+		return stream.finishResponsesText(fields, kind, contentKey)
 	case "response.content_part.done":
-		return stream.finishResponsesContent(fields, outputIndex, contentIndex, key, contentKey)
+		return stream.finishResponsesContent(fields, contentKey)
 	case "response.output_item.done":
 		return stream.finishResponsesItem(fields, options, outputIndex, key)
 	case "response.completed", "response.incomplete":
@@ -167,6 +101,89 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		}
 		return []p.Event{{Type: p.NativeEvent}}, nil
 	}
+}
+
+func (stream *streamModule) startResponsesResponse(fields p.Object, options p.EvaluationContext) ([]p.Event, error) {
+	response, err := stream.module.decodeResponse(fields["response"], options)
+	if err != nil {
+		return nil, err
+	}
+	stream.attributes = response.Attributes
+	events := stream.beginResponse(response.ID, response.Model)
+	if len(events) > 0 {
+		events[0].Response.Metadata = response.Metadata
+		events[0].Response.Usage = response.Usage
+	}
+	return events, nil
+}
+
+func (stream *streamModule) updateResponsesProgress(fields p.Object, options p.EvaluationContext) ([]p.Event, error) {
+	if !fields["safety_buffering"].IsZero() {
+		response, err := stream.module.decodeResponse(fields["response"], options)
+		if err != nil {
+			return nil, err
+		}
+		return []p.Event{{Type: p.MetadataUpdated, Response: response, Usage: response.Usage}}, nil
+	}
+	response, err := fields["response"].ReadObject()
+	if err != nil {
+		return nil, err
+	}
+	if !response["output_text"].IsZero() {
+		if _, err := stream.module.decodeResponse(fields["response"], options); err != nil {
+			return nil, err
+		}
+	}
+	usage, err := stream.decodeUsageUpdate(response["usage"])
+	if err != nil {
+		return nil, err
+	}
+	usage, err = decodeResponsesToolUsage(response, usage)
+	if err != nil || usage == nil {
+		return nil, err
+	}
+	return []p.Event{{Type: p.UsageUpdated, Usage: usage}}, nil
+}
+
+func (stream *streamModule) finishResponsesToolInput(fields p.Object, key string) ([]p.Event, error) {
+	var err error
+	item := stream.items[key]
+	if item == nil || item.node.Kind != p.ToolCallNode || item.node.Input == nil {
+		return nil, unsupported("/item_id", "completed input requires a preceding tool call item")
+	}
+	node := item.node
+	value := fields["input"]
+	if node.Input.Kind == p.JSONInput {
+		value, err = readJSONArguments(fields["arguments"])
+		if err != nil {
+			return nil, err
+		}
+	}
+	node.Input = &p.ToolInput{Kind: node.Input.Kind, Value: value}
+	event, err := stream.itemEvent(p.ItemSnapshot, key, &node, p.Value{})
+	return []p.Event{event}, err
+}
+
+func (stream *streamModule) finishResponsesText(fields p.Object, kind, contentKey string) ([]p.Event, error) {
+	item := stream.items[contentKey]
+	if item == nil {
+		return nil, fmt.Errorf("completed text has no content item")
+	}
+	node := item.node
+	node.Payload = fields["text"]
+	if kind == "response.refusal.done" {
+		node.Payload = fields["refusal"]
+	}
+	text, err := responsePartText(node)
+	if err != nil {
+		return nil, err
+	}
+	if item.textClosed {
+		return nil, unsupported("/content_index", "text completed twice")
+	}
+	item.textClosed, item.closedTextDigest = true, sha256.Sum256([]byte(text))
+	event, err := stream.itemEvent(p.ItemSnapshot, contentKey, &node, p.Value{})
+	return []p.Event{event}, err
 }
 
 func (stream *streamModule) checkResponsesItemID(fields p.Object, index int) error {
@@ -322,7 +339,7 @@ func (stream *streamModule) appendResponsesAnnotation(fields p.Object, contentKe
 	return []p.Event{event}, err
 }
 
-func (stream *streamModule) finishResponsesContent(fields p.Object, outputIndex, contentIndex int, key, contentKey string) ([]p.Event, error) {
+func (stream *streamModule) finishResponsesContent(fields p.Object, contentKey string) ([]p.Event, error) {
 	current := stream.items[contentKey]
 	if current == nil {
 		return nil, fmt.Errorf("completed part has no start")
