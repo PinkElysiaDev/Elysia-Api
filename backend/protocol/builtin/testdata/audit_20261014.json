@@ -1,0 +1,8 @@
+{
+  "cloudflare_timeout": {"cloudflare_error":true,"status":524,"error_code":524,"error_name":"origin_response_timeout","title":"Error 524: A timeout occurred","detail":"The origin did not complete its response within the proxy read timeout."},
+  "turn_state": {"type":"response.metadata","headers":{"x-codex-turn-state":"synthetic-turn-state"}},
+  "heartbeat": {"type":"response.output_text.delta","item_id":"SSE-Keep-Alive","output_index":0,"content_index":0,"delta":"","SSE-Keep-Alive":true},
+  "responses_created": {"type":"response.created","sequence_number":0,"response":{"id":"r","object":"response","model":"m","created_at":100,"status":"in_progress","output":[]}},
+  "responses_changed_time": {"type":"response.completed","sequence_number":1,"response":{"id":"r","object":"response","model":"m","created_at":119,"status":"completed","output":[]}},
+  "chat_startup": [{"id":"a","object":"chat.completion.chunk","created":106,"model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]},{"id":"b","object":"chat.completion.chunk","created":100,"model":"m","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}],"service_tier":"auto"}]
+}

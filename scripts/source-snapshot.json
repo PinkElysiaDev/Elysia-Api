@@ -152,6 +152,7 @@
     "backend/protocol/builtin/system_boundary_audit_test.go",
     "backend/protocol/builtin/testdata/anthropic-dev33-thinking-sample.json",
     "backend/protocol/builtin/testdata/audit_20261013.json",
+    "backend/protocol/builtin/testdata/audit_20261014.json",
     "backend/protocol/builtin/testdata/chat-82406b9.json",
     "backend/protocol/builtin/testdata/chat-dev31-role-samples.json",
     "backend/protocol/builtin/testdata/claude-code-system-message.json",
@@ -588,6 +589,8 @@
     "backend/server/testdata/cache-presets-before/openai-responses.json",
     "backend/server/token_atomic_test.go",
     "backend/server/tool_fidelity_e2e_test.go",
+    "backend/server/turn_state_redaction.go",
+    "backend/server/turn_state_redaction_test.go",
     "backend/server/usage.go",
     "backend/server/usage_assets.go",
     "backend/server/usage_assets_test.go",
@@ -861,6 +864,7 @@
     "packages/webui/src/pages/usage-logs/log-detail/body-sections.tsx",
     "packages/webui/src/pages/usage-logs/log-detail/usage-tokens.tsx",
     "packages/webui/src/pages/usage-stats.tsx",
-    "packages/webui/src/vite-env.d.ts"
+    "packages/webui/src/vite-env.d.ts",
+    "scripts/protocol-audit/tests/turn-state.test.mjs"
   ]
 }

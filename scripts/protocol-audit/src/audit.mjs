@@ -84,7 +84,7 @@ export function planAudit(input) {
   return { config, cases, maximumRequests: cases.reduce((sum, item) => sum + item.maximumRequests, 0) }
 }
 
-const sensitive = /^(authorization|proxy-authorization|api[-_]?key|x-api-key|x-goog-api-key|access[-_]?token|refresh[-_]?token|id[-_]?token|token|password|secret|cookie|set-cookie|signature|thought_signature|thoughtSignature|encrypted_content|elysia_continuation)$/i
+const sensitive = /^(authorization|proxy-authorization|api[-_]?key|x-api-key|x-goog-api-key|access[-_]?token|refresh[-_]?token|id[-_]?token|token|password|secret|cookie|set-cookie|signature|thought_signature|thoughtSignature|encrypted_content|elysia_continuation|x-codex-turn-state)$/i
 
 export function redactor(secrets) {
   const values = [...new Set(secrets.flatMap(s => [s, JSON.stringify(s).slice(1, -1), encodeURIComponent(s)]))].filter(Boolean).sort((a, b) => b.length - a.length)
@@ -111,7 +111,7 @@ export function redactor(secrets) {
     }
     result = result.replace(/^(data: ?)(.+)$/gm, (_line, prefix, data) => prefix + text(data))
     result = result.replace(/(Bearer\s+)[^\s"'\\]+/gi, '$1[REDACTED]')
-    return result.replace(/("(?:api[-_]?key|x-api-key|x-goog-api-key|access[-_]?token|refresh[-_]?token|id[-_]?token|token|authorization|proxy-authorization|password|secret|cookie|set-cookie|signature|thoughtSignature|thought_signature|encrypted_content|elysia_continuation)"\s*:\s*)"(?:\\.|[^"\\])*"/gi, '$1"[REDACTED]"')
+    return result.replace(/("(?:api[-_]?key|x-api-key|x-goog-api-key|access[-_]?token|refresh[-_]?token|id[-_]?token|token|authorization|proxy-authorization|password|secret|cookie|set-cookie|signature|thoughtSignature|thought_signature|encrypted_content|elysia_continuation|x-codex-turn-state)"\s*:\s*)"(?:\\.|[^"\\])*"/gi, '$1"[REDACTED]"')
   }
   const clean = value => {
     if (typeof value === 'string') return text(value)

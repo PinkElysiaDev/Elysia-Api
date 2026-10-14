@@ -184,8 +184,10 @@ func (r *usageRecord) sanitizeBody(data []byte) usageBody {
 	if maxBytes == 0 || len(data) == 0 {
 		return usageBody{}
 	}
+	data = []byte(redactUsageTurnState(string(data)))
 	var value interface{}
-	if err := json.Unmarshal(data, &value); err == nil {
+	wire, parseErr := protocol.ParseValue(data)
+	if parseErr == nil && wire.Decode(&value) == nil {
 		redactJSON(value)
 		if r.bodyOpts.externalize {
 			r.assets.extractFromValue(value)
@@ -202,17 +204,20 @@ func (r *usageRecord) sanitizeBody(data []byte) usageBody {
 
 // finalizeDownstreamBody 处理第四段「返回下游」：tee 捕获的是流式原始字节，
 // 这里按「整体 JSON → SSE 逐行 → 字节截断」三级降级做外置与截断。
-// 与前三段不同，下游内容不做脱敏（沿用 downstreamBody 的既定语义）。
-func (r *usageRecord) finalizeDownstreamBody(body usageBody) usageBody {
+// Only the log copy loses opaque turn state; delivery retains the original bytes.
+func (r *usageRecord) finalizeDownstreamBody(body usageBody) (result usageBody) {
 	maxBytes := r.bodyOpts.maxBytes
 	if maxBytes == 0 || body.Content == "" {
 		return usageBody{}
 	}
+	defer func() { result.Truncated = result.Truncated || body.Truncated }()
+	body.Content = redactUsageTurnState(body.Content)
 	if !r.bodyOpts.externalize {
 		return truncateUsageBody(body.Content, maxBytes)
 	}
 	var value interface{}
-	if err := json.Unmarshal([]byte(body.Content), &value); err == nil {
+	wire, parseErr := protocol.ParseValue([]byte(body.Content))
+	if parseErr == nil && wire.Decode(&value) == nil {
 		r.assets.extractFromValue(value)
 		if sanitized, err := json.Marshal(value); err == nil {
 			return truncateUsageBody(string(sanitized), maxBytes)
@@ -277,7 +282,7 @@ func redactJSON(value interface{}) {
 func isSensitiveUsageKey(key string) bool {
 	normalized := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(key, "_", ""), "-", ""))
 	switch normalized {
-	case "authorization", "apikey", "xapikey", "xgoogapikey", "token", "accesstoken", "key":
+	case "authorization", "apikey", "xapikey", "xgoogapikey", "token", "accesstoken", "key", "xcodexturnstate":
 		return true
 	default:
 		return strings.Contains(normalized, "secret") || strings.Contains(normalized, "credential")
