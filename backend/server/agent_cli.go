@@ -178,13 +178,13 @@ func (output cliStatementOutput) render(secrets []string) string {
 				result.Data = json.RawMessage(agent.MaskSecretData(result.Data.(json.RawMessage), secrets))
 			}
 		}
-		text = renderCLIResult(result, cliStatement{})
+		text = renderCLIResult(result)
 	}
 	return agent.MaskSecretText(output.prefix, secrets) + applyCLIPipes(text, output.statement) + "\n\n"
 }
 
-// renderCLIResult 把单条命令的 CLIResult 渲染为文本（含管道过滤）。
-func renderCLIResult(result CLIResult, statement cliStatement) string {
+// renderCLIResult formats normalized results before the statement applies pipes.
+func renderCLIResult(result CLIResult) string {
 	var text string
 	if result.OK {
 		text = result.Summary
@@ -194,7 +194,7 @@ func renderCLIResult(result CLIResult, statement cliStatement) string {
 	if result.Data != nil {
 		text += "\n" + string(result.Data.(json.RawMessage))
 	}
-	return applyCLIPipes(text, statement)
+	return text
 }
 
 // applyCLIPipes 按书写顺序应用尾管道。
