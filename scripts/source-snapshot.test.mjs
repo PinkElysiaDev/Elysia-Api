@@ -2,8 +2,14 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { copySnapshotPlan, readSnapshotPlan } from './source-snapshot.mjs'
+
+test('checked-in snapshot manifest matches publishable sources', () => {
+  const root = fileURLToPath(new URL('../', import.meta.url))
+  assert.ok(readSnapshotPlan(root).length > 0)
+})
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'elysia-snapshot-test-'))

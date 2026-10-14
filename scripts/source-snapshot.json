@@ -867,7 +867,6 @@
     "packages/webui/src/pages/usage-logs/log-detail/body-sections.tsx",
     "packages/webui/src/pages/usage-logs/log-detail/usage-tokens.tsx",
     "packages/webui/src/pages/usage-stats.tsx",
-    "packages/webui/src/vite-env.d.ts",
-    "scripts/protocol-audit/tests/turn-state.test.mjs"
+    "packages/webui/src/vite-env.d.ts"
   ]
 }
