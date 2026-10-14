@@ -1329,7 +1329,7 @@ func TestTurnStartSummary_RecordsBoundaryAndReplaysKeptHalf(t *testing.T) {
 	var replayKept, replayDropped, replaySummary bool
 	for _, message := range replayed {
 		for _, part := range testContentNodes(message.Content) {
-			text := string(part.Payload.Bytes()) + string(part.Payload.Bytes())
+			text := string(part.Payload.Bytes())
 			if strings.Contains(text, "marker-second") {
 				replayKept = true
 			}
