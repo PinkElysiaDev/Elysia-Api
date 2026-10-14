@@ -188,30 +188,19 @@ func renameProtocolRegistryIDs(ctx context.Context, tx *sql.Tx, oldID, newID str
 	copyTables := []struct {
 		table string
 		sql   string
-		args  []any
 	}{
-		{"protocol_revisions", `INSERT OR IGNORE INTO protocol_revisions(protocol_id, content_hash, definition, created_at) SELECT ?, content_hash, definition, created_at FROM protocol_revisions WHERE protocol_id = ?`, nil},
-		{"protocol_drafts", `INSERT OR IGNORE INTO protocol_drafts(protocol_id, content_hash, definition, updated_at) SELECT ?, content_hash, definition, updated_at FROM protocol_drafts WHERE protocol_id = ?`, nil},
-		{"protocol_history", `INSERT OR IGNORE INTO protocol_history(id, protocol_id, content_hash, definition, reason, is_draft, created_at, archived_at) SELECT ? || '~' || content_hash, ?, content_hash, definition, reason, is_draft, created_at, archived_at FROM protocol_history WHERE protocol_id = ?`, nil},
-		{"protocol_activations", `INSERT OR IGNORE INTO protocol_activations(protocol_id, revision_hash, generation, activated_at) SELECT ?, revision_hash, generation, activated_at FROM protocol_activations WHERE protocol_id = ?`, nil},
+		{"protocol_revisions", `INSERT OR IGNORE INTO protocol_revisions(protocol_id, content_hash, definition, created_at) SELECT ?, content_hash, definition, created_at FROM protocol_revisions WHERE protocol_id = ?`},
+		{"protocol_drafts", `INSERT OR IGNORE INTO protocol_drafts(protocol_id, content_hash, definition, updated_at) SELECT ?, content_hash, definition, updated_at FROM protocol_drafts WHERE protocol_id = ?`},
+		{"protocol_history", `INSERT OR IGNORE INTO protocol_history(id, protocol_id, content_hash, definition, reason, is_draft, created_at, archived_at) SELECT ? || '~' || content_hash, ?, content_hash, definition, reason, is_draft, created_at, archived_at FROM protocol_history WHERE protocol_id = ?`},
+		{"protocol_activations", `INSERT OR IGNORE INTO protocol_activations(protocol_id, revision_hash, generation, activated_at) SELECT ?, revision_hash, generation, activated_at FROM protocol_activations WHERE protocol_id = ?`},
 	}
 	deleteTables := []string{"protocol_activations", "protocol_revisions", "protocol_drafts", "protocol_history"}
 	for _, copy := range copyTables {
-		args := copy.args
-		if args == nil {
-			if copy.table == "protocol_history" {
-				args = []any{newID, newID, oldID}
-			} else {
-				args = []any{newID, oldID}
-			}
+		args := []any{newID, oldID}
+		if copy.table == "protocol_history" {
+			args = []any{newID, newID, oldID}
 		}
 		if _, err := tx.ExecContext(ctx, copy.sql, args...); err != nil {
-			// 坏库（拷贝丢 WAL 等）可能缺个别表：缺表=该表无事可迁，跳过
-			// 而不是让整条改名迁移回滚（否则后续播种/刷新整链落空）。
-			if strings.Contains(err.Error(), "no such table") {
-				log.Printf("[preset-rename] skipped a missing table while copying %s: %v", copy.table, err)
-				continue
-			}
 			return fmt.Errorf("copy %s: %w", copy.table, err)
 		}
 	}
@@ -222,9 +211,6 @@ func renameProtocolRegistryIDs(ctx context.Context, tx *sql.Tx, oldID, newID str
 	}
 	for _, table := range deleteTables {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE protocol_id = ?`, oldID); err != nil {
-			if strings.Contains(err.Error(), "no such table") {
-				continue
-			}
 			return fmt.Errorf("delete legacy %s: %w", table, err)
 		}
 	}
