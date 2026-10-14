@@ -4,23 +4,18 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/page-header";
 import { POLL } from "@/lib/hooks";
-import { ApiError } from "@/lib/api";
 import useSWR from "swr";
 import {
   clearAgentMessages,
   createAgentSession,
   deleteAgentSession,
-  getAgentSession,
   listAgentSessions,
   restoreAgentDraft,
-  updateAgentSession,
 } from "@/lib/agent/api";
 import { deleteComposerDraft } from "@/lib/agent/draft-store";
 import {
   type AgentContextTab,
   type AgentDocument,
-  type AgentMessage,
-  type AgentSession,
   type AgentSettings,
   type AgentStreamEvent,
 } from "@/lib/agent/types";
@@ -30,6 +25,7 @@ import { ContextPanel } from "./context-panel";
 import { SessionOverview } from "./session-overview";
 import { TurnRail } from "./turn-rail";
 import { WorkspaceHeader } from "./workspace-header";
+import { useAgentSession } from "./use-agent-session";
 import { useAgentDrafts } from "./use-agent-drafts";
 
 /**
@@ -51,13 +47,6 @@ export function AgentPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [view, setView] = useState<"list" | "chat">("list");
-  const [activeId, setActiveId] = useState<string | undefined>();
-  const [session, setSession] = useState<AgentSession | undefined>();
-  const [messages, setMessages] = useState<AgentMessage[]>([]);
-  const [sessionError, setSessionError] = useState<string>();
-  const pendingUpdates = useRef(new Set<string>());
-  const [savingSessions, setSavingSessions] = useState<ReadonlySet<string>>(new Set());
-  const isSavingSettings = Boolean(activeId && savingSessions.has(activeId));
   /** 入口引导只跑一次（ref 而非 state：StrictMode 双挂载下 state 守卫会双双通过）。 */
   const bootstrapRef = useRef(false);
   const [activeTab, setActiveTab] = useState<AgentContextTab | null>(null);
@@ -68,6 +57,15 @@ export function AgentPage() {
   } | null>(null);
 
   const { data: sessions, mutate: mutateSessions } = useSWRSessionList();
+  const onSessionError = useCallback((error: unknown) => {
+    failToast("保存会话失败")(error);
+  }, [failToast]);
+  const {
+    activeId, session, setSession, messages, setMessages, sessionError,
+    savingSessions, isSavingSettings, selectSession, refreshSession, saveSession,
+    isCurrentSelection, invalidateDetailRequests, captureSelection,
+    invalidateSelection, isActiveSession, hasPendingUpdate,
+  } = useAgentSession(mutateSessions, onSessionError);
 
   const { composerDraft, draftSessions, draftLoadedFor, handleDraftChange } =
     useAgentDrafts(view, activeId, sessions);
@@ -78,46 +76,12 @@ export function AgentPage() {
       ? composerDraft.draft
       : null;
 
-  const activeIdRef = useRef(activeId);
-  const sessionRequest = useRef(0);
-  // Selection ownership survives polling, but expires even after an A → B → A trip.
-  const selectionGeneration = useRef(0);
-  const selectSession = useCallback((id: string | undefined) => {
-    activeIdRef.current = id;
-    selectionGeneration.current++;
-    sessionRequest.current++;
-    setSessionError(undefined);
-    setActiveId(id);
-  }, []);
-  const isCurrentSelection = useCallback((id: string, generation: number) =>
-    activeIdRef.current === id && selectionGeneration.current === generation, []);
-
-  const refreshSession = useCallback(async (id: string) => {
-    if (pendingUpdates.current.has(id)) return;
-    const requestId = ++sessionRequest.current;
-    try {
-      const detail = await getAgentSession(id);
-      // 快速 A→B 切换时 A 的慢响应不能覆盖已激活的 B。
-      if (activeIdRef.current !== id || sessionRequest.current !== requestId) return;
-      setSession(detail.session);
-      setMessages(detail.messages ?? []);
-      setSessionError(undefined);
-    } catch (error) {
-      if (activeIdRef.current !== id || sessionRequest.current !== requestId) return;
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      if (error instanceof ApiError && error.status === 401) return;
-      setSessionError(error instanceof ApiError && error.status === 404
-        ? "会话不存在或已被删除"
-        : error instanceof Error ? error.message : "加载会话失败");
-    }
-  }, []);
-
   const { live, send, approve, stop, dismissError, dismissResult, hydrateApproval } =
     useAgentStream(activeId, {
       onMessage: (event: AgentStreamEvent) => {
         if (event.message) {
           // A stream event is newer than any detail snapshot already in flight.
-          sessionRequest.current++;
+          invalidateDetailRequests();
           const message = event.message;
           setMessages((current) => current.some((item) => item.seq === message.seq)
             ? current.map((item) => item.seq === message.seq ? message : item)
@@ -147,8 +111,8 @@ export function AgentPage() {
 
   useEffect(() => {
     // A polling request started before local SSE cannot replace its new messages.
-    if (live.running) sessionRequest.current++;
-  }, [live.running]);
+    if (live.running) invalidateDetailRequests();
+  }, [live.running, invalidateDetailRequests]);
 
   /** 入口跳转：?mode=create | ?mode=edit&protocol=<id> 自动建会话并进入工作区。 */
   useEffect(() => {
@@ -227,11 +191,11 @@ export function AgentPage() {
 
   const createSession = useCallback(
     async (input?: { mode: "create" | "edit"; protocolId?: string }) => {
-      const generation = ++selectionGeneration.current;
+      const generation = invalidateSelection();
       try {
         const created = await createAgentSession(input ?? { mode: "create" });
         void mutateSessions();
-        if (selectionGeneration.current !== generation) return;
+        if (captureSelection() !== generation) return;
         selectSession(created.id);
         setSession(created);
         setMessages([]);
@@ -240,7 +204,7 @@ export function AgentPage() {
         failToast("创建会话失败")(error);
       }
     },
-    [failToast, mutateSessions, selectSession],
+    [failToast, mutateSessions, selectSession, captureSelection, invalidateSelection, setSession, setMessages],
   );
 
   /** 总览卡片 → 进入工作区。 */
@@ -254,7 +218,7 @@ export function AgentPage() {
       }
       void refreshSession(id);
     },
-    [activeId, refreshSession, selectSession],
+    [activeId, refreshSession, selectSession, setSession, setMessages],
   );
 
   const handleDelete = useCallback(
@@ -269,7 +233,7 @@ export function AgentPage() {
       try {
         await deleteAgentSession(id);
         void deleteComposerDraft(id);
-        if (id === activeIdRef.current) {
+        if (isActiveSession(id)) {
           selectSession(undefined);
           setSession(undefined);
           setMessages([]);
@@ -279,42 +243,7 @@ export function AgentPage() {
         failToast("删除失败")(error);
       }
     },
-    [confirm, failToast, mutateSessions, sessions, selectSession],
-  );
-
-  // A synchronous per-session guard also covers clicks before React renders.
-  const saveSession = useCallback(
-    async (id: string, patch: { settings?: Partial<AgentSettings>; title?: string }): Promise<boolean> => {
-      if (pendingUpdates.current.has(id)) return false;
-      const generation = selectionGeneration.current;
-      pendingUpdates.current.add(id);
-      setSavingSessions(new Set(pendingUpdates.current));
-      if (activeIdRef.current === id) sessionRequest.current++;
-      try {
-        const updated = await updateAgentSession(id, patch);
-        if (isCurrentSelection(id, generation)) {
-          sessionRequest.current++;
-          setSession((current) => current && {
-            ...current,
-            ...(patch.title !== undefined ? { title: updated.title } : {}),
-            ...(patch.settings ? { settings: updated.settings } : {}),
-          });
-        }
-        void mutateSessions();
-        return isCurrentSelection(id, generation);
-      } catch (error) {
-        toast({
-          description: error instanceof Error ? error.message : "保存会话失败",
-        });
-        return false;
-      } finally {
-        pendingUpdates.current.delete(id);
-        setSavingSessions(new Set(pendingUpdates.current));
-        // A fresh read also unblocks A → B → A while the old write was pending.
-        if (activeIdRef.current === id) void refreshSession(id);
-      }
-    },
-    [isCurrentSelection, mutateSessions, refreshSession, toast],
+    [confirm, failToast, mutateSessions, sessions, selectSession, isActiveSession, setSession, setMessages],
   );
 
   const handleRenameSession = useCallback(
@@ -338,8 +267,8 @@ export function AgentPage() {
    * 会重启流（重置现场）然后吃一个假 409。 */
   const confirmingPlanRef = useRef(false);
   const handleConfirmPlan = useCallback(async () => {
-    if (!session || live.running || pendingUpdates.current.has(session.id) || confirmingPlanRef.current) return;
-    const generation = selectionGeneration.current;
+    if (!session || live.running || hasPendingUpdate(session.id) || confirmingPlanRef.current) return;
+    const generation = captureSelection();
     confirmingPlanRef.current = true;
     try {
       const ok = await handleSettingsChange({ settings: { planMode: false } });
@@ -348,12 +277,12 @@ export function AgentPage() {
     } finally {
       confirmingPlanRef.current = false;
     }
-  }, [handleSettingsChange, isCurrentSelection, live.running, send, session]);
+  }, [handleSettingsChange, isCurrentSelection, live.running, send, session, hasPendingUpdate, captureSelection]);
 
   /** 草稿还原：回滚到最近一轮修改前的还原点。 */
   const handleRestoreDraft = useCallback(async () => {
     if (!session || live.running) return;
-    const generation = selectionGeneration.current;
+    const generation = captureSelection();
     const ok = await confirm({
       title: "还原到上一轮修改前？",
       description:
@@ -371,11 +300,11 @@ export function AgentPage() {
     } catch (error) {
       failToast("还原失败")(error);
     }
-  }, [confirm, failToast, isCurrentSelection, live.running, refreshSession, session, toast]);
+  }, [confirm, failToast, isCurrentSelection, live.running, refreshSession, session, toast, captureSelection]);
 
   const handleClearHistory = useCallback(async () => {
     if (!session) return;
-    const generation = selectionGeneration.current;
+    const generation = captureSelection();
     try {
       await clearAgentMessages(session.id, 0);
       if (!isCurrentSelection(session.id, generation)) return;
@@ -387,7 +316,7 @@ export function AgentPage() {
     } catch (error) {
       failToast("清空失败")(error);
     }
-  }, [failToast, isCurrentSelection, refreshSession, session, toast]);
+  }, [failToast, isCurrentSelection, refreshSession, session, toast, captureSelection, setMessages]);
 
   const handleStop = useCallback(() => {
     void stop();
@@ -459,7 +388,7 @@ export function AgentPage() {
           availablePanels={availablePanels}
           activePanel={visiblePanel}
           onBack={() => {
-            selectionGeneration.current++;
+            invalidateSelection();
             setView("list");
           }}
           onClearHistory={() => void handleClearHistory()}
@@ -495,7 +424,7 @@ export function AgentPage() {
               messages={messages}
               live={live}
               isSavingSettings={isSavingSettings}
-              canSend={() => !pendingUpdates.current.has(session.id)}
+              canSend={() => !hasPendingUpdate(session.id)}
               onSettingsChange={handleSettingsChange}
               onDismissError={dismissError}
               onDismissResult={dismissResult}
@@ -504,7 +433,7 @@ export function AgentPage() {
                 documents?: AgentDocument[];
                 afterSeq?: number;
               }) => {
-                if (pendingUpdates.current.has(session.id)) return;
+                if (hasPendingUpdate(session.id)) return;
                 if (input.afterSeq != null) {
                   setMessages((current) =>
                     current.filter((message) => message.seq <= input.afterSeq!),
