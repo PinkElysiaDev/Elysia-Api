@@ -494,7 +494,7 @@ func keyCommands() []*cliCommand {
 			usage:   "elysia key create --name <名> [--secret <明文>] [--allowed-groups <组,...>] [--enabled[=false]]",
 			example: `elysia key create --name mobile-app --allowed-groups 主力`,
 			flags: []cliFlagSpec{
-				{"name", "Key 名称（主键，创建后不可改）", false, false},
+				{"name", "Key 名称（唯一）", false, false},
 				{"secret", "Key 明文——用户给定就用给定值（弱口令可提醒但不拒绝）；留空自动生成随机值", false, false},
 				{"allowed-groups", "允许访问的模型组（逗号分隔；空=不限制）", false, true},
 				{"enabled", "默认 true", true, false},
@@ -604,7 +604,7 @@ func usageCommands() []*cliCommand {
 	}
 }
 
-// syslogCommands 系统日志命令（组级）。
+// codeCommands 提供构建时源码快照的只读访问。
 func codeCommands() []*cliCommand {
 	return []*cliCommand{
 		&cliCommand{group: "code", name: "ls", summary: "列出源码快照文件(引擎与预置协议的参考实现)",
@@ -640,6 +640,7 @@ func codeCommands() []*cliCommand {
 	}
 }
 
+// syslogCommands 系统日志命令（组级）。
 func syslogCommands() []*cliCommand {
 	return []*cliCommand{
 		&cliCommand{group: "syslog", name: "", summary: "查询系统日志",

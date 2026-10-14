@@ -334,9 +334,7 @@ func (c *CompiledConversion) issueSeverity(rule ConversionRule, phase Conversion
 	return nil
 }
 
-// ApplyValue executes bounded semantic or wire rules. Protected state cannot be
-// minted through expressions; the separately authenticated continuation module
-// is the only restoration authority.
+// ConversionHash returns the resolved policy hash, or empty for no policy.
 func ConversionHash(c *CompiledConversion) string {
 	if c == nil {
 		return ""

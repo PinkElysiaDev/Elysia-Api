@@ -451,7 +451,7 @@ elysia key — API Key（推理访问令牌）管理
 
   elysia key create --name <名> [--secret <明文>] [--allowed-groups <组,...>] [--enabled[=false]]
     创建推理 API Key（受权限策略控制；secret 留空自动生成，明文仅返回一次）
-      --name                   Key 名称（主键，创建后不可改）
+      --name                   Key 名称（唯一）
       --secret                 Key 明文——用户给定就用给定值（弱口令可提醒但不拒绝）；留空自动生成随机值
       --allowed-groups         允许访问的模型组（逗号分隔；空=不限制）
       --enabled                默认 true
@@ -481,7 +481,7 @@ elysia key create --name <名> [--secret <明文>] [--allowed-groups <组,...>] 
 创建推理 API Key（受权限策略控制；secret 留空自动生成，明文仅返回一次）
 
 参数：
-  --name                   Key 名称（主键，创建后不可改）
+  --name                   Key 名称（唯一）
   --secret                 Key 明文——用户给定就用给定值（弱口令可提醒但不拒绝）；留空自动生成随机值
   --allowed-groups         允许访问的模型组（逗号分隔；空=不限制）
   --enabled                默认 true

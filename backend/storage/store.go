@@ -252,28 +252,6 @@ func (s *Store) DeleteAPIToken(ctx context.Context, name string) error {
 	return err
 }
 
-// RenameAPIToken 重命名令牌（name 是主键）：目标名已占用时报错，其余
-// 字段（凭证/启停/绑定/作用域）原样保留。
-func (s *Store) RenameAPIToken(ctx context.Context, oldName, newName string) error {
-	newName = strings.TrimSpace(newName)
-	if newName == "" {
-		return errors.New("token name is required")
-	}
-	result, err := s.db.ExecContext(ctx, `UPDATE api_tokens SET name = ?, updated_at = ? WHERE name = ?`, newName, nowString(), oldName)
-	if err != nil {
-		// SQLite 主键冲突表现为 UNIQUE constraint failed。
-		return err
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if affected == 0 {
-		return fmt.Errorf("token %q not found", oldName)
-	}
-	return nil
-}
-
 // FindAPITokenByName 按名称查找单个 token（含解密后的明文），
 // 供「留空即不变」编辑时保留原 token 使用。
 func (s *Store) FindAPITokenByName(ctx context.Context, name string) (APIToken, bool, error) {

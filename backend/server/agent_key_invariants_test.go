@@ -47,14 +47,14 @@ func TestAgentKeyStorageInvariants(t *testing.T) {
 	}
 
 	// 重命名：保留其余字段；目标名占用报错。
-	if err := s.store.RenameAPIToken(ctx, "remote", "remote-2"); err != nil {
+	if _, err := s.store.SaveAPIToken(ctx, "remote", storage.APITokenUpdate{NewName: "remote-2"}, false); err != nil {
 		t.Fatalf("rename: %v", err)
 	}
 	renamed, found, _ := s.store.FindAPITokenByName(ctx, "remote-2")
 	if !found || renamed.Token != "tok-remote-1" || renamed.AllowedGroups[0] != "agent" {
 		t.Fatalf("rename lost fields: %+v", renamed)
 	}
-	if err := s.store.RenameAPIToken(ctx, "remote-2", "normal"); err == nil {
+	if _, err := s.store.SaveAPIToken(ctx, "remote-2", storage.APITokenUpdate{NewName: "normal"}, false); err == nil {
 		t.Fatalf("rename onto existing name must fail")
 	}
 }

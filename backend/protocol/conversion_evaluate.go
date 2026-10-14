@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// ApplyValue executes bounded semantic or wire rules. Protected state cannot be
+// minted through expressions; the separately authenticated continuation module
+// is the only restoration authority.
 func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPhase, input Value, route ConversionContext, sink *DiagnosticSink) (Value, error) {
 	if phase == ConversionSourceEvent {
 		return Value{}, streamIssue(InvalidInput, "/sequence", "source_event requires a frame sequence")

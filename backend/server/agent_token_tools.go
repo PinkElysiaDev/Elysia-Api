@@ -165,7 +165,7 @@ func (t *updateAPIKeyTool) Execute(ctx context.Context, tctx CLIContext, args js
 		return CLIError(err.Error(), "persist_failed")
 	}
 	t.server.invalidateRouteCache()
-	return CLIResult{OK: true, Summary: fmt.Sprintf("API Key %q updated", item.Name), Data: agentTokenView(item)}
+	return CLIResult{OK: true, Summary: fmt.Sprintf("API Key %q 已更新", item.Name), Data: agentTokenView(item)}
 }
 
 // ---- delete_api_key（门控 delete）----
