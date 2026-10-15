@@ -6,7 +6,7 @@
   ],
   "type": "module",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "scripts": {
     "build": "node scripts/build-standalone.mjs",
     "test:macos-app": "node scripts/test-macos-app.mjs",

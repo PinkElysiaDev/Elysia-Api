@@ -170,4 +170,4 @@ Include your environment, reproduction steps, and redacted logs in issues. Descr
 
 ## License
 
-License information will be provided by the project owner.
+This project is open source under the [Apache License 2.0](LICENSE): you are free to use, modify and distribute it (including commercially) with an explicit patent grant. Keep the license when distributing, mark modified files, and note that the project name and trademarks are not licensed. Unless stated otherwise in your pull request, contributions are licensed under Apache 2.0 as well.
