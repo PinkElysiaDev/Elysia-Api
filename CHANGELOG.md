@@ -9,9 +9,19 @@
 v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.1.1 起的全部
 发布说明已合并进来，根目录不再保留按版本拆散的 `RELEASE_NOTES_v*.md`。
 
-## 未发布
+## v1.6.0 - 2026-10-15
 
-跨协议转换成为可管理、可验证、可恢复的能力：新增转换策略引擎与管理页、认证续传载体、线格式强校验与组合验证证据；修复两条实测转换故障与零预置旧库启动卡死；并按真实渠道审计（Claude Code / OpenAI / Anthropic / Gemini SDK）贯通了推理、消息相位、流失败契约与工具历史的跨协议保真。
+这是 Elysia-API 有史以来最大的一次更新（自上个发布以来 400 多个提交）。一句话总结：**跨协议转换从「尽力而为」变成了「可管理、可验证、可恢复」的能力**。用大白话说：
+
+- **任何客户端协议调任何模型**：Claude Code、Codex、OpenAI SDK、Gemini 客户端——不管你的工具说哪种「方言」、模型挂在哪种供应商上，网关都能转。转换不再是黑盒：每一步取舍都有名有姓（哪条规则、什么后果、严格模式会不会拒绝），调用日志里查得到。
+- **思考内容的加密签名跨协议不再丢**：各家模型的推理状态（工具多轮的关键）现在用主密钥加密保管、下一轮原样恢复，换个协议也不丢「记忆」。
+- **修掉了两条实测故障**：Responses 客户端带 `include` 字段转 Gemini 上游会 400、Gemini 思考模型的用量转 Anthropic 客户端会 502——都不再发生。
+- **上百项真实渠道保真修复**：拿真实 SDK 与中转站实测跑出来的问题逐一修掉——思考内容贯通、流式失败不吞错误、缓存计数不重复、工具历史不串轮。
+- **网关更皮实**：预置协议坏了能自愈、空库升级不卡启动、升级与并发写入不再弄坏数据；缓存语义与用量统计同步加固。
+
+### 致谢
+
+@vioaki 贡献了本版本的全部第三方提交（44 个）：预置协议激活自愈与模型目录一致性（PR #37）、推理意图按目标模型解析与可执行候选筛选（PR #38）、无状态网关 MCP 命令、会话与任务面板重组、用量捕获路由、macOS 更新流程等。感谢！
 
 ### 修复
 
@@ -27,10 +37,19 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
   - **工具历史**：混合正文/工具历史归并投影、工具索引独立分配、空增量不入历史、流式工具身份每次调用只发一次。
   - **缓存计数不双计**：DeepSeek prompt cache 计数规范化、Chat 晚到缓存别名先合并再投影、Anthropic thinking token 明细不重复计数、披露的厂商缓存计费单独保留。
   - **Gemini 特定**：安全设置带诊断非阻断投影、系统指令信封（Google SDK roles）解码、终止空 text 占位忽略、纯思考用量推断输出计数。
+- **真实渠道收口批**（dev.55→dev.71，122 提交）：
+  - **供应商错误不再被吞**：上游原始失败类别与错误详情贯穿转换层（new-api 包装失败、无效供应商模型、流空闲失败等场景保留真实原因，不再被误分类或替换）。
+  - **Responses 生命周期补齐**：心跳占位帧、重复输出文本、安全缓冲、异步生成失败终止化、工具完成校验。
+  - **Anthropic 原生保真**：会话中段 system 按原生位置输出（Claude Code system-reminder 形态往返保真）、beta thinking display。
+  - **Chat 流启动身份修正**：真实渠道捕获的「第二条空启动帧 ID 变化」异常统一修正（第六阶段 `source_event`，逐字段诊断、严格模式拒绝）。
+  - **Agent 会话可靠性**：并发/取消/快照场景不丢消息不错乱；审批状态无法持久化时停止执行；工具结果脱敏后再进 CLI 渲染与模型投递。
+  - **存储安全**：token 更新/重命名原子提交、损坏 token 授权拒绝、失败提交后清理快照、legacy null 定义不 panic。
+- **跨协议缓存创建分桶不再中断响应**：此前非 Anthropic 目标收到带 `cache_creation.ephemeral_5m/1h` 的真实 Anthropic 响应会硬失败——非流式返回 502、流式返回 200 但被 `X-Elysia-Stream-Error` trailer 截断。现在目标协议无法表达该分桶时省略投影并产生 warning，**创建总量仍映射到 `cache_write_tokens`**；Anthropic→Anthropic 的未修改往返完整保留两个分桶。
+- **诊断确定性**：此前同一输入会在 `ephemeral_5m`/`ephemeral_1h` 之间非确定二选一（取决于 map 遍历序），现在按键名排序遍历，同输入每次报告同一路径。
 
 ### 新增与改进
 
-- **跨协议转换策略**：五阶段（ingress/request/response/event/wire）× 25 种动作的具名规则引擎，17 项默认规则按方向实际模块自动生效（预置与旧自定义协议同等继承）；`/protocols/conversions` 策略页支持草稿保存（乐观锁）、验证、激活、回滚、只读预览（规则来源追溯）与签名探针；模型源/模型绑定级可覆盖转换行为并钉住修订。
+- **跨协议转换策略**：六个转换阶段 × 二十余种动作的具名规则引擎，默认规则按方向实际模块自动生效（预置与旧自定义协议同等继承）；`/protocols/conversions` 策略页支持草稿保存（乐观锁）、验证、激活、回滚、只读预览（规则来源追溯）与签名探针；模型源/模型绑定级可覆盖转换行为并钉住修订。
 - **Responses `store` 跨族语义**：向不支持响应保存的目标转换时降级为无状态调用、响应回填 `store:false` 并诊断；`previous_response_id` 与截断约束保持显式拒绝边界。
 - **线格式强校验**：编码后校验目标线格式信封（消息外壳、帧分类、用量字段），缺外壳不再被计为成功转换；预览、单协议/组合验证与网关两条路径同口径，流式逐帧校验。
 - **续传载体管理**：`/api/admin/protocols/continuations` 提供数量/字节/命中/未命中/过期/淘汰统计与按会话清理。
@@ -42,12 +61,19 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 - **Agent 体验**：Agent 设置区块、全局工具循环上限（运行时配置）、Markdown 渲染升级、模型就绪原因码直接透出。
 - **模型发现与调用修正**：Gemini 发现容忍 null 限制与缺前缀；上游收到模型 API id 而非显示名；补全 Gemini 模态用量记录。
 - **兼容性实测**：Claude Code 2.1.295、OpenAI SDK 7.30.1、Anthropic SDK 2.0.33 与 4.0.78 全部经真实网关回放验证（流式逐事件、工具第二轮、缺用量/晚到用量场景）。
+- **OpenAI 缓存语义建模**：新增 `prompt_cache_options{mode,ttl}` 与 `prewarm`（仅 Responses）；`prompt_cache_retention` 标记为 Deprecated，但仍解码兼容。
+- **Anthropic 混合 TTL 断点顺序**：文档要求更长 TTL 在前（1h 在 5m 前），违反时给出非阻断警告而非拒绝请求。
+- **用量统计区分「未上报」与「上报为零」**：新增缓存创建 token 列（`cache_creation_tokens`）与上报掩码（`usage_report_mask`），避免上游未上报的计数被当作零拉低命中率。
+- **预置协议只读、随版本自动更新**：四份内置预置不再允许编辑，每次启动自动跟进程序携带的最新版本；需要定制时在协议设计器「复制为新协议」后编辑副本。
+- **Agent 模型就绪度与「验证并启用」**：模型选择器逐模型展示可用性与原因；对未声明工具能力的模型，一键发送最小真实探针验证通过后才提交能力标记与模型级绑定——失败零副作用。
+- **协议版本历史页**：按「预置旧版本 / 已删除自定义协议」归档观察，含验证报告、差异与引用阻断清单；支持恢复为新协议与彻底删除。
+- **四协议点对点行为保证**：Claude Code 会话中段 system 按位保真；Responses 消息 item 身份跨族适配；Gemini 对象工具结果与 Chat 字符串结果双向互通；16 对协议矩阵的保证与显式拒绝清单见 `docs/protocol-pair-guarantees.md`，行为由真实客户端语料测试锁定。
 
 <!-- release-details -->
 
 ### 技术细节
 
-- **编译器与证据版本化**：协议编译器 `2.0.0-dev.18` → `2.0.0-dev.64`；每个语义变更递增版本，组合验证证据绑定编译器版本 + 策略哈希 + 样例指纹，行为变化即证据失效重验。预置定义版本：`anthropic-messages` 2.1.7、`google-generate-content` 2.1.6、`openai-chat-completions` 2.2.7、`openai-responses` 2.2.8。
+- **编译器与证据版本化**：协议编译器 `2.0.0-dev.18` → `2.0.0-dev.71`；每个语义变更递增版本，组合验证证据绑定编译器版本 + 策略哈希 + 样例指纹，行为变化即证据失效重验。转换管线现为六阶段（ingress/request/source_event/response/event/wire）× 27 种动作。预置定义版本：`anthropic-messages` 2.1.7、`google-generate-content` 2.1.6、`openai-chat-completions` 2.2.7、`openai-responses` 2.2.8。
 - **转换策略引擎**（`d2b0a1b` 起多轮）：`backend/protocol/conversion_policy.go`（编译期校验：动作/阶段/编码器组合、同阶段顺序歧义、引擎限额）+ `conversion_projection.go`（按 `Compiled.Codec()` 判定实际编解码器注入默认规则，手写编码器不猜测）。降级只发生在语义转换相位，模式感知（compatible=诊断降级 / strict=拒绝），fidelity 四级（preserved / lossy_compatible / recoverable_wrapped / rejected）。
 - **两条实测故障的修复机制**（`0b80a01` 投影轮）：`include` 六态规范化（缺失/null/空/已知/未知/类型错误，`ParseResponsesInclude`）；用量明细逐项投影 + `ValidateUsageArithmetic` 前置守卫（reasoning ≤ output 总量），编码器末端不再有隐式省略。`responses_include` 跨协议删除补 `conversion_normalized` 诊断。
 - **Anthropic 用量外壳与占位计量隔离**（`9951d4c`）：`PlaceholderCount` 三层隔离——merge 不覆盖观测值、`providerUsageIssues` 上游契约拒绝占位冒充观测、落库断言。`DeliveryState` 统一响应 ID/created，流式终止事件经 `Drain()` 在供应商尾帧后快照输出。
@@ -57,44 +83,15 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 - **真实渠道审计**（dev.26→dev.54，`08587bd` 起约 109 提交）：`scripts/protocol-audit` 工具链（固定版本 SDK 回放、网络守卫、脱敏不改写字节、捕获重放），DeepSeek/中转真实渠道 437 通过/35 失败保留原始分类；修复覆盖 reasoning 贯通（`aa1dc47` 等）、Responses 消息相位（`6d1d683`/`4a5a004`）、流失败契约（`51597d4`/`358b978`）、工具历史（`a864cfa`/`189dc34`）、缓存别名（`2557422`/`f0bd751`/`eb61403`）、Gemini 特定（`e4cfb6e` 等）。
 - **PR #38（`be2eaf2`）**：推理意图按目标模型与绑定解析（`56211ef`）、绑定证据随模型/操作变化刷新（`a6a8a7d`）、可执行候选筛选与计量（`dcf5383`）、请求提示与工具 strict 投影（`081da21`）、工具结果与有序历史（`595a1de`）、Gemini 模态用量（`95f5982`）、注册表显示名（`534871e`）。
 - **调用日志诊断 UI**（`1be792f`/`b7fef11`）：诊断结构体级去重（不同阶段/策略/修订不互相覆盖），详情抽屉折叠块带分级计数。
-
-## v1.6.0 - 2026-10-05
-
-缓存语义与诊断确定性的加固版：转换不再因 Anthropic 的缓存创建分桶而中断响应，缓存创建总量照常进入用量；诊断从「看运行次数」变成「同输入同结果」；同时补齐 OpenAI 系缓存语义建模与 Anthropic 混合 TTL 断点顺序校验。
-
-### 修复
-
-- **跨协议缓存创建分桶不再中断响应**：此前非 Anthropic 目标收到带 `cache_creation.ephemeral_5m/1h` 的真实 Anthropic 响应会硬失败——非流式返回 502、流式返回 200 但被 `X-Elysia-Stream-Error` trailer 截断。现在目标协议无法表达该分桶时省略投影并产生 warning，**创建总量仍映射到 `cache_write_tokens`**；Anthropic→Anthropic 的未修改往返完整保留两个分桶，工具、system 与消息位置都不重排。
-- **诊断确定性**：此前同一输入会在 `ephemeral_5m`/`ephemeral_1h` 之间非确定二选一（取决于 map 遍历序），现在按键名排序遍历，同输入每次报告同一路径。
-
-### 新增与改进
-
-- **OpenAI 缓存语义建模**：新增 `prompt_cache_options{mode,ttl}` 与 `prewarm`（仅 Responses）；`prompt_cache_retention` 标记为 Deprecated，但仍解码兼容。
-- **Anthropic 混合 TTL 断点顺序**：文档要求更长 TTL 在前（1h 在 5m 前），违反时给出非阻断警告而非拒绝请求。
-- **用量统计区分「未上报」与「上报为零」**：新增缓存创建 token 列（`cache_creation_tokens`）与上报掩码（`usage_report_mask`），避免上游未上报的计数被当作零拉低命中率。
-- **预置协议只读、随版本自动更新**：四份内置预置不再允许编辑，每次启动自动跟进程序携带的最新版本；升级时旧的本地修改会被回归为 shipped 版本并在系统日志留审计记录（协议、内容哈希与字节数）。需要定制时在协议设计器对预置「复制为新协议」后编辑副本。
-- **Agent 模型就绪度与「验证并启用」**：模型选择器逐模型展示可用性与原因（未绑定/协议未启用/未声明工具能力/绑定未允许函数工具等）；对未声明工具能力的模型，一键发送最小真实探针（带 nonce 的函数工具调用）验证通过后才提交能力标记与模型级绑定——失败零副作用，成功后迁移/刷新/目录同步均不回滚，探针调用计入用量日志。
-- **协议版本历史页**：设计器新增「协议历史」——按「预置旧版本 / 已删除自定义协议」归档观察，含验证报告、与当前启用版本的差异、引用阻断清单；支持恢复为新协议（重新验证后启用）与彻底删除（激活中/被引用版本拒删；预置历史三层只读守卫，不可物理删除）。
-- **流式收集保真**：Agent 与工具探针的响应收集器不再因中转站在 chat SSE 帧上携带的未映射字段（厂商标注、计费扩展）而报错——扩展字段在缓冲上限内保真保留到响应属性，与网关转发的原帧重发同一口径。
-- **四协议点对点行为保证**：Claude Code 会话中段 system 消息对 Anthropic 按位保真输出；Responses 消息 item 身份跨族丢弃+warning（Codex 全形态解锁）；Gemini 对象工具结果与 Chat 字符串结果双向 JSON 序列化互通（解除死锁）；Claude Code→Chat 的并行 tool_result/数组 content/is_error/thinking 签名/strict/消息级扩展/metadata.user_id/disable_parallel 全部适配或剥离+warning；Gemini RECITATION/OTHER finish 映射最近语义。保证矩阵与显式拒绝清单见 `docs/protocol-pair-guarantees.md`，行为由真实客户端语料测试锁定。
-- **内部质量收束（C34）**：删除死代码、统一状态码常量、规范化分隔符。
-
-<!-- release-details -->
-
-### 技术细节
-
-- **跨协议缓存创建分桶投影**（`941518f`）：目标协议无对应字段时省略 `ephemeral_5m_input_tokens`/`ephemeral_1h_input_tokens` 明细，在 `/usage/details/ephemeral_5m_input_tokens`（或 `ephemeral_1h_input_tokens`）产一条 `SeverityWarning`，随成功响应一并进入该次记录的 ConversionIssues；创建总量仍写 `cache_write_tokens`（Chat/Responses），Gemini 无生成创建计数字段时省略并产 warning（路径 `/usage/cacheCreation`），读取仍走 `cachedContentTokenCount`。记录侧 `ProtocolUsage` 始终保留完整分桶，省略只作用于线制输出；组合验证按目标家族认可该投影（`cacheBucketOmission`），绑定期不把合法的跨协议往返判为「计数丢失」。
-- **诊断排序**：分桶明细按键名排序遍历，消除 map 遍历序造成的非确定性。
-- **缓存能力与意图扩展**：能力目录新增 `cache.options`（覆盖 `mode`/`options.ttl`）与 `cache.prewarm`，与既有 `cache.breakpoints`/`cache.keys`/`cache.retention`/`cache.resources` 并列，并按方向声明；缓存意图 `Kind` 新增 `mode`、`options.ttl`、`prewarm`——`prewarm` 仅 Responses 目标可编码，`mode`/`options.ttl` 仅 Chat/Responses。未知 `Kind` 显式拒绝而非丢弃。
-- **保留键与重复意图**（`0fb3df1`）：Chat/Responses 目标的 `Details` 不得占用 `input.cached_tokens`/`input.cache_write_tokens`（归规范化计数器）；同一 `Kind` 的多个缓存意图映射到同一线制字段时报错，四类一致（此前仅 `breakpoint` 分支拒绝重复，`key`/`retention`/`resource` 静默后者覆盖前者）。
-- **Anthropic 混合 TTL 断点顺序**：按上游处理顺序（tools → system → messages）要求较长 TTL 在前，未显式设置 `ttl` 的断点按 5m 默认参与排序；由 `warnBreakpointOrder` 以非阻断诊断报告，不因布局非最优而 4xx。
-- **用量统计**：`usage_records` 新增 `cache_creation_tokens` 与 `usage_report_mask` 列（位含义 `UsageReportInput`/`UsageReportCacheHit`/`UsageReportCreation`，区分「上游未上报」与「上报为零」），`usage_rollup_hour` 同步累积 `cc_tok`/`cc_rows`；覆盖索引显式 `DROP`+`CREATE` 重建以纳入新列，新增列经幂等 `ALTER TABLE` 补齐。`UsageLogItem`/`UsageSummary` 增加对应字段。
-- **预置只读与自动更新**：`protocol.IsPresetProtocolID` 列出四个只读预置；服务层 `SaveDraft`/`Activate` 对预置 ID 一律拒绝（单点闸门覆盖编辑器、Agent CLI 与 REST），同名新建同样被拒。启动刷新与迁移对预置行/激活**无条件**采用 shipped 定义（移除原指纹门槛，`IsPreviousDefinition`/`DefinitionFingerprint` 及其测试随之删除）；被丢弃的本地修改写入系统日志审计行。协议列表/启用目录为预置加 `preset` 标记，设计器把预置从草稿表移入只读区块并提供「复制为新协议」（派生 `-copy` ID、名称加副本后缀）。
-- **就绪度与实证启用**：`GET /api/admin/agent/models` 就绪度看板（逐模型原因码）与 `POST /api/admin/agent/models/verify-tools`（nonce 探针 + 单事务启用，baseline 乐观锁防并发，已就绪模型幂等短路，上游 5xx 返回 502）；`EnableModelFunctionTools` 事务更新 `models.tools_capable/capability_source` 与 model 级绑定；Agent 轮次错误透出就绪原因码（4xx）而非 500。
-- **版本历史**：`/protocols/history*` 管理端点（列表/详情+差异/恢复为新协议/删除/引用检查）；归档 block/replace/unbind 三模式单事务、失败零残留；`preset_replaced` 历史行在 handler/service/storage 三层拒绝物理删除；`/protocols/legacy` 重定向至历史页（修复占位死链）。
-- **流式收集保真**：`ResponseCollector` 将 `event.Unmapped`（未映射流扩展）累积至 `Attributes["wire:stream"]`（计入既有缓冲上限），替代原硬错；同族回放路径不变。
-- **系统容器诊断**：Anthropic/GemNI 系统容器元数据拒绝错误指名字段与位置（`/content/{n}/{field}`）；用量记录新增 `systemStructure` 逐节点诊断，用于定位客户端请求形态。
-- **预置协议**：`chat-completions-api`、`responses-api` 升至 v2.2.0，新增 `cache.options`/`cache.prewarm` 能力与配套样例；`anthropic-api`、`gemini-api` 维持 v2.1.0（本轮未改内容）。编译器版本随之升至 `2.0.0-dev.18`，映射变更触发既有启动重验机制。
+- **真实渠道收口轮**（dev.55→dev.71，`1f9a21d` 后 122 提交）：上游真实失败/本地持久化失败/已验证修复三分记账（`f94f382`/`9a996c6`）；上游 HTTP 状态与生成失败分开持久化（`9a996c6`）；new-api wrapper 失败类别与缺失响应模型保留（`2a1fd1a`/`58a1975`）；Responses 生命周期（sentinel 心跳 `1f323ad`、重复输出文本 `3e923e4`、异步失败终止化 `4a5244b`）；Anthropic 原生 system 位置保真（`4029ecf`）；Chat 流启动身份第六阶段 `source_event`/`chat_stream_identity`（dev.68，4 协议 × 7 SDK 组合验证）；Agent 并发/取消/快照可靠性一批；storage 原子提交与损坏拒绝一批；源码快照显式 manifest（`69701a5`）。
+- **跨协议缓存创建分桶投影**（`941518f`）：目标协议无对应字段时省略 `ephemeral_5m/1h` 明细并产 `SeverityWarning`，创建总量仍写 `cache_write_tokens`（Gemini 无生成创建字段时省略+warning）；记录侧 `ProtocolUsage` 始终保留完整分桶，省略只作用于线制输出。
+- **缓存能力与意图扩展**：能力目录新增 `cache.options` 与 `cache.prewarm`；缓存意图 `Kind` 新增 `mode`、`options.ttl`、`prewarm`；Chat/Responses 目标的 `Details` 保留键约束（归规范化计数器）；同 `Kind` 多意图映射同一线制字段时报错。
+- **用量统计**：`usage_records` 新增 `cache_creation_tokens` 与 `usage_report_mask` 列，`usage_rollup_hour` 同步累积；覆盖索引显式重建纳入新列，新列经幂等 `ALTER TABLE` 补齐。
+- **预置只读与自动更新**：`SaveDraft`/`Activate` 对预置 ID 一律拒绝（单点闸门覆盖编辑器、CLI 与 REST）；启动刷新与迁移对预置行/激活无条件采用 shipped 定义，被丢弃的本地修改写入系统日志审计行。
+- **就绪度与实证启用**：`GET /api/admin/agent/models` 就绪度看板与 `POST /api/admin/agent/models/verify-tools`（nonce 探针 + 单事务启用，baseline 乐观锁）。
+- **版本历史**：`/protocols/history*` 管理端点（列表/详情+差异/恢复为新协议/删除/引用检查）；归档三模式单事务、失败零残留；`preset_replaced` 历史行三层拒绝物理删除。
+- **流式收集保真**：`ResponseCollector` 将未映射流扩展累积至 `Attributes["wire:stream"]`（计入缓冲上限），替代原硬错。
+- **系统容器诊断**：Anthropic/Gemini 系统容器元数据拒绝错误指名字段与位置；用量记录新增 `systemStructure` 逐节点诊断。
 
 ## v1.5.1 - 2026-09-27
 
