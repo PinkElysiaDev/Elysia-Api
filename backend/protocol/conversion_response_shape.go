@@ -198,7 +198,7 @@ func prepareDelivery(r *Response, route ConversionContext, codec string) {
 	visit(r.Content)
 }
 
-func (c *CompiledConversion) responseValue(action string, phase ConversionPhase, input Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, error) {
+func (c *CompiledConversion) responseValue(action string, phase ConversionPhase, input Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, limits Limits) (Value, error) {
 	var codec string
 	_ = rule.Value.Decode(&codec)
 	apply := func(r *Response) error {
@@ -222,7 +222,7 @@ func (c *CompiledConversion) responseValue(action string, phase ConversionPhase,
 		if err := apply(&r); err != nil {
 			return Value{}, err
 		}
-		return EncodeValue(r)
+		return encodeSemanticWithin(&r, limits)
 	}
 	var e Event
 	if err := input.Decode(&e); err != nil {
@@ -270,7 +270,7 @@ func (c *CompiledConversion) responseValue(action string, phase ConversionPhase,
 		}
 		e.ResponseID = e.Response.ID
 	}
-	return EncodeValue(e)
+	return encodeSemanticWithin(&e, limits)
 }
 
 func copyObject(o Object) Object {

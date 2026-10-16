@@ -503,7 +503,7 @@ func validateLogprobTokens(value Value, at string) error {
 	return nil
 }
 
-func (c *CompiledConversion) metadataValue(phase ConversionPhase, input Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, error) {
+func (c *CompiledConversion) metadataValue(phase ConversionPhase, input Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, limits Limits) (Value, error) {
 	var codec string
 	_ = rule.Value.Decode(&codec)
 	var visit func(*Node) error
@@ -577,7 +577,7 @@ func (c *CompiledConversion) metadataValue(phase ConversionPhase, input Value, r
 				return Value{}, err
 			}
 		}
-		return EncodeValue(r)
+		return encodeSemanticWithin(&r, limits)
 	}
 	if phase == ConversionResponse {
 		var r Response
@@ -587,7 +587,7 @@ func (c *CompiledConversion) metadataValue(phase ConversionPhase, input Value, r
 		if err := response(&r); err != nil {
 			return Value{}, err
 		}
-		return EncodeValue(r)
+		return encodeSemanticWithin(&r, limits)
 	}
 	var e Event
 	if err := input.Decode(&e); err != nil {
@@ -606,5 +606,5 @@ func (c *CompiledConversion) metadataValue(phase ConversionPhase, input Value, r
 			return Value{}, err
 		}
 	}
-	return EncodeValue(e)
+	return encodeSemanticWithin(&e, limits)
 }

@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -68,5 +69,63 @@ func TestSemanticBudgetPreflightAndExpansion(t *testing.T) {
 	_, err = c.Request(t.Context(), &Request{SchemaVersion: 1, Content: []Node{}}, ConversionContext{}, nil)
 	if !errors.As(err, &failure) {
 		t.Fatalf("unbounded expansion: %v", err)
+	}
+	var conversion *ConversionError
+	if !errors.As(err, &conversion) || conversion.Issues[0].RuleID != "expand" || conversion.Issues[0].PolicyHash != c.Hash || conversion.Issues[0].Direction != DecodeRequest {
+		t.Fatal("resource provenance lost", err)
+	}
+}
+
+func TestRequestBudgetDoesNotExpandResponsesOrExecution(t *testing.T) {
+	ctx, err := WithRequestBodyLimit(t.Context(), 64<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := &Compiled{limits: DefaultLimits()}
+	if compiled.wireLimits(ctx, DecodeResponse).BufferBytes != 8<<20 || compiled.wireLimits(ctx, DecodeEvent).BufferBytes != 8<<20 {
+		t.Fatal("response boundary expanded")
+	}
+	if compiled.wireLimits(ctx, DecodeRequest).BufferBytes != 64<<20 {
+		t.Fatal("request boundary not expanded")
+	}
+	policy, err := ResolveConversion(ConversionPolicy{SchemaVersion: 1, ID: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy.ruleLimits(ctx, ConversionWire, ConversionContext{ResponseWire: true}).BufferBytes != 8<<20 {
+		t.Fatal("response wire budget leaked")
+	}
+	budget := &evaluationBudget{limits: semanticLimits(DefaultLimits()), stepLimit: 1}
+	expression := compiledExpression{op: "literal", value: StringValue("x")}
+	state := evaluation{ctx: ctx, budget: budget}
+	if _, err := expression.evaluate(state); err != nil {
+		t.Fatal(err)
+	}
+	var resource *ResourceLimitError
+	if _, err := expression.evaluate(state); !errors.As(err, &resource) || resource.Metric != "steps" {
+		t.Fatal(err)
+	}
+	cyclic := &Request{SchemaVersion: 1, Content: make([]Node, 1)}
+	cyclic.Content[0].Children = cyclic.Content
+	if err := checkSemanticValue(cyclic, semanticLimits(DefaultLimits())); !errors.As(err, &resource) {
+		t.Fatal("cycle was not bounded", err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := expression.evaluate(evaluation{ctx: canceled, budget: &evaluationBudget{limits: DefaultLimits()}}); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+}
+
+func TestConversionRequestHonorsCancellation(t *testing.T) {
+	conversion, err := ResolveConversion(ConversionPolicy{SchemaVersion: 1, ID: "cancel"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err = conversion.Request(ctx, &Request{SchemaVersion: 1, Content: []Node{}}, ConversionContext{}, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
 	}
 }

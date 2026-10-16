@@ -731,7 +731,7 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	switch {
 	case mapping.module != nil:
 		options = options.forDefinition(compiled)
-		options.wireLimits = compiled.wireLimits(ctx, direction)
+		options.wireLimits = compiled.nativeLimits(ctx, direction)
 		instance, resolveErr := options.State.resolve(compiled, direction, mapping.module)
 		if resolveErr != nil {
 			return fail(resolveErr)

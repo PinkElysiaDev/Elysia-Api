@@ -85,7 +85,7 @@ func readTurnStateFields(value Value, path string) (Object, error) {
 	return fields, nil
 }
 
-func (c *CompiledConversion) projectResponsesTurnState(value Value, rule ConversionRule, sink *DiagnosticSink) (Value, error) {
+func (c *CompiledConversion) projectResponsesTurnState(value Value, rule ConversionRule, sink *DiagnosticSink, limits Limits) (Value, error) {
 	var event Event
 	if err := decodeContract(value.Bytes(), &event); err != nil {
 		return Value{}, err
@@ -112,5 +112,5 @@ func (c *CompiledConversion) projectResponsesTurnState(value Value, rule Convers
 	}
 	sink.Add(issue)
 	event.ResponsesTurnState, event.Native = nil, nil
-	return EncodeValue(event)
+	return encodeSemanticWithin(&event, limits)
 }

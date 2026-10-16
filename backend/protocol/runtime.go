@@ -62,9 +62,12 @@ func (compiled *Compiled) decodeRequest(ctx context.Context, body []byte, option
 		return nil, err
 	}
 	compiled.stampRequestProvenance(request, options.Scope)
+	if err := checkSemanticValue(request, semanticLimits(compiled.wireLimits(ctx, DecodeRequest))); err != nil {
+		return nil, err
+	}
 	target := compiled.target(DecodeRequest, options)
 	target.Direction = EncodeRequest
-	if err := IssuesError(CheckRequest(request, target, compiled.limits)); err != nil {
+	if err := IssuesError(CheckRequest(request, target, semanticLimits(compiled.nativeLimits(ctx, EncodeRequest)))); err != nil {
 		return nil, err
 	}
 	return request, nil
@@ -79,7 +82,7 @@ func (compiled *Compiled) EncodeRequest(ctx context.Context, request *Request, o
 		return nil, err
 	}
 	target := compiled.target(EncodeRequest, options)
-	if err := IssuesError(CheckRequest(request, target, compiled.limits)); err != nil {
+	if err := IssuesError(CheckRequest(request, target, semanticLimits(compiled.nativeLimits(ctx, EncodeRequest)))); err != nil {
 		return nil, err
 	}
 	output, err := encodeTyped(ctx, compiled, EncodeRequest, request, options, func(module TypedModule, options EvaluationContext) (Value, error) {
@@ -404,9 +407,18 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 	if direction == EncodeRequest {
 		snapshotLimits = requestLimits(ctx, DefaultLimits(), false)
 	}
+	if err := checkResourceValue(native.Value, snapshotLimits, "native_source"); err != nil {
+		return Value{}, resourceIssue(err, compiled.identity, direction, "preserve")
+	}
 	original, issues := PreserveNative(*native, target, nil, snapshotLimits)
 	if err := IssuesError(issues); err != nil {
 		return Value{}, err
+	}
+	// Replay uses the source boundary; the immutable target revision and final
+	// output still enforce the smaller target limit.
+	replay := *compiled
+	if direction == EncodeRequest {
+		replay.limits, replay.explicitLimits = snapshotLimits, true
 	}
 	var baseline any
 	switch direction {
@@ -414,7 +426,7 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 		if source := native.RequestContext; source != nil {
 			options.Scope, options.Values, options.InterleavedThinking = source.Scope, maps.Clone(source.Values), source.InterleavedThinking
 		}
-		request, err := compiled.decodeRequest(ctx, original.Bytes(), options, &native.Source.Scope)
+		request, err := replay.decodeRequest(ctx, original.Bytes(), options, &native.Source.Scope)
 		if err != nil {
 			return Value{}, err
 		}
@@ -442,14 +454,15 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 	if err != nil {
 		return Value{}, err
 	}
-	before, err := compiled.executeMapping(ctx, direction, value, options)
+	before, err := replay.executeMapping(ctx, direction, value, options)
 	if err != nil {
 		return Value{}, err
 	}
 	result, err := reconcileNative(ctx, original, before, output, compiled.native, compiled.wireLimits(ctx, direction))
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return Value{}, err
+		var resource *ResourceLimitError
+		if errors.As(err, &resource) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return Value{}, resourceIssue(err, compiled.identity, direction, "preserve")
 		}
 		return Value{}, IssuesError([]ConversionIssue{{Code: InvalidMutation, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "preserve", Path: native.Source.Path, Reason: err.Error(), Suggestion: "Declare stable array identities or apply an explicit native replacement."}})
 	}

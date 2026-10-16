@@ -64,7 +64,7 @@ func (c *CompiledConversion) projectErrorMetadata(value Value, route ConversionC
 	return EncodeValue(fields)
 }
 
-func (c *CompiledConversion) errorMetadataValue(phase ConversionPhase, input Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, error) {
+func (c *CompiledConversion) errorMetadataValue(phase ConversionPhase, input Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, limits Limits) (Value, error) {
 	if phase == ConversionResponse {
 		var response Response
 		if err := input.Decode(&response); err != nil {
@@ -75,7 +75,7 @@ func (c *CompiledConversion) errorMetadataValue(phase ConversionPhase, input Val
 		if err != nil {
 			return Value{}, err
 		}
-		return EncodeValue(response)
+		return encodeSemanticWithin(&response, limits)
 	}
 	var event Event
 	if err := input.Decode(&event); err != nil {
@@ -92,5 +92,5 @@ func (c *CompiledConversion) errorMetadataValue(phase ConversionPhase, input Val
 			return Value{}, err
 		}
 	}
-	return EncodeValue(event)
+	return encodeSemanticWithin(&event, limits)
 }

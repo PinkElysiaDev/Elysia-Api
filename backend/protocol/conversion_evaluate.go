@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -11,8 +12,32 @@ import (
 // minted through expressions; the separately authenticated continuation module
 // is the only restoration authority.
 func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPhase, input Value, route ConversionContext, sink *DiagnosticSink) (output Value, resultErr error) {
+	var activeRule ConversionRule
 	defer func() {
-		resultErr = resourceIssue(resultErr, route.Source, "", "conversion."+string(phase))
+		direction := DecodeRequest
+		if phase == ConversionResponse {
+			direction = DecodeResponse
+		}
+		if phase == ConversionEvent {
+			direction = DecodeEvent
+		}
+		if phase == ConversionWire {
+			direction = EncodeRequest
+			if route.ResponseWire {
+				direction = EncodeResponse
+			}
+		}
+		resultErr = resourceIssue(resultErr, route.Source, direction, "conversion."+string(phase))
+		var failure *ResourceLimitError
+		var conversion *ConversionError
+		if errors.As(resultErr, &failure) && errors.As(resultErr, &conversion) && c != nil {
+			for i := range conversion.Issues {
+				conversion.Issues[i].RuleID = activeRule.ID
+				conversion.Issues[i].PolicyHash = c.Hash
+				conversion.Issues[i].PolicyRevision = c.RuleRevisions[activeRule.ID]
+				conversion.Issues[i].Evidence = c.Origins[activeRule.ID]
+			}
+		}
 	}()
 	if phase == ConversionSourceEvent {
 		return Value{}, streamIssue(InvalidInput, "/sequence", "source_event requires a frame sequence")
@@ -22,6 +47,9 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 	}
 	if c == nil {
 		return input, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return Value{}, err
 	}
 	limits := c.phaseLimits(ctx, phase)
 	if phase == ConversionWire && !route.ResponseWire {
@@ -39,6 +67,10 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 		if !rule.Enabled || rule.Phase != phase {
 			continue
 		}
+		activeRule = rule
+		if err := ctx.Err(); err != nil {
+			return Value{}, err
+		}
 		var err error
 		switch {
 		case rule.Action == "system_instruction_hoist" || rule.Action == "chat_history" || rule.Action == "assistant_history" || rule.Action == "stream_options" || rule.Action == "request_projection" || rule.Action == "responses_include" || rule.Action == "responses_context" || rule.Action == "responses_storage" || rule.Action == "gemini_safety_settings" || rule.Action == "reasoning_controls":
@@ -46,13 +78,13 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 				continue
 			}
 			var resolvedTarget string
-			value, resolvedTarget, err = c.applyRequestAction(value, route, rule, sink)
+			value, resolvedTarget, err = c.applyRequestAction(ctx, value, route, rule, sink)
 			if resolvedTarget != "" {
 				reasoningTarget = resolvedTarget
 			}
 		case rule.Action == "chat_response_model" || rule.Action == "anthropic_usage_envelope" || rule.Action == "response_shape" || rule.Action == "response_envelope" || rule.Action == "response_metadata" || rule.Action == "error_metadata" || rule.Action == "usage_projection" || rule.Action == "responses_turn_state":
 			if rule.Match.matches(route, value) {
-				value, err = c.applyResponseAction(phase, value, route, rule, sink)
+				value, err = c.applyResponseAction(ctx, phase, value, route, rule, sink)
 			}
 		case rule.Action == "signatures" || rule.Match.NodeKind != "":
 			value, err = c.applyNodeRule(ctx, phase, value, route, sink, rule)
@@ -94,12 +126,12 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 			return Value{}, candidateFailure(err)
 		}
 	}
-	return value, nil
+	return value, ctx.Err()
 }
 
 // Each matching request action decodes the value produced by the preceding
 // rule. Keeping this boundary preserves authored rule ordering and precision.
-func (c *CompiledConversion) applyRequestAction(value Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, string, error) {
+func (c *CompiledConversion) applyRequestAction(ctx context.Context, value Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, string, error) {
 	var request Request
 	if err := decodeContract(value.Bytes(), &request); err != nil {
 		return Value{}, "", err
@@ -134,11 +166,11 @@ func (c *CompiledConversion) applyRequestAction(value Value, route ConversionCon
 	if err != nil {
 		return Value{}, "", err
 	}
-	value, err = EncodeValue(request)
+	value, err = encodeSemanticWithin(&request, c.phaseLimits(ctx, ConversionRequest))
 	return value, reasoningTarget, err
 }
 
-func (c *CompiledConversion) applyResponseAction(phase ConversionPhase, value Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, error) {
+func (c *CompiledConversion) applyResponseAction(ctx context.Context, phase ConversionPhase, value Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, error) {
 	switch rule.Action {
 	case "chat_response_model":
 		var response Response
@@ -148,19 +180,19 @@ func (c *CompiledConversion) applyResponseAction(phase ConversionPhase, value Va
 		if err := c.repairChatResponseModel(&response, route, rule, sink); err != nil {
 			return Value{}, err
 		}
-		return EncodeValue(response)
+		return encodeSemanticWithin(&response, c.phaseLimits(ctx, phase))
 	case "responses_turn_state":
-		return c.projectResponsesTurnState(value, rule, sink)
+		return c.projectResponsesTurnState(value, rule, sink, c.phaseLimits(ctx, phase))
 	case "anthropic_usage_envelope":
-		return c.envelopeUsageValue(phase, value, route, rule, sink)
+		return c.envelopeUsageValue(phase, value, route, rule, sink, c.phaseLimits(ctx, phase))
 	case "response_shape", "response_envelope":
-		return c.responseValue(rule.Action, phase, value, route, rule, sink)
+		return c.responseValue(rule.Action, phase, value, route, rule, sink, c.phaseLimits(ctx, phase))
 	case "response_metadata":
-		return c.metadataValue(phase, value, route, rule, sink)
+		return c.metadataValue(phase, value, route, rule, sink, c.phaseLimits(ctx, phase))
 	case "error_metadata":
-		return c.errorMetadataValue(phase, value, route, rule, sink)
+		return c.errorMetadataValue(phase, value, route, rule, sink, c.phaseLimits(ctx, phase))
 	case "usage_projection":
-		return c.projectUsageValue(phase, value, route, rule, sink)
+		return c.projectUsageValue(phase, value, route, rule, sink, c.phaseLimits(ctx, phase))
 	}
 	return Value{}, fmt.Errorf("unsupported response conversion action %q", rule.Action)
 }
@@ -213,7 +245,10 @@ func (c *CompiledConversion) applyNodeRule(ctx context.Context, phase Conversion
 		for i := range nodes {
 			n := &nodes[i]
 			at := fmt.Sprintf("%s/%d", base, i)
-			v, _ := EncodeValue(n)
+			v, err := encodeSemanticWithin(n, c.phaseLimits(ctx, phase))
+			if err != nil {
+				return err
+			}
 			if (rule.Match.NodeKind == "" || rule.Match.NodeKind == n.Kind) && rule.Match.matches(route, v) {
 				if rule.Action == "signatures" {
 					foreign := route.Source.Family != route.Target.Family || route.Source.WireVersion != route.Target.WireVersion
@@ -284,7 +319,7 @@ func (c *CompiledConversion) applyNodeRule(ctx context.Context, phase Conversion
 		if err := visit(r.Content, "/content"); err != nil {
 			return Value{}, err
 		}
-		return EncodeValue(r)
+		return encodeSemanticWithin(&r, c.phaseLimits(ctx, phase))
 	case ConversionResponse:
 		var r Response
 		if err := decodeContract(input.Bytes(), &r); err != nil {
@@ -293,7 +328,7 @@ func (c *CompiledConversion) applyNodeRule(ctx context.Context, phase Conversion
 		if err := visit(r.Content, "/content"); err != nil {
 			return Value{}, err
 		}
-		return EncodeValue(r)
+		return encodeSemanticWithin(&r, c.phaseLimits(ctx, phase))
 	case ConversionEvent:
 		var e Event
 		if err := decodeContract(input.Bytes(), &e); err != nil {
@@ -311,7 +346,7 @@ func (c *CompiledConversion) applyNodeRule(ctx context.Context, phase Conversion
 				return Value{}, err
 			}
 		}
-		return EncodeValue(e)
+		return encodeSemanticWithin(&e, c.phaseLimits(ctx, phase))
 	}
 	return Value{}, fmt.Errorf("node rules require a semantic phase")
 }

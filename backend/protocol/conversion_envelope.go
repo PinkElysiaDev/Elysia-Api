@@ -133,7 +133,7 @@ func (c *CompiledConversion) anthropicUsageEnvelope(usage *Usage, phase Conversi
 	return MergeUsage(nil, u), nil
 }
 
-func (c *CompiledConversion) envelopeUsageValue(phase ConversionPhase, input Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, error) {
+func (c *CompiledConversion) envelopeUsageValue(phase ConversionPhase, input Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, limits Limits) (Value, error) {
 	if phase == ConversionResponse {
 		var response Response
 		if err := input.Decode(&response); err != nil {
@@ -148,7 +148,7 @@ func (c *CompiledConversion) envelopeUsageValue(phase ConversionPhase, input Val
 			return Value{}, err
 		}
 		response.Usage = usage
-		return EncodeValue(response)
+		return encodeSemanticWithin(&response, limits)
 	}
 	var event Event
 	if err := input.Decode(&event); err != nil {
@@ -169,7 +169,7 @@ func (c *CompiledConversion) envelopeUsageValue(phase ConversionPhase, input Val
 		event.Response = &Response{SchemaVersion: SemanticSchemaVersion}
 	}
 	event.Response.Usage = usage
-	return EncodeValue(event)
+	return encodeSemanticWithin(&event, limits)
 }
 
 func ensureDeliveryIdentity(response *Response, route ConversionContext) {

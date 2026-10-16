@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -95,6 +96,10 @@ func PreserveNative(native Native, target Target, mutations []Mutation, limits L
 	value, err := ApplyMutations(native.Value, mutations, limits)
 	if err != nil {
 		issue.Code, issue.Reason = InvalidMutation, err.Error()
+		var resource *ResourceLimitError
+		if errors.As(err, &resource) {
+			issue.Code = LimitExceeded
+		}
 		return Value{}, []ConversionIssue{issue}
 	}
 	return value, nil
@@ -110,7 +115,7 @@ func ApplyMutations(original Value, mutations []Mutation, limits Limits) (Value,
 		return Value{}, fmt.Errorf("cannot edit an absent native node")
 	}
 	if len(mutations) > limits.Mutations {
-		return Value{}, fmt.Errorf("mutation count exceeds limit %d", limits.Mutations)
+		return Value{}, resourceFailure("mutation", "operations", limits.Mutations, len(mutations))
 	}
 	if err := checkValueLimits(original, limits); err != nil {
 		return Value{}, err
@@ -122,7 +127,7 @@ func ApplyMutations(original Value, mutations []Mutation, limits Limits) (Value,
 			return Value{}, fmt.Errorf("mutation %d: %w", index, err)
 		}
 		if len(path) > limits.Depth {
-			return Value{}, fmt.Errorf("mutation %d exceeds depth limit", index)
+			return Value{}, resourceFailure("mutation", "depth", limits.Depth, len(path))
 		}
 		if mutation.Op != SetValue && mutation.Op != DeleteValue && mutation.Op != ReplaceValue {
 			return Value{}, fmt.Errorf("mutation %d has unknown operation %q", index, mutation.Op)

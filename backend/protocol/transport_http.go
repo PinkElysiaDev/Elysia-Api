@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -115,10 +116,14 @@ func TransportContentType(transport Transport) string {
 func ReadBoundedBody(reader io.Reader, limit int) ([]byte, error) {
 	body, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
 	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return nil, resourceFailure("wire", "bytes", int(tooLarge.Limit), int(tooLarge.Limit)+1)
+		}
 		return nil, err
 	}
 	if len(body) > limit {
-		return nil, fmt.Errorf("protocol body exceeds %d byte limit", limit)
+		return nil, resourceFailure("wire", "bytes", limit, len(body))
 	}
 	return body, nil
 }
@@ -178,7 +183,7 @@ func ReadFrames(ctx context.Context, reader io.Reader, operation Operation, limi
 		switch field {
 		case "data":
 			if len(data)+len(value)+1 > limit {
-				return fmt.Errorf("upstream event exceeds buffer limit")
+				return resourceFailure("response_frame", "bytes", limit, len(data)+len(value)+1)
 			}
 			data = append(data, value...)
 			data = append(data, '\n')
@@ -189,6 +194,9 @@ func ReadFrames(ctx context.Context, reader io.Reader, operation Operation, limi
 		}
 	}
 	if err := scanner.Err(); err != nil {
+		if errors.Is(err, bufio.ErrTooLong) {
+			return resourceFailure("response_frame", "bytes", limit, limit+1)
+		}
 		return err
 	}
 	if len(data) > 0 {

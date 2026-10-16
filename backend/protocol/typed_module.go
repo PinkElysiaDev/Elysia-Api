@@ -54,7 +54,7 @@ func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 				return nil, err
 			}
 			options = options.forDefinition(compiled)
-			options.wireLimits = compiled.wireLimits(ctx, direction)
+			options.wireLimits = compiled.nativeLimits(ctx, direction)
 			output, err := decode(module, options)
 			if err != nil {
 				return nil, err
@@ -87,7 +87,7 @@ func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 				return Value{}, err
 			}
 			options = options.forDefinition(compiled)
-			options.wireLimits = compiled.wireLimits(ctx, direction)
+			options.wireLimits = compiled.nativeLimits(ctx, direction)
 			output, err := encode(module, options)
 			if err != nil {
 				return Value{}, err
@@ -117,7 +117,7 @@ func (compiled *Compiled) decodeEventValues(ctx context.Context, direction Direc
 				return nil, err
 			}
 			options = options.forDefinition(compiled)
-			options.wireLimits = compiled.wireLimits(ctx, direction)
+			options.wireLimits = compiled.nativeLimits(ctx, direction)
 			events, err := module.DecodeEvents(ctx, frame, options)
 			if err != nil {
 				return nil, err

@@ -33,8 +33,11 @@ func (state *nativeReconciler) merge(original, before, after Value, path string,
 		return Value{}, err
 	}
 	state.nodes++
-	if depth > state.limits.Depth || state.nodes > state.limits.Nodes {
-		return Value{}, fmt.Errorf("%s: native reconciliation exceeds limits", path)
+	if depth > state.limits.Depth {
+		return Value{}, &ResourceLimitError{Domain: "native_reconciliation", Metric: "depth", Limit: state.limits.Depth, Observed: depth, Path: path}
+	}
+	if state.nodes > state.limits.Nodes {
+		return Value{}, &ResourceLimitError{Domain: "native_reconciliation", Metric: "nodes", Limit: state.limits.Nodes, Observed: state.nodes, Path: path}
 	}
 	if equalValues(before, after) {
 		return original, nil

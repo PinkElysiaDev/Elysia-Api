@@ -382,6 +382,7 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 	}
 	for _, wire := range frames {
 		if conversion != nil && conversion.HasPhase(ConversionWire) {
+			route.ResponseWire = true
 			wire, err = conversion.ApplyValue(ctx, ConversionWire, wire, route, verificationDiagnostics(ctx))
 			if err != nil {
 				return err
@@ -504,6 +505,7 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 	if conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion); conversion != nil && conversion.HasPhase(ConversionWire) {
 		route := conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), HTTPJSON)
 		route.Scope = options.Scope
+		route.ResponseWire = true
 		wireValue, err = conversion.ApplyValue(ctx, ConversionWire, wireValue, route, verificationDiagnostics(ctx))
 		if err != nil {
 			return err

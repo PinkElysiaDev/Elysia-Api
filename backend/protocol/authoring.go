@@ -38,6 +38,7 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 	if input.Mode == "conversion" {
 		sink := &DiagnosticSink{}
 		conversion, route, err := service.ResolvePreviewConversion(input.ConversionContext, input.ConversionPhase, input.ConversionPolicy)
+		route.ResponseWire = input.Direction == EncodeResponse || input.Direction == EncodeEvent
 		var output Value
 		if err == nil {
 			route, err = conversion.PreviewRecovery(input.ConversionPhase, input.Input, route)

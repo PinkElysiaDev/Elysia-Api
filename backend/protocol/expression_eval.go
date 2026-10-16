@@ -36,8 +36,8 @@ func (expression *compiledExpression) evaluate(state evaluation) (value Value, e
 	}
 	defer func() {
 		if err == nil && len(value.raw) > state.budget.limits.BufferBytes {
+			err = resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, len(value.raw))
 			value = Value{}
-			err = fmt.Errorf("%s: output buffer limit exceeded", expression.path)
 		}
 	}()
 	switch expression.op {
@@ -74,7 +74,7 @@ func (expression *compiledExpression) evaluate(state evaluation) (value Value, e
 			if !value.IsZero() {
 				bytes += len(value.raw) + len(key) + 4
 				if bytes > state.budget.limits.BufferBytes {
-					return Value{}, fmt.Errorf("%s: object buffer limit exceeded", expression.path)
+					return Value{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, bytes)
 				}
 				object[key] = value
 			}
@@ -236,10 +236,10 @@ func (expression *compiledExpression) evaluateArray(state evaluation) (Value, er
 		}
 		bytes += len(value.raw) + 1
 		if bytes > state.budget.limits.BufferBytes {
-			return Value{}, fmt.Errorf("%s: array buffer limit exceeded", expression.path)
+			return Value{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, bytes)
 		}
 		if len(result) > state.budget.limits.Nodes {
-			return Value{}, fmt.Errorf("%s: array item limit exceeded", expression.path)
+			return Value{}, resourceFailure("evaluation", "nodes", state.budget.limits.Nodes, len(result))
 		}
 	}
 	return EncodeValue(result)
@@ -267,7 +267,7 @@ func (expression *compiledExpression) evaluateOperands(state evaluation) (Value,
 		values = append(values, value)
 		bytes += len(value.raw) + 1
 		if bytes > state.budget.limits.BufferBytes {
-			return Value{}, fmt.Errorf("%s: operand buffer limit exceeded", expression.path)
+			return Value{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, bytes)
 		}
 	}
 	switch expression.op {
@@ -304,7 +304,7 @@ func (expression *compiledExpression) evaluateOperands(state evaluation) (Value,
 			}
 			result = append(result, items...)
 			if len(result) > state.budget.limits.Nodes {
-				return Value{}, fmt.Errorf("%s: array item limit exceeded", expression.path)
+				return Value{}, resourceFailure("evaluation", "nodes", state.budget.limits.Nodes, len(result))
 			}
 		}
 		return EncodeValue(result)
@@ -316,7 +316,7 @@ func (expression *compiledExpression) evaluateOperands(state evaluation) (Value,
 				return Value{}, err
 			}
 			if result.Len()+len(text) > state.budget.limits.BufferBytes {
-				return Value{}, fmt.Errorf("%s: string buffer limit exceeded", expression.path)
+				return Value{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, result.Len()+len(text))
 			}
 			result.WriteString(text)
 		}
