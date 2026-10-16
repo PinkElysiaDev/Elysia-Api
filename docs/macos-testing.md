@@ -18,6 +18,8 @@ App 运行目标为 macOS 12+。构建机需要与其 macOS 版本兼容的 Comm
 
 主壳在后端健康且面板关闭时每 30 秒检查健康状态；面板打开、服务启动或恢复期间每 3 秒检查。后端进程退出回调立即进入退出处理和恢复流程，不等待下一次健康轮询。
 
+每个后端进程首次通过健康检查前有 180 秒启动等待时间，供数据库迁移和协议重新校验使用；健康过的进程持续失联 15 秒才触发恢复。更新 helper 最多等待 210 秒确认新版后端及前台 React 面板就绪，超时仍回滚。自动测试覆盖初始化耗时 50 秒且没有重启或回滚，以及启动超时后的恢复。
+
 ## 工具链与双架构构建
 
 按 Apple 的[安装说明](https://developer.apple.com/documentation/xcode/installing-the-command-line-tools)配置 Command Line Tools，或使用完整 Xcode。通过 [Xcode 支持表](https://developer.apple.com/support/xcode/)核对构建机系统与部署目标的兼容性。
@@ -128,5 +130,6 @@ log stream --predicate 'subsystem == "dev.pinkelysiadev.ElysiaApi"' --level info
 | `--panel` 找不到应用 | 先执行 `npm run build` 和 `npm run build:macos-app` |
 | 无显示环境的快照不更新 | 使用测试提供的最终布局快照；动画与交互在解锁后的显示环境单独验收 |
 | 更新验证失败 | 查看 OSLog 和运行日志，检查 DMG、摘要、目录权限和恢复备份，不跳过校验 |
+| 旧版更新后反复启动并回退 | 旧版 helper 仍使用 45 秒启动确认期限；首次迁移到修复版时，如仍超时，退出应用后用修复版 DMG 替换 App。保留 Application Support 中的数据、配置和密钥，之后的更新使用新版等待期限 |
 
 部署与数据恢复见[部署指南](deployment.md)。

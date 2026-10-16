@@ -16,6 +16,8 @@ The panel uses WebKit's default persistent data store for manual sign-in and coo
 
 The supervisor checks health every 30 seconds when the backend is healthy and the panel is closed, and every 3 seconds while the panel is open or the service is starting/recovering. Backend process-exit callbacks begin exit handling and recovery immediately, without waiting for the next health poll.
 
+Each backend process has 180 seconds to pass its first health check, allowing database migrations and protocol revalidation to finish. Once healthy, a process must remain unreachable for 15 seconds before recovery begins. The update helper waits up to 210 seconds for the new backend and foreground React panel to become ready, then rolls back on timeout. Automated tests cover a 50-second initialization without restarts or rollback, plus recovery after the startup deadline.
+
 ## Toolchain and universal builds
 
 Follow Apple's [installation guide](https://developer.apple.com/documentation/xcode/installing-the-command-line-tools) to configure Command Line Tools, or use full Xcode. Check host OS and deployment-target compatibility in the [Xcode support table](https://developer.apple.com/support/xcode/).
@@ -126,5 +128,6 @@ log stream --predicate 'subsystem == "dev.pinkelysiadev.ElysiaApi"' --level info
 | `--panel` cannot find the App | Run `npm run build` and `npm run build:macos-app` first |
 | Captures stall without a display | Use the test's final-layout capture; verify animations/interactions separately with an unlocked display |
 | Update verification fails | Inspect OSLog/runtime logs, DMG, digest, directory permissions and recovery backup; do not bypass validation |
+| An older version repeatedly restarts and rolls back after updating | The old helper still has a 45-second readiness deadline. If the first upgrade to the fixed version still times out, quit the app and replace it using the fixed DMG. Keep the data, configuration and key in Application Support; subsequent updates use the new deadline |
 
 See [deployment](deployment.en.md) for operation and data recovery.

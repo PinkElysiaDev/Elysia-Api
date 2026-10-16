@@ -24,6 +24,9 @@ enum BackendState: String {
     case failed
 }
 
+// Upgrade-time database/protocol initialization runs before HTTP starts listening.
+let backendStartupTimeout: TimeInterval = 180
+
 /// 保存窗口位置之外的原生偏好；WebUI 登录态由 WebKit 数据存储管理。
 final class WindowStateStore {
     private let defaults: UserDefaults
@@ -406,6 +409,7 @@ func persistPort(_ port: Int, at url: URL) throws {
 }
 
 struct UpdateInstaller {
+    static let launchTimeout: TimeInterval = backendStartupTimeout + 30
     private static let helperFlag = "--update-helper"
     private static let stagedFlag = "--staged"
     private static let currentFlag = "--current"
@@ -463,7 +467,7 @@ struct UpdateInstaller {
     /// The backup belongs to this transaction until the new shell acknowledges
     /// backend readiness. Failed rollback leaves recoverable bundles on disk.
     static func runHelper(arguments: [String], parentExitTimeout: TimeInterval = 18,
-                          launchTimeout: TimeInterval = 45, childExitTimeout: TimeInterval = 18) throws {
+                          launchTimeout: TimeInterval = UpdateInstaller.launchTimeout, childExitTimeout: TimeInterval = 18) throws {
         guard let staged = value(arguments, stagedFlag), staged.hasPrefix("/"),
               let current = value(arguments, currentFlag), current.hasPrefix("/"),
               let parent = Int32(value(arguments, parentPIDFlag) ?? ""), parent > 1,

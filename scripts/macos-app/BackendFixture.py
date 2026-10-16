@@ -18,6 +18,9 @@ count.write_text(str(int(count.read_text() if count.exists() else '0') + 1))
 mode = root / 'fixture-mode'
 if mode.exists() and mode.read_text() == 'crash':
     sys.exit(23)
+if mode.exists() and mode.read_text() == 'slow-start' and int(count.read_text()) > 1:
+    # Simulate upgrade-time initialization before the backend opens its HTTP port.
+    time.sleep(50)
 
 shutdown_started = threading.Event()
 heartbeat_lock = threading.Lock()

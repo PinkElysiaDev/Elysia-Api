@@ -433,6 +433,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var restartWork: DispatchWorkItem?
     var healthInFlight = false
     var startupTime = Date()
+    var backendReachedHealthy = false
     var healthySince: Date?
     var backendLogHandle: FileHandle?
     var backendInputPipe: Pipe?
@@ -1387,6 +1388,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                       self.updatePhase != .installing, self.updatePhase != .readyToRelaunch else { return }
                 let ok = (response as? HTTPURLResponse)?.statusCode == 200
                 if ok {
+                    self.backendReachedHealthy = true
                     self.healthFailedSince = nil
                     let recovering = self.backendState == .restarting || self.backendState == .failed
                     if self.healthySince == nil { self.healthySince = Date() }
@@ -1404,7 +1406,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 } else {
                     self.healthySince = nil
                     if self.healthFailedSince == nil { self.healthFailedSince = Date() }
-                    if self.backendState == .running || Date().timeIntervalSince(self.startupTime) > 15 {
+                    // A live child may still be migrating; the 15-second watchdog is for an already-ready service.
+                    if !self.backendReachedHealthy && Date().timeIntervalSince(self.startupTime) < backendStartupTimeout { return }
+                    if self.backendState == .running || !self.backendReachedHealthy {
                         self.setBackendState(.failed, error: "服务暂时无法连接，正在检查恢复。\n\(error?.localizedDescription ?? "健康检查未通过")")
                     }
                     // 短暂网络/唤醒抖动可自行恢复；持续 15 秒不健康则重启本壳拥有的进程。
@@ -1572,7 +1576,7 @@ signal(SIGPIPE, SIG_IGN)
 if CommandLine.arguments.contains("--update-helper") {
     do {
         #if NATIVE_TESTS
-        let launchTimeout = Double(ProcessInfo.processInfo.environment["ELYSIA_NATIVE_UPDATE_LAUNCH_TIMEOUT"] ?? "") ?? 45
+        let launchTimeout = Double(ProcessInfo.processInfo.environment["ELYSIA_NATIVE_UPDATE_LAUNCH_TIMEOUT"] ?? "") ?? UpdateInstaller.launchTimeout
         try UpdateInstaller.runHelper(arguments: CommandLine.arguments, launchTimeout: launchTimeout)
         #else
         try UpdateInstaller.runHelper(arguments: CommandLine.arguments)

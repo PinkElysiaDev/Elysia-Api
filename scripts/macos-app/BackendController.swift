@@ -85,6 +85,7 @@ extension AppDelegate {
             backendHost = listenHost
             backendPort = config.port
             startupTime = Date()
+            backendReachedHealthy = false
             healthySince = nil
             healthFailedSince = nil
             recoveryTerminating = false

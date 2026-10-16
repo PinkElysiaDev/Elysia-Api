@@ -10,19 +10,21 @@ const read = path => existsSync(path) ? readFileSync(path, 'utf8').trim() : ''
 const alive = pid => { try { process.kill(pid, 0); return true } catch { return false } }
 
 export async function runNativeUpdateFlow(options) {
+  if (!options.previewOnly) await runFlow({ ...options, brokenUI: false, slowStartup: true })
   await runFlow({ ...options, brokenUI: false })
   if (!options.previewOnly) await runFlow({ ...options, brokenUI: true })
 }
 
-async function runFlow({ app, temp, bundleID, brokenUI }) {
-  const directory = join(temp, `native update '$()\` ${brokenUI ? 'broken UI' : 'ready UI'} flow`)
+async function runFlow({ app, temp, bundleID, brokenUI, slowStartup = false }) {
+  const directory = join(temp, `native update '$()\` ${brokenUI ? 'broken UI' : slowStartup ? 'slow startup' : 'ready UI'} flow`)
   const current = join(directory, "Current '$()` ElysiaApi.app")
   const staging = join(directory, '.ElysiaApi-update-e2e')
   const staged = join(staging, 'ElysiaApi.app')
   const data = join(directory, 'data')
-  const flowID = `${bundleID}.update${brokenUI ? '.broken' : ''}`
+  const flowID = `${bundleID}.update${brokenUI ? '.broken' : slowStartup ? '.slow' : ''}`
   mkdirSync(data, { recursive: true })
   if (brokenUI) writeFileSync(join(data, 'fixture-mode'), 'broken-ui')
+  if (slowStartup) writeFileSync(join(data, 'fixture-mode'), 'slow-start')
   cpSync(app, current, { recursive: true })
   cpSync(app, staged, { recursive: true })
   for (const [bundle, version] of [[current, 'v1.0.0'], [staged, 'v99.0.0']]) {
@@ -92,11 +94,13 @@ async function runFlow({ app, temp, bundleID, brokenUI }) {
       assert(nativePID > 1 && alive(nativePID), 'the updated native shell and WebView must acknowledge readiness')
       assert.equal(read(join(current, 'Contents', 'Resources', 'version.txt')), 'v99.0.0', 'the current bundle must be the staged version')
       assert(log.includes('Update committed'), 'the helper must commit after readiness acknowledgement')
+      if (slowStartup) assert.equal(read(join(data, 'starts.txt')), '2', 'slow initialization must finish in the original new backend without watchdog restarts')
     }
     assert(!existsSync(staging), 'finished handoff must release its staging directory')
     assert(!readdirSync(directory).some(name => name.startsWith('.ElysiaApi-backup-')), 'committed or restored handoff must release its transaction backup')
     console.log(brokenUI
       ? 'PASS: loaded HTML with a broken React UI preserves the backup, times out, stops the failed shell/backend, and restores the old app'
+      : slowStartup ? 'PASS: a 50-second backend initialization survives startup health checks and update acknowledgement without restarting or rolling back'
       : 'PASS: real native update stops the old backend, replaces after shell exit, and relaunches a ready shell/backend/WebView')
   } catch (error) {
     console.error(`Native starter log:\n${read(outputPath).slice(-6000)}\nUpdate helper log:\n${read(join(data, 'update.log')).slice(-6000)}\nBackend log:\n${read(join(data, 'elysia-api.log')).slice(-3000)}`)
