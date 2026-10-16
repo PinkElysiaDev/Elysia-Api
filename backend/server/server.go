@@ -253,7 +253,15 @@ func (s *Server) logVerbose(format string, args ...interface{}) {
 func (s *Server) setupRoutes() {
 	if s.config.GetMaxBodyBytes() > 0 {
 		s.engine.Use(func(c *gin.Context) {
-			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, s.config.GetMaxBodyBytes())
+			if !s.pinProtocolRequest(c) {
+				c.Abort()
+				return
+			}
+			limit := int64(protocol.RequestBodyLimit(c.Request.Context()))
+			if protocolPreviewPath(c.Request.URL.Path) {
+				limit = int64(protocol.PreviewEnvelopeLimit(c.Request.Context()))
+			}
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
 			c.Next()
 		})
 	}
@@ -904,7 +912,7 @@ func (s *Server) countTokens(c *gin.Context) {
 		respondFail(c, http.StatusServiceUnavailable, "inactive_protocol", "Anthropic protocol is not enabled")
 		return
 	}
-	body, err := protocol.ReadBoundedBody(c.Request.Body, compiled.ResourceLimits().BufferBytes)
+	body, err := protocol.ReadBoundedBody(c.Request.Body, compiled.RequestLimits(c.Request.Context()).BufferBytes)
 	if err != nil {
 		writeProtocolError(c, builtin.FormatClaude, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: err.Error()})
 		return

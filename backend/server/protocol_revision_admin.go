@@ -87,11 +87,15 @@ func (s *Server) setupProtocolRevisionRoutes(admin *gin.RouterGroup) {
 
 func readProtocolAdminBody(c *gin.Context) (result []byte, err error) {
 	defer func() { err = protocolManagementInputError(err) }()
-	body, err := io.ReadAll(io.LimitReader(c.Request.Body, protocolAdminMaxBodyBytes+1))
+	limit := protocolAdminMaxBodyBytes
+	if protocolPreviewPath(c.Request.URL.Path) {
+		limit = protocol.PreviewEnvelopeLimit(c.Request.Context())
+	}
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, int64(limit)+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(body) > protocolAdminMaxBodyBytes {
+	if len(body) > limit {
 		return nil, fmt.Errorf("protocol request exceeds body limit")
 	}
 	return body, nil
@@ -349,6 +353,9 @@ func (s *Server) adminProtocolRevisionDiff(c *gin.Context) {
 }
 
 func (s *Server) adminProtocolPreviewV2(c *gin.Context) {
+	if !s.pinProtocolRequest(c) {
+		return
+	}
 	service, ok := s.requireProtocolService(c)
 	if !ok {
 		return
@@ -362,6 +369,9 @@ func (s *Server) adminProtocolPreviewV2(c *gin.Context) {
 }
 
 func (s *Server) adminProtocolCombination(c *gin.Context) {
+	if !s.pinProtocolRequest(c) {
+		return
+	}
 	service, ok := s.requireProtocolService(c)
 	if !ok {
 		return

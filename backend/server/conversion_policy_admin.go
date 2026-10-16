@@ -213,12 +213,16 @@ func (s *Server) adminConversionActivate(c *gin.Context) {
 }
 
 func (s *Server) adminConversionPreview(c *gin.Context) {
+	if !s.pinProtocolRequest(c) {
+		return
+	}
 	var input struct {
-		Policy   protocol.ConversionPolicy  `json:"policy"`
-		Phase    protocol.ConversionPhase   `json:"phase"`
-		Sequence bool                       `json:"sequence"`
-		Context  protocol.ConversionContext `json:"context"`
-		Input    protocol.Value             `json:"input"`
+		Policy    protocol.ConversionPolicy  `json:"policy"`
+		Phase     protocol.ConversionPhase   `json:"phase"`
+		Sequence  bool                       `json:"sequence"`
+		Direction protocol.Direction         `json:"direction,omitempty"`
+		Context   protocol.ConversionContext `json:"context"`
+		Input     protocol.Value             `json:"input"`
 	}
 	if err := decodeProtocolAdminBody(c, &input); err != nil {
 		respondProtocolError(c, err)
@@ -232,6 +236,7 @@ func (s *Server) adminConversionPreview(c *gin.Context) {
 	if err == nil {
 		route, err = policy.PreviewRecovery(input.Phase, input.Input, route)
 	}
+	route.ResponseWire = input.Direction == protocol.EncodeResponse || input.Direction == protocol.EncodeEvent
 	input.Context = route
 	if err != nil {
 		respondFail(c, http.StatusBadRequest, "invalid_conversion_policy", err.Error())

@@ -48,9 +48,8 @@ func (s *Server) serveVersionedPublicIngress(c *gin.Context) {
 			return
 		}
 	}
-	body, err := protocol.ReadBoundedBody(c.Request.Body, ingress.ResourceLimits().BufferBytes)
-	if err != nil {
-		respondFail(c, http.StatusBadRequest, "invalid_input", err.Error())
+	body, ok := s.readGatewayRequest(c, ingress)
+	if !ok {
 		return
 	}
 	path := c.Request.URL.Path

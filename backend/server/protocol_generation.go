@@ -21,6 +21,10 @@ func isRetryableGenerationStatus(status int) bool {
 // collectProtocolGeneration is the bounded consumer used by Agent and live
 // probes. It shares codecs, contract checks and stream replay with the gateway.
 func (s *Server) collectProtocolGeneration(ctx context.Context, candidate gatewayCandidate, request *protocol.Request, record *usageRecord, onText func(protocol.NodeKind, string)) (*protocol.Response, error) {
+	ctx, budgetErr := s.pinProtocolBudget(ctx)
+	if budgetErr != nil {
+		return nil, budgetErr
+	}
 	defer s.protocolUses.acquire(candidate.binding.ProtocolID, candidate.compiled.Hash())()
 	for attempt := 0; ; attempt++ {
 		result, err := s.collectProtocolGenerationAttempt(ctx, candidate, request, record, onText)
@@ -88,7 +92,7 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		body, err := protocol.ReadBoundedBody(response.Body, limits.BufferBytes)
 		if err != nil {
-			return nil, &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(fallbackHTTPFailure(response.StatusCode, nil)), err)}}
+			return nil, &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(fallbackHTTPFailure(response.StatusCode, nil)), protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response"))}}
 		}
 		if record != nil {
 			record.ProviderResponse = record.sanitizeBody(body)
@@ -106,7 +110,7 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if candidate.operation.Transport == protocol.HTTPJSON {
 		body, err := protocol.ReadBoundedBody(response.Body, limits.BufferBytes)
 		if err != nil {
-			return nil, err
+			return nil, protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response")
 		}
 		if record != nil {
 			record.ProviderResponse = record.sanitizeBody(body)

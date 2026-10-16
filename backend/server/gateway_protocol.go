@@ -63,15 +63,17 @@ func (s *Server) gatewayProtocol(c *gin.Context) {
 		s.serveGatewaySession(c, view, ingress, c.Param("path"), handshake.Bytes())
 		return
 	}
-	body, err := protocol.ReadBoundedBody(c.Request.Body, ingress.ResourceLimits().BufferBytes)
-	if err != nil {
-		respondFail(c, http.StatusBadRequest, "invalid_input", err.Error())
+	body, ok := s.readGatewayRequest(c, ingress)
+	if !ok {
 		return
 	}
 	s.serveProtocolRequest(c, view, ingress, c.Param("path"), body)
 }
 
 func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView, ingress *protocol.Compiled, path string, body []byte) {
+	if !s.pinProtocolRequest(c) {
+		return
+	}
 	start := time.Now()
 	record := s.initUsageRecord(c, start, body, builtin.FormatType(ingress.Identity().Family))
 	record.IngressRevision, record.SourceEndpoint, record.SourceFormat = ingress.Hash(), c.Request.URL.Path, ingress.Identity().DefinitionID
@@ -192,6 +194,8 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	}
 	if v, e := protocol.ParseValue(body); e != nil {
 		return e
+	} else if e = candidate.compiled.CheckRequestBody(c.Request.Context(), v); e != nil {
+		return &gatewayFailure{http.StatusBadRequest, e}
 	} else if e = candidate.compiled.ValidateWireOutput(protocol.EncodeRequest, v); e != nil {
 		return e
 	}
@@ -212,7 +216,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		body, err := protocol.ReadBoundedBody(response.Body, candidate.compiled.ResourceLimits().BufferBytes)
 		if err != nil {
-			return &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(fallbackHTTPFailure(response.StatusCode, nil)), err)}}
+			return &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(fallbackHTTPFailure(response.StatusCode, nil)), protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response"))}}
 		}
 		record.ProviderResponse = record.sanitizeBody(body)
 		return mapGatewayHTTPFailure(c.Request.Context(), record, response.StatusCode, body, plan.ingress, candidate, options)
@@ -222,7 +226,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	}
 	body, err = protocol.ReadBoundedBody(response.Body, candidate.compiled.ResourceLimits().BufferBytes)
 	if err != nil {
-		return err
+		return protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response")
 	}
 	record.ProviderResponse = record.sanitizeBody(body)
 	semantic, err := candidate.compiled.DecodeResponse(c.Request.Context(), body, options)
@@ -295,6 +299,9 @@ func (s *Server) failGateway(c *gin.Context, record *usageRecord, status int, er
 	var failure *gatewayFailure
 	if errors.As(err, &failure) {
 		status = failure.status
+	}
+	if localStatus := localResourceStatus(record, err); localStatus != 0 {
+		status = localStatus
 	}
 	if c.Request.Context().Err() != nil {
 		status = statusClientClosedRequest

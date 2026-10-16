@@ -90,7 +90,7 @@ func (source *protocolSourceStream) Finish(readErr error) error {
 		}
 	}
 	if readErr != nil {
-		return readErr
+		return protocol.AnnotateResourceError(readErr, source.candidate.compiled.Identity(), protocol.DecodeEvent, "read.event")
 	}
 	return source.candidate.compiled.AnnotateSourceEventError(source.replay.Finish())
 }

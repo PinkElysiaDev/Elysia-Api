@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 )
 
@@ -265,6 +266,9 @@ func Load(path string) (*Config, error) {
 	cfg.path = path
 	cfg.applyBootstrapDefaults(path)
 	cfg.applyEnvironmentOverrides()
+	if err := protocol.ValidateRequestBodyLimit(cfg.MaxBodyBytes); err != nil {
+		return nil, err
+	}
 
 	cfg.mu.Lock()
 	GlobalConfig = &cfg
@@ -305,7 +309,7 @@ func (c *Config) applyBootstrapDefaults(path string) {
 		c.WebUIDir = filepath.Join(filepath.Dir(path), c.WebUIDir)
 	}
 	if c.MaxBodyBytes <= 0 {
-		c.MaxBodyBytes = 32 * 1024 * 1024
+		c.MaxBodyBytes = protocol.DefaultRequestBodyBytes
 	}
 	c.normalizeOutboundLocked()
 }
@@ -621,6 +625,9 @@ func (c *Config) Reload() error {
 	// 与 Load 同序：环境变量覆盖最后应用。否则热重载会让 ELYSIA_API_HOST
 	// 部署静默失效，且随后的 Save 会把文件值固化覆盖部署配置。
 	newCfg.applyEnvironmentOverrides()
+	if err := protocol.ValidateRequestBodyLimit(newCfg.MaxBodyBytes); err != nil {
+		return err
+	}
 
 	c.publishSettingsLocked(&newCfg)
 	return nil

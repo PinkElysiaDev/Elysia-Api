@@ -51,7 +51,7 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		return nil, err
 	}
 	plan := &gatewayPlan{ingress: ingress, session: continuationSession(c, body)}
-	body, plan.carriers, err = builtin.ExtractContinuationCarriers(body, ingress.Identity().Family, ingress.ResourceLimits().BufferBytes)
+	body, plan.carriers, err = builtin.ExtractContinuationCarriers(body, ingress.Identity().Family, ingress.RequestLimits(c.Request.Context()).BufferBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +328,7 @@ func (candidate gatewayCandidate) conversionContext(ingress *protocol.Compiled, 
 			}
 		}
 	}
-	return protocol.ConversionContext{Reasoning: candidate.binding.Reasoning, InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Recoverable: recoverable, Source: source, Target: target, Model: candidate.model.Identifier(), Operation: candidate.operationName, Transport: candidate.operation.Transport}
+	return protocol.ConversionContext{ResponseWire: response, Reasoning: candidate.binding.Reasoning, InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Recoverable: recoverable, Source: source, Target: target, Model: candidate.model.Identifier(), Operation: candidate.operationName, Transport: candidate.operation.Transport}
 }
 
 func modelProtocolScope(model config.ModelRef) protocol.Scope {

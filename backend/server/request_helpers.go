@@ -44,6 +44,9 @@ func setUsageError(record *usageRecord, ctx context.Context, err error) {
 	if record.StatusCode > 0 && record.StatusCode < 400 {
 		record.StatusCode = http.StatusBadGateway
 	}
+	if localStatus := localResourceStatus(record, err); localStatus != 0 {
+		record.StatusCode = localStatus
+	}
 	if errors.Is(ctx.Err(), context.Canceled) {
 		record.StatusCode = statusClientClosedRequest
 		record.ErrorKind = ErrorKindClientCanceled

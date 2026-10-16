@@ -20,6 +20,10 @@ func recordFailureEvidence(record *usageRecord, err error) {
 		record.TransportFailure = &transportFailure{Kind: ErrorKindUpstreamIdleTimeout, Phase: idle.Phase}
 		record.ErrorKind = ErrorKindUpstreamIdleTimeout
 	}
+	var resource *protocol.ResourceLimitError
+	if errors.As(err, &resource) && record.TransportFailure == nil {
+		record.ErrorKind = string(protocol.LimitExceeded)
+	}
 	var conversion *protocol.ConversionError
 	if errors.As(err, &conversion) {
 		record.appendConversionIssues(conversion.Issues)

@@ -15,7 +15,11 @@ import (
 	"github.com/elysia-api/backend/storage"
 )
 
-func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input agent.CallRequest, model storage.Model, callbacks agent.StreamCallbacks) (*agent.CallResult, error) {
+func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input agent.CallRequest, model storage.Model, callbacks agent.StreamCallbacks) (result *agent.CallResult, err error) {
+	ctx, err = caller.server.pinProtocolBudget(ctx)
+	if err != nil {
+		return nil, err
+	}
 	bindings, err := caller.server.store.ListProtocolBindings(ctx)
 	if err != nil {
 		return nil, err
@@ -40,6 +44,26 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 	if candidate.operation.Kind != "generate" {
 		return nil, fmt.Errorf("agent requires a synchronous generation operation")
 	}
+	isStream := transport != protocol.HTTPJSON
+	started := time.Now()
+	logConfig := caller.server.usageLogConfig()
+	record := &usageRecord{RequestID: usageRequestID(started), StartedAt: started, KeyName: AgentUsageKeyName, RequestedModelGroup: input.Model, ModelName: model.Name, SourceID: model.SourceID, Platform: model.Platform, TargetFormat: entry.Binding.ProtocolID, UpstreamRevision: compiled.Hash(), RelayMode: agentRelayMode, Stream: isStream, StatusCode: http.StatusOK, bodyOpts: usageBodyOptions{maxBytes: logConfig.BodyMaxBytes, externalize: logConfig.ExternalizeMedia}}
+	record.assets = newAssetSink(record.RequestID)
+	if record.bodyOpts.maxBytes > 0 {
+		body, err := json.Marshal(input)
+		if err != nil {
+			return nil, err
+		}
+		record.IncomingBody = record.sanitizeBody(body)
+	}
+	defer func() {
+		if err != nil {
+			setUsageError(record, ctx, err)
+		}
+		record.EndedAt = time.Now()
+		record.DurationMs = record.EndedAt.Sub(started).Milliseconds()
+		caller.server.recordUsage(record)
+	}()
 	content := append([]protocol.Node(nil), input.Content...)
 	if input.Instructions != "" {
 		content = append([]protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("system"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue(input.Instructions)}}}}, content...)
@@ -65,24 +89,7 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 	if err != nil {
 		return nil, err
 	}
-	isStream := transport != protocol.HTTPJSON
-	started := time.Now()
-	logConfig := caller.server.usageLogConfig()
-	record := &usageRecord{RequestID: usageRequestID(started), StartedAt: started, KeyName: AgentUsageKeyName, RequestedModelGroup: input.Model, ModelName: model.Name, SourceID: model.SourceID, Platform: model.Platform, TargetFormat: entry.Binding.ProtocolID, UpstreamRevision: compiled.Hash(), RelayMode: agentRelayMode, Stream: isStream, StatusCode: http.StatusOK, bodyOpts: usageBodyOptions{maxBytes: logConfig.BodyMaxBytes, externalize: logConfig.ExternalizeMedia}}
 	record.appendConversionIssues(sink.Issues())
-	record.assets = newAssetSink(record.RequestID)
-	if record.bodyOpts.maxBytes > 0 {
-		body, err := json.Marshal(input)
-		if err != nil {
-			return nil, err
-		}
-		record.IncomingBody = record.sanitizeBody(body)
-	}
-	defer func() {
-		record.EndedAt = time.Now()
-		record.DurationMs = record.EndedAt.Sub(started).Milliseconds()
-		caller.server.recordUsage(record)
-	}()
 	callCtx, cancel := context.WithTimeout(ctx, caller.server.probeTimeout(agentCallTimeoutSec*time.Second))
 	defer cancel()
 	response, err := caller.server.collectProtocolGeneration(callCtx, candidate, request, record, func(kind protocol.NodeKind, delta string) {
@@ -96,7 +103,6 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 			callbacks.OnReasoning(delta)
 		}
 	})
-	var result *agent.CallResult
 	if response != nil {
 		var projectionErr error
 		result, projectionErr = agentResultFromProtocol(response)
