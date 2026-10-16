@@ -129,3 +129,21 @@ func TestConversionRequestHonorsCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNativeReplayRetainsResourceCause(t *testing.T) {
+	limits := DefaultLimits()
+	limits.BufferBytes = 10
+	identity := Identity{Family: "test", WireVersion: "1"}
+	source := Native{Source: Provenance{Protocol: identity, Direction: DecodeRequest}, Value: StringValue(strings.Repeat("x", 11))}
+	target := Target{Protocol: identity, Direction: EncodeRequest}
+	_, err := ReplayNative(source, target, nil, limits)
+	var resource *ResourceLimitError
+	var conversion *ConversionError
+	if !errors.As(err, &resource) || !errors.As(err, &conversion) || conversion.Issues[0].Direction != EncodeRequest {
+		t.Fatal(err)
+	}
+	_, issues := PreserveNative(source, target, nil, limits)
+	if len(issues) != 1 || issues[0].Code != LimitExceeded {
+		t.Fatal(issues)
+	}
+}

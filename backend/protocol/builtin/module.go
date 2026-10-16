@@ -81,6 +81,5 @@ func (adapter module) replay(native *p.Native, direction p.Direction, options p.
 		return p.Value{}, unsupported("/native", "native node has no equivalent in the target protocol")
 	}
 	target := p.Target{Protocol: options.Identity(), Direction: direction, Scope: options.Scope}
-	value, issues := p.PreserveNative(*native, target, nil, options.WireLimits())
-	return value, p.IssuesError(issues)
+	return p.ReplayNative(*native, target, nil, options.WireLimits())
 }

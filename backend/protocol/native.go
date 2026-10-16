@@ -1,7 +1,6 @@
 package protocol
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -83,24 +82,34 @@ func CheckScope(source, target Scope) bool {
 // PreserveNative replays compatible native JSON with explicit semantic edits.
 // Cross-wire encoders must construct mapped output instead of calling this API.
 func PreserveNative(native Native, target Target, mutations []Mutation, limits Limits) (Value, []ConversionIssue) {
+	value, err := ReplayNative(native, target, mutations, limits)
+	if err == nil {
+		return value, nil
+	}
+	return Value{}, err.(*ConversionError).Issues
+}
+
+// ReplayNative preserves resource error causes for runtime callers. Authoring
+// callers can retain the diagnostic-list API through PreserveNative.
+func ReplayNative(native Native, target Target, mutations []Mutation, limits Limits) (Value, error) {
 	issue := ConversionIssue{Severity: SeverityError, Protocol: target.Protocol, Direction: target.Direction,
 		Stage: "encode", Path: native.Source.Path, Suggestion: "Declare an equivalent semantic mapping or use a compatible target."}
 	if !CanPreserveNative(native.Source, target) {
 		issue.Code, issue.Reason = UnsupportedNative, "native source family, wire version or direction is incompatible"
-		return Value{}, []ConversionIssue{issue}
+		return Value{}, &ConversionError{Issues: []ConversionIssue{issue}}
 	}
 	if !CheckScope(native.Source.Scope, target.Scope) {
 		issue.Code, issue.Reason = ResourceScopeMismatch, "native resource scope differs from the selected target"
-		return Value{}, []ConversionIssue{issue}
+		return Value{}, &ConversionError{Issues: []ConversionIssue{issue}}
 	}
 	value, err := ApplyMutations(native.Value, mutations, limits)
 	if err != nil {
-		issue.Code, issue.Reason = InvalidMutation, err.Error()
-		var resource *ResourceLimitError
-		if errors.As(err, &resource) {
-			issue.Code = LimitExceeded
+		annotated := resourceIssue(err, target.Protocol, target.Direction, "preserve")
+		if annotated != err {
+			return Value{}, annotated
 		}
-		return Value{}, []ConversionIssue{issue}
+		issue.Code, issue.Reason = InvalidMutation, err.Error()
+		return Value{}, &ConversionError{cause: err, Issues: []ConversionIssue{issue}}
 	}
 	return value, nil
 }

@@ -78,6 +78,13 @@ func (compiled *Compiled) decodeRequest(ctx context.Context, body []byte, option
 // layer; unknown fields are never copied to a foreign protocol by this method.
 func (compiled *Compiled) EncodeRequest(ctx context.Context, request *Request, options EvaluationContext) (result []byte, err error) {
 	defer func() { err = compiled.runtimeError(EncodeRequest, err) }()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	inputLimits, _, _ := compiled.mappingLimits(ctx, EncodeRequest)
+	if err := checkSemanticValue(request, inputLimits); err != nil {
+		return nil, err
+	}
 	if err := validateRequestContext(request); err != nil {
 		return nil, err
 	}
@@ -407,11 +414,8 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 	if direction == EncodeRequest {
 		snapshotLimits = requestLimits(ctx, DefaultLimits(), false)
 	}
-	if err := checkResourceValue(native.Value, snapshotLimits, "native_source"); err != nil {
-		return Value{}, resourceIssue(err, compiled.identity, direction, "preserve")
-	}
-	original, issues := PreserveNative(*native, target, nil, snapshotLimits)
-	if err := IssuesError(issues); err != nil {
+	original, err := ReplayNative(*native, target, nil, snapshotLimits)
+	if err != nil {
 		return Value{}, err
 	}
 	// Replay uses the source boundary; the immutable target revision and final

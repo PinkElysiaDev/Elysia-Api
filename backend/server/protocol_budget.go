@@ -57,17 +57,24 @@ func (s *Server) readGatewayRequest(c *gin.Context, compiled *protocol.Compiled)
 // localResourceStatus only classifies pre-send failures; observed HTTP and
 // provider failures keep their primary status and cancellation wins upstream.
 func localResourceStatus(record *usageRecord, err error) int {
-	var resource *protocol.ResourceLimitError
-	if !errors.As(err, &resource) || record.UpstreamHTTPStatus != 0 || generationFailureClass(err) != "" {
+	if record.UpstreamHTTPStatus != 0 || generationFailureClass(err) != "" {
 		return 0
 	}
+	var resource *protocol.ResourceLimitError
+	hasResource := errors.As(err, &resource)
 	var conversion *protocol.ConversionError
 	if errors.As(err, &conversion) {
 		for _, issue := range conversion.Issues {
-			if issue.Stage == "read.request" && resource.Metric == "bytes" {
+			if issue.Stage == "read.request" && hasResource && resource.Metric == "bytes" {
 				return http.StatusRequestEntityTooLarge
+			}
+			if issue.Code == protocol.LimitExceeded && (issue.Direction == protocol.DecodeRequest || issue.Direction == protocol.EncodeRequest) {
+				return http.StatusBadRequest
 			}
 		}
 	}
-	return http.StatusBadRequest
+	if hasResource {
+		return http.StatusBadRequest
+	}
+	return 0
 }
