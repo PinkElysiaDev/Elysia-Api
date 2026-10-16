@@ -10,7 +10,10 @@ import (
 // ApplyValue executes bounded semantic or wire rules. Protected state cannot be
 // minted through expressions; the separately authenticated continuation module
 // is the only restoration authority.
-func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPhase, input Value, route ConversionContext, sink *DiagnosticSink) (Value, error) {
+func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPhase, input Value, route ConversionContext, sink *DiagnosticSink) (output Value, resultErr error) {
+	defer func() {
+		resultErr = resourceIssue(resultErr, route.Source, "", "conversion."+string(phase))
+	}()
 	if phase == ConversionSourceEvent {
 		return Value{}, streamIssue(InvalidInput, "/sequence", "source_event requires a frame sequence")
 	}
@@ -20,7 +23,11 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 	if c == nil {
 		return input, nil
 	}
-	if err := checkValueLimits(input, c.limits); err != nil {
+	limits := c.phaseLimits(ctx, phase)
+	if phase == ConversionWire && !route.ResponseWire {
+		limits = requestLimits(ctx, c.limits, c.Policy.Limits != nil)
+	}
+	if err := checkResourceValue(input, limits, "semantic"); err != nil {
 		return Value{}, err
 	}
 	if err := validateContextValue(phase, input); err != nil {
@@ -57,7 +64,7 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 		if err != nil {
 			return Value{}, err
 		}
-		if err = checkValueLimits(value, c.limits); err != nil {
+		if err = checkResourceValue(value, limits, "semantic"); err != nil {
 			return Value{}, err
 		}
 	}
@@ -177,13 +184,17 @@ func (c *CompiledConversion) applyRule(ctx context.Context, phase ConversionPhas
 			}
 			op = DeleteValue
 		}
-		value, err = ApplyMutations(value, []Mutation{{Op: op, Path: rule.Path, Value: rule.Value}}, c.limits)
+		limits := c.phaseLimits(ctx, phase)
+		if phase == ConversionWire && !route.ResponseWire {
+			limits = requestLimits(ctx, c.limits, c.Policy.Limits != nil)
+		}
+		value, err = ApplyMutations(value, []Mutation{{Op: op, Path: rule.Path, Value: rule.Value}}, limits)
 		if err == nil && hashValue(value) != hashValue(input) {
 			err = c.issue(rule, phase, route, rule.Path, "explicit field conversion: "+rule.Action, sink, true)
 		}
 	case "transform":
 		contextValue, _ := EncodeValue(route)
-		value, err = c.expressions[rule.ID].evaluate(evaluation{ctx: ctx, input: value, root: value, context: contextValue, budget: &evaluationBudget{limits: c.limits}})
+		value, err = c.expressions[rule.ID].evaluate(evaluation{ctx: ctx, input: value, root: value, context: contextValue, budget: &evaluationBudget{limits: c.ruleLimits(ctx, phase, route), stepLimit: c.limits.Nodes}})
 		if err == nil && hashValue(value) != hashValue(input) {
 			err = c.issue(rule, phase, route, rule.Path, "explicit expression conversion changed semantic or wire fields", sink, true)
 		}

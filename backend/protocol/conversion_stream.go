@@ -148,7 +148,7 @@ func (s *ConversionEventState) Push(event Event) ([]Event, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(s.pending) >= s.conversion.limits.Nodes || s.bytes+len(raw.Bytes()) > s.conversion.limits.BufferBytes {
+	if len(s.pending) >= s.conversion.limits.Nodes || s.bytes+len(raw.Bytes()) > semanticLimits(s.conversion.limits).BufferBytes {
 		return nil, streamIssue(LimitExceeded, "/conversion/events", "waiting event buffer exceeded")
 	}
 	s.bytes += len(raw.Bytes())

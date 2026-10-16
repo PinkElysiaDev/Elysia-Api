@@ -31,6 +31,7 @@ type EvaluationContext struct {
 	requires         []string
 	compoundFrame    bool
 	transportControl *bool
+	wireLimits       Limits
 	// ResolveRequestScope is supplied by the gateway after model/authorization
 	// lookup. Definitions cannot execute it or replace its returned binding.
 	ResolveRequestScope func(*Request) (Scope, error)
@@ -39,6 +40,14 @@ type EvaluationContext struct {
 // Identity returns the immutable definition identity stamped by execution.
 // Callers and mapping expressions cannot impersonate another wire revision.
 func (options EvaluationContext) Identity() Identity { return options.identity }
+
+// WireLimits exposes the current boundary to built-in native replay only.
+func (options EvaluationContext) WireLimits() Limits {
+	if options.wireLimits.BufferBytes == 0 {
+		return DefaultLimits()
+	}
+	return options.wireLimits
+}
 
 // ConsumeTransportControl prevents a verified payload-free transport frame
 // from being replayed as a generation event. Authored mappings cannot set it.
@@ -135,20 +144,21 @@ type compiledEventRule struct{ when, emit *compiledExpression }
 // Compiled is an immutable protocol revision; mutable event state belongs to a
 // request/session, never to this registry object.
 type Compiled struct {
-	identity      Identity
-	requires      []string
-	definition    Value
-	hash          string
-	samplesHash   string
-	limits        Limits
-	capabilities  CapabilitySet
-	native        NativePolicy
-	mappings      map[Direction]compiledMapping
-	operations    map[string]Operation
-	taskMappings  map[string]map[string]compiledMapping
-	modelMappings map[string]compiledMapping
-	agentMapping  *compiledMapping
-	agentEfforts  []string
+	identity       Identity
+	requires       []string
+	definition     Value
+	hash           string
+	samplesHash    string
+	limits         Limits
+	explicitLimits bool
+	capabilities   CapabilitySet
+	native         NativePolicy
+	mappings       map[Direction]compiledMapping
+	operations     map[string]Operation
+	taskMappings   map[string]map[string]compiledMapping
+	modelMappings  map[string]compiledMapping
+	agentMapping   *compiledMapping
+	agentEfforts   []string
 }
 
 // Compile strictly parses one v2 definition and compiles every direction.
@@ -180,7 +190,7 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 	if definition.Limits != nil {
 		limits = *definition.Limits
 	}
-	compiled := &Compiled{identity: identity, definition: value, limits: limits, native: definition.Native, capabilities: make(CapabilitySet), mappings: make(map[Direction]compiledMapping), operations: definition.Operations}
+	compiled := &Compiled{explicitLimits: definition.Limits != nil || compiler.limits.BufferBytes != DefaultLimits().BufferBytes, identity: identity, definition: value, limits: limits, native: definition.Native, capabilities: make(CapabilitySet), mappings: make(map[Direction]compiledMapping), operations: definition.Operations}
 	compiled.requires = slices.Clone(definition.Requires)
 	for capability, supported := range definition.Capabilities {
 		compiled.capabilities[capability] = supported
@@ -687,6 +697,7 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return Value{}, err
 		}
+		err = resourceIssue(err, compiled.identity, direction, "evaluate")
 		var conversion *ConversionError
 		if errors.As(err, &conversion) {
 			return Value{}, err
@@ -700,25 +711,27 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	if err := ctx.Err(); err != nil {
 		return fail(err)
 	}
+	inputLimits, outputLimits, workLimits := compiled.mappingLimits(ctx, direction)
 	mapping, exists := compiled.mappings[direction]
 	if !exists {
 		return fail(fmt.Errorf("direction is not implemented"))
 	}
-	if err := checkValueLimits(input, compiled.limits); err != nil {
+	if err := checkResourceValue(input, inputLimits, "mapping_input"); err != nil {
 		return fail(err)
 	}
-	if err := checkValueSchema(input, mapping.input, "/input", 1, compiled.limits); err != nil {
+	if err := checkValueSchema(input, mapping.input, "/input", 1, inputLimits); err != nil {
 		return fail(err)
 	}
 	contextValue, err := EncodeValue(options.Values)
 	if err != nil {
 		return fail(err)
 	}
-	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, budget: &evaluationBudget{limits: compiled.limits}}
+	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	var output Value
 	switch {
 	case mapping.module != nil:
 		options = options.forDefinition(compiled)
+		options.wireLimits = compiled.wireLimits(ctx, direction)
 		instance, resolveErr := options.State.resolve(compiled, direction, mapping.module)
 		if resolveErr != nil {
 			return fail(resolveErr)
@@ -749,10 +762,10 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 			return fail(err)
 		}
 	}
-	if err := checkValueLimits(output, compiled.limits); err != nil {
+	if err := checkResourceValue(output, outputLimits, "mapping_output"); err != nil {
 		return fail(err)
 	}
-	if err := checkValueSchema(output, mapping.output, "/output", 1, compiled.limits); err != nil {
+	if err := checkValueSchema(output, mapping.output, "/output", 1, outputLimits); err != nil {
 		return fail(err)
 	}
 	if isInitial {

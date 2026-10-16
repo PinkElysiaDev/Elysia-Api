@@ -16,15 +16,20 @@ type evaluation struct {
 }
 
 type evaluationBudget struct {
-	steps  int
-	limits Limits
+	stepLimit int
+	steps     int
+	limits    Limits
 }
 
 func (expression *compiledExpression) evaluate(state evaluation) (value Value, err error) {
 	defer func() { err = locateMappingError(expression.path, err) }()
 	state.budget.steps++
-	if state.budget.steps > state.budget.limits.Nodes {
-		return Value{}, fmt.Errorf("%s: evaluation node limit exceeded", expression.path)
+	stepLimit := state.budget.stepLimit
+	if stepLimit == 0 {
+		stepLimit = state.budget.limits.Nodes
+	}
+	if state.budget.steps > stepLimit {
+		return Value{}, resourceFailure("evaluation", "steps", stepLimit, state.budget.steps)
 	}
 	if err := state.ctx.Err(); err != nil {
 		return Value{}, err

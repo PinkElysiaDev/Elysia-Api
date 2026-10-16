@@ -96,7 +96,7 @@ func buildTypedLimitPlans() map[reflect.Type]*typedPlan {
 		return plan
 	}
 	rootPlans := map[reflect.Type]*typedPlan{}
-	for _, root := range []reflect.Type{reflect.TypeFor[*Request](), reflect.TypeFor[*Response](), reflect.TypeFor[[]Event]()} {
+	for _, root := range []reflect.Type{reflect.TypeFor[*Request](), reflect.TypeFor[*Response](), reflect.TypeFor[[]Event](), reflect.TypeFor[Event](), reflect.TypeFor[*Event](), reflect.TypeFor[*Node]()} {
 		rootPlans[root] = build(root)
 	}
 	return rootPlans

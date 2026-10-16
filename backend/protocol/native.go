@@ -26,6 +26,10 @@ func (limits Limits) Validate() error {
 	if limits.Depth <= 0 || limits.Nodes <= 0 || limits.Mutations <= 0 || limits.StateItems <= 0 || limits.BufferBytes <= 0 {
 		return fmt.Errorf("all protocol resource limits must be positive")
 	}
+	maxInt := int(^uint(0) >> 1)
+	if limits.BufferBytes > maxInt/semanticByteMultiplier || limits.Nodes > maxInt/semanticNodeMultiplier || limits.Depth > maxInt/semanticDepthMultiplier {
+		return fmt.Errorf("protocol limits exceed safe budget arithmetic")
+	}
 	return nil
 }
 
@@ -144,7 +148,7 @@ func ApplyMutations(original Value, mutations []Mutation, limits Limits) (Value,
 
 func checkValueLimits(value Value, limits Limits) error {
 	if len(value.raw) > limits.BufferBytes {
-		return fmt.Errorf("native node exceeds buffer limit")
+		return resourceFailure("wire", "bytes", limits.BufferBytes, len(value.raw))
 	}
 	depth, nodes := 0, 0
 	// Value is already valid JSON. Count the same tokens as Decoder.Token
@@ -156,7 +160,7 @@ func checkValueLimits(value Value, limits Limits) error {
 		case '{', '[':
 			depth++
 			if depth > limits.Depth {
-				return fmt.Errorf("native node exceeds depth limit")
+				return resourceFailure("wire", "depth", limits.Depth, depth)
 			}
 		case '}', ']':
 			depth--
@@ -167,7 +171,7 @@ func checkValueLimits(value Value, limits Limits) error {
 		}
 		nodes++
 		if nodes > limits.Nodes {
-			return fmt.Errorf("native node exceeds node count limit")
+			return resourceFailure("wire", "nodes", limits.Nodes, nodes)
 		}
 	}
 	return nil

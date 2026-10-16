@@ -6,7 +6,12 @@ import (
 )
 
 func (c *CompiledConversion) Request(ctx context.Context, request *Request, route ConversionContext, sink *DiagnosticSink) (*Request, error) {
-	v, err := EncodeValue(request)
+	if c != nil {
+		if err := checkSemanticValue(request, c.phaseLimits(ctx, ConversionRequest)); err != nil {
+			return nil, resourceIssue(err, route.Source, DecodeRequest, "conversion.request")
+		}
+	}
+	v, err := EncodeSemantic(ctx, DecodeRequest, request)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +36,7 @@ func (c *CompiledConversion) Request(ctx context.Context, request *Request, rout
 }
 
 func (c *CompiledConversion) Response(ctx context.Context, response *Response, route ConversionContext, sink *DiagnosticSink) (*Response, error) {
-	v, err := EncodeValue(response)
+	v, err := EncodeSemantic(ctx, DecodeResponse, response)
 	if err == nil {
 		v, err = c.ApplyValue(ctx, ConversionResponse, v, route, sink)
 	}
@@ -46,7 +51,7 @@ func (c *CompiledConversion) Response(ctx context.Context, response *Response, r
 }
 
 func (c *CompiledConversion) Event(ctx context.Context, event Event, route ConversionContext, sink *DiagnosticSink) (Event, error) {
-	v, err := EncodeValue(event)
+	v, err := EncodeSemantic(ctx, DecodeEvent, event)
 	if err == nil {
 		v, err = c.ApplyValue(ctx, ConversionEvent, v, route, sink)
 	}

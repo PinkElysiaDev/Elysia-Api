@@ -278,7 +278,7 @@ func (compiled *Compiled) encodeEvent(ctx context.Context, direction Direction, 
 	if err := IssuesError(CheckEvent(event, compiled.target(direction, options), compiled.limits)); err != nil {
 		return Value{}, err
 	}
-	input, err := EncodeValue(event)
+	input, err := EncodeSemantic(ctx, direction, event)
 	if err != nil {
 		return Value{}, err
 	}
@@ -296,6 +296,7 @@ func (compiled *Compiled) runtimeError(direction Direction, err error) error {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
+	err = resourceIssue(err, compiled.identity, direction, "runtime")
 	var conversion *ConversionError
 	if errors.As(err, &conversion) {
 		issues := append([]ConversionIssue(nil), conversion.Issues...)
@@ -399,7 +400,11 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 	if !compiled.native.Preserve || native == nil || !CanPreserveNative(native.Source, target) {
 		return output, nil
 	}
-	original, issues := PreserveNative(*native, target, nil, compiled.limits)
+	snapshotLimits := compiled.wireLimits(ctx, direction)
+	if direction == EncodeRequest {
+		snapshotLimits = requestLimits(ctx, DefaultLimits(), false)
+	}
+	original, issues := PreserveNative(*native, target, nil, snapshotLimits)
 	if err := IssuesError(issues); err != nil {
 		return Value{}, err
 	}
@@ -433,7 +438,7 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 	default:
 		return Value{}, fmt.Errorf("native reconciliation requires a request or response direction")
 	}
-	value, err := EncodeValue(baseline)
+	value, err := EncodeSemantic(ctx, direction, baseline)
 	if err != nil {
 		return Value{}, err
 	}
@@ -441,7 +446,7 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 	if err != nil {
 		return Value{}, err
 	}
-	result, err := reconcileNative(ctx, original, before, output, compiled.native, compiled.limits)
+	result, err := reconcileNative(ctx, original, before, output, compiled.native, compiled.wireLimits(ctx, direction))
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return Value{}, err

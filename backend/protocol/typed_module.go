@@ -44,20 +44,22 @@ func checkTypedLimits(value any, limits Limits) error {
 // outputs need no strict JSON reparse; capability/provenance checks follow in
 // the caller exactly as they do for declarative mappings.
 func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direction, input Value, options EvaluationContext, decode func(TypedModule, EvaluationContext) (*T, error)) (*T, error) {
+	inputLimits, outputLimits, _ := compiled.mappingLimits(ctx, direction)
 	if compiled.hasTypedMapping(direction) {
 		if module, ok := compiled.mappings[direction].module.(TypedModule); ok {
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			if err := checkValueLimits(input, compiled.limits); err != nil {
+			if err := checkResourceValue(input, inputLimits, "wire_input"); err != nil {
 				return nil, err
 			}
 			options = options.forDefinition(compiled)
+			options.wireLimits = compiled.wireLimits(ctx, direction)
 			output, err := decode(module, options)
 			if err != nil {
 				return nil, err
 			}
-			if err := checkTypedLimits(output, compiled.limits); err != nil {
+			if err := checkSemanticValue(output, outputLimits); err != nil {
 				return nil, err
 			}
 			return output, nil
@@ -75,23 +77,25 @@ func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 }
 
 func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direction, input *T, options EvaluationContext, encode func(TypedModule, EvaluationContext) (Value, error)) (Value, error) {
+	inputLimits, outputLimits, _ := compiled.mappingLimits(ctx, direction)
 	if compiled.hasTypedMapping(direction) {
 		if module, ok := compiled.mappings[direction].module.(TypedModule); ok {
 			if err := ctx.Err(); err != nil {
 				return Value{}, err
 			}
-			if err := checkTypedLimits(input, compiled.limits); err != nil {
+			if err := checkSemanticValue(input, inputLimits); err != nil {
 				return Value{}, err
 			}
 			options = options.forDefinition(compiled)
+			options.wireLimits = compiled.wireLimits(ctx, direction)
 			output, err := encode(module, options)
 			if err != nil {
 				return Value{}, err
 			}
-			return output, checkValueLimits(output, compiled.limits)
+			return output, checkResourceValue(output, outputLimits, "wire_output")
 		}
 	}
-	value, err := EncodeValue(input)
+	value, err := EncodeSemantic(ctx, direction, input)
 	if err != nil {
 		return Value{}, err
 	}
@@ -99,6 +103,7 @@ func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 }
 
 func (compiled *Compiled) decodeEventValues(ctx context.Context, direction Direction, frame Value, options EvaluationContext) ([]Event, error) {
+	inputLimits, outputLimits, _ := compiled.mappingLimits(ctx, direction)
 	if compiled.hasTypedMapping(direction) {
 		instance, err := options.State.resolve(compiled, direction, compiled.mappings[direction].module)
 		if err != nil {
@@ -108,15 +113,16 @@ func (compiled *Compiled) decodeEventValues(ctx context.Context, direction Direc
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			if err := checkValueLimits(frame, compiled.limits); err != nil {
+			if err := checkResourceValue(frame, inputLimits, "wire_input"); err != nil {
 				return nil, err
 			}
 			options = options.forDefinition(compiled)
+			options.wireLimits = compiled.wireLimits(ctx, direction)
 			events, err := module.DecodeEvents(ctx, frame, options)
 			if err != nil {
 				return nil, err
 			}
-			return events, checkTypedLimits(events, compiled.limits)
+			return events, checkSemanticValue(events, outputLimits)
 		}
 	}
 	output, err := compiled.executeMapping(ctx, direction, frame, options)

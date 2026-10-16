@@ -44,7 +44,7 @@ func (adapter module) Convert(ctx context.Context, direction p.Direction, input 
 		if err != nil {
 			return p.Value{}, err
 		}
-		return p.EncodeValue(request)
+		return p.EncodeSemantic(ctx, direction, request)
 	case p.EncodeRequest:
 		var request p.Request
 		if err := input.Decode(&request); err != nil {
@@ -56,7 +56,7 @@ func (adapter module) Convert(ctx context.Context, direction p.Direction, input 
 		if err != nil {
 			return p.Value{}, err
 		}
-		return p.EncodeValue(response)
+		return p.EncodeSemantic(ctx, direction, response)
 	case p.EncodeResponse:
 		var response p.Response
 		if err := input.Decode(&response); err != nil {
@@ -81,6 +81,6 @@ func (adapter module) replay(native *p.Native, direction p.Direction, options p.
 		return p.Value{}, unsupported("/native", "native node has no equivalent in the target protocol")
 	}
 	target := p.Target{Protocol: options.Identity(), Direction: direction, Scope: options.Scope}
-	value, issues := p.PreserveNative(*native, target, nil, p.DefaultLimits())
+	value, issues := p.PreserveNative(*native, target, nil, options.WireLimits())
 	return value, p.IssuesError(issues)
 }

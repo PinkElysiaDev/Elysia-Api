@@ -112,7 +112,7 @@ func (stream *streamModule) Convert(ctx context.Context, direction p.Direction, 
 	if err != nil {
 		return p.Value{}, err
 	}
-	return p.EncodeValue(events)
+	return p.EncodeSemantic(ctx, direction, events)
 }
 
 func (stream *streamModule) DecodeEvents(ctx context.Context, input p.Value, options p.EvaluationContext) ([]p.Event, error) {

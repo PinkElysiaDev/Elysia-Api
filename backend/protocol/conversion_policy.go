@@ -82,6 +82,8 @@ type ConversionSelection struct {
 }
 
 type ConversionContext struct {
+	// ResponseWire is trusted delivery metadata, unavailable to mapping JSON.
+	ResponseWire        bool                   `json:"-"`
 	ResponseModel       *ResponseModelOrigin   `json:"responseModel,omitempty"`
 	InterleavedThinking bool                   `json:"interleavedThinking,omitempty"`
 	Delivery            *DeliveryState         `json:"-"`
