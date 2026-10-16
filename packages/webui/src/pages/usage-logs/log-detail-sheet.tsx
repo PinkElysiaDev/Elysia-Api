@@ -73,6 +73,9 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
       && /\/usage\/details\/ephemeral_(5m|1h)_input_tokens$/.test(issue.path),
   )
   const conversionIssues = detail?.conversionIssues ?? []
+  const resourceIssue = conversionIssues.find((issue) => issue.code === 'limit_exceeded')
+  const isLocalResourceFailure = detail?.errorKind === 'limit_exceeded' && resourceIssue
+    && (resourceIssue.direction === 'decode_request' || resourceIssue.direction === 'encode_request')
   const outputRate =
     detail && output != null && output > 0 && detail.durationMs > 0 ? (output / (detail.durationMs / 1000)).toFixed(1) : null
 
@@ -101,7 +104,8 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                 <div className="mb-5 flex items-start gap-2 rounded-[7px] border border-[color-mix(in_srgb,var(--ember)_35%,transparent)] bg-[color-mix(in_srgb,var(--ember)_7%,transparent)] p-3 text-sm text-ember">
                   <AlertTriangle className="mt-0.5 h-[15px] w-[15px] shrink-0" />
                   <span className="min-w-0 break-all">
-                    {detail.statusCode === 499 ? '客户端取消（499）' : `调用失败（${detail.statusCode}）`}
+                    {detail.statusCode === 499 ? '客户端取消（499）' : `${isLocalResourceFailure ? '本地处理失败' : '调用失败'}（${detail.statusCode}）`}
+                    {resourceIssue && ` · ${resourceIssue.direction} / ${resourceIssue.stage}`}
                     {detail.errorKind && detail.errorKind !== 'client_canceled' && ` · ${errorKindLabel(detail.errorKind)}`} · {detail.error}
                   </span>
                 </div>

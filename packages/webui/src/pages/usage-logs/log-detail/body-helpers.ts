@@ -83,6 +83,10 @@ export function buildExportPayload(detail: UsageLogDetail) {
 
 export function errorKindLabel(kind: string): string {
   switch (kind) {
+    case 'limit_exceeded':
+      return '资源限制'
+    case 'invalid_input':
+      return '请求无效'
     case 'client_canceled':
       return '客户端取消'
     case 'conversion':

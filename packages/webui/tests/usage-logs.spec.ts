@@ -54,6 +54,18 @@ test('TTL omission hint uses diagnostic identity instead of its translated expla
   await expect(page.getByText('上游按 TTL 分桶上报的缓存创建明细已省略', { exact: false })).toBeVisible()
 })
 
+test('request resource failures show the local stage', async ({ page }) => {
+  await page.route('**/api/admin/usage/logs/gemini', (route) => route.fulfill({ json: { ok: true, data: {
+    ...details[5], statusCode: 400, errorKind: 'limit_exceeded', error: 'semantic resource limit exceeded: nodes observed 1600001, limit 1600000',
+    conversionIssues: [{ code: 'limit_exceeded', severity: 'error', direction: 'decode_request', stage: 'conversion.request', path: '/', reason: 'node budget exceeded', suggestion: '' }],
+  } } }))
+  await page.getByRole('button', { name: '查看请求 gemini 详情', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '调用详情' })
+  await expect(dialog.getByText('本地处理失败（400）', { exact: false })).toBeVisible()
+  await expect(dialog.getByText('资源限制', { exact: false }).first()).toBeVisible()
+  await expect(dialog.getByText('decode_request / conversion.request', { exact: false })).toBeVisible()
+})
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('elysia-webui.panel-token', 'test-only')
