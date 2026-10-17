@@ -33,6 +33,8 @@ let initialVersion = "v0.0.0"
 // MARK: - 配置模型
 
 struct PanelConfig: Codable {
+    struct Outbound: Codable { var proxyUrl: String? }
+    var outbound: Outbound?
     var host: String = "127.0.0.1"
     var port: Int = 8765
     var panelAccessToken: String = ""
@@ -55,6 +57,7 @@ struct PanelConfig: Codable {
         logLevel = try container.decodeIfPresent(String.self, forKey: .logLevel) ?? logLevel
         httpTimeout = try container.decodeIfPresent(Int.self, forKey: .httpTimeout) ?? httpTimeout
         secretKeyPath = try container.decodeIfPresent(String.self, forKey: .secretKeyPath) ?? secretKeyPath
+        outbound = try container.decodeIfPresent(Outbound.self, forKey: .outbound)
     }
 }
 
@@ -433,6 +436,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var restartWork: DispatchWorkItem?
     var healthInFlight = false
     var startupTime = Date()
+    var backendReachedHealthy = false
     var healthySince: Date?
     var backendLogHandle: FileHandle?
     var backendInputPipe: Pipe?
@@ -465,6 +469,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     let notifications = NotificationManager()
     var updateTask: URLSessionDownloadTask?
     var updateSession: URLSession?
+    var updateCheckSession: URLSession?
     var updateDownloadDelegate: UpdateDownloadDelegate?
     var updateDownloadGeneration = UUID()
     var stagedUpdate: URL?
@@ -481,11 +486,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     let healthSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
+        config.connectionProxyDictionary = [:]
         config.timeoutIntervalForRequest = 3
         return URLSession(configuration: config)
     }()
     let apiSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
+        config.connectionProxyDictionary = [:]
         config.timeoutIntervalForRequest = 15
         return URLSession(configuration: config)
     }()
@@ -555,6 +562,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         timers.forEach { $0.invalidate() }
         timers.removeAll()
         apiSession.invalidateAndCancel()
+        updateCheckSession?.invalidateAndCancel()
+        updateCheckSession = nil
         healthSession.invalidateAndCancel()
         updateSession?.invalidateAndCancel()
         cancelPanelDownloads(reason: "应用正在退出，未完成的导出已取消。")
@@ -1387,6 +1396,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                       self.updatePhase != .installing, self.updatePhase != .readyToRelaunch else { return }
                 let ok = (response as? HTTPURLResponse)?.statusCode == 200
                 if ok {
+                    self.backendReachedHealthy = true
                     self.healthFailedSince = nil
                     let recovering = self.backendState == .restarting || self.backendState == .failed
                     if self.healthySince == nil { self.healthySince = Date() }
@@ -1404,7 +1414,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 } else {
                     self.healthySince = nil
                     if self.healthFailedSince == nil { self.healthFailedSince = Date() }
-                    if self.backendState == .running || Date().timeIntervalSince(self.startupTime) > 15 {
+                    // A live child may still be migrating; the 15-second watchdog is for an already-ready service.
+                    if !self.backendReachedHealthy && Date().timeIntervalSince(self.startupTime) < backendStartupTimeout { return }
+                    if self.backendState == .running || !self.backendReachedHealthy {
                         self.setBackendState(.failed, error: "服务暂时无法连接，正在检查恢复。\n\(error?.localizedDescription ?? "健康检查未通过")")
                     }
                     // 短暂网络/唤醒抖动可自行恢复；持续 15 秒不健康则重启本壳拥有的进程。
@@ -1572,7 +1584,7 @@ signal(SIGPIPE, SIG_IGN)
 if CommandLine.arguments.contains("--update-helper") {
     do {
         #if NATIVE_TESTS
-        let launchTimeout = Double(ProcessInfo.processInfo.environment["ELYSIA_NATIVE_UPDATE_LAUNCH_TIMEOUT"] ?? "") ?? 45
+        let launchTimeout = Double(ProcessInfo.processInfo.environment["ELYSIA_NATIVE_UPDATE_LAUNCH_TIMEOUT"] ?? "") ?? UpdateInstaller.launchTimeout
         try UpdateInstaller.runHelper(arguments: CommandLine.arguments, launchTimeout: launchTimeout)
         #else
         try UpdateInstaller.runHelper(arguments: CommandLine.arguments)

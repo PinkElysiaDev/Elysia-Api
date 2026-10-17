@@ -5,6 +5,7 @@ import { ProtocolDocument } from '../src/lib/protocol-document'
 
 test('designer renders the published listing contract without migration metadata', async ({ page }) => {
   const errors: string[] = []
+  const activeHash = 'a'.repeat(64)
   page.on('pageerror', (error) => errors.push(error.message))
   await page.addInitScript(() => localStorage.setItem('elysia-webui.panel-token', 'test-only'))
   await page.route('**/api/admin/**', async (route) => {
@@ -12,13 +13,13 @@ test('designer renders the published listing contract without migration metadata
     let data: unknown = { items: [], seq: 1 }
     if (path.endsWith('/schema')) data = {}
     if (path.endsWith('/protocols')) data = {
-      drafts: [{ protocolId: 'my-protocol', hash: 'draft', definition: { id: 'my-protocol' }, updatedAt: '2026-10-08T00:00:00Z' }],
+      drafts: [{ protocolId: 'my-protocol', hash: 'd'.repeat(64), definition: { id: 'my-protocol' }, updatedAt: '2026-10-08T00:00:00Z' }],
       active: [
-        { protocolId: 'openai-chat-completions', revisionHash: 'active' },
+        { protocolId: 'openai-chat-completions', revisionHash: activeHash },
         { protocolId: 'google-generate-content', revisionHash: 'pending' },
         { protocolId: 'my-protocol', revisionHash: 'pending' },
       ],
-      loaded: { 'openai-chat-completions': 'active' },
+      loaded: { 'openai-chat-completions': activeHash },
       presets: ['openai-chat-completions', 'google-generate-content'],
     }
     await route.fulfill({ json: { ok: true, data } })
@@ -27,6 +28,21 @@ test('designer renders the published listing contract without migration metadata
   await expect(page.getByRole('row').filter({ hasText: 'openai-chat-completions' })).toContainText('已加载')
   await expect(page.getByRole('row').filter({ hasText: 'google-generate-content' })).toContainText('已创建，等待验证或加载')
   await expect(page.getByRole('row').filter({ hasText: 'my-protocol' })).toContainText('需重新验证或修复')
+  for (const width of [375, 820, 1440]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.evaluate(() => document.fonts.ready)
+    const overlapping = await page.locator('tbody td').evaluateAll((cells) => cells.filter((cell) => {
+      const bounds = cell.getBoundingClientRect()
+      const range = document.createRange()
+      range.selectNodeContents(cell)
+      const content = range.getBoundingClientRect()
+      return content.left < bounds.left - 1 || content.right > bounds.right + 1
+    }).map((cell) => cell.textContent))
+    expect(overlapping, `table content must stay within its column at ${width}px`).toEqual([])
+    await page.getByRole('button', { name: '复制为新协议' }).first().click({ trial: true })
+    await page.getByRole('button', { name: '编辑 my-protocol', exact: true }).click({ trial: true })
+    await page.getByRole('button', { name: '删除 my-protocol', exact: true }).click({ trial: true })
+  }
   expect(errors).toEqual([])
 })
 

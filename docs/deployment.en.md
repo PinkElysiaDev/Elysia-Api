@@ -132,7 +132,7 @@ These are the main fields written on first launch. Replace the example token; do
 | `databasePath` | `elysia-api.sqlite3`; models, tokens, sessions, and logs |
 | `secretKeyPath` | `.master-key`; encryption key for sensitive SQLite fields |
 | `logLevel` | `info`; accepts `debug`, `info`, `warn`, `error` |
-| `httpTimeout` | 120 seconds in an automatically created config; explicit `0` or an omitted field means unlimited |
+| `httpTimeout` | Total timeout for non-streaming HTTP requests; 120 seconds in an automatically created config, while explicit `0` or an omitted field means unlimited |
 | `openBrowserOnStart` | Attempts to open a browser when omitted |
 | `webuiDir` | Empty uses embedded assets; nonempty overrides the WebUI directory |
 | `enablePprof` | `false`; enables admin-authenticated `/debug/pprof` routes; restart after changes |
@@ -140,6 +140,8 @@ These are the main fields written on first launch. Replace the example token; do
 | `debugMode` / `verboseLog` | Disabled by default; verbose logging requires both |
 
 Relative `databasePath`, `secretKeyPath`, and `webuiDir` values resolve against the configuration directory. Model sources, groups, and API tokens are stored in SQLite through management APIs.
+
+SSE/NDJSON streams use the protocol’s `framing.idleMillis`: omitted or `0` means 10 minutes; explicit values accept 1–3600000 milliseconds. This bounds waiting for headers and idle reads between data, not total stream duration; `httpTimeout: 0` does not disable it. Adjust the protocol field for upstreams with long reasoning pauses. Caller cancellation still takes effect immediately. Longer waits do not resolve upstream 429 rate limits, and generation is never replayed after streaming starts.
 
 ### Environment variables and precedence
 
@@ -160,9 +162,13 @@ Key lookup order: environment variable → `secretKeyPath` → legacy `.db-key` 
 | `healthCheck` | Disabled by default; `intervalSeconds: 300`, `timeoutSeconds: 10`, `failureThreshold: 3`; probes may incur upstream charges |
 | `modelCatalog` | models.dev enabled by default; bundled snapshot and local cache, mirror fallback on online failure; optional `url` and `proxy`; `syncIntervalMinutes` defaults to 1440, explicit `0` disables periodic sync |
 | `agentRemote` | `enabled` defaults to `true`; `publicUrl` supplies the Agent Card address behind a reverse proxy; see [remote access](remote-agent-api.en.md) |
-| `outbound` | Omitted `deniedIpRanges` uses private, loopback, and reserved ranges; explicit `[]` permits all ranges |
+| `outbound` | Optional HTTP proxy `proxyUrl`; omitted `deniedIpRanges` uses private, loopback, and reserved ranges; explicit `[]` permits all ranges |
 
-Local or private upstreams require an appropriate outbound-policy adjustment. Remove only the necessary CIDRs. Upstream access and model-catalog proxy settings are separate. See [config.json.example](../config.json.example) for the default deny list.
+Set `outbound.proxyUrl` under Runtime configuration → Security, for example `http://127.0.0.1:7890` or `http://user:password@127.0.0.1:7890`. URL-encode special characters in credentials. The field is hidden by default with a visibility toggle. The configuration file and authenticated admin API retain the original value; error logs redact proxy credentials.
+
+The proxy covers model calls (including streams and WebSocket), model discovery, upstream health probes, the model catalog, and macOS release checks and DMG downloads. New requests use saved changes; active requests retain their connections. macOS rereads the setting for each check or download. Local panel and health/API traffic bypasses this proxy. With an empty value the backend connects directly and macOS updates retain system network defaults. Explicit proxy failures never fall back to direct connections. An existing `modelCatalog.proxy` takes precedence over the global proxy.
+
+The explicitly configured proxy endpoint may be local or private without removing loopback deny rules. Upstream targets and redirects are still checked against `deniedIpRanges`. Proxied requests require local DNS validation; the proxy performs final DNS resolution and dialing, so use a trusted proxy with its own private-target restrictions. Local/private model servers still require an appropriate target CIDR adjustment. Remove only necessary ranges; see [config.json.example](../config.json.example) for defaults.
 
 ## Request logs
 

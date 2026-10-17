@@ -3,6 +3,8 @@ package config
 import (
 	"encoding/json"
 	"slices"
+
+	"github.com/elysia-api/backend/relay"
 )
 
 // Update prepares an isolated candidate and saves it before publishing settings.
@@ -26,6 +28,9 @@ func (c *Config) Update(prepare func(candidate *Config) error) error {
 		return err
 	}
 	candidate.applyEnvironmentOverrides()
+	if _, err := relay.ParseProxyURL(candidate.Outbound.ProxyURL); err != nil {
+		return err
+	}
 	if err := candidate.saveLocked(); err != nil {
 		return err
 	}

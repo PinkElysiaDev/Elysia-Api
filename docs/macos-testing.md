@@ -6,7 +6,7 @@
 
 ## 前提
 
-App 运行目标为 macOS 12+。构建机需要与其 macOS 版本兼容的 Command Line Tools（或完整 Xcode）、Node.js 和 Go 1.25+；工具链还必须能够链接 arm64 和 x86_64 的 macOS 12 Swift 程序。原生壳仅使用系统框架，测试使用 Swift、AppKit、WebKit、Python 标准库及由 Clang 生成的架构校验夹具。运行及更新已打包的 App 不需要开发工具。
+App 运行目标为 macOS 12+。构建机需要与其 macOS 版本兼容的 Command Line Tools（或完整 Xcode）、Node.js 和 Go 1.25+；工具链还必须能够链接 arm64 和 x86_64 的 macOS 12 Swift 程序。原生壳仅使用系统框架，测试使用 Swift、AppKit、WebKit、Python 标准库、OpenSSL 生成的一次性 TLS 证书及由 Clang 生成的架构校验夹具。运行及更新已打包的 App 不需要开发工具。
 
 原生壳源码清单统一放在 `scripts/macos-app/sources.mjs`，构建和测试脚本共同使用。`main.swift` 保留 AppDelegate 状态所有权；后端进程、面板桥接、下载和更新方法分别放在四个 `*Controller.swift` 扩展文件中。跨文件方法采用模块内部可见性，局部帮助方法仍为 private。修改后必须同时检查普通构建与 `NATIVE_TESTS` 构建；Windows 上的 darwin Go 交叉编译不检查这些 Swift 文件。
 
@@ -17,6 +17,8 @@ App 运行目标为 macOS 12+。构建机需要与其 macOS 版本兼容的 Comm
 面板使用默认持久化 WebKit 数据存储保留手动登录状态和 Cookie，主题、窗口尺寸及位置保存在同一应用的偏好中。关闭面板只结束运行中的资源，不清除持久数据。主壳异常退出时，面板通信管道和后端 stdin 收到 EOF，两者进入各自的退出流程。
 
 主壳在后端健康且面板关闭时每 30 秒检查健康状态；面板打开、服务启动或恢复期间每 3 秒检查。后端进程退出回调立即进入退出处理和恢复流程，不等待下一次健康轮询。
+
+每个后端进程首次通过健康检查前有 180 秒启动等待时间，供数据库迁移和协议重新校验使用；健康过的进程持续失联 15 秒才触发恢复。更新 helper 最多等待 210 秒确认新版后端及前台 React 面板就绪，超时仍回滚。自动测试覆盖初始化耗时 50 秒且没有重启或回滚，以及启动超时后的恢复。
 
 ## 工具链与双架构构建
 
@@ -63,6 +65,7 @@ PLAYWRIGHT_CHANNEL=chrome npm run test:e2e --workspace @root/webui
 - 菜单栏用量脉冲部件：响应解析（毫秒时间桶、窗口汇总与 token 总量）、稀疏点按时间槽填充与越界丢弃、异常信封拒绝、RFC3339 查询编码、token 紧凑格式化，以及真实后端 `/api/admin/usage/pulse` 的管理员鉴权读取。
 - 窗口重开不恢复最近页面（忽略并清理旧页面记录），已登录则进入总览；已有窗口保持当前页面。覆盖最小化恢复、窗口位置与主题、菜单栏复制令牌入口、首次不注入 Token/Cookie、持久化 WebKit 数据存储、关闭窗口释放 WebView 与消息处理器。
 - 外接显示器移除后的几何恢复、窗口过大及部分移出屏幕的边界。
+- 通过带认证的 HTTP CONNECT 代理完成 HTTPS 检查与下载，验证代理凭据不传给目标服务、错误脱敏和本机 API/健康请求直连；TLS 仅信任本轮测试证书。
 - 检查更新时禁用安装、下载进度、取消、HTTP 错误、下载临时文件生命周期、摘要缺失/不匹配、DMG 损坏和应用替换失败回滚。
 - 连续关窗释放窗口、WebView、胶囊及保存对话框；导出中关窗或退出时取消下载并清理临时文件，保留已有目标文件，防止下载期间出现的同名文件被覆盖。
 - 真实主壳与 WebUI 子进程连续开关 3 次：通过 `launchctl print pid/<WebUI PID>` 确认 WebContent、Networking 和 GPU 服务的归属，关窗后所属进程退出，主壳无 WebKit 服务且原后端继续健康运行；夹具页面的 JavaScript 心跳和周期 HTTP 请求停止。
@@ -128,5 +131,6 @@ log stream --predicate 'subsystem == "dev.pinkelysiadev.ElysiaApi"' --level info
 | `--panel` 找不到应用 | 先执行 `npm run build` 和 `npm run build:macos-app` |
 | 无显示环境的快照不更新 | 使用测试提供的最终布局快照；动画与交互在解锁后的显示环境单独验收 |
 | 更新验证失败 | 查看 OSLog 和运行日志，检查 DMG、摘要、目录权限和恢复备份，不跳过校验 |
+| 旧版更新后反复启动并回退 | 旧版 helper 仍使用 45 秒启动确认期限；首次迁移到修复版时，如仍超时，退出应用后用修复版 DMG 替换 App。保留 Application Support 中的数据、配置和密钥，之后的更新使用新版等待期限 |
 
 部署与数据恢复见[部署指南](deployment.md)。

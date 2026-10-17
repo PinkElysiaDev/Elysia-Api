@@ -26,6 +26,26 @@ enum LifecycleTests {
         try NativeTests.expect(FileManager.default.fileExists(atPath: drained.path), "backend finishes saving data before the shell considers it stopped")
         try FileManager.default.removeItem(at: mode)
 
+        try Data("unhealthy".utf8).write(to: mode)
+        delegate.startBackend()
+        try NativeTests.expect(await NativeTests.wait { delegate.pollForTests(); return delegate.healthFailedSince != nil },
+                               "startup observes unavailable health before the backend is ready")
+        let startingPID = delegate.backend!.processIdentifier
+        delegate.ageHealthFailureForTests()
+        delegate.pollForTests()
+        try NativeTests.expect(await NativeTests.wait { !delegate.healthInFlight }
+                               && delegate.backendState == .starting && !delegate.recoveryTerminating
+                               && delegate.backend?.processIdentifier == startingPID,
+                               "a live backend that has never been healthy is not restarted by the runtime health deadline")
+        delegate.startupTime = Date().addingTimeInterval(-backendStartupTimeout - 1)
+        try NativeTests.expect(await NativeTests.wait { delegate.pollForTests(); return delegate.recoveryTerminating },
+                               "a backend that exceeds the startup deadline still enters recovery")
+        try FileManager.default.removeItem(at: mode)
+        try NativeTests.expect(await NativeTests.wait(12) { delegate.pollForTests(); return delegate.backendState == .running && delegate.backend?.processIdentifier != startingPID },
+                               "startup timeout recovery launches a healthy replacement")
+        delegate.stopBackend()
+        try NativeTests.expect(await NativeTests.wait { delegate.backend == nil }, "startup timeout test releases its backend")
+
         delegate.updatePhase = .installing
         delegate.startBackend()
         try NativeTests.expect(delegate.backend == nil && !delegate.validateMenuItem(delegate.restartItem), "installation prevents competing backend launches and service actions")

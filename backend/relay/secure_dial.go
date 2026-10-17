@@ -112,11 +112,17 @@ func secureControl(network, address string, _ syscall.RawConn) error {
 // NewSecureTransport 导出带连接时 SSRF 校验的 http.Transport，供 server 层
 // 非转发出站路径（健康探测等）复用同一份拨号防护——裸 http.Client 跟随
 // 重定向时无连接级校验，可能被引到内网/元数据地址。
-func NewSecureTransport() *http.Transport {
-	return newSecureTransport()
+func NewSecureTransport(proxyOverride ...string) http.RoundTripper {
+	transport := &outboundTransport{}
+	if len(proxyOverride) > 0 {
+		transport.override = strings.TrimSpace(proxyOverride[0])
+	}
+	return transport
 }
 
-// newSecureTransport 构造带连接时 SSRF 校验的 http.Transport。
+func newSecureTransport() http.RoundTripper { return NewSecureTransport() }
+
+// newDirectTransport 构造带连接时 SSRF 校验的 http.Transport。
 // 所有上游适配器（OpenAI/Claude/Gemini）共用，确保出站连接的目标 IP
 // 在 connect 时被校验，杜绝 rebinding 绕过。
 // 出站连接池参数：全站共享传输层的调优锚点。
@@ -128,7 +134,7 @@ const (
 	secureIdleConnTimeout = 90 * time.Second
 )
 
-func newSecureTransport() *http.Transport {
+func newDirectTransport() *http.Transport {
 	dialer := &net.Dialer{
 		Timeout:   secureDialTimeout,
 		KeepAlive: secureDialKeepAlive,

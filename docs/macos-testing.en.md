@@ -6,7 +6,7 @@ Use this guide to verify the native shell, updater and embedded panel. Run comma
 
 ## Prerequisites
 
-The App targets macOS 12+. The build host needs compatible Command Line Tools (or full Xcode), Node.js and Go 1.25+. Its toolchain must link macOS 12 Swift programs for both arm64 and x86_64. The shell uses system frameworks; tests use Swift, AppKit, WebKit, the Python standard library and Clang-built architecture fixtures. Running and updating the packaged App requires no developer tools.
+The App targets macOS 12+. The build host needs compatible Command Line Tools (or full Xcode), Node.js and Go 1.25+. Its toolchain must link macOS 12 Swift programs for both arm64 and x86_64. The shell uses system frameworks; tests use Swift, AppKit, WebKit, the Python standard library, OpenSSL-generated temporary TLS certificates and Clang-built architecture fixtures. Running and updating the packaged App requires no developer tools.
 
 ## Processes and window closure
 
@@ -15,6 +15,8 @@ The menu-bar shell supervises the backend and updates. The panel runs its AppKit
 The panel uses WebKit's default persistent data store for manual sign-in and cookies; the same application's preferences retain theme, window size and position. Closing ends runtime resources without clearing persistent data. If the supervisor crashes, the panel's communication pipe and the backend's stdin receive EOF, triggering their respective shutdown paths.
 
 The supervisor checks health every 30 seconds when the backend is healthy and the panel is closed, and every 3 seconds while the panel is open or the service is starting/recovering. Backend process-exit callbacks begin exit handling and recovery immediately, without waiting for the next health poll.
+
+Each backend process has 180 seconds to pass its first health check, allowing database migrations and protocol revalidation to finish. Once healthy, a process must remain unreachable for 15 seconds before recovery begins. The update helper waits up to 210 seconds for the new backend and foreground React panel to become ready, then rolls back on timeout. Automated tests cover a 50-second initialization without restarts or rollback, plus recovery after the startup deadline.
 
 ## Toolchain and universal builds
 
@@ -61,6 +63,7 @@ Automated coverage includes:
 - Menu-bar usage pulse: millisecond buckets, window totals, token totals, sparse-slot filling, out-of-range rejection, malformed envelopes, RFC3339 query encoding, compact token formatting and authenticated reads from the real `/api/admin/usage/pulse` backend.
 - Reopening at overview when authenticated, ignoring and clearing old page history; an existing window keeps its page. Minimized-window restoration, geometry/theme, copy-token menu, no initial token/cookie injection, persistent WebKit storage, and releasing WebViews/message handlers on close.
 - Geometry recovery after disconnecting an external display, oversized windows and partly off-screen bounds.
+- HTTPS checks and downloads through an authenticated HTTP CONNECT proxy, with no proxy credentials sent to the origin, redacted errors and direct local health/API sessions. Only the certificate generated for that test run is trusted.
 - Install disabled while checking updates, download progress/cancellation, HTTP errors, temporary file lifecycle, missing/mismatched digests, damaged DMGs and rollback after replacement failure.
 - Repeated window closure releases windows, WebViews, capsules and save sheets. Closing or quitting during export cancels the download and removes its temporary file while preserving existing destinations and files created at that path during the download.
 - Three real supervisor/WebUI open-close cycles: use `launchctl print pid/<WebUI PID>` to identify owned WebContent, Networking and GPU services, require their exit after closure, and retain a healthy original backend with no WebKit services in the supervisor. The fixture's JavaScript heartbeat and periodic HTTP requests must stop.
@@ -126,5 +129,6 @@ log stream --predicate 'subsystem == "dev.pinkelysiadev.ElysiaApi"' --level info
 | `--panel` cannot find the App | Run `npm run build` and `npm run build:macos-app` first |
 | Captures stall without a display | Use the test's final-layout capture; verify animations/interactions separately with an unlocked display |
 | Update verification fails | Inspect OSLog/runtime logs, DMG, digest, directory permissions and recovery backup; do not bypass validation |
+| An older version repeatedly restarts and rolls back after updating | The old helper still has a 45-second readiness deadline. If the first upgrade to the fixed version still times out, quit the app and replace it using the fixed DMG. Keep the data, configuration and key in Application Support; subsequent updates use the new deadline |
 
 See [deployment](deployment.en.md) for operation and data recovery.
