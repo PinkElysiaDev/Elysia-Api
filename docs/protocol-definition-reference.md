@@ -48,7 +48,7 @@
 
 usage 的 `input/output/total/cacheRead/cacheCreation` 是带 `count` 和 `origin` 的可缺失计数器。`origin` 为 `observed` 或 `inferred`。例如显式零：`{"count":0,"origin":"observed"}`。自定义别名通过 `exists` 和条件映射确定优先级。
 
-内置错误语义使用 `message/category/code/param/details`，不能表达的专有细节明确报错。失败响应映射可读取 `context.httpStatus`。流结束后允许 usage 尾帧；未知事件默认拒绝，需要忽略的帧必须明确映射为空数组。HTTP stream 的 `framing.idleMillis` 默认为 120000，显式范围 1—120000；它不是总流时长。
+内置错误语义使用 `message/category/code/param/details`，不能表达的专有细节明确报错。失败响应映射可读取 `context.httpStatus`。流结束后允许 usage 尾帧；未知事件默认拒绝，需要忽略的帧必须明确映射为空数组。HTTP stream 的 `framing.idleMillis` 缺省或为 0 时使用 600000（10 分钟），显式范围 1—3600000（最多 1 小时）。它限制等待响应头及每次读取上游数据的空闲时间，不限制总流时长，也不受非流式 `httpTimeout` 控制。已有显式值保持不变；自定义协议可通过此字段调整等待时间，修改后需验证并激活修订。
 
 ## 管理 API
 

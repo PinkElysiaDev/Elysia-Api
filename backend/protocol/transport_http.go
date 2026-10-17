@@ -14,8 +14,11 @@ import (
 	"strings"
 )
 
-// DefaultStreamIdleMillis bounds silence without limiting total stream duration.
-const DefaultStreamIdleMillis = 120000
+// DefaultStreamIdleMillis allows long reasoning pauses without limiting total stream duration.
+const DefaultStreamIdleMillis = 600000
+
+// MaxStreamIdleMillis bounds explicit overrides independently of the default.
+const MaxStreamIdleMillis = 3600000
 
 // BuildHTTPRequest constructs the declared operation. The caller owns the
 // configured HTTP client, outbound address policy, proxy and TLS settings.

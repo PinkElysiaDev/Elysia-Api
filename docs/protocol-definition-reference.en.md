@@ -48,7 +48,7 @@ A breakpoint is `{"kind":"breakpoint","location":"block","value":{"type":"epheme
 
 Usage input/output/total/cacheRead/cacheCreation are optional counters with `count` and `origin` (`observed` or `inferred`). Explicit zero is `{"count":0,"origin":"observed"}`; an absent counter is different. Declare alias priority with `exists` and conditional expressions.
 
-Built-in error semantics use message/category/code/param/details; unrepresentable provider details fail conversion. Failure mappings can read `context.httpStatus`. Usage tails may follow a stream terminal. Unknown events are rejected; deliberately ignored frames require an explicit empty-array rule. HTTP `framing.idleMillis` defaults to 120000, accepts 1–120000, and limits idle reads rather than total stream duration.
+Built-in error semantics use message/category/code/param/details; unrepresentable provider details fail conversion. Failure mappings can read `context.httpStatus`. Usage tails may follow a stream terminal. Unknown events are rejected; deliberately ignored frames require an explicit empty-array rule. HTTP `framing.idleMillis` uses 600000 (10 minutes) when omitted or zero and accepts explicit values from 1 through 3600000 (1 hour). It bounds waiting for response headers and each upstream read, independently of total stream duration and the non-streaming `httpTimeout`. Existing explicit values remain unchanged; custom protocols can adjust this field, then verify and activate the revision.
 
 ## Management API
 

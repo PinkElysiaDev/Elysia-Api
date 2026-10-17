@@ -132,7 +132,7 @@ These are the main fields written on first launch. Replace the example token; do
 | `databasePath` | `elysia-api.sqlite3`; models, tokens, sessions, and logs |
 | `secretKeyPath` | `.master-key`; encryption key for sensitive SQLite fields |
 | `logLevel` | `info`; accepts `debug`, `info`, `warn`, `error` |
-| `httpTimeout` | 120 seconds in an automatically created config; explicit `0` or an omitted field means unlimited |
+| `httpTimeout` | Total timeout for non-streaming HTTP requests; 120 seconds in an automatically created config, while explicit `0` or an omitted field means unlimited |
 | `openBrowserOnStart` | Attempts to open a browser when omitted |
 | `webuiDir` | Empty uses embedded assets; nonempty overrides the WebUI directory |
 | `enablePprof` | `false`; enables admin-authenticated `/debug/pprof` routes; restart after changes |
@@ -140,6 +140,8 @@ These are the main fields written on first launch. Replace the example token; do
 | `debugMode` / `verboseLog` | Disabled by default; verbose logging requires both |
 
 Relative `databasePath`, `secretKeyPath`, and `webuiDir` values resolve against the configuration directory. Model sources, groups, and API tokens are stored in SQLite through management APIs.
+
+SSE/NDJSON streams use the protocol’s `framing.idleMillis`: omitted or `0` means 10 minutes; explicit values accept 1–3600000 milliseconds. This bounds waiting for headers and idle reads between data, not total stream duration; `httpTimeout: 0` does not disable it. Adjust the protocol field for upstreams with long reasoning pauses. Caller cancellation still takes effect immediately. Longer waits do not resolve upstream 429 rate limits, and generation is never replayed after streaming starts.
 
 ### Environment variables and precedence
 

@@ -132,7 +132,7 @@ docker compose logs elysia-api
 | `databasePath` | `elysia-api.sqlite3`；模型、令牌、会话和日志存储 |
 | `secretKeyPath` | `.master-key`；SQLite 敏感字段的加密密钥 |
 | `logLevel` | `info`；可选 `debug`、`info`、`warn`、`error` |
-| `httpTimeout` | 自动创建配置时为 120 秒；显式 `0` 或字段缺省为不限制 |
+| `httpTimeout` | 非流式 HTTP 请求总超时；自动创建配置时为 120 秒，显式 `0` 或字段缺省为不限制 |
 | `openBrowserOnStart` | 缺省尝试打开浏览器 |
 | `webuiDir` | 空时使用嵌入资源；非空时覆盖 WebUI 文件目录 |
 | `enablePprof` | `false`；启用受管理鉴权保护的 `/debug/pprof` 路由，修改需重启 |
@@ -140,6 +140,8 @@ docker compose logs elysia-api
 | `debugMode` / `verboseLog` | 默认关闭；详细日志要求两者同时开启 |
 
 `databasePath`、`secretKeyPath`、`webuiDir` 的相对路径按配置文件目录解析。模型源、模型组和访问令牌通过管理 API 保存在 SQLite，不写入此文件。
+
+流式 SSE/NDJSON 使用协议的 `framing.idleMillis`：缺省或 `0` 为 10 分钟，显式值允许 1—3600000 毫秒。它限制等待响应头和相邻数据之间的空闲时间，不限制总流时长；`httpTimeout: 0` 不会关闭此保护。长时间思考的上游可调整该协议字段，主动取消仍立即生效。延长等待不能解决上游 429 限流，已开始生成的请求不会自动重放。
 
 ### 环境变量与优先级
 

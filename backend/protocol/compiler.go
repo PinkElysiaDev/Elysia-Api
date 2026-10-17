@@ -548,8 +548,8 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 		return fmt.Errorf("operation %q has an invalid SSE event name", name)
 	}
 	if framing := operation.Framing; framing != nil && framing.IdleMillis != 0 {
-		if (operation.Transport != SSE && operation.Transport != NDJSON) || framing.IdleMillis < 0 || framing.IdleMillis > DefaultStreamIdleMillis {
-			return fmt.Errorf("operation %q idleMillis requires an HTTP stream and must be between 1 and %d", name, DefaultStreamIdleMillis)
+		if (operation.Transport != SSE && operation.Transport != NDJSON) || framing.IdleMillis < 0 || framing.IdleMillis > MaxStreamIdleMillis {
+			return fmt.Errorf("operation %q idleMillis requires an HTTP stream and must be between 1 and %d", name, MaxStreamIdleMillis)
 		}
 	}
 	if framing := operation.Framing; framing != nil && framing.EventNamePath != "" {
