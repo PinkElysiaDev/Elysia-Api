@@ -1,7 +1,8 @@
 import type { ConversionPhase } from '@/lib/conversion-policy'
 
-export const field = 'rounded-md border bg-card p-2 text-sm w-full'
-export const pretty = (v: unknown) => JSON.stringify(v, null, 2)
+export const field =
+  'h-[34px] w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm text-foreground transition-[border-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:border-rose focus-visible:ring-[3px] focus-visible:ring-wash disabled:cursor-not-allowed disabled:opacity-50'
+
 export const phases: Record<ConversionPhase, string> = {
   ingress: '入口规范化',
   request: '候选请求',
