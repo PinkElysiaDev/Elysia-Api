@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -38,8 +37,7 @@ var modelCatalogSnapshotJSON []byte
 //	远端 JSON → 24h 内存缓存（拉取失败保留上次成功数据）→ 未命中或目录不可达时
 //	优雅降级（不改动模型任何字段，保持手动配置）。
 //
-// URL 与出站代理可在 config.json 的 modelCatalog 段覆盖；代理未配置时走
-// 环境变量（http.Transport 默认行为）。
+// URL 与出站代理可在 config.json 的 modelCatalog 段覆盖；未配置代理时使用全局出站代理。
 type modelCatalog struct {
 	getter func() config.ModelCatalogConfig
 	// cachePathGetter 返回落盘缓存文件路径（数据库同目录下 model-catalog.json）；
@@ -217,17 +215,9 @@ func catalogResolveURL(cfg config.ModelCatalogConfig) string {
 	return modelCatalogDefaultURL
 }
 
-// catalogHTTPClient 构造拉取目录用的 HTTP client：显式代理 > 环境变量代理。
+// catalogHTTPClient uses the catalog override when set, otherwise the global proxy.
 func catalogHTTPClient(proxy string) *http.Client {
-	// 基于 secure transport(拨号级 SSRF 校验)叠代理配置:目录 URL 是
-	// 外部输入,裸 transport 会放过内网/元数据目标。
-	transport := relay.NewSecureTransport()
-	if p := strings.TrimSpace(proxy); p != "" {
-		transport.Proxy = func(*http.Request) (u *url.URL, err error) {
-			return url.Parse(p)
-		}
-	}
-	return &http.Client{Timeout: modelCatalogFetchTimeout, Transport: transport}
+	return &http.Client{Timeout: modelCatalogFetchTimeout, Transport: relay.NewSecureTransport(proxy)}
 }
 
 // ensureLoaded 确保目录数据可用：数据过期时**异步**触发后台拉取，立即返回——

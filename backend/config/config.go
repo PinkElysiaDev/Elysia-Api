@@ -59,7 +59,7 @@ type Config struct {
 type ModelCatalogConfig struct {
 	Enabled *bool  `json:"enabled,omitempty"` // 默认启用；false 时完全停用目录（纯手动）
 	URL     string `json:"url,omitempty"`     // 目录 JSON 地址，空则用默认 models.dev
-	Proxy   string `json:"proxy,omitempty"`   // 拉取目录使用的出站代理（如 http://127.0.0.1:7890），空则走环境变量/直连
+	Proxy   string `json:"proxy,omitempty"`   // 拉取目录使用的出站代理（如 http://127.0.0.1:7890），空则走全局出站代理/直连
 	// SyncIntervalMinutes 为目录定期刷新周期（分钟）。nil/未配置 = 默认 1440；
 	// **显式 0 = 不启用定期后台同步**（仅使用内置快照与本地缓存，管理页
 	// 「立即更新」仍可用）。指针类型用于区分「未配置」与「显式 0」。
@@ -110,6 +110,7 @@ type HealthCheckConfig struct {
 // 本机上游，清空 = 全放行。nil（未配置）与空列表语义不同：前者取默认预置，
 // 后者是显式的「不禁止任何段」，落盘为 "deniedIpRanges": []。
 type OutboundConfig struct {
+	ProxyURL       string   `json:"proxyUrl,omitempty"`
 	DeniedIPRanges []string `json:"deniedIpRanges,omitempty"`
 }
 
@@ -266,6 +267,9 @@ func Load(path string) (*Config, error) {
 	cfg.path = path
 	cfg.applyBootstrapDefaults(path)
 	cfg.applyEnvironmentOverrides()
+	if _, err := relay.ParseProxyURL(cfg.Outbound.ProxyURL); err != nil {
+		return nil, err
+	}
 	if err := protocol.ValidateRequestBodyLimit(cfg.MaxBodyBytes); err != nil {
 		return nil, err
 	}
@@ -603,6 +607,12 @@ func (c *Config) SetOutboundDeniedIPRanges(ranges []string) {
 	c.Outbound.DeniedIPRanges = ranges
 }
 
+func (c *Config) SetOutboundProxyURL(value string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Outbound.ProxyURL = strings.TrimSpace(value)
+}
+
 func (c *Config) Reload() error {
 	// 全程持锁（含读文件）：此前文件读取在锁外，与「管理端 setter + Save」
 	// 交错时会把刚设置并落盘的值用旧文件内容覆盖，下次 Save 即永久丢失
@@ -625,6 +635,9 @@ func (c *Config) Reload() error {
 	// 与 Load 同序：环境变量覆盖最后应用。否则热重载会让 ELYSIA_API_HOST
 	// 部署静默失效，且随后的 Save 会把文件值固化覆盖部署配置。
 	newCfg.applyEnvironmentOverrides()
+	if _, err := relay.ParseProxyURL(newCfg.Outbound.ProxyURL); err != nil {
+		return err
+	}
 	if err := protocol.ValidateRequestBodyLimit(newCfg.MaxBodyBytes); err != nil {
 		return err
 	}

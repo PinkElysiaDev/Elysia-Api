@@ -57,6 +57,31 @@ func compileTestDefinition(t *testing.T, definition Definition) *Compiled {
 	return compiled
 }
 
+func TestCompilerHTTPStreamIdleRange(t *testing.T) {
+	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, transport := range []Transport{SSE, NDJSON, HTTPJSON} {
+		for _, idle := range []int{-1, 0, 1, 120000, 600000, 900000, 3600000, 3600001} {
+			definition := testDefinition("idle-range", "m", "h", "t", "r")
+			operation := definition.Operations["generate"]
+			operation.Transport = transport
+			operation.Framing = &Framing{IdleMillis: idle}
+			definition.Operations["generate"] = operation
+			body, err := json.Marshal(definition)
+			if err != nil {
+				t.Fatal(err)
+			}
+			compiled, issues := compiler.Compile(body)
+			wantValid := idle == 0 || (transport != HTTPJSON && idle > 0 && idle <= 3600000)
+			if (compiled != nil && IssuesError(issues) == nil) != wantValid {
+				t.Fatalf("transport %s idle %d: want valid %v, got %v", transport, idle, wantValid, issues)
+			}
+		}
+	}
+}
+
 func TestCompilerNewProtocolsConvertAllDirectionsWithoutModules(t *testing.T) {
 	first := compileTestDefinition(t, testDefinition("from-scratch-alpha", "engine", "history", "functions", "answer"))
 	second := compileTestDefinition(t, testDefinition("from-scratch-beta", "modelId", "turns", "operations", "output"))

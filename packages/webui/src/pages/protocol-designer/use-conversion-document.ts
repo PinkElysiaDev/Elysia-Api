@@ -8,8 +8,20 @@ import {
   RULE_ORDER_STEP,
 } from '@/lib/conversion-document'
 
+export interface ConversionDocumentHandle {
+  text: string
+  setText: (value: string) => void
+  policy: ConversionPolicy | undefined
+  parseError: string
+  update: (change: Partial<ConversionPolicy>) => void
+  updateRule: (index: number, change: Partial<ConversionRule>) => void
+  updateFields: (pointer: string, change: Record<string, unknown>) => void
+  addRule: () => void
+  move: (index: number, offset: number) => void
+}
+
 /** Keep exact source text as the only editable policy state. */
-export function useConversionDocument() {
+export function useConversionDocument(): ConversionDocumentHandle {
   const [text, setText] = useState(() => JSON.stringify(newConversionPolicy(), null, 2))
   const parsed = parseConversionDocument(text)
   const policy = parsed.ok ? parsed.policy : undefined

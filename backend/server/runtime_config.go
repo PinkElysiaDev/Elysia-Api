@@ -58,12 +58,15 @@ func applyRuntimeConfig(candidate *config.Config, payload runtimeConfigPayload) 
 	if payload.EnablePprof != nil {
 		candidate.SetEnablePprof(*payload.EnablePprof)
 	}
-	if payload.Outbound != nil {
+	if payload.Outbound != nil && payload.Outbound.DeniedIPRanges != nil {
 		ranges := make([]string, len(payload.Outbound.DeniedIPRanges))
 		for i, entry := range payload.Outbound.DeniedIPRanges {
 			ranges[i] = strings.TrimSpace(entry)
 		}
 		candidate.SetOutboundDeniedIPRanges(ranges)
+	}
+	if payload.Outbound != nil && payload.Outbound.ProxyURL != nil {
+		candidate.SetOutboundProxyURL(*payload.Outbound.ProxyURL)
 	}
 	if payload.UsageLog != nil {
 		candidate.SetUsageLogConfig(*payload.UsageLog)

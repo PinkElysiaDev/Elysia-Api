@@ -26,6 +26,9 @@ try {
   mkdirSync(macos, { recursive: true })
   mkdirSync(data)
   if (!previewOnly) {
+    writeFileSync(join(data, 'proxy-cert.cnf'), '[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n[dn]\nCN=proxy-target.invalid\n[ext]\nsubjectAltName=DNS:proxy-target.invalid\nbasicConstraints=critical,CA:TRUE\nextendedKeyUsage=serverAuth\n')
+    run('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-config', join(data, 'proxy-cert.cnf'), '-keyout', join(data, 'proxy-key.pem'), '-out', join(data, 'proxy-cert.pem')], { stdio: 'ignore' })
+    run('openssl', ['x509', '-in', join(data, 'proxy-cert.pem'), '-outform', 'der', '-out', join(data, 'proxy-cert.der')])
     for (const arch of ['arm64', 'x86_64']) {
       run('xcrun', ['--sdk', 'macosx', 'clang', '-target', `${arch}-apple-macos12.0`, '-x', 'c', '-', '-o', join(data, `fixture-${arch}`)], {
         input: 'int main(void) { return 0; }\n', stdio: ['pipe', 'inherit', 'inherit'],
@@ -37,7 +40,9 @@ try {
   <key>CFBundleIdentifier</key><string>${bundleID}</string>
   <key>CFBundleExecutable</key><string>ElysiaApi</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
+  <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/>
+  <key>NSExceptionDomains</key><dict><key>proxy-target.invalid</key><dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict></dict>
+  </dict>
   </dict></plist>`)
   cpSync(previewOnly ? join(repo, 'dist', 'standalone', 'ElysiaApi.app', 'Contents', 'MacOS', 'elysia-api') : join(source, 'BackendFixture.py'), join(macos, 'elysia-api'))
   chmodSync(join(macos, 'elysia-api'), 0o755)

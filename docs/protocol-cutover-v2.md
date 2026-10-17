@@ -23,8 +23,10 @@ for repair and prevents inference using an unverified graph.
   Agent calls declare their parameter policy in `agent`; they cannot change
   messages, tool permissions, credentials or gateway authorization.
 - `framing.idleMillis` limits each upstream idle read, including response
-  headers. Zero selects 120000 ms. The compiler accepts explicit values from
-  1 through 120000 ms. This is independent of total stream duration.
+  headers. Zero selects 600000 ms (10 minutes). The compiler accepts explicit values
+  from 1 through 3600000 ms (1 hour). This is independent of total stream
+  duration and the non-streaming `httpTimeout` setting. Existing explicit
+  values remain unchanged; streams already generating are never retried.
 - Response mappings can read `context.httpStatus` for HTTP failures. A non-2xx
   body mapped to a successful response violates the upstream contract.
 

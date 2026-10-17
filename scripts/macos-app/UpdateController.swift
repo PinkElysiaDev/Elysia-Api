@@ -18,6 +18,13 @@ extension AppDelegate {
     func checkForUpdates(silent: Bool) {
         guard !checkingUpdates, !updatePhase.busy, updatePhase != .readyToRelaunch, !terminating,
               let url = URL(string: releasesAPI) else { return }
+        let proxy: UpdateProxy
+        do { proxy = try currentUpdateProxy() }
+        catch { updateFailed(error.localizedDescription); return }
+        let configuration = proxy.configuration()
+        configuration.timeoutIntervalForRequest = updateRequestTimeout
+        let session = URLSession(configuration: configuration, delegate: UpdateProxyDelegate(proxy: proxy), delegateQueue: .main)
+        updateCheckSession = session
         checkingUpdates = true
         updatePhase = .checking
         updateMessage = "正在检查更新…"
@@ -26,15 +33,17 @@ extension AppDelegate {
         refreshUpdateUI()
         var request = URLRequest(url: url)
         request.setValue("ElysiaApi/\(currentVersion)", forHTTPHeaderField: "User-Agent")
-        apiSession.dataTask(with: request) { [weak self] data, response, error in
+        session.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
                 guard let self, !self.terminating else { return }
+                self.updateCheckSession?.finishTasksAndInvalidate()
+                self.updateCheckSession = nil
                 self.checkingUpdates = false
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 guard status == 200, let data, error == nil, let info = Self.parseRelease(data) else {
                     self.updatePhase = self.latestRelease == nil ? .idle : .available
                     self.updateMessage = "检查更新失败"
-                    self.updateDetail = Self.updateCheckFailure(error: error, status: status)
+                    self.updateDetail = proxy.redact(Self.updateCheckFailure(error: error, status: status))
                     appLogger.error("\(self.updateDetail, privacy: .public)")
                     self.refreshUpdateUI()
                     if !silent { self.alert(self.updateDetail) }
@@ -96,7 +105,15 @@ extension AppDelegate {
         beginUpdateDownload(from: remote, release: release)
     }
 
+    private func currentUpdateProxy() throws -> UpdateProxy {
+        guard let fresh = loadOrCreateConfig() else { throw UpdateError(message: "无法读取代理配置，请检查 config.json。") }
+        return try UpdateProxy(fresh.outbound?.proxyUrl)
+    }
+
     func beginUpdateDownload(from remote: URL, release: ReleaseInfo) {
+        let proxy: UpdateProxy
+        do { proxy = try currentUpdateProxy() }
+        catch { updateFailed(error.localizedDescription); return }
         let generation = UUID()
         updateDownloadGeneration = generation
         updatePhase = .downloading
@@ -108,7 +125,7 @@ extension AppDelegate {
         updateCapsuleVisible = true
         refreshUpdateUI(animated: true)
         appLogger.info("Downloading update \(release.tag, privacy: .public)")
-        let delegate = UpdateDownloadDelegate(onProgress: { [weak self] written, expected in
+        let delegate = UpdateDownloadDelegate(proxy: proxy, onProgress: { [weak self] written, expected in
             guard let self, self.updateDownloadGeneration == generation, !self.terminating,
                   self.updatePhase == .downloading, !self.cancellingUpdate else { return }
             self.updateFraction = expected > 0 ? Double(written) / Double(expected) : nil
@@ -138,7 +155,7 @@ extension AppDelegate {
             }
             guard let localURL, error == nil else {
                 if let localURL { try? FileManager.default.removeItem(at: localURL) }
-                self.updateFailed(error?.localizedDescription ?? "下载文件不存在")
+                self.updateFailed(proxy.redact(error?.localizedDescription ?? "下载文件不存在"))
                 return
             }
             self.updatePhase = .installing
@@ -163,7 +180,7 @@ extension AppDelegate {
                 }
             }
         })
-        let configuration = URLSessionConfiguration.ephemeral
+        let configuration = proxy.configuration()
         configuration.timeoutIntervalForRequest = updateRequestTimeout
         configuration.timeoutIntervalForResource = updateResourceTimeout
         updateDownloadDelegate = delegate

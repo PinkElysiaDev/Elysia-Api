@@ -132,7 +132,7 @@ docker compose logs elysia-api
 | `databasePath` | `elysia-api.sqlite3`；模型、令牌、会话和日志存储 |
 | `secretKeyPath` | `.master-key`；SQLite 敏感字段的加密密钥 |
 | `logLevel` | `info`；可选 `debug`、`info`、`warn`、`error` |
-| `httpTimeout` | 自动创建配置时为 120 秒；显式 `0` 或字段缺省为不限制 |
+| `httpTimeout` | 非流式 HTTP 请求总超时；自动创建配置时为 120 秒，显式 `0` 或字段缺省为不限制 |
 | `openBrowserOnStart` | 缺省尝试打开浏览器 |
 | `webuiDir` | 空时使用嵌入资源；非空时覆盖 WebUI 文件目录 |
 | `enablePprof` | `false`；启用受管理鉴权保护的 `/debug/pprof` 路由，修改需重启 |
@@ -140,6 +140,8 @@ docker compose logs elysia-api
 | `debugMode` / `verboseLog` | 默认关闭；详细日志要求两者同时开启 |
 
 `databasePath`、`secretKeyPath`、`webuiDir` 的相对路径按配置文件目录解析。模型源、模型组和访问令牌通过管理 API 保存在 SQLite，不写入此文件。
+
+流式 SSE/NDJSON 使用协议的 `framing.idleMillis`：缺省或 `0` 为 10 分钟，显式值允许 1—3600000 毫秒。它限制等待响应头和相邻数据之间的空闲时间，不限制总流时长；`httpTimeout: 0` 不会关闭此保护。长时间思考的上游可调整该协议字段，主动取消仍立即生效。延长等待不能解决上游 429 限流，已开始生成的请求不会自动重放。
 
 ### 环境变量与优先级
 
@@ -160,9 +162,13 @@ docker compose logs elysia-api
 | `healthCheck` | 默认关闭；`intervalSeconds: 300`、`timeoutSeconds: 10`、`failureThreshold: 3`；探测可能产生上游请求费用 |
 | `modelCatalog` | 默认启用 models.dev 目录；内置快照及本地缓存，在线失败可回退镜像；`url`、`proxy` 可覆盖，`syncIntervalMinutes` 缺省 1440，显式 `0` 停止定时同步 |
 | `agentRemote` | `enabled` 缺省为 `true`；`publicUrl` 用于反向代理后的 Agent Card 地址；详见[远程接口](remote-agent-api.md) |
-| `outbound` | `deniedIpRanges` 缺省使用私网、回环与保留段预置；显式 `[]` 表示全部放行 |
+| `outbound` | `proxyUrl` 可选 HTTP 出站代理；`deniedIpRanges` 缺省使用私网、回环与保留段预置；显式 `[]` 表示全部放行 |
 
-本机或内网模型源需要按实际地址调整出站禁止段。只移除必要的 CIDR；源访问和目录更新的代理配置不是同一设置。完整默认列表见根目录 [config.json.example](../config.json.example)。
+运行配置 → 安全设置中可填写 `outbound.proxyUrl`，如 `http://127.0.0.1:7890` 或 `http://user:password@127.0.0.1:7890`。用户名、密码中的特殊字符需进行 URL 编码。输入框默认隐藏，显隐按钮可查看完整内容；配置文件和管理员配置 API 保存、返回原值，错误日志隐藏代理凭据。
+
+代理用于模型请求（含流式、WebSocket）、模型列表、上游健康检查和模型目录，以及 macOS 检查更新、DMG 下载。保存后新请求生效，进行中的请求继续使用原连接；macOS 每次检查或下载时重新读取配置。本机面板和健康/API 请求不使用该代理。留空时后端直连，macOS 更新保持系统默认网络设置；显式代理失败不回退直连。`modelCatalog.proxy` 如已配置则优先于全局代理。
+
+显式配置的代理端点允许位于本机或内网，不必删除环回禁止段。上游目标及重定向仍检查 `deniedIpRanges`；代理请求需通过本机 DNS 检查，代理负责最终 DNS 解析和拨号，因此只配置可信代理，并在代理端同样限制私网目标。本机或内网模型源仍需按实际目标地址调整禁止段，只移除必要的 CIDR。完整默认列表见 [config.json.example](../config.json.example)。
 
 ## 请求日志
 

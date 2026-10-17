@@ -21,6 +21,7 @@ import { TitleTabs } from "@/components/ui/title-tabs";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SecretInput } from "@/components/secret-input";
 import { NumberField } from "@/components/number-field";
 import {
   Select,
@@ -255,6 +256,7 @@ export function RuntimeConfigPage() {
           invalid_database_path: ["basic", "runtime-database"],
           invalid_panel_access_token: ["security", "runtime-token"],
           invalid_outbound: ["security", "runtime-outbound"],
+          invalid_proxy_url: ["security", "runtime-proxy"],
           invalid_public_url: ["remote", "runtime-public-url"],
           invalid_sync_interval: ["catalog", "runtime-catalog-interval"],
           invalid_log_level: ["logs", "runtime-log-level"],
@@ -463,6 +465,18 @@ export function RuntimeConfigPage() {
                       )}
                     </Button>
                   </div>
+                </SettingRow>
+
+                <SettingRow
+                  label="出站代理 URL（可选）"
+                  htmlFor="runtime-proxy"
+                  description="填写 HTTP 代理地址，支持用户名和密码，可转发 HTTPS 请求。用于模型请求、目录同步及 macOS 更新；本机面板保持直连。留空保持默认连接方式，代理不可用时不会改为直连。"
+                  inline={false}
+                >
+                  <SecretInput id="runtime-proxy" aria-describedby="runtime-proxy-description"
+                    className="font-mono text-xs" autoComplete="off" spellCheck={false}
+                    placeholder="http://127.0.0.1:7890" value={form.outbound.proxyUrl ?? ""}
+                    onChange={(event) => update("outbound", { ...form.outbound, proxyUrl: event.target.value })} />
                 </SettingRow>
 
                 <SettingRow

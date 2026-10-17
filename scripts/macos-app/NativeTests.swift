@@ -86,6 +86,39 @@ enum NativeTests {
         }
     }
 
+    private static func proxyTests(_ delegate: AppDelegate) async throws {
+        let raw = "http://proxy-user:proxy-secret@127.0.0.1:\(delegate.backendPort)"
+        let proxy = try UpdateProxy(raw)
+        let configuration = proxy.configuration()
+        configuration.timeoutIntervalForRequest = 3
+        try expect(configuration.connectionProxyDictionary?["HTTPSPort"] as? Int == delegate.backendPort,
+                   "HTTP proxy also configures HTTPS update tunnels")
+        try expect(try UpdateProxy("http://[::1]:7890").configuration().connectionProxyDictionary?["HTTPProxy"] as? String == "::1", "IPv6 proxy uses an unbracketed network host")
+        try expect(!proxy.redact("failed: " + raw).contains("proxy-secret"), "proxy error descriptions hide credentials")
+        for invalid in ["socks5://localhost:1080", "http://localhost:0", "http://localhost:", "http://localhost:65536", "http://user:secret@localhost/path"] {
+            try rejects("invalid update proxy is rejected") { _ = try UpdateProxy(invalid) }
+        }
+        let session = URLSession(configuration: configuration, delegate: NativeProxyDelegate(proxy: proxy), delegateQueue: .main)
+        defer { session.invalidateAndCancel() }
+        let remote = URL(string: "https://proxy-target.invalid/download")!
+        let (data, response) = try await session.data(from: remote)
+        try expect((response as? HTTPURLResponse)?.statusCode == 200 && data == Data("abc".utf8),
+                   "release-check session uses the authenticated HTTP proxy")
+        let used = try String(contentsOfFile: dataDirPath + "/proxy-used", encoding: .utf8)
+        try expect(used == "proxy-target.invalid:443", "proxy receives the remote target without a direct DNS connection")
+        var downloaded: URL?, downloadError: Error?, done = false
+        let downloadDelegate = UpdateDownloadDelegate(proxy: proxy, onProgress: { _, _ in }, onFinished: { url, error in downloaded = url; downloadError = error; done = true })
+        let downloadSession = URLSession(configuration: configuration, delegate: NativeProxyDelegate(proxy: proxy, download: downloadDelegate), delegateQueue: .main)
+        defer { downloadSession.invalidateAndCancel(); if let downloaded { try? FileManager.default.removeItem(at: downloaded) } }
+        downloadSession.downloadTask(with: remote).resume()
+        try expect(await wait { done }, "proxied update download completes")
+        try expect(downloadError == nil && downloaded != nil && (try Data(contentsOf: downloaded!)) == Data("abc".utf8),
+                   "update download retains authentication and downloaded bytes")
+        try expect(delegate.healthSession.configuration.connectionProxyDictionary?.isEmpty == true
+                   && delegate.apiSession.configuration.connectionProxyDictionary?.isEmpty == true,
+                   "local health and API sessions explicitly bypass proxies")
+    }
+
     static func support() throws {
         let fm = FileManager.default
         let root = URL(fileURLWithPath: dataDirPath)
@@ -237,6 +270,7 @@ enum NativeTests {
         let copyToken = delegate.statusItem.menu?.item(withTitle: "复制面板访问令牌")
         try expect(copyToken?.action == NSSelectorFromString("copyPanelToken") && copyToken?.target === delegate && delegate.validateMenuItem(copyToken!), "menu bar exposes the enabled panel token copy action")
         try await downloadTests(port: delegate.backendPort)
+        try await proxyTests(delegate)
         UserDefaults.standard.set("#/logs", forKey: "ElysiaApi.lastRoute")
         delegate.windowState.save(theme: "dark")
         weak var releasedWebView: WKWebView?
@@ -505,5 +539,36 @@ enum NativeTests {
                 try expect((error as NSError?)?.code == NSURLErrorCancelled, "download cancellation reports a recoverable cancellation")
             }
         }
+    }
+}
+
+// Trust only this run's generated certificate; production delegates retain system TLS validation.
+private final class NativeProxyDelegate: UpdateProxyDelegate, URLSessionDownloadDelegate {
+    let download: UpdateDownloadDelegate?
+    init(proxy: UpdateProxy, download: UpdateDownloadDelegate? = nil) {
+        self.download = download
+        super.init(proxy: proxy)
+    }
+    override func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
+                             completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+           challenge.protectionSpace.host == "proxy-target.invalid",
+           let trust = challenge.protectionSpace.serverTrust,
+           let data = try? Data(contentsOf: URL(fileURLWithPath: dataDirPath + "/proxy-cert.der")),
+           let cert = SecCertificateCreateWithData(nil, data as CFData) {
+            SecTrustSetAnchorCertificates(trust, [cert] as CFArray)
+            SecTrustSetAnchorCertificatesOnly(trust, true)
+            if SecTrustEvaluateWithError(trust, nil) {
+                completionHandler(.useCredential, URLCredential(trust: trust))
+                return
+            }
+        }
+        super.urlSession(session, task: task, didReceive: challenge, completionHandler: completionHandler)
+    }
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        download?.urlSession(session, downloadTask: downloadTask, didFinishDownloadingTo: location)
+    }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        download?.urlSession(session, task: task, didCompleteWithError: error)
     }
 }

@@ -109,11 +109,13 @@ export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
     const pristine = pristineRef.current
     return {
       ...(JSON.stringify(pristine.outbound.deniedIpRanges) !== JSON.stringify(form.outbound.deniedIpRanges)
+        || (pristine.outbound.proxyUrl ?? '').trim() !== (form.outbound.proxyUrl ?? '').trim()
         ? {
             outbound: {
-              deniedIpRanges: form.outbound.deniedIpRanges
-                .map((entry) => entry.trim())
-                .filter((entry) => entry !== ''),
+              ...(JSON.stringify(pristine.outbound.deniedIpRanges) !== JSON.stringify(form.outbound.deniedIpRanges)
+                ? { deniedIpRanges: form.outbound.deniedIpRanges.map((entry) => entry.trim()).filter(Boolean) } : {}),
+              ...((pristine.outbound.proxyUrl ?? '').trim() !== (form.outbound.proxyUrl ?? '').trim()
+                ? { proxyUrl: (form.outbound.proxyUrl ?? '').trim() } : {}),
             },
           }
         : {}),

@@ -46,6 +46,7 @@ export interface ModelCatalogInfo {
 
 /** 出站网络策略：禁止拨号的 IP 段（CIDR 列表）；空数组 = 全放行。 */
 export interface OutboundConfig {
+  proxyUrl?: string
   deniedIpRanges: string[]
   /** 预置默认段（恢复默认按钮用）。 */
   defaultDeniedIpRanges?: string[]
@@ -105,7 +106,7 @@ export interface RuntimeConfigUpdate {
   panelAccessToken?: string
   databasePath?: string
   enablePprof?: boolean
-  outbound?: { deniedIpRanges: string[] }
+  outbound?: { deniedIpRanges?: string[]; proxyUrl?: string }
   usageLog?: Partial<UsageLogRuntimeConfig>
   systemLog?: Partial<LogRetentionConfig>
   modelCatalog?: {

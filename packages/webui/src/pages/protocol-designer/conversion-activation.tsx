@@ -1,7 +1,7 @@
 import type { EnabledProtocol } from '@/lib/protocol-v2'
 import type { ConversionMatch, ConversionRecord } from '@/lib/conversion-policy'
 import { Button } from '@/components/ui/button'
-import { field, pretty } from './conversion-fields'
+import { field } from './conversion-fields'
 
 type Props = {
   protocols: EnabledProtocol[]
@@ -28,8 +28,8 @@ export function ConversionActivation({
   onActivate,
 }: Props) {
   const protocolSelect = (label: string, key: 'sourceId' | 'targetId') => (
-    <label className="space-y-1 text-sm">
-      {label}
+    <label className="space-y-1.5 text-xs font-medium text-foreground">
+      <span>{label}</span>
       <select
         aria-label={label}
         className={field}
@@ -46,16 +46,16 @@ export function ConversionActivation({
     </label>
   )
   return (
-    <section className="space-y-3 rounded-lg border p-4" aria-label="策略激活">
-      <h2>修订、适用范围与回滚</h2>
-      <div className="grid gap-3 md:grid-cols-3">
+    <section className="space-y-4 border-t border-border/50 pt-5" aria-label="策略激活">
+      <h2 className="text-sm font-semibold text-foreground">修订、适用范围与回滚</h2>
+      <div className="grid gap-4 md:grid-cols-3">
         {protocolSelect('来源协议', 'sourceId')}
         {protocolSelect('上游协议', 'targetId')}
-        <label>
-          已验证修订
+        <label className="space-y-1.5 text-xs font-medium text-foreground">
+          <span>已验证修订</span>
           <select
             aria-label="策略修订"
-            className={field}
+            className={field + ' font-mono text-xs'}
             value={revision}
             onChange={(e) => setRevision(e.target.value)}
           >
@@ -69,13 +69,13 @@ export function ConversionActivation({
           </select>
         </label>
       </div>
-      <Button disabled={busy || !saved || !revision} onClick={onActivate}>
+      <Button variant="primary" disabled={busy || !saved || !revision} onClick={onActivate}>
         启用或回滚至此修订
       </Button>
-      <details>
-        <summary>验证详情</summary>
-        <pre className="overflow-auto whitespace-pre-wrap text-xs">
-          {pretty(revisions.find((r) => r.hash === revision)?.reports ?? [])}
+      <details className="border-t border-border/40 pt-3.5">
+        <summary className="cursor-pointer text-xs font-medium text-foreground">验证详情</summary>
+        <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-[var(--code-bg)] p-3 font-mono text-xs">
+          {JSON.stringify(revisions.find((r) => r.hash === revision)?.reports ?? [], null, 2)}
         </pre>
       </details>
     </section>
