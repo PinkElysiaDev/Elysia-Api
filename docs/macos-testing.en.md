@@ -6,7 +6,7 @@ Use this guide to verify the native shell, updater and embedded panel. Run comma
 
 ## Prerequisites
 
-The App targets macOS 12+. The build host needs compatible Command Line Tools (or full Xcode), Node.js and Go 1.25+. Its toolchain must link macOS 12 Swift programs for both arm64 and x86_64. The shell uses system frameworks; tests use Swift, AppKit, WebKit, the Python standard library and Clang-built architecture fixtures. Running and updating the packaged App requires no developer tools.
+The App targets macOS 12+. The build host needs compatible Command Line Tools (or full Xcode), Node.js and Go 1.25+. Its toolchain must link macOS 12 Swift programs for both arm64 and x86_64. The shell uses system frameworks; tests use Swift, AppKit, WebKit, the Python standard library, OpenSSL-generated temporary TLS certificates and Clang-built architecture fixtures. Running and updating the packaged App requires no developer tools.
 
 ## Processes and window closure
 
@@ -63,6 +63,7 @@ Automated coverage includes:
 - Menu-bar usage pulse: millisecond buckets, window totals, token totals, sparse-slot filling, out-of-range rejection, malformed envelopes, RFC3339 query encoding, compact token formatting and authenticated reads from the real `/api/admin/usage/pulse` backend.
 - Reopening at overview when authenticated, ignoring and clearing old page history; an existing window keeps its page. Minimized-window restoration, geometry/theme, copy-token menu, no initial token/cookie injection, persistent WebKit storage, and releasing WebViews/message handlers on close.
 - Geometry recovery after disconnecting an external display, oversized windows and partly off-screen bounds.
+- HTTPS checks and downloads through an authenticated HTTP CONNECT proxy, with no proxy credentials sent to the origin, redacted errors and direct local health/API sessions. Only the certificate generated for that test run is trusted.
 - Install disabled while checking updates, download progress/cancellation, HTTP errors, temporary file lifecycle, missing/mismatched digests, damaged DMGs and rollback after replacement failure.
 - Repeated window closure releases windows, WebViews, capsules and save sheets. Closing or quitting during export cancels the download and removes its temporary file while preserving existing destinations and files created at that path during the download.
 - Three real supervisor/WebUI open-close cycles: use `launchctl print pid/<WebUI PID>` to identify owned WebContent, Networking and GPU services, require their exit after closure, and retain a healthy original backend with no WebKit services in the supervisor. The fixture's JavaScript heartbeat and periodic HTTP requests must stop.

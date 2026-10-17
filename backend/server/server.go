@@ -236,7 +236,9 @@ func New(cfg *config.Config) *Server {
 // syncOutboundPolicy 把出站禁止 IP 段列表下发给 relay 包（连接时校验与预校验
 // 共用）。在启动、热重载、admin/agent 改配置后调用，确保即时反映配置。
 func (s *Server) syncOutboundPolicy() {
-	ranges := s.config.GetOutboundConfig().DeniedIPRanges
+	outbound := s.config.GetOutboundConfig()
+	relay.SetOutboundProxyURL(outbound.ProxyURL)
+	ranges := outbound.DeniedIPRanges
 	if ranges == nil { // 防御：未归一化的配置不允许被解释成「全放行」
 		ranges = relay.DefaultDeniedIPRanges
 	}

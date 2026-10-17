@@ -3,6 +3,7 @@
 import json
 import os
 import signal
+import ssl
 import sys
 import threading
 import time
@@ -42,7 +43,27 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_):
         pass
 
+    def do_CONNECT(self):
+        if self.headers.get('Proxy-Authorization') != 'Basic cHJveHktdXNlcjpwcm94eS1zZWNyZXQ=':
+            self.send_response(407)
+            self.send_header('Proxy-Authenticate', 'Basic realm="native-proxy-test"')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
+        (root / 'proxy-used').write_text(self.path)
+        self.send_response(200)
+        self.end_headers()
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(root / 'proxy-cert.pem', root / 'proxy-key.pem')
+        self.connection = context.wrap_socket(self.connection, server_side=True)
+        self.rfile = self.connection.makefile('rb', self.rbufsize)
+        self.wfile = self.connection.makefile('wb', 0)
+        self.handle_one_request()
+
     def do_GET(self):
+        if self.headers.get('Proxy-Authorization'):
+            self.send_error(400, 'Proxy credentials leaked to origin')
+            return
         if self.path.startswith('/ui/tray-open?'):
             opened = int(parse_qs(urlsplit(self.path).query)['count'][0])
             with heartbeat_lock:

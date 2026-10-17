@@ -33,6 +33,8 @@ let initialVersion = "v0.0.0"
 // MARK: - 配置模型
 
 struct PanelConfig: Codable {
+    struct Outbound: Codable { var proxyUrl: String? }
+    var outbound: Outbound?
     var host: String = "127.0.0.1"
     var port: Int = 8765
     var panelAccessToken: String = ""
@@ -55,6 +57,7 @@ struct PanelConfig: Codable {
         logLevel = try container.decodeIfPresent(String.self, forKey: .logLevel) ?? logLevel
         httpTimeout = try container.decodeIfPresent(Int.self, forKey: .httpTimeout) ?? httpTimeout
         secretKeyPath = try container.decodeIfPresent(String.self, forKey: .secretKeyPath) ?? secretKeyPath
+        outbound = try container.decodeIfPresent(Outbound.self, forKey: .outbound)
     }
 }
 
@@ -466,6 +469,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     let notifications = NotificationManager()
     var updateTask: URLSessionDownloadTask?
     var updateSession: URLSession?
+    var updateCheckSession: URLSession?
     var updateDownloadDelegate: UpdateDownloadDelegate?
     var updateDownloadGeneration = UUID()
     var stagedUpdate: URL?
@@ -482,11 +486,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     let healthSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
+        config.connectionProxyDictionary = [:]
         config.timeoutIntervalForRequest = 3
         return URLSession(configuration: config)
     }()
     let apiSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
+        config.connectionProxyDictionary = [:]
         config.timeoutIntervalForRequest = 15
         return URLSession(configuration: config)
     }()
@@ -556,6 +562,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         timers.forEach { $0.invalidate() }
         timers.removeAll()
         apiSession.invalidateAndCancel()
+        updateCheckSession?.invalidateAndCancel()
+        updateCheckSession = nil
         healthSession.invalidateAndCancel()
         updateSession?.invalidateAndCancel()
         cancelPanelDownloads(reason: "应用正在退出，未完成的导出已取消。")

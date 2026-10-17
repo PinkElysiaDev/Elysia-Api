@@ -9,6 +9,7 @@ const logConfig: UsageLogRuntimeConfig = {
 async function mockSettings(page: Page, usageLog: UsageLogRuntimeConfig = logConfig) {
   const current: RuntimeConfig = {
     host: '127.0.0.1', port: 8765, panelAccessToken: '', databasePath: '/tmp/elysia.db', defaultDatabasePath: '/tmp/elysia.db',
+    outbound: { deniedIpRanges: ['127.0.0.0/8'], proxyUrl: '' },
     logLevel: 'info', httpTimeout: 120, enablePprof: false, usageLog, systemLog: { retentionDays: 0, maxRecords: 0, maxContentMB: 0 },
   }
   const updates: RuntimeConfigUpdate[] = []
@@ -21,7 +22,8 @@ async function mockSettings(page: Page, usageLog: UsageLogRuntimeConfig = logCon
       if (request.method() === 'PUT') {
         const patch = request.postDataJSON() as RuntimeConfigUpdate
         updates.push(patch)
-        Object.assign(current, Object.fromEntries(Object.entries(patch).filter(([key]) => !['usageLog', 'systemLog'].includes(key))))
+        Object.assign(current, Object.fromEntries(Object.entries(patch).filter(([key]) => !['usageLog', 'systemLog', 'outbound'].includes(key))))
+        if (patch.outbound) current.outbound = { ...current.outbound!, ...patch.outbound }
         if (patch.usageLog) current.usageLog = { ...current.usageLog, ...patch.usageLog }
         if (patch.systemLog) current.systemLog = { ...current.systemLog, ...patch.systemLog }
         data = { restartRequired: false }
@@ -324,4 +326,30 @@ test('runtime and overview tabs share the sliding underline and respect reduced 
   }
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(page.getByRole('tablist', { name: '透视维度' }).locator('span[aria-hidden="true"]')).toHaveCSS('transition-property', 'none')
+})
+
+
+test('proxy URL toggles visibility and saves independently from the denylist', async ({ page }) => {
+  const updates = await mockSettings(page)
+  await page.goto('/#/runtime')
+  await page.getByRole('tab', { name: '安全设置', exact: true }).click()
+  const input = page.getByLabel('出站代理 URL（可选）', { exact: true })
+  await expect(input).toHaveAttribute('type', 'password')
+  await input.fill('http://user:secret@127.0.0.1:7890')
+  await page.getByRole('button', { name: '显示', exact: true }).click()
+  await expect(input).toHaveAttribute('type', 'text')
+  await page.getByRole('button', { name: '隐藏', exact: true }).click()
+  await expect(input).toHaveAttribute('type', 'password')
+  await page.getByRole('button', { name: /^保存(配置|修改)$/ }).click()
+  await expect.poll(() => updates.length).toBe(1)
+  expect(updates[0].outbound).toEqual({ proxyUrl: 'http://user:secret@127.0.0.1:7890' })
+  await page.reload()
+  await page.getByRole('tab', { name: '安全设置', exact: true }).click()
+  await expect(input).toHaveValue('http://user:secret@127.0.0.1:7890')
+  await expect(input).toHaveAttribute('type', 'password')
+  await expect(page.getByLabel('禁止出站 IP 段（CIDR）', { exact: true })).toHaveValue('127.0.0.0/8')
+  await input.fill('')
+  await page.getByRole('button', { name: /^保存(配置|修改)$/ }).click()
+  await expect.poll(() => updates.length).toBe(2)
+  expect(updates[1].outbound).toEqual({ proxyUrl: '' })
 })

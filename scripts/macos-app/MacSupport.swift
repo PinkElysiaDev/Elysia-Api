@@ -253,7 +253,64 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
 let appLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "dev.pinkelysiadev.ElysiaApi", category: "app")
 
-final class UpdateDownloadDelegate: NSObject, URLSessionDownloadDelegate {
+// An explicit HTTP proxy is shared by release checks and downloads; local API sessions stay direct.
+struct UpdateProxy {
+    let url: URLComponents?
+    var host: String? { url?.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]")) }
+
+    init(_ raw: String?) throws {
+        let raw = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.isEmpty { url = nil; return }
+        guard let parsed = URLComponents(string: raw), parsed.scheme == "http",
+              let host = parsed.host, !host.isEmpty, !host.contains("%"),
+              host.rangeOfCharacter(from: .whitespacesAndNewlines) == nil,
+              parsed.path.isEmpty || parsed.path == "/", parsed.query == nil, parsed.fragment == nil,
+              (1...65535).contains(parsed.port ?? 80), parsed.url != nil, !raw.split(separator: "/", omittingEmptySubsequences: true)[1].hasSuffix(":") else {
+            throw UpdateError(message: "代理 URL 无效，请填写 http://127.0.0.1:7890 格式的 HTTP 代理地址。")
+        }
+        url = parsed
+    }
+
+    func configuration() -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        if let url {
+            configuration.connectionProxyDictionary = [
+                "HTTPEnable": 1, "HTTPProxy": host!, "HTTPPort": url.port ?? 80,
+                "HTTPSEnable": 1, "HTTPSProxy": host!, "HTTPSPort": url.port ?? 80,
+            ]
+        }
+        return configuration
+    }
+
+    func redact(_ text: String) -> String {
+        guard let url else { return text }
+        var text = text
+        for secret in [url.percentEncodedUser, url.percentEncodedPassword, url.user, url.password].compactMap({ $0 }).filter({ !$0.isEmpty }).sorted(by: { $0.count > $1.count }) {
+            text = text.replacingOccurrences(of: secret, with: "***")
+        }
+        return text
+    }
+}
+
+class UpdateProxyDelegate: NSObject, URLSessionTaskDelegate {
+    let proxy: UpdateProxy?
+    init(proxy: UpdateProxy? = nil) { self.proxy = proxy }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        let space = challenge.protectionSpace
+        guard space.isProxy(), let proxy = proxy?.url,
+              space.host == self.proxy?.host, space.port == (proxy.port ?? 80),
+              let user = proxy.user, challenge.previousFailureCount == 0,
+              [NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest].contains(space.authenticationMethod) else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        completionHandler(.useCredential, URLCredential(user: user, password: proxy.password ?? "", persistence: .forSession))
+    }
+}
+
+final class UpdateDownloadDelegate: UpdateProxyDelegate, URLSessionDownloadDelegate {
     let onProgress: (Int64, Int64) -> Void
     let onFinished: (URL?, Error?) -> Void
     private var downloadedURL: URL?
@@ -262,10 +319,11 @@ final class UpdateDownloadDelegate: NSObject, URLSessionDownloadDelegate {
     var onMovedForTests: ((URL) -> Void)?
     #endif
 
-    init(onProgress: @escaping (Int64, Int64) -> Void,
+    init(proxy: UpdateProxy? = nil, onProgress: @escaping (Int64, Int64) -> Void,
          onFinished: @escaping (URL?, Error?) -> Void) {
         self.onProgress = onProgress
         self.onFinished = onFinished
+        super.init(proxy: proxy)
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,

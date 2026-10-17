@@ -160,9 +160,13 @@ docker compose logs elysia-api
 | `healthCheck` | 默认关闭；`intervalSeconds: 300`、`timeoutSeconds: 10`、`failureThreshold: 3`；探测可能产生上游请求费用 |
 | `modelCatalog` | 默认启用 models.dev 目录；内置快照及本地缓存，在线失败可回退镜像；`url`、`proxy` 可覆盖，`syncIntervalMinutes` 缺省 1440，显式 `0` 停止定时同步 |
 | `agentRemote` | `enabled` 缺省为 `true`；`publicUrl` 用于反向代理后的 Agent Card 地址；详见[远程接口](remote-agent-api.md) |
-| `outbound` | `deniedIpRanges` 缺省使用私网、回环与保留段预置；显式 `[]` 表示全部放行 |
+| `outbound` | `proxyUrl` 可选 HTTP 出站代理；`deniedIpRanges` 缺省使用私网、回环与保留段预置；显式 `[]` 表示全部放行 |
 
-本机或内网模型源需要按实际地址调整出站禁止段。只移除必要的 CIDR；源访问和目录更新的代理配置不是同一设置。完整默认列表见根目录 [config.json.example](../config.json.example)。
+运行配置 → 安全设置中可填写 `outbound.proxyUrl`，如 `http://127.0.0.1:7890` 或 `http://user:password@127.0.0.1:7890`。用户名、密码中的特殊字符需进行 URL 编码。输入框默认隐藏，显隐按钮可查看完整内容；配置文件和管理员配置 API 保存、返回原值，错误日志隐藏代理凭据。
+
+代理用于模型请求（含流式、WebSocket）、模型列表、上游健康检查和模型目录，以及 macOS 检查更新、DMG 下载。保存后新请求生效，进行中的请求继续使用原连接；macOS 每次检查或下载时重新读取配置。本机面板和健康/API 请求不使用该代理。留空时后端直连，macOS 更新保持系统默认网络设置；显式代理失败不回退直连。`modelCatalog.proxy` 如已配置则优先于全局代理。
+
+显式配置的代理端点允许位于本机或内网，不必删除环回禁止段。上游目标及重定向仍检查 `deniedIpRanges`；代理请求需通过本机 DNS 检查，代理负责最终 DNS 解析和拨号，因此只配置可信代理，并在代理端同样限制私网目标。本机或内网模型源仍需按实际目标地址调整禁止段，只移除必要的 CIDR。完整默认列表见 [config.json.example](../config.json.example)。
 
 ## 请求日志
 
