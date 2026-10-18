@@ -299,6 +299,9 @@ export interface UsageStats {
   cacheCreationCoverage?: number
   avgDurationMs: number
   avgFirstByteMs: number
+  /** 窗口内最早 / 最晚一条记录时间（RFC3339）；空窗口为空串。 */
+  firstUsedAt?: string
+  lastUsedAt?: string
 }
 
 export interface UsageLogItem {

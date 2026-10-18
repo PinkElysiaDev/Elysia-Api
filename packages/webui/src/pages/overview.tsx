@@ -15,7 +15,7 @@ import {
 import { PageHeader } from '@/components/page-header'
 import { KpiCard, KpiGrid } from '@/components/kpi-card'
 import { ElysiaStage } from '@/components/role-watermark'
-import { Seg } from '@/components/ui/seg'
+import { Seg, type SegOption } from '@/components/ui/seg'
 import { RANGE_OPTIONS } from '@/lib/range-options'
 import { EmptyText, ErrorState } from '@/components/ui/states'
 import { CodePill, PlatformBadge } from '@/components/badges'
@@ -31,8 +31,9 @@ import {
 } from '@/lib/hooks'
 import type { UsageStats,
  ModelSource } from '@/lib/types'
-import { bucketedTimeISO, cn, compactNumber, formatHitRate, formatNumber, percent, startOfRange, USAGE_BUCKET_MS } from '@/lib/utils'
+import { bucketedTimeISO, cn, compactNumber, formatDateTime, formatHitRate, formatNumber, percent, startOfRange, USAGE_BUCKET_MS } from '@/lib/utils'
 import type { RangeKey } from '@/components/usage-filter-bar'
+import { setOverviewKpiRange, useOverviewKpiRange, type OverviewKpiRange } from './overview-kpi-range'
 import { TemporalTrendSection } from './overview-trends'
 import { PulseSection } from './overview-pulse'
 
@@ -213,6 +214,26 @@ function SourceHealthScroller({
   )
 }
 
+/** KPI 档位分段选项：累计（默认）/ 今日。 */
+const KPI_RANGE_SEG: SegOption<OverviewKpiRange>[] = [
+  { value: 'all', label: '累计' },
+  { value: 'today', label: '今日' },
+]
+
+/** 累计档 hero 副行：无环比语义，改示首次使用日期；空库给占位文案。 */
+function cumulativeSince(
+  statsError: boolean,
+  stats: UsageStats | undefined,
+): { delta?: ReactNode; deltaTone?: 'up' | 'down' | 'neutral' } {
+  if (statsError) return { delta: <em className="not-italic">加载失败</em>, deltaTone: 'down' }
+  if (!stats) return {}
+  if (!stats.firstUsedAt) return { delta: <em className="not-italic">尚无调用记录</em>, deltaTone: 'neutral' }
+  return {
+    delta: <span className="text-muted-foreground/70">自 {formatDateTime(stats.firstUsedAt).slice(0, 10)} 起</span>,
+    deltaTone: 'neutral',
+  }
+}
+
 /** hero 卡片的环比展示:错误/无基线/正常三分支的文案与色调一并给出,
  * 替代此前 JSX 内的四层嵌套三元与并行的三层 tone 三元。 */
 function heroDelta(
@@ -244,6 +265,8 @@ const RECENT_FAILURES = 3
 export function OverviewPage() {
   const minuteTick = useMinuteTick()
   const navigate = useNavigate()
+  // KPI 档位（累计/今日，localStorage 记忆）：默认累计，隔天进入不再归零。
+  const kpiRange = useOverviewKpiRange()
 
   // 今日 / 昨日窗口（今日 to 取下一 5 分钟边界：键稳定且包含当前桶内新记录）。
   // from 必须用当前时刻算本地日，不能用 ceiled to：临近午夜 to 会落到次日 00:00。
@@ -265,6 +288,15 @@ export function OverviewPage() {
   const { data: yesterdayData, error: yesterdayError } = useUsageStats(yesterdayParams)
   const today = todayError ? undefined : todayData
   const yesterday = yesterdayError ? undefined : yesterdayData
+
+  // 累计档：不带 from/to 的全量汇总（后端走 rollup，毫秒级；retention 清理
+  // 明细不清汇总，累计不丢）。key 恒定，靠 30s 轮询与 useUsageLive 的序号
+  // 变化重拉保持新鲜。
+  const { data: allData, error: allError } = useUsageStats({})
+  const cumulative = allError ? undefined : allData
+  // 当前档位生效的统计对象与错误态；今日档沿用上方今日/昨日环比链路。
+  const kpi = kpiRange === 'today' ? today : cumulative
+  const kpiError = kpiRange === 'today' ? todayError : allError
 
   // 上一完整分钟 [from, to)
   const lastMinuteParams = useMemo(() => {
@@ -299,7 +331,7 @@ export function OverviewPage() {
     today && yesterday && yesterday.requests > 0
       ? ((today.requests - yesterday.requests) / yesterday.requests) * 100
       : null
-  const successRate = today ? percent(today.success, today.requests) : '—'
+  const successRate = kpi ? percent(kpi.success, kpi.requests) : '—'
 
   // 热门模型分布：独立时间窗（右上角 Seg 快捷切换 24小时/7天/30天/全部），
   // to 取下一 5 分钟边界，缓存键稳定且包含当前桶内新记录
@@ -375,59 +407,72 @@ export function OverviewPage() {
       <div className="relative z-[1] space-y-7">
         <PageHeader title="总览" />
 
-        {/* 核心 KPI 指标区（无界灵动数据锚点，精选 6 大核心指标，宽敞大气） */}
-        <section aria-label="今日核心用量">
+        {/* 核心 KPI 指标区（无界灵动数据锚点，精选 6 大核心指标，宽敞大气）。
+            用量四卡随「累计/今日」档位切换（记忆持久化）；内存/GC 两卡为
+            进程运行指标，不随档位变化。 */}
+        <section aria-label="核心用量">
+          <div className="mb-3 flex justify-end">
+            <Seg
+              size="sm"
+              aria-label="核心用量时间窗"
+              options={KPI_RANGE_SEG}
+              value={kpiRange}
+              onChange={setOverviewKpiRange}
+            />
+          </div>
           <KpiGrid cols={6}>
-            {/* HERO 主卡片：今日请求数 */}
+            {/* HERO 主卡片：当前档位请求数（累计默认，今日档含昨日环比） */}
             <KpiCard
               variant="hero"
-              label="今日请求总数"
-              value={today ? formatNumber(today.requests) : '—'}
+              label={kpiRange === 'today' ? '今日请求总数' : '累计请求总数'}
+              value={kpi ? formatNumber(kpi.requests) : '—'}
               icon={<Flame className="h-4 w-4 text-rose" />}
-              {...heroDelta(todayError, yesterdayError, today, yesterday, deltaPct)}
+              {...(kpiRange === 'today'
+                ? heroDelta(todayError, yesterdayError, today, yesterday, deltaPct)
+                : cumulativeSince(allError, cumulative))}
             />
 
             {/* 支撑指标 1：请求成功率 */}
             <KpiCard
               label="成功率"
-              value={today ? successRate.replace('%', '') : '—'}
-              unit={today ? '%' : undefined}
+              value={kpi ? successRate.replace('%', '') : '—'}
+              unit={kpi ? '%' : undefined}
               icon={<CheckCircle2 className="h-4 w-4 text-jade" />}
-              delta={today ? `成功 ${formatNumber(today.success)} · 失败 ${formatNumber(today.failed)}` : todayError ? '加载失败' : undefined}
-              deltaTone={todayError ? 'down' : 'neutral'}
+              delta={kpi ? `成功 ${formatNumber(kpi.success)} · 失败 ${formatNumber(kpi.failed)}` : kpiError ? '加载失败' : undefined}
+              deltaTone={kpiError ? 'down' : 'neutral'}
             />
 
             {/* 支撑指标 2：Token 吞吐 */}
             <KpiCard
               label="Token 总消耗"
-              value={today ? compactNumber(today.totalTokens) : '—'}
+              value={kpi ? compactNumber(kpi.totalTokens) : '—'}
               icon={<Coins className="h-4 w-4 text-amber" />}
-              delta={today ? `输入 ${compactNumber(today.inputTokens)} · 输出 ${compactNumber(today.outputTokens)}` : todayError ? '加载失败' : undefined}
-              deltaTone={todayError ? 'down' : 'neutral'}
+              delta={kpi ? `输入 ${compactNumber(kpi.inputTokens)} · 输出 ${compactNumber(kpi.outputTokens)}` : kpiError ? '加载失败' : undefined}
+              deltaTone={kpiError ? 'down' : 'neutral'}
             />
 
             {/* 支撑指标 3：缓存命中率 */}
             <KpiCard
               label="缓存命中率"
               value={
-                today
-                  ? today.cacheHitRateReliable === false
+                kpi
+                  ? kpi.cacheHitRateReliable === false
                     ? '—'
-                    : formatHitRate(today.cacheHitRate).replace('%', '')
+                    : formatHitRate(kpi.cacheHitRate).replace('%', '')
                   : '—'
               }
-              unit={today && today.cacheHitRateReliable !== false ? '%' : undefined}
+              unit={kpi && kpi.cacheHitRateReliable !== false ? '%' : undefined}
               icon={<Database className="h-4 w-4 text-jade" />}
               delta={
-                today
-                  ? today.cacheHitRateReliable === false
+                kpi
+                  ? kpi.cacheHitRateReliable === false
                     ? '命中率不可用（输入计数缺失）'
-                    : `命中 ${compactNumber(today.cacheHitTokens)} tokens`
-                  : todayError
+                    : `命中 ${compactNumber(kpi.cacheHitTokens)} tokens`
+                  : kpiError
                     ? '加载失败'
                     : undefined
               }
-              deltaTone={todayError || today?.cacheHitRateReliable === false ? 'down' : 'neutral'}
+              deltaTone={kpiError || kpi?.cacheHitRateReliable === false ? 'down' : 'neutral'}
             />
 
             {/* 支撑指标 4：内存占用 */}
