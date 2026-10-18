@@ -847,6 +847,7 @@
     "packages/webui/src/pages/groups/group-form.tsx",
     "packages/webui/src/pages/login.css",
     "packages/webui/src/pages/login.tsx",
+    "packages/webui/src/pages/overview-kpi-range.ts",
     "packages/webui/src/pages/overview-pulse.tsx",
     "packages/webui/src/pages/overview-time.ts",
     "packages/webui/src/pages/overview-trends.tsx",
