@@ -9,15 +9,20 @@ import (
 // 暂时跟不上，最多缓冲这么多条；超出则该条记录降级为同步写入（保证不丢）。
 const usageQueueCapacity = 1024
 
+// Payloads count while queued and while the writer persists them. This bounds
+// asynchronous retention, not active request memory or generation concurrency.
+const usageQueuePayloadBytes int64 = 128 << 20
+
 // usageWriterState 守护队列的关闭语义：优雅关停时 Shutdown 只等 5 秒，
 // 长流请求可能仍在运行并在之后调用 enqueueUsageRecord——直接 close(ch)
 // 会让这些发送 panic。closed 标志 + 互斥锁保证关停后入队安全降级为同步
 // 写盘（丢给 WAL，而不是丢给 runtime panic）。
 type usageWriterState struct {
-	mu     sync.Mutex
-	queue  chan *usageRecord
-	closed bool
-	wg     sync.WaitGroup
+	mu            sync.Mutex
+	queue         chan *usageRecord
+	closed        bool
+	wg            sync.WaitGroup
+	retainedBytes int64
 }
 
 // startUsageWriter 在 store 模式下启动单个后台 writer goroutine，
@@ -38,6 +43,9 @@ func (s *Server) startUsageWriter() {
 		defer writer.wg.Done()
 		for record := range writer.queue {
 			s.persistUsageRecord(record)
+			writer.mu.Lock()
+			writer.retainedBytes -= record.queuedPayloadBytes
+			writer.mu.Unlock()
 		}
 	}()
 }
@@ -79,10 +87,11 @@ func (s *Server) drainUsageQueueFrom(w *usageWriterState) {
 	}
 	for {
 		select {
-		case _, ok := <-w.queue:
+		case record, ok := <-w.queue:
 			if !ok {
 				return
 			}
+			w.retainedBytes -= record.queuedPayloadBytes
 		default:
 			return
 		}
@@ -118,27 +127,30 @@ func (s *Server) enqueueUsageRecord(record *usageRecord) bool {
 	if w == nil {
 		return false
 	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	payloadBytes := usageRetainedPayloadBytes(record)
+	if w.closed || len(w.queue) == cap(w.queue) || payloadBytes > usageQueuePayloadBytes-w.retainedBytes {
+		return false
+	}
 	// 深拷贝：浅拷贝会让 copied 的切片字段与原记录共享底层数组，一旦调用方
 	// 在入队后继续 append（RetryEvents 等）即与 writer goroutine 读取竞争。
 	// downstream 捕获器的内容已在 recordUsage 物化进 DownstreamResponse，置 nil 断开指针别名。
 	copied := *record
+	copied.queuedPayloadBytes = payloadBytes
 	copied.RetryEvents = cloneSlice(record.RetryEvents)
 	copied.ConversionChain = cloneSlice(record.ConversionChain)
 	copied.RequestWarnings = cloneSlice(record.RequestWarnings)
 	copied.pendingStreamEvents = cloneSlice(record.pendingStreamEvents)
-	// 资产深拷贝：解码后的媒体字节与请求 goroutine 断开别名，
-	// writer 落盘时请求方早已返回。
+	// Media is immutable; only its metadata/index containers need a snapshot.
 	copied.assets = record.assets.clone()
 	copied.downstream = nil
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.closed {
-		return false
-	}
+	w.retainedBytes += payloadBytes
 	select {
 	case w.queue <- &copied:
 		return true
 	default:
+		w.retainedBytes -= payloadBytes
 		return false // 队列满：降级同步写
 	}
 }
@@ -151,4 +163,30 @@ func cloneSlice[T any](src []T) []T {
 	dst := make([]T, len(src))
 	copy(dst, src)
 	return dst
+}
+
+// Account payloads without materializing JSON. Counts saturate just above the
+// queue budget so exceptionally large records cannot overflow the reservation.
+func usageRetainedPayloadBytes(record *usageRecord) int64 {
+	var total int64
+	add := func(size int) {
+		if total <= usageQueuePayloadBytes {
+			total += min(int64(size), usageQueuePayloadBytes+1-total)
+		}
+	}
+	for _, body := range []usageBody{record.IncomingBody, record.OutgoingBody, record.ProviderResponse, record.DownstreamResponse} {
+		add(len(body.Content))
+	}
+	for _, event := range record.pendingStreamEvents {
+		add(len(event))
+	}
+	seen := make(map[*mediaPayload]struct{}, len(record.assets.items))
+	for _, item := range record.assets.items {
+		if _, exists := seen[item.payload]; exists {
+			continue
+		}
+		seen[item.payload] = struct{}{}
+		add(item.payload.size())
+	}
+	return total
 }

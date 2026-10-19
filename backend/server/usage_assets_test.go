@@ -46,7 +46,7 @@ func TestAssetSinkExtractsOpenAIDataURI(t *testing.T) {
 	if item.Ext != "png" || item.Mime != "image/png" {
 		t.Fatalf("asset meta mismatch: %+v", item)
 	}
-	if len(item.Data) == 0 {
+	if item.payload.size() == 0 {
 		t.Fatal("decoded data must be registered")
 	}
 	// JSON 结构必须保持合法（占位符是普通字符串值）。
@@ -263,17 +263,25 @@ func TestMediaExtFromMime(t *testing.T) {
 	}
 }
 
-func TestAssetSinkCloneIsDeep(t *testing.T) {
+func TestAssetSinkCloneSharesOnlyImmutablePayload(t *testing.T) {
 	sink := newAssetSink("req_clone")
 	if _, ok := sink.register("image/png", "", base64Len(600)); !ok {
 		t.Fatal("register failed")
 	}
 	cloned := sink.clone()
-	// 修改克隆体的数据不影响原 sink（断开底层数组别名）。
-	cloned.items[0].Data[0] ^= 0xFF
-	if sink.items[0].Data[0] == 0xFF {
-		t.Fatal("clone must deep-copy asset data")
+
+	if cloned.items[0].payload != sink.items[0].payload {
+		t.Fatal("clone copied immutable media")
 	}
+	cloned.items[0].Hash = "changed"
+	if sink.items[0].Hash == "changed" {
+		t.Fatal("clone shared mutable metadata")
+	}
+	cloned.byHash["new"] = 0
+	if _, exists := sink.byHash["new"]; exists {
+		t.Fatal("clone shared mutable index")
+	}
+
 	if cloned.count() != 1 {
 		t.Fatal("clone must carry assets")
 	}

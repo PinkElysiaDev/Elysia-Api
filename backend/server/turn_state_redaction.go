@@ -20,9 +20,13 @@ func redactTurnStateText(text string, depth int) string {
 	if depth >= protocol.DefaultLimits().Depth {
 		return "[REDACTED: nested log limit]"
 	}
-	if wire, err := protocol.ParseValue([]byte(text)); err == nil {
-		var value any
-		if wire.Decode(&value) == nil {
+
+	// Ordinary strings (notably base64 media) cannot hold a nested JSON tree.
+	// Inspect structure before parsing; escaped keys inside real JSON still go
+	// through the decoder and therefore cannot bypass redaction.
+	trimmed := strings.TrimSpace(text)
+	if len(trimmed) > 0 && strings.ContainsRune("{[\"", rune(trimmed[0])) {
+		if value, ok := decodeUsageJSON(strings.NewReader(text)); ok {
 			if redactTurnStateValue(&value, depth+1) {
 				encoded, _ := json.Marshal(value)
 				return string(encoded)
@@ -30,6 +34,7 @@ func redactTurnStateText(text string, depth int) string {
 			return text
 		}
 	}
+
 	if strings.Contains(text, "data:") {
 		lines := strings.SplitAfter(text, "\n")
 		hasDataLine := false

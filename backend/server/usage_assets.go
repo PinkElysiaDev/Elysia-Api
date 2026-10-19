@@ -36,10 +36,19 @@ const mediaAssetMinBase64Len = 512
 
 // mediaAsset 是一条待外置媒体。
 type mediaAsset struct {
-	Hash string // sha256(解码字节) 十六进制前 16 位，兼作文件名主干
-	Ext  string // 由 mime/format 映射；未知 bin
-	Mime string
-	Data []byte
+	Hash    string // sha256(解码字节) 十六进制前 16 位，兼作文件名主干
+	Ext     string // 由 mime/format 映射；未知 bin
+	Mime    string
+	payload *mediaPayload
+}
+
+// mediaPayload takes ownership of freshly decoded bytes. It offers no mutable
+// byte accessor; queue snapshots may share it until persistence has finished.
+type mediaPayload struct{ content []byte }
+
+func (payload *mediaPayload) size() int { return len(payload.content) }
+func (payload *mediaPayload) writeFile(path string) error {
+	return config.WriteFileAtomic(path, payload.content, 0600)
 }
 
 // assetSink 挂在 usageRecord 上收集外置媒体；按 Hash 去重，同一图片出现在
@@ -61,8 +70,8 @@ func newAssetSink(requestID string) assetSink {
 	}
 }
 
-// clone 返回深拷贝（解码字节一并复制），供 enqueueUsageRecord 断开与请求
-// goroutine 的底层数组别名。
+// clone owns metadata/maps while sharing the private immutable media payload.
+
 func (a *assetSink) clone() assetSink {
 	cloned := assetSink{
 		requestID: a.requestID,
@@ -70,11 +79,7 @@ func (a *assetSink) clone() assetSink {
 		byHash:    make(map[string]int, len(a.byHash)),
 		memo:      make(map[string]string, len(a.memo)),
 	}
-	for i, item := range a.items {
-		data := make([]byte, len(item.Data))
-		copy(data, item.Data)
-		cloned.items[i] = mediaAsset{Hash: item.Hash, Ext: item.Ext, Mime: item.Mime, Data: data}
-	}
+	copy(cloned.items, a.items)
 	for k, v := range a.byHash {
 		cloned.byHash[k] = v
 	}
@@ -199,7 +204,7 @@ func (a *assetSink) register(mime, ext, base64Payload string) (string, bool) {
 		return assetPlaceholder(a.requestID, item.Hash, item.Ext), true
 	}
 	a.byHash[hash] = len(a.items)
-	a.items = append(a.items, mediaAsset{Hash: hash, Ext: ext, Mime: mime, Data: data})
+	a.items = append(a.items, mediaAsset{Hash: hash, Ext: ext, Mime: mime, payload: &mediaPayload{content: data}})
 	return assetPlaceholder(a.requestID, hash, ext), true
 }
 
@@ -361,12 +366,12 @@ func writeUsageAssets(root string, items []mediaAsset) ([]storage.UsageAsset, er
 		if err != nil && !os.IsNotExist(err) {
 			return saved, err
 		}
-		if os.IsNotExist(err) || info.Size() != int64(len(item.Data)) {
-			if err := config.WriteFileAtomic(path, item.Data, 0o600); err != nil {
+		if os.IsNotExist(err) || info.Size() != int64(item.payload.size()) {
+			if err := item.payload.writeFile(path); err != nil {
 				return saved, err
 			}
 		}
-		saved = append(saved, storage.UsageAsset{File: name, SizeBytes: int64(len(item.Data))})
+		saved = append(saved, storage.UsageAsset{File: name, SizeBytes: int64(item.payload.size())})
 	}
 	return saved, nil
 }

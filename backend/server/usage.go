@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -126,7 +127,8 @@ type usageRecord struct {
 	// 不参与 JSON 序列化。recordUsage 会从它回读 DownstreamResponse。
 	downstream *downstreamCaptureWriter `json:"-"`
 	// writeGen 与 Server.usageWriteGen 对齐；reset 递增后丢弃更早的写入。
-	writeGen uint64 `json:"-"`
+	writeGen           uint64 `json:"-"`
+	queuedPayloadBytes int64  `json:"-"`
 	// bodyOpts 是本条请求生效的日志内容策略（initUsageRecord 从配置快照一次，
 	// 四段 body 共用，避免热更新导致同一请求各段口径不一致）。
 	bodyOpts usageBodyOptions `json:"-"`
@@ -185,10 +187,9 @@ func (r *usageRecord) sanitizeBody(data []byte) usageBody {
 	if maxBytes == 0 || len(data) == 0 {
 		return usageBody{}
 	}
-	data = []byte(redactUsageTurnState(string(data)))
-	var value interface{}
-	wire, parseErr := protocol.ParseValue(data)
-	if parseErr == nil && wire.Decode(&value) == nil {
+
+	if value, ok := decodeUsageJSON(bytes.NewReader(data)); ok {
+		redactTurnStateValue(&value, 1)
 		redactJSON(value)
 		if r.bodyOpts.externalize {
 			r.assets.extractFromValue(value)
@@ -197,10 +198,7 @@ func (r *usageRecord) sanitizeBody(data []byte) usageBody {
 			return truncateUsageBody(string(sanitized), maxBytes)
 		}
 	}
-	if len(data) > maxBytes {
-		return usageBody{Content: string(data[:maxBytes]), Truncated: true}
-	}
-	return usageBody{Content: string(data)}
+	return truncateUsageBody(redactUsageTurnState(string(data)), maxBytes)
 }
 
 // finalizeDownstreamBody 处理第四段「返回下游」：tee 捕获的是流式原始字节，
@@ -212,18 +210,24 @@ func (r *usageRecord) finalizeDownstreamBody(body usageBody) (result usageBody) 
 		return usageBody{}
 	}
 	defer func() { result.Truncated = result.Truncated || body.Truncated }()
+
+	if value, ok := decodeUsageJSON(strings.NewReader(body.Content)); ok {
+		isChanged := redactTurnStateValue(&value, 1)
+		if r.bodyOpts.externalize {
+			r.assets.extractFromValue(value)
+		}
+		if isChanged || r.bodyOpts.externalize {
+			if sanitized, err := json.Marshal(value); err == nil {
+				return truncateUsageBody(string(sanitized), maxBytes)
+			}
+		}
+		return truncateUsageBody(body.Content, maxBytes)
+	}
 	body.Content = redactUsageTurnState(body.Content)
 	if !r.bodyOpts.externalize {
 		return truncateUsageBody(body.Content, maxBytes)
 	}
-	var value interface{}
-	wire, parseErr := protocol.ParseValue([]byte(body.Content))
-	if parseErr == nil && wire.Decode(&value) == nil {
-		r.assets.extractFromValue(value)
-		if sanitized, err := json.Marshal(value); err == nil {
-			return truncateUsageBody(string(sanitized), maxBytes)
-		}
-	}
+
 	// SSE 流：逐行 best-effort，仅解析 data: 前缀且含媒体标记的行。
 	externalized := r.assets.extractFromSSE(body.Content)
 	return truncateUsageBody(externalized, maxBytes)
@@ -234,7 +238,7 @@ func truncateUsageBody(content string, maxBytes int) usageBody {
 	if len(content) <= maxBytes {
 		return usageBody{Content: content}
 	}
-	return usageBody{Content: content[:maxBytes], Truncated: true}
+	return usageBody{Content: strings.Clone(content[:maxBytes]), Truncated: true}
 }
 
 // appendStreamEvent 登记一条上游流事件：环形保留最后 StreamEventsCacheMax 条
@@ -255,6 +259,7 @@ func (r *usageRecord) appendStreamEvent(payload string) {
 // materializeStreamEvents 把捕获的流事件物化为 ProviderResponse（该记录
 // 未显式赋值过时）。非流式路径不受影响。
 func (r *usageRecord) materializeStreamEvents() {
+	defer func() { r.pendingStreamEvents = nil }()
 	if r.ProviderResponse.Content != "" || len(r.pendingStreamEvents) == 0 {
 		return
 	}
