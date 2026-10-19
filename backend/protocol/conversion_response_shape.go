@@ -20,8 +20,7 @@ func NewDeliveryState() *DeliveryState {
 }
 
 func (c *CompiledConversion) responseShape(r *Response, phase ConversionPhase, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
-	var codec string
-	_ = rule.Value.Decode(&codec)
+	codec, _ := readConversionOption[string](c, rule)
 	if codec == "responses" {
 		var output []Node
 		for _, n := range r.Content {
@@ -199,8 +198,21 @@ func prepareDelivery(r *Response, route ConversionContext, codec string) {
 }
 
 func (c *CompiledConversion) responseValue(action string, phase ConversionPhase, input Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, limits Limits) (Value, error) {
-	var codec string
-	_ = rule.Value.Decode(&codec)
+	var document any = &Event{}
+	if phase == ConversionResponse {
+		document = &Response{}
+	}
+	if err := input.Decode(document); err != nil {
+		return Value{}, err
+	}
+	if _, err := c.responseObject(action, phase, document, route, rule, sink); err != nil {
+		return Value{}, err
+	}
+	return encodeSemanticWithin(document, limits)
+}
+
+func (c *CompiledConversion) responseObject(action string, phase ConversionPhase, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (bool, error) {
+	codec, _ := readConversionOption[string](c, rule)
 	apply := func(r *Response) error {
 		if r == nil {
 			return nil
@@ -214,50 +226,40 @@ func (c *CompiledConversion) responseValue(action string, phase ConversionPhase,
 		prepareDelivery(r, route, codec)
 		return nil
 	}
-	if phase == ConversionResponse {
-		var r Response
-		if err := input.Decode(&r); err != nil {
-			return Value{}, err
-		}
-		if err := apply(&r); err != nil {
-			return Value{}, err
-		}
-		return encodeSemanticWithin(&r, limits)
+	if response, ok := document.(*Response); ok {
+		return true, apply(response)
 	}
-	var e Event
-	if err := input.Decode(&e); err != nil {
-		return Value{}, err
-	}
+	e := document.(*Event)
 	if action == "response_shape" && codec != "responses" {
 		if !e.ParentID.IsZero() {
 			if err := c.issue(rule, phase, route, "/parentId", "target expresses message content as a flat assistant turn", sink, true); err != nil {
-				return Value{}, err
+				return false, err
 			}
 			e.ParentID = Value{}
 		}
 		if e.Item != nil && e.Item.Kind == MessageNode {
 			n := e.Item
 			if len(n.Children) > 0 || len(n.Attributes) > 0 || len(n.Metadata) > 0 || len(n.Cache) > 0 || len(n.Resources) > 0 || !n.Payload.IsZero() || (!n.Role.IsString("assistant") && !n.Role.IsZero()) {
-				return Value{}, streamIssue(UnsupportedCapability, "/item", "message container has data requiring an explicit projection")
+				return false, streamIssue(UnsupportedCapability, "/item", "message container has data requiring an explicit projection")
 			}
 			if err := c.issue(rule, phase, route, "/item", "target cannot retain this message container identity, status and boundary", sink, true); err != nil {
-				return Value{}, err
+				return false, err
 			}
 			e.Type, e.Item, e.ItemID, e.Index = MetadataUpdated, nil, Value{}, nil
 		}
 	}
 	if action == "response_shape" && codec == "openai-chat" {
-		if err := c.chatEventShape(&e, route, rule, sink); err != nil {
-			return Value{}, err
+		if err := c.chatEventShape(e, route, rule, sink); err != nil {
+			return false, err
 		}
 	}
 	if action == "response_shape" && e.Item != nil {
 		r := Response{Content: []Node{*e.Item}}
 		if err := c.responseShape(&r, phase, route, rule, sink); err != nil {
-			return Value{}, err
+			return false, err
 		}
 		if len(r.Content) != 1 {
-			return Value{}, streamIssue(UnsupportedCapability, "/item", "stream item projection must retain one node association")
+			return false, streamIssue(UnsupportedCapability, "/item", "stream item projection must retain one node association")
 		}
 		e.Item = &r.Content[0]
 	}
@@ -266,11 +268,11 @@ func (c *CompiledConversion) responseValue(action string, phase ConversionPhase,
 			e.Response = &Response{SchemaVersion: SemanticSchemaVersion, ID: e.ResponseID}
 		}
 		if err := apply(e.Response); err != nil {
-			return Value{}, err
+			return false, err
 		}
 		e.ResponseID = e.Response.ID
 	}
-	return encodeSemanticWithin(&e, limits)
+	return true, nil
 }
 
 func copyObject(o Object) Object {

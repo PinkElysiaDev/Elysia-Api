@@ -19,8 +19,8 @@ type reasoningOptions struct {
 }
 
 func (c *CompiledConversion) reasoningControls(req *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
-	var opts reasoningOptions
-	if err := rule.Value.Decode(&opts); err != nil {
+	opts, optionErr := readConversionOption[reasoningOptions](c, rule)
+	if err := optionErr; err != nil {
 		return err
 	}
 	if err := NormalizeReasoningParameters(req, opts.SourceCodec, false); err != nil {

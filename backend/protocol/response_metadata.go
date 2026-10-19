@@ -520,8 +520,7 @@ func (c *CompiledConversion) metadataValue(phase ConversionPhase, input Value, r
 }
 
 func (c *CompiledConversion) metadataObject(phase ConversionPhase, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
-	var codec string
-	_ = rule.Value.Decode(&codec)
+	codec, _ := readConversionOption[string](c, rule)
 	var visit func(*Node) error
 	visit = func(n *Node) error {
 		var err error

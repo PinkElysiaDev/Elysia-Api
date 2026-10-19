@@ -66,8 +66,7 @@ func (c *CompiledConversion) Event(ctx context.Context, event Event, route Conve
 func (c *CompiledConversion) streamOptions(request *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
 	stream := false
 	_ = request.Parameters["stream"].Decode(&stream)
-	var codec string
-	_ = rule.Value.Decode(&codec)
+	codec, _ := readConversionOption[string](c, rule)
 	for i := range request.Tools {
 		tool := &request.Tools[i]
 		value := tool.Options["eager_input_streaming"]

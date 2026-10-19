@@ -29,7 +29,17 @@ func (state *conversionState) validateContext(phase ConversionPhase) error {
 }
 
 func (state *conversionState) accepts(phase ConversionPhase, rule ConversionRule) bool {
-	if rule.Match.Present != nil || rule.Match.Path != "" || phase != ConversionRequest {
+	if rule.Match.Present != nil || rule.Match.Path != "" {
+		return false
+	}
+	if phase == ConversionResponse || phase == ConversionEvent {
+		switch rule.Action {
+		case "chat_response_model", "responses_turn_state", "anthropic_usage_envelope", "response_shape", "response_envelope", "response_metadata", "error_metadata", "usage_projection", "signatures":
+			return true
+		}
+		return false
+	}
+	if phase != ConversionRequest {
 		return false
 	}
 	switch rule.Action {
@@ -70,7 +80,8 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 	if !isNodeRule && !rule.Match.matches(route, Value{}) {
 		return "", nil
 	}
-	if err := state.load(phase, rule.Action != "response_metadata"); err != nil {
+	isStrict := isNodeRule || rule.Action == "responses_turn_state" || (phase == ConversionRequest && rule.Action != "response_metadata")
+	if err := state.load(phase, isStrict); err != nil {
 		return "", err
 	}
 	if state.cache == nil {
@@ -78,15 +89,21 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 	}
 	var target string
 	var err error
+	shouldEncode := true
 	if isNodeRule {
 		err = c.applyNodeObject(ctx, phase, state.document, route, sink, rule, state.cache)
 	} else if rule.Action == "response_metadata" {
 		err = c.metadataObject(phase, state.document, route, rule, sink)
-	} else {
+	} else if phase == ConversionRequest {
 		target, err = c.applyRequestObject(state.document.(*Request), route, rule, sink)
+	} else {
+		shouldEncode, err = c.applyResponseObject(phase, state.document, route, rule, sink)
 	}
 	if err != nil {
 		return "", err
+	}
+	if !shouldEncode {
+		return target, nil
 	}
 	// Match the old pre-serialization check before removing omitted fields.
 	if err := state.cache.check(state.document, state.limits); err != nil {
@@ -95,6 +112,24 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 	state.normalize(reflect.ValueOf(state.document), typedLimitPlans[reflect.TypeOf(state.document)])
 	state.needsEncoding, state.isStrict = true, true
 	return target, nil
+}
+
+func (c *CompiledConversion) applyResponseObject(phase ConversionPhase, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (bool, error) {
+	switch rule.Action {
+	case "chat_response_model":
+		return true, c.repairChatResponseModel(document.(*Response), route, rule, sink)
+	case "responses_turn_state":
+		return c.projectTurnStateObject(document.(*Event), rule, sink)
+	case "anthropic_usage_envelope":
+		return c.envelopeUsageObject(phase, document, route, rule, sink)
+	case "response_shape", "response_envelope":
+		return c.responseObject(rule.Action, phase, document, route, rule, sink)
+	case "error_metadata":
+		return c.errorMetadataObject(phase, document, route, rule, sink)
+	case "usage_projection":
+		return c.projectUsageObject(phase, document, route, rule, sink)
+	}
+	panic("unregistered typed response action")
 }
 
 func (state *conversionState) flush() (Value, error) {

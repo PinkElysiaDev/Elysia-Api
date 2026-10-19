@@ -178,7 +178,7 @@ func (c *CompiledConversion) applyRequestObject(request *Request, route Conversi
 		err = c.reasoningControls(request, route, rule, sink)
 		if err == nil {
 			var options reasoningOptions
-			err = rule.Value.Decode(&options)
+			options, err = readConversionOption[reasoningOptions](c, rule)
 			reasoningTarget = options.TargetCodec
 		}
 	case "responses_storage":

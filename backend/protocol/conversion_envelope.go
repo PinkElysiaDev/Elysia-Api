@@ -24,8 +24,8 @@ func ParseResponsesStore(raw Value) (bool, error) {
 }
 
 func (c *CompiledConversion) responsesStorage(req *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
-	var settings responsesStorageOptions
-	if err := rule.Value.Decode(&settings); err != nil {
+	settings, optionErr := readConversionOption[responsesStorageOptions](c, rule)
+	if err := optionErr; err != nil {
 		return err
 	}
 	if settings.SourceCodec == "" {
@@ -134,28 +134,39 @@ func (c *CompiledConversion) anthropicUsageEnvelope(usage *Usage, phase Conversi
 }
 
 func (c *CompiledConversion) envelopeUsageValue(phase ConversionPhase, input Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, limits Limits) (Value, error) {
+	var document any = &Event{}
 	if phase == ConversionResponse {
-		var response Response
-		if err := input.Decode(&response); err != nil {
-			return Value{}, err
-		}
-		if !response.Error.IsZero() && !response.Error.IsNull() {
-			return input, nil
-		}
-		ensureDeliveryIdentity(&response, route)
-		usage, err := c.anthropicUsageEnvelope(response.Usage, phase, route, rule, sink, "/usage")
-		if err != nil {
-			return Value{}, err
-		}
-		response.Usage = usage
-		return encodeSemanticWithin(&response, limits)
+		document = &Response{}
 	}
-	var event Event
-	if err := input.Decode(&event); err != nil {
+	if err := input.Decode(document); err != nil {
 		return Value{}, err
 	}
-	if event.Type != ResponseStarted && event.Type != ResponseFinished {
+	shouldEncode, err := c.envelopeUsageObject(phase, document, route, rule, sink)
+	if err != nil {
+		return Value{}, err
+	}
+	if !shouldEncode {
 		return input, nil
+	}
+	return encodeSemanticWithin(document, limits)
+}
+
+func (c *CompiledConversion) envelopeUsageObject(phase ConversionPhase, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (bool, error) {
+	if response, ok := document.(*Response); ok {
+		if !response.Error.IsZero() && !response.Error.IsNull() {
+			return false, nil
+		}
+		ensureDeliveryIdentity(response, route)
+		usage, err := c.anthropicUsageEnvelope(response.Usage, phase, route, rule, sink, "/usage")
+		if err != nil {
+			return false, err
+		}
+		response.Usage = usage
+		return true, nil
+	}
+	event := document.(*Event)
+	if event.Type != ResponseStarted && event.Type != ResponseFinished {
+		return false, nil
 	}
 	usage := event.Usage
 	if event.Response != nil {
@@ -163,13 +174,13 @@ func (c *CompiledConversion) envelopeUsageValue(phase ConversionPhase, input Val
 	}
 	usage, err := c.anthropicUsageEnvelope(usage, phase, route, rule, sink, "/response/usage")
 	if err != nil {
-		return Value{}, err
+		return false, err
 	}
 	if event.Response == nil {
 		event.Response = &Response{SchemaVersion: SemanticSchemaVersion}
 	}
 	event.Response.Usage = usage
-	return encodeSemanticWithin(&event, limits)
+	return true, nil
 }
 
 func ensureDeliveryIdentity(response *Response, route ConversionContext) {

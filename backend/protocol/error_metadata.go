@@ -14,8 +14,7 @@ func (c *CompiledConversion) projectErrorMetadata(value Value, route ConversionC
 	if value.IsZero() || value.IsNull() {
 		return value, nil
 	}
-	var options errorProjectionOptions
-	_ = rule.Value.Decode(&options)
+	options, _ := readConversionOption[errorProjectionOptions](c, rule)
 	if options.SourceCodec == options.TargetCodec {
 		return value, nil
 	}
@@ -65,32 +64,33 @@ func (c *CompiledConversion) projectErrorMetadata(value Value, route ConversionC
 }
 
 func (c *CompiledConversion) errorMetadataValue(phase ConversionPhase, input Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, limits Limits) (Value, error) {
+	var document any = &Event{}
 	if phase == ConversionResponse {
-		var response Response
-		if err := input.Decode(&response); err != nil {
-			return Value{}, err
-		}
-		var err error
-		response.Error, err = c.projectErrorMetadata(response.Error, route, rule, sink)
-		if err != nil {
-			return Value{}, err
-		}
-		return encodeSemanticWithin(&response, limits)
+		document = &Response{}
 	}
-	var event Event
-	if err := input.Decode(&event); err != nil {
+	if err := input.Decode(document); err != nil {
 		return Value{}, err
 	}
-	var err error
-	event.Error, err = c.projectErrorMetadata(event.Error, route, rule, sink)
+	shouldEncode, err := c.errorMetadataObject(phase, document, route, rule, sink)
 	if err != nil {
 		return Value{}, err
 	}
-	if event.Response != nil {
-		event.Response.Error, err = c.projectErrorMetadata(event.Response.Error, route, rule, sink)
-		if err != nil {
-			return Value{}, err
-		}
+	if !shouldEncode {
+		return input, nil
 	}
-	return encodeSemanticWithin(&event, limits)
+	return encodeSemanticWithin(document, limits)
+}
+
+func (c *CompiledConversion) errorMetadataObject(phase ConversionPhase, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (bool, error) {
+	var err error
+	if response, ok := document.(*Response); ok {
+		response.Error, err = c.projectErrorMetadata(response.Error, route, rule, sink)
+		return true, err
+	}
+	event := document.(*Event)
+	event.Error, err = c.projectErrorMetadata(event.Error, route, rule, sink)
+	if err == nil && event.Response != nil {
+		event.Response.Error, err = c.projectErrorMetadata(event.Response.Error, route, rule, sink)
+	}
+	return true, err
 }

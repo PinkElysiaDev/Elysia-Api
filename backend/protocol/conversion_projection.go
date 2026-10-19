@@ -191,8 +191,7 @@ func (c *CompiledConversion) responsesInclude(req *Request, route ConversionCont
 	if err != nil || raw.IsZero() {
 		return err
 	}
-	var codec string
-	_ = rule.Value.Decode(&codec)
+	codec, _ := readConversionOption[string](c, rule)
 	if codec != "responses" {
 		for i, selector := range selectors {
 			if selector != "reasoning.encrypted_content" {
@@ -270,8 +269,7 @@ func (c *CompiledConversion) projectUsage(usage *Usage, phase ConversionPhase, r
 	if usage == nil {
 		return nil
 	}
-	var codec string
-	_ = rule.Value.Decode(&codec)
+	codec, _ := readConversionOption[string](c, rule)
 	if codec != "responses" && !usage.Attribution.IsZero() {
 		if emptyUsageAttribution(usage.Attribution) {
 			sink.Add(ConversionIssue{Code: ConversionNormalized, Severity: SeverityInfo, Fidelity: "preserved", Protocol: route.Target, Stage: "conversion." + string(phase), Path: base + "/attribution", RuleID: rule.ID, PolicyHash: c.Hash, PolicyRevision: c.RuleRevisions[rule.ID], Reason: "empty usage attribution normalized for target", Evidence: c.Origins[rule.ID]})
@@ -318,27 +316,33 @@ func (c *CompiledConversion) projectUsage(usage *Usage, phase ConversionPhase, r
 }
 
 func (c *CompiledConversion) projectUsageValue(phase ConversionPhase, input Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, limits Limits) (Value, error) {
+	var document any = &Event{}
 	if phase == ConversionResponse {
-		var response Response
-		if err := input.Decode(&response); err != nil {
-			return Value{}, err
-		}
-		if err := c.projectUsage(response.Usage, phase, route, rule, sink, "/usage"); err != nil {
-			return Value{}, err
-		}
-		return encodeSemanticWithin(&response, limits)
+		document = &Response{}
 	}
-	var event Event
-	if err := input.Decode(&event); err != nil {
+	if err := input.Decode(document); err != nil {
 		return Value{}, err
 	}
+	shouldEncode, err := c.projectUsageObject(phase, document, route, rule, sink)
+	if err != nil {
+		return Value{}, err
+	}
+	if !shouldEncode {
+		return input, nil
+	}
+	return encodeSemanticWithin(document, limits)
+}
+
+func (c *CompiledConversion) projectUsageObject(phase ConversionPhase, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (bool, error) {
+	if response, ok := document.(*Response); ok {
+		return true, c.projectUsage(response.Usage, phase, route, rule, sink, "/usage")
+	}
+	event := document.(*Event)
 	if err := c.projectUsage(event.Usage, phase, route, rule, sink, "/usage"); err != nil {
-		return Value{}, err
+		return false, err
 	}
 	if event.Response != nil {
-		if err := c.projectUsage(event.Response.Usage, phase, route, rule, sink, "/response/usage"); err != nil {
-			return Value{}, err
-		}
+		return true, c.projectUsage(event.Response.Usage, phase, route, rule, sink, "/response/usage")
 	}
-	return encodeSemanticWithin(&event, limits)
+	return true, nil
 }

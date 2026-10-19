@@ -88,8 +88,7 @@ func (c *CompiledConversion) responsesContext(request *Request, route Conversion
 	if err := validateRequestContext(request); err != nil {
 		return err
 	}
-	var codec string
-	_ = rule.Value.Decode(&codec)
+	codec, _ := readConversionOption[string](c, rule)
 	if codec == "responses" {
 		return nil
 	}

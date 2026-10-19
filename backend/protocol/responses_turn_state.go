@@ -90,15 +90,26 @@ func (c *CompiledConversion) projectResponsesTurnState(value Value, rule Convers
 	if err := decodeContract(value.Bytes(), &event); err != nil {
 		return Value{}, err
 	}
-	state := event.ResponsesTurnState
-	if state == nil {
-		return value, nil
-	}
-	if err := ValidateResponsesTurnStateFrame(state.Frame); err != nil {
+	shouldEncode, err := c.projectTurnStateObject(&event, rule, sink)
+	if err != nil {
 		return Value{}, err
 	}
-	if rule.Value.IsString("responses") {
+	if !shouldEncode {
 		return value, nil
+	}
+	return encodeSemanticWithin(&event, limits)
+}
+
+func (c *CompiledConversion) projectTurnStateObject(event *Event, rule ConversionRule, sink *DiagnosticSink) (bool, error) {
+	state := event.ResponsesTurnState
+	if state == nil {
+		return false, nil
+	}
+	if err := ValidateResponsesTurnStateFrame(state.Frame); err != nil {
+		return false, err
+	}
+	if rule.Value.IsString("responses") {
+		return false, nil
 	}
 	issue := ConversionIssue{
 		Code: ConversionDegraded, Severity: SeverityWarning, Fidelity: "lossy_compatible",
@@ -108,9 +119,9 @@ func (c *CompiledConversion) projectResponsesTurnState(value Value, rule Convers
 	}
 	if c.Policy.Mode == "strict" {
 		issue.Code, issue.Severity, issue.Fidelity = ConversionRejected, SeverityError, "rejected"
-		return Value{}, IssuesError([]ConversionIssue{issue})
+		return false, IssuesError([]ConversionIssue{issue})
 	}
 	sink.Add(issue)
 	event.ResponsesTurnState, event.Native = nil, nil
-	return encodeSemanticWithin(&event, limits)
+	return true, nil
 }

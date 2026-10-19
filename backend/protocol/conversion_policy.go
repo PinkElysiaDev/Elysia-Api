@@ -98,6 +98,7 @@ type ConversionContext struct {
 }
 
 type CompiledConversion struct {
+	options               map[string]conversionOption
 	VerifiedProviderRules map[string]bool    `json:"-"`
 	VerificationContext   *ConversionContext `json:"-"`
 	Policy                ConversionPolicy   `json:"policy"`
@@ -191,7 +192,7 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 	if s := p.Continuation; s != nil && (s.RetentionSeconds <= 0 || s.RetentionSeconds > 365*24*3600 || s.TurnsPerSession <= 0 || s.MaxBytes <= 0 || s.RecordBytes <= 0 || s.RecordBytes > limits.BufferBytes) {
 		return nil, fmt.Errorf("invalid continuation retention or limits")
 	}
-	c := &CompiledConversion{Policy: p, limits: limits, expressions: map[string]*compiledExpression{}, Origins: map[string]string{}}
+	c := &CompiledConversion{options: map[string]conversionOption{}, Policy: p, limits: limits, expressions: map[string]*compiledExpression{}, Origins: map[string]string{}}
 	compiler := &expressionCompiler{limits: limits, references: map[string]Expression{}, resolving: map[string]bool{}, used: map[string]bool{}}
 	actions := map[string]conversionAction{}
 	for _, action := range conversionActionCatalog() {
@@ -219,6 +220,11 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		}
 		if err := action.validate(r); err != nil {
 			return nil, err
+		}
+		if action.parseOption != nil {
+			c.options[r.ID] = action.parseOption(r.Value)
+		} else if action.codecValue != "" {
+			c.options[r.ID] = parseConversionOption[string](r.Value)
 		}
 		if r.Match.NodeKind != "" {
 			if r.Phase == ConversionWire {

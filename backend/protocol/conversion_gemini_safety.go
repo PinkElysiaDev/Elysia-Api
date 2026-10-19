@@ -48,8 +48,7 @@ func (c *CompiledConversion) geminiSafetySettings(req *Request, route Conversion
 	if err != nil {
 		return err
 	}
-	var codec string
-	_ = rule.Value.Decode(&codec)
+	codec, _ := readConversionOption[string](c, rule)
 	if raw.IsZero() || codec == "gemini" {
 		return nil
 	}

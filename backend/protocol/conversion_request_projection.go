@@ -123,8 +123,8 @@ func requestCaches(req *Request, visit func(*[]CacheIntent, string) error) error
 }
 
 func (c *CompiledConversion) requestProjection(req *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
-	var opts requestProjectionOptions
-	if err := rule.Value.Decode(&opts); err != nil {
+	opts, optionErr := readConversionOption[requestProjectionOptions](c, rule)
+	if err := optionErr; err != nil {
 		return err
 	}
 	codec := opts.TargetCodec
