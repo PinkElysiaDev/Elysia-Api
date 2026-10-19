@@ -9,6 +9,7 @@ import (
 )
 
 func TestVisibleReasoningBindingEvidence(t *testing.T) {
+	t.Parallel()
 	ingress, upstream := shippedProjectionProtocol(t, Responses), shippedProjectionProtocol(t, Anthropic)
 	d := upstream.Definition()
 	d.Samples = append(d.Samples, p.Sample{ID: "visible-reasoning-response", Direction: p.DecodeResponse,
@@ -40,6 +41,7 @@ func TestVisibleReasoningBindingEvidence(t *testing.T) {
 }
 
 func TestVisibleReasoningContinuationDigestSurvivesResponses(t *testing.T) {
+	t.Parallel()
 	from, to := shippedProjectionProtocol(t, Anthropic), shippedProjectionProtocol(t, Responses)
 	scope := p.Scope{Provider: "provider", Account: "account", Model: "m"}
 	r, err := from.DecodeResponse(t.Context(), []byte(`{"content":[{"type":"thinking","thinking":"signed thought","signature":"synthetic-signature"}]}`), p.EvaluationContext{Scope: scope})
@@ -78,6 +80,7 @@ func TestVisibleReasoningContinuationDigestSurvivesResponses(t *testing.T) {
 }
 
 func TestVisibleThinkingToResponsesJSON(t *testing.T) {
+	t.Parallel()
 	inputs := map[string]string{
 		Chat:      `{"id":"r","model":"m","choices":[{"message":{"role":"assistant","reasoning_content":"think & verify","content":"OK"},"finish_reason":"stop"}]}`,
 		Anthropic: `{"id":"r","model":"m","role":"assistant","content":[{"type":"thinking","thinking":"think & verify"},{"type":"text","text":"OK"}],"stop_reason":"end_turn"}`,
@@ -124,6 +127,7 @@ func TestVisibleThinkingToResponsesJSON(t *testing.T) {
 }
 
 func TestVisibleThinkingResponsesStreamAndHistory(t *testing.T) {
+	t.Parallel()
 	from, to := shippedProjectionProtocol(t, Anthropic), shippedProjectionProtocol(t, Responses)
 	conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
 	route := p.ConversionContext{Source: from.Identity(), Target: to.Identity(), Delivery: &p.DeliveryState{ID: p.StringValue("r"), Created: testValue(t, "1")}, Model: "m"}
@@ -202,6 +206,7 @@ func TestVisibleThinkingResponsesStreamAndHistory(t *testing.T) {
 }
 
 func TestVisibleReasoningComplexNativeStructureNotDiscarded(t *testing.T) {
+	t.Parallel()
 	to := shippedProjectionProtocol(t, Responses)
 	for _, item := range []string{
 		`{"type":"reasoning","id":"rs","summary":[],"content":[{"type":"reasoning_text","text":"first"},{"type":"reasoning_text","text":"second"}]}`,
@@ -229,6 +234,7 @@ func TestVisibleReasoningComplexNativeStructureNotDiscarded(t *testing.T) {
 }
 
 func TestVisibleReasoningRejectsMalformedStream(t *testing.T) {
+	t.Parallel()
 	for _, raw := range []string{
 		`{"type":"response.reasoning_text.delta","output_index":0,"content_index":0,"delta":"orphan"}`,
 		`{"type":"response.reasoning_text.done","output_index":0,"content_index":0,"text":"orphan"}`,

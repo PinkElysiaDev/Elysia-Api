@@ -17,6 +17,7 @@ import (
 )
 
 func TestGatewayAnthropicSystemMessageClientHistory(t *testing.T) {
+	t.Parallel()
 	raw, err := os.ReadFile("../protocol/builtin/testdata/claude-code-system-message.json")
 	if err != nil {
 		t.Fatal(err)
@@ -153,6 +154,7 @@ func TestGatewayAnthropicSystemMessageClientHistory(t *testing.T) {
 }
 
 func TestGatewaySystemHoistFailureRetainsRequestEvidence(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()
@@ -205,6 +207,7 @@ func TestGatewaySystemHoistFailureRetainsRequestEvidence(t *testing.T) {
 }
 
 func TestGatewayInvalidThinkingDisplayRequestEvidence(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()

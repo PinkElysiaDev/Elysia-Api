@@ -20,6 +20,7 @@ import (
 // A late local failure must reach clients as an error event as well as a trailer.
 // An HTTP 200 after headers were flushed must not be mistaken for completion.
 func TestGatewayResponsesNativeFailureSequence(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []struct {
 		name, tail string
 		sequence   int64
@@ -114,6 +115,7 @@ func TestGatewayResponsesNativeFailureSequence(t *testing.T) {
 }
 
 func TestGatewayFailureEncodingRetainsOriginalCause(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()

@@ -22,6 +22,6 @@ typed 编解码、通用映射、逐规则转换、after 映射和原生协调�
 
 `large_request_test.go` 使用合成图片和工具历史复现原来的字节、节点误拒，并检查原生内容保真、较小目标预算和通用映射。`gateway_large_request_test.go` 通过真实本地 HTTP 网关调用模拟上游，完整消费 JSON／SSE，并检查调用次数、预览、Agent 共用收集器及发送前拒绝。
 
-额外性能测试默认不执行。设置 `ELYSIA_RESOURCE_PROFILE=1` 后运行 `TestLargeRequestResourceProfile`，覆盖 2／8／16／31 MiB、并发 1／4，以及 2 MiB 并发 32。它记录累计分配、采样堆峰值、取消和 GC 后的堆存活量；采样堆峰值不是操作系统工作集，也不是所有瞬时分配的峰值。相同环境变量使 `TestGatewayLargeAnthropicRequest` 使用 31 MiB 图片。
+常规回归用小型可配置缓冲区验证跨越预算边界的行为，避免为同一断言反复传输大载荷。设置 `ELYSIA_RESOURCE_PROFILE=1` 可让 `TestGatewayLargeAnthropicRequest` 使用 31 MiB 图片；分配和吞吐测量使用 `BenchmarkRequestMemoryPipeline` 等基准。旧的一次性 `TestLargeRequestResourceProfile` 已移除，历史测量数据仍保存在对应审计报告中。
 
 真实渠道和原用户长对话的实际客户端复测另行记录。本地合成夹具成功不替代这些验收。

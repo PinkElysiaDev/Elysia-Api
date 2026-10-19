@@ -16,6 +16,7 @@ import (
 )
 
 func TestGatewayAnthropicEnvelopeAndClients(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []string{"first", "late", "missing", "zero", "partial"} {
 		t.Run(scenario, func(t *testing.T) {
 			s, _ := newProtocolAdminTestServer(t)
@@ -118,6 +119,7 @@ func TestGatewayAnthropicEnvelopeAndClients(t *testing.T) {
 }
 
 func TestGatewayResponsesStorage(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()

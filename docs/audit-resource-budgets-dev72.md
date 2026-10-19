@@ -1,5 +1,7 @@
 # 大请求资源预算修复与验收记录
 
+> 历史验收记录：下文一次性 `TestLargeRequestResourceProfile` 已在[测试裁剪](backend-test-review.md)中移除；当前功能边界测试和显式大请求入口见[资源预算说明](protocol-resource-budgets.md)。
+
 基线：`22ad012`／dev.71。验证代码：`212d16b`／dev.72。本轮仅使用合成数据、历史测试和本地模拟上游；未推送、未调用收费渠道。
 
 ## 修复内容

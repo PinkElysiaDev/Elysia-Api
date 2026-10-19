@@ -9,6 +9,7 @@ import (
 )
 
 func TestResponsesIncludeProjection(t *testing.T) {
+	t.Parallel()
 	responses, gemini := testCompiled(t, Responses), testCompiled(t, Gemini)
 	for _, tc := range []struct{ name, field, errorPath string }{
 		{"absent", "", ""}, {"null", `,"include":null`, ""}, {"empty", `,"include":[]`, ""},
@@ -87,6 +88,7 @@ func TestResponsesIncludeProjection(t *testing.T) {
 }
 
 func TestUsageProjectionIsolationAndModes(t *testing.T) {
+	t.Parallel()
 	for _, target := range []string{Chat, Responses, Anthropic, Gemini} {
 		for _, strict := range []bool{false, true} {
 			t.Run(target+map[bool]string{false: "/compatible", true: "/strict"}[strict], func(t *testing.T) {
@@ -141,6 +143,7 @@ func TestUsageProjectionIsolationAndModes(t *testing.T) {
 }
 
 func TestCustomModuleProjectionAndUnknownBoundaries(t *testing.T) {
+	t.Parallel()
 	base := testCompiled(t, Responses).Definition()
 	base.ID = "old-responses-copy"
 	base.Requires = nil
@@ -200,6 +203,7 @@ func TestCustomModuleProjectionAndUnknownBoundaries(t *testing.T) {
 }
 
 func TestProjectionEvidenceAndDisabledRules(t *testing.T) {
+	t.Parallel()
 	ingress, upstream := shippedProjectionProtocol(t, Anthropic), shippedProjectionProtocol(t, Gemini)
 	d := upstream.Definition()
 	d.Samples = append(d.Samples, p.Sample{ID: "reasoning-usage-regression", Direction: p.DecodeResponse, Expected: testValue(t, `{"schemaVersion":1,"source":{},"status":"completed","content":[{"kind":"message","role":"assistant","children":[{"kind":"text","payload":"hello"}]}],"attributes":{"finishReason":"stop"},"usage":{"input":{"count":3,"origin":"observed"},"output":{"count":5,"origin":"observed"},"total":{"count":8,"origin":"observed"},"details":{"output.reasoning_tokens":{"count":3,"origin":"observed"},"toolUsePromptTokenCount":{"count":1,"origin":"observed"}}}}`), Input: testValue(t, `{"candidates":[{"content":{"role":"model","parts":[{"text":"hello"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2,"thoughtsTokenCount":3,"totalTokenCount":8,"toolUsePromptTokenCount":1}}`)})
@@ -255,6 +259,7 @@ func TestProjectionEvidenceAndDisabledRules(t *testing.T) {
 }
 
 func TestUsageProjectionNeverHidesInvalidOrUnknownDetails(t *testing.T) {
+	t.Parallel()
 	c, _ := p.ResolveConversion(p.DefaultConversionPolicy(testCompiled(t, Gemini), testCompiled(t, Anthropic)))
 	usage := &p.Usage{Input: &p.Counter{Count: 10, Origin: p.ObservedCount}, CacheCreation: &p.Counter{Count: 2, Origin: p.ObservedCount}, Details: map[string]p.Counter{"uncached_input_tokens": {Count: 9, Origin: p.ObservedCount}}}
 	if _, err := c.Response(t.Context(), &p.Response{SchemaVersion: 1, Usage: usage}, p.ConversionContext{}, nil); err == nil {
@@ -276,19 +281,12 @@ func TestUsageProjectionNeverHidesInvalidOrUnknownDetails(t *testing.T) {
 
 func shippedProjectionProtocol(t *testing.T, name string) *p.Compiled {
 	t.Helper()
-	definitions, err := Definitions()
+	compiled, err := shippedTestProtocols()
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
-	for _, value := range definitions {
-		compiled, issues := compiler.Compile(value.Bytes())
-		if err := p.IssuesError(issues); err != nil {
-			t.Fatal(err)
-		}
-		if compiled.Codec(p.EncodeRequest) == name {
-			return compiled
-		}
+	if protocol := compiled[name]; protocol != nil {
+		return protocol
 	}
 	t.Fatal("missing shipped module", name)
 	return nil

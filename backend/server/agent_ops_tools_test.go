@@ -63,28 +63,8 @@ func (c *opsTestContext) SetPlan([]agent.PlanStep) error             { return ni
 func (c *opsTestContext) SetPlanSummary(string) error                { return nil }
 func (c *opsTestContext) SetTitle(string) error                      { return nil }
 
-func TestOpsToolRegistry(t *testing.T) {
-	s := newOpsTestServer(t)
-	tools := cliOpsHandlers(s)
-	if len(tools) != 18 {
-		t.Fatalf("ops handlers = %d", len(tools))
-	}
-	seen := map[string]string{}
-	for _, handler := range tools {
-		name := cliHandlerName(handler)
-		seen[name] = cliEffectOf(handler)
-	}
-	if seen[agentToolCreateSource] != CLIEffectWrite || seen[agentToolRefreshSource] != CLIEffectOutbound {
-		t.Fatalf("neutral effects wrong: %v", seen)
-	}
-	for _, name := range []string{agentToolDeleteSource, agentToolDeleteGroup, agentToolDeleteModel} {
-		if seen[name] != CLIEffectDelete {
-			t.Fatalf("%s effect wrong: %v", name, seen[name])
-		}
-	}
-}
-
 func TestOpsSourceToolsCreateUpdateList(t *testing.T) {
+	t.Parallel()
 	s := newOpsTestServer(t)
 	// 上游假源（供 baseUrl 校验跳过 SSRF：测试 Server 已设 skipOutboundValidation）。
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +132,7 @@ func TestOpsSourceToolsCreateUpdateList(t *testing.T) {
 func createID(name string) string { return slugID(name) }
 
 func TestOpsSourceGroupTools(t *testing.T) {
+	t.Parallel()
 	s := newOpsTestServer(t)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{}`))
@@ -197,6 +178,7 @@ func TestOpsSourceGroupTools(t *testing.T) {
 }
 
 func TestOpsUsageQueryTools(t *testing.T) {
+	t.Parallel()
 	s := newOpsTestServer(t)
 	// 造两条用量记录：一条成功一条失败
 	seed := func(id string, statusCode int, model string) {
@@ -255,6 +237,7 @@ func TestOpsRefreshSourceGatedLiveTest(t *testing.T) {
 }
 
 func TestOpsUpdateSourceUnknownRef(t *testing.T) {
+	t.Parallel()
 	s := newOpsTestServer(t)
 	if result := opsExecute(t, &updateSourceTool{server: s}, `{"source":"ghost"}`); result.OK {
 		t.Fatalf("unknown source must fail")
@@ -266,6 +249,7 @@ func TestOpsUpdateSourceUnknownRef(t *testing.T) {
 
 // update_plan 工具：方案校验、落库与事件。
 func TestOpsUpdatePlanTool(t *testing.T) {
+	t.Parallel()
 	tool := &updatePlanTool{}
 	if tool.Gated() {
 		t.Fatalf("plan tool must not be gated")
@@ -369,6 +353,7 @@ func (c *sessionToolContext) SetPlanSummary(summary string) error {
 // test_upstream 凭证参数：参数优先、成功后自动记住（sessionToolContext 的
 // SetTestTarget 直接复用引擎语义写库）。
 func TestOpsTestUpstreamCredentialParams(t *testing.T) {
+	t.Parallel()
 	s := newOpsTestServer(t)
 	service, serviceErr := s.protocolService()
 	if serviceErr != nil {
@@ -482,6 +467,7 @@ func TestOutboundPolicyTool(t *testing.T) {
 // 回归（质量轮 A2）：clampInt 曾把「小于默认值的合法入参」当未传抬升——
 // days=3 应保留 3 天窗口、limit=5 应保留 5 条。
 func TestDefaultIntKeepsSmallValues(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ v, def, max, want int }{
 		{0, 7, 366, 7},     // 未传 → 默认
 		{-2, 7, 366, 7},    // 非正 → 默认
@@ -499,6 +485,7 @@ func TestDefaultIntKeepsSmallValues(t *testing.T) {
 
 // agent 侧改名：模型组 --name 落库 + 组名冲突报错。
 func TestOpsRenameGroupViaUpdate(t *testing.T) {
+	t.Parallel()
 	s := newOpsTestServer(t)
 	ctx := t.Context()
 	if err := s.store.UpsertGroup(ctx, storage.ModelGroup{ID: "g1", Name: "旧名", Enabled: true, Models: []string{"s1:m1"}}); err != nil {

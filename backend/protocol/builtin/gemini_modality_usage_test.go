@@ -8,6 +8,7 @@ import (
 )
 
 func TestGeminiUsageDisclosuresAreMapped(t *testing.T) {
+	t.Parallel()
 	from := shippedProjectionProtocol(t, Gemini)
 	for _, extra := range []string{
 		`"promptTokensDetails":[{"modality":"TEXT","tokenCount":3}]`,
@@ -59,72 +60,78 @@ func TestGeminiUsageDisclosuresAreMapped(t *testing.T) {
 }
 
 func TestGeminiModalityUsageProjectionModes(t *testing.T) {
+	t.Parallel()
 	from := shippedProjectionProtocol(t, Gemini)
 	for _, bucket := range geminiModalityBuckets {
 		for _, modality := range []string{"TEXT", "IMAGE", "AUDIO", "VIDEO", "DOCUMENT"} {
-			for _, count := range []string{"0", "9007199254740993"} {
-				value := `[{"modality":"` + modality + `","tokenCount":` + count + `}]`
-				raw := `{"usageMetadata":{"` + bucket.field + `":` + value + `}}`
-				response, err := from.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
-				if err != nil {
-					t.Fatal(err)
-				}
-				before, _ := p.EncodeValue(response)
-				for _, target := range []string{Chat, Responses, Anthropic, Gemini} {
-					to := shippedProjectionProtocol(t, target)
-					for _, mode := range []string{"compatible", "strict"} {
-						policy := p.DefaultConversionPolicy(to, from)
-						policy.Mode = mode
-						c, _ := p.ResolveConversion(policy)
-						sink := &p.DiagnosticSink{}
-						projected, err := c.Response(t.Context(), response, p.ConversionContext{}, sink)
-						supported := target == Gemini || (target == Chat || target == Responses) &&
-							(bucket.prefix == "input" || bucket.prefix == "output") && (modality == "TEXT" || modality == "IMAGE" || modality == "AUDIO")
-						if mode == "strict" && !supported {
-							if err == nil {
-								t.Fatal("strict modality loss accepted", target, bucket.field, modality)
-							}
-							continue
+			// Numeric presence/precision is independent of the modality mapping.
+			// Cover both boundaries without doubling every target/mode pair.
+			count := "9007199254740993"
+			if modality == "TEXT" {
+				count = "0"
+			}
+			value := `[{"modality":"` + modality + `","tokenCount":` + count + `}]`
+			raw := `{"usageMetadata":{"` + bucket.field + `":` + value + `}}`
+			response, err := from.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, _ := p.EncodeValue(response)
+			for _, target := range []string{Chat, Responses, Anthropic, Gemini} {
+				to := shippedProjectionProtocol(t, target)
+				for _, mode := range []string{"compatible", "strict"} {
+					policy := p.DefaultConversionPolicy(to, from)
+					policy.Mode = mode
+					c, _ := p.ResolveConversion(policy)
+					sink := &p.DiagnosticSink{}
+					projected, err := c.Response(t.Context(), response, p.ConversionContext{}, sink)
+					supported := target == Gemini || (target == Chat || target == Responses) &&
+						(bucket.prefix == "input" || bucket.prefix == "output") && (modality == "TEXT" || modality == "IMAGE" || modality == "AUDIO")
+					if mode == "strict" && !supported {
+						if err == nil {
+							t.Fatal("strict modality loss accepted", target, bucket.field, modality)
 						}
-						if err != nil {
-							t.Fatal(target, mode, bucket.field, modality, err)
+						continue
+					}
+					if err != nil {
+						t.Fatal(target, mode, bucket.field, modality, err)
+					}
+					wire, err := to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					back, err := to.DecodeResponse(t.Context(), wire, p.EvaluationContext{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					name := bucket.prefix + "." + strings.ToLower(modality) + "_tokens"
+					if supported {
+						if back.Usage == nil || back.Usage.Details[name] != response.Usage.Details[name] {
+							t.Fatal("modality count changed", target, name, string(wire))
 						}
-						wire, err := to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
-						if err != nil {
-							t.Fatal(err)
+					} else {
+						found := false
+						for _, issue := range sink.Issues() {
+							if issue.Path == "/usage/details/"+name && issue.Code == p.ConversionDegraded && issue.Fidelity == "lossy_compatible" {
+								found = true
+							}
 						}
-						back, err := to.DecodeResponse(t.Context(), wire, p.EvaluationContext{})
-						if err != nil {
-							t.Fatal(err)
-						}
-						name := bucket.prefix + "." + strings.ToLower(modality) + "_tokens"
-						if supported {
-							if back.Usage == nil || back.Usage.Details[name] != response.Usage.Details[name] {
-								t.Fatal("modality count changed", target, name, string(wire))
-							}
-						} else {
-							found := false
-							for _, issue := range sink.Issues() {
-								if issue.Path == "/usage/details/"+name && issue.Code == p.ConversionDegraded && issue.Fidelity == "lossy_compatible" {
-									found = true
-								}
-							}
-							if !found || len(projected.Usage.Details) != 0 {
-								t.Fatal("unmapped count omitted without diagnostic", name, sink.Issues())
-							}
+						if !found || len(projected.Usage.Details) != 0 {
+							t.Fatal("unmapped count omitted without diagnostic", name, sink.Issues())
 						}
 					}
 				}
-				after, _ := p.EncodeValue(response)
-				if !equivalentJSON(before, after) {
-					t.Fatal("projection mutated original accounting")
-				}
+			}
+			after, _ := p.EncodeValue(response)
+			if !equivalentJSON(before, after) {
+				t.Fatal("projection mutated original accounting")
 			}
 		}
 	}
 }
 
 func TestGeminiModalityUsageValidationAndExtensions(t *testing.T) {
+	t.Parallel()
 	from, to := shippedProjectionProtocol(t, Gemini), shippedProjectionProtocol(t, Responses)
 	c, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
 	for _, value := range []string{
@@ -184,6 +191,7 @@ func TestGeminiModalityUsageValidationAndExtensions(t *testing.T) {
 }
 
 func TestGeminiModalityNativeEditsAndUsageTails(t *testing.T) {
+	t.Parallel()
 	from := shippedProjectionProtocol(t, Gemini)
 	raw := `{"usageMetadata":{"promptTokenCount":3,"promptTokensDetails":[{"modality":"TEXT","tokenCount":3}],"serviceTier":"standard"}}`
 	response, err := from.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
@@ -225,6 +233,7 @@ func TestGeminiModalityNativeEditsAndUsageTails(t *testing.T) {
 }
 
 func TestModalityUsageCannotHideInvalidCounts(t *testing.T) {
+	t.Parallel()
 	from, to := shippedProjectionProtocol(t, Gemini), shippedProjectionProtocol(t, Anthropic)
 	c, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
 	for _, raw := range []string{
@@ -252,6 +261,7 @@ func TestModalityUsageCannotHideInvalidCounts(t *testing.T) {
 }
 
 func TestGeminiServiceTierProjectionModes(t *testing.T) {
+	t.Parallel()
 	from, to := shippedProjectionProtocol(t, Gemini), shippedProjectionProtocol(t, Responses)
 	for _, raw := range []string{`null`, `"standard"`} {
 		for _, mode := range []string{"compatible", "strict"} {

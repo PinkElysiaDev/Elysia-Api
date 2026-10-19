@@ -12,6 +12,7 @@ import (
 )
 
 func TestGatewayUnknownFailedEventNeverReplays(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()

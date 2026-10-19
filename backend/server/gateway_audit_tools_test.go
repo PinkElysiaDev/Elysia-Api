@@ -15,14 +15,21 @@ import (
 	"github.com/elysia-api/backend/storage"
 )
 
-func TestGatewayAuditToolRoundTrips(t *testing.T)         { auditGatewayToolRoundTrips(t, false, false) }
-func TestGatewayAuditParallelToolRoundTrips(t *testing.T) { auditGatewayToolRoundTrips(t, true, false) }
+func TestGatewayAuditToolRoundTrips(t *testing.T) {
+	t.Parallel()
+	auditGatewayToolRoundTrips(t, false, false)
+}
+func TestGatewayAuditParallelToolRoundTrips(t *testing.T) {
+	t.Parallel()
+	auditGatewayToolRoundTrips(t, true, false)
+}
 func TestGatewayChatStartupParallelToolRoundTrips(t *testing.T) {
+	t.Parallel()
 	auditGatewayToolRoundTrips(t, true, true)
 }
 func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) {
 	ids := []string{protocol.PresetChatCompletionsID, protocol.PresetResponsesID, protocol.PresetAnthropicID, protocol.PresetGeminiID}
-	for _, upstreamID := range ids {
+	for upstreamIndex, upstreamID := range ids {
 		if hasStartupPrelude && upstreamID != protocol.PresetChatCompletionsID {
 			continue
 		}
@@ -160,6 +167,13 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) 
 			}
 			s.invalidateRouteCache()
 			for _, id := range ids {
+				// A cross-family cycle covers every client and provider. Single-tool
+				// cases additionally cover native forwarding; parallel tool behavior
+				// does not need to repeat the full codec Cartesian product.
+				next := ids[(upstreamIndex+1)%len(ids)]
+				if id != next && (parallel || id != upstreamID) {
+					continue
+				}
 				for _, stream := range []bool{false, true} {
 					t.Run(fmt.Sprintf("%s/stream=%v", id, stream), func(t *testing.T) {
 						streaming, second = stream, false
@@ -210,6 +224,9 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) 
 								name := fmt.Sprintf("tool-%s-%s-%v-%v.json", upstreamID, id, stream, second)
 								if parallel {
 									name = "parallel-" + name
+								}
+								if hasStartupPrelude {
+									name = "startup-" + name
 								}
 								if e := os.WriteFile(filepath.Join(dir, name), fixture, 0600); e != nil {
 									t.Fatal(e)

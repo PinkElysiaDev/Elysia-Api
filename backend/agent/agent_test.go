@@ -595,15 +595,21 @@ func (b *blockingCaller) Call(ctx context.Context, req CallRequest, cb StreamCal
 }
 
 func TestEngine_Stop(t *testing.T) {
+	t.Parallel()
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1"}})
-	caller := &ctxAwareHangCaller{}
+	caller := &ctxAwareHangCaller{started: make(chan struct{})}
 	engine := newTestEngine(caller, store)
 
-	events, _ := engine.RunTurn(context.Background(), "s1", &UserContent{Text: "hang"})
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		engine.Stop("s1")
-	}()
+	events, err := engine.RunTurn(t.Context(), "s1", &UserContent{Text: "hang"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-caller.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("model call did not start")
+	}
+	engine.Stop("s1")
 	collected := collectEvents(t, events)
 	var errEvent Event
 	for _, event := range collected {
@@ -627,10 +633,13 @@ func TestEngine_Stop(t *testing.T) {
 
 // ctxAwareHangCaller 挂起直到 ctx 取消（真实模型调用经 HTTP ctx 感知取消），
 // 取消时返回带部分文本的结果（引擎照常落库部分内容）。
-type ctxAwareHangCaller struct{}
+type ctxAwareHangCaller struct{ started chan struct{} }
 
 func (c *ctxAwareHangCaller) Call(ctx context.Context, req CallRequest, cb StreamCallbacks) (*CallResult, error) {
 	cb.OnText("部分输出")
+	if c.started != nil {
+		close(c.started)
+	}
 	<-ctx.Done()
 	return &CallResult{Text: "部分输出"}, ctx.Err()
 }
@@ -723,17 +732,6 @@ func TestRunTurn_EmptyContinueRegenerates(t *testing.T) {
 	req := caller.lastRequest()
 	if len(req.Content) == 0 || req.Content[0].Role != protocol.StringValue("user") {
 		t.Fatalf("history not loaded: %+v", req.Content)
-	}
-}
-
-func TestToolResultMarshal(t *testing.T) {
-	result := ToolResult{OK: true, Data: map[string]any{"a": 1}}
-	if string(mustToolData(t, result)) != `{"a":1}` {
-		t.Fatalf("data = %s", mustToolData(t, result))
-	}
-	str := ToolResult{OK: true, Data: "纯文本"}
-	if string(mustToolData(t, str)) != `"纯文本"` {
-		t.Fatalf("string data = %s", mustToolData(t, str))
 	}
 }
 

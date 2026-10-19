@@ -15,6 +15,7 @@ import (
 )
 
 func TestAgentReadinessDistinguishesModelBindingAndRevision(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	compiled := activateGatewayDefinition(t, s, agentEnvelopeDefinition(t))
 	model := storage.Model{ID: "grok-4.7", SourceID: "s", Name: "grok-4.7", Enabled: true, CapabilitySource: "catalog"}
@@ -42,6 +43,7 @@ func TestAgentReadinessDistinguishesModelBindingAndRevision(t *testing.T) {
 }
 
 func TestAgentToolProbeOnlyCommitsValidatedCapability(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"success", "missing_tool", "wrong_arguments", "conflict"} {
 		t.Run(mode, func(t *testing.T) {
 			s := newAgentIntegrationServer(t)
@@ -130,6 +132,7 @@ func TestAgentToolProbeOnlyCommitsValidatedCapability(t *testing.T) {
 // 中转站在 chat SSE 帧上携带未映射扩展字段（顶层 system_fingerprint、usage 尾帧
 // 的 provider_metrics）。收集路径必须保真保留而不是拒绝，探针才能完成验证。
 func TestAgentToolProbeStreamsRelayExtensions(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	s.setupAgentRoutes(s.engine.Group("/api/admin"))
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

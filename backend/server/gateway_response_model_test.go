@@ -31,6 +31,7 @@ func auditOctober14Fixture(t *testing.T, name string) []byte {
 }
 
 func TestCollectedChatModelRepairAndPreview(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()
@@ -135,6 +136,7 @@ func TestCollectedChatModelRepairAndPreview(t *testing.T) {
 }
 
 func TestGatewayChatMissingResponseModel(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()
@@ -207,6 +209,7 @@ func TestGatewayChatMissingResponseModel(t *testing.T) {
 }
 
 func TestGatewayChatInvalidResponseModelIsNotAliased(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()

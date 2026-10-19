@@ -19,8 +19,6 @@ import (
 // newProtocolAdminTestServer constructs isolated configuration and protocol storage.
 func newProtocolAdminTestServer(t *testing.T) (*Server, string) {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
-	relay.SetAllowPrivateDial(true)
 
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")

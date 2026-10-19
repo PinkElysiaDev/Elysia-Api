@@ -12,7 +12,6 @@ import (
 )
 
 func TestAdminUsageTrendValidatesUTCOffset(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	store, err := storage.Open(filepath.Join(t.TempDir(), "admin-usage.sqlite3"))
 	if err != nil {
 		t.Fatalf("storage.Open() error = %v", err)
@@ -50,7 +49,6 @@ func TestAdminUsageTrendValidatesUTCOffset(t *testing.T) {
 }
 
 func TestAdminUsagePulseValidatesBucket(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	store, err := storage.Open(filepath.Join(t.TempDir(), "admin-pulse.sqlite3"))
 	if err != nil {
 		t.Fatalf("storage.Open() error = %v", err)
@@ -100,7 +98,6 @@ func TestAdminUsagePulseValidatesBucket(t *testing.T) {
 }
 
 func TestAdminUsageByModelDailyValidatesTop(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	store, err := storage.Open(filepath.Join(t.TempDir(), "admin-model-daily.sqlite3"))
 	if err != nil {
 		t.Fatalf("storage.Open() error = %v", err)
@@ -126,7 +123,6 @@ func TestAdminUsageByModelDailyValidatesTop(t *testing.T) {
 }
 
 func TestUsageQueryFromRequestParsesSemanticStatus(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/?status=FAILED&statusCode=500", nil)

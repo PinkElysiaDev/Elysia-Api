@@ -27,6 +27,7 @@ func turnStateFrames(t *testing.T, sample p.Sample) []p.Value {
 }
 
 func TestGatewayResponsesTurnStateFullStreamsAndCollector(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	onErrorOnly, bodyMaxKB := false, 1024
 	s.config.SetUsageLogConfig(config.UsageLogConfig{BodyOnErrorOnly: &onErrorOnly, BodyMaxKB: &bodyMaxKB})

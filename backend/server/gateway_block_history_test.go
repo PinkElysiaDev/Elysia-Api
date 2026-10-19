@@ -13,6 +13,7 @@ import (
 )
 
 func TestGatewayResponsesReturnsSignedThinkingWithItsAnthropicToolTurn(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprint(stream), func(t *testing.T) {
 			s, cfg := newProtocolAdminTestServer(t)

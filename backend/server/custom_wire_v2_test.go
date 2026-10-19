@@ -132,6 +132,7 @@ func writeFixtureFrames(t *testing.T, writer http.ResponseWriter, definition pro
 }
 
 func TestStandaloneProtocolFourPublicIngresses(t *testing.T) {
+	t.Parallel()
 	for _, transport := range []protocol.Transport{protocol.HTTPJSON, protocol.SSE, protocol.NDJSON} {
 		for _, source := range []struct{ id, path, body string }{
 			{"chat", "/v1/chat/completions", `{"model":"grp","messages":[{"role":"user","content":"hello"}],"temperature":0.4}`},
@@ -139,7 +140,17 @@ func TestStandaloneProtocolFourPublicIngresses(t *testing.T) {
 			{"anthropic", "/v1/messages", `{"model":"grp","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`},
 			{"gemini", "/v1beta/models/grp:generateContent", `{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`},
 		} {
+			// The codec matrix covers all pairs. These six integration cases
+			// cover each public ingress and all three transport implementations.
+			if source.id == "chat" || source.id == "responses" {
+				if transport == protocol.NDJSON {
+					continue
+				}
+			} else if source.id == "anthropic" && transport != protocol.NDJSON || source.id == "gemini" && transport != protocol.SSE {
+				continue
+			}
 			t.Run(source.id+"/"+string(transport), func(t *testing.T) {
+				t.Parallel()
 				definition := standaloneWireDefinition(t, transport)
 				var captured []byte
 				provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -192,6 +203,7 @@ func TestStandaloneProtocolFourPublicIngresses(t *testing.T) {
 }
 
 func TestStandaloneProtocolHTTPFailureRetriesOnceAndSettlesOnce(t *testing.T) {
+	t.Parallel()
 	definition := standaloneWireDefinition(t, protocol.HTTPJSON)
 	var failures atomic.Int32
 	broken := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

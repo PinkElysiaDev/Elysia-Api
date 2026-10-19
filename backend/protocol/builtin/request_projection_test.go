@@ -8,6 +8,7 @@ import (
 )
 
 func TestRequestHintProjection(t *testing.T) {
+	t.Parallel()
 	for _, target := range []string{Chat, Responses, Anthropic, Gemini} {
 		for _, mode := range []string{"compatible", "strict"} {
 			t.Run(target+"/"+mode, func(t *testing.T) {
@@ -67,6 +68,7 @@ func TestRequestHintProjection(t *testing.T) {
 }
 
 func TestRequestBreakpointsPreservePayloads(t *testing.T) {
+	t.Parallel()
 	raw := `{"model":"m","max_tokens":100,"cache_control":{"type":"ephemeral"},"system":[{"type":"text","text":"system","cache_control":{"type":"ephemeral","ttl":"1h"}}],"messages":[{"role":"user","cache_control":{"type":"ephemeral"},"content":[{"type":"text","text":"question","cache_control":{"type":"ephemeral"}}]},{"role":"assistant","content":[{"type":"tool_use","id":"call-1","name":"lookup","input":{"cache_control":{"type":"user-data"}},"cache_control":{"type":"ephemeral"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-1","content":"result","cache_control":{"type":"ephemeral"}}]}],"tools":[{"name":"lookup","input_schema":{"type":"object","properties":{"cache_control":{"type":"object"}}},"cache_control":{"type":"ephemeral","ttl":"1h"}}]}`
 	source := testCompiled(t, Anthropic)
 	req, err := source.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
@@ -128,6 +130,7 @@ func TestRequestBreakpointsPreservePayloads(t *testing.T) {
 }
 
 func TestRequestProjectionValidationAndUnknowns(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, codec, fields string
 		invalid             bool
@@ -182,6 +185,7 @@ func TestRequestProjectionValidationAndUnknowns(t *testing.T) {
 }
 
 func TestRequestProjectionEmptyHintsAndToolStrict(t *testing.T) {
+	t.Parallel()
 	for _, fields := range []string{`"prompt_cache_key":null,"prompt_cache_retention":null,"metadata":{},"user":null`, `"metadata":null`} {
 		source, dest := testCompiled(t, Responses), testCompiled(t, Gemini)
 		req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","input":"hi","store":false,`+fields+`}`), p.EvaluationContext{})
@@ -209,6 +213,7 @@ func TestRequestProjectionEmptyHintsAndToolStrict(t *testing.T) {
 }
 
 func TestRequestProjectionNativeReplayAndCandidateIsolation(t *testing.T) {
+	t.Parallel()
 	source, target := testCompiled(t, Chat), testCompiled(t, Gemini)
 	req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}],"prompt_cache_key":"key","metadata":{"trace":"value"},"stream_options":{"include_usage":true}}`), p.EvaluationContext{})
 	if err != nil {
@@ -241,6 +246,7 @@ func TestRequestProjectionNativeReplayAndCandidateIsolation(t *testing.T) {
 }
 
 func TestInactiveStreamOptions(t *testing.T) {
+	t.Parallel()
 	for _, foreign := range []bool{false, true} {
 		for _, raw := range []string{`null`, `{}`, `{"include_usage":true}`, `{"future":true}`, `{"include_usage":null}`} {
 			source, target := testCompiled(t, Chat), testCompiled(t, Chat)
@@ -281,6 +287,7 @@ func TestInactiveStreamOptions(t *testing.T) {
 }
 
 func TestRequestProjectionNativeOpaqueCacheOwnership(t *testing.T) {
+	t.Parallel()
 	source, dest := testCompiled(t, Anthropic), testCompiled(t, Gemini)
 	req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":100,"messages":[{"role":"user","content":[{"type":"future","data":"opaque","cache_control":{"type":"ephemeral"}}]}],"tools":[{"type":"server-tool","name":"lookup","cache_control":{"type":"ephemeral"}}]}`), p.EvaluationContext{})
 	if err != nil {
@@ -304,6 +311,7 @@ func TestRequestProjectionNativeOpaqueCacheOwnership(t *testing.T) {
 }
 
 func TestRequestTrackingIdentityMapping(t *testing.T) {
+	t.Parallel()
 	for _, codec := range []string{Chat, Responses, Anthropic, Gemini} {
 		source, dest := testCompiled(t, Anthropic), testCompiled(t, codec)
 		req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":100,"messages":[{"role":"user","content":"hi"}],"metadata":{"user_id":"identity"}}`), p.EvaluationContext{})
@@ -335,6 +343,7 @@ func TestRequestTrackingIdentityMapping(t *testing.T) {
 }
 
 func TestRequestProjectionCombinationReportsInfoLoss(t *testing.T) {
+	t.Parallel()
 	source, dest := shippedProjectionProtocol(t, Responses), shippedProjectionProtocol(t, Gemini)
 	d := source.Definition()
 	d.Samples = append(d.Samples, p.Sample{ID: "tracking-hint", Direction: p.DecodeRequest, Scope: p.Scope{Model: "m"}, Context: p.Object{"model": p.StringValue("m")},
@@ -365,6 +374,7 @@ func TestRequestProjectionCombinationReportsInfoLoss(t *testing.T) {
 }
 
 func TestRequestToolErrorAndUnknownMessageState(t *testing.T) {
+	t.Parallel()
 	source, dest := testCompiled(t, Anthropic), testCompiled(t, Chat)
 	for _, value := range []string{`true`, `false`, `null`, `"true"`} {
 		raw := `{"model":"m","max_tokens":100,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"f","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c","content":"result","is_error":` + value + `}]}]}`
@@ -402,6 +412,7 @@ func TestRequestToolErrorAndUnknownMessageState(t *testing.T) {
 }
 
 func TestRequestNativeExtensionsRequireCrossProtocolMapping(t *testing.T) {
+	t.Parallel()
 	for _, raw := range []string{
 		`{"model":"m","messages":[{"role":"user","content":"hi","id":"vendor","status":{"future":true}}]}`,
 		`{"model":"m","messages":[{"role":"user","content":"hi"}],"prompt_cache_options":{"mode":"implicit","future":true}}`,

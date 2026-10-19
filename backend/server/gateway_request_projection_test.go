@@ -15,6 +15,7 @@ import (
 )
 
 func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"compatible", "strict"} {
 		t.Run(mode, func(t *testing.T) {
 			s, _ := newProtocolAdminTestServer(t)

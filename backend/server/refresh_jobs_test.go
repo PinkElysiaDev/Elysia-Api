@@ -5,10 +5,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -28,13 +30,22 @@ func waitForSourceRefreshDone(t *testing.T, s *Server, sourceID string) {
 }
 
 // 任务去重：进行中的源重复触发返回 false；完成后可再次启动。
-// 上游故意放慢（300ms），保证任务确实在飞行中做二次触发。
+// 用屏障保持首个请求在飞行中，避免依赖调度速度或固定等待。
 func TestSourceRefreshJobDedup(t *testing.T) {
+	t.Parallel()
+	entered, release := make(chan struct{}), make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(300 * time.Millisecond)
+		select {
+		case <-release:
+		default:
+			close(entered)
+			<-release
+		}
 		w.Write([]byte(`{"data":[{"id":"m1"}]}`))
 	}))
 	defer srv.Close()
+	defer unblock()
 
 	s := newKeyPermissionTestServer(t)
 	ctx := context.Background()
@@ -50,9 +61,15 @@ func TestSourceRefreshJobDedup(t *testing.T) {
 		t.Fatalf("first start should succeed: started=%v already=%v err=%v", started, already, err)
 	}
 	// 任务进行中：重复触发被去重。
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("refresh did not reach upstream")
+	}
 	if started, already, _ := s.startSourceRefreshByID(ctx, "src1"); started || !already {
 		t.Fatalf("second start must be deduped: started=%v already=%v", started, already)
 	}
+	unblock()
 	waitForSourceRefreshDone(t, s, "src1")
 
 	state := s.sourceRefreshStateOf("src1")
@@ -68,6 +85,7 @@ func TestSourceRefreshJobDedup(t *testing.T) {
 
 // 失败结果也记录到状态：上游 401 → LastError 填写，refreshing 清除。
 func TestSourceRefreshJobRecordsError(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(401)
 	}))
@@ -97,6 +115,9 @@ func TestSourceRefreshJobRecordsError(t *testing.T) {
 }
 
 func TestSourceRefreshCoalescesSavesAndSharesSyncGate(t *testing.T) {
+	// Keep the two real verification-backed saves within model discovery's
+	// deadline even under -race. The channel, rather than elapsed time, holds
+	// the old request until both saves have completed.
 	entered, release := make(chan struct{}, 1), make(chan struct{})
 	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -122,6 +143,9 @@ func TestSourceRefreshCoalescesSavesAndSharesSyncGate(t *testing.T) {
 	}()
 	s := newKeyPermissionTestServer(t)
 	src := seedDiscoverySource(t, s, upstream.URL, []storage.SourceAPIKey{{Value: "old"}}, "original")
+	// The discovery context still bounds the request; the fixture's shorter
+	// ordinary HTTP timeout must not release the barrier during verification.
+	s.protocolTransport = relay.NewProtocolTransport(0)
 	if !s.launchSourceRefresh(src.ID) {
 		t.Fatal("not started")
 	}
@@ -150,6 +174,7 @@ func TestSourceRefreshCoalescesSavesAndSharesSyncGate(t *testing.T) {
 }
 
 func TestSourceRefreshSwitchToManualInvalidatesFetchedResult(t *testing.T) {
+	t.Parallel()
 	entered, release := make(chan struct{}, 1), make(chan struct{})
 	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -191,6 +216,7 @@ func TestSourceRefreshSwitchToManualInvalidatesFetchedResult(t *testing.T) {
 }
 
 func TestSourceRefreshLoadsLatestSnapshotAfterQueue(t *testing.T) {
+	t.Parallel()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer new" {
 			t.Error("queued job used stale credentials")
@@ -215,6 +241,7 @@ func TestSourceRefreshLoadsLatestSnapshotAfterQueue(t *testing.T) {
 }
 
 func TestSourceRefreshCanceledCallerKeepsPendingSave(t *testing.T) {
+	t.Parallel()
 	entered := make(chan struct{}, 1)
 	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

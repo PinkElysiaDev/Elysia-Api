@@ -32,10 +32,7 @@ func parseTestIP(t *testing.T, raw string) net.IP {
 
 // newUnboundTestServer constructs the transport shell used by isolated tests.
 func newUnboundTestServer(groups []config.ModelGroupConfig) *Server {
-	gin.SetMode(gin.TestMode)
-	// 上游指向 httptest 的 127.0.0.1：关闭 relay 的连接时 SSRF 校验，
-	// 否则私网 IP 会被 secureControl 在 connect 时拒绝。
-	relay.SetAllowPrivateDial(true)
+	// TestMain allows loopback connections to isolated httptest upstreams.
 	cfg := &config.Config{}
 	cfg.Host, cfg.Port = "127.0.0.1", 8765
 	return &Server{
@@ -77,6 +74,9 @@ func newTestServerWithStore(t *testing.T, groups []config.ModelGroupConfig, defi
 	}
 	t.Cleanup(func() { store.Close() })
 	s.store = store
+	// Routing tests start with verified presets. Reuse their offline proofs;
+	// initializeProtocolRuntime still checks and publishes this store's state.
+	activateDiscoveryPresets(t, s)
 	for _, definition := range definitions {
 		activateGatewayDefinition(t, s, definition)
 	}

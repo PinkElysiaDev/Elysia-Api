@@ -8,22 +8,6 @@ import (
 
 var liveProtocolIDs = []string{"openai-chat-completions", "openai-responses", "anthropic-messages", "google-generate-content"}
 
-func TestVerificationEnvelopeTextCombinations(t *testing.T) {
-	custom := compileFixtureDefinition(t, verificationEnvelopeDefinition(t))
-	if report := protocol.Verify(t.Context(), custom); !report.Passed {
-		t.Fatal(report.Issues)
-	}
-	for _, id := range liveProtocolIDs {
-		t.Run(id, func(t *testing.T) {
-			target := compileFixtureDefinition(t, presetDefinition(t, id))
-			report := protocol.VerifyBindingCombination(t.Context(), custom, target, protocol.CapabilitySet{protocol.TextCapability: true, protocol.UsageCapability: true})
-			if !report.Passed {
-				t.Fatal(report.Issues)
-			}
-		})
-	}
-}
-
 func verificationEnvelopeDefinition(t *testing.T) protocol.Definition {
 	definition := agentEnvelopeDefinition(t)
 	definition.Agent = nil

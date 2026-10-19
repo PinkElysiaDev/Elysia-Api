@@ -209,7 +209,7 @@ func activateDiscoveryPresets(t *testing.T, s *Server) {
 		if err := value.Decode(&definition); err != nil {
 			t.Fatal(err)
 		}
-		activateGatewayDefinition(t, s, definition)
+		seedGatewayDefinition(t, s, definition, false)
 	}
 	service, err := s.protocolService()
 	if err != nil {

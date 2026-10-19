@@ -74,6 +74,7 @@ func (u *capturingUpstream) last() capturedUpstreamRequest {
 }
 
 func TestAgentNonReasoningDefault(t *testing.T) {
+	t.Parallel()
 	for _, fixture := range cacheWireFixtures() {
 		if fixture.platform != "openai" && fixture.platform != "responses" {
 			continue
@@ -172,6 +173,7 @@ func callerRequest() agent.CallRequest {
 // stream=true 与 stream_options.include_usage；usage 按规范以 finish_reason
 // 之后的独立尾帧到达（W1-4 回归：终态即 return 会丢掉整帧用量）。
 func TestAgentCallerOpenAIChatViaAdapter(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	bodyMaxKB := 1024
 	s.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: &bodyMaxKB})
@@ -255,6 +257,7 @@ func TestAgentCallerOpenAIChatViaAdapter(t *testing.T) {
 }
 
 func TestAgentCallerRetryAndCancelLogs(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []string{"retry", "cancel", "incomplete"} {
 		t.Run(scenario, func(t *testing.T) {
 			s := newAgentIntegrationServer(t)
@@ -309,6 +312,7 @@ func TestAgentCallerRetryAndCancelLogs(t *testing.T) {
 // Anthropic 平台：适配器拼 /v1/messages + x-api-key/anthropic-version；请求体
 // 注入 stream=true；Anthropic 形状的 SSE 被聚合。
 func TestAgentCallerAnthropicViaAdapter(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -342,6 +346,7 @@ func TestAgentCallerAnthropicViaAdapter(t *testing.T) {
 
 // 上游 400（永久错误）：不重试、错误文案带状态码，一次调用即返回。
 func TestAgentCallerUpstream400NotRetried(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	bodyMaxKB := 1024
 	s.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: &bodyMaxKB})
@@ -382,6 +387,7 @@ func TestAgentCallerUpstream400NotRetried(t *testing.T) {
 // custom:<协议ID> 平台：走注册协议渲染 + 自定义协议发送 + 注册流解码器，
 // 请求路径与请求体由协议定义（预置 openai-chat-completions 即 OpenAI chat 形状）。
 func TestAgentCallerCustomProtocolPlatform(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	bodyMaxKB := 1024
 	s.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: &bodyMaxKB})
@@ -428,6 +434,7 @@ func TestAgentCallerCustomProtocolPlatform(t *testing.T) {
 
 // 未注册的 custom 协议：调用前即失败并给出可读错误。
 func TestAgentCallerUnregisteredCustomProtocol(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	err := s.saveSource(t.Context(), storage.ModelSource{ID: "bad", Platform: "custom:never-registered", BaseURL: "http://127.0.0.1:9"})
 	if err == nil || !strings.Contains(err.Error(), string(protocol.VerificationRequired)) {
@@ -439,6 +446,7 @@ func TestAgentCallerUnregisteredCustomProtocol(t *testing.T) {
 // 无 data: 前缀），不得是解码后的二进制——回归 ".messages[1]: Invalid base64
 // data"（上游按 base64 校验 source.data / inlineData.data 直接 400）。
 func TestAgentAttachmentBase64IsTextNotBinary(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	renderer := newAgentUserContentRenderer(s)
 	// 1x1 PNG 的 base64。
@@ -545,6 +553,7 @@ func TestAgentAttachmentBase64IsTextNotBinary(t *testing.T) {
 // 回归（W1-5）：Responses 平台不得注入 stream_options——该参数是 Chat 线
 // 专属，严格上游会对未知顶层参数直接 400（且不重试）。
 func TestAgentCallerResponsesNoStreamOptions(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -583,6 +592,7 @@ func TestAgentCallerResponsesNoStreamOptions(t *testing.T) {
 
 // Late content cannot change a completed result or be silently discarded.
 func TestAgentCallerCustomProtocolPostTerminalTextRejected(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
@@ -604,6 +614,7 @@ func TestAgentCallerCustomProtocolPostTerminalTextRejected(t *testing.T) {
 // D4 端到端：agent 工具轮走 anthropic 预置源——工具调用经 content_block 帧
 // 拼装、content_block_stop 补发参数完成（v2 新增），终稿照常聚合。
 func TestAgentCallerAnthropicPresetToolRound(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, call int) {
@@ -645,6 +656,7 @@ func TestAgentCallerAnthropicPresetToolRound(t *testing.T) {
 }
 
 func TestAgentCallerResponsesStatelessToolContinuation(t *testing.T) {
+	t.Parallel()
 	for _, transport := range []protocol.Transport{protocol.HTTPJSON, protocol.SSE} {
 		t.Run(string(transport), func(t *testing.T) {
 			s := newAgentIntegrationServer(t)
@@ -746,6 +758,7 @@ func TestAgentCallerResponsesStatelessToolContinuation(t *testing.T) {
 // 第二轮请求体必须携带签名 thinking 块（shape=anthropic 用 part.Signature
 // 回放），否则真实上游会拒绝跨轮思考。
 func TestAgentCallerAnthropicPresetSignatureRoundTrip(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, body string, call int) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -845,6 +858,7 @@ func TestAgentCallerAnthropicPresetSignatureRoundTrip(t *testing.T) {
 // 多 key 源：助手必须用「拉到过该模型」的 key——models 行冗余列固定存首个
 // 有效 key，模型只被第二个 key 拉到时按行内 key 调用必失败。
 func TestAgentCallerPicksPermittedKey(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	// 上游只认 key-b：key-a 请求直接 401（capturing 包装先落账再回调，
 	// handler 里 last() 已是当前请求的鉴权头）。
@@ -891,6 +905,7 @@ func TestAgentCallerPicksPermittedKey(t *testing.T) {
 
 // helper 直接单测：许可命中 / 零命中报错 / 单密钥源。
 func TestApplyAgentPermittedKey(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	source := storage.ModelSource{
 		ID: "src1", Name: "src", Platform: "custom:openai-chat-completions", Enabled: true, AutoFetchModels: true,

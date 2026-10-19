@@ -17,7 +17,6 @@ import (
 // 前端编码出的 %2F 会在 Gin 路由匹配前被解码拆段导致 404。现改走 query
 // 参数，这里用真实路由（而非 handler 直调）覆盖编码/解码全链路。
 func TestAdminModelEndpointsSupportSlashInModelID(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	store, err := storage.Open(filepath.Join(t.TempDir(), "model-update.sqlite3"))
 	if err != nil {
 		t.Fatalf("storage.Open() error = %v", err)

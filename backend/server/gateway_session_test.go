@@ -54,6 +54,7 @@ func readSessionEvents(t *testing.T, ctx context.Context, connection *websocket.
 }
 
 func TestGatewayWebSocketIndependentProtocolsAndUsage(t *testing.T) {
+	t.Parallel()
 	server, _ := newProtocolAdminTestServer(t)
 	ingress := activateGatewayDefinition(t, server, loadGatewayDefinition(t, "session-alpha"))
 	definition := loadGatewayDefinition(t, "session-beta")
@@ -196,6 +197,7 @@ func TestGatewayWebSocketIndependentProtocolsAndUsage(t *testing.T) {
 }
 
 func TestGatewayWebSocketRejectsAuthAndOriginBeforeUpstream(t *testing.T) {
+	t.Parallel()
 	server, _ := newProtocolAdminTestServer(t)
 	compiled := activateGatewayDefinition(t, server, loadGatewayDefinition(t, "session-alpha"))
 	var calls atomic.Int32
@@ -223,6 +225,7 @@ func TestGatewayWebSocketRejectsAuthAndOriginBeforeUpstream(t *testing.T) {
 }
 
 func TestGatewayWebSocketLateErrorClosesWithoutReplay(t *testing.T) {
+	t.Parallel()
 	server, _ := newProtocolAdminTestServer(t)
 	compiled := activateGatewayDefinition(t, server, loadGatewayDefinition(t, "session-alpha"))
 	var calls atomic.Int32

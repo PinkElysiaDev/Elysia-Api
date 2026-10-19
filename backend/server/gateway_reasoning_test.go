@@ -19,7 +19,11 @@ import (
 )
 
 func TestGatewayThinkingHTTPAndSSEMatrix(t *testing.T) {
+	t.Parallel()
 	models := map[string]string{"openai": "gpt-5.4", "responses": "gpt-5.4", "anthropic": "claude-opus-4-6", "gemini": "gemini-3.5-flash-lite"}
+	// Exercise every ingress and target once; per-codec control combinations
+	// belong to protocol tests, not repeated database-backed HTTP fixtures.
+	sourceForTarget := map[string]string{"openai": "gemini", "responses": "openai", "anthropic": "responses", "gemini": "anthropic"}
 	for _, target := range cacheWireFixtures() {
 		t.Run(target.platform, func(t *testing.T) {
 			stream := false
@@ -58,6 +62,9 @@ func TestGatewayThinkingHTTPAndSSEMatrix(t *testing.T) {
 			groups[0].Models[0].ID = models[target.platform]
 			s := newTestServer(t, groups)
 			for _, source := range cacheWireFixtures() {
+				if source.platform != sourceForTarget[target.platform] {
+					continue
+				}
 				for _, streaming := range []bool{false, true} {
 					t.Run(fmt.Sprintf("%s/%v", source.platform, streaming), func(t *testing.T) {
 						stream = streaming
@@ -111,6 +118,7 @@ func TestGatewayThinkingHTTPAndSSEMatrix(t *testing.T) {
 }
 
 func TestGatewayThinkingGroupNameDoesNotRestrictCandidate(t *testing.T) {
+	t.Parallel()
 	for _, groupName := range []string{"grp", "gpt-5.4"} {
 		t.Run(groupName, func(t *testing.T) {
 			upstream := newCapturingUpstream(t, func(w http.ResponseWriter, body string, _ int) {
@@ -141,6 +149,7 @@ func TestGatewayThinkingGroupNameDoesNotRestrictCandidate(t *testing.T) {
 }
 
 func TestGatewayThinkingNativeReplay(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ platform, model, body, want, absent string }{
 		{"gemini", "gemini-3.8-flash", `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingBudget":4096}},"future_field":true}`, `"thinkingLevel":"medium"`, "thinkingBudget"},
 		{"anthropic", "claude-opus-4-5", `{"model":"grp","max_tokens":2048,"thinking":{"type":"enabled","budget_tokens":4096},"messages":[{"role":"user","content":"hi"}],"tools":[{"name":"lookup","input_schema":{"type":"object"}}],"future_field":true}`, `"budget_tokens":2047`, `"budget_tokens":4096`},
@@ -176,94 +185,99 @@ func TestGatewayThinkingNativeReplay(t *testing.T) {
 }
 
 func TestGatewayThinkingCandidateIsolation(t *testing.T) {
+	t.Parallel()
 	for _, control := range []string{"disabled", "output-limit"} {
-		for _, mode := range []string{"compatible", "strict"} {
-			for _, reverse := range []bool{false, true} {
-				t.Run(fmt.Sprintf("%s/%s/%v", control, mode, reverse), func(t *testing.T) {
-					var models []string
-					provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						models = append(models, r.URL.Path)
-						raw, _ := io.ReadAll(r.Body)
-						if control == "disabled" && (!strings.Contains(string(raw), `"thinkingBudget":0`) || strings.Contains(string(raw), "thinkingLevel")) {
-							t.Error("disabled intent changed", string(raw))
-						}
-						if control == "output-limit" && !strings.Contains(string(raw), `"maxOutputTokens":8192`) {
-							t.Error("explicit output limit changed", string(raw))
-						}
-						w.Header().Set("Content-Type", "application/json")
-						io.WriteString(w, `{"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2}}`)
-					}))
-					defer provider.Close()
-					group := presetGroup(t, "custom:google-generate-content", provider.URL)
-					a := group[0].Models[0]
-					a.ID = "gemini-3.5-flash-lite"
-					a.Name = a.ID
-					b := a
-					b.ID = "gemini-2.5-flash"
-					b.Name = b.ID
-					group[0].Models = []config.ModelRef{a, b}
-					if reverse {
-						group[0].Models = []config.ModelRef{b, a}
+		mode := "compatible"
+		if control == "output-limit" {
+			mode = "strict"
+		}
+		for _, reverse := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/%s/%v", control, mode, reverse), func(t *testing.T) {
+				t.Parallel()
+				var models []string
+				provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					models = append(models, r.URL.Path)
+					raw, _ := io.ReadAll(r.Body)
+					if control == "disabled" && (!strings.Contains(string(raw), `"thinkingBudget":0`) || strings.Contains(string(raw), "thinkingLevel")) {
+						t.Error("disabled intent changed", string(raw))
 					}
-					group[0].MaxRetries = 0
-					s := newTestServer(t, group)
-					service, _ := s.protocolService()
-					bindings, _ := s.store.ListProtocolBindings(t.Context())
-					if control == "output-limit" {
-						models, err := s.store.ListModels(t.Context())
-						if err != nil {
-							t.Fatal(err)
-						}
-						upstream, _ := service.Pin(protocol.PresetGeminiID)
-						for _, model := range models {
-							binding := makeProtocolBinding(storage.BindingKey{Kind: "model", SourceID: model.SourceID, ModelID: model.ID}, upstream)
-							cap := protocol.ResolveReasoningCapabilities("gemini", model.ID)
-							cap.MaxOutputTokens = 16384
-							if model.ID == a.ID {
-								cap.MaxOutputTokens = 4096
-							}
-							binding.Binding.Reasoning = &cap
-							bindings = append(bindings, binding)
-						}
-						if len(models) != 2 {
-							t.Fatalf("configured %d model profiles", len(models))
-						}
+					if control == "output-limit" && !strings.Contains(string(raw), `"maxOutputTokens":8192`) {
+						t.Error("explicit output limit changed", string(raw))
 					}
-					for i := range bindings {
-						bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "thinking-policy", Mode: mode, Rules: []protocol.ConversionRule{}}}
-					}
-					verified, err := s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
+					w.Header().Set("Content-Type", "application/json")
+					io.WriteString(w, `{"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2}}`)
+				}))
+				defer provider.Close()
+				group := presetGroup(t, "custom:google-generate-content", provider.URL)
+				a := group[0].Models[0]
+				a.ID = "gemini-3.5-flash-lite"
+				a.Name = a.ID
+				b := a
+				b.ID = "gemini-2.5-flash"
+				b.Name = b.ID
+				group[0].Models = []config.ModelRef{a, b}
+				if reverse {
+					group[0].Models = []config.ModelRef{b, a}
+				}
+				group[0].MaxRetries = 0
+				s := newTestServer(t, group)
+				service, _ := s.protocolService()
+				bindings, _ := s.store.ListProtocolBindings(t.Context())
+				if control == "output-limit" {
+					models, err := s.store.ListModels(t.Context())
 					if err != nil {
 						t.Fatal(err)
 					}
-					for _, binding := range verified {
-						if err := s.store.SaveProtocolBinding(t.Context(), binding); err != nil {
-							t.Fatal(err)
+					upstream, _ := service.Pin(protocol.PresetGeminiID)
+					for _, model := range models {
+						binding := makeProtocolBinding(storage.BindingKey{Kind: "model", SourceID: model.SourceID, ModelID: model.ID}, upstream)
+						cap := protocol.ResolveReasoningCapabilities("gemini", model.ID)
+						cap.MaxOutputTokens = 16384
+						if model.ID == a.ID {
+							cap.MaxOutputTokens = 4096
 						}
+						binding.Binding.Reasoning = &cap
+						bindings = append(bindings, binding)
 					}
-					s.invalidateRouteCache()
-					raw := `{"model":"grp","store":false,"reasoning_effort":"none","messages":[{"role":"user","content":"hi"}]}`
-					if control == "output-limit" {
-						raw = `{"model":"grp","store":false,"max_completion_tokens":8192,"messages":[{"role":"user","content":"hi"}]}`
+					if len(models) != 2 {
+						t.Fatalf("configured %d model profiles", len(models))
 					}
-					c, rec := chatRequestContext(raw)
-					s.chatCompletions(c)
-					if rec.Code != 200 || len(models) != 1 || !strings.Contains(models[0], "gemini-2.5-flash") {
-						t.Fatal(rec.Code, rec.Body, models)
+				}
+				for i := range bindings {
+					bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "thinking-policy", Mode: mode, Rules: []protocol.ConversionRule{}}}
+				}
+				verified, err := s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, binding := range verified {
+					if err := s.store.SaveProtocolBinding(t.Context(), binding); err != nil {
+						t.Fatal(err)
 					}
-					// Invalid source controls reject every route before a network call.
-					c, rec = chatRequestContext(`{"model":"grp","store":false,"reasoning_effort":42,"messages":[{"role":"user","content":"hi"}]}`)
-					s.chatCompletions(c)
-					if rec.Code != 400 || len(models) != 1 {
-						t.Fatal(rec.Code, rec.Body, models)
-					}
-				})
-			}
+				}
+				s.invalidateRouteCache()
+				raw := `{"model":"grp","store":false,"reasoning_effort":"none","messages":[{"role":"user","content":"hi"}]}`
+				if control == "output-limit" {
+					raw = `{"model":"grp","store":false,"max_completion_tokens":8192,"messages":[{"role":"user","content":"hi"}]}`
+				}
+				c, rec := chatRequestContext(raw)
+				s.chatCompletions(c)
+				if rec.Code != 200 || len(models) != 1 || !strings.Contains(models[0], "gemini-2.5-flash") {
+					t.Fatal(rec.Code, rec.Body, models)
+				}
+				// Invalid source controls reject every route before a network call.
+				c, rec = chatRequestContext(`{"model":"grp","store":false,"reasoning_effort":42,"messages":[{"role":"user","content":"hi"}]}`)
+				s.chatCompletions(c)
+				if rec.Code != 400 || len(models) != 1 {
+					t.Fatal(rec.Code, rec.Body, models)
+				}
+			})
 		}
 	}
 }
 
 func TestGatewayThinkingHardConstraintsNeverCallUpstream(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, preset, model, controls, reason string }{
 		{"cannot-disable", "google-generate-content", "gemini-3.5-flash-lite", `"reasoning_effort":"none"`, "cannot disable thinking"},
 		{"explicit-too-small", "anthropic-messages", "claude-opus-4-5", `"reasoning_effort":"high","max_completion_tokens":512`, "manual thinking cannot fit"},
@@ -286,6 +300,7 @@ func TestGatewayThinkingHardConstraintsNeverCallUpstream(t *testing.T) {
 }
 
 func TestGatewayThinkingBudgetStrictNeverCallsUpstream(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(500) }))
 	defer provider.Close()
@@ -315,6 +330,7 @@ func TestGatewayThinkingBudgetStrictNeverCallsUpstream(t *testing.T) {
 }
 
 func TestGatewayDynamicBudgetStrictCandidateFallback(t *testing.T) {
+	t.Parallel()
 	for _, fallback := range []bool{false, true} {
 		t.Run(fmt.Sprint(fallback), func(t *testing.T) {
 			upstream := newCapturingUpstream(t, func(w http.ResponseWriter, body string, _ int) {
@@ -367,6 +383,7 @@ func TestGatewayDynamicBudgetStrictCandidateFallback(t *testing.T) {
 }
 
 func TestGatewayLateOutputLimitNeverCallsUpstream(t *testing.T) {
+	t.Parallel()
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) { w.WriteHeader(500) })
 	groups := presetGroup(t, "custom:"+protocol.PresetChatCompletionsID, upstream.URL)
 	groups[0].Models[0].ID = "gpt-6.1-sol"
@@ -398,6 +415,7 @@ func TestGatewayLateOutputLimitNeverCallsUpstream(t *testing.T) {
 }
 
 func TestGatewayThinkingToolContinuation(t *testing.T) {
+	t.Parallel()
 	for _, source := range []string{protocol.PresetChatCompletionsID, protocol.PresetAnthropicID, protocol.PresetResponsesID} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/%v", source, stream), func(t *testing.T) {
@@ -615,6 +633,7 @@ func thinkingToolWireMessage(t *testing.T, source string, stream bool, raw []byt
 }
 
 func TestAgentThinkingUsesBoundModelCapabilities(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ platform, model, field, value string }{
 		{"openai", "gpt-6.1-sol", "reasoning_effort", `"high"`},
 		{"responses", "gpt-6.1-sol", "effort", `"high"`},
@@ -662,6 +681,7 @@ func TestAgentThinkingUsesBoundModelCapabilities(t *testing.T) {
 }
 
 func TestAgentThinkingDisabledRejectsUnsupportedModel(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ platform, model string }{
 		{"gemini", "gemini-3.5-flash-lite"}, {"gemini", "private-alias"},
 		{"openai", "gpt-6.1-sol"}, {"anthropic", "claude-opus-5-5"},

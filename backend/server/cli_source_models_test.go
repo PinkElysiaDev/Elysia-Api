@@ -6,6 +6,7 @@ import (
 )
 
 func TestCLISourceManualCatalogSurvivesRefresh(t *testing.T) {
+	t.Parallel()
 	s := newOpsTestServer(t)
 	if result := opsExecute(t, &createSourceTool{server: s}, `{"name":"manual-audit","baseUrl":"https://example.test","manualModels":["one","two"]}`); !result.OK {
 		t.Fatal(result.Summary)

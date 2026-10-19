@@ -18,6 +18,7 @@ import (
 )
 
 func TestGatewayChatWireContractFailure(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, role, id, model, path string
 		created                     int
@@ -91,6 +92,7 @@ func TestGatewayChatWireContractFailure(t *testing.T) {
 }
 
 func TestWireContractPreviewAndCombinationUseFinalFrames(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	d := presetDefinition(t, protocol.PresetChatCompletionsID)
 	d.ID, d.Native.Preserve = "chat-after-without-role", false

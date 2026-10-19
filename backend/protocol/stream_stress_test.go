@@ -6,7 +6,9 @@ import (
 )
 
 func TestLongReplayRetainsBoundedStateAndLateUsage(t *testing.T) {
-	replay, err := NewEventReplay(replayTarget(), DefaultLimits())
+	limits := DefaultLimits()
+	limits.BufferBytes = 16 * 1024
+	replay, err := NewEventReplay(replayTarget(), limits)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -14,7 +16,8 @@ func TestLongReplayRetainsBoundedStateAndLateUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	chunk := StringValue(strings.Repeat("x", 4096))
-	for range 4096 {
+	// Four times the retention budget is sufficient to catch accumulation.
+	for range 4 * limits.BufferBytes / 4096 {
 		if _, err := replay.Consume(Event{SchemaVersion: 1, Type: ItemDelta, ItemID: StringValue("text"), Delta: chunk}); err != nil {
 			t.Fatal(err)
 		}

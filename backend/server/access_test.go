@@ -29,7 +29,6 @@ func TestSlugIDChineseAndSymbols(t *testing.T) {
 }
 
 func newGroupAccessContext(allowed []string, set bool) *gin.Context {
-	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	if set {
 		c.Set("elysiaAllowedGroups", allowed)

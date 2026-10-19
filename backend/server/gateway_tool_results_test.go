@@ -13,6 +13,7 @@ import (
 )
 
 func TestGatewayMediaToolResultCandidateIsolation(t *testing.T) {
+	t.Parallel()
 	const raw = `{"model":"grp","max_tokens":100,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"call_1","name":"f","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jT9sAAAAASUVORK5CYII="}}]}]}]}`
 	for _, mode := range []string{"compatible", "strict"} {
 		for _, order := range []string{"native", "gemini-first", "anthropic-first", "unsupported", "invalid", "reject"} {
