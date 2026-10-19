@@ -1,11 +1,15 @@
 package protocol
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"reflect"
+)
 
 // TypedModule avoids serializing semantic documents between trusted Go
 // adapters and the runtime. It implements the same conversion as Module.
-// Definitions with schemas, post-mappings or initial events use Execute so no
-// author-declared transformation or constraint can be bypassed.
+// Request wire schemas still run at their original boundary. Semantic schemas,
+// post-mappings and initial events retain the generic execution path.
 type TypedModule interface {
 	Module
 	DecodeRequest(context.Context, Value, EvaluationContext) (*Request, error)
@@ -23,6 +27,41 @@ type TypedEventModule interface {
 func (compiled *Compiled) hasTypedMapping(direction Direction) bool {
 	mapping := compiled.mappings[direction]
 	return mapping.module != nil && mapping.after == nil && mapping.initial == nil && mapping.input == nil && mapping.output == nil
+}
+
+// Only wire-side request schemas are eligible; event and response selection is
+// intentionally unchanged. Modules still own the same typed/JSON contract.
+func (compiled *Compiled) hasTypedRequestSchema(direction Direction) bool {
+	mapping := compiled.mappings[direction]
+	if mapping.module == nil || mapping.after != nil || mapping.initial != nil {
+		return false
+	}
+	if direction == DecodeRequest {
+		return mapping.input != nil && mapping.output == nil
+	}
+	return direction == EncodeRequest && mapping.input == nil && mapping.output != nil
+}
+
+// normalizeMappingRequest reproduces a semantic JSON boundary on owned mutable
+// containers while preserving immutable payloads that need no normalization.
+func normalizeMappingRequest[T any](input *T, limits Limits) *T {
+	value := reflect.ValueOf(input)
+	plan := typedLimitPlans[value.Type()]
+	owned := cloneSemantic(value, plan)
+	state := conversionState{cache: &semanticCache{limits: limits}}
+	state.normalize(owned, plan)
+	return owned.Interface().(*T)
+}
+
+func checkMappingSemantic(value any, limits Limits, domain string) error {
+	if fitsTypedLimits(value, limits) {
+		return nil
+	}
+	encoded, err := EncodeValue(value)
+	if err != nil {
+		return err
+	}
+	return checkResourceValue(encoded, limits, domain)
 }
 
 func checkTypedLimits(value any, limits Limits) error {
@@ -65,6 +104,40 @@ func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 			return output, nil
 		}
 	}
+	if compiled.hasTypedRequestSchema(direction) {
+		if module, ok := compiled.mappings[direction].module.(TypedModule); ok {
+			fail := func(err error) (*T, error) { return nil, compiled.mappingError(direction, err) }
+			if err := ctx.Err(); err != nil {
+				return fail(err)
+			}
+			if err := checkResourceValue(input, inputLimits, "mapping_input"); err != nil {
+				return fail(err)
+			}
+			if err := checkValueSchema(input, compiled.mappings[direction].input, "/input", 1, inputLimits); err != nil {
+				return fail(err)
+			}
+			if _, err := EncodeValue(options.Values); err != nil {
+				return fail(err)
+			}
+			options = options.forDefinition(compiled)
+			options.wireLimits = compiled.nativeLimits(ctx, direction)
+			output, err := decode(module, options)
+			if err != nil {
+				return fail(err)
+			}
+			// Module.Convert first calls EncodeSemantic with the call-wide budget.
+			semanticBudget := semanticLimits(requestLimits(ctx, DefaultLimits(), false))
+			if err := checkSemanticValue(output, semanticBudget); err != nil {
+				return fail(err)
+			}
+			output = normalizeMappingRequest(output, semanticBudget)
+			if err := checkMappingSemantic(output, outputLimits, "mapping_output"); err != nil {
+				return fail(err)
+			}
+			return output, nil
+		}
+	}
+
 	output, err := compiled.executeMapping(ctx, direction, input, options)
 	if err != nil {
 		return nil, err
@@ -76,7 +149,7 @@ func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 	return &result, nil
 }
 
-func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direction, input *T, options EvaluationContext, encode func(TypedModule, EvaluationContext) (Value, error)) (Value, error) {
+func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direction, input *T, options EvaluationContext, encode func(TypedModule, *T, EvaluationContext) (Value, error)) (Value, error) {
 	inputLimits, outputLimits, _ := compiled.mappingLimits(ctx, direction)
 	if compiled.hasTypedMapping(direction) {
 		if module, ok := compiled.mappings[direction].module.(TypedModule); ok {
@@ -88,13 +161,50 @@ func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 			}
 			options = options.forDefinition(compiled)
 			options.wireLimits = compiled.nativeLimits(ctx, direction)
-			output, err := encode(module, options)
+			output, err := encode(module, input, options)
 			if err != nil {
 				return Value{}, err
 			}
 			return output, checkResourceValue(output, outputLimits, "wire_output")
 		}
 	}
+	if compiled.hasTypedRequestSchema(direction) {
+		if module, ok := compiled.mappings[direction].module.(TypedModule); ok {
+			// This originally ran before executeMapping, including its context check.
+			semanticBudget := semanticLimits(requestLimits(ctx, DefaultLimits(), false))
+			if err := checkSemanticValue(input, semanticBudget); err != nil {
+				return Value{}, err
+			}
+			input = normalizeMappingRequest(input, semanticBudget)
+			fail := func(err error) (Value, error) { return Value{}, compiled.mappingError(direction, err) }
+			if err := ctx.Err(); err != nil {
+				return fail(err)
+			}
+			if err := checkMappingSemantic(input, inputLimits, "mapping_input"); err != nil {
+				return fail(err)
+			}
+			if _, err := EncodeValue(options.Values); err != nil {
+				return fail(err)
+			}
+			options = options.forDefinition(compiled)
+			options.wireLimits = compiled.nativeLimits(ctx, direction)
+			output, err := encode(module, input, options)
+			if err != nil {
+				return fail(err)
+			}
+			if output.IsZero() {
+				return fail(fmt.Errorf("mapping omitted its entire output"))
+			}
+			if err := checkResourceValue(output, outputLimits, "mapping_output"); err != nil {
+				return fail(err)
+			}
+			if err := checkValueSchema(output, compiled.mappings[direction].output, "/output", 1, outputLimits); err != nil {
+				return fail(err)
+			}
+			return output, nil
+		}
+	}
+
 	value, err := EncodeSemantic(ctx, direction, input)
 	if err != nil {
 		return Value{}, err

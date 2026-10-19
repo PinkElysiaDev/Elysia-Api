@@ -690,24 +690,28 @@ func (compiled *Compiled) Execute(ctx context.Context, direction Direction, inpu
 	return Value{}, []ConversionIssue{{Code: code, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "evaluate", Path: "/", Reason: err.Error()}}
 }
 
+// mappingError shares the diagnostic path and original cause chain with
+// the typed request boundary.
+func (compiled *Compiled) mappingError(direction Direction, err error) error {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	err = resourceIssue(err, compiled.identity, direction, "evaluate")
+	var conversion *ConversionError
+	if errors.As(err, &conversion) {
+		return err
+	}
+	code := InvalidInput
+	if direction == DecodeResponse || direction == DecodeEvent {
+		code = UpstreamContractViolation
+	}
+	return &ConversionError{cause: err, Issues: []ConversionIssue{{Code: code, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "evaluate", Path: mappingErrorPath("/directions/"+string(direction), err), Reason: err.Error(), Suggestion: "Correct the input or declared mapping and verify the revision again."}}}
+}
+
 // executeMapping retains causes for runtime consumers; Execute exposes diagnostics
 // for authoring callers whose API returns a report instead of a Go error.
 func (compiled *Compiled) executeMapping(ctx context.Context, direction Direction, input Value, options EvaluationContext) (Value, error) {
-	fail := func(err error) (Value, error) {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return Value{}, err
-		}
-		err = resourceIssue(err, compiled.identity, direction, "evaluate")
-		var conversion *ConversionError
-		if errors.As(err, &conversion) {
-			return Value{}, err
-		}
-		code := InvalidInput
-		if direction == DecodeResponse || direction == DecodeEvent {
-			code = UpstreamContractViolation
-		}
-		return Value{}, &ConversionError{cause: err, Issues: []ConversionIssue{{Code: code, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "evaluate", Path: mappingErrorPath("/directions/"+string(direction), err), Reason: err.Error(), Suggestion: "Correct the input or declared mapping and verify the revision again."}}}
-	}
+	fail := func(err error) (Value, error) { return Value{}, compiled.mappingError(direction, err) }
 	if err := ctx.Err(); err != nil {
 		return fail(err)
 	}

@@ -92,8 +92,8 @@ func (compiled *Compiled) EncodeRequest(ctx context.Context, request *Request, o
 	if err := IssuesError(CheckRequest(request, target, semanticLimits(compiled.nativeLimits(ctx, EncodeRequest)))); err != nil {
 		return nil, err
 	}
-	output, err := encodeTyped(ctx, compiled, EncodeRequest, request, options, func(module TypedModule, options EvaluationContext) (Value, error) {
-		return module.EncodeRequest(ctx, request, options)
+	output, err := encodeTyped(ctx, compiled, EncodeRequest, request, options, func(module TypedModule, input *Request, options EvaluationContext) (Value, error) {
+		return module.EncodeRequest(ctx, input, options)
 	})
 	if err != nil {
 		return nil, err
@@ -142,8 +142,8 @@ func (compiled *Compiled) EncodeResponse(ctx context.Context, response *Response
 	if err := IssuesError(CheckResponse(response, compiled.target(EncodeResponse, options), compiled.limits)); err != nil {
 		return nil, err
 	}
-	output, err := encodeTyped(ctx, compiled, EncodeResponse, response, options, func(module TypedModule, options EvaluationContext) (Value, error) {
-		return module.EncodeResponse(ctx, response, options)
+	output, err := encodeTyped(ctx, compiled, EncodeResponse, response, options, func(module TypedModule, input *Response, options EvaluationContext) (Value, error) {
+		return module.EncodeResponse(ctx, input, options)
 	})
 	if err != nil {
 		return nil, err
