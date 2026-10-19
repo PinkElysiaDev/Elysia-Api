@@ -504,6 +504,22 @@ func validateLogprobTokens(value Value, at string) error {
 }
 
 func (c *CompiledConversion) metadataValue(phase ConversionPhase, input Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, limits Limits) (Value, error) {
+	var document any = &Event{}
+	if phase == ConversionRequest {
+		document = &Request{}
+	} else if phase == ConversionResponse {
+		document = &Response{}
+	}
+	if err := input.Decode(document); err != nil {
+		return Value{}, err
+	}
+	if err := c.metadataObject(phase, document, route, rule, sink); err != nil {
+		return Value{}, err
+	}
+	return encodeSemanticWithin(document, limits)
+}
+
+func (c *CompiledConversion) metadataObject(phase ConversionPhase, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
 	var codec string
 	_ = rule.Value.Decode(&codec)
 	var visit func(*Node) error
@@ -567,44 +583,30 @@ func (c *CompiledConversion) metadataValue(phase ConversionPhase, input Value, r
 		}
 		return nil
 	}
-	if phase == ConversionRequest {
-		var r Request
-		if err := input.Decode(&r); err != nil {
-			return Value{}, err
-		}
-		for i := range r.Content {
-			if err := visit(&r.Content[i]); err != nil {
-				return Value{}, err
+
+	switch subject := document.(type) {
+	case *Request:
+		for i := range subject.Content {
+			if err := visit(&subject.Content[i]); err != nil {
+				return err
 			}
 		}
-		return encodeSemanticWithin(&r, limits)
-	}
-	if phase == ConversionResponse {
-		var r Response
-		if err := input.Decode(&r); err != nil {
-			return Value{}, err
+		return nil
+	case *Response:
+		return response(subject)
+	case *Event:
+		var err error
+		subject.Metadata, err = c.projectMetadata(subject.Metadata, codec, phase, route, rule, sink)
+		if err != nil {
+			return err
 		}
-		if err := response(&r); err != nil {
-			return Value{}, err
+		if err = response(subject.Response); err != nil {
+			return err
 		}
-		return encodeSemanticWithin(&r, limits)
-	}
-	var e Event
-	if err := input.Decode(&e); err != nil {
-		return Value{}, err
-	}
-	var err error
-	e.Metadata, err = c.projectMetadata(e.Metadata, codec, phase, route, rule, sink)
-	if err != nil {
-		return Value{}, err
-	}
-	if err = response(e.Response); err != nil {
-		return Value{}, err
-	}
-	if e.Item != nil {
-		if err = visit(e.Item); err != nil {
-			return Value{}, err
+		if subject.Item != nil {
+			return visit(subject.Item)
 		}
+		return nil
 	}
-	return encodeSemanticWithin(&e, limits)
+	panic("metadata requires a semantic document")
 }

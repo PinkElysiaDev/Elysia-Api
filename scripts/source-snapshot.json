@@ -230,6 +230,7 @@
     "backend/protocol/conversion_response_shape.go",
     "backend/protocol/conversion_source_stream.go",
     "backend/protocol/conversion_source_stream_test.go",
+    "backend/protocol/conversion_state.go",
     "backend/protocol/conversion_stream.go",
     "backend/protocol/conversion_text_shape.go",
     "backend/protocol/conversion_tool_results.go",

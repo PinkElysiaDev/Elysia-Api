@@ -58,7 +58,8 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 	if err := checkResourceValue(input, limits, "semantic"); err != nil {
 		return Value{}, err
 	}
-	if err := validateContextValue(phase, input); err != nil {
+	state := conversionState{wire: input, limits: limits}
+	if err := state.validateContext(phase); err != nil {
 		return Value{}, err
 	}
 	value := input
@@ -72,6 +73,21 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 			return Value{}, err
 		}
 		var err error
+		if state.accepts(phase, rule) {
+			var target string
+			target, err = state.apply(ctx, c, phase, rule, route, sink)
+			if err != nil {
+				return Value{}, err
+			}
+			if target != "" {
+				reasoningTarget = target
+			}
+			continue
+		}
+		value, err = state.flush()
+		if err != nil {
+			return Value{}, err
+		}
 		switch {
 		case rule.Action == "system_instruction_hoist" || rule.Action == "chat_history" || rule.Action == "assistant_history" || rule.Action == "stream_options" || rule.Action == "request_projection" || rule.Action == "responses_include" || rule.Action == "responses_context" || rule.Action == "responses_storage" || rule.Action == "gemini_safety_settings" || rule.Action == "reasoning_controls":
 			if !rule.Match.matches(route, value) {
@@ -99,16 +115,22 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 		if err = checkResourceValue(value, limits, "semantic"); err != nil {
 			return Value{}, err
 		}
+		state = conversionState{wire: value, limits: limits}
 	}
-	if err := validateContextValue(phase, value); err != nil {
+	var flushErr error
+	value, flushErr = state.flush()
+	if flushErr != nil {
+		return Value{}, flushErr
+	}
+	if err := state.validateContext(phase); err != nil {
 		return Value{}, candidateFailure(err)
 	}
 	// Later authored rules must not invalidate the resolved target controls.
 	if reasoningTarget != "" {
-		var req Request
-		if err := value.Decode(&req); err != nil {
+		if err := state.load(ConversionRequest, false); err != nil {
 			return Value{}, err
 		}
+		req := state.document.(*Request)
 		cap := ResolveReasoningCapabilities(reasoningTarget, route.Model)
 		if route.Reasoning != nil {
 			cap = *route.Reasoning
@@ -116,58 +138,66 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 		if req.Reasoning != nil && req.Reasoning.Interleaved && !route.InterleavedThinking {
 			return Value{}, candidateFailure(streamIssue(InvalidInput, "/reasoning/interleaved", "target operation lacks the interleaved thinking beta"))
 		}
-		if err := validateReasoningOutputLimit(&req, cap, reasoningTarget); err != nil {
+		if err := validateReasoningOutputLimit(req, cap, reasoningTarget); err != nil {
 			return Value{}, candidateFailure(err)
 		}
-		if err := validateReasoningModel(&req, reasoningTarget, req.Reasoning, cap); err != nil {
+		if err := validateReasoningModel(req, reasoningTarget, req.Reasoning, cap); err != nil {
 			return Value{}, candidateFailure(err)
 		}
-		if _, err := ReasoningParameters(&req, reasoningTarget); err != nil {
+		if _, err := ReasoningParameters(req, reasoningTarget); err != nil {
 			return Value{}, candidateFailure(err)
 		}
 	}
 	return value, ctx.Err()
 }
 
-// Each matching request action decodes the value produced by the preceding
-// rule. Keeping this boundary preserves authored rule ordering and precision.
+// JSON-dependent matches and authored operations retain the original boundary.
+// Contiguous built-in actions use applyRequestObject on an owned document.
 func (c *CompiledConversion) applyRequestAction(ctx context.Context, value Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, string, error) {
 	var request Request
 	if err := decodeContract(value.Bytes(), &request); err != nil {
 		return Value{}, "", err
 	}
+	target, err := c.applyRequestObject(&request, route, rule, sink)
+	if err != nil {
+		return Value{}, "", err
+	}
+	value, err = encodeSemanticWithin(&request, c.phaseLimits(ctx, ConversionRequest))
+	return value, target, err
+}
+
+func (c *CompiledConversion) applyRequestObject(request *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (string, error) {
 	var err error
 	var reasoningTarget string
 	switch rule.Action {
 	case "system_instruction_hoist":
-		err = c.hoistSystem(&request, route, rule, sink)
+		err = c.hoistSystem(request, route, rule, sink)
 	case "chat_history", "assistant_history":
-		err = c.assistantHistory(&request, route, rule, sink)
+		err = c.assistantHistory(request, route, rule, sink)
 	case "reasoning_controls":
-		err = c.reasoningControls(&request, route, rule, sink)
+		err = c.reasoningControls(request, route, rule, sink)
 		if err == nil {
 			var options reasoningOptions
 			err = rule.Value.Decode(&options)
 			reasoningTarget = options.TargetCodec
 		}
 	case "responses_storage":
-		err = c.responsesStorage(&request, route, rule, sink)
+		err = c.responsesStorage(request, route, rule, sink)
 	case "responses_include":
-		err = c.responsesInclude(&request, route, rule, sink)
+		err = c.responsesInclude(request, route, rule, sink)
 	case "gemini_safety_settings":
-		err = c.geminiSafetySettings(&request, route, rule, sink)
+		err = c.geminiSafetySettings(request, route, rule, sink)
 	case "request_projection":
-		err = c.requestProjection(&request, route, rule, sink)
+		err = c.requestProjection(request, route, rule, sink)
 	case "responses_context":
-		err = c.responsesContext(&request, route, rule, sink)
+		err = c.responsesContext(request, route, rule, sink)
 	case "stream_options":
-		err = c.streamOptions(&request, route, rule, sink)
+		err = c.streamOptions(request, route, rule, sink)
 	}
 	if err != nil {
-		return Value{}, "", err
+		return "", err
 	}
-	value, err = encodeSemanticWithin(&request, c.phaseLimits(ctx, ConversionRequest))
-	return value, reasoningTarget, err
+	return reasoningTarget, nil
 }
 
 func (c *CompiledConversion) applyResponseAction(ctx context.Context, phase ConversionPhase, value Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, error) {
@@ -240,6 +270,27 @@ func (c *CompiledConversion) applyRule(ctx context.Context, phase ConversionPhas
 // Only semantic node locations are traversed; tool arguments and arbitrary user
 // JSON cannot masquerade as nodes or influence the restoration authority.
 func (c *CompiledConversion) applyNodeRule(ctx context.Context, phase ConversionPhase, input Value, route ConversionContext, sink *DiagnosticSink, rule ConversionRule) (Value, error) {
+	var document any
+	switch phase {
+	case ConversionIngress, ConversionRequest:
+		document = &Request{}
+	case ConversionResponse:
+		document = &Response{}
+	case ConversionEvent:
+		document = &Event{}
+	default:
+		return Value{}, fmt.Errorf("node rules require a semantic phase")
+	}
+	if err := decodeContract(input.Bytes(), document); err != nil {
+		return Value{}, err
+	}
+	if err := c.applyNodeObject(ctx, phase, document, route, sink, rule); err != nil {
+		return Value{}, err
+	}
+	return encodeSemanticWithin(document, c.phaseLimits(ctx, phase))
+}
+
+func (c *CompiledConversion) applyNodeObject(ctx context.Context, phase ConversionPhase, document any, route ConversionContext, sink *DiagnosticSink, rule ConversionRule) error {
 	var visit func([]Node, string) error
 	visit = func(nodes []Node, base string) error {
 		for i := range nodes {
@@ -331,45 +382,26 @@ func (c *CompiledConversion) applyNodeRule(ctx context.Context, phase Conversion
 		}
 		return nil
 	}
-	switch phase {
-	case ConversionIngress, ConversionRequest:
-		var r Request
-		if err := decodeContract(input.Bytes(), &r); err != nil {
-			return Value{}, err
-		}
-		if err := visit(r.Content, "/content"); err != nil {
-			return Value{}, err
-		}
-		return encodeSemanticWithin(&r, c.phaseLimits(ctx, phase))
-	case ConversionResponse:
-		var r Response
-		if err := decodeContract(input.Bytes(), &r); err != nil {
-			return Value{}, err
-		}
-		if err := visit(r.Content, "/content"); err != nil {
-			return Value{}, err
-		}
-		return encodeSemanticWithin(&r, c.phaseLimits(ctx, phase))
-	case ConversionEvent:
-		var e Event
-		if err := decodeContract(input.Bytes(), &e); err != nil {
-			return Value{}, err
-		}
-		if e.Item != nil {
-			nodes := []Node{*e.Item}
+
+	switch subject := document.(type) {
+	case *Request:
+		return visit(subject.Content, "/content")
+	case *Response:
+		return visit(subject.Content, "/content")
+	case *Event:
+		if subject.Item != nil {
+			nodes := []Node{*subject.Item}
 			if err := visit(nodes, "/item"); err != nil {
-				return Value{}, err
+				return err
 			}
-			e.Item = &nodes[0]
+			subject.Item = &nodes[0]
 		}
-		if e.Response != nil {
-			if err := visit(e.Response.Content, "/response/content"); err != nil {
-				return Value{}, err
-			}
+		if subject.Response != nil {
+			return visit(subject.Response.Content, "/response/content")
 		}
-		return encodeSemanticWithin(&e, c.phaseLimits(ctx, phase))
+		return nil
 	}
-	return Value{}, fmt.Errorf("node rules require a semantic phase")
+	return fmt.Errorf("node rules require a semantic phase")
 }
 
 func protectConversionProvenance(before, after Value) error {

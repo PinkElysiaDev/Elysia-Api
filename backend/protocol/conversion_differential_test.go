@@ -132,3 +132,33 @@ func TestSignatureRecoveryDifferential(t *testing.T) {
 		}
 	}
 }
+
+func TestConversionAuthoredBoundariesDifferential(t *testing.T) {
+	present := true
+	for _, phase := range []p.ConversionPhase{p.ConversionIngress, p.ConversionRequest} {
+		for _, action := range []string{"set", "remove", "transform", "warn", "reject"} {
+			policy := p.ConversionPolicy{SchemaVersion: 1, ID: "authored-boundary", Rules: []p.ConversionRule{
+				{ID: "before", Order: 1, Enabled: true, Phase: p.ConversionRequest, Action: "stream_options", Value: p.StringValue("anthropic")},
+				{ID: "authored", Order: 2, Enabled: true, Phase: phase, Action: action, Path: "/parameters/stream", Value: differentialValue(t, "true")},
+				{ID: "conditional", Order: 3, Enabled: true, Phase: p.ConversionRequest, Action: "responses_include", Value: p.StringValue("anthropic"), Match: p.ConversionMatch{Path: "/parameters/stream", Present: &present}},
+				{ID: "after", Order: 4, Enabled: true, Phase: p.ConversionRequest, Action: "assistant_history"},
+			}}
+			if action == "transform" {
+				continue
+			} // Expression fixtures are covered by the executor's existing suite.
+			conversion, err := p.CompileConversion(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for index, raw := range []string{
+				`{"schemaVersion":1,"content":[],"parameters":{}}`,
+				`{"schemaVersion":1,"content":null,"parameters":{"stream":false},"unknown":true}`,
+				`{"schemaVersion":1,"content":[{"kind":"message","role":"\u0061ssistant","children":[],"attributes":{"x": { "n":1e2,"text":"<>&  " }}}]}`,
+			} {
+				t.Run(fmt.Sprintf("%s/%s/%d", phase, action, index), func(t *testing.T) {
+					compareConversion(t, conversion, p.ConversionRequest, differentialValue(t, raw), p.ConversionContext{})
+				})
+			}
+		}
+	}
+}
