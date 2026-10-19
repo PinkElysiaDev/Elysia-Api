@@ -32,6 +32,7 @@ type EvaluationContext struct {
 	compoundFrame    bool
 	transportControl *bool
 	wireLimits       Limits
+	valueReader      *valueReader
 	// ResolveRequestScope is supplied by the gateway after model/authorization
 	// lookup. Definitions cannot execute it or replace its returned binding.
 	ResolveRequestScope func(*Request) (Scope, error)

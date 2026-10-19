@@ -9,14 +9,14 @@ import (
 )
 
 func (adapter module) decodeMessages(value p.Value, path string, direction p.Direction, options p.EvaluationContext, history *historyState) ([]p.Node, error) {
-	items, err := readArray(value)
+	items, err := readContextArray(value, options)
 	if err != nil {
 		return nil, err
 	}
 	nodes := make([]p.Node, 0, len(items))
 	for index, item := range items {
 		location := fmt.Sprintf("%s/%d", path, index)
-		fields, err := item.ReadObject()
+		fields, err := options.ReadObject(item)
 		if err != nil {
 			return nil, err
 		}
@@ -80,7 +80,7 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 				node.Children = nil
 			}
 			for callIndex, callValue := range calls {
-				call, err := callValue.ReadObject()
+				call, err := options.ReadObject(callValue)
 				if err != nil {
 					return nil, err
 				}
@@ -100,7 +100,7 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 						return nil, p.IssuesError([]p.ConversionIssue{{Code: p.InvalidAssociation, Severity: p.SeverityError, Path: fmt.Sprintf("%s/tool_calls/%d/index", location, callIndex), Reason: "complete tool call index must match its array position"}})
 					}
 				}
-				function, err := call["function"].ReadObject()
+				function, err := options.ReadObject(call["function"])
 				if err != nil {
 					return nil, err
 				}
@@ -108,7 +108,7 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 				if err != nil {
 					return nil, err
 				}
-				attributes, err := adapter.nestedExtensions(call, []string{"type", "id", "function", "index"}, map[string][]string{"function": {"name", "arguments"}})
+				attributes, err := adapter.nestedExtensions(call, []string{"type", "id", "function", "index"}, map[string][]string{"function": {"name", "arguments"}}, options)
 				if err != nil {
 					return nil, err
 				}
@@ -152,7 +152,7 @@ func readToolCalls(value p.Value) ([]p.Value, error) {
 }
 
 func (adapter module) decodeResponseItem(value p.Value, path string, direction p.Direction, options p.EvaluationContext, history *historyState) (p.Node, error) {
-	fields, err := value.ReadObject()
+	fields, err := options.ReadObject(value)
 	if err != nil {
 		return p.Node{}, err
 	}

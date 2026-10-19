@@ -7,25 +7,25 @@ import (
 )
 
 func (adapter module) decodeTools(value p.Value, options p.EvaluationContext) ([]p.Tool, error) {
-	items, err := readArray(value)
+	items, err := readContextArray(value, options)
 	if err != nil {
 		return nil, err
 	}
 	var tools []p.Tool
 	for index, item := range items {
-		fields, err := item.ReadObject()
+		fields, err := options.ReadObject(item)
 		if err != nil {
 			return nil, err
 		}
 		path := fmt.Sprintf("/tools/%d", index)
 		if adapter.name == Gemini {
 			if declarations, exists := fields["functionDeclarations"]; exists {
-				functions, err := readArray(declarations)
+				functions, err := readContextArray(declarations, options)
 				if err != nil {
 					return nil, err
 				}
 				for _, function := range functions {
-					definition, err := function.ReadObject()
+					definition, err := options.ReadObject(function)
 					if err != nil {
 						return nil, err
 					}
@@ -51,7 +51,7 @@ func (adapter module) decodeTools(value p.Value, options p.EvaluationContext) ([
 		tool := p.Tool{Kind: p.FunctionTool, Native: adapter.native(item, path, p.DecodeRequest, options), Cache: cache}
 		definition := fields
 		if adapter.name == Chat && !fields["function"].IsZero() {
-			definition, err = fields["function"].ReadObject()
+			definition, err = options.ReadObject(fields["function"])
 			if err != nil {
 				return nil, err
 			}
@@ -78,7 +78,7 @@ func (adapter module) decodeTools(value p.Value, options p.EvaluationContext) ([
 			tool.Name, tool.Description, tool.InputSchema = definition["name"], definition["description"], definition["parameters"]
 			tool.Options = adapter.extensions(definition, []string{"type", "name", "description", "parameters", "strict", "cache_control"})
 			if adapter.name == Chat && !fields["function"].IsZero() {
-				tool.Options, err = adapter.nestedExtensions(fields, []string{"type", "function", "cache_control"}, map[string][]string{"function": {"name", "description", "parameters", "strict"}})
+				tool.Options, err = adapter.nestedExtensions(fields, []string{"type", "function", "cache_control"}, map[string][]string{"function": {"name", "description", "parameters", "strict"}}, options)
 				if err != nil {
 					return nil, err
 				}

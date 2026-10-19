@@ -11,6 +11,10 @@ import (
 // values keep their exact spelling without decoding and revalidating the same
 // subtree at each adapter layer.
 func (value Value) readObject() (Object, error) {
+	return value.readObjectWithin(nil)
+}
+
+func (value Value) readObjectWithin(reader *valueReader) (Object, error) {
 	raw := strings.TrimSpace(value.raw)
 	if len(raw) == 0 || raw[0] != '{' {
 		return nil, fmt.Errorf("expected JSON object")
@@ -30,7 +34,7 @@ func (value Value) readObject() (Object, error) {
 		end = jsonValueEnd(raw, offset)
 		// Retained metadata must not keep an entire large frame alive through a
 		// tiny substring; resource accounting measures the child value's bytes.
-		fields[key] = Value{raw: strings.Clone(raw[offset:end])}
+		fields[key] = Value{raw: reader.fragment(raw[offset:end])}
 		offset = skipJSONSpace(raw, end)
 		if raw[offset] == ',' {
 			offset = skipJSONSpace(raw, offset+1)
@@ -40,6 +44,10 @@ func (value Value) readObject() (Object, error) {
 }
 
 func (value Value) readArray() ([]Value, error) {
+	return value.readArrayWithin(nil)
+}
+
+func (value Value) readArrayWithin(reader *valueReader) ([]Value, error) {
 	raw := strings.TrimSpace(value.raw)
 	if raw == "null" {
 		return nil, nil
@@ -50,7 +58,7 @@ func (value Value) readArray() ([]Value, error) {
 	items := []Value{}
 	for offset := skipJSONSpace(raw, 1); raw[offset] != ']'; {
 		end := jsonValueEnd(raw, offset)
-		items = append(items, Value{raw: strings.Clone(raw[offset:end])})
+		items = append(items, Value{raw: reader.fragment(raw[offset:end])})
 		offset = skipJSONSpace(raw, end)
 		if raw[offset] == ',' {
 			offset = skipJSONSpace(raw, offset+1)

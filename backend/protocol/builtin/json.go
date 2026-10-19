@@ -58,6 +58,16 @@ func readArray(value p.Value) ([]p.Value, error) {
 	return result, err
 }
 
+func readContextArray(value p.Value, options p.EvaluationContext) ([]p.Value, error) {
+	if value.IsZero() {
+		return nil, nil
+	}
+	if value.IsNull() {
+		return nil, fmt.Errorf("expected array, got null")
+	}
+	return options.ReadArray(value)
+}
+
 func copyFields(fields p.Object) p.Object {
 	result := p.Object{}
 	for key, value := range fields {
@@ -164,7 +174,7 @@ func mergeExtensionValue(mapped, extra p.Value, path string) (p.Value, error) {
 	return object(fields), nil
 }
 
-func (adapter module) nestedExtensions(fields p.Object, known []string, nested map[string][]string) (p.Object, error) {
+func (adapter module) nestedExtensions(fields p.Object, known []string, nested map[string][]string, options p.EvaluationContext) (p.Object, error) {
 	extra := copyFields(fields)
 	for _, key := range known {
 		delete(extra, key)
@@ -173,7 +183,7 @@ func (adapter module) nestedExtensions(fields p.Object, known []string, nested m
 		if fields[key].IsZero() {
 			continue
 		}
-		values, err := fields[key].ReadObject()
+		values, err := options.ReadObject(fields[key])
 		if err != nil {
 			return nil, err
 		}

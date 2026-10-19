@@ -17,7 +17,7 @@ var parameterFields = map[string]map[string]string{
 }
 
 func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) (*p.Request, error) {
-	fields, err := input.ReadObject()
+	fields, err := options.ReadObject(input)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +32,7 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 		}
 		parameterInput = p.Object{}
 		if config := fields["generationConfig"]; !config.IsZero() {
-			parameterInput, err = config.ReadObject()
+			parameterInput, err = options.ReadObject(config)
 			if err != nil {
 				return nil, err
 			}
@@ -91,7 +91,7 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 	}
 	extensions := adapter.extensions(fields, known)
 	if fields["prompt_cache_options"].IsObject() {
-		extensions, err = adapter.nestedExtensions(fields, known, map[string][]string{"prompt_cache_options": {"mode", "ttl"}})
+		extensions, err = adapter.nestedExtensions(fields, known, map[string][]string{"prompt_cache_options": {"mode", "ttl"}}, options)
 		if err != nil {
 			return nil, err
 		}
@@ -122,12 +122,12 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 	// lifetime. Neither is the maximum-retention setting, so they must not be
 	// folded into the retention intent even when they travel together.
 	if value := fields["prompt_cache_options"]; !value.IsZero() && !value.IsNull() {
-		options, err := value.ReadObject()
+		cacheOptions, err := options.ReadObject(value)
 		if err != nil {
 			return nil, err
 		}
 		for _, entry := range []struct{ field, kind string }{{"mode", "mode"}, {"ttl", "options.ttl"}} {
-			if setting := options[entry.field]; !setting.IsZero() {
+			if setting := cacheOptions[entry.field]; !setting.IsZero() {
 				request.Cache = append(request.Cache, p.CacheIntent{Kind: entry.kind, Location: "request", Value: setting})
 			}
 		}
@@ -147,7 +147,7 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 	case Gemini:
 		content, path = fields["contents"], "/contents"
 		if value := fields["systemInstruction"]; !value.IsZero() {
-			block, err := value.ReadObject()
+			block, err := options.ReadObject(value)
 			if err != nil {
 				return nil, err
 			}
@@ -166,7 +166,7 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 				key := wireExtensionPrefix + adapter.family
 				root := p.Object{}
 				if value := request.Parameters[key]; !value.IsZero() {
-					root, _ = value.ReadObject()
+					root, _ = options.ReadObject(value)
 				}
 				root["systemInstruction"] = extra
 				request.Parameters[key] = object(root)
@@ -184,7 +184,7 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 		}
 		request.Content = append(request.Content, node)
 	}
-	if adapter.name == Responses && !content.IsZero() && !content.IsNull() && !strings.HasPrefix(strings.TrimSpace(string(content.Bytes())), "[") {
+	if adapter.name == Responses && !content.IsZero() && !content.IsNull() && !content.IsArray() {
 		text, err := stringValue(content)
 		if err != nil {
 			return nil, err
@@ -202,7 +202,7 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 		if !tools.IsZero() {
 			return nil, fmt.Errorf("tools and legacy functions cannot both be present")
 		}
-		functions, err := readArray(functions)
+		functions, err := readContextArray(functions, options)
 		if err != nil {
 			return nil, err
 		}

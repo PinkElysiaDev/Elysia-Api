@@ -1,0 +1,97 @@
+package protocol
+
+import (
+	"encoding/json"
+	"strings"
+)
+
+// encodeValueContainer handles only closed containers of validated values.
+// Arbitrary Go objects keep encoding/json's reflection and error behavior.
+func encodeValueContainer(value any) (Value, bool, error) {
+	var keys []string
+	var items []Value
+	var isObject bool
+	switch container := value.(type) {
+	case Object:
+		if container == nil {
+			return Value{raw: "null"}, true, nil
+		}
+		isObject = true
+		keys = sortedKeys(container)
+		items = make([]Value, len(keys))
+		for index, key := range keys {
+			items[index] = container[key]
+		}
+	case []Value:
+		if container == nil {
+			return Value{raw: "null"}, true, nil
+		}
+		items = container
+	default:
+		return Value{}, false, nil
+	}
+	for _, item := range items {
+		if item.IsZero() {
+			// Select the old encoder before writing anything so its exact error
+			// type and first offending element remain unchanged.
+			return Value{}, false, nil
+		}
+	}
+	parts := make([]string, len(items))
+	length := 2
+	add := func(count int) bool {
+		if count > int(^uint(0)>>1)-length {
+			return false
+		}
+		length += count
+		return true
+	}
+	for index, item := range items {
+		parts[index] = compactValueString(item.raw)
+		if !add(len(parts[index])) || index > 0 && !add(1) {
+			return Value{}, false, nil
+		}
+		if isObject {
+			key, _ := json.Marshal(keys[index])
+			keys[index] = string(key)
+			if !add(len(key)) || !add(1) {
+				return Value{}, false, nil
+			}
+		}
+	}
+	var output strings.Builder
+	output.Grow(length)
+	if isObject {
+		output.WriteByte('{')
+	} else {
+		output.WriteByte('[')
+	}
+	for index, part := range parts {
+		if index > 0 {
+			output.WriteByte(',')
+		}
+		if isObject {
+			output.WriteString(keys[index])
+			output.WriteByte(':')
+		}
+		output.WriteString(part)
+	}
+	if isObject {
+		output.WriteByte('}')
+	} else {
+		output.WriteByte(']')
+	}
+	return Value{raw: output.String()}, true, nil
+}
+
+// Validated JSON needs only whitespace compaction and encoding/json's HTML /
+// line separator escapes. The common base64 path returns its immutable string.
+func compactValueString(raw string) string {
+	if !needsSemanticCompaction(raw) {
+		return raw
+	}
+	// Keep the standard marshaler for exceptional spellings, including its
+	// handling of invalid UTF-8 inside Marshaler output.
+	encoded, _ := json.Marshal(Value{raw: raw})
+	return string(encoded)
+}

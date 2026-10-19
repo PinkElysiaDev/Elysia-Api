@@ -20,6 +20,9 @@ func (compiled *Compiled) decodeRequest(ctx context.Context, body []byte, option
 	if err != nil {
 		return nil, err
 	}
+	if compiled.native.Preserve {
+		options.valueReader = requestValueReader(input)
+	}
 	request, err := decodeTyped(ctx, compiled, DecodeRequest, input, options, func(module TypedModule, options EvaluationContext) (*Request, error) {
 		return module.DecodeRequest(ctx, input, options)
 	})
@@ -27,6 +30,9 @@ func (compiled *Compiled) decodeRequest(ctx context.Context, body []byte, option
 		return nil, err
 	}
 	request.SchemaVersion = SemanticSchemaVersion
+	if options.valueReader != nil {
+		detachRequestResources(request)
+	}
 	request.Source = compiled.identity
 	if codec := compiled.Codec(DecodeRequest); knownConversionCodec(codec) {
 		validation := request.Clone()

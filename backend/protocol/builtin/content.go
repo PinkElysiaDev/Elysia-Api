@@ -19,10 +19,14 @@ func (adapter module) decodeContent(value p.Value, path string, direction p.Dire
 	if value.IsNull() {
 		return []p.Node{{Kind: p.TextNode, Payload: value}}, nil
 	}
-	if text, err := stringValue(value); err == nil {
+	if value.IsStringValue() {
+		text, err := stringValue(value)
+		if err != nil {
+			return nil, err
+		}
 		return []p.Node{{Kind: p.TextNode, Payload: p.StringValue(text)}}, nil
 	}
-	items, err := readArray(value)
+	items, err := readContextArray(value, options)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +42,7 @@ func (adapter module) decodeContent(value p.Value, path string, direction p.Dire
 }
 
 func (adapter module) decodeBlock(value p.Value, path string, direction p.Direction, options p.EvaluationContext, history *historyState) (p.Node, error) {
-	fields, err := value.ReadObject()
+	fields, err := options.ReadObject(value)
 	if err != nil {
 		return p.Node{}, err
 	}
@@ -79,7 +83,7 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 		known = append(known, "data")
 	case "tool_use", "function_call", "custom_tool_call":
 		if adapter.name == Anthropic && kind == "tool_use" && !fields["caller"].IsZero() {
-			caller, err := fields["caller"].ReadObject()
+			caller, err := options.ReadObject(fields["caller"])
 			if err != nil || fields["caller"].IsNull() {
 				return node, p.IssuesError([]p.ConversionIssue{{Code: p.InvalidInput, Severity: p.SeverityError, Path: path + "/caller", Reason: "tool caller must be an object"}})
 			}
@@ -118,12 +122,12 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 			}
 			node.Status = object(p.Object{"isError": fields["is_error"]})
 		}
-		if kind == "tool_result" && !node.Payload.IsNull() && strings.HasPrefix(strings.TrimSpace(string(node.Payload.Bytes())), "[") {
+		if kind == "tool_result" && !node.Payload.IsNull() && node.Payload.IsArray() {
 			node.Children, err = adapter.decodeContent(node.Payload, path+"/content", direction, options, history)
 		}
 	case "image_url", "input_image", "image":
 		node.Kind = p.ImageNode
-		node.Payload, err = decodeMedia(fields, kind)
+		node.Payload, err = decodeMedia(fields, kind, options)
 		known = append(known, "file_id")
 		switch kind {
 		case "image_url":
@@ -133,14 +137,14 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 			known = append(known, "image_url", "detail")
 		case "image":
 			known = append(known, "source")
-			nested["source"] = mediaSourceKeys(fields["source"])
+			nested["source"] = mediaSourceKeys(fields["source"], options)
 		}
 		if !fields["file_id"].IsZero() {
 			node.Resources = []p.Resource{{Kind: "file_id", ID: fields["file_id"], Scope: options.Scope}}
 		}
 	case "input_audio":
 		node.Kind = p.AudioNode
-		audio, readErr := fields["input_audio"].ReadObject()
+		audio, readErr := options.ReadObject(fields["input_audio"])
 		if readErr != nil {
 			return node, readErr
 		}
@@ -160,13 +164,13 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 		node.Kind = p.DocumentNode
 		media := fields
 		if kind == "file" {
-			media, err = fields["file"].ReadObject()
+			media, err = options.ReadObject(fields["file"])
 			if err != nil {
 				return node, err
 			}
 		}
 		if kind == "document" {
-			node.Payload, err = decodeMedia(fields, kind)
+			node.Payload, err = decodeMedia(fields, kind, options)
 		} else {
 			payload := p.Object{"data": media["file_data"], "url": media["file_url"], "name": media["filename"]}
 			if value := media["file_data"]; !value.IsZero() {
@@ -174,7 +178,7 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 				if err != nil {
 					return node, err
 				}
-				decodedFields, _ := decoded.ReadObject()
+				decodedFields, _ := options.ReadObject(decoded)
 				if !decodedFields["mime"].IsZero() {
 					payload["data"], payload["mime"] = decodedFields["data"], decodedFields["mime"]
 				}
@@ -192,7 +196,7 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 			known = append(known, "file_data", "file_url", "file_id", "filename")
 		case "document":
 			known = append(known, "source")
-			nested["source"] = mediaSourceKeys(fields["source"])
+			nested["source"] = mediaSourceKeys(fields["source"], options)
 		}
 	default:
 		return node, nil
@@ -211,7 +215,7 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 		}
 		node.Metadata = append(node.Metadata, metadata...)
 	}
-	node.Attributes, err = adapter.nestedExtensions(fields, known, nested)
+	node.Attributes, err = adapter.nestedExtensions(fields, known, nested, options)
 	if err != nil {
 		return node, err
 	}
@@ -224,8 +228,8 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 	return node, nil
 }
 
-func mediaSourceKeys(value p.Value) []string {
-	fields, _ := value.ReadObject() // decodeMedia has already validated this object.
+func mediaSourceKeys(value p.Value, options p.EvaluationContext) []string {
+	fields, _ := options.ReadObject(value) // decodeMedia has already validated this object.
 	if fields["type"].IsString("url") {
 		return []string{"type", "url"}
 	}
@@ -253,10 +257,10 @@ func (adapter module) decodeCall(fields p.Object, node p.Node, kind string) (p.N
 	return node, nil
 }
 
-func decodeMedia(fields p.Object, kind string) (p.Value, error) {
+func decodeMedia(fields p.Object, kind string, options p.EvaluationContext) (p.Value, error) {
 	switch kind {
 	case "image_url":
-		image, err := fields["image_url"].ReadObject()
+		image, err := options.ReadObject(fields["image_url"])
 		if err != nil {
 			return p.Value{}, err
 		}
@@ -264,7 +268,7 @@ func decodeMedia(fields p.Object, kind string) (p.Value, error) {
 	case "input_image":
 		return mediaFromURL(fields["image_url"], fields["detail"])
 	default:
-		source, err := fields["source"].ReadObject()
+		source, err := options.ReadObject(fields["source"])
 		if err != nil {
 			return p.Value{}, err
 		}
@@ -327,7 +331,7 @@ func (adapter module) decodeGeminiPart(fields p.Object, node p.Node, options p.E
 		}
 		known = append(known, "text", "thought")
 	case !fields["functionCall"].IsZero():
-		call, err := fields["functionCall"].ReadObject()
+		call, err := options.ReadObject(fields["functionCall"])
 		if err != nil {
 			return node, err
 		}
@@ -345,7 +349,7 @@ func (adapter module) decodeGeminiPart(fields p.Object, node p.Node, options p.E
 		known = append(known, "functionCall")
 		nested["functionCall"] = []string{"id", "name", "args"}
 	case !fields["functionResponse"].IsZero():
-		result, err := fields["functionResponse"].ReadObject()
+		result, err := options.ReadObject(fields["functionResponse"])
 		if err != nil {
 			return node, err
 		}
@@ -369,7 +373,7 @@ func (adapter module) decodeGeminiPart(fields p.Object, node p.Node, options p.E
 		if entry.IsZero() {
 			entry, isFile = fields["fileData"], true
 		}
-		media, err := entry.ReadObject()
+		media, err := options.ReadObject(entry)
 		if err != nil {
 			return node, err
 		}
@@ -403,6 +407,6 @@ func (adapter module) decodeGeminiPart(fields p.Object, node p.Node, options p.E
 	if err != nil {
 		return node, err
 	}
-	node.Attributes, err = adapter.nestedExtensions(fields, known, nested)
+	node.Attributes, err = adapter.nestedExtensions(fields, known, nested, options)
 	return node, err
 }

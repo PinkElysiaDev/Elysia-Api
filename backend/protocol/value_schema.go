@@ -132,7 +132,8 @@ func checkValueSchema(value Value, schema *ValueSchema, path string, depth int, 
 		}
 	}
 	if schema.Type == ObjectType {
-		object, err := value.ReadObject()
+		// Validation cannot retain child values beyond this call.
+		object, err := value.readObjectWithin(requestValueReader(value))
 		if err != nil {
 			return err
 		}
@@ -155,8 +156,8 @@ func checkValueSchema(value Value, schema *ValueSchema, path string, depth int, 
 		}
 	}
 	if schema.Type == ArrayType && schema.Items != nil {
-		var items []Value
-		if err := value.Decode(&items); err != nil {
+		items, err := value.readArrayWithin(requestValueReader(value))
+		if err != nil {
 			return err
 		}
 		for index, item := range items {

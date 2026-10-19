@@ -23,6 +23,9 @@ func ParseValue(raw []byte) (Value, error) {
 
 // EncodeValue converts a Go value at an adapter boundary.
 func EncodeValue(value any) (Value, error) {
+	if encoded, handled, err := encodeValueContainer(value); handled {
+		return encoded, err
+	}
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return Value{}, err
@@ -58,6 +61,18 @@ func (value Value) IsNull() bool {
 func (value Value) IsObject() bool {
 	trimmed := strings.TrimSpace(value.raw)
 	return len(trimmed) > 0 && trimmed[0] == '{'
+}
+
+// IsArray reports the JSON container kind without copying its contents.
+func (value Value) IsArray() bool {
+	trimmed := strings.TrimSpace(value.raw)
+	return len(trimmed) > 0 && trimmed[0] == '['
+}
+
+// IsStringValue reports a JSON string without decoding or copying it.
+func (value Value) IsStringValue() bool {
+	trimmed := strings.TrimSpace(value.raw)
+	return len(trimmed) > 0 && trimmed[0] == '"'
 }
 
 // Bytes returns a copy of the original JSON representation.
