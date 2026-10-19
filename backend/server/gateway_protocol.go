@@ -151,6 +151,7 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 }
 
 func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate) error {
+	defer candidate.releaseRequestEncoding()
 	record.UpstreamHTTPStatus = 0
 	record.TransportFailure = nil
 	defer s.protocolUses.acquire(candidate.binding.ProtocolID, candidate.compiled.Hash())()
@@ -175,9 +176,13 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	}
 	s.estimateGatewayAttempt(record, request)
 	record.SystemStructure.After = systemStructure(request)
-	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), request, options)
-	if err != nil {
-		return &gatewayFailure{http.StatusBadRequest, err}
+	body, isPrepared := candidate.takeRequestEncoding(c.Request.Context(), request, options)
+	var err error
+	if !isPrepared {
+		body, err = candidate.compiled.EncodeRequest(c.Request.Context(), request, options)
+		if err != nil {
+			return &gatewayFailure{http.StatusBadRequest, err}
+		}
 	}
 	if candidate.conversion.HasPhase(protocol.ConversionWire) {
 		body, err = candidate.conversion.Wire(c.Request.Context(), body, candidate.conversionContext(plan.ingress, false), options.Diagnostics)

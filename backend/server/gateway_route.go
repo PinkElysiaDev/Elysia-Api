@@ -19,6 +19,7 @@ import (
 )
 
 type gatewayCandidate struct {
+	encoding      *gatewayRequestEncoding
 	conversion    *protocol.CompiledConversion
 	routeBinding  protocol.Binding
 	prepared      *protocol.Request
@@ -136,7 +137,11 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		}
 		probe := candidate.prepared.Clone()
 		probe.Model = protocol.StringValue(candidate.model.Identifier())
-		probeOptions := protocol.EvaluationContext{Scope: candidate.scope, InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation)}
+		probeOptions := protocol.EvaluationContext{Scope: candidate.scope, InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), ClientOutput: probe.ClientOutput}
+		canRetainEncoding := len(eligible) == 0 && !candidate.model.CacheSynthesis && candidate.operation.Kind == "generate" && candidate.compiled.CanReuseRequestEncoding()
+		if canRetainEncoding {
+			probeOptions.Diagnostics = &protocol.DiagnosticSink{}
+		}
 		body, encodeErr := candidate.compiled.EncodeRequest(c.Request.Context(), probe, probeOptions)
 		if encodeErr == nil {
 			encodeErr = candidate.compiled.CheckOperationInput(candidate.operation, body)
@@ -155,6 +160,9 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		}
 		candidate.binding = constrained
 		candidate.routeBinding = matched
+		if canRetainEncoding {
+			candidate.encoding = &gatewayRequestEncoding{body: body, request: probe, identity: candidate.compiled.Identity(), scope: probeOptions.Scope, limits: candidate.compiled.RequestLimits(c.Request.Context()), interleaved: probeOptions.InterleavedThinking, issues: probeOptions.Diagnostics.Issues()}
+		}
 		eligible = append(eligible, candidate)
 	}
 	if len(eligible) == 0 {

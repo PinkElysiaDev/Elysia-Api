@@ -477,6 +477,8 @@
     "backend/server/gateway_chat_startup_test.go",
     "backend/server/gateway_context_test.go",
     "backend/server/gateway_conversion_test.go",
+    "backend/server/gateway_encoding.go",
+    "backend/server/gateway_encoding_test.go",
     "backend/server/gateway_encrypted_reasoning_roundtrip_test.go",
     "backend/server/gateway_encrypted_reasoning_test.go",
     "backend/server/gateway_envelope_test.go",

@@ -26,6 +26,13 @@ type requestEncodingWorkspace struct {
 	baseline *Request
 }
 
+// CanReuseRequestEncoding reports whether a private gateway preflight result
+// can be reused with identical request, revision, scope, context and budgets.
+// It never authorizes skipping final wire or operation validation.
+func (compiled *Compiled) CanReuseRequestEncoding() bool {
+	return compiled.supportsRequestWorkspace()
+}
+
 func (compiled *Compiled) supportsRequestWorkspace() bool {
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
 		mapping := compiled.mappings[direction]
