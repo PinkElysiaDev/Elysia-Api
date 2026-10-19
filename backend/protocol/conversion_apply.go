@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"fmt"
+	"reflect"
 )
 
 func (c *CompiledConversion) Request(ctx context.Context, request *Request, route ConversionContext, sink *DiagnosticSink) (*Request, error) {
@@ -10,6 +11,9 @@ func (c *CompiledConversion) Request(ctx context.Context, request *Request, rout
 		if err := checkSemanticValue(request, c.phaseLimits(ctx, ConversionRequest)); err != nil {
 			return nil, resourceIssue(err, route.Source, DecodeRequest, "conversion.request")
 		}
+	}
+	if request != nil && c.canOwnRequest() {
+		return c.convertOwnedRequest(ctx, request, route, sink)
 	}
 	v, err := EncodeSemantic(ctx, DecodeRequest, request)
 	if err != nil {
@@ -33,6 +37,45 @@ func (c *CompiledConversion) Request(ctx context.Context, request *Request, rout
 		result.ClientOutput.CollectUsage = c.Policy.Usage.CollectUpstreamUsage
 	}
 	return &result, nil
+}
+
+// JSON-dependent authored rules retain the value boundary. This selection is
+// made before executing any rule, so errors never cause a second execution.
+func (c *CompiledConversion) canOwnRequest() bool {
+	if c == nil {
+		return false
+	}
+	var state conversionState
+	for _, rule := range c.Policy.Rules {
+		if !rule.Enabled {
+			continue
+		}
+		if rule.Phase == ConversionIngress || (rule.Phase == ConversionRequest && !state.accepts(ConversionRequest, rule)) {
+			return false
+		}
+	}
+	return true
+}
+
+func (c *CompiledConversion) convertOwnedRequest(ctx context.Context, request *Request, route ConversionContext, sink *DiagnosticSink) (*Request, error) {
+	plan := typedLimitPlans[reflect.TypeFor[*Request]()]
+	owned := cloneSemantic(reflect.ValueOf(request), plan).Interface().(*Request)
+	limits := c.phaseLimits(ctx, ConversionRequest)
+	state := conversionState{document: owned, limits: limits, isStrict: true, needsEncoding: true, cache: &semanticCache{limits: limits}}
+	state.normalize(reflect.ValueOf(owned), plan)
+	if _, err := c.applyConversionState(ctx, ConversionIngress, Value{}, route, sink, &state, false); err != nil {
+		return nil, err
+	}
+	if _, err := c.applyConversionState(ctx, ConversionRequest, Value{}, route, sink, &state, false); err != nil {
+		return nil, err
+	}
+	if c.Policy.Usage != nil {
+		if owned.ClientOutput == nil {
+			owned.ClientOutput = &ClientOutput{}
+		}
+		owned.ClientOutput.CollectUsage = c.Policy.Usage.CollectUpstreamUsage
+	}
+	return owned, nil
 }
 
 func (c *CompiledConversion) Response(ctx context.Context, response *Response, route ConversionContext, sink *DiagnosticSink) (*Response, error) {

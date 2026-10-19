@@ -2,8 +2,11 @@ package protocol
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 // conversionState owns the decoded document for a contiguous run of built-in
@@ -111,6 +114,7 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 	}
 	state.normalize(reflect.ValueOf(state.document), typedLimitPlans[reflect.TypeOf(state.document)])
 	state.needsEncoding, state.isStrict = true, true
+	state.wire = Value{} // The owned document now contains the complete current value.
 	return target, nil
 }
 
@@ -175,6 +179,7 @@ func (state *conversionState) normalize(value reflect.Value, plan *typedPlan) {
 			state.normalize(value.Index(index), plan.element)
 		}
 	case reflect.Map:
+		normalizeSemanticMapKeys(value)
 		iter := value.MapRange()
 		for iter.Next() {
 			child := reflect.New(value.Type().Elem()).Elem()
@@ -182,7 +187,78 @@ func (state *conversionState) normalize(value reflect.Value, plan *typedPlan) {
 			state.normalize(child, plan.element)
 			value.SetMapIndex(iter.Key(), child)
 		}
+	case reflect.String:
+		if !utf8.ValidString(value.String()) {
+			raw, _ := json.Marshal(value.String())
+			var normalized string
+			_ = json.Unmarshal(raw, &normalized)
+			value.SetString(normalized)
+		}
 	}
+}
+
+func normalizeSemanticMapKeys(value reflect.Value) {
+	hasInvalidKey := false
+	iter := value.MapRange()
+	for iter.Next() {
+		hasInvalidKey = hasInvalidKey || !utf8.ValidString(iter.Key().String())
+	}
+	if !hasInvalidKey {
+		return
+	}
+	keys := make([]string, 0, value.Len())
+	iter = value.MapRange()
+	for iter.Next() {
+		keys = append(keys, iter.Key().String())
+	}
+	slices.Sort(keys)
+	normalized := reflect.MakeMapWithSize(value.Type(), value.Len())
+	for _, key := range keys {
+		wire, _ := json.Marshal(key)
+		var name string
+		_ = json.Unmarshal(wire, &name)
+		normalized.SetMapIndex(reflect.ValueOf(name), value.MapIndex(reflect.ValueOf(key)))
+	}
+	value.Set(normalized)
+}
+
+// cloneSemantic owns all mutable containers, including nested Native pointers.
+// Unlike a JSON round trip, copying an immutable Value never copies its bytes.
+func cloneSemantic(value reflect.Value, plan *typedPlan) reflect.Value {
+	if plan.isJSON {
+		return value
+	}
+	result := reflect.New(value.Type()).Elem()
+	switch plan.kind {
+	case reflect.Pointer:
+		if !value.IsNil() {
+			result.Set(reflect.New(value.Type().Elem()))
+			result.Elem().Set(cloneSemantic(value.Elem(), plan.element))
+		}
+	case reflect.Struct:
+		result.Set(value)
+		for _, field := range plan.fields {
+			result.Field(field.index).Set(cloneSemantic(value.Field(field.index), field.plan))
+		}
+	case reflect.Slice:
+		if !value.IsNil() {
+			result.Set(reflect.MakeSlice(value.Type(), value.Len(), value.Len()))
+			for index := range value.Len() {
+				result.Index(index).Set(cloneSemantic(value.Index(index), plan.element))
+			}
+		}
+	case reflect.Map:
+		if !value.IsNil() {
+			result.Set(reflect.MakeMapWithSize(value.Type(), value.Len()))
+			iter := value.MapRange()
+			for iter.Next() {
+				result.SetMapIndex(iter.Key(), cloneSemantic(iter.Value(), plan.element))
+			}
+		}
+	default:
+		result.Set(value)
+	}
+	return result
 }
 
 // Value is already valid JSON. Only whitespace outside strings and the HTML /

@@ -144,8 +144,8 @@ func TestConversionAuthoredBoundariesDifferential(t *testing.T) {
 				{ID: "after", Order: 4, Enabled: true, Phase: p.ConversionRequest, Action: "assistant_history"},
 			}}
 			if action == "transform" {
-				continue
-			} // Expression fixtures are covered by the executor's existing suite.
+				policy.Rules[1].Expression = &p.Expression{Op: "read", Path: ""}
+			}
 			conversion, err := p.CompileConversion(policy)
 			if err != nil {
 				t.Fatal(err)
@@ -157,7 +157,56 @@ func TestConversionAuthoredBoundariesDifferential(t *testing.T) {
 			} {
 				t.Run(fmt.Sprintf("%s/%s/%d", phase, action, index), func(t *testing.T) {
 					compareConversion(t, conversion, p.ConversionRequest, differentialValue(t, raw), p.ConversionContext{})
+					if phase == p.ConversionIngress {
+						compareConversion(t, conversion, phase, differentialValue(t, raw), p.ConversionContext{})
+					}
 				})
+			}
+		}
+	}
+}
+
+func TestOwnedRequestDifferential(t *testing.T) {
+	protocols := performanceProtocols(t)
+	fixtures := []*p.Request{
+		nil, {}, {Content: []p.Node{}, Parameters: p.Object{}},
+		{Content: []p.Node{{Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{{Kind: p.TextNode, Payload: differentialValue(t, ` "<>&\u0061" `)}}}}, Parameters: p.Object{"x\xff": p.StringValue("invalid"), "x�": p.StringValue("valid")}},
+		{Content: []p.Node{{Kind: p.ReasoningNode, Payload: p.StringValue("think")}, {Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("text")}}}}},
+		{Native: &p.Native{Value: differentialValue(t, ` { "n":9007199254740993,"x":"<>&" } `), RequestContext: &p.NativeRequestContext{Values: p.Object{"a": p.StringValue("kept")}}}},
+	}
+	for _, source := range protocols {
+		for _, target := range protocols {
+			for _, mode := range []string{"compatible", "strict"} {
+				policy := p.DefaultConversionPolicy(source, target)
+				policy.Mode = mode
+				c, err := p.ResolveConversion(policy)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for index, input := range fixtures {
+					t.Run(fmt.Sprintf("%s/%s/%s/%d", source.Codec(p.EncodeRequest), target.Codec(p.EncodeRequest), mode, index), func(t *testing.T) {
+						before, _ := p.EncodeValue(input)
+						wantSink, gotSink := &p.DiagnosticSink{}, &p.DiagnosticSink{}
+						route := p.ConversionContext{Source: source.Identity(), Target: target.Identity()}
+						want, wantErr := c.RequestBaseline(t.Context(), input, route, wantSink)
+						got, gotErr := c.Request(t.Context(), input, route, gotSink)
+						if fmt.Sprint(wantErr) != fmt.Sprint(gotErr) || !reflect.DeepEqual(want, got) || !reflect.DeepEqual(wantSink.Issues(), gotSink.Issues()) {
+							w, _ := p.EncodeValue(want)
+							g, _ := p.EncodeValue(got)
+							t.Fatalf("owned path differs: old=%s (%v), new=%s (%v)", w.Bytes(), wantErr, g.Bytes(), gotErr)
+						}
+						after, _ := p.EncodeValue(input)
+						if before != after {
+							t.Fatal("input mutated")
+						}
+						if got != nil && got.Native != nil && input != nil && input.Native != nil {
+							got.Native.Source.Path = "changed"
+							if input.Native.Source.Path == "changed" {
+								t.Fatal("native ownership shared")
+							}
+						}
+					})
+				}
 			}
 		}
 	}

@@ -11,7 +11,11 @@ import (
 // ApplyValue executes bounded semantic or wire rules. Protected state cannot be
 // minted through expressions; the separately authenticated continuation module
 // is the only restoration authority.
-func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPhase, input Value, route ConversionContext, sink *DiagnosticSink) (output Value, resultErr error) {
+func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPhase, input Value, route ConversionContext, sink *DiagnosticSink) (Value, error) {
+	return c.applyConversionState(ctx, phase, input, route, sink, nil, true)
+}
+
+func (c *CompiledConversion) applyConversionState(ctx context.Context, phase ConversionPhase, input Value, route ConversionContext, sink *DiagnosticSink, state *conversionState, returnValue bool) (output Value, resultErr error) {
 	var activeRule ConversionRule
 	defer func() {
 		direction := DecodeRequest
@@ -55,10 +59,17 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 	if phase == ConversionWire && !route.ResponseWire {
 		limits = requestLimits(ctx, c.limits, c.Policy.Limits != nil)
 	}
-	if err := checkResourceValue(input, limits, "semantic"); err != nil {
+	if state == nil {
+		state = &conversionState{wire: input, limits: limits}
+	}
+	state.limits = limits
+	if state.document == nil {
+		if err := checkResourceValue(input, limits, "semantic"); err != nil {
+			return Value{}, err
+		}
+	} else if err := state.cache.check(state.document, limits); err != nil {
 		return Value{}, err
 	}
-	state := conversionState{wire: input, limits: limits}
 	if err := state.validateContext(phase); err != nil {
 		return Value{}, err
 	}
@@ -115,12 +126,14 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 		if err = checkResourceValue(value, limits, "semantic"); err != nil {
 			return Value{}, err
 		}
-		state = conversionState{wire: value, limits: limits}
+		*state = conversionState{wire: value, limits: limits}
 	}
-	var flushErr error
-	value, flushErr = state.flush()
-	if flushErr != nil {
-		return Value{}, flushErr
+	if returnValue {
+		var flushErr error
+		value, flushErr = state.flush()
+		if flushErr != nil {
+			return Value{}, flushErr
+		}
 	}
 	if err := state.validateContext(phase); err != nil {
 		return Value{}, candidateFailure(err)
