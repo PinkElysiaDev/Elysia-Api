@@ -88,6 +88,18 @@ func TestRequestWorkspaceIsolationAndInvalidation(t *testing.T) {
 		t.Fatalf("workspace changed replay: %s / %s; %v / %v", before, after, beforeErr, afterErr)
 	}
 	count := decodes.Load()
+	definition, _ := json.Marshal(compiled.Definition())
+	independent, issues := compiler.Compile(definition)
+	if independent == nil {
+		t.Fatal(issues)
+	}
+	if _, err := independent.EncodeRequest(t.Context(), request, options); err != nil {
+		t.Fatal(err)
+	}
+	if decodes.Load() != count+1 {
+		t.Fatal("independently compiled registry reused a foreign workspace")
+	}
+	count = decodes.Load()
 	request.Native.RequestContext.Values["path"] = p.StringValue("changed-context")
 	if _, err := compiled.EncodeRequest(t.Context(), request, options); err != nil {
 		t.Fatal(err)

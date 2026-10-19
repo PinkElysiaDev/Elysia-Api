@@ -18,6 +18,7 @@ type RequestBaselineModule interface {
 // candidate projections. It is attached privately after successful decoding and
 // disappears across an authored JSON boundary. Nothing is cached globally.
 type requestEncodingWorkspace struct {
+	compiled *Compiled
 	identity Identity
 	source   Provenance
 	context  NativeRequestContext
@@ -54,6 +55,7 @@ func (compiled *Compiled) attachRequestWorkspace(ctx context.Context, request, b
 	sourceContext := *native.RequestContext
 	sourceContext.Values = maps.Clone(sourceContext.Values)
 	native.requestWorkspace = &requestEncodingWorkspace{
+		compiled: compiled,
 		identity: compiled.identity, source: native.Source, context: sourceContext,
 		limits: compiled.wireLimits(ctx, DecodeRequest), original: native.Value, baseline: baseline,
 	}
@@ -61,7 +63,7 @@ func (compiled *Compiled) attachRequestWorkspace(ctx context.Context, request, b
 
 func (compiled *Compiled) requestReplayBaseline(native *Native, limits Limits) *Request {
 	workspace := native.requestWorkspace
-	if workspace == nil || !compiled.supportsRequestWorkspace() || workspace.identity != compiled.identity || workspace.source != native.Source || workspace.original != native.Value || workspace.limits != limits {
+	if workspace == nil || workspace.compiled != compiled || !compiled.supportsRequestWorkspace() || workspace.identity != compiled.identity || workspace.source != native.Source || workspace.original != native.Value || workspace.limits != limits {
 		return nil
 	}
 	source := native.RequestContext
