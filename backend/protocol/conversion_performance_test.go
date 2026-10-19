@@ -132,13 +132,17 @@ func BenchmarkConversionExecution(b *testing.B) {
 			source = compiled
 		}
 	}
-	conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(target, source))
-	if err != nil {
-		b.Fatal(err)
-	}
 	route := p.ConversionContext{Source: source.Identity(), Target: target.Identity(), Model: "m", Delivery: p.NewDeliveryState()}
 	for _, size := range []int{64, 2 << 20} {
 		for _, phase := range []p.ConversionPhase{p.ConversionRequest, p.ConversionResponse, p.ConversionEvent} {
+			ingress, upstream := target, source
+			if phase == p.ConversionRequest {
+				ingress, upstream = source, target
+			}
+			conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(ingress, upstream))
+			if err != nil {
+				b.Fatal(err)
+			}
 			var document any
 			switch phase {
 			case p.ConversionRequest:

@@ -44,8 +44,13 @@ func differentialValue(t testing.TB, raw string) p.Value {
 func compareConversion(t testing.TB, conversion *p.CompiledConversion, phase p.ConversionPhase, input p.Value, route p.ConversionContext) {
 	t.Helper()
 	wantSink, gotSink := &p.DiagnosticSink{}, &p.DiagnosticSink{}
-	want, wantErr := conversion.ApplyValueBaseline(t.Context(), phase, input, route, wantSink)
-	got, gotErr := conversion.ApplyValue(t.Context(), phase, input, route, gotSink)
+	wantRoute, gotRoute := route, route
+	if route.Delivery != nil {
+		wantRoute.Delivery = &p.DeliveryState{ID: route.Delivery.ID, Created: route.Delivery.Created}
+		gotRoute.Delivery = &p.DeliveryState{ID: route.Delivery.ID, Created: route.Delivery.Created}
+	}
+	want, wantErr := conversion.ApplyValueBaseline(t.Context(), phase, input, wantRoute, wantSink)
+	got, gotErr := conversion.ApplyValue(t.Context(), phase, input, gotRoute, gotSink)
 	var wantIssues, gotIssues *p.ConversionError
 	errors.As(wantErr, &wantIssues)
 	errors.As(gotErr, &gotIssues)
@@ -57,6 +62,9 @@ func compareConversion(t testing.TB, conversion *p.CompiledConversion, phase p.C
 	}
 	if !reflect.DeepEqual(wantSink.Issues(), gotSink.Issues()) {
 		t.Fatalf("diagnostics differ:\nold=%+v\nnew=%+v", wantSink.Issues(), gotSink.Issues())
+	}
+	if !reflect.DeepEqual(wantRoute.Delivery, gotRoute.Delivery) {
+		t.Fatal("delivery state differs")
 	}
 }
 
@@ -98,9 +106,13 @@ func TestDefaultConversionDifferential(t *testing.T) {
 				}
 				route := p.ConversionContext{Source: source.Identity(), Target: target.Identity(), Model: "m", Delivery: p.NewDeliveryState()}
 				for phase, samples := range fixtures {
+					phaseRoute := route
+					if phase == p.ConversionResponse || phase == p.ConversionEvent {
+						phaseRoute.Source, phaseRoute.Target = route.Target, route.Source
+					}
 					for index, raw := range samples {
 						t.Run(fmt.Sprintf("%s/%s/%s/%s/%d", source.Codec(p.EncodeRequest), target.Codec(p.EncodeRequest), mode, phase, index), func(t *testing.T) {
-							compareConversion(t, conversion, phase, differentialValue(t, raw), route)
+							compareConversion(t, conversion, phase, differentialValue(t, raw), phaseRoute)
 						})
 					}
 				}
