@@ -1,0 +1,1143 @@
+{
+  "baseline": "e376367",
+  "runtimeCode": "f119ded",
+  "verifiedCode": "f0d39bfdba5e1353695d9f78e5f1842bc1ecda58",
+  "compiler": "2.0.0-dev.72",
+  "environment": {
+    "go": "1.26.5",
+    "node": "24.18.0",
+    "os": "Windows 11 Enterprise LTSC 10.0.26100 amd64",
+    "cpu": "Ryzen 5 7600X",
+    "logicalProcessors": 12,
+    "physicalMemoryBytes": 33409626112,
+    "GOGC": 100,
+    "GOMEMLIMIT": "8GiB"
+  },
+  "conversion": [
+    {
+      "size": 2,
+      "workers": 1,
+      "mode": "baseline",
+      "runs": 5,
+      "time_ms": 2300.236,
+      "allocated_MiB": 1745.88,
+      "peak_heap_MiB": [
+        113.086,
+        117.122,
+        103.033,
+        113.11,
+        103.036
+      ]
+    },
+    {
+      "size": 2,
+      "workers": 1,
+      "mode": "optimized",
+      "runs": 5,
+      "time_ms": 51.809,
+      "allocated_MiB": 0.038,
+      "peak_heap_MiB": [
+        12.838,
+        12.839,
+        12.845,
+        12.846,
+        12.85
+      ]
+    },
+    {
+      "size": 2,
+      "workers": 4,
+      "mode": "baseline",
+      "runs": 5,
+      "time_ms": 2649.74,
+      "allocated_MiB": 6880.766,
+      "peak_heap_MiB": [
+        431.881,
+        377.691,
+        389.793,
+        371.541,
+        363.6
+      ]
+    },
+    {
+      "size": 2,
+      "workers": 4,
+      "mode": "optimized",
+      "runs": 5,
+      "time_ms": 61.354,
+      "allocated_MiB": 0.137,
+      "peak_heap_MiB": [
+        49.125,
+        49.125,
+        49.131,
+        49.131,
+        49.143
+      ]
+    },
+    {
+      "size": 2,
+      "workers": 32,
+      "mode": "baseline",
+      "runs": 5,
+      "time_ms": 12902.605,
+      "allocated_MiB": 47263.732,
+      "peak_heap_MiB": [
+        2919.603,
+        2853.259,
+        2855.04,
+        2901.204,
+        2769.461
+      ]
+    },
+    {
+      "size": 2,
+      "workers": 32,
+      "mode": "optimized",
+      "runs": 5,
+      "time_ms": 318.416,
+      "allocated_MiB": 1.073,
+      "peak_heap_MiB": [
+        387.498,
+        387.508,
+        387.548,
+        387.559,
+        387.594
+      ]
+    },
+    {
+      "size": 8,
+      "workers": 1,
+      "mode": "baseline",
+      "runs": 5,
+      "time_ms": 8943.435,
+      "allocated_MiB": 6739.644,
+      "peak_heap_MiB": [
+        449.109,
+        505.121,
+        441.158,
+        417.051,
+        489.212
+      ]
+    },
+    {
+      "size": 8,
+      "workers": 1,
+      "mode": "optimized",
+      "runs": 5,
+      "time_ms": 206.019,
+      "allocated_MiB": 0.037,
+      "peak_heap_MiB": [
+        48.856,
+        48.856,
+        48.857,
+        48.858,
+        48.86
+      ]
+    },
+    {
+      "size": 8,
+      "workers": 4,
+      "mode": "baseline",
+      "runs": 5,
+      "time_ms": 10306.799,
+      "allocated_MiB": 27182.466,
+      "peak_heap_MiB": [
+        1649.802,
+        1777.824,
+        1593.891,
+        1585.803,
+        1650.034
+      ]
+    },
+    {
+      "size": 8,
+      "workers": 4,
+      "mode": "optimized",
+      "runs": 5,
+      "time_ms": 243.174,
+      "allocated_MiB": 0.139,
+      "peak_heap_MiB": [
+        193.147,
+        193.149,
+        193.156,
+        193.158,
+        193.161
+      ]
+    },
+    {
+      "size": 16,
+      "workers": 1,
+      "mode": "baseline",
+      "runs": 5,
+      "time_ms": 17678.231,
+      "allocated_MiB": 13475.646,
+      "peak_heap_MiB": [
+        929.031,
+        961.081,
+        817.051,
+        929.116,
+        929.148
+      ]
+    },
+    {
+      "size": 16,
+      "workers": 1,
+      "mode": "optimized",
+      "runs": 5,
+      "time_ms": 410.608,
+      "allocated_MiB": 0.037,
+      "peak_heap_MiB": [
+        96.86,
+        96.86,
+        96.862,
+        96.862,
+        96.863
+      ]
+    },
+    {
+      "size": 16,
+      "workers": 4,
+      "mode": "baseline",
+      "runs": 5,
+      "time_ms": 20812.674,
+      "allocated_MiB": 54654.612,
+      "peak_heap_MiB": [
+        3266.226,
+        3393.715,
+        3506.049,
+        3298.031,
+        3505.989
+      ]
+    },
+    {
+      "size": 16,
+      "workers": 4,
+      "mode": "optimized",
+      "runs": 5,
+      "time_ms": 479.124,
+      "allocated_MiB": 0.137,
+      "peak_heap_MiB": [
+        385.162,
+        385.162,
+        385.167,
+        385.168,
+        385.175
+      ]
+    },
+    {
+      "size": 31,
+      "workers": 1,
+      "mode": "baseline",
+      "runs": 5,
+      "time_ms": 34141.622,
+      "allocated_MiB": 26467.696,
+      "peak_heap_MiB": [
+        2028.137,
+        1627.017,
+        2016.212,
+        1679.038,
+        2028.143
+      ]
+    },
+    {
+      "size": 31,
+      "workers": 1,
+      "mode": "optimized",
+      "runs": 5,
+      "time_ms": 801.43,
+      "allocated_MiB": 0.037,
+      "peak_heap_MiB": [
+        186.864,
+        186.864,
+        186.867,
+        186.867,
+        186.869
+      ]
+    },
+    {
+      "size": 31,
+      "workers": 4,
+      "mode": "baseline",
+      "runs": 5,
+      "time_ms": 39524.931,
+      "allocated_MiB": 106118.492,
+      "peak_heap_MiB": [
+        6432.766,
+        6601.789,
+        6202.907,
+        7353.797,
+        6586.05
+      ]
+    },
+    {
+      "size": 31,
+      "workers": 4,
+      "mode": "optimized",
+      "runs": 5,
+      "time_ms": 911.499,
+      "allocated_MiB": 0.139,
+      "peak_heap_MiB": [
+        745.109,
+        745.112,
+        745.118,
+        745.12,
+        745.126
+      ]
+    }
+  ],
+  "benchmarks": [
+    {
+      "name": "BenchmarkConversionActiveWorkloads/gemini_wrap2MiB/baseline",
+      "runs": 5,
+      "ns": 390989000.0,
+      "bytes": 311278192.0,
+      "allocs": 997.0
+    },
+    {
+      "name": "BenchmarkConversionActiveWorkloads/gemini_wrap2MiB/optimized",
+      "runs": 5,
+      "ns": 20473250.0,
+      "bytes": 6746904.0,
+      "allocs": 196.0
+    },
+    {
+      "name": "BenchmarkConversionActiveWorkloads/history1800/baseline",
+      "runs": 5,
+      "ns": 47531140.0,
+      "bytes": 52907050.0,
+      "allocs": 566048.0
+    },
+    {
+      "name": "BenchmarkConversionActiveWorkloads/history1800/optimized",
+      "runs": 5,
+      "ns": 20400810.0,
+      "bytes": 10607122.0,
+      "allocs": 281987.0
+    },
+    {
+      "name": "BenchmarkConversionActiveWorkloads/nodes1800/baseline",
+      "runs": 5,
+      "ns": 37376383.0,
+      "bytes": 42342921.0,
+      "allocs": 404354.0
+    },
+    {
+      "name": "BenchmarkConversionActiveWorkloads/nodes1800/optimized",
+      "runs": 5,
+      "ns": 14433662.0,
+      "bytes": 5780032.0,
+      "allocs": 198237.0
+    },
+    {
+      "name": "BenchmarkConversionActiveWorkloads/signature_digest2MiB/baseline",
+      "runs": 5,
+      "ns": 307828400.0,
+      "bytes": 256610736.0,
+      "allocs": 925.0
+    },
+    {
+      "name": "BenchmarkConversionActiveWorkloads/signature_digest2MiB/optimized",
+      "runs": 5,
+      "ns": 16350143.0,
+      "bytes": 9185012.0,
+      "allocs": 210.0
+    },
+    {
+      "name": "BenchmarkConversionActiveWorkloads/signature_drop2MiB/baseline",
+      "runs": 5,
+      "ns": 308654900.0,
+      "bytes": 267141616.0,
+      "allocs": 973.0
+    },
+    {
+      "name": "BenchmarkConversionActiveWorkloads/signature_drop2MiB/optimized",
+      "runs": 5,
+      "ns": 8363348.0,
+      "bytes": 6296.0,
+      "allocs": 186.0
+    },
+    {
+      "name": "BenchmarkConversionActiveWorkloads/signature_key2MiB/baseline",
+      "runs": 5,
+      "ns": 313497400.0,
+      "bytes": 265038488.0,
+      "allocs": 966.0
+    },
+    {
+      "name": "BenchmarkConversionActiveWorkloads/signature_key2MiB/optimized",
+      "runs": 5,
+      "ns": 8284344.0,
+      "bytes": 6913.0,
+      "allocs": 195.0
+    },
+    {
+      "name": "BenchmarkConversionExecution/event/2097152/baseline",
+      "runs": 5,
+      "ns": 145586800.0,
+      "bytes": 98219725.0,
+      "allocs": 275.0
+    },
+    {
+      "name": "BenchmarkConversionExecution/event/2097152/optimized",
+      "runs": 5,
+      "ns": 26160775.0,
+      "bytes": 21025526.0,
+      "allocs": 73.0
+    },
+    {
+      "name": "BenchmarkConversionExecution/event/64/baseline",
+      "runs": 5,
+      "ns": 27657.0,
+      "bytes": 13301.0,
+      "allocs": 186.0
+    },
+    {
+      "name": "BenchmarkConversionExecution/event/64/optimized",
+      "runs": 5,
+      "ns": 9823.0,
+      "bytes": 3061.0,
+      "allocs": 49.0
+    },
+    {
+      "name": "BenchmarkConversionExecution/request/2097152/baseline",
+      "runs": 5,
+      "ns": 326339200.0,
+      "bytes": 281877296.0,
+      "allocs": 1213.0
+    },
+    {
+      "name": "BenchmarkConversionExecution/request/2097152/optimized",
+      "runs": 5,
+      "ns": 36427656.0,
+      "bytes": 25249340.0,
+      "allocs": 334.0
+    },
+    {
+      "name": "BenchmarkConversionExecution/request/64/baseline",
+      "runs": 5,
+      "ns": 111766.0,
+      "bytes": 57673.0,
+      "allocs": 852.0
+    },
+    {
+      "name": "BenchmarkConversionExecution/request/64/optimized",
+      "runs": 5,
+      "ns": 39968.0,
+      "bytes": 11511.0,
+      "allocs": 293.0
+    },
+    {
+      "name": "BenchmarkConversionExecution/response/2097152/baseline",
+      "runs": 5,
+      "ns": 155505400.0,
+      "bytes": 98970280.0,
+      "allocs": 421.0
+    },
+    {
+      "name": "BenchmarkConversionExecution/response/2097152/optimized",
+      "runs": 5,
+      "ns": 26545862.0,
+      "bytes": 21029700.0,
+      "allocs": 157.0
+    },
+    {
+      "name": "BenchmarkConversionExecution/response/64/baseline",
+      "runs": 5,
+      "ns": 47050.0,
+      "bytes": 19538.0,
+      "allocs": 322.0
+    },
+    {
+      "name": "BenchmarkConversionExecution/response/64/optimized",
+      "runs": 5,
+      "ns": 18863.0,
+      "bytes": 5630.0,
+      "allocs": 126.0
+    }
+  ],
+  "http": [
+    {
+      "mode": "baseline",
+      "stream": "false",
+      "runs": 5,
+      "time_ms": 55002.573,
+      "allocated_MiB": 44403.932,
+      "peak_heap_MiB": [
+        2328.769,
+        2402.533,
+        2328.761,
+        2173.653,
+        2328.666
+      ],
+      "working_set_MiB": [
+        2440.309,
+        2878.004,
+        2478.309,
+        2312.707,
+        2580.594
+      ],
+      "reclaimed_MiB": [
+        2.907,
+        2.933,
+        2.902,
+        2.932,
+        2.947
+      ]
+    },
+    {
+      "mode": "baseline",
+      "stream": "true",
+      "runs": 5,
+      "time_ms": 54745.06,
+      "allocated_MiB": 44186.974,
+      "peak_heap_MiB": [
+        2588.566,
+        2297.837,
+        2328.816,
+        2328.845,
+        2588.606
+      ],
+      "working_set_MiB": [
+        2867.969,
+        2695.824,
+        2457.078,
+        2465.684,
+        3159.66
+      ],
+      "reclaimed_MiB": [
+        2.92,
+        2.946,
+        2.92,
+        2.945,
+        2.961
+      ]
+    },
+    {
+      "mode": "optimized",
+      "stream": "false",
+      "runs": 5,
+      "time_ms": 22552.449,
+      "allocated_MiB": 17719.05,
+      "peak_heap_MiB": [
+        1708.659,
+        2216.491,
+        2216.628,
+        2216.582,
+        2216.467
+      ],
+      "working_set_MiB": [
+        2054.973,
+        2600.68,
+        2379.242,
+        2380.27,
+        2441.977
+      ],
+      "reclaimed_MiB": [
+        2.916,
+        2.937,
+        2.93,
+        2.885,
+        2.915
+      ]
+    },
+    {
+      "mode": "optimized",
+      "stream": "true",
+      "runs": 5,
+      "time_ms": 22344.613,
+      "allocated_MiB": 18587.326,
+      "peak_heap_MiB": [
+        2030.662,
+        2216.684,
+        2216.683,
+        2061.423,
+        1894.706
+      ],
+      "working_set_MiB": [
+        2500.164,
+        2574.184,
+        2446.969,
+        2478.031,
+        2306.219
+      ],
+      "reclaimed_MiB": [
+        2.934,
+        2.95,
+        2.949,
+        2.902,
+        2.928
+      ]
+    }
+  ],
+  "codecs": [
+    {
+      "size": 31,
+      "workers": 4,
+      "mode": "baseline",
+      "runs": 3,
+      "time_ms": 50948.1883,
+      "allocated_MiB": 145407.3,
+      "peak_heap_MiB": [
+        6202.2,
+        6760.4,
+        6171.2
+      ],
+      "reclaimed_MiB": [
+        558.9,
+        372.9,
+        62.8
+      ]
+    },
+    {
+      "size": 31,
+      "workers": 4,
+      "mode": "optimized",
+      "runs": 3,
+      "time_ms": 14541.8465,
+      "allocated_MiB": 37490.5,
+      "peak_heap_MiB": [
+        6574.2,
+        6450.1,
+        6078.1
+      ],
+      "reclaimed_MiB": [
+        93.8,
+        62.8,
+        310.8
+      ]
+    }
+  ],
+  "go": {
+    "go-full-final": {
+      "counts": {
+        "pass": 3765,
+        "skip": 10
+      },
+      "skipped": [
+        "TestConversionPerformancePairs",
+        "TestCLILivePromptTasks",
+        "TestLargeRequestResourceProfile",
+        "TestConsoleBrowserEnvironmentOverride",
+        "TestConversionClientToolRoundTrip/openai",
+        "TestConversionClientToolRoundTrip/claude",
+        "TestConversionHTTPIsolated",
+        "TestConversionHTTPProcess",
+        "TestProtocolLive",
+        "TestProtocolLoad"
+      ],
+      "failures": [],
+      "packages": [
+        {
+          "Package": "github.com/elysia-api/backend",
+          "Action": "skip",
+          "Elapsed": 0
+        },
+        {
+          "Package": "github.com/elysia-api/backend/agent",
+          "Action": "pass",
+          "Elapsed": 0.549
+        },
+        {
+          "Package": "github.com/elysia-api/backend/protocol",
+          "Action": "pass",
+          "Elapsed": 2.354
+        },
+        {
+          "Package": "github.com/elysia-api/backend/config",
+          "Action": "pass",
+          "Elapsed": 2.556
+        },
+        {
+          "Package": "github.com/elysia-api/backend/webui",
+          "Action": "skip",
+          "Elapsed": 0
+        },
+        {
+          "Package": "github.com/elysia-api/backend/relay",
+          "Action": "pass",
+          "Elapsed": 5.233
+        },
+        {
+          "Package": "github.com/elysia-api/backend/storage",
+          "Action": "pass",
+          "Elapsed": 10.892
+        },
+        {
+          "Package": "github.com/elysia-api/backend/protocol/builtin",
+          "Action": "pass",
+          "Elapsed": 39.158
+        },
+        {
+          "Package": "github.com/elysia-api/backend/server",
+          "Action": "pass",
+          "Elapsed": 1527.413
+        }
+      ]
+    },
+    "race-protocol-final": {
+      "counts": {
+        "pass": 2300,
+        "skip": 2
+      },
+      "skipped": [
+        "TestConversionPerformancePairs",
+        "TestLargeRequestResourceProfile"
+      ],
+      "failures": [],
+      "packages": [
+        {
+          "Package": "github.com/elysia-api/backend/protocol",
+          "Action": "pass",
+          "Elapsed": 7.644
+        },
+        {
+          "Package": "github.com/elysia-api/backend/protocol/builtin",
+          "Action": "pass",
+          "Elapsed": 207.416
+        }
+      ]
+    },
+    "race-state-final": {
+      "counts": {
+        "pass": 31
+      },
+      "skipped": [],
+      "failures": [],
+      "packages": [
+        {
+          "Package": "github.com/elysia-api/backend/config",
+          "Action": "pass",
+          "Elapsed": 2.169
+        },
+        {
+          "Package": "github.com/elysia-api/backend/storage",
+          "Action": "pass",
+          "Elapsed": 2.872
+        },
+        {
+          "Package": "github.com/elysia-api/backend/server",
+          "Action": "pass",
+          "Elapsed": 240.348
+        }
+      ]
+    }
+  },
+  "checks": {
+    "audit-final": [
+      {
+        "name": "audit-final",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 12.498,
+        "sha256": "ef3b82d4e7e3049daa2d9bbe7d62f86c801961bf655a124bda40c0d845f9b369"
+      }
+    ],
+    "build-six-final": [
+      {
+        "name": "build-six-final",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 31.629,
+        "sha256": "acdfa312321249becb338db9a4945132c0086ec39b7abe030e0e2048f9d0e7b1"
+      }
+    ],
+    "frontend-lint-final": [
+      {
+        "name": "frontend-lint-final",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 2.174,
+        "sha256": "c795dee91931f1178f78a794e39cb3741124835059906fa703a3d3b8248595f1"
+      }
+    ],
+    "frontend-type-final": [
+      {
+        "name": "frontend-type-final",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 3.87,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "git-check-final": [
+      {
+        "name": "git-check-final",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 0.026,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "go-full-final": [
+      {
+        "name": "go-full-final",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 1532.635,
+        "sha256": "5a14754b7de7900207526af8545ff881c2c7784cc144c5b60fc48d2f70fd7a44"
+      }
+    ],
+    "go-vet-final": [
+      {
+        "name": "go-vet-final",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 1.343,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "playwright-final": [
+      {
+        "name": "playwright-final",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 15.2,
+        "sha256": "989dae8fdfe058c0c108d97d7db9395079e3f89fa45ea4735c324867a6253303"
+      }
+    ],
+    "race-protocol-final": [
+      {
+        "name": "race-protocol-final",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 209.136,
+        "sha256": "b733a732bf3a4fc59a33e3e8a7e6db916bf68069d460579837390329692d19b2"
+      }
+    ],
+    "race-state-final": [
+      {
+        "name": "race-state-final",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 248.727,
+        "sha256": "d7c5160d88fa06f09c8c76a63f35a4192f48730451786c822c3be0e055bd3970"
+      }
+    ],
+    "sdk-local-final": [
+      {
+        "name": "sdk-local-final",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 5.216,
+        "sha256": "b5654eada426e3a01791c4ea5171d6827927285b921a49250cc70569a645f617"
+      }
+    ],
+    "snapshot-final": [
+      {
+        "name": "snapshot-final",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 0.268,
+        "sha256": "f992987e9277c00ac236cecc8bd7f84073b5df10a85205900f15da867e588c1b"
+      }
+    ],
+    "staticcheck-final": [
+      {
+        "name": "staticcheck-final",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 4.666,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "supplementalCodecMeasurement": {
+    "status": "incomplete",
+    "reason": "baseline OOM; remaining supplemental attempts not started under system commit pressure",
+    "expectedPairsPerScenario": 5,
+    "completedPairs": {
+      "31MiB-workers4": 3,
+      "2MiB-workers32": 0
+    },
+    "attempts": [
+      {
+        "name": "codec-paired-31MiB-4-0-baseline",
+        "args": [
+          "C:\\Users\\xiaolan\\AppData\\Local\\Temp\\elysia-conversion-performance-dev72\\baseline-builtin.test.exe",
+          "-test.run=^TestLargeRequestResourceProfile$/^31MiB$/^workers4$",
+          "-test.v",
+          "-test.timeout=15m"
+        ],
+        "started": "2026-10-19T11:17:44.554039",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 52.103,
+        "sha256": "07e435611846966cc0d50e9d59ca672a6ecfb84412c7c93803806295e4d47b32"
+      },
+      {
+        "name": "codec-paired-31MiB-4-0-optimized",
+        "args": [
+          "C:\\Users\\xiaolan\\AppData\\Local\\Temp\\elysia-conversion-performance-dev72\\builtin.test.exe",
+          "-test.run=^TestLargeRequestResourceProfile$/^31MiB$/^workers4$",
+          "-test.v",
+          "-test.timeout=15m"
+        ],
+        "started": "2026-10-19T11:18:36.657210",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 14.632,
+        "sha256": "a5cd9a3dcafe4c133a2b5a24898d86bdb2dac3c25827a5bfe4373b414db03ca9"
+      },
+      {
+        "name": "codec-paired-31MiB-4-1-baseline",
+        "args": [
+          "C:\\Users\\xiaolan\\AppData\\Local\\Temp\\elysia-conversion-performance-dev72\\baseline-builtin.test.exe",
+          "-test.run=^TestLargeRequestResourceProfile$/^31MiB$/^workers4$",
+          "-test.v",
+          "-test.timeout=15m"
+        ],
+        "started": "2026-10-19T11:19:06.147436",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 51.145,
+        "sha256": "0d919ddee953184f89d37ed161de8177b90c5157836b18486f213a23f170a2a9"
+      },
+      {
+        "name": "codec-paired-31MiB-4-1-optimized",
+        "args": [
+          "C:\\Users\\xiaolan\\AppData\\Local\\Temp\\elysia-conversion-performance-dev72\\builtin.test.exe",
+          "-test.run=^TestLargeRequestResourceProfile$/^31MiB$/^workers4$",
+          "-test.v",
+          "-test.timeout=15m"
+        ],
+        "started": "2026-10-19T11:18:51.289449",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 14.857,
+        "sha256": "e2ce49318c4182bde8949b3eb8dfdf446be2501ec47cf1b84dfc81645dc7acdb"
+      },
+      {
+        "name": "codec-paired-31MiB-4-2-baseline",
+        "args": [
+          "C:\\Users\\xiaolan\\AppData\\Local\\Temp\\elysia-conversion-performance-dev72\\baseline-builtin.test.exe",
+          "-test.run=^TestLargeRequestResourceProfile$/^31MiB$/^workers4$",
+          "-test.v",
+          "-test.timeout=15m"
+        ],
+        "started": "2026-10-19T11:19:57.293372",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 51.255,
+        "sha256": "9ebd6bf5a717e3f2cab31d53d67be1b0f3f14050f606fc6a1d0eee0ae49fa9c7"
+      },
+      {
+        "name": "codec-paired-31MiB-4-2-optimized",
+        "args": [
+          "C:\\Users\\xiaolan\\AppData\\Local\\Temp\\elysia-conversion-performance-dev72\\builtin.test.exe",
+          "-test.run=^TestLargeRequestResourceProfile$/^31MiB$/^workers4$",
+          "-test.v",
+          "-test.timeout=15m"
+        ],
+        "started": "2026-10-19T11:20:48.548400",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 15.106,
+        "sha256": "3bfcd9be08ada093a440ccd40ab66047a43683af1f7bd6929e2259116af84ab3"
+      },
+      {
+        "name": "codec-paired-31MiB-4-3-baseline",
+        "args": [
+          "C:\\Users\\xiaolan\\AppData\\Local\\Temp\\elysia-conversion-performance-dev72\\baseline-builtin.test.exe",
+          "-test.run=^TestLargeRequestResourceProfile$/^31MiB$/^workers4$",
+          "-test.v",
+          "-test.timeout=15m"
+        ],
+        "started": "2026-10-19T11:21:18.620580",
+        "status": "finished",
+        "exit_code": 2,
+        "elapsed_seconds": 45.822,
+        "sha256": "a93f1e894a4541a5b5e703a7318a82d169c566a6d27c7804b3fa0f847d7afad9",
+        "failure": "out_of_memory"
+      },
+      {
+        "name": "codec-paired-31MiB-4-3-optimized",
+        "args": [
+          "C:\\Users\\xiaolan\\AppData\\Local\\Temp\\elysia-conversion-performance-dev72\\builtin.test.exe",
+          "-test.run=^TestLargeRequestResourceProfile$/^31MiB$/^workers4$",
+          "-test.v",
+          "-test.timeout=15m"
+        ],
+        "started": "2026-10-19T11:21:03.655260",
+        "status": "finished",
+        "exit_code": 0,
+        "elapsed_seconds": 14.964,
+        "sha256": "bd7b97f1810c67baa5e9aa92e1bec2cd75ec33309795bd132d573764d3e74e2c"
+      }
+    ],
+    "samples": [
+      {
+        "bytes": "32505856",
+        "workers": "4",
+        "elapsed": "51.3279341s",
+        "total_alloc_MiB": "146523.6",
+        "peak_heap_MiB": "6202.2",
+        "after_gc_MiB": "558.9",
+        "time_ms": 51327.9341,
+        "size": 31,
+        "pair": 0,
+        "mode": "baseline",
+        "source": "codec-paired-31MiB-4-0-baseline.log",
+        "paired": true
+      },
+      {
+        "bytes": "32505856",
+        "workers": "4",
+        "elapsed": "14.309394s",
+        "total_alloc_MiB": "37490.5",
+        "peak_heap_MiB": "6574.2",
+        "after_gc_MiB": "93.8",
+        "time_ms": 14309.393999999998,
+        "size": 31,
+        "pair": 0,
+        "mode": "optimized",
+        "source": "codec-paired-31MiB-4-0-optimized.log",
+        "paired": true
+      },
+      {
+        "bytes": "32505856",
+        "workers": "4",
+        "elapsed": "50.8270603s",
+        "total_alloc_MiB": "145345.3",
+        "peak_heap_MiB": "6760.4",
+        "after_gc_MiB": "372.9",
+        "time_ms": 50827.0603,
+        "size": 31,
+        "pair": 1,
+        "mode": "baseline",
+        "source": "codec-paired-31MiB-4-1-baseline.log",
+        "paired": true
+      },
+      {
+        "bytes": "32505856",
+        "workers": "4",
+        "elapsed": "14.5418465s",
+        "total_alloc_MiB": "36653.2",
+        "peak_heap_MiB": "6450.1",
+        "after_gc_MiB": "62.8",
+        "time_ms": 14541.8465,
+        "size": 31,
+        "pair": 1,
+        "mode": "optimized",
+        "source": "codec-paired-31MiB-4-1-optimized.log",
+        "paired": true
+      },
+      {
+        "bytes": "32505856",
+        "workers": "4",
+        "elapsed": "50.9481883s",
+        "total_alloc_MiB": "145407.3",
+        "peak_heap_MiB": "6171.2",
+        "after_gc_MiB": "62.8",
+        "time_ms": 50948.1883,
+        "size": 31,
+        "pair": 2,
+        "mode": "baseline",
+        "source": "codec-paired-31MiB-4-2-baseline.log",
+        "paired": true
+      },
+      {
+        "bytes": "32505856",
+        "workers": "4",
+        "elapsed": "14.8203033s",
+        "total_alloc_MiB": "37645.5",
+        "peak_heap_MiB": "6078.1",
+        "after_gc_MiB": "310.8",
+        "time_ms": 14820.303300000001,
+        "size": 31,
+        "pair": 2,
+        "mode": "optimized",
+        "source": "codec-paired-31MiB-4-2-optimized.log",
+        "paired": true
+      },
+      {
+        "bytes": "32505856",
+        "workers": "4",
+        "elapsed": "14.665762s",
+        "total_alloc_MiB": "37552.5",
+        "peak_heap_MiB": "6140.1",
+        "after_gc_MiB": "341.9",
+        "time_ms": 14665.762,
+        "size": 31,
+        "pair": 3,
+        "mode": "optimized",
+        "source": "codec-paired-31MiB-4-3-optimized.log",
+        "paired": false
+      }
+    ],
+    "memoryAfterFailure": {
+      "capturedAt": "2026-10-19T11:31:03.9200692+08:00",
+      "committedBytes": 129177202688,
+      "commitLimitBytes": 136488841216,
+      "availablePhysicalBytes": 14867910656,
+      "remainingCommitBytes": 7311638528,
+      "timing": "after baseline out-of-memory failure; not a measurement taken at failure time"
+    }
+  },
+  "preFinalChecks": [
+    {
+      "name": "mid-conversion-cancel-final",
+      "status": "finished",
+      "exit_code": 0,
+      "elapsed_seconds": 0.531,
+      "sha256": "661df2b92233ccf737120f76b4cc06a55654b99c3876c97d55922b4576dfb427"
+    },
+    {
+      "name": "protocol-differential-final",
+      "status": "finished",
+      "exit_code": 0,
+      "elapsed_seconds": 2.252,
+      "sha256": "36a7d91b09d2badaf7df0774fff786e55178259333c58fb1bc27fbc20006a265"
+    }
+  ],
+  "performanceLogSHA256": {
+    "active-paired-0-baseline.log": "0dd03643d5f3ba6cc07f3f11f70607d6fbfbff5ec4de6d6f3bdc7be2cd187319",
+    "active-paired-0-optimized.log": "0d06bbc6f2bb59b15b7a21dc8e706e7f3ffced6df95ceae576a5fd2543e619c5",
+    "active-paired-1-baseline.log": "e693269d4c56a75f6bfb92c44cacff5db26313ba29b65a3a728beb736146fd5f",
+    "active-paired-1-optimized.log": "4206826064a28388ccea4f16fe25ae8c9919de8007e1eb904f03a7e719f8936c",
+    "active-paired-2-baseline.log": "b02433475b042ed373690b3585c42f50277addc3f2743a6ca9cc6d8c85c7ca94",
+    "active-paired-2-optimized.log": "36aaa5d9cc35ebc2ddc3c062cf4bfa65955449d0e6a1929efe1cc575c490ccec",
+    "active-paired-3-baseline.log": "c8d086b1d4e9c0a75cb3959c4083d84c467d40494901bc7452f416b1cf96a92d",
+    "active-paired-3-optimized.log": "db16173f190635088f8b06260e5a0be218ac6833e6fb838ed0df1bf4d527e41c",
+    "active-paired-4-baseline.log": "92cccfa51f6138d5427fe8114e70204d91f253b1a0786b63f6c02dabfef6976c",
+    "active-paired-4-optimized.log": "cf9138fed489721146b5876b9142fae9a8a9c73ffc48b3879230d79078250d8b",
+    "codec-paired-31MiB-4-0-baseline.log": "07e435611846966cc0d50e9d59ca672a6ecfb84412c7c93803806295e4d47b32",
+    "codec-paired-31MiB-4-0-optimized.log": "a5cd9a3dcafe4c133a2b5a24898d86bdb2dac3c25827a5bfe4373b414db03ca9",
+    "codec-paired-31MiB-4-1-baseline.log": "0d919ddee953184f89d37ed161de8177b90c5157836b18486f213a23f170a2a9",
+    "codec-paired-31MiB-4-1-optimized.log": "e2ce49318c4182bde8949b3eb8dfdf446be2501ec47cf1b84dfc81645dc7acdb",
+    "codec-paired-31MiB-4-2-baseline.log": "9ebd6bf5a717e3f2cab31d53d67be1b0f3f14050f606fc6a1d0eee0ae49fa9c7",
+    "codec-paired-31MiB-4-2-optimized.log": "3bfcd9be08ada093a440ccd40ab66047a43683af1f7bd6929e2259116af84ab3",
+    "codec-paired-31MiB-4-3-baseline.log": "a93f1e894a4541a5b5e703a7318a82d169c566a6d27c7804b3fa0f847d7afad9",
+    "codec-paired-31MiB-4-3-optimized.log": "bd7b97f1810c67baa5e9aa92e1bec2cd75ec33309795bd132d573764d3e74e2c",
+    "conversion-final-2MiB-32.log": "3dca53c2ee3d4c0b7b9b0505e60573dc6a679bfeddbd2344cc9b50b1ff0b7900",
+    "conversion-final-31MiB-4.log": "ca31a40a21c1c24ee77fbeecf0ff193b40eaee8eaa767979f0677489b84586a1",
+    "conversion-final-pairs.log": "7c9e149ab9a7f9abee8630697ab289ab9f02b318930a3588ca68a6d6577b1e4d",
+    "http-aligned-0-baseline.log": "d144ea0e168572ad4a00474671d9ae6e049b77d5127d6c720cdb353981d024de",
+    "http-aligned-0-optimized.log": "dbd6def504b68ae0b3bb381e7813ef20aa32893ee798dea43c3b7164a7ec7eae",
+    "http-aligned-1-baseline.log": "7137d7dccd16edac69579a37f64d92c10a4ed8823501b6cf2c9b13b20fd2f1d4",
+    "http-aligned-1-optimized.log": "5df5e6743bf274d8508ba56582abb885025d1a0eec18a3e3521ed48196185c65",
+    "http-aligned-2-baseline.log": "69f0d781da5b25272d66928bc33fbe9afde1d2e678af03b823a8c509ab8a3cd2",
+    "http-aligned-2-optimized.log": "beda4fa3f5d7337b2f741d88ffacc1d46cbd5aa819da78c03ed602dde3082a0e",
+    "http-aligned-3-baseline.log": "08255cb765ae8e7591fe019bf7eb19548b5ab8b669f515b8d38431c7a105ae87",
+    "http-aligned-3-optimized.log": "9621ed9af29989a08ec8ab1489f76f50f7cfd8101c82808770b49aedff8464a6",
+    "http-aligned-4-baseline.log": "4491de2bf62820e8ad36bf0d2b2366036d3bb1a94c102095828a0d3bb9240624",
+    "http-aligned-4-optimized.log": "862caa2ccaae47cc76ae9caceec9111106a59057d8ff550f9057552139d9ee3e",
+    "micro-paired-0-baseline.log": "93071357488a55011fcc006349d7d10db57271c3b412852340d4255e3be97d56",
+    "micro-paired-0-optimized.log": "f481b82d65b00b1ec3ae6ed730473a93eec2e91dd699d338da7cf6735839b2aa",
+    "micro-paired-1-baseline.log": "03a5543cb62cae57e70214196767a7e5fa263bf8d0728c982b4f0eac965c4152",
+    "micro-paired-1-optimized.log": "1076b63d8f829b9d9aa95c863863c17fc6b4b8c5005ce85cfb4221ab0b8fac1e",
+    "micro-paired-2-baseline.log": "65e832397ef33a413ded44bb65773b9f68df4afe8ea9d9d7903da9e674a70bf4",
+    "micro-paired-2-optimized.log": "71d7a65f7911e279361190c9f2327fb4b6978021ebd5700cfc2da1942850d66f",
+    "micro-paired-3-baseline.log": "60f3146a9ec080ea67c733333e9806b0f9624c69649fee588fe5148a8884a6d4",
+    "micro-paired-3-optimized.log": "a88ad294287de69943c49a95c822de90203cf4db1a3a6bfd4e73c6dceaf7ec52",
+    "micro-paired-4-baseline.log": "139b3e12d7446befd9006004b1ad46fc927efb83f663e3b5e17aa43879e27013",
+    "micro-paired-4-optimized.log": "58e99128f93381da8b87670a5b22aaa330d7d83137c6a7bd99d43e8bed90ebb5"
+  },
+  "binarySHA256": {
+    "elysia-api-darwin-amd64": "497bff18d79e83354eacba6609f5decb0cf6217fb3e47d5ba4ad0cef638fc3aa",
+    "elysia-api-darwin-arm64": "bd1a1d9471b6e4502f60a5e9a18a05ab994d4557ee2f9f18ad993d1927cb830d",
+    "elysia-api-linux-amd64": "d9295a505e07be1a92b3756886a884b1276161b2b30c35b1b733bf8716a9fea1",
+    "elysia-api-linux-arm64": "70194ed5b64a98f02253b2bb9b62993da94f7c13da2e389330a290f9d64057a4",
+    "elysia-api-windows-amd64.exe": "b9881918a8bf04e2078cbafbf116f180cf0583d49f39f91984081582ea8f7221",
+    "elysia-api-windows-arm64.exe": "74eaed85f651c06f37b6af8fc4bc4013721734e62f8e7f96b855eab2830e3c24"
+  }
+}
