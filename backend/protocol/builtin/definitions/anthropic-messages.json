@@ -2070,7 +2070,9 @@
             "model": "m",
             "type": "message",
             "role": "assistant",
-            "content": []
+            "content": [],
+            "stop_reason": null,
+            "stop_sequence": null
           }
         },
         {
@@ -2096,7 +2098,8 @@
         {
           "type": "message_delta",
           "delta": {
-            "stop_reason": "end_turn"
+            "stop_reason": "end_turn",
+            "stop_sequence": null
           },
           "usage": {
             "input_tokens": 5,
@@ -2367,7 +2370,9 @@
             "model": "m",
             "type": "message",
             "role": "assistant",
-            "content": []
+            "content": [],
+            "stop_reason": null,
+            "stop_sequence": null
           }
         },
         {
@@ -2395,7 +2400,8 @@
         {
           "type": "message_delta",
           "delta": {
-            "stop_reason": "tool_use"
+            "stop_reason": "tool_use",
+            "stop_sequence": null
           }
         },
         {
@@ -3290,7 +3296,9 @@
             "model": "m",
             "type": "message",
             "role": "assistant",
-            "content": []
+            "content": [],
+            "stop_reason": null,
+            "stop_sequence": null
           }
         },
         {
@@ -3316,7 +3324,8 @@
         {
           "type": "message_delta",
           "delta": {
-            "stop_reason": "end_turn"
+            "stop_reason": "end_turn",
+            "stop_sequence": null
           },
           "usage": {
             "input_tokens": 5,
@@ -4173,7 +4182,9 @@
             "model": "m",
             "type": "message",
             "role": "assistant",
-            "content": []
+            "content": [],
+            "stop_reason": null,
+            "stop_sequence": null
           }
         },
         {
@@ -4207,7 +4218,8 @@
         {
           "type": "message_delta",
           "delta": {
-            "stop_reason": "end_turn"
+            "stop_reason": "end_turn",
+            "stop_sequence": null
           },
           "usage": {
             "input_tokens": 5,
@@ -4946,7 +4958,9 @@
             "model": "m",
             "content": [],
             "type": "message",
-            "role": "assistant"
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null
           }
         },
         {
@@ -4964,7 +4978,8 @@
         {
           "type": "message_delta",
           "delta": {
-            "stop_reason": "end_turn"
+            "stop_reason": "end_turn",
+            "stop_sequence": null
           }
         },
         {

@@ -31,9 +31,7 @@ func applyAgentPermittedKey(ctx context.Context, store *storage.Store, model *st
 			if len(source.APIKeys) > 0 {
 				return fmt.Errorf("模型源 %q 没有启用的 API key", source.Name)
 			}
-			if source.BaseURL != "" {
-				model.APIKey = ""
-			}
+			model.APIKey = ""
 			return nil
 		}
 		for _, key := range effective {
@@ -44,7 +42,7 @@ func applyAgentPermittedKey(ctx context.Context, store *storage.Store, model *st
 		}
 		return fmt.Errorf("模型源 %q 的所有 key 都无权服务模型 %q（按 key 拉取分组）", source.Name, model.Name)
 	}
-	return nil
+	return fmt.Errorf("model source %q is unavailable", model.SourceID)
 }
 
 func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb agent.StreamCallbacks) (*agent.CallResult, error) {

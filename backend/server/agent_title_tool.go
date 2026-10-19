@@ -11,19 +11,9 @@ import (
 // update_title：模型在理解任务后把会话标题改成对目标的简短概括。总览卡片
 // 用它做名称，所以必须短、必须是目标而不是用户原话的截断。
 
-const (
-	agentToolUpdateTitle = "update_title"
-	titleRuneLimit       = 16
-)
+const titleRuneLimit = 16
 
 type updateTitleTool struct{}
-
-func (t *updateTitleTool) Name() string      { return agentToolUpdateTitle }
-func (t *updateTitleTool) CLIEffect() string { return "" }
-
-func (t *updateTitleTool) Description() string {
-	return fmt.Sprintf("把会话标题改写成对任务目标的简洁概括（动宾短语，不超过 %d 个字，不要复述用户原话）。理解任务后调用一次；任务目标变化时再更新。", titleRuneLimit)
-}
 
 func (t *updateTitleTool) Execute(ctx context.Context, tctx CLIContext, args json.RawMessage) CLIResult {
 	var params struct {

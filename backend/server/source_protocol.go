@@ -18,7 +18,7 @@ func (s *Server) validateSourceProtocol(source *storage.ModelSource) error {
 	if len(platform) >= len("custom:") && strings.EqualFold(platform[:len("custom:")], "custom:") {
 		source.Platform = "custom:" + platform[len("custom:"):]
 	} else {
-		source.Platform = storage.NormalizePlatform(strings.ToLower(platform))
+		source.Platform = strings.ToLower(platform)
 	}
 	compiled, err := s.sourceProtocol(*source)
 	if err != nil {

@@ -151,13 +151,13 @@ SSE/NDJSON streams use the protocol’s `framing.idleMillis`: omitted or `0` mea
 | `ELYSIA_API_OPEN_BROWSER` | Overrides browser startup without writing the file; an invalid boolean logs a warning and falls back |
 | `ELYSIA_API_MASTER_KEY` | Takes precedence over key files; inject through a protected runtime environment |
 
-Key lookup order: environment variable → `secretKeyPath` → legacy `.db-key` beside the database → generate a random key. Existing legacy keys remain in use so upgrades can decrypt stored values. Key creation failures produce warnings; a running service alone does not prove encryption was established.
+Key lookup order: environment variable → `secretKeyPath` → generate a random key. Legacy `.db-key` files are not read, and encrypted storage rejects plaintext secret fields. Key creation failures produce warnings; a running service alone does not prove encryption was established.
 
 ### Runtime policies
 
 | Block | Fields and defaults |
 | --- | --- |
-| `responses` | `enabled: true`, `upstreamMode: "auto"`; modes are `native`, `transform`, `auto` |
+| `responses` | `enabled: true`; current protocol bindings and conversion policies control translation |
 | `usage` | Estimate missing upstream usage by default; `charsPerToken: 4`, `defaultOutputTokenEstimate: 1024`, `imageInputTokenEstimate: 300`, `fileInputTokenEstimatePerKB: 128`; `estimateWhenMissing: false` disables estimation |
 | `healthCheck` | Disabled by default; `intervalSeconds: 300`, `timeoutSeconds: 10`, `failureThreshold: 3`; probes may incur upstream charges |
 | `modelCatalog` | models.dev enabled by default; bundled snapshot and local cache, mirror fallback on online failure; optional `url` and `proxy`; `syncIntervalMinutes` defaults to 1440, explicit `0` disables periodic sync |
@@ -248,12 +248,14 @@ If the panel token is lost, stop the service, set `panelAccessToken` to a new ra
 
 `POST /__reload` and `POST /__shutdown` accept only loopback callers. Do not expose them through a reverse proxy.
 
-## Legacy migration
+## Current format requirements
 
-- `server.host` / `server.port` are fallback values only when the corresponding top-level fields are absent.
-- Current configuration parsing no longer reads `tokens` or `modelGroups`, or treats `dashboardToken` as the panel token. Do not rely on automatic migration described in older documentation. Export through a compatible older release or recreate data through management APIs, keeping the original backup.
-- Startup migration processes the deprecated `customProtocols` field and removes it from configuration. Back up first and inspect the result in the protocol designer after startup.
-- See the [protocol engine guide](protocol-guide.en.md) and [definition reference](protocol-definition-reference.en.md) for model capabilities, streaming and custom-protocol constraints. Retain matching executable/database/configuration/master-key backups and preview migration before upgrading; see [upgrade and rollback](protocol-release-readiness.en.md#upgrade-and-rollback).
+The backend provides no backward compatibility or automatic migration. Use a new database and current configuration. Back up existing data separately and recreate required records through current management APIs; the service never deletes old files for you.
+
+- Listener settings use top-level `host` / `port`, not `server.host` / `server.port`.
+- API keys, models and groups live only in SQLite; `tokens`, `modelGroups` and `customProtocols` are not read or imported.
+- Protocols use current definitions and explicit bindings with `custom:<protocol ID>` platforms. Model references must be `sourceId:modelId`.
+- Legacy protocol migration endpoints, preset rename/path repairs and historical log-layout backfills have been removed.
 
 ## Troubleshooting
 
@@ -263,5 +265,5 @@ If the panel token is lost, stop the service, set `panelAccessToken` to a new ra
 | Panel returns 401 | Use the panel token and verify the config path; relay and Agent keys are different credentials |
 | Upstream connection blocked | Outbound CIDRs, resolved IP addresses, and proxy settings |
 | Logs have no bodies | A positive `bodyMaxKB` enables future capture; old requests cannot be captured retroactively |
-| Secrets cannot be decrypted after upgrade | Original master key or legacy `.db-key`; changed environment variables |
+| Secrets cannot be decrypted | Matching master key or `secretKeyPath`; changed environment variables |
 | Empty model list | Upstream discovery endpoint, per-key permissions, and the custom protocol's `models` definition |

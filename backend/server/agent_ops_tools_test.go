@@ -94,7 +94,7 @@ func TestOpsSourceToolsCreateUpdateList(t *testing.T) {
 	defer upstream.Close()
 
 	create := &createSourceTool{server: s}
-	result := opsExecute(t, create, fmt.Sprintf(`{"name":"测试源","baseUrl":%q,"platform":"openai","apiKey":"sk-very-secret-key-123","manualModels":["m-a","m-b"]}`, upstream.URL))
+	result := opsExecute(t, create, fmt.Sprintf(`{"name":"测试源","baseUrl":%q,"platform":"custom:openai-chat-completions","apiKey":"sk-very-secret-key-123","manualModels":["m-a","m-b"]}`, upstream.URL))
 	if !result.OK {
 		t.Fatalf("create: %s", result.Summary)
 	}

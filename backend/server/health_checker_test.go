@@ -138,7 +138,7 @@ func TestHealthCheckerAutoDisableAndRecover(t *testing.T) {
 	ctx := context.Background()
 
 	// 先放一个可用模型进库。
-	src := storage.ModelSource{ID: "s1", Name: "S1", BaseURL: "https://x", Platform: "openai", Enabled: true}
+	src := storage.ModelSource{ID: "s1", Name: "S1", BaseURL: "https://x", Platform: "custom:openai-chat-completions", Enabled: true}
 	if err := s.store.UpsertSource(ctx, src); err != nil {
 		t.Fatalf("upsert source: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestHealthCheckerShutdownCancelsActiveProbe(t *testing.T) {
 
 	// feat 起探测要求可解析凭据（resolveModelSource 无 Key 即跳过），
 	// 补一个 Key 使探测真正发出，测试意图（关停取消在途探测）不变。
-	source := storage.ModelSource{ID: "slow", Name: "slow", BaseURL: upstream.URL, Platform: "openai", Enabled: true, APIKeys: []storage.SourceAPIKey{{Value: "probe-key"}}}
+	source := storage.ModelSource{ID: "slow", Name: "slow", BaseURL: upstream.URL, Platform: "custom:openai-chat-completions", Enabled: true, APIKeys: []storage.SourceAPIKey{{Value: "probe-key"}}}
 	if err := s.store.UpsertSource(context.Background(), source); err != nil {
 		t.Fatal(err)
 	}

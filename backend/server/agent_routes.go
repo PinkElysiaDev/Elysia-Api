@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/agent"
-	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
@@ -159,30 +158,11 @@ func (s *Server) adminCreateAgentSession(c *gin.Context) {
 			return
 		}
 		draft, err := service.ReadDraft(c.Request.Context(), protocolID)
-		if err != nil && !errors.Is(err, protocol.ErrNotFound) {
+		if err != nil {
 			respondProtocolError(c, err)
 			return
 		}
-		if err == nil {
-			seed = string(draft.Definition.Bytes())
-		} else {
-			rows, err := store.ListCustomProtocols(c.Request.Context())
-			if err != nil {
-				respondFail(c, http.StatusInternalServerError, "list_failed", err.Error())
-				return
-			}
-			found := false
-			for _, row := range rows {
-				if strings.EqualFold(row.ID, protocolID) {
-					seed, protocolID, found = row.Config, row.ID, true
-					break
-				}
-			}
-			if !found {
-				respondFail(c, http.StatusNotFound, "not_found", fmt.Sprintf("协议 %q 不存在", protocolID))
-				return
-			}
-		}
+		seed = string(draft.Definition.Bytes())
 	}
 	upsert := storage.AgentSessionUpsert{
 		Title:      strings.TrimSpace(payload.Title),

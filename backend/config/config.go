@@ -20,31 +20,27 @@ import (
 )
 
 type Config struct {
-	Host                string              `json:"host,omitempty"`
-	Port                int                 `json:"port,omitempty"`
-	PanelAccessToken    string              `json:"panelAccessToken,omitempty"`
-	DatabasePath        string              `json:"databasePath,omitempty"`
-	LogLevel            string              `json:"logLevel,omitempty"`
-	SecretKeyPath       string              `json:"secretKeyPath,omitempty"`
-	WebUIDir            string              `json:"webuiDir,omitempty"`
-	EnablePprof         bool                `json:"enablePprof,omitempty"`
-	MaxBodyBytes        int64               `json:"maxBodyBytes,omitempty"`
-	Server              ServerConfig        `json:"server"`
-	Tokens              []AccessToken       `json:"-"`                   // 运行时字段：仅用于 store-nil 回退与测试；不再从 config.json 读取（模型/token 走 SQLite）
-	Groups              []ModelGroupConfig  `json:"-"`                   // 同上：旧 config.json 的 modelGroups 字段已废弃，数据走 SQLite
-	Responses           ResponsesConfig     `json:"responses,omitempty"` // Responses API 兼容策略
-	Usage               UsageConfig         `json:"usage,omitempty"`     // 用量估算配置
-	SystemLog           LogRetentionConfig  `json:"systemLog,omitempty"`
-	UsageLog            UsageLogConfig      `json:"usageLog,omitempty"`            // 请求日志留存与内容策略（清理默认关闭）
-	HTTPTimeout         int                 `json:"httpTimeout,omitempty"`         // HTTP 请求超时时间（秒），0 为不限制
-	DebugMode           bool                `json:"debugMode,omitempty"`           // 调试模式
-	VerboseLog          bool                `json:"verboseLog,omitempty"`          // 详细日志模式
-	HealthCheck         HealthCheckConfig   `json:"healthCheck,omitempty"`         // 可选的后台健康检测
-	Outbound            OutboundConfig      `json:"outbound,omitempty"`            // 出站网络策略：禁止拨号的 IP 段（CIDR 列表，可编辑）
-	AllowFakeIPOutbound bool                `json:"allowFakeIPOutbound,omitempty"` // 已废弃：仅作加载迁移读取（见 normalizeOutboundLocked），不再下发/落盘
-	ModelCatalog        ModelCatalogConfig  `json:"modelCatalog,omitempty"`        // 模型能力元数据目录（默认 models.dev）
-	AgentRemote         AgentRemoteConfig   `json:"agentRemote,omitempty"`         // AI 助手远程暴露面（REST/MCP/A2A）
-	Agent               AgentDefaultsConfig `json:"agent,omitempty"`               // AI 助手全局默认（工具循环上限等）
+	Host             string              `json:"host,omitempty"`
+	Port             int                 `json:"port,omitempty"`
+	PanelAccessToken string              `json:"panelAccessToken,omitempty"`
+	DatabasePath     string              `json:"databasePath,omitempty"`
+	LogLevel         string              `json:"logLevel,omitempty"`
+	SecretKeyPath    string              `json:"secretKeyPath,omitempty"`
+	WebUIDir         string              `json:"webuiDir,omitempty"`
+	EnablePprof      bool                `json:"enablePprof,omitempty"`
+	MaxBodyBytes     int64               `json:"maxBodyBytes,omitempty"`
+	Responses        ResponsesConfig     `json:"responses,omitempty"` // Responses API 开关
+	Usage            UsageConfig         `json:"usage,omitempty"`     // 用量估算配置
+	SystemLog        LogRetentionConfig  `json:"systemLog,omitempty"`
+	UsageLog         UsageLogConfig      `json:"usageLog,omitempty"`     // 请求日志留存与内容策略（清理默认关闭）
+	HTTPTimeout      int                 `json:"httpTimeout,omitempty"`  // HTTP 请求超时时间（秒），0 为不限制
+	DebugMode        bool                `json:"debugMode,omitempty"`    // 调试模式
+	VerboseLog       bool                `json:"verboseLog,omitempty"`   // 详细日志模式
+	HealthCheck      HealthCheckConfig   `json:"healthCheck,omitempty"`  // 可选的后台健康检测
+	Outbound         OutboundConfig      `json:"outbound,omitempty"`     // 出站网络策略：禁止拨号的 IP 段（CIDR 列表，可编辑）
+	ModelCatalog     ModelCatalogConfig  `json:"modelCatalog,omitempty"` // 模型能力元数据目录（默认 models.dev）
+	AgentRemote      AgentRemoteConfig   `json:"agentRemote,omitempty"`  // AI 助手远程暴露面（REST/MCP/A2A）
+	Agent            AgentDefaultsConfig `json:"agent,omitempty"`        // AI 助手全局默认（工具循环上限等）
 	// OpenBrowserOnStart 控制启动时是否在系统默认浏览器打开控制台。
 	// nil = 默认尝试（桌面开箱即用；无桌面环境命令缺失时静默跳过），
 	// false = 不打开（子进程托管场景），true = 强制尝试。
@@ -120,8 +116,7 @@ type ServerConfig struct {
 }
 
 type ResponsesConfig struct {
-	Enabled      *bool  `json:"enabled,omitempty"`
-	UpstreamMode string `json:"upstreamMode,omitempty"` // native | transform | auto
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type UsageConfig struct {
@@ -137,7 +132,7 @@ type UsageConfig struct {
 // 开箱默认与历史版本一致——日志持续累积，不做自动清理。
 //
 // 字段全部用指针以区分「未配置（走默认）」与「显式 0（关闭/不保存）」，
-// 管理端 PUT runtime-config 据此实现局部更新。旧键仅在版本迁移时读取。
+// 管理端 PUT runtime-config 据此实现局部更新。
 type UsageLogConfig struct {
 	// PersistEnabled 是日志持久化总开关，默认 true；false 时完全不落库。
 	PersistEnabled *bool `json:"persistEnabled,omitempty"`
@@ -239,12 +234,8 @@ type ModelRef struct {
 
 // Identifier 返回上行请求使用的模型标识：ID 是上游 API 的调用名（拉取模型
 // 的裸 id、手动模型的「模型 ID」），Name 只是显示名（如 Gemini displayName）。
-// ID 缺失时回退 Name，兼容未填 ID 的历史引用。
 func (r ModelRef) Identifier() string {
-	if r.ID != "" {
-		return r.ID
-	}
-	return r.Name
+	return r.ID
 }
 
 var GlobalConfig *Config
@@ -255,13 +246,12 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
-	data, err = migrateLogConfig(path, data)
-	if err != nil {
-		return nil, err
-	}
-	var cfg Config
+	var cfg *Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, err
+	}
+	if cfg == nil {
+		return nil, fmt.Errorf("configuration must be a JSON object")
 	}
 
 	cfg.path = path
@@ -275,27 +265,19 @@ func Load(path string) (*Config, error) {
 	}
 
 	cfg.mu.Lock()
-	GlobalConfig = &cfg
+	GlobalConfig = cfg
 	cfg.mu.Unlock()
 
-	return &cfg, nil
+	return cfg, nil
 }
 
 func (c *Config) applyBootstrapDefaults(path string) {
 	if c.Host == "" {
-		c.Host = c.Server.Host
-	}
-	if c.Host == "" {
 		c.Host = "127.0.0.1"
-	}
-	if c.Port == 0 {
-		c.Port = c.Server.Port
 	}
 	if c.Port == 0 {
 		c.Port = 8765
 	}
-	c.Server.Host = c.Host
-	c.Server.Port = c.Port
 	if c.DatabasePath == "" {
 		c.DatabasePath = filepath.Join(filepath.Dir(path), "elysia-api.sqlite3")
 	} else if !filepath.IsAbs(c.DatabasePath) {
@@ -318,28 +300,18 @@ func (c *Config) applyBootstrapDefaults(path string) {
 	c.normalizeOutboundLocked()
 }
 
-// normalizeOutboundLocked 归一化出站禁止段：未配置（nil）时物化默认预置；
-// 兼容旧 allowFakeIPOutbound 布尔开关——曾开启 TUN fake-ip 放行的部署在未
-// 显式配置 outbound 块时，默认列表去掉 198.18.0.0/15 与 240.0.0.0/4，
-// 保持其既有行为不变。必须持写锁（或构造期单线程）调用。
+// normalizeOutboundLocked 归一化出站禁止段：未配置（nil）时物化默认预置。
+// 必须持写锁（或构造期单线程）调用。
 func (c *Config) normalizeOutboundLocked() {
 	if c.Outbound.DeniedIPRanges != nil {
 		return
 	}
-	ranges := make([]string, 0, len(relay.DefaultDeniedIPRanges))
-	for _, entry := range relay.DefaultDeniedIPRanges {
-		if c.AllowFakeIPOutbound && (entry == "198.18.0.0/15" || entry == "240.0.0.0/4") {
-			continue
-		}
-		ranges = append(ranges, entry)
-	}
-	c.Outbound.DeniedIPRanges = ranges
+	c.Outbound.DeniedIPRanges = append([]string(nil), relay.DefaultDeniedIPRanges...)
 }
 
 func (c *Config) applyEnvironmentOverrides() {
 	if host := strings.TrimSpace(os.Getenv("ELYSIA_API_HOST")); host != "" {
 		c.Host = host
-		c.Server.Host = host
 	}
 }
 
@@ -382,7 +354,6 @@ func (c *Config) saveLocked() error {
 	} else {
 		delete(raw, "openBrowserOnStart")
 	}
-	delete(raw, "allowFakeIPOutbound")
 	for key, value := range map[string]any{
 		"usageLog": c.UsageLog, "systemLog": c.SystemLog, "modelCatalog": c.ModelCatalog,
 		"agentRemote": c.AgentRemote, "agent": c.Agent, "outbound": c.Outbound,
@@ -474,57 +445,6 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmpName, path)
 }
 
-// Read first and remove only after all entries have been imported successfully.
-func (c *Config) ReadDeprecatedCustomProtocols() ([]json.RawMessage, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if c.path == "" {
-		return nil, nil
-	}
-	data, err := os.ReadFile(c.path)
-	if err != nil {
-		return nil, err
-	}
-	var raw map[string]json.RawMessage
-	if err = json.Unmarshal(data, &raw); err != nil {
-		return nil, err
-	}
-	if _, ok := raw["customProtocols"]; !ok {
-		return nil, nil
-	}
-	var entries []json.RawMessage
-	err = json.Unmarshal(raw["customProtocols"], &entries)
-	return entries, err
-}
-
-func (c *Config) FinishDeprecatedCustomProtocols(expected []json.RawMessage) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	data, err := os.ReadFile(c.path)
-	if err != nil {
-		return err
-	}
-	var raw map[string]json.RawMessage
-	if err = json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	var entries []json.RawMessage
-	if err = json.Unmarshal(raw["customProtocols"], &entries); err != nil {
-		return err
-	}
-	actual, _ := json.Marshal(entries)
-	before, _ := json.Marshal(expected)
-	if string(actual) != string(before) {
-		return fmt.Errorf("legacy custom protocols changed during import")
-	}
-	delete(raw, "customProtocols")
-	encoded, err := json.MarshalIndent(raw, "", "  ")
-	if err != nil {
-		return err
-	}
-	return WriteFileAtomic(c.path, encoded, 0600)
-}
-
 func (c *Config) SetPanelAccessToken(token string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -563,7 +483,7 @@ func (c *Config) SetEnablePprof(enabled bool) {
 	c.EnablePprof = enabled
 }
 
-// SetHost/SetPort 更新监听地址与端口（同步嵌套 Server 字段）。监听套接字
+// SetHost/SetPort 更新唯一的监听地址与端口。监听套接字
 // 在进程启动时绑定，改动需重启才真正换监听；但配置即时落盘（Save 由调用方
 // 触发），重启后即用新值——此前设置页的 host/port 只用来计算 restartRequired
 // 从未应用，保存等于白保存。
@@ -571,14 +491,12 @@ func (c *Config) SetHost(host string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.Host = host
-	c.Server.Host = host
 }
 
 func (c *Config) SetPort(port int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.Port = port
-	c.Server.Port = port
 }
 
 func (c *Config) GetEnablePprof() bool {
@@ -625,9 +543,12 @@ func (c *Config) Reload() error {
 		return err
 	}
 
-	var newCfg Config
+	var newCfg *Config
 	if err := json.Unmarshal(data, &newCfg); err != nil {
 		return err
+	}
+	if newCfg == nil {
+		return fmt.Errorf("configuration must be a JSON object")
 	}
 
 	newCfg.path = c.path
@@ -642,23 +563,8 @@ func (c *Config) Reload() error {
 		return err
 	}
 
-	c.publishSettingsLocked(&newCfg)
+	c.publishSettingsLocked(newCfg)
 	return nil
-}
-
-func (c *Config) GetGroups() []ModelGroupConfig {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	// 返回副本：锁在 return 即释放，直接返回内部切片会让调用方在锁外
-	// 与 Reload/admin 的并发重写竞争（go test -race 可验证）。
-	return append([]ModelGroupConfig(nil), c.Groups...)
-}
-
-func (c *Config) GetTokens() []AccessToken {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	// 返回副本，理由同 GetGroups：避免锁外别名读取与并发重写竞争。
-	return append([]AccessToken(nil), c.Tokens...)
 }
 
 // GetModelCatalog 返回模型能力元数据目录配置（值类型，字段均为不可变字符串/指针，
@@ -740,7 +646,7 @@ func (c *Config) SetAgentRemote(remote AgentRemoteConfig) {
 func (c *Config) GetServer() ServerConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.Server
+	return ServerConfig{Host: c.Host, Port: c.Port}
 }
 
 func (c *Config) GetLogLevel() string {
@@ -804,8 +710,8 @@ func (c *Config) GetHealthCheckConfig() HealthCheckConfig {
 
 // GetDBEncryptionKey 返回用于 SQLite 敏感字段（token / api_key）透明加密的密钥。
 // 来源优先级：
-//  1. 环境变量 ELYSIA_API_MASTER_KEY（与配置文件加密共用同一口令）；
-//  2. 数据库同目录下的 .db-key 文件，不存在则自动生成一个随机 32 字节密钥并落盘。
+//  1. 环境变量 ELYSIA_API_MASTER_KEY；
+//  2. SecretKeyPath（默认 .master-key），不存在则生成随机密钥并落盘。
 //
 // 返回空切片表示无法建立密钥（理论上仅在文件系统不可写时），此时上层
 // 会退化为明文存储以保证可用性，但应在日志中告警。
@@ -829,23 +735,7 @@ func (c *Config) GetDBEncryptionKey() []byte {
 		}
 	}
 
-	// 向后兼容：历史版本把密钥写在 <dbDir>/.db-key。若 SecretKeyPath 尚未建立但
-	// 旧密钥文件存在，沿用旧密钥——否则既有加密数据在升级后将无法解密。
-	var legacyKeyPath string
-	if dbPath != "" {
-		legacyKeyPath = filepath.Join(filepath.Dir(dbPath), ".db-key")
-		if data, err := os.ReadFile(legacyKeyPath); err == nil {
-			if key := strings.TrimSpace(string(data)); key != "" {
-				return []byte(key)
-			}
-		}
-	}
-
-	// 选定要写入的新密钥路径：优先 SecretKeyPath，回退到旧 .db-key 位置。
 	target := keyPath
-	if target == "" {
-		target = legacyKeyPath
-	}
 	if target == "" {
 		return nil
 	}
@@ -866,23 +756,6 @@ func (c *Config) GetDBEncryptionKey() []byte {
 		log.Printf("warning: db encryption key %s sits in the SAME directory as the database; a backup/snapshot of that directory exposes both ciphertext and key. Prefer ELYSIA_API_MASTER_KEY or point secretKeyPath at a separately-secured location.", target)
 	}
 	return []byte(key)
-}
-
-func (c *Config) FindAccessToken(token string) (AccessToken, bool) {
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return AccessToken{}, false
-	}
-
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	for _, item := range c.Tokens {
-		if item.Enabled && constantTimeEqual(item.Token, token) {
-			return item, true
-		}
-	}
-	return AccessToken{}, false
 }
 
 func (c *Config) IsValidPanelAccessToken(token string) bool {
@@ -913,9 +786,6 @@ func (c *Config) GetResponsesConfig() ResponsesConfig {
 	if cfg.Enabled == nil {
 		v := true
 		cfg.Enabled = &v
-	}
-	if strings.TrimSpace(cfg.UpstreamMode) == "" {
-		cfg.UpstreamMode = "auto"
 	}
 	return cfg
 }
@@ -975,7 +845,7 @@ func positiveOr(p *int, def int) int {
 	return def
 }
 
-// GetUsageLogConfig 返回唯一的新日志策略；旧配置由启动迁移归一化。
+// GetUsageLogConfig 返回当前日志策略。
 func (c *Config) GetUsageLogConfig() UsageLogResolved {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -1073,7 +943,7 @@ func init() {
 	log.Println("Config loaded successfully")
 }
 
-// publishSettingsLocked replaces persisted settings while preserving runtime tokens and groups.
+// publishSettingsLocked replaces persisted settings under the configuration lock.
 func (c *Config) publishSettingsLocked(newCfg *Config) {
 	c.Host = newCfg.Host
 	c.Port = newCfg.Port
@@ -1084,7 +954,6 @@ func (c *Config) publishSettingsLocked(newCfg *Config) {
 	c.WebUIDir = newCfg.WebUIDir
 	c.EnablePprof = newCfg.EnablePprof
 	c.MaxBodyBytes = newCfg.MaxBodyBytes
-	c.Server = newCfg.Server
 	c.Responses = newCfg.Responses
 	c.Usage = newCfg.Usage
 	c.UsageLog = newCfg.UsageLog

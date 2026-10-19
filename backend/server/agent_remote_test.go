@@ -52,6 +52,21 @@ func mcpCall(t *testing.T, s *Server, body string, extraHeaders map[string]strin
 }
 
 func mcpRequest(id any, method string, params any) string {
+	if method == "ping" || strings.HasPrefix(method, "tools/") || strings.HasPrefix(method, "server/") || strings.HasPrefix(method, "notifications/") {
+		object, _ := params.(map[string]any)
+		if object == nil {
+			object = map[string]any{}
+		}
+		meta, _ := object["_meta"].(map[string]any)
+		if meta == nil {
+			meta = map[string]any{}
+		}
+		if _, exists := meta[mcpMetaProtocolVersion]; !exists {
+			meta[mcpMetaProtocolVersion] = mcpModernProtocolVersion
+		}
+		object["_meta"] = meta
+		params = object
+	}
 	payload := map[string]any{"jsonrpc": "2.0", "method": method}
 	if id != nil {
 		payload["id"] = id
@@ -164,21 +179,9 @@ func TestAgentRemoteAuthScopes(t *testing.T) {
 
 // ---- MCP ----
 
-func TestMCPLegacyHandshakeAndToolsList(t *testing.T) {
+func TestMCPMethodsAndToolsList(t *testing.T) {
 	s := newOpsTestServer(t)
-	headers := map[string]string{"MCP-Protocol-Version": "2025-06-18"}
-
-	code, result, _ := mcpCall(t, s, mcpRequest(1, "initialize", map[string]any{
-		"protocolVersion": "2025-06-18", "capabilities": map[string]any{},
-		"clientInfo": map[string]any{"name": "test", "version": "0"},
-	}), headers)
-	if code != http.StatusOK || result["result"] == nil {
-		t.Fatalf("initialize: %d %v", code, result)
-	}
-	init := result["result"].(map[string]any)
-	if init["protocolVersion"] != "2025-06-18" {
-		t.Fatalf("protocolVersion = %v", init["protocolVersion"])
-	}
+	headers := map[string]string{"MCP-Protocol-Version": mcpModernProtocolVersion}
 
 	// 通知 → 202 无 body。
 	c, rec := remoteContext(http.MethodPost, "/mcp", mcpRequest(nil, "notifications/initialized", nil), mcpHeaders(headers))
@@ -227,26 +230,6 @@ func TestMCPLegacyHandshakeAndToolsList(t *testing.T) {
 	}
 }
 
-func TestMCPRemovedAgentTools(t *testing.T) {
-	s := newAgentIntegrationServer(t)
-	_, result, _ := mcpCall(t, s, mcpRequest(1, "tools/call", map[string]any{
-		"name": "agent_list_sessions", "arguments": map[string]any{},
-	}), nil)
-	if result["error"] == nil {
-		t.Fatalf("removed agent tool unexpectedly available: %v", result)
-	}
-}
-
-func TestMCPRemovedAgentMessageTool(t *testing.T) {
-	s := newAgentIntegrationServer(t)
-	_, result, _ := mcpCall(t, s, mcpRequest(1, "tools/call", map[string]any{
-		"name": "agent_send_message", "arguments": map[string]any{"sessionId": "missing", "text": "你好"},
-	}), nil)
-	if result["error"] == nil {
-		t.Fatalf("removed agent message tool unexpectedly available: %v", result)
-	}
-}
-
 func TestMCPModernEra(t *testing.T) {
 	s := newOpsTestServer(t)
 	modernParams := func(version string) map[string]any {
@@ -267,7 +250,7 @@ func TestMCPModernEra(t *testing.T) {
 	}
 
 	// 头与 body 版本不一致 → -32020。
-	_, mismatch, _ := mcpCall(t, s, mcpRequest(2, "ping", modernParams("2025-06-18")), headers)
+	_, mismatch, _ := mcpCall(t, s, mcpRequest(2, "ping", modernParams(mcpModernProtocolVersion)), map[string]string{"MCP-Protocol-Version": "mismatched"})
 	if errObj := mismatch["error"].(map[string]any); errObj == nil || errObj["code"] != float64(mcpErrHeaderMismatch) {
 		t.Fatalf("header mismatch: %v", mismatch)
 	}
@@ -710,28 +693,6 @@ func TestA2ASupersedeStaleTask(t *testing.T) {
 	waitForTaskState(t, s, oldTask, a2aStateFailed)
 	if newTask == oldTask {
 		t.Fatalf("new task must differ: %s", newTask)
-	}
-}
-
-// MCP agent_respond：审批型待批必须显式携带 approved，零值不得静默拒绝。
-func TestMCPRespondToolRemoved(t *testing.T) {
-	s := newAgentIntegrationServer(t)
-	_, result, _ := mcpCall(t, s, mcpRequest(11, "tools/call", map[string]any{
-		"name": "agent_respond", "arguments": map[string]any{"sessionId": "any", "approved": true},
-	}), nil)
-	if result["error"] == nil {
-		t.Fatalf("agent_respond must not be exposed through MCP: %v", result)
-	}
-}
-
-// 已移除的会话控制工具统一走未知工具路径；REST/A2A 继续覆盖其业务校验。
-func TestMCPClearMessagesToolRemoved(t *testing.T) {
-	s := newOpsTestServer(t)
-	_, result, _ := mcpCall(t, s, mcpRequest(14, "tools/call", map[string]any{
-		"name": "agent_clear_messages", "arguments": map[string]any{"sessionId": "any", "afterSeq": -1},
-	}), nil)
-	if result["error"] == nil {
-		t.Fatalf("agent_clear_messages must not be exposed through MCP: %v", result)
 	}
 }
 

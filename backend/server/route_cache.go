@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"strings"
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/storage"
@@ -15,8 +14,7 @@ import (
 // 调用 invalidateRouteCache 失效缓存，下次读取时按需重建。
 
 // ensureRouteCache 在缓存未加载时从 store 装配并填充缓存。
-// 调用方不应持有 routeCacheMu。store 为空（仅内存配置模式）时不缓存，
-// 由调用方回退到 s.config。
+// 调用方不应持有 routeCacheMu。存储不可用时拒绝装配。
 func (s *Server) ensureRouteCache() bool {
 	if s.store == nil {
 		return false
@@ -36,7 +34,7 @@ func (s *Server) ensureRouteCache() bool {
 	groups, okGroups := s.assembleGroupsFromStore()
 	tokens, okTokens := s.loadTokensFromStore()
 	if !okGroups || !okTokens {
-		return false // 装配失败，调用方回退
+		return false // 存储失败时不得使用过期授权或猜测路由。
 	}
 
 	s.routeCacheMu.Lock()
@@ -73,8 +71,7 @@ type sourceKeyMeta struct {
 	hasKeyPool bool
 	// 源级缓存断点合成开关：透传到 ModelRef，由网关在编码前消费。
 	cacheSynthesis bool
-	// 源地址：热路径以源为准（models 行是快照，源保存后若未触发合并——
-	// 如自动拉取失败——快照会滞后）。空 = legacy 导入源，回落 models 行。
+	// 源地址：热路径以源为准，不消费模型行的过期快照。
 	baseURL string
 }
 
@@ -100,29 +97,16 @@ func (s *Server) assembleGroupsFromStore() ([]config.ModelGroupConfig, bool) {
 		return nil, false
 	}
 	keyMeta := collectSourceKeys(sources)
-	// 同时按复合键(sourceId:id)与裸 id 建索引：复合键精确命中（解决同名模型路由错乱），
-	// 裸 id 用于向后兼容旧数据（models 元素无 ":" 前缀时回退）。
+	// 只按完整身份 sourceId:modelId 解析模型，禁止猜测同名模型的来源。
 	modelByComposite := make(map[string]storage.Model, len(models))
-	modelByID := make(map[string]storage.Model, len(models))
 	for _, model := range models {
 		modelByComposite[model.SourceID+":"+model.ID] = model
-		if _, exists := modelByID[model.ID]; !exists {
-			modelByID[model.ID] = model
-		}
-	}
-	resolveModel := func(ref string) (storage.Model, bool) {
-		if strings.Contains(ref, ":") {
-			m, ok := modelByComposite[ref]
-			return m, ok
-		}
-		m, ok := modelByID[ref] // 旧数据：裸 id 回退
-		return m, ok
 	}
 	converted := make([]config.ModelGroupConfig, 0, len(groups))
 	for _, group := range groups {
 		refs := make([]config.ModelRef, 0, len(group.Models))
 		for _, modelRef := range group.Models {
-			model, found := resolveModel(modelRef)
+			model, found := modelByComposite[modelRef]
 			ref, ok := s.expandModelRef(model, found, keyMeta)
 			if !ok {
 				continue
@@ -156,19 +140,17 @@ func (s *Server) expandModelRef(model storage.Model, found bool, keyMeta map[str
 // resolveModelSource shares current credentials and model permissions with probes.
 // Health is checked by routing callers; unhealthy models must still be probed.
 func (s *Server) resolveModelSource(model storage.Model, keyMeta map[string]sourceKeyMeta) (config.ModelRef, bool) {
-	ref := config.ModelRef{ID: model.ID, Name: model.Name, BaseURL: model.BaseURL, APIKey: model.APIKey, Platform: model.Platform,
+	ref := config.ModelRef{ID: model.ID, Name: model.Name, Platform: model.Platform,
 		VisionCapable: model.VisionCapable, ToolsCapable: model.ToolsCapable, SourceID: model.SourceID}
+	meta, ok := keyMeta[model.SourceID]
+	if !ok || meta.baseURL == "" {
+		return config.ModelRef{}, false
+	}
 	if meta, ok := keyMeta[model.SourceID]; ok {
 		if meta.hasKeyPool && len(meta.keys) == 0 {
 			return config.ModelRef{}, false
 		}
-		// 源身份（地址/密钥）以源为准：models 行是保存时刻的快照，源
-		// url/key 变更后若合并未跑（手动源、自动拉取失败），快照滞后
-		// 会导致请求打到旧地址/旧 key。legacy 源（地址为空）仍用行内值。
-		if meta.baseURL != "" {
-			ref.BaseURL = meta.baseURL
-			ref.APIKey = ""
-		}
+		ref.BaseURL = meta.baseURL
 		ref.CacheSynthesis = meta.cacheSynthesis
 	}
 	if meta, ok := keyMeta[model.SourceID]; ok && len(meta.keys) > 0 {

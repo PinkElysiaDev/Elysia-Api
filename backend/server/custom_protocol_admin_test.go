@@ -15,9 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// newProtocolAdminTestServer 构造带临时 config.json 与 SQLite store 的管理
-// 端点测试服务器：UpdateCustomProtocols 需要 config 落盘路径，预览/测试/助手
-// 端点需要 store 提供模型凭证。返回服务器与 config.json 路径。
+// newProtocolAdminTestServer constructs isolated configuration and protocol storage.
 func newProtocolAdminTestServer(t *testing.T) (*Server, string) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -25,7 +23,7 @@ func newProtocolAdminTestServer(t *testing.T) (*Server, string) {
 
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")
-	if err := os.WriteFile(cfgPath, []byte(`{"host":"127.0.0.1","port":8765,"customProtocols":[]}`), 0o644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(`{"host":"127.0.0.1","port":8765}`), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	cfg, err := config.Load(cfgPath)
@@ -75,53 +73,6 @@ func decodeAdminData(t *testing.T, rec *httptest.ResponseRecorder) map[string]an
 		t.Fatalf("expected ok response, got error %+v (status %d)", envelope.Error, rec.Code)
 	}
 	return envelope.Data
-}
-
-const vendorProtocolJSON = `{
-  "id": "vendor-json",
-  "name": "Vendor JSON API",
-  "type": "llm",
-  "request": {
-    "method": "POST",
-    "path": "/v2/generate/{{maheshvara.model}}",
-    "auth": {"mode": "header", "header": "x-api-key"},
-    "bodyTemplate": "{\"model\":\"{{maheshvara.model}}\",\"messages\":{{maheshvara.messages}},\"temperature\":{{maheshvara.temperature | default:0.2}}}"
-  },
-  "response": {
-    "textPath": "answer.text",
-    "usagePath": "usage",
-    "finishReasonPath": "finish"
-  }
-}`
-
-func TestMigrateLegacyCustomProtocolsFromConfig(t *testing.T) {
-	s, cfgPath := newProtocolAdminTestServer(t)
-
-	// 模拟旧版本升级：config.json 带废弃的 customProtocols 键。
-	legacy := `{"host":"127.0.0.1","port":8765,"customProtocols":[` + vendorProtocolJSON + `]}`
-	if err := os.WriteFile(cfgPath, []byte(legacy), 0o644); err != nil {
-		t.Fatalf("write legacy config: %v", err)
-	}
-	s.migrateLegacyCustomProtocols()
-
-	rows, err := s.store.ListCustomProtocols(t.Context())
-	if err != nil || len(rows) != 1 || rows[0].ID != "vendor-json" {
-		t.Fatalf("migration should import into sqlite, rows=%#v err=%v", rows, err)
-	}
-	raw, _ := os.ReadFile(cfgPath)
-	if strings.Contains(string(raw), "customProtocols") {
-		t.Fatalf("deprecated key must be stripped from config.json, got: %s", raw)
-	}
-
-	// 同 ID 已存在时以库为准：重新出现的旧键不覆盖库内数据。
-	if err := os.WriteFile(cfgPath, []byte(`{"customProtocols":[{"id":"vendor-json","request":{"bodyTemplate":"{\"x\":1}"}}]}`), 0o644); err != nil {
-		t.Fatalf("rewrite legacy config: %v", err)
-	}
-	s.migrateLegacyCustomProtocols()
-	rows, err = s.store.ListCustomProtocols(t.Context())
-	if err != nil || len(rows) != 1 || !strings.Contains(rows[0].Config, "answer.text") {
-		t.Fatalf("existing row must win over stale config.json entry, rows=%#v err=%v", rows, err)
-	}
 }
 
 func TestSystemLogWrite(t *testing.T) {

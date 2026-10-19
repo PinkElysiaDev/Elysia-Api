@@ -11,8 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// initializeProtocolRuntime makes migration all-or-nothing for serving. A
-// failed preview leaves the management API usable and never selects old codecs.
+// initializeProtocolRuntime publishes only verified current definitions.
+// A failed initialization leaves the management API available for repairs.
 func (s *Server) initializeProtocolRuntime(ctx context.Context) (err error) {
 	s.protocolStartupMu.Lock()
 	defer s.protocolStartupMu.Unlock()
@@ -20,19 +20,13 @@ func (s *Server) initializeProtocolRuntime(ctx context.Context) (err error) {
 	if err := s.recoverRequiredPresets(ctx); err != nil {
 		return &protocolStartupError{Stage: "preset_recovery", Err: err}
 	}
-	if s.config != nil {
-		if err := s.prepareLegacyProtocolState(ctx); err != nil {
-			return &protocolStartupError{Stage: "legacy_migration", Err: err}
-		}
-	}
-	if err := s.completeProtocolRuntimeInitialization(ctx); err != nil {
-		return &protocolStartupError{Stage: "migration_verification", Err: err}
+	if err := s.reloadProtocolRuntime(ctx); err != nil {
+		return &protocolStartupError{Stage: "runtime_verification", Err: err}
 	}
 	return nil
 }
 
-// Recover presets independently of legacy custom migration. Publishing this
-// verified snapshot does not open the generation gate or write a legacy receipt.
+// Recover required presets before publishing the full registry.
 func (s *Server) recoverRequiredPresets(ctx context.Context) error {
 	s.isProtocolRuntimeRequired.Store(true)
 	s.protocolRuntimeReady.Store(false)
@@ -58,19 +52,6 @@ func checkRequiredPresets(view protocol.RegistryView) error {
 	return nil
 }
 
-func (s *Server) completeProtocolRuntimeInitialization(ctx context.Context) error {
-	receipt, err := s.store.ProtocolUpgradeStatus(ctx)
-	if err != nil {
-		return err
-	}
-	if receipt == nil {
-		if _, err := s.applyProtocolUpgrade(ctx, protocolUpgradeInput{}); err != nil {
-			return err
-		}
-	}
-	return s.reloadProtocolRuntime(ctx)
-}
-
 func (s *Server) reloadProtocolRuntime(ctx context.Context) (err error) {
 	defer func() { s.recordProtocolRuntimeFailure(err) }()
 	s.protocolRuntimeReady.Store(false)
@@ -88,13 +69,6 @@ func (s *Server) reloadProtocolRuntime(ctx context.Context) (err error) {
 		return err
 	}
 	if s.isProtocolRuntimeRequired.Load() {
-		receipt, err := s.store.ProtocolUpgradeStatus(ctx)
-		if err != nil {
-			return err
-		}
-		if receipt == nil {
-			return fmt.Errorf("complete protocol migration before enabling generation")
-		}
 		s.protocolRuntimeReady.Store(true)
 	}
 	return nil
@@ -155,14 +129,14 @@ func (e *protocolStartupError) Unwrap() error { return e.Err }
 
 func (s *Server) protocolRuntimeError() error {
 	if s.isProtocolRuntimeRequired.Load() && !s.protocolRuntimeReady.Load() {
-		return gatewayIssue(protocol.Identity{}, protocol.VerificationRequired, "/migration", "protocol migration or current-engine verification requires repair; use the protocol migration preview")
+		return gatewayIssue(protocol.Identity{}, protocol.VerificationRequired, "/runtime", "protocol runtime verification requires repair; verify definitions and reload the registry")
 	}
 	return nil
 }
 
 func (s *Server) requireProtocolRuntime(c *gin.Context) bool {
 	if err := s.protocolRuntimeError(); err != nil {
-		respondFail(c, http.StatusServiceUnavailable, "protocol_migration_required", err.Error())
+		respondFail(c, http.StatusServiceUnavailable, "protocol_runtime_unavailable", err.Error())
 		return false
 	}
 	return true

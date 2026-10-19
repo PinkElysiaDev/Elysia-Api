@@ -145,7 +145,7 @@ func TestShutdownCancelsRunningAndQueuedSourceRefreshes(t *testing.T) {
 	defer upstream.Close()
 	s := newKeyPermissionTestServer(t)
 	for i := 0; i <= sourceRefreshConcurrency; i++ {
-		source := storage.ModelSource{ID: string(rune('a' + i)), BaseURL: upstream.URL, Platform: "openai", AutoFetchModels: true}
+		source := storage.ModelSource{ID: string(rune('a' + i)), BaseURL: upstream.URL, Platform: "custom:openai-chat-completions", AutoFetchModels: true}
 		if err := s.store.UpsertSource(t.Context(), source); err != nil {
 			t.Fatal(err)
 		}
@@ -214,7 +214,7 @@ func TestRequestedShutdownBeforeListenClosesAllResources(t *testing.T) {
 	no := false
 	cfg := &config.Config{
 		DatabasePath:       filepath.Join(t.TempDir(), "early-stop.sqlite3"),
-		Server:             config.ServerConfig{Host: "127.0.0.1"},
+		Host:               "127.0.0.1",
 		OpenBrowserOnStart: &no,
 		ModelCatalog:       config.ModelCatalogConfig{Enabled: &no},
 	}

@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"io"
 	"io/fs"
 	"log"
 	"net"
@@ -223,11 +222,11 @@ func New(cfg *config.Config) *Server {
 	go server.catalog.runPeriodic()
 	server.syncOutboundPolicy()
 	if protocolPreparationErr != nil {
-		log.Printf("protocol migration requires repair; generation is disabled: %v", protocolPreparationErr)
+		log.Printf("protocol runtime requires repair; generation is disabled: %v", protocolPreparationErr)
 	}
 	if server.store != nil {
 		server.logSystemEvent("info", "server started", map[string]any{
-			"version": AppVersion, "host": cfg.Server.Host, "port": cfg.Server.Port,
+			"version": AppVersion, "host": cfg.Host, "port": cfg.Port,
 		})
 	}
 	return server
@@ -595,35 +594,6 @@ func isLoopbackRequest(r *http.Request) bool {
 func (s *Server) chatCompletions(c *gin.Context) { s.serveVersionedPublicIngress(c) }
 func (s *Server) responses(c *gin.Context)       { s.serveVersionedPublicIngress(c) }
 
-// ginStreamWriter 实现 relay.StreamResponseWriter，封装 gin 的 ResponseWriter
-type ginStreamWriter struct {
-	writer http.ResponseWriter
-}
-
-func (w *ginStreamWriter) Write(data []byte) (int, error) {
-	return w.writer.Write(data)
-}
-
-func (w *ginStreamWriter) WriteString(data string) (int, error) {
-	return io.WriteString(w.writer, data)
-}
-
-func (w *ginStreamWriter) Flush() error {
-	// Gin 的 Flush 不返回错误；穿过捕获器和 Gin，读取底层 FlushError。
-	writer := w.writer
-	for {
-		if _, ok := writer.(interface{ FlushError() error }); ok {
-			break
-		}
-		unwrapper, ok := writer.(interface{ Unwrap() http.ResponseWriter })
-		if !ok {
-			break
-		}
-		writer = unwrapper.Unwrap()
-	}
-	return http.NewResponseController(writer).Flush()
-}
-
 // tokenAllowsGroup 校验当前请求的 API key 是否被允许访问指定模型组。
 // 从 gin context 取 authMiddleware 写入的 AllowedGroups：为空表示不限制（放行）；
 // 非空则要求 groupName 在白名单内。
@@ -963,7 +933,8 @@ func (s *Server) ListenAndServe() error {
 	s.usageRetention = newUsageRetention(s)
 	s.usageRetention.start()
 
-	addr := fmt.Sprintf("%s:%d", s.config.Server.Host, s.config.Server.Port)
+	listen := s.config.GetServer()
+	addr := fmt.Sprintf("%s:%d", listen.Host, listen.Port)
 	log.Printf("Starting server on %s", addr)
 
 	// 显式持有 http.Server，便于 /__shutdown 与信号(SIGTERM/SIGINT)优雅关停。
@@ -974,7 +945,7 @@ func (s *Server) ListenAndServe() error {
 	if listenErr != nil {
 		return listenErr
 	}
-	launchConsoleBrowser(s.config.OpenBrowserOnStart, s.config.Server.Host, s.config.Server.Port)
+	launchConsoleBrowser(s.config.OpenBrowserOnStart, listen.Host, listen.Port)
 
 	// Signals, the local shutdown endpoint and parent EOF share one shutdown sequence.
 	sigCh := make(chan os.Signal, 1)

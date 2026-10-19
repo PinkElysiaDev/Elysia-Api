@@ -34,19 +34,6 @@ func archiveReplacedPreset(ctx context.Context, tx *sql.Tx, id, nextHash string)
 	return err
 }
 
-func (s *Store) backfillProtocolHistory(ctx context.Context) error {
-	for _, id := range []string{protocol.PresetAnthropicID, protocol.PresetChatCompletionsID, protocol.PresetResponsesID, protocol.PresetGeminiID} {
-		_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO protocol_history(id,protocol_id,content_hash,definition,reason,created_at,archived_at)
-		SELECT r.protocol_id || '~' || r.content_hash,r.protocol_id,r.content_hash,r.definition,'preset_replaced',r.created_at,a.activated_at
-		FROM protocol_revisions r JOIN protocol_activations a ON a.protocol_id=r.protocol_id
-		WHERE r.protocol_id=? AND r.content_hash<>a.revision_hash`, id)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (s *Store) ListProtocolHistory(ctx context.Context) ([]ProtocolHistory, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id,protocol_id,content_hash,definition,reason,is_draft,created_at,archived_at FROM protocol_history ORDER BY archived_at DESC,id`)
 	if err != nil {
@@ -170,10 +157,6 @@ func (s *Store) ArchiveProtocol(ctx context.Context, id, baseline, replacement s
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE protocol_id=?`, id); err != nil {
 			return err
 		}
-	}
-	// A retained legacy row must not resurrect an archived protocol on migration.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM custom_protocols WHERE id=?`, id); err != nil {
-		return err
 	}
 	return tx.Commit()
 }

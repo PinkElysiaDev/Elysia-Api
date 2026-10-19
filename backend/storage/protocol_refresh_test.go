@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/elysia-api/backend/protocol"
 )
@@ -18,7 +19,7 @@ func TestRuntimeRefreshRejectsStaleGraphAndRollsBackWrites(t *testing.T) {
 			defer store.Close()
 			plan := protocolUpgradeFixture(t, store)
 			if failure == "stale" {
-				if err := store.UpsertCustomProtocol(t.Context(), CustomProtocol{ID: "concurrent", Name: "operator edit", Config: `{"edited":true}`}); err != nil {
+				if err := store.UpsertSource(t.Context(), ModelSource{ID: "concurrent", Name: "operator edit", BaseURL: "https://example.test", Platform: "custom:text-alpha"}); err != nil {
 					t.Fatal(err)
 				}
 			} else {
@@ -42,4 +43,30 @@ func TestRuntimeRefreshRejectsStaleGraphAndRollsBackWrites(t *testing.T) {
 			}
 		})
 	}
+}
+
+func protocolUpgradeFixture(t *testing.T, store *Store) ProtocolUpgrade {
+	t.Helper()
+	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, issues := compiler.Compile(revisionFixture(t, "current"))
+	if err := protocol.IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	value, err := protocol.EncodeValue(compiled.Definition())
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := protocol.Verify(t.Context(), compiled)
+	if !report.Passed {
+		t.Fatal(report.Issues)
+	}
+	baseline, err := store.ProtocolUpgradeBaseline(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	return ProtocolUpgrade{Baseline: baseline, Revisions: []ProtocolUpgradeRevision{{Revision: protocol.Revision{ProtocolID: "text-alpha", Hash: compiled.Hash(), Definition: value, CreatedAt: now}, Draft: protocol.Draft{ProtocolID: "text-alpha", Hash: compiled.Hash(), Definition: value, UpdatedAt: now}, Report: report}}, Bindings: []ProtocolBinding{{Kind: "source", SourceID: "source", Binding: protocol.Binding{ProtocolID: "text-alpha", RevisionHash: compiled.Hash(), Capabilities: protocol.CapabilitySet{protocol.TextCapability: true}, Transports: []protocol.Transport{protocol.HTTPJSON}}}}}
 }

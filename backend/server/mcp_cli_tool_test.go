@@ -134,10 +134,6 @@ func TestMCPCLIProtocolSaveUpdate(t *testing.T) {
 			t.Fatal("draft save activated protocol")
 		}
 	}
-	rows, err := s.store.ListCustomProtocols(t.Context())
-	if err != nil || len(rows) != 0 {
-		t.Fatal("v2 authoring wrote legacy storage", rows, err)
-	}
 }
 
 func TestMCPCLIHelpCommands(t *testing.T) {
@@ -203,11 +199,8 @@ func TestMCPCLIStatelessBatchAndIsolation(t *testing.T) {
 
 func TestMCPCLIDiscoveryAndModernCall(t *testing.T) {
 	s := newAgentIntegrationServer(t)
-	for _, method := range []string{"initialize", "server/discover"} {
-		params := map[string]any{"protocolVersion": mcpLatestLegacyVersion}
-		if method == "server/discover" {
-			params = map[string]any{"_meta": map[string]any{mcpMetaProtocolVersion: mcpModernProtocolVersion}}
-		}
+	for _, method := range []string{"server/discover"} {
+		params := map[string]any{"_meta": map[string]any{mcpMetaProtocolVersion: mcpModernProtocolVersion}}
 		_, response, _ := mcpCall(t, s, mcpRequest(1, method, params), nil)
 		result, ok := response["result"].(map[string]any)
 		if !ok || result["instructions"] != mcpInstructions {

@@ -6,7 +6,10 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"regexp"
 )
+
+var assetNamePattern = regexp.MustCompile(`^[0-9a-f]{16}\.[a-z0-9]{1,5}$`)
 
 type UsageAsset struct {
 	File       string `json:"file"`

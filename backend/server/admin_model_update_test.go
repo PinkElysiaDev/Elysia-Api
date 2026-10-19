@@ -31,7 +31,7 @@ func TestAdminModelEndpointsSupportSlashInModelID(t *testing.T) {
 	}
 	model := storage.Model{
 		ID: "org/model-x", Name: "model-x",
-		BaseURL: "https://api.example.com", Platform: "openai",
+		BaseURL: "https://api.example.com", Platform: "custom:openai-chat-completions",
 		Enabled: true, Available: true, Origin: "manual",
 	}
 	if err := store.ReplaceSourceModels(ctx, source, []storage.Model{model}); err != nil {

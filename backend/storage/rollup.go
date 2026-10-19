@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"log"
-	"sort"
 	"time"
 )
 
@@ -20,9 +19,6 @@ import (
 //     要么已被重建包含、要么其 UPSERT 落在块之后叠加，均恰好计数一次；
 //   - 回填期间（ready=false）所有聚合查询自动走 raw 路径（阶段一的覆盖
 //     索引优化），完成后切到 rollup 路径；
-//   - 降级自愈：曾在旧版二进制下运行过（该期间记录只进 raw 不进 rollup）
-//     的库，启动回填时按小时对比 raw 与 rollup 的计数，发现缺口的区间
-//     自动重建补齐。
 const (
 	// 时间换算基元（毫秒）。SQL 字符串内的 3600000/86400000 保持字面量
 	//（便于与 PRAGMA/执行计划对照），Go 侧一律用这里的常量。
@@ -88,7 +84,7 @@ func (s *Store) setRollupStateInt(ctx context.Context, key string, value int64) 
 	return err
 }
 
-// RunRollupBackfill 执行（或续跑）回填，并在 ready 状态下先做小时级对账。
+// RunRollupBackfill rebuilds an unfinished derived aggregate, not historical schemas.
 func (s *Store) RunRollupBackfill(ctx context.Context) error {
 	s.rollupMu.Lock()
 	defer s.rollupMu.Unlock()
@@ -111,26 +107,10 @@ func (s *Store) RunRollupBackfill(ctx context.Context) error {
 
 	startedAt := time.Now()
 	if ready != 0 {
-		return s.auditReadyRollup(ctx, startedAt)
+		s.rollupReady.Store(true)
+		return nil
 	}
 	return s.backfillRollup(ctx, through, until, startedAt)
-}
-
-// auditReadyRollup 是 ready 态的相位：按小时比较 raw 与 rollup 计数，重建
-// 不一致的区间（覆盖中途降级运行旧版二进制留下的缺口）。
-func (s *Store) auditReadyRollup(ctx context.Context, startedAt time.Time) error {
-	rebuilt, err := s.auditRollupHours(ctx)
-	if err != nil {
-		return err
-	}
-	if rebuilt > 0 {
-		log.Printf("[usage-rollup] audit found stale hour ranges, rebuilt %d chunks", rebuilt)
-	}
-	s.rollupReady.Store(true)
-	if rebuilt > 0 {
-		log.Printf("[usage-rollup] audit + rebuild done in %s", time.Since(startedAt).Round(time.Millisecond))
-	}
-	return nil
 }
 
 // backfillRollup 是未就绪态的相位：钳起点 → 分块重建 → 推进水位 → 置 ready。
@@ -249,102 +229,6 @@ FROM usage_records WHERE started_ms > 0 AND started_ms >= ? AND started_ms < ? G
 	}
 	committed = true
 	return tx.Commit()
-}
-
-// auditRollupHours 按小时对比 raw 与 rollup 的记录数，重建不一致的区间，
-// 返回重建的块数。0 表示无需修复。两次聚合在同一读事务（WAL 快照）内执行：
-// 分开跑会在活写入下产生假阳性"不一致"（两查询之间落库的记录只计入一侧），
-// 触发无意义的重建。
-func (s *Store) auditRollupHours(ctx context.Context) (int, error) {
-	type hourCount struct {
-		hourMs int64
-		count  int64
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }() // 只读事务，结束即弃
-
-	rawByHour := make(map[int64]int64)
-	rows, err := tx.QueryContext(ctx, `SELECT (started_ms / 3600000) * 3600000, COUNT(*) FROM usage_records WHERE started_ms > 0 GROUP BY 1`)
-	if err != nil {
-		return 0, err
-	}
-	for rows.Next() {
-		var h hourCount
-		if err := rows.Scan(&h.hourMs, &h.count); err != nil {
-			rows.Close()
-			return 0, err
-		}
-		rawByHour[h.hourMs] = h.count
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return 0, err
-	}
-	rows.Close()
-
-	rollupByHour := make(map[int64]int64)
-	rows, err = tx.QueryContext(ctx, `SELECT hour_ms, SUM(cnt) FROM usage_rollup_hour GROUP BY 1`)
-	if err != nil {
-		return 0, err
-	}
-	for rows.Next() {
-		var h hourCount
-		if err := rows.Scan(&h.hourMs, &h.count); err != nil {
-			rows.Close()
-			return 0, err
-		}
-		rollupByHour[h.hourMs] = h.count
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return 0, err
-	}
-	rows.Close()
-	// 读快照用完立即释放连接：单连接约束下，下面的重建（写事务）必须能拿到
-	// 连接——审计事务若持有连接直到函数返回，重建会自锁死。
-	if err := tx.Rollback(); err != nil {
-		return 0, err
-	}
-
-	// 找出计数不一致的小时，合并成连续区间后按块重建。
-	// 只修「漏计」方向（rollup < raw：写入侧丢增量）；rollup > raw 说明该小时
-	// 的 raw 行被留存清理（usage_retention）或手工删除过——raw 已不是完整
-	// 事实，从 raw 重建只会把统计削掉，跳过即可（rollup 侧保留原计数）。
-	var mismatches []int64
-	retentionDrift := 0
-	for hourMs, count := range rawByHour {
-		rollupCount := rollupByHour[hourMs]
-		if rollupCount < count {
-			mismatches = append(mismatches, hourMs)
-		} else if rollupCount > count {
-			retentionDrift++
-		}
-	}
-	if retentionDrift > 0 {
-		log.Printf("rollup audit: skipped %d hour(s) where rollup count exceeds raw (retention-cleaned), keeping rollup counts", retentionDrift)
-	}
-	if len(mismatches) == 0 {
-		return 0, nil
-	}
-	sort.Slice(mismatches, func(i, j int) bool { return mismatches[i] < mismatches[j] })
-	rebuilt := 0
-	for i := 0; i < len(mismatches); {
-		start := mismatches[i]
-		end := start + msPerHour
-		for i+1 < len(mismatches) && mismatches[i+1] == end {
-			i++
-			end += msPerHour
-		}
-		i++
-		if err := s.rebuildRollupRange(ctx, start, end); err != nil {
-			return rebuilt, err
-		}
-		rebuilt++
-	}
-	return rebuilt, nil
 }
 
 // upsertUsageRollupTx 把一条记录增量并入其 (小时, 维度) 桶。与原始行同事务。

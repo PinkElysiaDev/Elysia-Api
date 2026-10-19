@@ -86,22 +86,6 @@ func TestProtocolRevisionAdminDraftVerifyActivateAndPreview(t *testing.T) {
 	}
 }
 
-func TestLegacySaveCannotActivateOrOverwriteVersionedProtocol(t *testing.T) {
-	server, _ := newProtocolAdminTestServer(t)
-	server.setupAdminRoutes(server.engine.Group("/api/admin"))
-	response := revisionAdminRequest(t, server.engine, http.MethodPut, "/api/admin/custom-protocols/text-alpha", []byte(`{"id":"text-alpha"}`), "")
-	if response.Code != http.StatusNotFound {
-		t.Fatal("retired execution endpoint remains reachable", response.Code)
-	}
-	service, err := server.protocolService()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(service.View().IDs()) != 0 {
-		t.Fatal("retired endpoint activated a protocol")
-	}
-}
-
 func TestProtocolAdminRejectsForgedReportAndActivationWithoutEvidence(t *testing.T) {
 	server, _ := newProtocolAdminTestServer(t)
 	server.setupProtocolRevisionRoutes(server.engine.Group("/api/admin"))

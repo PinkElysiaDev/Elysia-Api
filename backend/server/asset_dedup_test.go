@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,83 +99,5 @@ func TestAssetDedupAcrossRequests(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
 		t.Fatal("file with zero references must be removed")
-	}
-}
-
-// 迁移：旧布局（请求子目录）→ 扁平 + 引用从 record_json 重建；
-// 记录已删除的遗留文件不误删（交孤儿清扫宽限回收）。
-func TestMigrateUsageAssetsLayout(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	dbPath := filepath.Join(t.TempDir(), "migrate.sqlite3")
-	store, err := storage.Open(dbPath)
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	defer func() { store.Close() }()
-	cfg := &config.Config{}
-	cfg.SetDatabasePath(dbPath)
-	s := &Server{store: store, config: cfg}
-	ctx := context.Background()
-
-	// 记录 A 引用 abc.png；记录 B 已删（其目录里的 def.png 无引用）。
-	if err := store.SaveUsageRecordJSON(ctx,
-		[]byte(`{"requestId":"req-a","incomingBody":{"content":"__ELYSIA_ASSET__:req-a/0123456789abcdef.png"}}`),
-		storage.UsageLogItem{RequestID: "req-a"}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	root := s.usageAssetsRoot()
-	oldA := filepath.Join(root, "req-a")
-	oldB := filepath.Join(root, "req-b")
-	for dir, file := range map[string]string{oldA: "0123456789abcdef.png", oldB: "1111111111111111.png"} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, file), []byte("x"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	if err := store.ExecRaw(ctx, "DELETE FROM schema_migrations WHERE version=2026092901"); err != nil {
-		t.Fatal(err)
-	}
-	store.Close()
-	store, err = storage.Open(dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.store = store
-
-	// 子目录消失，文件上移到根。
-	if _, err := os.Stat(oldA); !os.IsNotExist(err) {
-		t.Fatal("legacy request dirs must be removed")
-	}
-	for _, file := range []string{"0123456789abcdef.png", "1111111111111111.png"} {
-		if _, err := os.Stat(filepath.Join(root, file)); err != nil {
-			t.Fatalf("flattened file %s must exist: %v", file, err)
-		}
-	}
-	// 引用重建：仅 req-a 的引用存在。
-	refs := referencedAssetFiles(t, store)
-	if !refs["0123456789abcdef.png"] {
-		t.Fatal("referenced file must have its ref rebuilt")
-	}
-	if refs["1111111111111111.png"] {
-		t.Fatal("file of deleted record must stay unreferenced (orphan sweep handles it)")
-	}
-
-	// 幂等：再次运行无子目录可迁移、引用不重复。
-	store.Close()
-	store, err = storage.Open(dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.store = store
-	// 端点按扁平路径可取。
-	router := gin.New()
-	s.setupAdminRoutes(router.Group("/api/admin"))
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/admin/usage/assets/req-a/0123456789abcdef.png", nil))
-	if w.Code != http.StatusOK {
-		t.Fatalf("asset endpoint after migration: %d", w.Code)
 	}
 }

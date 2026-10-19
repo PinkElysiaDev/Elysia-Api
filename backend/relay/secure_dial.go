@@ -73,20 +73,6 @@ func SetDeniedIPRanges(ranges []string) {
 	deniedIPRanges.Store(&parsed)
 }
 
-// DeniedIPRanges 返回当前生效的禁止段（解析后的 CIDR 文本，去零值）。
-// 供诊断与测试使用。
-func DeniedIPRanges() []string {
-	current := deniedIPRanges.Load()
-	if current == nil {
-		return nil
-	}
-	out := make([]string, 0, len(*current))
-	for _, ipNet := range *current {
-		out = append(out, ipNet.String())
-	}
-	return out
-}
-
 // secureControl 是 net.Dialer.Control 回调：在 DNS 解析之后、实际 connect 之前，
 // 拿到「将要连接的真实 IP:port」并校验。这关掉了 DNS rebinding 的 TOCTOU 窗口——
 // 校验的就是即将连接的那个 IP，而非更早一次独立解析的结果。

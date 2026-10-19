@@ -100,20 +100,15 @@ func (s *Server) createRemoteAgentSession(ctx context.Context, title, mode, prot
 		if protocolID == "" {
 			return nil, errors.New("编辑模式必须指定 protocolId")
 		}
-		rows, err := s.store.ListCustomProtocols(ctx)
+		service, err := s.protocolService()
 		if err != nil {
 			return nil, err
 		}
-		found := false
-		for _, row := range rows {
-			if strings.EqualFold(row.ID, protocolID) {
-				seed, protocolID, found = row.Config, row.ID, true
-				break
-			}
+		draft, err := service.ReadDraft(ctx, protocolID)
+		if err != nil {
+			return nil, err
 		}
-		if !found {
-			return nil, errors.New("protocol not found")
-		}
+		seed = string(draft.Definition.Bytes())
 	}
 	upsert := storage.AgentSessionUpsert{Title: strings.TrimSpace(title), Mode: mode, ProtocolID: protocolID, SeedConfig: seed}
 	if settings != nil {

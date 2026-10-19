@@ -13,7 +13,7 @@ import (
 
 var _ protocol.JobRepository = (*Store)(nil)
 
-func (store *Store) migrateGenerationJobs(ctx context.Context) error {
+func (store *Store) createGenerationJobTables(ctx context.Context) error {
 	for _, statement := range []string{
 		`CREATE TABLE IF NOT EXISTS generation_jobs (
 		 id TEXT PRIMARY KEY,owner_hash TEXT NOT NULL,deduplication_hash TEXT NOT NULL,

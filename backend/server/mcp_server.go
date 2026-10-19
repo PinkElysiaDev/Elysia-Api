@@ -10,37 +10,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// MCP 服务端（Streamable HTTP，单端点 POST /mcp）。双世代：
-//   - Legacy（2024-11-05 ~ 2025-11-25 语义，存量客户端）：initialize 握手、
-//     notifications/initialized、ping、tools/list、tools/call；无状态（不签发
-//     Mcp-Session-Id，规范允许）；GET/DELETE → 405。
-//   - Modern（2026-07-28）：无握手，每请求 params._meta 携带版本与客户端
-//     能力，MCP-Protocol-Version 头与 body 一致性校验，镜像头 Mcp-Method/
-//     Mcp-Name，server/discover，resultType:"complete"，SSE 断流即取消。
-//
-// 世代判定：请求 params._meta 带 io.modelcontextprotocol/protocolVersion
-// 键即 Modern；否则 Legacy。
+// MCP Streamable HTTP（2026-07-28）：无握手，每请求声明版本，SSE 断流即取消。
 
 const (
 	mcpServerName            = "elysia-api-agent"
 	mcpServerVersion         = "1.0.0"
 	mcpModernProtocolVersion = "2026-07-28"
-	mcpLatestLegacyVersion   = "2025-11-25"
 	mcpMetaProtocolVersion   = "io.modelcontextprotocol/protocolVersion"
 	mcpErrHeaderMismatch     = -32020
 	mcpErrUnsupportedVersion = -32022
 	mcpInstructions          = "MCP 只提供 elysia_cli，用于执行 Elysia API 网关运维命令。首次使用先查 elysia help。每次调用无状态；需要复用协议草稿或测试目标时，请把相关命令放在同一次 command 批处理中。"
 )
 
-// mcpSupportedVersions 是本服务端认识的全部协议版本（协商用）。
-var mcpSupportedVersions = []string{"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", mcpModernProtocolVersion}
-
-type mcpEra int
-
-const (
-	mcpEraLegacy mcpEra = iota
-	mcpEraModern
-)
+var mcpSupportedVersions = []string{mcpModernProtocolVersion}
 
 // handleMCP 是 /mcp 的统一入口（gin Any 注册，方法白名单在内部收口）。
 func (s *Server) handleMCP(c *gin.Context) {
@@ -77,7 +59,7 @@ func (s *Server) handleMCP(c *gin.Context) {
 		return
 	}
 
-	era, eraVersion, eraCode, eraErr := mcpDetectEra(c, req)
+	eraCode, eraErr := mcpValidateVersion(c, req)
 	if eraErr != "" {
 		if eraCode == 0 {
 			eraCode = mcpErrUnsupportedVersion
@@ -92,48 +74,42 @@ func (s *Server) handleMCP(c *gin.Context) {
 
 	// 通知（无 id）：接受即 202，无响应体。通知不得回应错误，未知通知静默接受。
 	if len(req.ID) == 0 || string(req.ID) == "null" {
-		// Legacy 的取消通道：轮次与 HTTP 请求解耦，断开/取消通知都不终止已
-		// 启动的轮次（结果会落库，可再查）。
 		c.AbortWithStatus(http.StatusAccepted)
 		return
 	}
 
 	switch req.Method {
-	case "initialize":
-		s.mcpHandleInitialize(c, req, era, eraVersion)
 	case "server/discover":
-		// Modern MUST；对 Legacy 客户端同样可用（无害）。
 		s.mcpHandleDiscover(c, req)
 	case "ping":
 		mcpWriteJSON(c, jsonrpcOK(req.ID, gin.H{}), http.StatusOK)
 	case "tools/list":
-		s.mcpHandleToolsList(c, req, era)
+		s.mcpHandleToolsList(c, req)
 	case "tools/call":
-		s.mcpHandleToolsCall(c, req, era)
+		s.mcpHandleToolsCall(c, req)
 	default:
 		mcpWriteJSON(c, jsonrpcFail(req.ID, jsonrpcMethodNotFound, "method not found: "+req.Method), http.StatusNotFound)
 	}
 }
 
-// mcpDetectEra 判定请求世代并完成版本/镜像头校验。eraErr 非空时 eraCode
-// 给出错误码：-32022（版本不支持，data 带 supported）或 -32020（头不一致）。
-func mcpDetectEra(c *gin.Context, req jsonrpcRequest) (mcpEra, string, int, string) {
+// mcpValidateVersion validates the current protocol version and mirror headers.
+func mcpValidateVersion(c *gin.Context, req jsonrpcRequest) (int, string) {
 	var params struct {
 		Meta map[string]json.RawMessage `json:"_meta"`
 	}
 	_ = json.Unmarshal(req.Params, &params)
 	if raw, ok := params.Meta[mcpMetaProtocolVersion]; ok {
 		var version string
-		if err := json.Unmarshal(raw, &version); err != nil || !mcpVersionSupported(version) {
-			return mcpEraModern, "", mcpErrUnsupportedVersion, "unsupported protocol version"
+		if err := json.Unmarshal(raw, &version); err != nil || version != mcpModernProtocolVersion {
+			return mcpErrUnsupportedVersion, "unsupported protocol version"
 		}
 		header := strings.TrimSpace(c.Request.Header.Get("MCP-Protocol-Version"))
 		if header != "" && header != version {
-			return mcpEraModern, version, mcpErrHeaderMismatch, "MCP-Protocol-Version header does not match _meta"
+			return mcpErrHeaderMismatch, "MCP-Protocol-Version header does not match _meta"
 		}
 		// 镜像头存在时必须与 body 一致（Modern REQUIRED；宽松处理缺省）。
 		if mirror := strings.TrimSpace(c.Request.Header.Get("Mcp-Method")); mirror != "" && mirror != req.Method {
-			return mcpEraModern, version, mcpErrHeaderMismatch, "Mcp-Method header does not match body method"
+			return mcpErrHeaderMismatch, "Mcp-Method header does not match body method"
 		}
 		if req.Method == "tools/call" {
 			var callParams struct {
@@ -141,52 +117,12 @@ func mcpDetectEra(c *gin.Context, req jsonrpcRequest) (mcpEra, string, int, stri
 			}
 			_ = json.Unmarshal(req.Params, &callParams)
 			if mirror := strings.TrimSpace(c.Request.Header.Get("Mcp-Name")); mirror != "" && callParams.Name != "" && mirror != callParams.Name {
-				return mcpEraModern, version, mcpErrHeaderMismatch, "Mcp-Name header does not match tool name"
+				return mcpErrHeaderMismatch, "Mcp-Name header does not match tool name"
 			}
 		}
-		return mcpEraModern, version, 0, ""
+		return 0, ""
 	}
-	// Legacy：MCP-Protocol-Version 头非法值拒绝；缺省按 2025-03-26 处理。
-	header := strings.TrimSpace(c.Request.Header.Get("MCP-Protocol-Version"))
-	if header != "" && !mcpVersionSupported(header) {
-		return mcpEraLegacy, "", mcpErrUnsupportedVersion, "unsupported protocol version"
-	}
-	if header == "" {
-		header = "2025-03-26"
-	}
-	return mcpEraLegacy, header, 0, ""
-}
-
-func mcpVersionSupported(version string) bool {
-	for _, item := range mcpSupportedVersions {
-		if item == version {
-			return true
-		}
-	}
-	return false
-}
-
-// mcpHandleInitialize Legacy 握手：回显支持的版本（客户端版本可处理时原样
-// 回显，否则回最新 Legacy 版本）。
-func (s *Server) mcpHandleInitialize(c *gin.Context, req jsonrpcRequest, era mcpEra, eraVersion string) {
-	var params struct {
-		ProtocolVersion string `json:"protocolVersion"`
-	}
-	_ = json.Unmarshal(req.Params, &params)
-	negotiated := mcpLatestLegacyVersion
-	if mcpVersionSupported(params.ProtocolVersion) && params.ProtocolVersion != mcpModernProtocolVersion {
-		negotiated = params.ProtocolVersion
-	}
-	result := gin.H{
-		"protocolVersion": negotiated,
-		"capabilities":    gin.H{"tools": gin.H{"listChanged": false}},
-		"serverInfo":      gin.H{"name": mcpServerName, "title": "Elysia API Gateway Agent", "version": mcpServerVersion},
-		"instructions":    mcpInstructions,
-	}
-	if era == mcpEraModern {
-		result["resultType"] = "complete"
-	}
-	mcpWriteJSON(c, jsonrpcOK(req.ID, result), http.StatusOK)
+	return mcpErrUnsupportedVersion, "params._meta must declare the current protocol version"
 }
 
 // mcpHandleDiscover Modern 的 server/discover：一次返回版本/能力/信息。
@@ -201,7 +137,7 @@ func (s *Server) mcpHandleDiscover(c *gin.Context, req jsonrpcRequest) {
 }
 
 // mcpHandleToolsList 全量单页返回（工具数少，不实现 cursor）。
-func (s *Server) mcpHandleToolsList(c *gin.Context, req jsonrpcRequest, era mcpEra) {
+func (s *Server) mcpHandleToolsList(c *gin.Context, req jsonrpcRequest) {
 	definitions := make([]gin.H, 0)
 	for _, tool := range mcpToolset() {
 		definitions = append(definitions, gin.H{
@@ -210,18 +146,13 @@ func (s *Server) mcpHandleToolsList(c *gin.Context, req jsonrpcRequest, era mcpE
 			"annotations": gin.H{"title": tool.title},
 		})
 	}
-	result := gin.H{"tools": definitions}
-	if era == mcpEraModern {
-		result["resultType"] = "complete"
-		result["ttlMs"] = 300_000
-		result["cacheScope"] = "user"
-	}
+	result := gin.H{"tools": definitions, "resultType": "complete", "ttlMs": 300_000, "cacheScope": "user"}
 	mcpWriteJSON(c, jsonrpcOK(req.ID, result), http.StatusOK)
 }
 
 // mcpHandleToolsCall 工具调用：elysia_cli 通过 SSE 返回 progress 通知和终帧
 // JSON-RPC response。
-func (s *Server) mcpHandleToolsCall(c *gin.Context, req jsonrpcRequest, era mcpEra) {
+func (s *Server) mcpHandleToolsCall(c *gin.Context, req jsonrpcRequest) {
 	var params struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments,omitempty"`
@@ -240,17 +171,17 @@ func (s *Server) mcpHandleToolsCall(c *gin.Context, req jsonrpcRequest, era mcpE
 	}
 	if !tool.streaming {
 		result, err := tool.invoke(c.Request.Context(), s, params.Arguments, nil)
-		mcpWriteJSON(c, mcpToolCallResult(req.ID, era, result, err), http.StatusOK)
+		mcpWriteJSON(c, mcpToolCallResult(req.ID, result, err), http.StatusOK)
 		return
 	}
 	// 流式路径：SSE 响应。Modern 语义下客户端断开 SSE 即取消——尽力停止
 	// 轮次（引擎侧 Stop 最多等 15s 收尾，这里异步执行不阻塞出口）。
-	s.mcpStreamToolCall(c, req, era, tool, params.Arguments, params.Meta.ProgressToken)
+	s.mcpStreamToolCall(c, req, tool, params.Arguments, params.Meta.ProgressToken)
 }
 
 // mcpToolCallResult 组装工具调用的响应（业务失败 → isError:true 而非
 // JSON-RPC error，让客户端模型可自我纠正）。
-func mcpToolCallResult(id json.RawMessage, era mcpEra, result any, err error) jsonrpcResponse {
+func mcpToolCallResult(id json.RawMessage, result any, err error) jsonrpcResponse {
 	content := []gin.H{}
 	if result != nil {
 		encoded, encodeErr := json.Marshal(result)
@@ -258,7 +189,7 @@ func mcpToolCallResult(id json.RawMessage, era mcpEra, result any, err error) js
 			result = nil
 			err = fmt.Errorf("encode tool result: %w", encodeErr)
 		} else {
-			// 同时提供文本与结构化结果，兼容只读取 content 的 MCP 客户端。
+			// MCP tool results include text content alongside structured output.
 			content = append(content, gin.H{"type": "text", "text": string(encoded)})
 		}
 	}
@@ -268,13 +199,10 @@ func mcpToolCallResult(id json.RawMessage, era mcpEra, result any, err error) js
 	if len(content) == 0 {
 		content = append(content, gin.H{"type": "text", "text": "done"})
 	}
-	payload := gin.H{"content": content, "isError": err != nil}
+	payload := gin.H{"content": content, "isError": err != nil, "resultType": "complete"}
 	// 批处理部分失败时仍返回已经完成的结果与错误明细。
 	if result != nil {
 		payload["structuredContent"] = result
-	}
-	if era == mcpEraModern {
-		payload["resultType"] = "complete"
 	}
 	return jsonrpcOK(id, payload)
 }
@@ -282,7 +210,7 @@ func mcpToolCallResult(id json.RawMessage, era mcpEra, result any, err error) js
 // mcpStreamToolCall 的 SSE 响应：progress 通知（progressToken 存在时）→
 // 终帧 JSON-RPC response（含 structuredContent）。CLI 直接继承 HTTP context，
 // 断流或取消会停止当前批处理，不查找也不停止任何 Agent 会话。
-func (s *Server) mcpStreamToolCall(c *gin.Context, req jsonrpcRequest, era mcpEra, tool *mcpTool, args json.RawMessage, progressToken json.RawMessage) {
+func (s *Server) mcpStreamToolCall(c *gin.Context, req jsonrpcRequest, tool *mcpTool, args json.RawMessage, progressToken json.RawMessage) {
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
@@ -313,7 +241,7 @@ func (s *Server) mcpStreamToolCall(c *gin.Context, req jsonrpcRequest, era mcpEr
 		}))
 	}
 	result, err := tool.invoke(c.Request.Context(), s, args, progress)
-	write(mcpToolCallResult(req.ID, era, result, err))
+	write(mcpToolCallResult(req.ID, result, err))
 }
 
 // mcpOriginAllowed 校验浏览器 Origin（同源或本机回环）。非浏览器客户端

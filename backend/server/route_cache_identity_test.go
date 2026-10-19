@@ -4,14 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/storage"
 )
 
-func TestStoreRoutingNeverResurrectsLegacyConfiguration(t *testing.T) {
+func TestStoreRoutingFailsClosedOnDatabaseFailure(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
-	s.config.Groups = []config.ModelGroupConfig{{ID: "legacy", Name: "deleted", Enabled: true}}
-	s.config.Tokens = []config.AccessToken{{Token: "deleted-key", Enabled: true}}
 	if _, exists := s.findAccessToken("deleted-key"); exists {
 		t.Fatal("missing persisted token resurrected from configuration")
 	}

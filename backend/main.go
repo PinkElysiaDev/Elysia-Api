@@ -24,8 +24,8 @@ func main() {
 
 	log.Printf("Starting Elysia-API backend %s on %s:%d",
 		server.BuildIdentity(),
-		config.GlobalConfig.Server.Host,
-		config.GlobalConfig.Server.Port)
+		config.GlobalConfig.Host,
+		config.GlobalConfig.Port)
 
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("Server error: %v", err)

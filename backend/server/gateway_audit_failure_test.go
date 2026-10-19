@@ -152,7 +152,7 @@ func TestHTTP524GatewayAndAgentPreserveObservedFailure(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		candidate := gatewayCandidate{compiled: upstream, operation: operation, model: config.ModelRef{Name: "m", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []protocol.Transport{operation.Transport}}}
+		candidate := gatewayCandidate{compiled: upstream, operation: operation, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []protocol.Transport{operation.Transport}}}
 		record := &usageRecord{}
 		before := calls.Load()
 		result, err := s.collectProtocolGeneration(t.Context(), candidate, request, record, nil)

@@ -45,7 +45,7 @@ func (s *Store) ListProtocolUpstreamReports(ctx context.Context, id, hash string
 	return reports, rows.Err()
 }
 
-func (s *Store) migrateProtocolRevisions(ctx context.Context) error {
+func (s *Store) createProtocolTables(ctx context.Context) error {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS protocol_history (
 			id TEXT PRIMARY KEY, protocol_id TEXT NOT NULL, content_hash TEXT NOT NULL,
@@ -76,7 +76,7 @@ func (s *Store) migrateProtocolRevisions(ctx context.Context) error {
 			return err
 		}
 	}
-	return s.backfillProtocolHistory(ctx)
+	return nil
 }
 
 // SaveProtocolDraft performs an optimistic edit independently of activation.

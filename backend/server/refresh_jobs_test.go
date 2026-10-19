@@ -39,7 +39,7 @@ func TestSourceRefreshJobDedup(t *testing.T) {
 	s := newKeyPermissionTestServer(t)
 	ctx := context.Background()
 	source := storage.ModelSource{
-		ID: "src1", Name: "slow", BaseURL: srv.URL, Platform: "openai",
+		ID: "src1", Name: "slow", BaseURL: srv.URL, Platform: "custom:openai-chat-completions",
 		Enabled: true, AutoFetchModels: true, APIKey: "k",
 	}
 	if err := s.store.UpsertSource(ctx, source); err != nil {
@@ -76,7 +76,7 @@ func TestSourceRefreshJobRecordsError(t *testing.T) {
 	s := newKeyPermissionTestServer(t)
 	ctx := context.Background()
 	source := storage.ModelSource{
-		ID: "src1", Name: "unauthorized", BaseURL: srv.URL, Platform: "openai",
+		ID: "src1", Name: "unauthorized", BaseURL: srv.URL, Platform: "custom:openai-chat-completions",
 		Enabled: true, AutoFetchModels: true, APIKey: "bad-key",
 	}
 	if err := s.store.UpsertSource(ctx, source); err != nil {

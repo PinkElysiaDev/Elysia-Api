@@ -151,13 +151,13 @@ docker compose logs elysia-api
 | `ELYSIA_API_OPEN_BROWSER` | 覆盖浏览器启动设置，不写回文件；无效布尔值记录提示并回退 |
 | `ELYSIA_API_MASTER_KEY` | 优先于密钥文件；应由受保护的运行环境注入 |
 
-密钥读取顺序：环境变量 → `secretKeyPath` → 数据库目录中的旧 `.db-key` → 自动创建随机密钥。旧密钥存在时会继续使用，避免升级后无法解密。密钥创建失败会记录告警；检查启动日志，不要将服务启动成功视为加密已建立的证明。
+密钥读取顺序：环境变量 → `secretKeyPath` → 自动创建随机密钥。不再读取旧 `.db-key`；启用加密的存储不接受历史明文密钥字段。密钥创建失败会记录告警；检查启动日志，不要将服务启动成功视为加密已建立的证明。
 
 ### 运行策略
 
 | 配置块 | 字段与默认行为 |
 | --- | --- |
-| `responses` | `enabled: true`，`upstreamMode: "auto"`；模式支持 `native`、`transform`、`auto` |
+| `responses` | `enabled: true`；协议转换由当前协议绑定和转换策略决定 |
 | `usage` | 缺少上游用量时默认估算；`charsPerToken: 4`、`defaultOutputTokenEstimate: 1024`、`imageInputTokenEstimate: 300`、`fileInputTokenEstimatePerKB: 128`；`estimateWhenMissing: false` 关闭估算 |
 | `healthCheck` | 默认关闭；`intervalSeconds: 300`、`timeoutSeconds: 10`、`failureThreshold: 3`；探测可能产生上游请求费用 |
 | `modelCatalog` | 默认启用 models.dev 目录；内置快照及本地缓存，在线失败可回退镜像；`url`、`proxy` 可覆盖，`syncIntervalMinutes` 缺省 1440，显式 `0` 停止定时同步 |
@@ -248,12 +248,14 @@ SQLite 使用 WAL、5000 ms busy timeout、外键和 `synchronous=NORMAL`。
 
 `POST /__reload`、`POST /__shutdown` 只允许回环来源；代理转发时不要将这两个端点公开。
 
-## 旧版本迁移
+## 当前格式要求
 
-- `server.host` / `server.port` 仅在对应顶层字段缺省时作为回退。
-- 当前配置解析不再读取 `tokens`、`modelGroups`，也不把 `dashboardToken` 当作面板令牌。不要依赖旧文档所述的自动迁移；在兼容旧版本导出数据或通过管理接口重建，并保留原备份。
-- 已废弃的 `customProtocols` 字段由启动迁移处理并从配置移除。先备份，启动后在协议设计器检查结果。
-- 模型能力、流式转换和自定义协议的限制见[协议引擎指南](protocol-guide.md)与[协议定义](protocol-definition-reference.md)。升级前保留匹配的程序、数据库、配置和主密钥备份，先做迁移预演；步骤见[升级与回滚](protocol-release-readiness.md#升级与回滚)。
+后端不保留向后兼容或自动迁移路径。使用当前格式的新数据库和配置；已有数据请先独立备份，必要内容通过当前管理接口重建，服务不会替你删除旧文件。
+
+- 监听设置只读取顶层 `host` / `port`，不再读取 `server.host` / `server.port`。
+- API Key、模型和分组只存 SQLite；不读取或导入 `tokens`、`modelGroups`、`customProtocols`。
+- 协议只使用当前定义与显式绑定，平台为 `custom:<协议 ID>`；模型引用必须为 `sourceId:modelId`。
+- 已删除旧协议迁移接口、历史预置改名/路径修补和旧日志布局回填。
 
 ## 故障处理
 
@@ -263,5 +265,5 @@ SQLite 使用 WAL、5000 ms busy timeout、外键和 `synchronous=NORMAL`。
 | 面板 401 | 使用面板令牌；检查配置路径，避免误用推理或 Agent Key |
 | 上游连接被拦截 | 出站 CIDR 策略、DNS 解析结果和代理配置 |
 | 用量日志没有正文 | `bodyMaxKB` 是否为正；历史请求不会补采集 |
-| 升级后密钥不可解密 | 是否使用原主密钥或旧 `.db-key`，环境变量是否改变 |
+| 密钥不可解密 | 是否使用与该数据库匹配的主密钥或 `secretKeyPath`，环境变量是否改变 |
 | 模型列表为空 | 上游模型发现端点、逐 Key 权限、自定义协议的 `models` 定义 |

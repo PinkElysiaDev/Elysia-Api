@@ -119,8 +119,7 @@ type Document struct {
 // AssistantContent 是 assistant 消息内容。
 type AssistantContent struct {
 	IsIncomplete bool `json:"incomplete,omitempty"`
-	// Content retains the complete model output. Legacy rows without this field
-	// are imported once at the persistence boundary from the display fields.
+	// Content retains the complete model output and is required for history replay.
 	Content   []protocol.Node `json:"content,omitempty"`
 	Text      string          `json:"text,omitempty"`
 	Reasoning string          `json:"reasoning,omitempty"`

@@ -41,7 +41,7 @@ func TestFetchClaudeModelsViaV1Models(t *testing.T) {
 
 	s := newRefreshTestServer(t)
 	models, err := s.fetchModelsFromSource(context.Background(), storage.ModelSource{
-		Name: "claude-relay", BaseURL: srv.URL, Platform: "claude", Enabled: true,
+		Name: "claude-relay", BaseURL: srv.URL, Platform: "custom:anthropic-messages", Enabled: true,
 	}, "sk-ant-xxx")
 	if err != nil {
 		t.Fatalf("fetchClaudeModels error: %v", err)
@@ -52,8 +52,8 @@ func TestFetchClaudeModelsViaV1Models(t *testing.T) {
 	if gotAuth != "sk-ant-xxx" {
 		t.Fatalf("expected x-api-key auth, got %q", gotAuth)
 	}
-	if models[0].Platform != "claude" {
-		t.Fatalf("expected platform claude, got %q", models[0].Platform)
+	if models[0].Platform != "custom:anthropic-messages" {
+		t.Fatalf("expected Anthropic protocol, got %q", models[0].Platform)
 	}
 }
 
@@ -69,7 +69,7 @@ func TestModelDiscoveryDoesNotGuessAuthentication(t *testing.T) {
 	}))
 	defer upstream.Close()
 	s := newRefreshTestServer(t)
-	_, err := s.fetchModelsFromSource(t.Context(), storage.ModelSource{Platform: "claude", BaseURL: upstream.URL}, "secret")
+	_, err := s.fetchModelsFromSource(t.Context(), storage.ModelSource{Platform: "custom:anthropic-messages", BaseURL: upstream.URL}, "secret")
 	if err == nil || calls != 1 {
 		t.Fatalf("expected one failed declared-auth attempt: %d %v", calls, err)
 	}
@@ -92,7 +92,7 @@ func TestFetchGeminiModelsViaV1BetaModels(t *testing.T) {
 
 	s := newRefreshTestServer(t)
 	models, err := s.fetchModelsFromSource(context.Background(), storage.ModelSource{
-		Name: "gemini-relay", BaseURL: srv.URL, Platform: "gemini", Enabled: true,
+		Name: "gemini-relay", BaseURL: srv.URL, Platform: "custom:google-generate-content", Enabled: true,
 	}, "gem-key")
 	if err != nil {
 		t.Fatalf("fetchGeminiModels error: %v", err)
@@ -136,10 +136,10 @@ func TestRefreshAllSourcesFaultTolerant(t *testing.T) {
 
 	s := newRefreshTestServer(t)
 	// 一个能拉取的 openai 源 + 一个总是 500 的源。
-	if err := s.store.UpsertSource(ctx, storage.ModelSource{ID: "good", Name: "good", BaseURL: good.URL, Platform: "openai", Enabled: true, AutoFetchModels: true}); err != nil {
+	if err := s.store.UpsertSource(ctx, storage.ModelSource{ID: "good", Name: "good", BaseURL: good.URL, Platform: "custom:openai-chat-completions", Enabled: true, AutoFetchModels: true}); err != nil {
 		t.Fatalf("upsert good: %v", err)
 	}
-	if err := s.store.UpsertSource(ctx, storage.ModelSource{ID: "bad", Name: "bad", BaseURL: bad.URL, Platform: "openai", Enabled: true, AutoFetchModels: true}); err != nil {
+	if err := s.store.UpsertSource(ctx, storage.ModelSource{ID: "bad", Name: "bad", BaseURL: bad.URL, Platform: "custom:openai-chat-completions", Enabled: true, AutoFetchModels: true}); err != nil {
 		t.Fatalf("upsert bad: %v", err)
 	}
 
@@ -176,7 +176,7 @@ func TestRefreshEmptyModelListKeepsExistingModels(t *testing.T) {
 	defer empty.Close()
 
 	s := newRefreshTestServer(t)
-	source := storage.ModelSource{ID: "s-empty", Name: "empty", BaseURL: empty.URL, Platform: "openai", Enabled: true, AutoFetchModels: true}
+	source := storage.ModelSource{ID: "s-empty", Name: "empty", BaseURL: empty.URL, Platform: "custom:openai-chat-completions", Enabled: true, AutoFetchModels: true}
 	if err := s.store.UpsertSource(ctx, source); err != nil {
 		t.Fatalf("upsert source: %v", err)
 	}

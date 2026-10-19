@@ -147,144 +147,132 @@ func cacheWireFixtures() []cacheWireFixture {
 func TestCacheWireMatrix(t *testing.T) {
 	for _, source := range cacheWireFixtures() {
 		for _, target := range cacheWireFixtures() {
-			for _, mode := range []string{"builtin", "preset", "copy"} {
-				for _, stream := range []bool{false, true} {
-					t.Run(fmt.Sprintf("%s_to_%s/%s/stream=%v", source.platform, target.platform, mode, stream), func(t *testing.T) {
-						captured := make(chan []byte, 1)
-						upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-							body, _ := io.ReadAll(r.Body)
-							captured <- body
-							if stream {
-								w.Header().Set("Content-Type", "text/event-stream")
-								_, _ = io.WriteString(w, target.stream)
-							} else {
-								w.Header().Set("Content-Type", "application/json")
-								_, _ = io.WriteString(w, target.response)
-							}
-						}))
-						defer upstream.Close()
-						platform := target.platform
-						if mode == "preset" {
-							platform = "custom:" + target.id
-						}
-						if mode == "copy" {
-							platform = "custom:copy-" + target.id
-						}
-						base := upstream.URL
-						if target.platform == "openai" || target.platform == "responses" {
-							base += "/v1"
-						}
-						groups := presetGroup(t, platform, base)
-						tools := true
-						groups[0].ToolsCapable = &tools
-						groups[0].Models[0].ToolsCapable = true
-						definition := presetDefinition(t, target.id)
-						if mode == "copy" {
-							definition.ID = "copy-" + definition.ID
-						}
-						s := newTestServerWithStore(t, groups, definition)
-						var request map[string]any
-						if err := json.Unmarshal([]byte(source.request), &request); err != nil {
-							t.Fatal(err)
-						}
-						path := source.path
-						if source.platform != "gemini" {
-							request["stream"] = stream
-							if source.platform == "openai" && stream {
-								request["stream_options"] = map[string]any{"include_usage": true}
-							}
-						} else if stream {
-							path = strings.ReplaceAll(path, ":generateContent", ":streamGenerateContent")
-						}
-						encoded, _ := json.Marshal(request)
-						c, rec := adminProtocolContext("POST", path, string(encoded))
-						if source.platform == "gemini" {
-							c.Params = gin.Params{{Key: "action", Value: strings.TrimPrefix(path, "/v1beta/models/")}}
-						}
-						if source.platform == "responses" {
-							s.responses(c)
+			for _, stream := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s_to_%s/stream=%v", source.platform, target.platform, stream), func(t *testing.T) {
+					captured := make(chan []byte, 1)
+					upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						body, _ := io.ReadAll(r.Body)
+						captured <- body
+						if stream {
+							w.Header().Set("Content-Type", "text/event-stream")
+							_, _ = io.WriteString(w, target.stream)
 						} else {
-							s.chatCompletions(c)
+							w.Header().Set("Content-Type", "application/json")
+							_, _ = io.WriteString(w, target.response)
 						}
-						isCompatible := source.platform != "gemini" || target.platform == "gemini"
-						if !isCompatible {
-							if rec.Code < 400 || rec.Code >= 500 {
-								t.Fatalf("incompatible cache contract not rejected: %d %s", rec.Code, rec.Body)
-							}
-							select {
-							case wire := <-captured:
-								t.Fatalf("incompatible request reached upstream: %s", wire)
-							default:
-							}
-							return
+					}))
+					defer upstream.Close()
+					platform := "custom:" + target.id
+					base := upstream.URL
+					if target.platform == "openai" || target.platform == "responses" {
+						base += "/v1"
+					}
+					groups := presetGroup(t, platform, base)
+					tools := true
+					groups[0].ToolsCapable = &tools
+					groups[0].Models[0].ToolsCapable = true
+					s := newTestServerWithStore(t, groups)
+					var request map[string]any
+					if err := json.Unmarshal([]byte(source.request), &request); err != nil {
+						t.Fatal(err)
+					}
+					path := source.path
+					if source.platform != "gemini" {
+						request["stream"] = stream
+						if source.platform == "openai" && stream {
+							request["stream_options"] = map[string]any{"include_usage": true}
 						}
-						if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
-							t.Fatalf("HTTP %d: %s", rec.Code, rec.Body.String())
+					} else if stream {
+						path = strings.ReplaceAll(path, ":generateContent", ":streamGenerateContent")
+					}
+					encoded, _ := json.Marshal(request)
+					c, rec := adminProtocolContext("POST", path, string(encoded))
+					if source.platform == "gemini" {
+						c.Params = gin.Params{{Key: "action", Value: strings.TrimPrefix(path, "/v1beta/models/")}}
+					}
+					if source.platform == "responses" {
+						s.responses(c)
+					} else {
+						s.chatCompletions(c)
+					}
+					isCompatible := source.platform != "gemini" || target.platform == "gemini"
+					if !isCompatible {
+						if rec.Code < 400 || rec.Code >= 500 {
+							t.Fatalf("incompatible cache contract not rejected: %d %s", rec.Code, rec.Body)
 						}
-						var outbound []byte
 						select {
-						case outbound = <-captured:
+						case wire := <-captured:
+							t.Fatalf("incompatible request reached upstream: %s", wire)
 						default:
-							t.Fatal("no upstream request")
 						}
-						if !strings.Contains(string(outbound), "stable system") || !strings.Contains(string(outbound), "lookup") || !strings.Contains(string(outbound), "result") {
-							t.Fatalf("stable prompt/tool history lost: %s", outbound)
+						return
+					}
+					if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
+						t.Fatalf("HTTP %d: %s", rec.Code, rec.Body.String())
+					}
+					var outbound []byte
+					select {
+					case outbound = <-captured:
+					default:
+						t.Fatal("no upstream request")
+					}
+					if !strings.Contains(string(outbound), "stable system") || !strings.Contains(string(outbound), "lookup") || !strings.Contains(string(outbound), "result") {
+						t.Fatalf("stable prompt/tool history lost: %s", outbound)
+					}
+					var sent map[string]any
+					_ = json.Unmarshal(outbound, &sent)
+					if (source.platform == "openai" || source.platform == "responses") && (target.platform == "openai" || target.platform == "responses") {
+						if sent["prompt_cache_key"] != "stable-key" || sent["prompt_cache_retention"] != "24h" {
+							t.Fatalf("cache key/retention lost: %s", outbound)
 						}
-						var sent map[string]any
-						_ = json.Unmarshal(outbound, &sent)
-						if (source.platform == "openai" || source.platform == "responses") && (target.platform == "openai" || target.platform == "responses") {
-							if sent["prompt_cache_key"] != "stable-key" || sent["prompt_cache_retention"] != "24h" {
-								t.Fatalf("cache key/retention lost: %s", outbound)
-							}
+					}
+					if target.platform == "gemini" {
+						if source.platform == "gemini" && sent["cachedContent"] != "cachedContents/stable" {
+							t.Fatalf("cache reference lost: %s", outbound)
 						}
-						if target.platform == "gemini" {
-							if source.platform == "gemini" && sent["cachedContent"] != "cachedContents/stable" {
-								t.Fatalf("cache reference lost: %s", outbound)
-							}
-							if source.platform != "gemini" && sent["cachedContent"] != nil {
-								t.Fatalf("foreign cache control leaked: %s", outbound)
-							}
+						if source.platform != "gemini" && sent["cachedContent"] != nil {
+							t.Fatalf("foreign cache control leaked: %s", outbound)
 						}
-						if target.platform == "anthropic" && source.platform == "anthropic" {
-							blocks, ok := sent["system"].([]any)
-							if !ok || len(blocks) == 0 || blocks[0].(map[string]any)["cache_control"] == nil {
-								t.Fatalf("system cache breakpoint lost: %s", outbound)
-							}
-							if !reflect.DeepEqual(blocks[0].(map[string]any)["cache_control"], map[string]any{"type": "ephemeral", "ttl": "1h"}) {
-								t.Fatalf("cache TTL changed: %s", outbound)
-							}
-							if sent["tools"].([]any)[0].(map[string]any)["cache_control"] == nil {
-								t.Fatalf("tool cache breakpoint lost: %s", outbound)
-							}
+					}
+					if target.platform == "anthropic" && source.platform == "anthropic" {
+						blocks, ok := sent["system"].([]any)
+						if !ok || len(blocks) == 0 || blocks[0].(map[string]any)["cache_control"] == nil {
+							t.Fatalf("system cache breakpoint lost: %s", outbound)
 						}
-						// Assert persisted normalized usage separately from the response wire.
-						items := latestUsageRecords(t, s)
-						if len(items) != 1 || items[0].StatusCode != http.StatusOK {
-							t.Fatalf("usage records: %d", len(items))
+						if !reflect.DeepEqual(blocks[0].(map[string]any)["cache_control"], map[string]any{"type": "ephemeral", "ttl": "1h"}) {
+							t.Fatalf("cache TTL changed: %s", outbound)
 						}
-						data, found, err := s.store.GetUsageRecordJSON(t.Context(), items[0].RequestID)
-						if err != nil || !found {
-							t.Fatalf("persisted usage: %v", err)
+						if sent["tools"].([]any)[0].(map[string]any)["cache_control"] == nil {
+							t.Fatalf("tool cache breakpoint lost: %s", outbound)
 						}
-						var record usageRecord
-						if err := json.Unmarshal(data, &record); err != nil {
-							t.Fatal(err)
-						}
-						if derefInt(record.Usage.CacheHitTokens) != 70 || derefInt(record.Usage.InputTokens) != 100 || derefInt(record.Usage.TotalTokens) != 105 {
-							t.Fatalf("wrong persisted usage: %+v response=%s", record.Usage, rec.Body.String())
-						}
-						cacheField := "cached_tokens"
-						if source.platform == "anthropic" {
-							cacheField = "cache_read_input_tokens"
-						}
-						if source.platform == "gemini" {
-							cacheField = "cachedContentTokenCount"
-						}
-						if !strings.Contains(rec.Body.String(), fmt.Sprintf(`"%s":70`, cacheField)) {
-							t.Fatalf("downstream cache counter lost: %s", rec.Body.String())
-						}
-					})
-				}
+					}
+					// Assert persisted normalized usage separately from the response wire.
+					items := latestUsageRecords(t, s)
+					if len(items) != 1 || items[0].StatusCode != http.StatusOK {
+						t.Fatalf("usage records: %d", len(items))
+					}
+					data, found, err := s.store.GetUsageRecordJSON(t.Context(), items[0].RequestID)
+					if err != nil || !found {
+						t.Fatalf("persisted usage: %v", err)
+					}
+					var record usageRecord
+					if err := json.Unmarshal(data, &record); err != nil {
+						t.Fatal(err)
+					}
+					if derefInt(record.Usage.CacheHitTokens) != 70 || derefInt(record.Usage.InputTokens) != 100 || derefInt(record.Usage.TotalTokens) != 105 {
+						t.Fatalf("wrong persisted usage: %+v response=%s", record.Usage, rec.Body.String())
+					}
+					cacheField := "cached_tokens"
+					if source.platform == "anthropic" {
+						cacheField = "cache_read_input_tokens"
+					}
+					if source.platform == "gemini" {
+						cacheField = "cachedContentTokenCount"
+					}
+					if !strings.Contains(rec.Body.String(), fmt.Sprintf(`"%s":70`, cacheField)) {
+						t.Fatalf("downstream cache counter lost: %s", rec.Body.String())
+					}
+				})
 			}
 		}
 	}

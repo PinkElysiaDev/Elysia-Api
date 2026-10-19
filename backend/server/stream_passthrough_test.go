@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -263,19 +262,6 @@ func TestStreamCancellationUsage(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-type flushErrorResponseWriter struct{ *httptest.ResponseRecorder }
-
-func (w *flushErrorResponseWriter) FlushError() error { return io.ErrClosedPipe }
-
-func TestStreamFlushErrorThroughGinAndCapture(t *testing.T) {
-	c, _ := gin.CreateTestContext(&flushErrorResponseWriter{httptest.NewRecorder()})
-	installDownstreamCapture(c, &usageRecord{}, 0)
-	w := &ginStreamWriter{writer: c.Writer}
-	if err := w.Flush(); !errors.Is(err, io.ErrClosedPipe) {
-		t.Fatalf("lost underlying flush error: %v", err)
 	}
 }
 

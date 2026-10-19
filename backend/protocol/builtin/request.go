@@ -55,13 +55,9 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 	}
 	if adapter.name == Chat {
 		known = append(known, "max_tokens", "messages", "functions", "function_call", "stream_options")
-		if options.DefinitionRequires("conversion.client_output.v1") {
-			request.ClientOutput, err = p.ParseClientOutput(fields["stream_options"])
-			if err != nil {
-				return nil, err
-			}
-		} else if value, exists := fields["stream_options"]; exists {
-			request.Parameters["stream_options"] = value
+		request.ClientOutput, err = p.ParseClientOutput(fields["stream_options"])
+		if err != nil {
+			return nil, err
 		}
 		if value, exists := fields["max_tokens"]; exists {
 			if _, ambiguous := fields["max_completion_tokens"]; ambiguous {
@@ -197,31 +193,16 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 		}
 		request.Content = append(request.Content, nodes...)
 	}
-	tools := fields["tools"]
-	if functions := fields["functions"]; adapter.name == Chat && !functions.IsZero() {
-		if !tools.IsZero() {
-			return nil, fmt.Errorf("tools and legacy functions cannot both be present")
-		}
-		functions, err := readContextArray(functions, options)
-		if err != nil {
-			return nil, err
-		}
-		var entries []p.Value
-		for _, function := range functions {
-			entries = append(entries, object(p.Object{"type": p.StringValue("function"), "function": function}))
-		}
-		tools = array(entries)
+	if adapter.name == Chat && (!fields["functions"].IsZero() || !fields["function_call"].IsZero()) {
+		return nil, unsupported("/tools", "use tools and tool_choice for function calling")
 	}
-	request.Tools, err = adapter.decodeTools(tools, options)
+	request.Tools, err = adapter.decodeTools(fields["tools"], options)
 	if err != nil {
 		return nil, err
 	}
 	choice := fields["tool_choice"]
 	if adapter.name == Gemini {
 		choice = fields["toolConfig"]
-	}
-	if choice.IsZero() && adapter.name == Chat {
-		choice = fields["function_call"]
 	}
 	request.ToolChoice, err = adapter.decodeChoice(choice)
 	if err != nil {
@@ -461,12 +442,6 @@ func (adapter module) encodeParameters(fields p.Object, parameters p.Object) err
 		parameterOutput = p.Object{}
 	}
 	for semantic, value := range parameters {
-		// Legacy custom definitions and their Agent policies still use this
-		// semantic key. Cross-protocol removal requires an explicit policy rule.
-		if semantic == "stream_options" && adapter.name == Chat {
-			parameterOutput[semantic] = value
-			continue
-		}
 		if strings.HasPrefix(semantic, wireExtensionPrefix) {
 			continue
 		}

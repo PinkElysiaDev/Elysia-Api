@@ -64,7 +64,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 			report.Checks = append(report.Checks, check)
 			continue
 		}
-		if !equalValues(compiled.comparableWireFixture(sample.Direction, result.output), compiled.comparableWireFixture(sample.Direction, expected)) {
+		if !equalValues(result.output, expected) {
 			report.Issues = append(report.Issues, verificationIssue(compiled, sample.Direction, path+"/expected"+differencePath(expected, result.output), VerificationMismatch, "actual output differs from the expected fixture", sample.ID))
 			report.Checks = append(report.Checks, check)
 			continue

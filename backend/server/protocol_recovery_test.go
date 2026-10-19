@@ -78,7 +78,6 @@ func TestPresetRecoveryDefectsAndIdempotence(t *testing.T) {
 				t.Fatal(err)
 			}
 			db := recoveryDB(t, path)
-			seedUpgradeReceipt(t, filepath.Join(filepath.Dir(path), "test.sqlite3"))
 			beforeCounts := recoveryCounts(t, db)
 			beforeActive, _ := s.store.ListProtocolActivations(t.Context())
 			id := protocol.PresetAnthropicID
@@ -156,35 +155,6 @@ func TestPresetRecoveryDefectsAndIdempotence(t *testing.T) {
 	}
 }
 
-func TestPresetRecoveryIndependentOfLegacyMigration(t *testing.T) {
-	s, path := newProtocolAdminTestServer(t)
-	if err := s.store.UpsertCustomProtocol(t.Context(), storage.CustomProtocol{ID: "broken-custom", Config: "{bad"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.initializeProtocolRuntime(t.Context()); err == nil {
-		t.Fatal("legacy failure should still block generation")
-	}
-	assertRecoveredPresets(t, s)
-	if receipt, err := s.store.ProtocolUpgradeStatus(t.Context()); err != nil || receipt != nil {
-		t.Fatal("preset recovery fabricated legacy receipt", receipt, err)
-	}
-	if s.protocolRuntimeError() == nil {
-		t.Fatal("unfinished migration marked ready")
-	}
-	rows, _ := s.store.ListCustomProtocols(t.Context())
-	if len(rows) != 1 || rows[0].Config != "{bad" {
-		t.Fatal("custom data overwritten")
-	}
-	db := recoveryDB(t, path)
-	counts := recoveryCounts(t, db)
-	if err := s.initializeProtocolRuntime(t.Context()); err == nil {
-		t.Fatal("legacy failure disappeared")
-	}
-	if !reflect.DeepEqual(counts, recoveryCounts(t, db)) {
-		t.Fatal("retry repeated preset writes")
-	}
-}
-
 func TestPresetRecoveryFailureIsAtomic(t *testing.T) {
 	for _, failure := range []string{"verification", "transaction", "disk-write", "concurrent", "concurrent-report", "canceled", "missing-table"} {
 		t.Run(failure, func(t *testing.T) {
@@ -230,9 +200,6 @@ func TestPresetRecoveryFailureIsAtomic(t *testing.T) {
 			var count int
 			if err := db.QueryRow(`SELECT COUNT(*) FROM protocol_revisions`).Scan(&count); err != nil || count != 0 {
 				t.Fatal("partial revision", count, err)
-			}
-			if receipt, _ := s.store.ProtocolUpgradeStatus(t.Context()); receipt != nil {
-				t.Fatal("partial receipt")
 			}
 			if len(service.View().IDs()) != 0 || s.protocolRuntimeReady.Load() {
 				t.Fatal("failed recovery published runtime")

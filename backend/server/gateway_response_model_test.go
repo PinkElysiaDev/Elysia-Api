@@ -69,7 +69,7 @@ func TestCollectedChatModelRepairAndPreview(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			candidate := gatewayCandidate{compiled: upstream, conversion: conversion, operation: operation, model: config.ModelRef{Name: "configured-model", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
+			candidate := gatewayCandidate{compiled: upstream, conversion: conversion, operation: operation, model: config.ModelRef{ID: "configured-model", Name: "configured-model", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
 			record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: 1 << 20}}
 			before := calls
 			result, collectErr := s.collectProtocolGeneration(t.Context(), candidate, request, record, nil)

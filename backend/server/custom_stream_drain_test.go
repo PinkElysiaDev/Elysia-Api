@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/relay"
 	"github.com/gin-gonic/gin"
 )
 
@@ -109,19 +108,4 @@ func TestCustomProtocolStreamRetryableFailureRecordsUsageOnce(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError || attempts.Load() != 2 || len(logs) != 1 || logs[0].StatusCode != http.StatusInternalServerError {
 		t.Fatal(rec.Code, attempts.Load(), logs, rec.Body)
 	}
-}
-
-// An empty legacy nested mapping requires author repair. Import must not
-// activate an implicit inheritance rule or the retired stream executor.
-func TestLegacyEmptyStreamMappingRequiresExplicitRepair(t *testing.T) {
-	definition, issues := relay.ImportLegacyProtocol([]byte(`{"id":"designer-trap","request":{"path":"/chat","body":{"model":{"field":"model"}}},"response":{"textPath":"text","stream":{"response":{"body":{}}}}}`), protocol.CapabilitySet{protocol.TextCapability: true})
-	if definition == nil || protocol.IssuesError(issues) == nil {
-		t.Fatal("unverified stream import accepted", issues)
-	}
-	for _, issue := range issues {
-		if issue.Path == "/response/stream" {
-			return
-		}
-	}
-	t.Fatal("stream repair diagnostic missing", issues)
 }

@@ -125,7 +125,7 @@ func TestProtocolLoad(t *testing.T) {
 				}
 				server.invalidateRouteCache()
 			}
-			if err := server.store.ImportLegacyConfig(t.Context(), []storage.APIToken{{Name: "load", Token: "synthetic-local-load", Enabled: true, AllowedGroups: []string{"grp"}}}, nil, nil); err != nil {
+			if err := server.store.UpsertAPIToken(t.Context(), storage.APIToken{Name: "load", Token: "synthetic-local-load", Enabled: true, AllowedGroups: []string{"grp"}}); err != nil {
 				t.Fatal(err)
 			}
 			server.engine.POST("/v1/chat/completions", server.authMiddleware(), server.chatCompletions)

@@ -10,7 +10,7 @@ import (
 func refs(names ...string) []config.ModelRef {
 	out := make([]config.ModelRef, 0, len(names))
 	for _, n := range names {
-		out = append(out, config.ModelRef{Name: n})
+		out = append(out, config.ModelRef{ID: n, Name: n})
 	}
 	return out
 }

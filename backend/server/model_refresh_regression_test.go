@@ -15,7 +15,7 @@ import (
 
 func seedDiscoverySource(t *testing.T, s *Server, url string, keys []storage.SourceAPIKey, ids ...string) storage.ModelSource {
 	t.Helper()
-	src := storage.ModelSource{ID: "discovery", Name: "discovery", BaseURL: url, Platform: "openai", Enabled: true, AutoFetchModels: true, APIKeys: keys}
+	src := storage.ModelSource{ID: "discovery", Name: "discovery", BaseURL: url, Platform: "custom:openai-chat-completions", Enabled: true, AutoFetchModels: true, APIKeys: keys}
 	if err := s.store.UpsertSource(t.Context(), src); err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +249,7 @@ func TestDiscoveryRegressionOptionalMetadataDoesNotBlockIDs(t *testing.T) {
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
 			defer upstream.Close()
 			s := newKeyPermissionTestServer(t)
-			models, err := s.fetchModelsFromSource(t.Context(), storage.ModelSource{BaseURL: upstream.URL, Platform: "gemini"}, "a")
+			models, err := s.fetchModelsFromSource(t.Context(), storage.ModelSource{BaseURL: upstream.URL, Platform: "custom:google-generate-content"}, "a")
 			if err != nil || len(models) != 1 || models[0].ID != "alpha" {
 				t.Fatalf("model discovery with optional metadata: models=%v err=%v", models, err)
 			}
@@ -336,7 +336,7 @@ func TestDiscoveryRegressionOfficialGeminiPaginationKeepsIDs(t *testing.T) {
 	}))
 	defer upstream.Close()
 	s := newKeyPermissionTestServer(t)
-	models, err := s.fetchModelsFromSource(t.Context(), storage.ModelSource{Platform: "gemini", BaseURL: upstream.URL}, "synthetic-key")
+	models, err := s.fetchModelsFromSource(t.Context(), storage.ModelSource{Platform: "custom:google-generate-content", BaseURL: upstream.URL}, "synthetic-key")
 	if err != nil || calls != 2 || len(models) != 2 {
 		t.Fatalf("pagination: calls=%d models=%v err=%v", calls, models, err)
 	}

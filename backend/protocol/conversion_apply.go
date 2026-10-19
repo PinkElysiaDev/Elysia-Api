@@ -130,21 +130,6 @@ func (c *CompiledConversion) streamOptions(request *Request, route ConversionCon
 		}
 		delete(tool.Options, "eager_input_streaming")
 	}
-	if raw, exists := request.Parameters["stream_options"]; exists && !raw.IsZero() {
-		legacy, err := ParseClientOutput(raw)
-		if err != nil {
-			return err
-		}
-		if request.ClientOutput != nil && !request.ClientOutput.RawStreamOptions.IsZero() && !equalValues(request.ClientOutput.RawStreamOptions, raw) {
-			return streamIssue(InvalidInput, "/stream_options", "conflicting legacy and typed client output preferences")
-		}
-		if request.ClientOutput != nil {
-			legacy.CollectUsage = request.ClientOutput.CollectUsage
-			legacy.RawResponsesInclude = request.ClientOutput.RawResponsesInclude
-		}
-		request.ClientOutput = legacy
-		delete(request.Parameters, "stream_options")
-	}
 	output := request.ClientOutput
 	if output == nil {
 		if c.Policy.Usage == nil || !c.Policy.Usage.DefaultIncludeUsage {

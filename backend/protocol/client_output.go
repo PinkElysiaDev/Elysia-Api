@@ -12,7 +12,7 @@ func ValidateToolStreamOption(value Value, path string) error {
 }
 
 // ParseClientOutput separates client presentation preferences from generation
-// parameters. Legacy definitions opt in through the stream_options rule.
+// parameters at the current wire decoding boundary.
 func ParseClientOutput(raw Value) (*ClientOutput, error) {
 	if raw.IsZero() {
 		return nil, nil

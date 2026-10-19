@@ -82,7 +82,7 @@ func TestProtocolHistoryArchiveConflictPurgeAndRestart(t *testing.T) {
 	}
 }
 
-func TestProtocolHistoryPresetUpdatesBackfillAndRollback(t *testing.T) {
+func TestProtocolHistoryPresetUpdatesAndRollback(t *testing.T) {
 	store := newJobTestStore(t, filepath.Join(t.TempDir(), "presets.sqlite"))
 	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil, nil)
 	if err != nil {
@@ -153,19 +153,6 @@ func TestProtocolHistoryPresetUpdatesBackfillAndRollback(t *testing.T) {
 		if item.Reason != "preset_replaced" || item.Hash == hashes[2] {
 			t.Fatal(item)
 		}
-	}
-	// Simulate a database predating the archive index, then run migration twice.
-	if _, err := store.db.Exec(`DELETE FROM protocol_history`); err != nil {
-		t.Fatal(err)
-	}
-	for range 2 {
-		if err := store.migrateProtocolRevisions(t.Context()); err != nil {
-			t.Fatal(err)
-		}
-	}
-	items, err = store.ListProtocolHistory(t.Context())
-	if err != nil || len(items) != 2 {
-		t.Fatal(items, err)
 	}
 	// 预置只读不变量：preset_replaced 历史行不可物理删除（含存储层兜底）。
 	for _, item := range items {
@@ -240,7 +227,7 @@ func TestProtocolHistoryRejectsDeletionOfReferencedRevision(t *testing.T) {
 	if err := store.ArchiveProtocol(t.Context(), revision.ProtocolID, baseline, "", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SaveProtocolBinding(t.Context(), ProtocolBinding{Kind: "model", ModelID: "m", Binding: protocol.Binding{ProtocolID: revision.ProtocolID, RevisionHash: revision.Hash}}); err != nil {
+	if err := store.SaveProtocolBinding(t.Context(), ProtocolBinding{Kind: "model", SourceID: "source", ModelID: "m", Binding: protocol.Binding{ProtocolID: revision.ProtocolID, RevisionHash: revision.Hash}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.DeleteProtocolHistory(t.Context(), revision.ProtocolID+"~"+revision.Hash); !errors.Is(err, protocol.ErrRevisionConflict) {

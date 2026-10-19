@@ -1354,8 +1354,8 @@ func (e *Engine) loadConversation(ctx context.Context, session *Session) ([]conv
 			if content.IsIncomplete {
 				continue
 			}
-			if err := importAssistantContent(&content); err != nil {
-				return nil, nil, fmt.Errorf("assistant message #%d: %w", message.Seq, err)
+			if content.Content == nil {
+				return nil, nil, fmt.Errorf("assistant message #%d is missing semantic content", message.Seq)
 			}
 			add(message.Seq, assistantTurn(content))
 		case RoleToolResult:

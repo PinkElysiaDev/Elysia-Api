@@ -15,28 +15,26 @@ import (
 )
 
 const (
-	conversionStorageVersion         = 2026100801
 	continuationExpiryBatchSize      = 256
 	continuationCiphertextSizeFactor = 2
 	continuationEnvelopeAllowance    = 256
 )
 
-// Schema and completion marker share one transaction. Repeated starts only
-// read the marker, with no DDL, history scan or backfill.
-func (s *Store) migrateConversion(ctx context.Context) error {
-	var present int
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version=?", conversionStorageVersion).Scan(&present); err != nil {
+// Conversion tables and triggers are created together for a new current-schema DB.
+func (s *Store) createConversionTables(ctx context.Context) error {
+	var version int
+	if err := s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if present != 0 {
+	if version == currentSchemaVersion {
 		var count int
-		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('conversion_policy_drafts','conversion_policy_revisions','conversion_policy_activations','protocol_continuations','conversion_generation','continuation_totals')").Scan(&count); err != nil {
+		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('conversion_policy_drafts','conversion_policy_revisions','conversion_policy_activations','protocol_continuations','conversion_generation','continuation_totals','conversion_provider_evidence','conversion_policy_evidence')").Scan(&count); err != nil {
 			return err
 		}
-		if count != 6 {
-			return fmt.Errorf("conversion migration recorded complete but required tables are missing")
+		if count != 8 {
+			return fmt.Errorf("current database is missing required conversion tables")
 		}
-		return s.migrateConversionEvidence(ctx)
+		return nil
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -64,18 +62,27 @@ func (s *Store) migrateConversion(ctx context.Context) error {
 		`CREATE TRIGGER continuation_insert AFTER INSERT ON protocol_continuations BEGIN UPDATE continuation_totals SET bytes=bytes+NEW.bytes,records=records+1 WHERE id=1; END`,
 		`CREATE TRIGGER continuation_delete AFTER DELETE ON protocol_continuations BEGIN UPDATE continuation_totals SET bytes=bytes-OLD.bytes,records=records-1 WHERE id=1; END`,
 		`CREATE INDEX idx_continuation_session ON protocol_continuations(owner,session,scope_key,parent,created_at)`,
+		`CREATE TABLE conversion_provider_evidence (policy_hash TEXT NOT NULL, rule_id TEXT NOT NULL, scope_key TEXT NOT NULL, target_hash TEXT NOT NULL, compiler TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(policy_hash,rule_id,scope_key,target_hash,compiler))`,
+		`CREATE TABLE conversion_policy_evidence (sequence INTEGER PRIMARY KEY AUTOINCREMENT, policy_id TEXT NOT NULL, revision_hash TEXT NOT NULL, compiler TEXT NOT NULL, reports TEXT NOT NULL, created_at TEXT NOT NULL)`,
+		`CREATE INDEX idx_conversion_policy_evidence ON conversion_policy_evidence(policy_id,revision_hash,sequence)`,
+		`CREATE TRIGGER conversion_models_insert AFTER INSERT ON models BEGIN UPDATE conversion_generation SET generation=generation+1 WHERE id=1; END`,
+		`CREATE TRIGGER conversion_models_update AFTER UPDATE ON models BEGIN UPDATE conversion_generation SET generation=generation+1 WHERE id=1; END`,
+		`CREATE TRIGGER conversion_models_delete AFTER DELETE ON models BEGIN UPDATE conversion_generation SET generation=generation+1 WHERE id=1; END`,
+		`CREATE TRIGGER conversion_model_sources_insert AFTER INSERT ON model_sources BEGIN UPDATE conversion_generation SET generation=generation+1 WHERE id=1; END`,
+		`CREATE TRIGGER conversion_model_sources_update AFTER UPDATE ON model_sources BEGIN UPDATE conversion_generation SET generation=generation+1 WHERE id=1; END`,
+		`CREATE TRIGGER conversion_model_sources_delete AFTER DELETE ON model_sources BEGIN UPDATE conversion_generation SET generation=generation+1 WHERE id=1; END`,
+		`CREATE TRIGGER conversion_model_groups_insert AFTER INSERT ON model_groups BEGIN UPDATE conversion_generation SET generation=generation+1 WHERE id=1; END`,
+		`CREATE TRIGGER conversion_model_groups_update AFTER UPDATE ON model_groups BEGIN UPDATE conversion_generation SET generation=generation+1 WHERE id=1; END`,
+		`CREATE TRIGGER conversion_model_groups_delete AFTER DELETE ON model_groups BEGIN UPDATE conversion_generation SET generation=generation+1 WHERE id=1; END`,
 	} {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations(version,applied_at) VALUES(?,?)", conversionStorageVersion, nowString()); err != nil {
-		return err
-	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	return s.migrateConversionEvidence(ctx)
+	return nil
 }
 
 type ConversionPolicyRecord struct {
