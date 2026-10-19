@@ -245,9 +245,19 @@ func (c *CompiledConversion) applyNodeRule(ctx context.Context, phase Conversion
 		for i := range nodes {
 			n := &nodes[i]
 			at := fmt.Sprintf("%s/%d", base, i)
-			v, err := encodeSemanticWithin(n, c.phaseLimits(ctx, phase))
-			if err != nil {
+			// Unmatched nodes still have the same resource/encoding contract, but
+			// built-in actions do not need a JSON copy of every ancestor subtree.
+			if err := checkSemanticValue(n, c.phaseLimits(ctx, phase)); err != nil {
 				return err
+			}
+			var v Value
+			isBuiltin := rule.Action == "signatures" || rule.Action == "provider_signature" || rule.Action == "tool_result_text" || rule.Action == "tool_result_object"
+			if (rule.Match.NodeKind == "" || rule.Match.NodeKind == n.Kind) && (rule.Match.Present != nil || !isBuiltin) {
+				var err error
+				v, err = EncodeValue(n)
+				if err != nil {
+					return err
+				}
 			}
 			if (rule.Match.NodeKind == "" || rule.Match.NodeKind == n.Kind) && rule.Match.matches(route, v) {
 				if rule.Action == "signatures" {
@@ -255,12 +265,23 @@ func (c *CompiledConversion) applyNodeRule(ctx context.Context, phase Conversion
 					restored := n.Source != nil && n.Source.Protocol.Family == route.Target.Family && n.Source.Protocol.WireVersion == route.Target.WireVersion
 					if foreign && !restored {
 						kept := make([]Resource, 0, len(n.Resources))
+						var digest string
+						hasDigest := false
 						for j, res := range n.Resources {
 							if !IsContinuationResource(res) {
 								kept = append(kept, res)
 								continue
 							}
-							recoverable := route.Recoverable[ContinuationNodeDigest(*n)] || route.Recoverable[ContinuationResourceKey(res)]
+							recoverable := false
+							if len(route.Recoverable) > 0 {
+								recoverable = route.Recoverable[ContinuationResourceKey(res)]
+								if !recoverable {
+									if !hasDigest {
+										digest, hasDigest = ContinuationNodeDigest(*n), true
+									}
+									recoverable = route.Recoverable[digest]
+								}
+							}
 							reason := "foreign " + res.Kind + " has no target representation; recovery unavailable"
 							if recoverable {
 								reason = "foreign " + res.Kind + " preserved in authenticated continuation state"

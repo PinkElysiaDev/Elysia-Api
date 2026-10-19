@@ -110,3 +110,25 @@ func TestDefaultConversionDifferential(t *testing.T) {
 		t.Fatalf("default rule catalog changed: %d, want 31", len(catalog))
 	}
 }
+
+func TestSignatureRecoveryDifferential(t *testing.T) {
+	node := p.Node{Kind: p.ReasoningNode, Payload: p.StringValue("synthetic signed content"), Resources: []p.Resource{
+		{Kind: "signature", ID: p.StringValue("one")}, {Kind: "encrypted_content", ID: p.StringValue("two")},
+		{Kind: "file", ID: p.StringValue("keep")},
+	}}
+	input, err := p.EncodeValue(p.Request{SchemaVersion: 1, Content: []p.Node{node}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, recoverable := range []map[string]bool{nil, {}, {"missing": true}, {p.ContinuationNodeDigest(node): true}, {p.ContinuationResourceKey(node.Resources[0]): true}, {p.ContinuationResourceKey(node.Resources[0]): true, p.ContinuationResourceKey(node.Resources[1]): true}} {
+		for _, mode := range []string{"compatible", "strict"} {
+			t.Run(fmt.Sprintf("%s/%d", mode, index), func(t *testing.T) {
+				conversion, err := p.CompileConversion(p.ConversionPolicy{SchemaVersion: 1, ID: "signature-diff", Mode: mode, Rules: []p.ConversionRule{{ID: "request-signatures", Order: 1, Enabled: true, Phase: p.ConversionRequest, Action: "signatures"}}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				compareConversion(t, conversion, p.ConversionRequest, input, p.ConversionContext{Source: p.Identity{Family: "anthropic"}, Target: p.Identity{Family: "responses"}, Recoverable: recoverable})
+			})
+		}
+	}
+}
