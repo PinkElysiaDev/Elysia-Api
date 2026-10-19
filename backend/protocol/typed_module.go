@@ -36,6 +36,9 @@ func (compiled *Compiled) hasTypedRequestSchema(direction Direction) bool {
 	if mapping.module == nil || mapping.after != nil || mapping.initial != nil {
 		return false
 	}
+	if _, isPureRequestModule := mapping.module.(RequestBaselineModule); !isPureRequestModule {
+		return false
+	}
 	if direction == DecodeRequest {
 		return mapping.input != nil && mapping.output == nil
 	}
