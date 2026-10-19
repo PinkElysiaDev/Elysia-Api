@@ -11,10 +11,21 @@ import (
 )
 
 type Store struct {
-	db    *sql.DB
-	codec *secretCodec
-	path  string
+	*LogStore
+	db        *sql.DB
+	codec     *secretCodec
+	path      string
+	closeOnce sync.Once
+	closeErr  error
+}
 
+// LogStore owns only diagnostic and usage data, in a separate SQLite file.
+type LogStore struct {
+	db        *sql.DB
+	readDB    *sql.DB
+	path      string
+	closeOnce sync.Once
+	closeErr  error
 	// rollupReady：小时级预聚合已完成回填，聚合查询可走 rollup 路径。
 	rollupReady atomic.Bool
 	rollupMu    sync.Mutex // 序列化回填执行（防重复启动）
@@ -88,7 +99,7 @@ func (k SourceAPIKey) KeyAllowsModel(modelID string) bool {
 
 // SourceKeyStrategy 是源级 key 调度策略。
 //
-//	single（默认，兼容旧单 key）/ round-robin / random / priority（按列表顺序，失败先轮换 key）。
+//	single（默认）/ round-robin / random / priority（按列表顺序，失败先轮换 key）。
 type SourceKeyStrategy string
 
 const (
@@ -125,12 +136,9 @@ type Model struct {
 	LastCheckedAt    time.Time `json:"lastCheckedAt"`
 }
 
-// Identifier 返回调用 ID；ID 缺失时使用 Name 兼容历史模型。
+// Identifier 返回上游调用 ID，Name 只用于显示。
 func (m Model) Identifier() string {
-	if m.ID != "" {
-		return m.ID
-	}
-	return m.Name
+	return m.ID
 }
 
 type ModelGroup struct {

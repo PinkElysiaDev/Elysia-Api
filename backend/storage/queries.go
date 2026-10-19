@@ -33,15 +33,14 @@ func clampPage(limit, offset, def, max int) (int, int) {
 	return limit, offset
 }
 
-// withTx 是写事务的统一脚手架：fn 返回 nil 即提交、返回错误即回滚。
-// 取代此前并存的三种手写 Begin/defer-Rollback/Commit 风格。
-func (s *Store) withTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+// withTx commits on success and releases the transaction on errors or panics.
+func withTx(ctx context.Context, db *sql.DB, fn func(*sql.Tx) error) error {
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 	if err := fn(tx); err != nil {
-		_ = tx.Rollback()
 		return err
 	}
 	return tx.Commit()

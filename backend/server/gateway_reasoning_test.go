@@ -210,22 +210,23 @@ func TestGatewayThinkingCandidateIsolation(t *testing.T) {
 					service, _ := s.protocolService()
 					bindings, _ := s.store.ListProtocolBindings(t.Context())
 					if control == "output-limit" {
-						configured := 0
-						for i := range bindings {
-							binding := &bindings[i]
-							if binding.Kind != "model" || binding.Binding.ProtocolID != protocol.PresetGeminiID {
-								continue
-							}
-							cap := protocol.ResolveReasoningCapabilities("gemini", binding.ModelID)
+						models, err := s.store.ListModels(t.Context())
+						if err != nil {
+							t.Fatal(err)
+						}
+						upstream, _ := service.Pin(protocol.PresetGeminiID)
+						for _, model := range models {
+							binding := makeProtocolBinding(storage.BindingKey{Kind: "model", SourceID: model.SourceID, ModelID: model.ID}, upstream)
+							cap := protocol.ResolveReasoningCapabilities("gemini", model.ID)
 							cap.MaxOutputTokens = 16384
-							if binding.ModelID == a.ID {
+							if model.ID == a.ID {
 								cap.MaxOutputTokens = 4096
 							}
 							binding.Binding.Reasoning = &cap
-							configured++
+							bindings = append(bindings, binding)
 						}
-						if configured != 2 {
-							t.Fatalf("configured %d model profiles", configured)
+						if len(models) != 2 {
+							t.Fatalf("configured %d model profiles", len(models))
 						}
 					}
 					for i := range bindings {
@@ -637,11 +638,11 @@ func TestAgentThinkingUsesBoundModelCapabilities(t *testing.T) {
 				w.Header().Set("Content-Type", "text/event-stream")
 				io.WriteString(w, response)
 			})
-			source := storage.ModelSource{ID: "cs1", Name: "caller-src", BaseURL: upstream.URL, APIKey: "sk-caller-key", Platform: tc.platform, Enabled: true}
+			source := storage.ModelSource{ID: "cs1", Name: "caller-src", BaseURL: upstream.URL, APIKey: "sk-caller-key", Platform: fixturePlatform(tc.platform), Enabled: true}
 			if err := s.saveSource(t.Context(), source); err != nil {
 				t.Fatal(err)
 			}
-			model := storage.Model{ID: tc.model, SourceID: "cs1", Name: tc.model, BaseURL: upstream.URL, Platform: tc.platform, Type: "llm", Enabled: true, Available: true, ToolsCapable: true}
+			model := storage.Model{ID: tc.model, SourceID: "cs1", Name: tc.model, BaseURL: upstream.URL, Platform: source.Platform, Type: "llm", Enabled: true, Available: true, ToolsCapable: true}
 			if err := s.store.ReplaceSourceModels(t.Context(), source, []storage.Model{model}); err != nil {
 				t.Fatal(err)
 			}
@@ -670,11 +671,11 @@ func TestAgentThinkingDisabledRejectsUnsupportedModel(t *testing.T) {
 			calls := 0
 			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(500) }))
 			defer provider.Close()
-			source := storage.ModelSource{ID: "cs1", Name: "caller-src", BaseURL: provider.URL, Platform: tc.platform, Enabled: true}
+			source := storage.ModelSource{ID: "cs1", Name: "caller-src", BaseURL: provider.URL, Platform: fixturePlatform(tc.platform), Enabled: true}
 			if err := s.saveSource(t.Context(), source); err != nil {
 				t.Fatal(err)
 			}
-			model := storage.Model{ID: tc.model, SourceID: source.ID, Name: tc.model, BaseURL: provider.URL, Platform: tc.platform, Type: "llm", Enabled: true, Available: true, ToolsCapable: true}
+			model := storage.Model{ID: tc.model, SourceID: source.ID, Name: tc.model, BaseURL: provider.URL, Platform: source.Platform, Type: "llm", Enabled: true, Available: true, ToolsCapable: true}
 			if err := s.store.ReplaceSourceModels(t.Context(), source, []storage.Model{model}); err != nil {
 				t.Fatal(err)
 			}

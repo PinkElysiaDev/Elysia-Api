@@ -139,7 +139,7 @@ func (s *Server) runSourceRefresh(parent context.Context, sourceID string) (refr
 				level, message = "warn", "model source refresh failed"
 			}
 			s.sourceLastFetch[sourceID] = state
-			_ = s.store.InsertSystemLog(logCtx, level, message, map[string]any{
+			s.logSystemEvent(level, message, map[string]any{
 				"sourceId": sourceID, "count": summary.Count, "error": state.LastError,
 			})
 		}

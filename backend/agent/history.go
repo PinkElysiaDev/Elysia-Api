@@ -2,7 +2,6 @@ package agent
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/elysia-api/backend/protocol"
 )
@@ -28,30 +27,6 @@ func flattenConversation(conversation []conversationTurn) []protocol.Node {
 
 func assistantTurn(content AssistantContent) conversationTurn {
 	return conversationTurn{Role: RoleAssistant, Content: content.Content}
-}
-
-// importAssistantContent upgrades historical display-only rows. It cannot
-// reconstruct signatures or encrypted reasoning that old releases discarded.
-func importAssistantContent(content *AssistantContent) error {
-	if content.Content != nil {
-		return nil
-	}
-	var children []protocol.Node
-	if content.Reasoning != "" {
-		children = append(children, protocol.Node{Kind: protocol.ReasoningNode, Payload: protocol.StringValue(content.Reasoning)})
-	}
-	if content.Text != "" {
-		children = append(children, protocol.Node{Kind: protocol.TextNode, Payload: protocol.StringValue(content.Text)})
-	}
-	for _, call := range content.ToolCalls {
-		arguments, err := protocol.ParseValue(call.Arguments)
-		if err != nil || !arguments.IsObject() || call.ID == "" || call.Name == "" || (call.Type != "" && call.Type != "function") {
-			return fmt.Errorf("historical Agent call %q requires an identity, function name and JSON object arguments", call.ID)
-		}
-		children = append(children, protocol.Node{Kind: protocol.ToolCallNode, CallID: protocol.StringValue(call.ID), Name: protocol.StringValue(call.Name), Input: &protocol.ToolInput{Kind: protocol.JSONInput, Value: arguments}})
-	}
-	content.Content = []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue(RoleAssistant), Children: children}}
-	return nil
 }
 
 func toolResultTurn(info ToolResultInfo, limit int) conversationTurn {

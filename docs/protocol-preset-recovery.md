@@ -4,11 +4,11 @@
 
 ## 启动与提交顺序
 
-必要的存储结构准备成功后，先运行预置恢复，再继续旧配置／自定义协议迁移及绑定验证。初始化和管理员重载共用 `initializeProtocolRuntime`。历史备份不参与启动检查；旧库零预置时直接验证当前二进制内置定义。预置恢复不写入旧迁移完成回执；旧迁移仍失败时，管理员可以检查已恢复预置，模型调用仍受迁移就绪门槛限制。
+数据库必须是当前结构或新空库；历史结构在任何写入前被拒绝，不再执行旧配置或 v1 协议迁移。先恢复当前预置，再验证并发布当前注册表。初始化和管理员重载共用 `initializeProtocolRuntime`，不依赖迁移回执。
 
 轻量检查读取当前激活、目标内置修订、当前编译器的最新离线报告及草稿。已有有效证据直接复用。只有发现实际变更时才建立完整状态摘要并重新准备计划。纯新增使用明确的插入操作，不读取备份；覆盖已有数据时才创建或复用当前快照。预置补建不修改绑定，必要绑定更新在后续提交完成。正常重启不重新验证有效离线证据、不增加激活代数、报告或备份。
 
-旧备份记录及文件原样保留，不用新算法重算旧摘要。新快照采用独立的 `protocol_current_snapshot_v2` 记录，包含格式版本、文件 SHA-256、配置和证据基线；检查 SQLite 可读性与完整性，不验证旧协议功能。每次提交在事务内核对配置和证据基线，陈旧计划返回真实并发冲突。纯新增回执明确记录 `backupMode: not_required`。升级和回滚操作见[发布检查](protocol-release-readiness.md#升级与回滚)。
+当前快照使用 `protocol_current_snapshot_v2`，包含格式版本、文件 SHA-256、配置和证据基线。每次提交在事务内核对基线，陈旧计划返回真实并发冲突。纯新增回执明确记录 `backupMode: not_required`。快照用于当前编辑保护，不导入历史数据库或修补旧格式。
 
 ## 缺陷处理
 
@@ -20,7 +20,6 @@
 | 当前内置哈希下内容损坏 | 先保留原始字节和身份，再事务修复该预置行 |
 | 预置草稿损坏或仍跟随被替换版本 | 先归档再更新；已归档的相同原文不重复保存 |
 | 自定义协议验证失败 | 保留原定义、草稿和激活意图，隔离对应运行时故障 |
-| 旧备份缺失、损坏或格式过旧 | 保留旧记录，不阻断预置补建 |
 | 当前数据库读取、必要快照、磁盘写入或必要历史归档失败 | 返回具体错误，不当作空数据；当前事务不部分提交，之前独立完成的补建保留 |
 
 同哈希修复是单独受限的存储操作，只接受四个引擎 ID 下的精确内置定义及其正确哈希。普通不可变修订写入仍不覆盖已有行。显式默认值和省略默认值按编译后的身份／哈希判定，不将合法格式差异当成损坏。
@@ -29,7 +28,7 @@
 
 ## 运行时与诊断
 
-候选注册表发布前必须包含四个有效预置，发布后再检查。缺少任何一个时不设置核心就绪，失败不替换原快照，已经持有快照的请求可以继续使用。管理协议列表始终列出四个预置 ID，但页面分别显示“内置，尚未创建”“已创建，等待验证或加载”和“已加载”。现有接口的 `runtimeReady` 表示整体就绪；`startupFailure` 包含失败阶段、错误码和原因。已加载四项不代表后续必要迁移已经完成。
+候选注册表发布前必须包含四个有效预置，发布后再检查。缺少任何一个时不设置核心就绪，失败不替换原快照，已经持有快照的请求可以继续使用。管理协议列表始终列出四个预置 ID，但页面分别显示“内置，尚未创建”“已创建，等待验证或加载”和“已加载”。`runtimeReady` 表示当前注册表整体就绪；`startupFailure` 包含失败阶段、错误码和原因。
 
 历史页使用既有 `protocol_history` 表展示损坏原文。`preset_repaired` 记录不能套用修复后同哈希行的新报告作为原文验证证据。无法解析的记录通过 `rawDefinition`／`readError` 展示，不使整个历史列表失败。没有新增表、公开端点或页面。
 
@@ -38,19 +37,16 @@
 后端目录：
 
 ```powershell
-go test ./server ./storage -run 'TestPresetRecovery|TestRecoveredPresets|TestRuntimeRefresh|TestCurrentPresetRestartPreservesConversionEvidence|TestProtocolUpgradeStartupAndRestart' -count=1
+go test ./server ./storage -run 'TestPresetRecovery|TestRecoveredPresets|TestRuntimeRefresh|TestProductionStartup|TestProductionReload|TestSchemaVersion' -count=1
 go test ./... -count=1
 go vet ./...
 ```
 
-新增回归覆盖：空库、仅自定义协议、全部／单个缺激活、残留回执、损坏／过期／缺失报告、缺修订、同哈希损坏、错误内部 ID、损坏草稿、无效激活代数；模拟事务、磁盘写入、备份、验证、取消和两类并发冲突；旧迁移失败时独立恢复；四协议实际运行时到模拟上游的模型发现；取消绑定保持；失败候选不发布；原文修复回滚；手动契约及旧修订保留；十次数据库关闭重开无协议变更。
+回归覆盖当前空库初始化、预置缺陷修复、失败隔离、原子提交、并发冲突、报告新鲜度、绑定保留和重启幂等性。历史兼容与迁移专用测试已删除；不再使用历史二进制升级烟测验证当前后端。
 
 仓库根目录：
 
 ```powershell
 node scripts/test-protocol-e2e.mjs protocol-history.spec.ts protocol-v2.spec.ts
 node scripts/build-standalone.mjs
-node scripts/smoke-projection-upgrade.mjs <历史二进制> dist/standalone/elysia-api-windows-amd64.exe --preset-recovery
 ```
-
-`--preset-recovery` 只修改脚本自行创建的隔离测试库：历史二进制建立数据，新二进制升级后，停止服务再注入四种独立故障，检查恢复、原文归档、自定义数据保留，随后执行十次实际进程重启。Windows amd64 可在本机执行；其余五目标为交叉编译验证。

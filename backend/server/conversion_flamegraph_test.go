@@ -52,7 +52,7 @@ func configureFlameGateway(t *testing.T, server *Server) {
 	t.Helper()
 	server.config.SetEnablePprof(true)
 	server.config.SetPanelAccessToken(flameToken)
-	if err := server.store.ImportLegacyConfig(t.Context(), []storage.APIToken{{Name: "profile", Token: flameToken, Enabled: true, AllowedGroups: []string{"grp"}}}, nil, nil); err != nil {
+	if err := server.store.UpsertAPIToken(t.Context(), storage.APIToken{Name: "profile", Token: flameToken, Enabled: true, AllowedGroups: []string{"grp"}}); err != nil {
 		t.Fatal(err)
 	}
 	server.setupRoutes()

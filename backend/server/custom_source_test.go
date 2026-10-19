@@ -165,7 +165,7 @@ func TestSourceSaveIsolatesUnrelatedInvalidBindings(t *testing.T) {
 	if err := s.store.SaveProtocolBinding(t.Context(), quarantined); err != nil {
 		t.Fatal(err)
 	}
-	source := storage.ModelSource{ID: "healthy", Name: "Healthy", Platform: "openai", BaseURL: "https://example.invalid", Enabled: true}
+	source := storage.ModelSource{ID: "healthy", Name: "Healthy", Platform: "custom:openai-chat-completions", BaseURL: "https://example.invalid", Enabled: true}
 	if err := s.saveSource(t.Context(), source); err != nil {
 		t.Fatal("unrelated quarantined binding blocked source creation", err)
 	}

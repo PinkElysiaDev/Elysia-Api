@@ -44,10 +44,8 @@ func (binding ProtocolBinding) key() (string, error) {
 			return "", fmt.Errorf("source binding requires only sourceId")
 		}
 	case "model":
-		// Historical manually configured models have no source. The pair still
-		// identifies them unambiguously and uses the same lookup as routing.
-		if binding.ModelID == "" || binding.GroupID != "" {
-			return "", fmt.Errorf("model binding requires modelId and an optional sourceId")
+		if binding.SourceID == "" || binding.ModelID == "" || binding.GroupID != "" {
+			return "", fmt.Errorf("model binding requires sourceId and modelId")
 		}
 	case "group":
 		if binding.GroupID == "" || binding.SourceID != "" || binding.ModelID != "" {

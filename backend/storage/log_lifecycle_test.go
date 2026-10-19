@@ -17,7 +17,7 @@ func TestLogDatabaseUsesIncrementalReclamation(t *testing.T) {
 	}
 	defer s.Close()
 	var mode int
-	if err := s.db.QueryRow(`PRAGMA auto_vacuum`).Scan(&mode); err != nil {
+	if err := s.LogStore.db.QueryRow(`PRAGMA auto_vacuum`).Scan(&mode); err != nil {
 		t.Fatal(err)
 	}
 	if mode != 2 {
@@ -58,7 +58,7 @@ func TestLogContentBudgetAndAtomicAssets(t *testing.T) {
 		t.Fatal("invalid attachment accepted")
 	}
 	var bad int
-	if err := s.db.QueryRow(`SELECT count(*) FROM usage_records WHERE request_id='bad'`).Scan(&bad); err != nil || bad != 0 {
+	if err := s.LogStore.db.QueryRow(`SELECT count(*) FROM usage_records WHERE request_id='bad'`).Scan(&bad); err != nil || bad != 0 {
 		t.Fatal("failed transaction left row", err)
 	}
 	deleted, err := s.PruneLogBatch(ctx, false, LogPrunePolicy{MaxRecords: 2})
@@ -79,7 +79,7 @@ func TestLogContentBudgetAndAtomicAssets(t *testing.T) {
 		t.Fatalf("media quota: %+v %+v", deleted, after)
 	}
 	var tokens int
-	if err := s.db.QueryRow(`SELECT sum(total_tok) FROM usage_rollup_hour`).Scan(&tokens); err != nil || tokens != 30 {
+	if err := s.LogStore.db.QueryRow(`SELECT sum(total_tok) FROM usage_rollup_hour`).Scan(&tokens); err != nil || tokens != 30 {
 		t.Fatalf("retention changed rollup: %d %v", tokens, err)
 	}
 }
@@ -107,7 +107,7 @@ func TestLogBudgetExcludesBusinessDataAndSystemIsIndependent(t *testing.T) {
 		}
 	}
 	var expected int64
-	if err := s.db.QueryRow(`SELECT sum(length(CAST(created_at||level||message||fields_json AS BLOB))) FROM system_logs`).Scan(&expected); err != nil {
+	if err := s.LogStore.db.QueryRow(`SELECT sum(length(CAST(created_at||level||message||fields_json AS BLOB))) FROM system_logs`).Scan(&expected); err != nil {
 		t.Fatal(err)
 	}
 	stats, _ := s.LogContentStats(ctx)
@@ -135,12 +135,13 @@ func TestIncrementalReclamationAndBusyCheckpoint(t *testing.T) {
 	}
 	defer s.Close()
 	ctx := context.Background()
-	if _, err := s.db.Exec(`INSERT INTO usage_records(request_id,started_at,ended_at,record_json,content_bytes) VALUES('large','now','now',zeroblob(4*1024*1024),4194304)`); err != nil {
+	if _, err := s.LogStore.db.Exec(`INSERT INTO usage_records(request_id,started_at,ended_at,record_json,content_bytes) VALUES('large','now','now',zeroblob(4*1024*1024),4194304)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Checkpoint(ctx, true); err != nil {
 		t.Fatal(err)
 	}
+	p = s.LogStore.Path()
 	before, err := os.Stat(p)
 	if err != nil {
 		t.Fatal(err)
@@ -199,85 +200,5 @@ func TestIncrementalReclamationAndBusyCheckpoint(t *testing.T) {
 	cancel()
 	if err := s.ReclaimLogPages(canceled); err == nil {
 		t.Fatal("canceled maintenance executed")
-	}
-}
-
-func TestLogMigrationPreservesDataAndResumesAfterFailure(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "logs.sqlite3")
-	s, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx := context.Background()
-	body := []byte(`{"requestId":"old","incomingBody":{"content":"__ELYSIA_ASSET__:old/0123456789abcdef.png"}}`)
-	if err := s.SaveUsageRecordJSON(ctx, body, UsageLogItem{RequestID: "old", TotalTokens: 123}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	root := filepath.Join(filepath.Dir(path), "usage-assets")
-	if err := os.MkdirAll(filepath.Join(root, "old"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	original := []byte("original image bytes")
-	if err := os.WriteFile(filepath.Join(root, "old", "0123456789abcdef.png"), original, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.InsertSystemLog(ctx, "warn", "keep message", nil); err != nil {
-		t.Fatal(err)
-	}
-	// Downgrade the fixture to the old schema/format (no production migrations touched).
-	if _, err := s.db.Exec(`DELETE FROM schema_migrations WHERE version=2026092901;
- DROP TABLE usage_asset_refs; DROP TABLE usage_assets;
- CREATE TABLE usage_asset_refs(asset_file TEXT,request_id TEXT,PRIMARY KEY(asset_file,request_id));
- UPDATE usage_records SET content_bytes=0; UPDATE system_logs SET content_bytes=0; PRAGMA auto_vacuum=NONE; VACUUM`); err != nil {
-		t.Fatal(err)
-	}
-	s.Close()
-	// Force a deterministic migration failure before its final marker is committed.
-	backupRoot := root + ".pre-log-lifecycle"
-	if err := os.WriteFile(backupRoot, []byte("block directory"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if broken, err := Open(path); err == nil {
-		broken.Close()
-		t.Fatal("partial migration was accepted")
-	}
-	if err := os.Remove(backupRoot); err != nil {
-		t.Fatal(err)
-	}
-	s, err = Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	actual, found, err := s.GetUsageRecordJSON(ctx, "old")
-	if err != nil || !found || string(actual) != string(body) {
-		t.Fatalf("payload changed: found=%v err=%v", found, err)
-	}
-	stats, err := s.LogContentStats(ctx)
-	if err != nil || stats.UsageBytes != int64(len(body)) || stats.MediaBytes != int64(len(original)) || stats.SystemRecords != 1 {
-		t.Fatalf("migrated accounting %+v %v", stats, err)
-	}
-	var tokens int
-	if err := s.db.QueryRow(`SELECT sum(total_tok) FROM usage_rollup_hour`).Scan(&tokens); err != nil || tokens != 123 {
-		t.Fatalf("rollup=%d %v", tokens, err)
-	}
-	saved, err := os.ReadFile(filepath.Join(root, "0123456789abcdef.png"))
-	if err != nil || string(saved) != string(original) {
-		t.Fatal("media changed", err)
-	}
-	if _, err := os.Stat(path + ".pre-log-lifecycle"); err != nil {
-		t.Fatal("missing database backup", err)
-	}
-	if err := s.db.QueryRow(`PRAGMA integrity_check`).Scan(&actual); err != nil || string(actual) != "ok" {
-		t.Fatal("integrity check", string(actual), err)
-	}
-	s.Close()
-	s, err = Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	repeated, _ := s.LogContentStats(ctx)
-	if repeated != stats {
-		t.Fatalf("repeat migration changed data: %+v -> %+v", stats, repeated)
 	}
 }

@@ -206,10 +206,6 @@ func (s *Store) DeleteSource(ctx context.Context, id string) error {
 }
 
 func (s *Store) ReplaceSourceModels(ctx context.Context, source ModelSource, models []Model) error {
-	return s.replaceSourceModels(ctx, source, models, false)
-}
-
-func (s *Store) replaceSourceModels(ctx context.Context, source ModelSource, models []Model, isLegacyImport bool) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -224,28 +220,14 @@ func (s *Store) replaceSourceModels(ctx context.Context, source ModelSource, mod
 	}
 	defer stmt.Close()
 	checked := nowString()
-	// models.api_key 冗余列写入首个有效 key：热路径已改用源级 key 集合（方向6），
-	// 该列仅供健康检测等遗留消费方回退，避免空 key 探测必败。
+	// Persist the source credential snapshot alongside its models.
 	storedKey, err := s.codec.encrypt(firstEffectiveKey(source))
 	if err != nil {
 		return err
 	}
 	for _, model := range models {
 		model = normalizeModelDefaults(model)
-		modelKey := storedKey
-		if isLegacyImport {
-			modelKey, err = s.codec.encrypt(model.APIKey)
-			if err != nil {
-				return err
-			}
-		}
-		// platform 优先取模型自带值（legacy 配置导入的模型可逐模型声明平台，
-		// 如 responses/gemini），为空才回落源级平台（自动拉取的模型两者一致）。
-		platform := model.Platform
-		if strings.TrimSpace(platform) == "" {
-			platform = source.Platform
-		}
-		if _, err := stmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, model.BaseURL, modelKey, NormalizePlatform(platform), model.Type, model.MaxTokens, sqlBoolToInt(model.VisionCapable), sqlBoolToInt(model.ToolsCapable), sqlBoolToInt(model.StructuredOutput), model.ThinkingMode, sqlBoolToInt(true), sqlBoolToInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
+		if _, err := stmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, source.BaseURL, storedKey, source.Platform, model.Type, model.MaxTokens, sqlBoolToInt(model.VisionCapable), sqlBoolToInt(model.ToolsCapable), sqlBoolToInt(model.StructuredOutput), model.ThinkingMode, sqlBoolToInt(true), sqlBoolToInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
 			return err
 		}
 	}
@@ -253,7 +235,7 @@ func (s *Store) replaceSourceModels(ctx context.Context, source ModelSource, mod
 }
 
 // firstEffectiveKey 返回源的首个有效 key（多 key 时取第一个启用项，单 key 即 APIKey），
-// 供 models.api_key 冗余列的向后兼容写入。
+// 用于模型身份快照写入。
 func firstEffectiveKey(source ModelSource) string {
 	for _, key := range source.EffectiveKeys() {
 		return key.Value
@@ -264,15 +246,6 @@ func firstEffectiveKey(source ModelSource) string {
 // insertModelSQL 是 models 表 18 列的统一 INSERT(ReplaceSourceModels 与
 // MergeSourceModels 共用;列清单与 modelColumns 常量保持同步)。
 const insertModelSQL = `INSERT INTO models(id, source_id, name, source_name, base_url, api_key, platform, type, max_tokens, vision_capable, tools_capable, structured_output, thinking_mode, available, enabled, origin, capability_source, last_checked_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-
-// NormalizePlatform 把历史别名 openai-compatible 归一为 openai（server 侧
-// 同名逻辑已删除，统一从这里调用）。
-func NormalizePlatform(platform string) string {
-	if platform == "openai-compatible" {
-		return "openai"
-	}
-	return platform
-}
 
 // ModelMergeResult 汇总一次刷新合并的变更，供前端展示「新增 N / 移除 M」。
 type ModelMergeResult struct {
@@ -371,20 +344,15 @@ func (m *modelMerge) close() {
 
 // mergeOne 处理 incoming 中的一个模型，返回是否为新插入行：
 //   - manual 行保留能力与启停，只刷新源身份快照（base_url/api_key/platform
-//     随源保存刷新——产品面不存在逐模型覆盖地址/密钥的语义；源 BaseURL 为空
-//     的 legacy 导入源跳过，其 models 行携带逐模型地址，见 ImportLegacyConfig）；
+//     随源保存刷新，逐模型不覆盖源地址或密钥）；
 //   - 既有行按能力来源保留用户编辑（capability_source='manual' 的能力值不动），
 //     其余能力值随 incoming（目录回填/上游解析）更新；
 //   - 新行插入（新模型默认启用，available 初始为 true 由健康检测接管）。
 func (m *modelMerge) mergeOne(ctx context.Context, existing map[string]existingModelRow, model Model) (bool, error) {
 	prev, existed := existing[model.ID]
 	if existed && prev.origin == "manual" {
-		if m.source.BaseURL != "" {
-			if _, err := m.tx.ExecContext(ctx, `UPDATE models SET base_url = ?, api_key = ?, platform = ?, last_checked_at = ? WHERE id = ? AND source_id = ?`,
-				m.source.BaseURL, m.storedKey, NormalizePlatform(m.source.Platform), m.checked, model.ID, m.source.ID); err != nil {
-				return false, err
-			}
-		} else if _, err := m.tx.ExecContext(ctx, `UPDATE models SET last_checked_at = ? WHERE id = ? AND source_id = ?`, m.checked, model.ID, m.source.ID); err != nil {
+		if _, err := m.tx.ExecContext(ctx, `UPDATE models SET base_url = ?, api_key = ?, platform = ?, last_checked_at = ? WHERE id = ? AND source_id = ?`,
+			m.source.BaseURL, m.storedKey, m.source.Platform, m.checked, model.ID, m.source.ID); err != nil {
 			return false, err
 		}
 		return false, nil
@@ -399,12 +367,12 @@ func (m *modelMerge) mergeOne(ctx context.Context, existing map[string]existingM
 			thinking, maxTokens = prev.thinking, prev.maxTokens
 			capabilitySource = "manual"
 		}
-		if _, err := m.updateStmt.ExecContext(ctx, model.Name, m.source.Name, m.source.BaseURL, m.storedKey, NormalizePlatform(m.source.Platform), modelType, maxTokens, sqlBoolToInt(vision), sqlBoolToInt(tools), sqlBoolToInt(structured), thinking, capabilitySource, m.checked, model.ID, m.source.ID); err != nil {
+		if _, err := m.updateStmt.ExecContext(ctx, model.Name, m.source.Name, m.source.BaseURL, m.storedKey, m.source.Platform, modelType, maxTokens, sqlBoolToInt(vision), sqlBoolToInt(tools), sqlBoolToInt(structured), thinking, capabilitySource, m.checked, model.ID, m.source.ID); err != nil {
 			return false, err
 		}
 		return false, nil
 	}
-	if _, err := m.insertStmt.ExecContext(ctx, model.ID, m.source.ID, model.Name, m.source.Name, m.source.BaseURL, m.storedKey, NormalizePlatform(m.source.Platform), model.Type, model.MaxTokens, sqlBoolToInt(model.VisionCapable), sqlBoolToInt(model.ToolsCapable), sqlBoolToInt(model.StructuredOutput), model.ThinkingMode, sqlBoolToInt(true), sqlBoolToInt(model.Enabled), model.Origin, model.CapabilitySource, m.checked); err != nil {
+	if _, err := m.insertStmt.ExecContext(ctx, model.ID, m.source.ID, model.Name, m.source.Name, m.source.BaseURL, m.storedKey, m.source.Platform, model.Type, model.MaxTokens, sqlBoolToInt(model.VisionCapable), sqlBoolToInt(model.ToolsCapable), sqlBoolToInt(model.StructuredOutput), model.ThinkingMode, sqlBoolToInt(true), sqlBoolToInt(model.Enabled), model.Origin, model.CapabilitySource, m.checked); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -564,72 +532,4 @@ func normalizeModelDefaults(model Model) Model {
 	}
 	model.Enabled = true
 	return model
-}
-
-// appendBaseSuffix 给去尾斜杠后的 base 补单段版本后缀;base 为空或末段已与
-// 后缀相同(大小写不敏感)时原样返回。
-func appendBaseSuffix(base, suffix string) string {
-	trimmed := strings.TrimSpace(base)
-	if trimmed == "" {
-		return base
-	}
-	trimmed = strings.TrimRight(trimmed, "/")
-	segment := strings.Trim(suffix, "/")
-	if last := trimmed[strings.LastIndex(trimmed, "/")+1:]; strings.EqualFold(last, segment) {
-		return base
-	}
-	return trimmed + "/" + segment
-}
-
-// AppendSourceBaseURLSuffix 给平台匹配(大小写不敏感)的所有源补齐 base 的
-// 版本段后缀(base_url 与 fetch_base_url 分别判断,已以后缀结尾或为空则跳过),
-// base_url 变化时同步重写该源 models 行的 base_url 快照。幂等;返回补齐的
-// 源数。供预置协议 path 语义切换(端点路径相对化、base 需含版本段)时一次性
-// 归一存量源地址使用。
-func (s *Store) AppendSourceBaseURLSuffix(ctx context.Context, platform, suffix string) (int, error) {
-	suffix = strings.Trim(strings.TrimSpace(suffix), "/")
-	if suffix == "" || strings.Contains(suffix, "/") {
-		return 0, errors.New("suffix must be a single path segment")
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	rows, err := tx.QueryContext(ctx, `SELECT id, base_url, fetch_base_url FROM model_sources WHERE LOWER(platform) = ?`, strings.ToLower(strings.TrimSpace(platform)))
-	if err != nil {
-		return 0, err
-	}
-	type pendingUpdate struct {
-		id, base, fetch string
-	}
-	pending := []pendingUpdate{}
-	for rows.Next() {
-		var id, base, fetchBase string
-		if err := rows.Scan(&id, &base, &fetchBase); err != nil {
-			rows.Close()
-			return 0, err
-		}
-		nextBase := appendBaseSuffix(base, suffix)
-		nextFetch := appendBaseSuffix(fetchBase, suffix)
-		if nextBase == base && nextFetch == fetchBase {
-			continue
-		}
-		pending = append(pending, pendingUpdate{id: id, base: nextBase, fetch: nextFetch})
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return 0, err
-	}
-	rows.Close()
-	now := nowString()
-	for _, item := range pending {
-		if _, err := tx.ExecContext(ctx, `UPDATE model_sources SET base_url = ?, fetch_base_url = ?, updated_at = ? WHERE id = ?`, item.base, item.fetch, now, item.id); err != nil {
-			return 0, err
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE models SET base_url = ? WHERE source_id = ? AND base_url <> ?`, item.base, item.id, item.base); err != nil {
-			return 0, err
-		}
-	}
-	return len(pending), tx.Commit()
 }

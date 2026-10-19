@@ -9,16 +9,32 @@ import (
 	"time"
 )
 
-func (s *Store) SaveUsageRecordJSON(ctx context.Context, payload []byte, summary UsageLogItem, endedAt time.Time, assets ...UsageAsset) error {
-	if endedAt.IsZero() {
-		endedAt = time.Now()
-	}
-	if summary.StartedAt.IsZero() {
-		summary.StartedAt = endedAt
-	}
-	// 原始行与 rollup 增量同事务：任一失败整体回滚，两表保持一致。
-	return s.withTx(ctx, func(tx *sql.Tx) error {
-		return saveUsageRecordTx(ctx, tx, payload, summary, endedAt, assets)
+func (s *LogStore) SaveUsageRecordJSON(ctx context.Context, payload []byte, summary UsageLogItem, endedAt time.Time, assets ...UsageAsset) error {
+	return s.SaveUsageBatch(ctx, []UsageRecordInput{{payload, summary, endedAt, assets}})
+}
+
+type UsageRecordInput struct {
+	Payload []byte
+	Summary UsageLogItem
+	EndedAt time.Time
+	Assets  []UsageAsset
+}
+
+func (s *LogStore) SaveUsageBatch(ctx context.Context, records []UsageRecordInput) error {
+	// Raw records, attachment references and rollup increments commit together.
+	return withTx(ctx, s.db, func(tx *sql.Tx) error {
+		for _, record := range records {
+			if record.EndedAt.IsZero() {
+				record.EndedAt = time.Now()
+			}
+			if record.Summary.StartedAt.IsZero() {
+				record.Summary.StartedAt = record.EndedAt
+			}
+			if err := saveUsageRecordTx(ctx, tx, record.Payload, record.Summary, record.EndedAt, record.Assets); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 
@@ -43,11 +59,11 @@ func saveUsageRecordTx(ctx context.Context, tx *sql.Tx, payload []byte, summary 
 	return upsertUsageRollupTx(ctx, tx, summary)
 }
 
-func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageLogItem, error) {
+func (s *LogStore) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageLogItem, error) {
 	// logs 的 total 必须与 items 同口径(raw 行):rollup 计数包含已被 retention
 	// 清理的历史行,分页数会永久大于实际可翻页数(筛选旧窗口时 total>0 页空)。
 	// stats/trend 等聚合端点维持 rollup 口径不变。
-	total, err := usageCountRaw(ctx, s.db, q)
+	total, err := usageCountRaw(ctx, s.readDB, q)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -57,7 +73,7 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 	// 排序只用 started_ms：索引可直接反向游走取前 offset+limit 条窄索引项、
 	// 仅对页内行回表。若追加 started_at 次级排序，任何索引都无法满足复合顺序，
 	// SQLite 会退化为全窗口临时 B-tree 排序并逐行回表读取 record_json 胖行。
-	rows, err := s.db.QueryContext(ctx, `SELECT request_id, started_at, key_name, key_hash, requested_model_group, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, cache_creation_tokens, usage_report_mask, request_truncated, response_truncated FROM usage_records `+where+` ORDER BY started_ms DESC LIMIT ? OFFSET ?`, args...)
+	rows, err := s.readDB.QueryContext(ctx, `SELECT request_id, started_at, key_name, key_hash, requested_model_group, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, cache_creation_tokens, usage_report_mask, request_truncated, response_truncated FROM usage_records `+where+` ORDER BY started_ms DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -147,9 +163,9 @@ func usageWhere(q UsageQuery) (string, []any) {
 	return "WHERE " + clauses, args
 }
 
-func (s *Store) GetUsageRecordJSON(ctx context.Context, id string) ([]byte, bool, error) {
+func (s *LogStore) GetUsageRecordJSON(ctx context.Context, id string) ([]byte, bool, error) {
 	var payload string
-	err := s.db.QueryRowContext(ctx, `SELECT record_json FROM usage_records WHERE request_id = ?`, id).Scan(&payload)
+	err := s.readDB.QueryRowContext(ctx, `SELECT record_json FROM usage_records WHERE request_id = ?`, id).Scan(&payload)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
 	}
@@ -161,7 +177,7 @@ func (s *Store) GetUsageRecordJSON(ctx context.Context, id string) ([]byte, bool
 
 // ClearUsage 清空全部 usage 数据。rollup 表与状态一并重置（through=until=now、
 // ready 保持），后续记录继续由写入侧增量累积，无需重跑回填。
-func (s *Store) ClearUsage(ctx context.Context) error {
+func (s *LogStore) ClearUsage(ctx context.Context) error {
 	// 与后台回填互斥：ClearUsage 重置水位期间若回填循环在跑，其随后的
 	// setRollupStateInt 会把水位写回旧值（状态卫生问题，数据本身无损）。
 	// 抢不到锁立即失败（见 ErrRollupBackfillInProgress），绝不排队阻塞。
@@ -169,7 +185,7 @@ func (s *Store) ClearUsage(ctx context.Context) error {
 		return ErrRollupBackfillInProgress
 	}
 	defer s.rollupMu.Unlock()
-	if err := s.withTx(ctx, func(tx *sql.Tx) error {
+	if err := withTx(ctx, s.db, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM usage_records`); err != nil {
 			return err
 		}
@@ -192,9 +208,9 @@ func (s *Store) ClearUsage(ctx context.Context) error {
 }
 
 // CountUsageRecords 返回当前日志记录总数。
-func (s *Store) CountUsageRecords(ctx context.Context) (int64, error) {
+func (s *LogStore) CountUsageRecords(ctx context.Context) (int64, error) {
 	var count int64
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_records`).Scan(&count)
+	err := s.readDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_records`).Scan(&count)
 	return count, err
 }
 
@@ -204,9 +220,9 @@ func (st UsageDBStats) LogicalBytes() int64 {
 
 // UsageDBPageStats 单条语句原子读取 page_count/page_size/freelist_count：
 // 并发写入时保持一致快照；只用于物理占用和回收，不参与内容配额判断。
-func (s *Store) UsageDBPageStats(ctx context.Context) (UsageDBStats, error) {
+func (s *LogStore) UsageDBPageStats(ctx context.Context) (UsageDBStats, error) {
 	var st UsageDBStats
-	err := s.db.QueryRowContext(ctx,
+	err := s.readDB.QueryRowContext(ctx,
 		`SELECT (SELECT page_count FROM pragma_page_count),
 			(SELECT page_size FROM pragma_page_size),
 			(SELECT freelist_count FROM pragma_freelist_count)`).

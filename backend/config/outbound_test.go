@@ -24,24 +24,12 @@ func writeOutboundConfig(t *testing.T, content string) *Config {
 	return cfg
 }
 
-// 未配置 outbound 块 → 物化预置默认；旧 allowFakeIPOutbound=true → 默认去掉
-// fake-ip 两段（保持 TUN 部署既有行为）。
-func TestOutboundDefaultsAndLegacyMigration(t *testing.T) {
+func TestOutboundDefaults(t *testing.T) {
 	cfg := writeOutboundConfig(t, `{"panelAccessToken":"x"}`)
 	if !reflect.DeepEqual(cfg.Outbound.DeniedIPRanges, relay.DefaultDeniedIPRanges) {
 		t.Fatalf("expected default preset when outbound block absent")
 	}
 
-	cfg = writeOutboundConfig(t, `{"allowFakeIPOutbound":true}`)
-	expected := []string{}
-	for _, entry := range relay.DefaultDeniedIPRanges {
-		if entry != "198.18.0.0/15" && entry != "240.0.0.0/4" {
-			expected = append(expected, entry)
-		}
-	}
-	if !reflect.DeepEqual(cfg.Outbound.DeniedIPRanges, expected) {
-		t.Fatalf("expected legacy fake-ip switch to strip 198.18.0.0/15 and 240.0.0.0/4")
-	}
 }
 
 // 显式空列表是合法状态（全放行），不得被默认值覆盖；Save 后仍保持空数组。
@@ -67,10 +55,6 @@ func TestOutboundExplicitEmptyListRoundtrip(t *testing.T) {
 	}
 	if string(block) == "{}" || !containsJSONKey(block, "deniedIpRanges") {
 		t.Fatalf("deniedIpRanges must persist as [] (not omitted), got %s", block)
-	}
-	// 旧键清除。
-	if _, exists := doc["allowFakeIPOutbound"]; exists {
-		t.Fatalf("legacy allowFakeIPOutbound key should be dropped on save")
 	}
 }
 

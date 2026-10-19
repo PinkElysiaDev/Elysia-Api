@@ -17,8 +17,7 @@ import (
 	"github.com/elysia-api/backend/protocol"
 )
 
-// Historical protocol_engine_v2_backup records are audit artifacts. Startup
-// never opens them or interprets their unversioned fingerprints.
+// Snapshots protect current protocol edits; startup never imports historical backups.
 const protocolSnapshotSetting = "protocol_current_snapshot_v2"
 
 const snapshotCleanupTimeout = 5 * time.Second

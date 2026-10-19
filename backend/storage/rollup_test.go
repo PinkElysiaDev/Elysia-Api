@@ -268,51 +268,6 @@ func TestRollupBackfillEmptyDBSkipsEpochWalk(t *testing.T) {
 	}
 }
 
-// TestRollupGapSelfHeal：模拟中途降级运行旧版二进制（直接向 usage_records 插行、
-// 不更新 rollup），重升级后回填对账应发现缺口并自动补齐。
-func TestRollupGapSelfHeal(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "rollup-gap.sqlite3"))
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	defer store.Close()
-	ctx := context.Background()
-
-	now := time.Now()
-	seedRollupRecords(t, store, now, 150)
-	if err := store.RunRollupBackfill(ctx); err != nil {
-		t.Fatalf("backfill: %v", err)
-	}
-
-	// 模拟旧版二进制的写入：绕过 rollup 直插 raw 表。
-	for i := 0; i < 30; i++ {
-		started := now.Add(-time.Duration(20+i) * time.Hour)
-		if _, err := store.db.ExecContext(ctx, `INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, key_name, key_hash, group_name, model_name, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated, record_json)
-			VALUES(?, ?, ?, ?, 'ghost', '', 'prod', 'gpt-x', '', '', '', '', '', '', 0, 200, '', 100, 900, 11, 22, 33, 0, 0, 0, '{}')`,
-			"ghost-"+itoa(i), started.UTC().Format(time.RFC3339Nano), started.UnixMilli(), started.Add(time.Second).UTC().Format(time.RFC3339Nano)); err != nil {
-			t.Fatalf("ghost insert: %v", err)
-		}
-	}
-
-	if err := store.RunRollupBackfill(ctx); err != nil {
-		t.Fatalf("audit backfill: %v", err)
-	}
-	ghostTotals, err := store.UsageTotals(ctx, UsageQuery{ModelNames: []string{"gpt-x"}, GroupNames: []string{"prod"}})
-	if err != nil {
-		t.Fatalf("ghost totals: %v", err)
-	}
-	restore := forceRawPath(store)
-	ghostRaw, err := store.UsageTotals(ctx, UsageQuery{ModelNames: []string{"gpt-x"}, GroupNames: []string{"prod"}})
-	restore()
-	if err != nil {
-		t.Fatalf("ghost raw: %v", err)
-	}
-	assertTotalsEqual(t, ghostTotals, ghostRaw, "after self-heal")
-	if ghostTotals["requests"].(int) < 30 {
-		t.Fatalf("ghost records missing after self-heal: %+v", ghostTotals["requests"])
-	}
-}
-
 // TestRollupClearUsage：清空后 rollup 与状态一并重置，新记录恰好计数一次。
 func TestRollupClearUsage(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "rollup-clear.sqlite3"))

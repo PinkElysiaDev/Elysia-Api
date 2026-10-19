@@ -89,12 +89,7 @@ curl -N "http://127.0.0.1:8765/api/agent/sessions/<SESSION_ID>/messages" \
 
 ## MCP
 
-本实现接受两组交互方式：
-
-| 模式 | 契约 |
-| --- | --- |
-| Legacy | 接受版本 `2024-11-05`、`2025-03-26`、`2025-06-18`、`2025-11-25`；`initialize` → `notifications/initialized` → 工具调用；不签发会话 ID |
-| Modern | 版本 `2026-07-28`；每请求在 `params._meta` 传 `io.modelcontextprotocol/protocolVersion`；支持 `server/discover`，result 包含 `resultType` |
+只支持版本 `2026-07-28`，不支持旧版握手或缺省版本。每个请求必须在 `params._meta` 中传 `io.modelcontextprotocol/protocolVersion`；使用 `server/discover` 获取能力，结果包含 `resultType`。
 
 POST 的 `Accept` 必须包含 `application/json` 和 `text/event-stream`，否则 406。GET / DELETE 返回 405；不支持 JSON-RPC batch。浏览器 `Origin` 需同源或符合回环规则。版本头与 Modern body 不一致返回 `-32020`；提供 `Mcp-Method` / `Mcp-Name` 镜像头时必须与请求一致。Modern `tools/list` 还返回 `ttlMs` / `cacheScope`。
 
@@ -114,14 +109,14 @@ POST 的 `Accept` 必须包含 `application/json` 和 `text/event-stream`，否�
 }
 ```
 
-客户端格式不同时，迁移其中的 `url` 和 `headers`。MCP 只公布一个工具 `elysia_cli`，参数为必填字符串 `command`。Legacy 初始化后最小调用：
+客户端格式不同时，迁移其中的 `url` 和 `headers`，并确认客户端支持当前协议。MCP 只公布一个工具 `elysia_cli`，参数为必填字符串 `command`。最小调用：
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": 1,
   "method": "tools/call",
-  "params": {"name": "elysia_cli", "arguments": {"command": "elysia source ls"}}
+  "params": {"name": "elysia_cli", "arguments": {"command": "elysia source ls"}, "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}}
 }
 ```
 

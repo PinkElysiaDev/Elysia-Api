@@ -5,8 +5,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"path/filepath"
+	"regexp"
 )
+
+var assetNamePattern = regexp.MustCompile(`^[0-9a-f]{16}\.[a-z0-9]{1,5}$`)
 
 type UsageAsset struct {
 	File       string `json:"file"`
@@ -25,8 +27,8 @@ func saveUsageAssetTx(ctx context.Context, tx *sql.Tx, requestID string, a Usage
 	return err
 }
 
-func (s *Store) UsageAssets(ctx context.Context) ([]UsageAsset, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT asset_file,size_bytes,EXISTS(SELECT 1 FROM usage_asset_refs r WHERE r.asset_file=a.asset_file) FROM usage_assets a`)
+func (s *LogStore) UsageAssets(ctx context.Context) ([]UsageAsset, error) {
+	rows, err := s.readDB.QueryContext(ctx, `SELECT asset_file,size_bytes,EXISTS(SELECT 1 FROM usage_asset_refs r WHERE r.asset_file=a.asset_file) FROM usage_assets a`)
 	if err != nil {
 		return nil, err
 	}
@@ -44,14 +46,14 @@ func (s *Store) UsageAssets(ctx context.Context) ([]UsageAsset, error) {
 
 // The caller holds the same file-lifecycle lock as the writer until deletion and
 // ForgetUnusedAsset have both completed. A failed unlink leaves metadata for retry.
-func (s *Store) ForgetUnusedAsset(ctx context.Context, file string) error {
+func (s *LogStore) ForgetUnusedAsset(ctx context.Context, file string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM usage_assets WHERE asset_file=? AND NOT EXISTS(SELECT 1 FROM usage_asset_refs r WHERE r.asset_file=usage_assets.asset_file)`, file)
 	return err
 }
 
-func (s *Store) UsageAssetsRoot() string { return filepath.Join(filepath.Dir(s.path), "usage-assets") }
-func (s *Store) HasUsageAsset(ctx context.Context, requestID, file string) (bool, error) {
+func (s *LogStore) UsageAssetsRoot() string { return s.path + "-assets" }
+func (s *LogStore) HasUsageAsset(ctx context.Context, requestID, file string) (bool, error) {
 	var exists bool
-	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM usage_asset_refs WHERE request_id=? AND asset_file=?)`, requestID, file).Scan(&exists)
+	err := s.readDB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM usage_asset_refs WHERE request_id=? AND asset_file=?)`, requestID, file).Scan(&exists)
 	return exists, err
 }

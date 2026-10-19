@@ -84,7 +84,7 @@ func TestGatewayNewAPIErrorKeepsHTTPFailure(t *testing.T) {
 		}
 	}
 	conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(upstream, upstream))
-	candidate := gatewayCandidate{compiled: upstream, conversion: conversion, operation: operation, model: config.ModelRef{Name: "m", BaseURL: provider.URL}, binding: p.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []p.Transport{p.HTTPJSON}}}
+	candidate := gatewayCandidate{compiled: upstream, conversion: conversion, operation: operation, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: p.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []p.Transport{p.HTTPJSON}}}
 	request, err := upstream.DecodeRequest(t.Context(), []byte(`{"model":"m","input":"synthetic"}`), p.EvaluationContext{})
 	if err != nil {
 		t.Fatal(err)

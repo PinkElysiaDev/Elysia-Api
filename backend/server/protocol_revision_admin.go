@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 
@@ -36,7 +35,7 @@ func (s *Server) protocolService() (*protocol.Service, error) {
 		if err := service.Reload(context.Background()); err != nil {
 			// The management service remains available to repair invalid/stale
 			// revisions; no invalid definition is published to the registry.
-			log.Printf("protocol registry requires repair: %v", err)
+			s.logEvent("error").Err(err).Msg("protocol registry requires repair")
 		}
 	})
 	return s.protocolServiceInst, s.protocolServiceErr
@@ -63,9 +62,6 @@ func (s *Server) setupProtocolRevisionRoutes(admin *gin.RouterGroup) {
 	group.DELETE("/history/:archiveId", s.adminDeleteProtocolHistory)
 	group.GET("/:id/references", s.adminProtocolReferences)
 	group.POST("/:id/archive", s.adminArchiveProtocol)
-	group.GET("/migration", s.adminProtocolUpgradeStatus)
-	group.POST("/migration/preview", s.adminProtocolUpgradePreview)
-	group.POST("/migration/apply", s.adminProtocolUpgradeApply)
 	group.POST("/validate", s.adminProtocolValidate)
 	group.POST("/preview", s.adminProtocolPreviewV2)
 	group.POST("/test", s.adminProtocolProbe)

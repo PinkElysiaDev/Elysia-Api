@@ -9,8 +9,7 @@ import (
 )
 
 // RefreshProtocolRuntime atomically refreshes active definitions and bindings
-// after an engine upgrade. It preserves the original migration receipt and
-// snapshots only changes that overwrite existing data.
+// after an engine update, taking snapshots only when existing data is overwritten.
 func (store *Store) RefreshProtocolRuntime(ctx context.Context, plan ProtocolUpgrade) error {
 	if err := validateProtocolUpgrade(plan); err != nil {
 		return err

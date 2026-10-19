@@ -39,7 +39,7 @@ func TestPerKeyModelDiscovery(t *testing.T) {
 	s := newKeyPermissionTestServer(t)
 	ctx := context.Background()
 	source := storage.ModelSource{
-		ID: "src1", Name: "Relay", BaseURL: srv.URL, Platform: "openai",
+		ID: "src1", Name: "Relay", BaseURL: srv.URL, Platform: "custom:openai-chat-completions",
 		Enabled: true, AutoFetchModels: true,
 		APIKeys: []storage.SourceAPIKey{{Value: "key-a"}, {Value: "key-b"}},
 	}
@@ -105,7 +105,7 @@ func TestPerKeyPartialFailureKeepsStalePermissions(t *testing.T) {
 	s := newKeyPermissionTestServer(t)
 	ctx := context.Background()
 	source := storage.ModelSource{
-		ID: "src1", Name: "Relay", BaseURL: srv.URL, Platform: "openai",
+		ID: "src1", Name: "Relay", BaseURL: srv.URL, Platform: "custom:openai-chat-completions",
 		Enabled: true, AutoFetchModels: true,
 		APIKeys: []storage.SourceAPIKey{
 			{Value: "good"},
@@ -154,7 +154,7 @@ func TestAssemblyFiltersModelsByPerKeyPermissions(t *testing.T) {
 	s := newKeyPermissionTestServer(t)
 	ctx := context.Background()
 	source := storage.ModelSource{
-		ID: "src1", Name: "Relay", BaseURL: srv.URL, Platform: "openai",
+		ID: "src1", Name: "Relay", BaseURL: srv.URL, Platform: "custom:openai-chat-completions",
 		Enabled: true, AutoFetchModels: true, KeyStrategy: storage.KeyStrategyRoundRobin,
 		APIKeys: []storage.SourceAPIKey{{Value: "key-a"}, {Value: "key-b"}},
 	}
@@ -217,7 +217,7 @@ func TestSingleKeyRefreshUsesDiscoveredModels(t *testing.T) {
 	s := newKeyPermissionTestServer(t)
 	ctx := context.Background()
 	source := storage.ModelSource{
-		ID: "src1", Name: "Shrunk", BaseURL: srv.URL, Platform: "openai",
+		ID: "src1", Name: "Shrunk", BaseURL: srv.URL, Platform: "custom:openai-chat-completions",
 		Enabled: true, AutoFetchModels: true,
 		APIKeys: []storage.SourceAPIKey{
 			// 仅剩一个启用 key，但带着多 key 时代的旧拉取集（不含 m2-new）。

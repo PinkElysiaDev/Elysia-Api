@@ -19,8 +19,8 @@ type CheckpointResult struct {
 }
 
 // Checkpoint must inspect SQLite's result row: SQLITE_OK can still mean BUSY.
-// Do not wait five seconds behind a long reader on the shared single connection.
-func (s *Store) Checkpoint(ctx context.Context, truncate bool) (CheckpointResult, error) {
+// Maintenance yields instead of waiting behind a reader that pins the WAL.
+func (s *LogStore) Checkpoint(ctx context.Context, truncate bool) (CheckpointResult, error) {
 	var result CheckpointResult
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
@@ -41,7 +41,7 @@ func (s *Store) Checkpoint(ctx context.Context, truncate bool) (CheckpointResult
 	return result, err
 }
 
-func (s *Store) ReclaimLogPages(ctx context.Context) error {
+func (s *LogStore) ReclaimLogPages(ctx context.Context) error {
 	rows, err := s.db.QueryContext(ctx, fmt.Sprintf("PRAGMA incremental_vacuum(%d)", logReclaimPageLimit))
 	if err != nil {
 		return err
@@ -64,9 +64,9 @@ type LogContentStats struct {
 	MediaFiles        int64 `json:"mediaFiles"`
 }
 
-func (s *Store) LogContentStats(ctx context.Context) (LogContentStats, error) {
+func (s *LogStore) LogContentStats(ctx context.Context) (LogContentStats, error) {
 	var st LogContentStats
-	err := s.db.QueryRowContext(ctx, `SELECT
+	err := s.readDB.QueryRowContext(ctx, `SELECT
 		(SELECT coalesce(sum(content_bytes),0) FROM usage_records), (SELECT count(*) FROM usage_records),
 		(SELECT coalesce(sum(content_bytes),0) FROM system_logs), (SELECT count(*) FROM system_logs),
 		(SELECT coalesce(sum(size_bytes),0) FROM usage_assets a WHERE EXISTS(SELECT 1 FROM usage_asset_refs r WHERE r.asset_file=a.asset_file)),
@@ -86,7 +86,7 @@ type LogStorageStats struct {
 	FreePages         int64 `json:"freePages"`
 }
 
-func (s *Store) LogStorageStats(ctx context.Context) (LogStorageStats, error) {
+func (s *LogStore) LogStorageStats(ctx context.Context) (LogStorageStats, error) {
 	var st LogStorageStats
 	pages, err := s.UsageDBPageStats(ctx)
 	if err != nil {
@@ -106,7 +106,7 @@ func (s *Store) LogStorageStats(ctx context.Context) (LogStorageStats, error) {
 	}
 	// Aggregate dbstat reports storage without reading JSON into Go. This is a
 	// status query, never a quota decision or a per-request query.
-	err = s.db.QueryRowContext(ctx, `SELECT
+	err = s.readDB.QueryRowContext(ctx, `SELECT
 		coalesce(sum(CASE WHEN name IN ('usage_rollup_hour','usage_rollup_state') THEN pgsize ELSE 0 END),0),
 		coalesce(sum(CASE WHEN name IN (SELECT name FROM sqlite_schema WHERE type='index') THEN pgsize ELSE 0 END),0),
 		coalesce(sum(pgsize-payload),0) FROM dbstat WHERE aggregate=TRUE`).Scan(&st.RollupBytes, &st.IndexBytes, &st.PageOverheadBytes)
@@ -128,7 +128,7 @@ func (d LogDeleted) Total() int { return d.ByTTL + d.ByRecords + d.ByContent }
 
 // PruneLogBatch makes decisions from exact content bytes, not database pages or
 // an estimated average. Each transaction deletes at most 500 oldest records.
-func (s *Store) PruneLogBatch(ctx context.Context, system bool, policy LogPrunePolicy) (LogDeleted, error) {
+func (s *LogStore) PruneLogBatch(ctx context.Context, system bool, policy LogPrunePolicy) (LogDeleted, error) {
 	var deleted LogDeleted
 	if policy.CutoffMS == 0 && policy.MaxRecords == 0 && policy.MaxContentBytes == 0 {
 		return deleted, nil
@@ -137,7 +137,7 @@ func (s *Store) PruneLogBatch(ctx context.Context, system bool, policy LogPruneP
 	if system {
 		table, key, stamp = "system_logs", "id", "created_ms"
 	}
-	err := s.withTx(ctx, func(tx *sql.Tx) error {
+	err := withTx(ctx, s.db, func(tx *sql.Tx) error {
 		var count, bytes int64
 		if err := tx.QueryRowContext(ctx, `SELECT count(*),coalesce(sum(content_bytes),0) FROM `+table).Scan(&count, &bytes); err != nil {
 			return err

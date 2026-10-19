@@ -185,17 +185,24 @@ func TestRetentionOrphanSweepRespectsGrace(t *testing.T) {
 	}
 }
 
-func TestRetentionDisabledByDefault(t *testing.T) {
-	s, cfg := newRetentionTestServer(t)
-	now := time.Now()
-	seedUsageRecord(t, s.store, "ancient", now.Add(-365*24*time.Hour), 64)
-	// 不设置任何清理策略：runOnce 只跑孤儿清扫，记录必须原样保留。
-	_ = cfg
-	r := newUsageRetention(s)
-	r.runOnce()
-	ids := usageIDs(t, s.store)
-	if !ids["ancient"] {
-		t.Fatal("cleanup is disabled by default; records must accumulate untouched")
+func TestRetentionDefaultAndExplicitUnlimited(t *testing.T) {
+	for _, unlimited := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unlimited=%t", unlimited), func(t *testing.T) {
+			s, cfg := newRetentionTestServer(t)
+			now := time.Now()
+			seedUsageRecord(t, s.store, "ancient", now.Add(-365*24*time.Hour), 64)
+			seedUsageRecord(t, s.store, "recent", now, 64)
+			if unlimited {
+				zero := 0
+				cfg.SetUsageLogConfig(config.UsageLogConfig{RetentionDays: &zero, MaxContentMB: &zero, MaxRecords: &zero})
+			}
+			r := newUsageRetention(s)
+			r.runOnce()
+			ids := usageIDs(t, s.store)
+			if ids["ancient"] != unlimited || !ids["recent"] {
+				t.Fatalf("default retention must expire old records; explicit zero must preserve them: unlimited=%t ids=%v", unlimited, ids)
+			}
+		})
 	}
 }
 
@@ -230,7 +237,7 @@ func TestTriggerAsyncActuallyRuns(t *testing.T) {
 }
 
 func registerTestAsset(store *storage.Store, id, file string, size int64) error {
-	return store.ExecRaw(context.Background(), fmt.Sprintf("INSERT INTO usage_assets(asset_file,size_bytes) VALUES('%s',%d) ON CONFLICT DO NOTHING; INSERT INTO usage_asset_refs(asset_file,request_id) VALUES('%s','%s')", file, size, file, id))
+	return store.LogStore.ExecRaw(context.Background(), fmt.Sprintf("INSERT INTO usage_assets(asset_file,size_bytes) VALUES('%s',%d) ON CONFLICT DO NOTHING; INSERT INTO usage_asset_refs(asset_file,request_id) VALUES('%s','%s')", file, size, file, id))
 }
 
 func TestMaintenanceReclaimsDeletedPagesWithoutRetention(t *testing.T) {
@@ -327,7 +334,7 @@ func TestMaintenanceLongReaderWaitsThenRecovers(t *testing.T) {
 	s, cfg := newRetentionTestServer(t)
 	ctx := context.Background()
 	seedUsageRecord(t, s.store, "old", time.Now().Add(-48*time.Hour), 1024*1024)
-	reader, err := sql.Open("sqlite", filepath.Join(filepath.Dir(s.usageAssetsRoot()), "retention.sqlite3"))
+	reader, err := sql.Open("sqlite", s.store.LogStore.Path())
 	if err != nil {
 		t.Fatal(err)
 	}

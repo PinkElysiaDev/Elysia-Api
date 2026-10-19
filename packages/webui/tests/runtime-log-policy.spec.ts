@@ -9,6 +9,7 @@ const logConfig: UsageLogRuntimeConfig = {
 async function mockSettings(page: Page, usageLog: UsageLogRuntimeConfig = logConfig) {
   const current: RuntimeConfig = {
     host: '127.0.0.1', port: 8765, panelAccessToken: '', databasePath: '/tmp/elysia.db', defaultDatabasePath: '/tmp/elysia.db',
+    logDatabasePath: '/tmp/elysia-logs.db', logFormat: 'auto', logPersistLevel: 'info',
     outbound: { deniedIpRanges: ['127.0.0.0/8'], proxyUrl: '' },
     logLevel: 'info', httpTimeout: 120, enablePprof: false, usageLog, systemLog: { retentionDays: 0, maxRecords: 0, maxContentMB: 0 },
   }
@@ -233,7 +234,7 @@ test('details collapse independently; immediate actions do not submit drafts', a
   })
   await page.goto('/#/runtime')
   await page.getByRole('tab', { name: '日志与存储' }).click()
-  await expect(page.getByText('数据库文件', { exact: true })).toBeVisible()
+  await expect(page.getByText('日志数据库文件', { exact: true })).toBeVisible()
   await expect(page.getByText('WAL 文件', { exact: true })).not.toBeVisible()
   await page.getByText('查看占用明细', { exact: true }).click()
   await expect(page.getByText('WAL 文件', { exact: true })).toBeVisible()

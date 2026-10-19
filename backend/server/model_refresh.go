@@ -180,7 +180,7 @@ func inferredModel(source storage.ModelSource, id, name string) storage.Model {
 	return storage.Model{
 		ID:           id,
 		Name:         name,
-		Platform:     storage.NormalizePlatform(source.Platform),
+		Platform:     source.Platform,
 		Type:         inferModelType(id),
 		MaxTokens:    0,
 		ThinkingMode: "both",

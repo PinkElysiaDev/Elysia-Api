@@ -51,7 +51,7 @@ func (s *Server) probeProtocol(ctx context.Context, input protocolProbeInput) (*
 		}
 	}
 	endpoint := sha256.Sum256([]byte(input.BaseURL))
-	ref := config.ModelRef{Name: model, BaseURL: input.BaseURL, APIKey: input.APIKey, SourceID: hex.EncodeToString(endpoint[:])}
+	ref := config.ModelRef{ID: model, Name: model, BaseURL: input.BaseURL, APIKey: input.APIKey, SourceID: hex.EncodeToString(endpoint[:])}
 	scope := modelProtocolScope(ref)
 	result := &protocolProbeResult{}
 	var runErr error

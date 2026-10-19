@@ -89,12 +89,7 @@ Streams send a keepalive every 15 seconds. Closing REST HTTP does not stop the t
 
 ## MCP
 
-This implementation accepts two interaction modes:
-
-| Mode | Contract |
-| --- | --- |
-| Legacy | Versions `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25`; `initialize` → `notifications/initialized` → tool calls; no session ID issued |
-| Modern | Version `2026-07-28`; include `io.modelcontextprotocol/protocolVersion` in `params._meta` on each request; supports `server/discover` and `resultType` |
+Only version `2026-07-28` is supported. There is no legacy handshake or implicit version. Each request must include `io.modelcontextprotocol/protocolVersion` in `params._meta`; use `server/discover` for capabilities. Results include `resultType`.
 
 POST `Accept` must contain both `application/json` and `text/event-stream`, otherwise 406. GET / DELETE return 405; JSON-RPC batches are unsupported. Browser `Origin` must be same-origin or satisfy loopback rules. A version-header mismatch with a Modern body returns `-32020`; supplied `Mcp-Method` / `Mcp-Name` headers must match the request. Modern `tools/list` also returns `ttlMs` / `cacheScope`.
 
@@ -114,14 +109,14 @@ Use “Copy MCP JSON” beside an enabled remote key in runtime configuration. I
 }
 ```
 
-For clients with a different format, transfer the `url` and `headers`. MCP publishes only `elysia_cli`, with a required string `command`. Minimal call after Legacy initialization:
+For clients with a different format, transfer the `url` and `headers` and ensure current protocol support. MCP publishes only `elysia_cli`, with a required string `command`. Minimal call:
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": 1,
   "method": "tools/call",
-  "params": {"name": "elysia_cli", "arguments": {"command": "elysia source ls"}}
+  "params": {"name": "elysia_cli", "arguments": {"command": "elysia source ls"}, "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}}
 }
 ```
 

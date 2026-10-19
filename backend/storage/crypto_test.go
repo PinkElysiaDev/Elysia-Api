@@ -48,15 +48,10 @@ func TestSecretCodecPlaintextModePassThrough(t *testing.T) {
 	}
 }
 
-func TestSecretCodecBackwardCompatPlaintextRead(t *testing.T) {
+func TestEncryptedCodecRejectsPlaintext(t *testing.T) {
 	codec, _ := newSecretCodec([]byte("key"))
-	// 启用加密后读到历史明文（无前缀），应原样返回以兼容迁移。
-	dec, err := codec.decrypt("legacy-plaintext")
-	if err != nil {
-		t.Fatalf("decrypt legacy plaintext: %v", err)
-	}
-	if dec != "legacy-plaintext" {
-		t.Fatalf("legacy plaintext should pass through, got %q", dec)
+	if value, err := codec.decrypt("unencoded-secret"); err == nil || value != "" {
+		t.Fatalf("encrypted storage accepted plaintext: %q, %v", value, err)
 	}
 }
 
@@ -119,31 +114,5 @@ func TestStoreEncryptsSecretsAtRest(t *testing.T) {
 	}
 	if _, ok, _ := findAPIToken(store, ctx, "wrong-token"); ok {
 		t.Fatalf("FindAPIToken should not match wrong token")
-	}
-}
-
-// 迁移兼容：旧库（明文 key 打开），换成带 key 打开后仍能读出历史明文。
-func TestStoreReadsLegacyPlaintextAfterEnablingKey(t *testing.T) {
-	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "legacy.sqlite3")
-
-	plain, err := Open(dbPath) // 无 key：明文写入
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := plain.UpsertAPIToken(ctx, APIToken{Name: "k1", Token: "legacy-tok", Enabled: true}); err != nil {
-		t.Fatalf("UpsertAPIToken: %v", err)
-	}
-	plain.Close()
-
-	// 重新用 key 打开，应能读出历史明文。
-	enc, err := OpenWithKey(dbPath, []byte("new-key"))
-	if err != nil {
-		t.Fatalf("OpenWithKey: %v", err)
-	}
-	defer enc.Close()
-	found, ok, err := findAPIToken(enc, ctx, "legacy-tok")
-	if err != nil || !ok || found.Name != "k1" {
-		t.Fatalf("legacy plaintext read failed: ok=%v err=%v", ok, err)
 	}
 }

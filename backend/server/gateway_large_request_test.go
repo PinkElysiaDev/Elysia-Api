@@ -176,7 +176,7 @@ func TestLargeRequestPreviewAndCollector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidate := gatewayCandidate{compiled: compiled, conversion: conversion, operation: operation, model: config.ModelRef{Name: "m", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
+	candidate := gatewayCandidate{compiled: compiled, conversion: conversion, operation: operation, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
 	request, err := compiled.DecodeRequest(t.Context(), body, protocol.EvaluationContext{})
 	if err != nil {
 		t.Fatal(err)

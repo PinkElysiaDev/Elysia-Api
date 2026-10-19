@@ -108,7 +108,7 @@ func setupGatewayModel(t *testing.T, server *Server, upstream *protocol.Compiled
 	if err := server.store.UpsertGroup(t.Context(), storage.ModelGroup{ID: "gateway-group", Name: "group", Enabled: true, Models: []string{"gateway-source:upstream-model"}, Strategy: "sequential"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := server.store.ImportLegacyConfig(t.Context(), []storage.APIToken{{Name: "gateway-test", Token: "gateway-test-token", Enabled: true, AllowedGroups: []string{"group"}}}, nil, nil); err != nil {
+	if err := server.store.UpsertAPIToken(t.Context(), storage.APIToken{Name: "gateway-test", Token: "gateway-test-token", Enabled: true, AllowedGroups: []string{"group"}}); err != nil {
 		t.Fatal(err)
 	}
 	transports := []protocol.Transport{}

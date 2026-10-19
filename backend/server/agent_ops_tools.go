@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
@@ -542,7 +543,7 @@ func (t *createSourceTool) Name() string      { return agentToolCreateSource }
 func (t *createSourceTool) CLIEffect() string { return CLIEffectWrite }
 
 func (t *createSourceTool) Description() string {
-	return "创建模型源（受服务端权限与业务策略控制）。platform 支持 openai/anthropic/gemini/responses 或 custom:<协议ID>；" +
+	return "创建模型源（受服务端权限与业务策略控制）。platform 使用 custom:<协议ID>，默认 custom:openai-chat-completions；" +
 		"autoFetchModels=true 标记为自动源（模型列表仍需创建后运行 elysia source refresh 拉取，或用户在页面手动拉取）；" +
 		"手动模型用手动列表或 manualModels。创建前先向用户确认 baseUrl、平台与密钥来源。"
 }
@@ -569,7 +570,7 @@ func (t *createSourceTool) Execute(ctx context.Context, tctx CLIContext, args js
 	}
 	platform := strings.TrimSpace(params.Platform)
 	if platform == "" {
-		platform = "openai"
+		platform = "custom:" + protocol.PresetChatCompletionsID
 	}
 	item := storage.ModelSource{
 		ID: slugID(params.Name), Name: strings.TrimSpace(params.Name),

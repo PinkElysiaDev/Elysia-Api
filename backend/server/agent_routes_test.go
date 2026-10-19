@@ -445,9 +445,9 @@ func TestAgentDenyApprovalAdapts(t *testing.T) {
 		t.Fatalf("deny must continue turn: %s", rec.Body.String())
 	}
 	// 协议没有被保存
-	rows, _ := s.store.ListCustomProtocols(t.Context())
+	rows, _ := s.store.ListProtocolDrafts(t.Context())
 	for _, row := range rows {
-		if strings.Contains(row.Config, "agent-proto") {
+		if strings.Contains(string(row.Definition.Bytes()), "agent-proto") {
 			t.Fatalf("protocol must not be saved")
 		}
 	}
@@ -564,13 +564,13 @@ func TestAgentThinkingEffortWhitelist(t *testing.T) {
 // seedAgentModel 注入指向伪模型上游的模型行（沿用 s1/fake-model 命名）。
 func seedAgentModel(t *testing.T, s *Server, baseURL string) {
 	t.Helper()
-	source := storage.ModelSource{ID: "s1", Name: "src", BaseURL: baseURL, Platform: "openai", Enabled: true}
+	source := storage.ModelSource{ID: "s1", Name: "src", BaseURL: baseURL, Platform: "custom:openai-chat-completions", Enabled: true}
 	if err := s.saveSource(t.Context(), source); err != nil {
 		t.Fatalf("UpsertSource: %v", err)
 	}
 	models := []storage.Model{{
 		ID: "fake-model", SourceID: "s1", Name: "fake-model", BaseURL: baseURL,
-		APIKey: "", Platform: "openai", Type: "llm", Enabled: true, Available: true, ToolsCapable: true, VisionCapable: true,
+		APIKey: "", Platform: source.Platform, Type: "llm", Enabled: true, Available: true, ToolsCapable: true, VisionCapable: true,
 	}}
 	if err := s.store.ReplaceSourceModels(t.Context(), source, models); err != nil {
 		t.Fatalf("ReplaceSourceModels: %v", err)

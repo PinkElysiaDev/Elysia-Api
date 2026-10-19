@@ -3,8 +3,6 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/storage"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/storage"
 )
 
 func TestGatewayAuditToolRoundTrips(t *testing.T)         { auditGatewayToolRoundTrips(t, false, false) }
@@ -173,7 +174,11 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) 
 							request.Parameters["store"] = mustProtocolValue(t, "false")
 						}
 						if id == protocol.PresetChatCompletionsID && stream {
-							request.Parameters["stream_options"] = mustProtocolValue(t, `{"include_usage":true}`)
+							output, err := protocol.ParseClientOutput(mustProtocolValue(t, `{"include_usage":true}`))
+							if err != nil {
+								t.Fatal(err)
+							}
+							request.ClientOutput = output
 						}
 						perform := func() *protocol.Response {
 							body, e := ingress.EncodeRequest(t.Context(), request, protocol.EvaluationContext{})

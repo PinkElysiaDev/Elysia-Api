@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -10,7 +9,7 @@ import (
 	"time"
 )
 
-func TestOpenEnablesWALAndMigrates(t *testing.T) {
+func TestOpenEnablesWALAndInitializesCurrentSchema(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "elysia.sqlite3"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
@@ -33,8 +32,8 @@ func TestOpenEnablesWALAndMigrates(t *testing.T) {
 		t.Fatalf("busy_timeout = %d, want 5000", busyTimeout)
 	}
 
-	if err := store.migrate(context.Background()); err != nil {
-		t.Fatalf("second migrate error = %v", err)
+	if err := store.createSchema(context.Background()); err != nil {
+		t.Fatalf("repeated schema initialization error = %v", err)
 	}
 }
 
@@ -46,7 +45,7 @@ func TestSourceModelsGroupsTokensAndUsage(t *testing.T) {
 	}
 	defer store.Close()
 
-	source := ModelSource{ID: "src", Name: "Source", BaseURL: "https://example.test/v1", APIKey: "secret", Platform: "openai-compatible", Enabled: true, AutoFetchModels: false}
+	source := ModelSource{ID: "src", Name: "Source", BaseURL: "https://example.test/v1", APIKey: "secret", Platform: "custom:openai-chat-completions", Enabled: true, AutoFetchModels: false}
 	if err := store.UpsertSource(ctx, source); err != nil {
 		t.Fatalf("UpsertSource() error = %v", err)
 	}
@@ -57,11 +56,11 @@ func TestSourceModelsGroupsTokensAndUsage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListModels() error = %v", err)
 	}
-	if len(models) != 1 || models[0].Platform != "openai" || models[0].APIKey != "secret" {
+	if len(models) != 1 || models[0].Platform != source.Platform || models[0].APIKey != "secret" {
 		t.Fatalf("models = %#v", models)
 	}
 
-	group := ModelGroup{ID: "group", Name: "Group", Enabled: true, Models: []string{"model-a"}, Strategy: "round-robin", Type: "llm"}
+	group := ModelGroup{ID: "group", Name: "Group", Enabled: true, Models: []string{"src:model-a"}, Strategy: "round-robin", Type: "llm"}
 	if err := store.UpsertGroup(ctx, group); err != nil {
 		t.Fatalf("UpsertGroup() error = %v", err)
 	}
@@ -229,42 +228,6 @@ func TestUpsertGroupRenameDedupesWithinToken(t *testing.T) {
 	}
 }
 
-// 向后兼容：裸 id（无 source_id）的旧组数据，ListGroups 仍返回裸 id。
-func TestModelGroupLegacyBareIDCompat(t *testing.T) {
-	ctx := context.Background()
-	store, err := Open(filepath.Join(t.TempDir(), "legacy-group.sqlite3"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	defer store.Close()
-	src := ModelSource{ID: "s1", Name: "S1", BaseURL: "https://s.example.com", Platform: "openai", Enabled: true}
-	if err := store.UpsertSource(ctx, src); err != nil {
-		t.Fatalf("UpsertSource: %v", err)
-	}
-	if err := store.ReplaceSourceModels(ctx, src, []Model{{ID: "m1", Name: "M1", Type: "llm", Available: true}}); err != nil {
-		t.Fatalf("ReplaceSourceModels: %v", err)
-	}
-	// 用裸 id 建组（模拟旧数据路径）。
-	if err := store.UpsertGroup(ctx, ModelGroup{ID: "g1", Name: "grp", Enabled: true, Strategy: "round-robin", Models: []string{"m1"}}); err != nil {
-		t.Fatalf("UpsertGroup: %v", err)
-	}
-	groups, err := store.ListGroups(ctx)
-	if err != nil {
-		t.Fatalf("ListGroups: %v", err)
-	}
-	// findModel 能解析出 source_id，所以会返回复合键；这验证裸 id 输入被正确解析。
-	for _, g := range groups {
-		if g.ID == "g1" {
-			if len(g.Models) != 1 {
-				t.Fatalf("expected 1 model, got %v", g.Models)
-			}
-			if g.Models[0] != "s1:m1" {
-				t.Fatalf("bare id should resolve to composite s1:m1, got %q", g.Models[0])
-			}
-		}
-	}
-}
-
 // 回归 #1：同一 token 值不允许配置到两个不同 name 上。
 func TestUpsertAPITokenRejectsDuplicateValue(t *testing.T) {
 	ctx := context.Background()
@@ -288,49 +251,6 @@ func TestUpsertAPITokenRejectsDuplicateValue(t *testing.T) {
 	// 不同 name 用不同 token 值 → 应允许。
 	if err := store.UpsertAPIToken(ctx, APIToken{Name: "k3", Token: "sk-other-value", Enabled: true}); err != nil {
 		t.Fatalf("distinct token value should succeed: %v", err)
-	}
-}
-
-// 回归：token_hash 回填迁移在单连接池上不得死锁（曾因 rows 未关时做 Exec 死锁，
-// 导致后端启动崩溃 "all goroutines are asleep - deadlock!"）。
-// 覆盖"已有 token 数据需回填"的真实崩溃场景：建库写 token → 关闭 →
-// 手动清空 token_hash 模拟旧数据 → 重新 Open 触发回填，应在超时内完成。
-func TestTokenHashBackfillNoDeadlock(t *testing.T) {
-	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "backfill.sqlite3")
-
-	store, err := OpenWithKey(dbPath, []byte("master-key"))
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	if err := store.UpsertAPIToken(ctx, APIToken{Name: "k1", Token: "sk-a", Enabled: true}); err != nil {
-		t.Fatalf("upsert k1: %v", err)
-	}
-	if err := store.UpsertAPIToken(ctx, APIToken{Name: "k2", Token: "sk-b", Enabled: true}); err != nil {
-		t.Fatalf("upsert k2: %v", err)
-	}
-	// 模拟旧数据：清空 token_hash，使重新 Open 时触发回填迁移。
-	if _, err := store.db.ExecContext(ctx, `UPDATE api_tokens SET token_hash = ''`); err != nil {
-		t.Fatalf("reset hash: %v", err)
-	}
-	store.Close()
-
-	// 重新打开应在超时内完成（回填不死锁）。
-	done := make(chan error, 1)
-	go func() {
-		s2, err := OpenWithKey(dbPath, []byte("master-key"))
-		if s2 != nil {
-			s2.Close()
-		}
-		done <- err
-	}()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("reopen with backfill failed: %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("token_hash backfill deadlocked on reopen")
 	}
 }
 
@@ -378,7 +298,7 @@ func TestDeleteGroupRemovesTokenReferencesAndKeepsUsage(t *testing.T) {
 	}
 
 	var usageCount int
-	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_records WHERE group_name = ?`, "group-a").Scan(&usageCount); err != nil {
+	if err := store.LogStore.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_records WHERE group_name = ?`, "group-a").Scan(&usageCount); err != nil {
 		t.Fatalf("count usage: %v", err)
 	}
 	if usageCount != 1 {
@@ -532,92 +452,19 @@ func TestUsageQueryWholeSecondBoundary(t *testing.T) {
 // 回归：旧 schema 库（无 started_ms / cache_hit_tokens 列）打开时自动迁移并
 // 回填 started_ms；整秒、毫秒、9 位小数三种 RFC3339Nano 时间戳都必须转换正确。
 // 迁移分批提交，崩溃后重开只补 started_ms=0 的剩余行（幂等）。
-func TestMigrateBackfillsStartedMsOnLegacyDatabase(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "legacy.sqlite3")
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatalf("open legacy db: %v", err)
-	}
-	// 模拟旧版本 schema：比当前建表语句少了 cache_hit_tokens 与 started_ms 两列。
-	if _, err := db.Exec(`CREATE TABLE usage_records (request_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, ended_at TEXT NOT NULL, key_name TEXT NOT NULL DEFAULT '', key_hash TEXT NOT NULL DEFAULT '', group_name TEXT NOT NULL DEFAULT '', model_name TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL DEFAULT '', source_format TEXT NOT NULL DEFAULT '', target_format TEXT NOT NULL DEFAULT '', relay_mode TEXT NOT NULL DEFAULT '', stream INTEGER NOT NULL DEFAULT 0, status_code INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', first_byte_ms INTEGER NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, total_tokens INTEGER NOT NULL DEFAULT 0, request_truncated INTEGER NOT NULL DEFAULT 0, response_truncated INTEGER NOT NULL DEFAULT 0, record_json TEXT NOT NULL)`); err != nil {
-		t.Fatalf("create legacy table: %v", err)
-	}
-	rows := []struct{ id, startedAt string }{
-		{"legacy-exact", "2026-08-01T00:00:00Z"},
-		{"legacy-millis", "2026-08-01T00:00:00.123Z"},
-		{"legacy-nanos", "2026-08-01T00:00:00.123456789Z"},
-	}
-	for _, r := range rows {
-		if _, err := db.Exec(`INSERT INTO usage_records(request_id, started_at, ended_at, record_json) VALUES(?, ?, ?, '{}')`, r.id, r.startedAt, r.startedAt); err != nil {
-			t.Fatalf("insert legacy row %s: %v", r.id, err)
-		}
-	}
-	if err := db.Close(); err != nil {
-		t.Fatalf("close legacy db: %v", err)
-	}
-
-	store, err := Open(path)
-	if err != nil {
-		t.Fatalf("Open() should migrate legacy schema, got %v", err)
-	}
-	defer store.Close()
-
-	for _, r := range rows {
-		expected, perr := time.Parse(time.RFC3339Nano, r.startedAt)
-		if perr != nil {
-			t.Fatalf("parse %q: %v", r.startedAt, perr)
-		}
-		var got int64
-		if err := store.db.QueryRow(`SELECT started_ms FROM usage_records WHERE request_id = ?`, r.id).Scan(&got); err != nil {
-			t.Fatalf("query started_ms for %s: %v", r.id, err)
-		}
-		if got != expected.UnixMilli() {
-			t.Fatalf("%s: started_ms = %d, want %d", r.id, got, expected.UnixMilli())
-		}
-	}
-
-	// 幂等：重开后没有待回填行，started_ms 值保持不变。
-	if err := store.Close(); err != nil {
-		t.Fatalf("close for reopen: %v", err)
-	}
-	store2, err := Open(path)
-	if err != nil {
-		t.Fatalf("reopen: %v", err)
-	}
-	defer store2.Close()
-	var pending int
-	if err := store2.db.QueryRow(`SELECT COUNT(*) FROM usage_records WHERE started_ms = 0`).Scan(&pending); err != nil {
-		t.Fatalf("count pending: %v", err)
-	}
-	if pending != 0 {
-		t.Fatalf("reopen must find nothing to backfill, got %d rows", pending)
-	}
-}
-
 func TestUnparseableStartedAtExcludedFromRollupIncludedInAllTimeTotals(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bad-ts.sqlite3")
-	db, err := sql.Open("sqlite", path)
+	store, err := Open(path)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	if _, err := db.Exec(`CREATE TABLE usage_records (request_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, ended_at TEXT NOT NULL, key_name TEXT NOT NULL DEFAULT '', key_hash TEXT NOT NULL DEFAULT '', group_name TEXT NOT NULL DEFAULT '', model_name TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL DEFAULT '', source_format TEXT NOT NULL DEFAULT '', target_format TEXT NOT NULL DEFAULT '', relay_mode TEXT NOT NULL DEFAULT '', stream INTEGER NOT NULL DEFAULT 0, status_code INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', first_byte_ms INTEGER NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, total_tokens INTEGER NOT NULL DEFAULT 0, request_truncated INTEGER NOT NULL DEFAULT 0, response_truncated INTEGER NOT NULL DEFAULT 0, record_json TEXT NOT NULL)`); err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	if _, err := db.Exec(`INSERT INTO usage_records(request_id, started_at, ended_at, record_json, status_code, total_tokens) VALUES('bad','not-a-time','not-a-time','{}', 200, 3)`); err != nil {
+	if _, err := store.LogStore.db.Exec(`INSERT INTO usage_records(request_id, started_at, ended_at, record_json, status_code, total_tokens) VALUES('bad','not-a-time','not-a-time','{}', 200, 3)`); err != nil {
 		t.Fatalf("insert: %v", err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatalf("close: %v", err)
-	}
-
-	store, err := Open(path)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
 	}
 	defer store.Close()
 
 	var startedMs int64
-	if err := store.db.QueryRow(`SELECT started_ms FROM usage_records WHERE request_id='bad'`).Scan(&startedMs); err != nil {
+	if err := store.LogStore.db.QueryRow(`SELECT started_ms FROM usage_records WHERE request_id='bad'`).Scan(&startedMs); err != nil {
 		t.Fatalf("query: %v", err)
 	}
 	if startedMs != 0 {
@@ -628,7 +475,7 @@ func TestUnparseableStartedAtExcludedFromRollupIncludedInAllTimeTotals(t *testin
 		t.Fatalf("backfill: %v", err)
 	}
 	var rollupCnt int
-	if err := store.db.QueryRow(`SELECT COALESCE(SUM(cnt),0) FROM usage_rollup_hour`).Scan(&rollupCnt); err != nil {
+	if err := store.LogStore.db.QueryRow(`SELECT COALESCE(SUM(cnt),0) FROM usage_rollup_hour`).Scan(&rollupCnt); err != nil {
 		t.Fatalf("rollup count: %v", err)
 	}
 	if rollupCnt != 0 {
@@ -651,11 +498,11 @@ func TestUnparseableStartedAtExcludedFromRollupIncludedInAllTimeTotals(t *testin
 		t.Fatalf("daily must not invent a 1970 bucket for orphan timestamps, got %#v", daily)
 	}
 
-	if _, err := store.db.Exec(`UPDATE usage_records SET key_hash = 'kh', source_id = 'src' WHERE request_id = 'bad'`); err != nil {
+	if _, err := store.LogStore.db.Exec(`UPDATE usage_records SET key_hash = 'kh', source_id = 'src' WHERE request_id = 'bad'`); err != nil {
 		t.Fatalf("tag orphan: %v", err)
 	}
 	validAt := time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC)
-	if _, err := store.db.Exec(`INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, model_name, key_hash, source_id, status_code, total_tokens, record_json) VALUES('ok', ?, ?, ?, 'm', 'kh', 'src', 200, 4, '{}')`,
+	if _, err := store.LogStore.db.Exec(`INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, model_name, key_hash, source_id, status_code, total_tokens, record_json) VALUES('ok', ?, ?, ?, 'm', 'kh', 'src', 200, 4, '{}')`,
 		validAt.Format(time.RFC3339Nano), validAt.UnixMilli(), validAt.Add(time.Second).Format(time.RFC3339Nano)); err != nil {
 		t.Fatalf("insert valid: %v", err)
 	}
@@ -717,38 +564,5 @@ func TestStoreCloseCancelsRollupBackfill(t *testing.T) {
 	store.StartRollupBackfill()
 	if err := store.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
-	}
-}
-
-func TestBackfillProgressBar(t *testing.T) {
-	if got := backfillProgressBar(5, 10); got != "[###############...............]" {
-		t.Fatalf("half progress bar wrong: %s", got)
-	}
-	if got := backfillProgressBar(0, 10); got != "[..............................]" {
-		t.Fatalf("empty progress bar wrong: %s", got)
-	}
-	if got := backfillProgressBar(10, 10); got != "[##############################]" {
-		t.Fatalf("full progress bar wrong: %s", got)
-	}
-	if got := backfillProgressBar(3, 0); got != "" {
-		t.Fatalf("zero total must render empty, got %s", got)
-	}
-}
-
-func TestReconcileNullLegacyDefinition(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "null.sqlite3"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	if err := store.UpsertCustomProtocol(t.Context(), CustomProtocol{ID: "broken", Config: "null"}); err != nil {
-		t.Fatal(err)
-	}
-	if fixed, err := store.ReconcileCustomProtocolConfigIDs(t.Context()); err != nil || fixed != 0 {
-		t.Fatalf("invalid definition was rewritten: fixed=%d err=%v", fixed, err)
-	}
-	var definition string
-	if err := store.db.QueryRowContext(t.Context(), `SELECT config FROM custom_protocols WHERE id='broken'`).Scan(&definition); err != nil || definition != "null" {
-		t.Fatalf("invalid original must remain available for repair: %q %v", definition, err)
 	}
 }

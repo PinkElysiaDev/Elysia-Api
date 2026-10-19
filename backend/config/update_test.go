@@ -173,10 +173,8 @@ func TestConfigUpdateFailureDoesNotPublish(t *testing.T) {
 	}
 }
 
-func TestConfigUpdateSerializesAndPreservesRuntimeState(t *testing.T) {
+func TestConfigUpdateSerializesConcurrentChanges(t *testing.T) {
 	cfg, path := loadUpdateConfig(t)
-	cfg.Tokens = []AccessToken{{Name: "runtime"}}
-	cfg.Groups = []ModelGroupConfig{{ID: "runtime"}}
 	var workers sync.WaitGroup
 	for range 10 {
 		workers.Go(func() {
@@ -192,9 +190,6 @@ func TestConfigUpdateSerializesAndPreservesRuntimeState(t *testing.T) {
 	workers.Wait()
 	if cfg.GetHTTPTimeout() != 10 || cfg.ResolveAgentToolLoopLimit() != 22 {
 		t.Fatal("concurrent update was lost")
-	}
-	if len(cfg.GetTokens()) != 1 || len(cfg.GetGroups()) != 1 {
-		t.Fatal("runtime identities changed")
 	}
 	loaded, err := Load(path)
 	if err != nil {

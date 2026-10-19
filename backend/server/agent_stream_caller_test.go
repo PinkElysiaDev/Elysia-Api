@@ -122,6 +122,7 @@ func TestAgentNonReasoningDefault(t *testing.T) {
 // seedCallerModel 建一个带密钥的源 + 单模型（平台可指定）。
 func seedCallerModel(t *testing.T, s *Server, baseURL, platform string) {
 	t.Helper()
+	platform = fixturePlatform(platform)
 	source := storage.ModelSource{ID: "cs1", Name: "caller-src", BaseURL: baseURL, APIKey: "sk-caller-key", Platform: platform, Enabled: true}
 	if err := s.saveSource(t.Context(), source); err != nil {
 		t.Fatalf("UpsertSource: %v", err)
@@ -384,7 +385,6 @@ func TestAgentCallerCustomProtocolPlatform(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	bodyMaxKB := 1024
 	s.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: &bodyMaxKB})
-	s.seedPresetProtocols()
 
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -584,7 +584,6 @@ func TestAgentCallerResponsesNoStreamOptions(t *testing.T) {
 // Late content cannot change a completed result or be silently discarded.
 func TestAgentCallerCustomProtocolPostTerminalTextRejected(t *testing.T) {
 	s := newAgentIntegrationServer(t)
-	s.seedPresetProtocols()
 
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -606,7 +605,6 @@ func TestAgentCallerCustomProtocolPostTerminalTextRejected(t *testing.T) {
 // 拼装、content_block_stop 补发参数完成（v2 新增），终稿照常聚合。
 func TestAgentCallerAnthropicPresetToolRound(t *testing.T) {
 	s := newAgentIntegrationServer(t)
-	s.seedPresetProtocols()
 
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, call int) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -862,7 +860,7 @@ func TestAgentCallerPicksPermittedKey(t *testing.T) {
 		_, _ = w.Write([]byte(openAIDone()))
 	})
 	source := storage.ModelSource{
-		ID: "cs1", Name: "multi-key-src", BaseURL: upstream.URL, Platform: "openai", Enabled: true, AutoFetchModels: true,
+		ID: "cs1", Name: "multi-key-src", BaseURL: upstream.URL, Platform: "custom:openai-chat-completions", Enabled: true, AutoFetchModels: true,
 		APIKeys: []storage.SourceAPIKey{
 			{Value: "key-a", FetchedModels: []string{"other-model"}},
 			{Value: "key-b", FetchedModels: []string{"fake-model"}},
@@ -873,7 +871,7 @@ func TestAgentCallerPicksPermittedKey(t *testing.T) {
 	}
 	if err := s.store.ReplaceSourceModels(t.Context(), source, []storage.Model{{
 		ID: "fake-model", SourceID: "cs1", Name: "fake-model", BaseURL: upstream.URL,
-		Platform: "openai", Type: "llm", Enabled: true, Available: true, ToolsCapable: true, VisionCapable: true,
+		Platform: source.Platform, Type: "llm", Enabled: true, Available: true, ToolsCapable: true, VisionCapable: true,
 	}}); err != nil {
 		t.Fatalf("ReplaceSourceModels: %v", err)
 	}
@@ -891,11 +889,11 @@ func TestAgentCallerPicksPermittedKey(t *testing.T) {
 	}
 }
 
-// helper 直接单测：许可命中 / 零命中报错 / 无权限数据回落行内 key。
+// helper 直接单测：许可命中 / 零命中报错 / 单密钥源。
 func TestApplyAgentPermittedKey(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	source := storage.ModelSource{
-		ID: "src1", Name: "src", Platform: "openai", Enabled: true, AutoFetchModels: true,
+		ID: "src1", Name: "src", Platform: "custom:openai-chat-completions", Enabled: true, AutoFetchModels: true,
 		APIKeys: []storage.SourceAPIKey{
 			{Value: "key-a", FetchedModels: []string{"m1"}},
 			{Value: "key-b", FetchedModels: []string{"m2"}},
@@ -923,13 +921,13 @@ func TestApplyAgentPermittedKey(t *testing.T) {
 		t.Fatalf("zero permitted must error")
 	}
 
-	// 无权限数据（从未逐 key 拉取）：回落行内 key。
-	legacy := storage.ModelSource{ID: "src2", Name: "legacy", APIKey: "row-key", Platform: "openai", Enabled: true}
-	if err := s.store.UpsertSource(t.Context(), legacy); err != nil {
+	// 单密钥源同样从源配置取 key，不信任模型行快照。
+	single := storage.ModelSource{ID: "src2", Name: "single", APIKey: "source-key", Platform: "custom:openai-chat-completions", Enabled: true}
+	if err := s.store.UpsertSource(t.Context(), single); err != nil {
 		t.Fatalf("UpsertSource: %v", err)
 	}
-	fallback := storage.Model{SourceID: "src2", ID: "mx", Name: "mx", APIKey: "row-key"}
-	if err := applyAgentPermittedKey(t.Context(), s.store, &fallback); err != nil || fallback.APIKey != "row-key" {
-		t.Fatalf("fallback: key=%q err=%v", fallback.APIKey, err)
+	model := storage.Model{SourceID: "src2", ID: "mx", Name: "mx", APIKey: "stale-key"}
+	if err := applyAgentPermittedKey(t.Context(), s.store, &model); err != nil || model.APIKey != "source-key" {
+		t.Fatalf("source key: key=%q err=%v", model.APIKey, err)
 	}
 }

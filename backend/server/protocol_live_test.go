@@ -131,7 +131,11 @@ func (gateway *liveGateway) request(t *testing.T, id string, ingress *protocol.C
 	result := liveCase{ID: id, Model: gateway.suite.Model, Ingress: ingress.Identity().DefinitionID, Target: gateway.target.Identity().DefinitionID, Revision: gateway.target.Hash(), Stream: isStream, Status: "failed"}
 	if isStream && ingress.Codec(protocol.EncodeRequest) == "openai-chat" {
 		request = request.Clone()
-		request.Parameters["stream_options"] = mustProtocolValue(t, `{"include_usage":true}`)
+		output, err := protocol.ParseClientOutput(mustProtocolValue(t, `{"include_usage":true}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.ClientOutput = output
 	}
 	body, err := ingress.EncodeRequest(t.Context(), request, protocol.EvaluationContext{Scope: gateway.scope})
 	if err != nil {

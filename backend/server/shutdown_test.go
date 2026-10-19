@@ -14,6 +14,7 @@ import (
 
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
@@ -68,6 +69,7 @@ func (c *shutdownStreamCaller) Call(ctx context.Context, _ agent.CallRequest, _ 
 	case <-c.release:
 	}
 	c.server.recordUsage(&usageRecord{RequestID: "last-agent-call", StartedAt: time.Now(), EndedAt: time.Now(), StatusCode: 499})
+	c.server.logSystemEvent("info", "agent call canceled during shutdown", map[string]any{"request_id": "last-agent-call"})
 	return &agent.CallResult{Text: "partial response"}, ctx.Err()
 }
 
@@ -79,6 +81,7 @@ func TestShutdownStopsDetachedAgentThenFlushesAndClosesStore(t *testing.T) {
 	}
 	defer store.Close()
 	s := &Server{store: store, config: &config.Config{}}
+	s.logger = logging.New(logging.Options{Level: "error", PersistLevel: "error", Format: "json"}, logging.NewWriter(store.LogStore.WriteSystemLogBatch))
 	s.startUsageWriter()
 	session, err := store.CreateAgentSession(context.Background(), storage.AgentSessionUpsert{Settings: agent.Settings{ModelName: "slow"}})
 	if err != nil {
@@ -128,6 +131,19 @@ func TestShutdownStopsDetachedAgentThenFlushesAndClosesStore(t *testing.T) {
 	if _, found, err := reopened.GetUsageRecordJSON(context.Background(), "last-agent-call"); err != nil || !found {
 		t.Fatalf("last usage record must be flushed before close: found=%v err=%v", found, err)
 	}
+	_, logs, err := reopened.QuerySystemLogs(t.Context(), 10, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, event := range logs {
+		if event.Message == "agent call canceled during shutdown" {
+			found = true
+		}
+	}
+	if !found || s.shutdownErr != nil {
+		t.Fatalf("final system event not durable: logs=%+v shutdown=%v", logs, s.shutdownErr)
+	}
 }
 
 func TestShutdownCancelsRunningAndQueuedSourceRefreshes(t *testing.T) {
@@ -145,7 +161,7 @@ func TestShutdownCancelsRunningAndQueuedSourceRefreshes(t *testing.T) {
 	defer upstream.Close()
 	s := newKeyPermissionTestServer(t)
 	for i := 0; i <= sourceRefreshConcurrency; i++ {
-		source := storage.ModelSource{ID: string(rune('a' + i)), BaseURL: upstream.URL, Platform: "openai", AutoFetchModels: true}
+		source := storage.ModelSource{ID: string(rune('a' + i)), BaseURL: upstream.URL, Platform: "custom:openai-chat-completions", AutoFetchModels: true}
 		if err := s.store.UpsertSource(t.Context(), source); err != nil {
 			t.Fatal(err)
 		}
@@ -214,7 +230,7 @@ func TestRequestedShutdownBeforeListenClosesAllResources(t *testing.T) {
 	no := false
 	cfg := &config.Config{
 		DatabasePath:       filepath.Join(t.TempDir(), "early-stop.sqlite3"),
-		Server:             config.ServerConfig{Host: "127.0.0.1"},
+		Host:               "127.0.0.1",
 		OpenBrowserOnStart: &no,
 		ModelCatalog:       config.ModelCatalogConfig{Enabled: &no},
 	}

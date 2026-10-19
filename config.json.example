@@ -3,7 +3,10 @@
   "port": 8765,
   "panelAccessToken": "change-me",
   "databasePath": "elysia-api.sqlite3",
+  "logDatabasePath": "elysia-api-logs.sqlite3",
   "logLevel": "info",
+  "logFormat": "auto",
+  "logPersistLevel": "info",
   "httpTimeout": 120,
   "secretKeyPath": ".master-key",
   "openBrowserOnStart": true,
@@ -39,8 +42,8 @@
   },
   "usageLog": {
     "persistEnabled": true,
-    "retentionDays": 0,
-    "maxContentMB": 0,
+    "retentionDays": 14,
+    "maxContentMB": 1024,
     "maxRecords": 0,
     "bodyMaxKB": 0,
     "bodyOnErrorOnly": false,
@@ -48,9 +51,9 @@
     "cleanupIntervalMinutes": 60
   },
   "systemLog": {
-    "retentionDays": 0,
+    "retentionDays": 30,
     "maxRecords": 0,
-    "maxContentMB": 0
+    "maxContentMB": 256
   },
   "modelCatalog": {
     "enabled": true,

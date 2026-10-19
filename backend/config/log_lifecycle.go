@@ -1,12 +1,19 @@
 package config
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
-	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/elysia-api/backend/logging"
+	"github.com/elysia-api/backend/storage"
 )
 
-// LogRetentionConfig uses content budgets, not a limit on the shared SQLite file.
+// ErrDatabasePath identifies invalid database paths independently of HTTP errors.
+var ErrDatabasePath = errors.New("invalid database path")
+
+// LogRetentionConfig uses content budgets, not a physical SQLite file limit.
 type LogRetentionConfig struct {
 	RetentionDays *int `json:"retentionDays,omitempty"`
 	MaxRecords    *int `json:"maxRecords,omitempty"`
@@ -22,7 +29,79 @@ type LogRetentionResolved struct {
 func (c *Config) GetSystemLogConfig() LogRetentionResolved {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return LogRetentionResolved{positiveOr(c.SystemLog.RetentionDays, 0), positiveOr(c.SystemLog.MaxRecords, 0), positiveOr(c.SystemLog.MaxContentMB, 0)}
+	return LogRetentionResolved{limitOrDefault(c.SystemLog.RetentionDays, 30), positiveOr(c.SystemLog.MaxRecords, 0), limitOrDefault(c.SystemLog.MaxContentMB, 256)}
+}
+
+func limitOrDefault(value *int, fallback int) int {
+	if value == nil {
+		return fallback
+	}
+	return max(*value, 0)
+}
+
+func (c *Config) GetLogDatabasePath() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.LogDatabasePath != "" {
+		return c.LogDatabasePath
+	}
+	return storage.DefaultLogPath(c.DatabasePath)
+}
+
+func (c *Config) SetLogDatabasePath(path string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	path = strings.TrimSpace(path)
+	if path != "" && !filepath.IsAbs(path) {
+		path = filepath.Join(filepath.Dir(c.path), path)
+		if absolute, err := filepath.Abs(path); err == nil {
+			path = absolute
+		}
+	}
+	c.LogDatabasePath = path
+}
+
+func (c *Config) GetLoggingOptions() logging.Options {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	format, persist := c.LogFormat, c.LogPersistLevel
+	if format == "" {
+		format = "auto"
+	}
+	if persist == "" {
+		persist = "info"
+	}
+	return logging.Options{Level: c.LogLevel, Format: format, PersistLevel: persist}
+}
+
+func (c *Config) SetLogOutput(format, persist string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if format != "" {
+		c.LogFormat = format
+	}
+	if persist != "" {
+		c.LogPersistLevel = persist
+	}
+}
+
+func (c *Config) validateLogSettings() error {
+	for name, level := range map[string]string{"logLevel": c.LogLevel, "logPersistLevel": c.LogPersistLevel} {
+		switch level {
+		case "", "debug", "info", "warn", "error":
+		default:
+			return fmt.Errorf("%s must be debug/info/warn/error", name)
+		}
+	}
+	switch c.LogFormat {
+	case "", "auto", "json", "console":
+	default:
+		return fmt.Errorf("logFormat must be auto/json/console")
+	}
+	if err := storage.ValidateDatabasePaths(c.DatabasePath, c.GetLogDatabasePath()); err != nil {
+		return fmt.Errorf("%w: %w", ErrDatabasePath, err)
+	}
+	return nil
 }
 
 func (c *Config) SetSystemLogConfig(p LogRetentionConfig) {
@@ -37,60 +116,4 @@ func (c *Config) SetSystemLogConfig(p LogRetentionConfig) {
 	if p.MaxContentMB != nil {
 		c.SystemLog.MaxContentMB = clampIntPtr(p.MaxContentMB)
 	}
-}
-
-// migrateLogConfig is the only reader of retired log options. The atomic file
-// replacement is the phase commit; retrying after a crash never overwrites backup.
-func migrateLogConfig(path string, data []byte) ([]byte, error) {
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, err
-	}
-	if raw == nil {
-		return nil, fmt.Errorf("configuration must be a JSON object")
-	}
-	var version int
-	if err := json.Unmarshal(raw["logLifecycleVersion"], &version); err == nil && version >= 1 {
-		return data, nil
-	}
-	usage := map[string]json.RawMessage{}
-	if v := raw["usageLog"]; len(v) > 0 && string(v) != "null" {
-		if err := json.Unmarshal(v, &usage); err != nil {
-			return nil, err
-		}
-	}
-	for old, key := range map[string]string{"usagePersistEnabled": "persistEnabled", "usagePersistMaxRecords": "maxRecords"} {
-		if _, exists := usage[key]; !exists && raw[old] != nil {
-			usage[key] = raw[old]
-		}
-		delete(raw, old)
-	}
-	if _, exists := usage["maxContentMB"]; !exists && usage["maxStorageMB"] != nil {
-		usage["maxContentMB"] = usage["maxStorageMB"]
-	}
-	delete(usage, "maxStorageMB")
-	if len(usage) > 0 {
-		raw["usageLog"], _ = json.Marshal(usage)
-	}
-	raw["logLifecycleVersion"] = json.RawMessage("1")
-	out, err := json.MarshalIndent(raw, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	var validated Config
-	if err := json.Unmarshal(out, &validated); err != nil {
-		return nil, err
-	}
-	backup := path + ".pre-log-lifecycle"
-	if _, err := os.Stat(backup); os.IsNotExist(err) {
-		if err := WriteFileAtomic(backup, data, 0o600); err != nil {
-			return nil, fmt.Errorf("backup log config: %w", err)
-		}
-	} else if err != nil {
-		return nil, err
-	}
-	if err := WriteFileAtomic(path, out, 0o600); err != nil {
-		return nil, err
-	}
-	return out, nil
 }

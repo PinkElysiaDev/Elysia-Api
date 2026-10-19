@@ -52,15 +52,6 @@ func TestTokenReadsRejectCorruptAuthorization(t *testing.T) {
 	}
 }
 
-func TestTokenAuthorizationRetainsLegacyEmptyValues(t *testing.T) {
-	for _, raw := range []string{"", " ", "null", "[]"} {
-		groups, err := decodeStringSlice(raw)
-		if err != nil || len(groups) != 0 {
-			t.Fatalf("legacy empty authorization %q changed: %v", raw, err)
-		}
-	}
-}
-
 func TestTokenUpdateRollsBackConflicts(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "tokens.db"))
 	if err != nil {

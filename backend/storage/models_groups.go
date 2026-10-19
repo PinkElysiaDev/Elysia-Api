@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -42,7 +41,7 @@ func (s *Store) ListModelsFiltered(ctx context.Context, filter ModelListFilter) 
 }
 
 func (s *Store) listModelsFiltered(ctx context.Context, filter ModelListFilter) ([]Model, error) {
-	where := "WHERE (m.source_id = '' OR ms.enabled = 1 OR ms.id IS NULL)"
+	where := "WHERE ms.enabled = 1"
 	if filter.ShouldIncludeDisabledSources {
 		where = "WHERE 1=1"
 	}
@@ -56,7 +55,7 @@ func (s *Store) listModelsFiltered(ctx context.Context, filter ModelListFilter) 
 		like := "%" + escapeLike(search) + "%"
 		args = append(args, like, like, like)
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+modelColumns+` FROM models m LEFT JOIN model_sources ms ON m.source_id = ms.id `+where+` ORDER BY m.source_name, m.name`, args...)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+modelColumns+` FROM models m JOIN model_sources ms ON m.source_id = ms.id `+where+` ORDER BY m.source_name, m.name`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -76,24 +75,6 @@ func (s *Store) listModelsFiltered(ctx context.Context, filter ModelListFilter) 
 func escapeLike(value string) string {
 	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 	return replacer.Replace(value)
-}
-
-func (s *Store) findModel(ctx context.Context, tx *sql.Tx, id string) (Model, bool, error) {
-	query := `SELECT ` + modelColumns + ` FROM models m WHERE m.id = ? ORDER BY m.source_name LIMIT 1`
-	var row *sql.Row
-	if tx != nil {
-		row = tx.QueryRowContext(ctx, query, id)
-	} else {
-		row = s.db.QueryRowContext(ctx, query, id)
-	}
-	item, err := s.scanModel(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Model{}, false, nil
-	}
-	if err != nil {
-		return Model{}, false, err
-	}
-	return item, true, nil
 }
 
 func (s *Store) ListGroups(ctx context.Context) ([]ModelGroup, error) {
@@ -139,13 +120,7 @@ func (s *Store) ListGroups(ctx context.Context) ([]ModelGroup, error) {
 				modelRows.Close()
 				return nil, err
 			}
-			// 有 source_id 则返回复合键 sourceId:modelId（精确身份）；
-			// 旧数据 source_id 为空时返回裸 id（装配端会按 id 回退匹配）。
-			if sourceID != "" {
-				items[i].Models = append(items[i].Models, sourceID+":"+id)
-			} else {
-				items[i].Models = append(items[i].Models, id)
-			}
+			items[i].Models = append(items[i].Models, sourceID+":"+id)
 		}
 		if err := modelRows.Close(); err != nil {
 			return nil, err
@@ -224,9 +199,7 @@ func (s *Store) saveGroup(ctx context.Context, item ModelGroup, isCreate bool) e
 		return err
 	}
 	for i, ref := range item.Models {
-		// "sourceId:modelId"（复合键）或裸 "modelId"（旧/兼容），统一走
-		// resolveModelRef 解析（裸 id 回退 findModel 猜源，保持旧行为）。
-		modelID, sourceID, err := s.resolveModelRef(ctx, tx, ref)
+		modelID, sourceID, err := parseModelRef(ref)
 		if err != nil {
 			return err
 		}
@@ -359,7 +332,7 @@ func (s *Store) AddGroupMembers(ctx context.Context, groupID string, refs []stri
 	defer insert.Close()
 	added := 0
 	for _, ref := range refs {
-		modelID, sourceID, err := s.resolveModelRef(ctx, tx, ref)
+		modelID, sourceID, err := parseModelRef(ref)
 		if err != nil {
 			return 0, err
 		}
@@ -390,19 +363,14 @@ func (s *Store) RemoveGroupMembers(ctx context.Context, groupID string, refs []s
 	defer tx.Rollback()
 	removed := 0
 	for _, ref := range refs {
-		modelID, sourceID, err := s.resolveModelRef(ctx, tx, ref)
+		modelID, sourceID, err := parseModelRef(ref)
 		if err != nil {
 			return 0, err
 		}
 		if modelID == "" {
 			continue
 		}
-		var res sql.Result
-		if sourceID != "" {
-			res, err = tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE group_id = ? AND model_id = ? AND source_id = ?`, groupID, modelID, sourceID)
-		} else {
-			res, err = tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE group_id = ? AND model_id = ?`, groupID, modelID)
-		}
+		res, err := tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE group_id = ? AND model_id = ? AND source_id = ?`, groupID, modelID, sourceID)
 		if err != nil {
 			return 0, err
 		}
@@ -413,21 +381,14 @@ func (s *Store) RemoveGroupMembers(ctx context.Context, groupID string, refs []s
 	return removed, tx.Commit()
 }
 
-// resolveModelRef 把 "sourceId:modelId" 复合键或裸 id 解析为 (modelID, sourceID)。
-// 裸 id 回退 findModel 猜源（与 UpsertGroup 的兼容行为一致）；解析不到返回空串。
-func (s *Store) resolveModelRef(ctx context.Context, tx *sql.Tx, ref string) (modelID, sourceID string, err error) {
+// parseModelRef requires a complete sourceId:modelId identity.
+func parseModelRef(ref string) (modelID, sourceID string, err error) {
 	ref = strings.TrimSpace(ref)
-	if ref == "" {
-		return "", "", nil
+	sourceID, modelID, ok := strings.Cut(ref, ":")
+	if !ok || strings.TrimSpace(sourceID) == "" || strings.TrimSpace(modelID) == "" {
+		return "", "", fmt.Errorf("model reference %q must be sourceId:modelId", ref)
 	}
-	if idx := strings.Index(ref, ":"); idx >= 0 {
-		return ref[idx+1:], ref[:idx], nil
-	}
-	model, ok, err := s.findModel(ctx, tx, ref)
-	if err != nil || !ok {
-		return ref, "", err
-	}
-	return model.ID, model.SourceID, nil
+	return modelID, sourceID, nil
 }
 
 // DeleteGroup 删除模型组并级联清理 token 的组授权。返回因授权列表被清空而
@@ -519,8 +480,8 @@ func (s *Store) SetModelAvailability(ctx context.Context, modelID, sourceID stri
 // 模型既浪费钱也毫无意义（路由装配本就不会把流量派过去）。
 func (s *Store) ListAllModelsForProbe(ctx context.Context) ([]Model, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+modelColumns+` FROM models m
-		LEFT JOIN model_sources ms ON m.source_id = ms.id
-		WHERE m.enabled = 1 AND (m.source_id = '' OR ms.enabled = 1 OR ms.id IS NULL)
+		JOIN model_sources ms ON m.source_id = ms.id
+		WHERE m.enabled = 1 AND ms.enabled = 1
 		ORDER BY m.source_name, m.name`)
 	if err != nil {
 		return nil, err
@@ -630,29 +591,6 @@ func (s *Store) DeleteModel(ctx context.Context, modelID, sourceID string) (bool
 	return true, tx.Commit()
 }
 
-func (s *Store) ImportLegacyConfig(ctx context.Context, tokens []APIToken, groups []ModelGroup, models []Model) error {
-	for _, token := range tokens {
-		if err := s.UpsertAPIToken(ctx, token); err != nil {
-			return fmt.Errorf("token %s: %w", token.Name, err)
-		}
-	}
-	if len(models) > 0 {
-		source := ModelSource{ID: "legacy-config", Name: "Legacy Config", BaseURL: "", Platform: "openai", Enabled: true, AutoFetchModels: false}
-		if err := s.UpsertSource(ctx, source); err != nil {
-			return err
-		}
-		if err := s.replaceSourceModels(ctx, source, models, true); err != nil {
-			return err
-		}
-	}
-	for _, group := range groups {
-		if err := s.UpsertGroup(ctx, group); err != nil {
-			return fmt.Errorf("group %s: %w", group.Name, err)
-		}
-	}
-	return nil
-}
-
 // ModelListFilter 提供管理面的模型列表过滤（方向4）：SourceID 为空查全部；
 // Search 对 id/name/source_name 做 SQL LIKE 模糊匹配（已 escape 通配符）。
 type ModelListFilter struct {
@@ -673,139 +611,4 @@ type ModelPatch struct {
 	StructuredOutput *bool
 	ThinkingMode     *string
 	Enabled          *bool
-}
-
-// geminiModelIDPrefix 是 Gemini listModels 返回的 name 集合前缀形态。
-const geminiModelIDPrefix = "models/"
-
-// isGeminiLikePlatform 判断平台是否 Gemini 系（内置 gemini 与 google-generate-content 预置）。
-func isGeminiLikePlatform(platform string) bool {
-	switch strings.ToLower(strings.TrimSpace(platform)) {
-	case "gemini", "custom:google-generate-content":
-		return true
-	}
-	return false
-}
-
-// StripGeminiModelIDPrefixes 一次性修复历史自动拉取入库的 Gemini 系模型 ID 带
-// "models/" 集合前缀的问题（内置 gemini 平台与 google-generate-content 预置的旧拉取都曾
-// 原样入库，转发路径模板会拼出 /v1beta/models/models/<id> 的双前缀 404）：
-// 剥前缀并同步改写 model_group_models 关联与多 key 权限列表。目标 id 已存在
-// （用户重新拉取过）时删除带前缀的旧行。幂等；两段互相独立收敛——模型行
-// 修复已提交而 per-key 修复失败时，下次启动仍会进入 per-key 补写（不做
-// 「无模型行待修即提前返回」的短路，否则半收敛状态永远无法自愈）。
-func (s *Store) StripGeminiModelIDPrefixes(ctx context.Context) (fixed int, err error) {
-	fixed, err = s.stripGeminiModelIDRows(ctx)
-	if err != nil {
-		return fixed, err
-	}
-	if err := s.stripGeminiKeyPermissionLists(ctx); err != nil {
-		return fixed, err
-	}
-	return fixed, nil
-}
-
-// stripGeminiModelIDRows 剥离模型行的 "models/" 前缀并改写组关联，单事务。
-func (s *Store) stripGeminiModelIDRows(ctx context.Context) (fixed int, err error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT source_id, id FROM models WHERE (LOWER(platform) = 'gemini' OR LOWER(platform) = 'custom:google-generate-content') AND id LIKE ?`, geminiModelIDPrefix+"%")
-	if err != nil {
-		return 0, err
-	}
-	type pendingRename struct{ sourceID, oldID, newID string }
-	pending := []pendingRename{}
-	for rows.Next() {
-		var sourceID, id string
-		if err := rows.Scan(&sourceID, &id); err != nil {
-			rows.Close()
-			return 0, err
-		}
-		pending = append(pending, pendingRename{sourceID: sourceID, oldID: id, newID: strings.TrimPrefix(id, geminiModelIDPrefix)})
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return 0, err
-	}
-	rows.Close()
-	if len(pending) == 0 {
-		return 0, nil
-	}
-	snapshot, err := s.EnsureProtocolSnapshot(ctx)
-	if err != nil {
-		return 0, err
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err = checkProtocolCommitBaseline(ctx, tx, ProtocolUpgrade{Baseline: snapshot.Baseline, EvidenceBaseline: snapshot.EvidenceBaseline}); err != nil {
-		return 0, err
-	}
-	for _, item := range pending {
-		var exists int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM models WHERE source_id = ? AND id = ?`, item.sourceID, item.newID).Scan(&exists); err != nil {
-			return fixed, err
-		}
-		if exists > 0 {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM models WHERE source_id = ? AND id = ?`, item.sourceID, item.oldID); err != nil {
-				return fixed, err
-			}
-		} else if _, err := tx.ExecContext(ctx, `UPDATE models SET id = ? WHERE source_id = ? AND id = ?`, item.newID, item.sourceID, item.oldID); err != nil {
-			return fixed, err
-		}
-		// 组关联改写到新 id；同键已有新 id 时（UPDATE OR IGNORE 未生效）删除旧关联。
-		if _, err := tx.ExecContext(ctx, `UPDATE OR IGNORE model_group_models SET model_id = ? WHERE model_id = ? AND source_id = ?`, item.newID, item.oldID, item.sourceID); err != nil {
-			return fixed, err
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE model_id = ? AND source_id = ?`, item.oldID, item.sourceID); err != nil {
-			return fixed, err
-		}
-		fixed++
-	}
-	if err := tx.Commit(); err != nil {
-		return fixed, err
-	}
-	log.Printf("[gemini-id-fix] stripped models/ prefix from %d gemini model row(s)", fixed)
-	return fixed, nil
-}
-
-// stripGeminiKeyPermissionLists 剥离 Gemini 系源各 key 权限列表
-// （fetchedModels/allowedModels 为裸模型 id）中的 "models/" 前缀；独立于模型
-// 行修复执行，保证半收敛状态可自愈。单源失败即中止（下次启动重入）。
-func (s *Store) stripGeminiKeyPermissionLists(ctx context.Context) error {
-	sources, err := s.ListSources(ctx)
-	if err != nil {
-		return err
-	}
-	for _, source := range sources {
-		if !isGeminiLikePlatform(source.Platform) {
-			continue
-		}
-		changed := false
-		for index := range source.APIKeys {
-			for _, field := range []*[]string{&source.APIKeys[index].FetchedModels, &source.APIKeys[index].AllowedModels} {
-				if *field == nil {
-					continue
-				}
-				for i, entry := range *field {
-					if trimmed := strings.TrimPrefix(entry, geminiModelIDPrefix); trimmed != entry {
-						(*field)[i] = trimmed
-						changed = true
-					}
-				}
-			}
-		}
-		if !changed {
-			continue
-		}
-		if _, err := s.EnsureProtocolSnapshot(ctx); err != nil {
-			return err
-		}
-		if err := s.UpdateSourceAPIKeys(ctx, source.ID, source.APIKeys); err != nil {
-			return fmt.Errorf("source %q: %w", source.ID, err)
-		}
-		log.Printf("[gemini-id-fix] stripped models/ prefix from key permission lists of source %q", source.ID)
-	}
-	return nil
 }

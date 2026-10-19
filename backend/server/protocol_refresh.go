@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/elysia-api/backend/protocol"
@@ -88,7 +87,7 @@ func (s *Server) refreshProtocolRuntimeScope(ctx context.Context, service *proto
 	}
 	for _, entry := range plan.Revisions {
 		if protocol.IsPresetProtocolID(entry.Revision.ProtocolID) && entry.Refresh.Changed() {
-			log.Printf("[protocol-recovery] %s restored: revision=%t evidence=%t activation=%t draft=%t", entry.Revision.ProtocolID, entry.Refresh.Revision || entry.Refresh.RepairPreset, entry.Refresh.Report, entry.Refresh.Activation, entry.Refresh.Draft)
+			s.logEvent("info").Str("protocol_id", entry.Revision.ProtocolID).Bool("revision", entry.Refresh.Revision || entry.Refresh.RepairPreset).Bool("evidence", entry.Refresh.Report).Bool("activation", entry.Refresh.Activation).Bool("draft", entry.Refresh.Draft).Msg("protocol restored")
 		}
 	}
 	return nil
@@ -119,20 +118,6 @@ func (plan *protocolRefreshPlan) ensureProtocol(id string, value protocol.Value,
 	a, isActive := plan.activations[id]
 	if !isPreset && a.RevisionHash != compiled.Hash() {
 		return fmt.Errorf("%w: protocol %s stored hash mismatch", storage.ErrCorruptProtocolRecord, id)
-	}
-	if !isPreset {
-		if repaired, hasFixtureRepair := builtin.RepairOutputFixtures(compiled.Definition()); hasFixtureRepair {
-			updated, err := protocol.EncodeValue(repaired)
-			if err != nil {
-				return err
-			}
-			candidate, issues := plan.service.Validate(updated.Bytes())
-			if protocol.IssuesError(issues) == nil && candidate != nil && protocol.Verify(plan.context, candidate).Passed {
-				// Only a verified, deterministic fixture correction advances the
-				// active revision. The original and operator draft remain intact.
-				compiled, value = candidate, updated
-			}
-		}
 	}
 	writes := &storage.ProtocolRefreshWrite{}
 	revision, err := plan.server.store.ReadProtocolRevision(plan.context, id, compiled.Hash())
@@ -251,11 +236,11 @@ func (s *Server) prepareProtocolRefresh(ctx context.Context, service *protocol.S
 				if !errors.As(err, &conversion) && !errors.Is(err, storage.ErrCorruptProtocolRecord) {
 					return fail(err)
 				}
-				log.Printf("[protocol-refresh] custom %s unavailable: %v", a.ProtocolID, err)
+				s.logEvent("error").Str("protocol_id", a.ProtocolID).Err(err).Msg("custom protocol unavailable")
 			}
 		}
 	}
-	// Missing presets can be committed before any historical binding migration.
+	// Missing presets can be committed independently of custom protocol bindings.
 	if presetsOnly {
 		return plan.upgrade, plan.definitions, plan.hasChanges, nil
 	}

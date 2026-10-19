@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -118,6 +117,9 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 		"port":                server.Port,
 		"panelAccessToken":    s.config.GetPanelAccessToken(),
 		"databasePath":        s.config.GetDatabasePath(),
+		"logDatabasePath":     s.config.GetLogDatabasePath(),
+		"logFormat":           s.config.GetLoggingOptions().Format,
+		"logPersistLevel":     s.config.GetLoggingOptions().PersistLevel,
 		"defaultDatabasePath": s.config.GetDefaultDatabasePath(),
 		"logLevel":            s.config.GetLogLevel(),
 		"httpTimeout":         s.config.GetHTTPTimeout(),
@@ -156,6 +158,9 @@ type runtimeConfigPayload struct {
 	HTTPTimeout      *int                       `json:"httpTimeout"`
 	PanelAccessToken *string                    `json:"panelAccessToken"`
 	DatabasePath     *string                    `json:"databasePath"`
+	LogDatabasePath  *string                    `json:"logDatabasePath"`
+	LogFormat        string                     `json:"logFormat"`
+	LogPersistLevel  string                     `json:"logPersistLevel"`
 	EnablePprof      *bool                      `json:"enablePprof"`
 	Outbound         *outboundConfigPayload     `json:"outbound"`
 	UsageLog         *config.UsageLogConfig     `json:"usageLog"`
@@ -218,6 +223,16 @@ func (e runtimeConfigError) Error() string { return e.message }
 // 任一非法即返回错误，保证第二阶段（应用 + Save）不会落在部分生效的
 // 状态上。数值字段 0 是合法的「关闭/不保存」语义，只拒绝负数。
 func validateRuntimeConfigPayload(p *runtimeConfigPayload) *runtimeConfigError {
+	if p.LogFormat != "" && p.LogFormat != "auto" && p.LogFormat != "json" && p.LogFormat != "console" {
+		return &runtimeConfigError{400, "invalid_log_format", "logFormat must be auto/json/console"}
+	}
+	if p.LogPersistLevel != "" {
+		switch p.LogPersistLevel {
+		case "debug", "info", "warn", "error":
+		default:
+			return &runtimeConfigError{400, "invalid_log_level", "logPersistLevel must be debug/info/warn/error"}
+		}
+	}
 	if p.Agent != nil && p.Agent.ToolLoopLimit != nil && (*p.Agent.ToolLoopLimit < 0 || *p.Agent.ToolLoopLimit > 100) {
 		return &runtimeConfigError{400, "invalid_tool_loop_limit", "toolLoopLimit must be between 0 and 100 (0 uses the default)"}
 	}
@@ -235,8 +250,7 @@ func validateRuntimeConfigPayload(p *runtimeConfigPayload) *runtimeConfigError {
 		switch p.LogLevel {
 		case "debug", "info", "warn", "error":
 		default:
-			// logAt 对未知级别静默按 info 兜底，保存成功但设置无效——
-			// 直接拒绝，避免「改了没生效」的困惑。
+			// Reject invalid thresholds before publishing runtime settings.
 			return &runtimeConfigError{400, "invalid_log_level", "logLevel must be one of debug/info/warn/error"}
 		}
 	}
@@ -406,9 +420,7 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 	saved := item
 	if !saved.AutoFetchModels {
 		if _, err := s.refreshSourceByID(c.Request.Context(), saved.ID); err != nil {
-			if s.store != nil {
-				_ = s.store.InsertSystemLog(c.Request.Context(), "warn", "manual model sync after save failed", map[string]any{"sourceId": saved.ID, "sourceName": saved.Name, "error": err.Error()})
-			}
+			s.logSystemEvent("warn", "manual model sync after save failed", map[string]any{"sourceId": saved.ID, "sourceName": saved.Name, "error": err.Error()})
 		} else {
 			s.invalidateRouteCache()
 		}
@@ -782,7 +794,7 @@ func (s *Server) deleteGroupCascade(ctx context.Context, store *storage.Store, i
 	if len(disabledTokens) > 0 {
 		// 授权列表被清空的 token 已随删除级联禁用（空列表=不限制，静默保留
 		// 会扩权），名单透出给调用方以便后续处置。
-		log.Printf("group %s deleted; disabled %d token(s) whose only allowed group it was: %v", id, len(disabledTokens), disabledTokens)
+		s.logEvent("info").Str("group_id", id).Strs("disabled_tokens", disabledTokens).Msg("group deleted; disabled tokens whose only allowed group was removed")
 	}
 	s.logSystemEvent("warn", "model group deleted", map[string]any{
 		"groupId": id, "disabledTokens": disabledTokens,
@@ -1157,6 +1169,8 @@ func (s *Server) adminUsageStorage(c *gin.Context) {
 		return
 	}
 	resp := gin.H{"db": db, "content": content, "assets": s.usageAssetsUsage(), "usageLog": usageLogStatusJSON(s.config.GetUsageLogConfig()), "systemLog": s.config.GetSystemLogConfig()}
+	resp["logDatabasePath"] = store.LogStore.Path()
+	resp["writers"] = gin.H{"system": s.Logger().Stats(), "usage": s.usageWriterStats()}
 	if r := s.usageRetention; r != nil {
 		resp["maintenance"] = r.snapshotStats()
 	}

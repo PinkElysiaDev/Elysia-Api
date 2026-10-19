@@ -8,14 +8,14 @@ import (
 	"time"
 )
 
-func TestUsageLogDefaultsCleanupDisabled(t *testing.T) {
+func TestUsageLogDefaultsBoundedRetention(t *testing.T) {
 	cfg := &Config{}
 	res := cfg.GetUsageLogConfig()
 	if !res.PersistEnabled {
 		t.Fatal("persistEnabled must default to true")
 	}
-	if res.RetentionDays != 0 || res.MaxContentBytes != 0 || res.MaxRecords != 0 {
-		t.Fatalf("auto cleanup must be disabled by default: %+v", res)
+	if res.RetentionDays != 14 || res.MaxContentBytes != 1024<<20 || res.MaxRecords != 0 {
+		t.Fatalf("unexpected retention defaults: %+v", res)
 	}
 	if res.BodyMaxBytes != 0 || DefaultUsageLogResolved().BodyMaxBytes != 0 {
 		t.Fatalf("bodyMaxBytes default = %d", res.BodyMaxBytes)
@@ -66,44 +66,6 @@ func TestUsageBodyPolicySurvivesSaveAndReload(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestUsageLogLegacyConfigMigratesOnce(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.json")
-	original := []byte(`{"usagePersistEnabled":false,"usagePersistMaxRecords":5000,"usageLog":{"maxStorageMB":0,"maxRecords":0}}`)
-	if err := os.WriteFile(path, original, 0600); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	res := cfg.GetUsageLogConfig()
-	if res.PersistEnabled || res.MaxRecords != 0 || res.MaxContentBytes != 0 {
-		t.Fatalf("migration lost explicit values: %+v", res)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatal(err)
-	}
-	if raw["usagePersistEnabled"] != nil || raw["usagePersistMaxRecords"] != nil {
-		t.Fatal("legacy fields survived")
-	}
-	backup, err := os.ReadFile(path + ".pre-log-lifecycle")
-	if err != nil || string(backup) != string(original) {
-		t.Fatalf("backup=%s err=%v", backup, err)
-	}
-	if _, err := Load(path); err != nil {
-		t.Fatal(err)
-	}
-	after, _ := os.ReadFile(path)
-	if string(after) != string(data) {
-		t.Fatal("repeat load changed migrated config")
 	}
 }
 
@@ -174,8 +136,8 @@ func TestSavePersistsHostPortAndModelCatalog(t *testing.T) {
 	cfg.SetPort(9000)
 	interval := 60
 	cfg.SetModelCatalogSyncInterval(interval)
-	if cfg.Host != "0.0.0.0" || cfg.Server.Host != "0.0.0.0" || cfg.Port != 9000 || cfg.Server.Port != 9000 {
-		t.Fatalf("SetHost/SetPort must sync nested Server fields: %+v", cfg.Server)
+	if cfg.GetServer() != (ServerConfig{Host: "0.0.0.0", Port: 9000}) {
+		t.Fatalf("SetHost/SetPort did not update listener settings: %+v", cfg.GetServer())
 	}
 	if err := cfg.Save(); err != nil {
 		t.Fatalf("save: %v", err)

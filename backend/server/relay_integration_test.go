@@ -30,16 +30,14 @@ func parseTestIP(t *testing.T, raw string) net.IP {
 	return ip
 }
 
-// newTestServer 构造一个不依赖 SQLite 的 Server（store=nil → usage 走内存切片，
-// groups 走 config）。跳过 SSRF 校验以便上游指向 httptest 的 127.0.0.1。
+// newUnboundTestServer constructs the transport shell used by isolated tests.
 func newUnboundTestServer(groups []config.ModelGroupConfig) *Server {
 	gin.SetMode(gin.TestMode)
 	// 上游指向 httptest 的 127.0.0.1：关闭 relay 的连接时 SSRF 校验，
 	// 否则私网 IP 会被 secureControl 在 connect 时拒绝。
 	relay.SetAllowPrivateDial(true)
 	cfg := &config.Config{}
-	cfg.Groups = groups
-	cfg.Server = config.ServerConfig{Host: "127.0.0.1", Port: 8765}
+	cfg.Host, cfg.Port = "127.0.0.1", 8765
 	return &Server{
 		config:                 cfg,
 		engine:                 gin.New(),
@@ -79,16 +77,13 @@ func newTestServerWithStore(t *testing.T, groups []config.ModelGroupConfig, defi
 	}
 	t.Cleanup(func() { store.Close() })
 	s.store = store
-	// config 里的组/模型导入 store（store 模式下路由装配读 DB，不读 config）。
-	if err := s.importLegacyConfig(); err != nil {
-		t.Fatalf("importLegacyConfig: %v", err)
-	}
 	for _, definition := range definitions {
 		activateGatewayDefinition(t, s, definition)
 	}
 	if err := s.initializeProtocolRuntime(t.Context()); err != nil {
 		t.Fatal("protocol runtime", err)
 	}
+	seedRoutingGroups(t, s, groups)
 	s.startUsageWriter()
 	t.Cleanup(s.stopUsageWriter)
 	return s
@@ -116,7 +111,7 @@ func latestUsageRecords(t *testing.T, s *Server) []storage.UsageLogItem {
 }
 
 func openAIModel(name, baseURL string) config.ModelRef {
-	return config.ModelRef{ID: name, Name: name, BaseURL: baseURL, Platform: "openai", APIKey: "test-key", ToolsCapable: true, VisionCapable: true}
+	return config.ModelRef{ID: name, Name: name, BaseURL: baseURL, Platform: "custom:" + protocol.PresetChatCompletionsID, APIKey: "test-key", ToolsCapable: true, VisionCapable: true}
 }
 
 func chatRequestContext(body string) (*gin.Context, *httptest.ResponseRecorder) {

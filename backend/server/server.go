@@ -2,21 +2,18 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"io"
 	"io/fs"
-	"log"
 	"net"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/elysia-api/backend/protocol/builtin"
@@ -24,6 +21,7 @@ import (
 	"github.com/elysia-api/backend/agent"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
@@ -67,8 +65,10 @@ type Server struct {
 	a2aTasks      map[string]*a2aTaskEntry
 	a2aMessageIDs map[string]string
 
-	store      *storage.Store
-	startupErr error
+	store       *storage.Store
+	logger      *logging.Logger
+	shutdownErr error
+	startupErr  error
 
 	// 异步 usage 写入：store 模式下，请求路径只把记录投递到 buffer channel，
 	// 由单个 writer goroutine 落库，避免请求在 SQLite 写入（单连接串行）上阻塞。
@@ -81,6 +81,9 @@ type Server struct {
 	usageWriteCtx       context.Context
 	usageWriteCancel    context.CancelFunc
 	usagePersistMu      sync.Mutex
+	usageStatsMu        sync.Mutex
+	usageStats          logging.Stats
+	usageWriteErr       error
 	shutdownOnce        sync.Once
 	lifecycleOnce       sync.Once
 	lifecycleCtx        context.Context
@@ -105,7 +108,7 @@ type Server struct {
 	healthChecker *healthChecker
 
 	// 后台日志清理器（usageLog.retentionDays/maxContentMB/maxRecords 控制，
-	// 默认全关；孤儿资产清扫作为卫生活常开）。
+	// 默认有限留存；孤儿资产清扫常开）。
 	usageRetention *usageRetention
 
 	// 资产目录体积统计的短 TTL 缓存（WalkDir 全量遍历，设置页会轮询）。
@@ -164,12 +167,6 @@ func New(cfg *config.Config) *Server {
 	var protocolPreparationErr error
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
-	engine.Use(gin.Recovery())
-	// gin.Logger 会为每个请求打一行访问日志。正常运行只保留 Recovery，
-	// 仅在调试模式下启用访问日志。
-	if cfg.DebugMode {
-		engine.Use(gin.Logger())
-	}
 
 	// HTTP 超时（秒）；0 表示不限制（time.Duration(0) 本身即 0，无需特判）。
 	httpTimeout := time.Duration(cfg.HTTPTimeout) * time.Second
@@ -194,25 +191,21 @@ func New(cfg *config.Config) *Server {
 		}),
 	}
 	server.initLifecycle()
-	if store, err := storage.OpenWithKey(cfg.DatabasePath, cfg.GetDBEncryptionKey()); err != nil {
+	server.logger = logging.New(cfg.GetLoggingOptions(), nil)
+	engine.Use(server.requestLogging())
+	if store, err := storage.OpenWithLogPath(cfg.DatabasePath, cfg.GetLogDatabasePath(), cfg.GetDBEncryptionKey()); err != nil {
 		server.startupErr = fmt.Errorf("open sqlite store: %w", err)
 		return server
 	} else {
 		server.store = store
+		server.logger = logging.New(cfg.GetLoggingOptions(), logging.NewWriter(store.LogStore.WriteSystemLogBatch))
 		// 密钥完整性探测：master-key 丢失/更换会让全部密文行解不开——路由
 		// 装配失败导致所有请求 401、管理面板 500。与其静默砖死，启动时把
 		// 原因与恢复手段喊出来（恢复 .master-key 文件或设置环境变量）。
 		if hasEncrypted, decryptOK, perr := store.SecretIntegrityProbe(context.Background()); perr != nil {
-			log.Printf("secret integrity probe failed: %v", perr)
+			server.logEvent("error").Err(perr).Msg("secret integrity probe failed")
 		} else if hasEncrypted && !decryptOK {
-			log.Printf("========================================================================")
-			log.Printf("FATAL-WARNING: encrypted secrets exist but the current master key cannot decrypt them.")
-			log.Printf("All upstream keys / API tokens are unreadable: routing will fail with 401")
-			log.Printf("and the admin panel cannot list sources/tokens until this is fixed.")
-			log.Printf("Recovery: restore the original .master-key file next to the database, or set")
-			log.Printf("ELYSIA_API_MASTER_KEY to the previous value. Rows are kept (secrets cleared)")
-			log.Printf("so they can be re-entered from the panel once the key is restored.")
-			log.Printf("========================================================================")
+			server.logEvent("error").Msg("encrypted secrets cannot be decrypted; restore the original .master-key or ELYSIA_API_MASTER_KEY. Routing and token/source administration are unavailable until repaired; rows are retained")
 		}
 		// 历史数据回填进小时级 rollup 预聚合表（后台、幂等、可断点续跑）；
 		// 完成前聚合查询自动走 raw 路径，功能不受影响。
@@ -223,11 +216,11 @@ func New(cfg *config.Config) *Server {
 	go server.catalog.runPeriodic()
 	server.syncOutboundPolicy()
 	if protocolPreparationErr != nil {
-		log.Printf("protocol migration requires repair; generation is disabled: %v", protocolPreparationErr)
+		server.logEvent("error").Err(protocolPreparationErr).Msg("protocol runtime requires repair; generation is disabled")
 	}
 	if server.store != nil {
 		server.logSystemEvent("info", "server started", map[string]any{
-			"version": AppVersion, "host": cfg.Server.Host, "port": cfg.Server.Port,
+			"version": AppVersion, "host": cfg.Host, "port": cfg.Port,
 		})
 	}
 	return server
@@ -248,7 +241,7 @@ func (s *Server) syncOutboundPolicy() {
 // logVerbose 仅在详细日志模式下输出完整请求/响应结构
 func (s *Server) logVerbose(format string, args ...interface{}) {
 	if s.config.IsVerboseLog() {
-		log.Printf(format, args...)
+		s.logEvent("debug").Msgf(format, args...)
 	}
 }
 
@@ -336,10 +329,10 @@ func (s *Server) mountWebUI() {
 	if dir := strings.TrimSpace(s.config.WebUIDir); dir != "" {
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
 			s.engine.Static("/ui", dir)
-			log.Printf("WebUI mounted from external directory: %s", dir)
+			s.logEvent("info").Str("path", dir).Msg("WebUI mounted from external directory")
 			return
 		}
-		log.Printf("configured webuiDir %q not found, falling back to embedded WebUI", dir)
+		s.logEvent("warn").Str("path", dir).Msg("configured webuiDir not found; falling back to embedded WebUI")
 	}
 
 	if sub, ok := webui.FS(); ok {
@@ -354,11 +347,11 @@ func (s *Server) mountWebUI() {
 			}
 		})
 		ui.StaticFS("/", http.FS(noDirectoryFS{inner: sub}))
-		log.Printf("WebUI mounted from embedded assets at /ui")
+		s.logEvent("info").Msg("WebUI mounted from embedded assets at /ui")
 		return
 	}
 
-	log.Printf("WebUI is not available (no embedded assets and no valid webuiDir); /ui is disabled")
+	s.logEvent("warn").Msg("WebUI is not available; /ui is disabled")
 }
 
 // noDirectoryFS 隐藏子目录：http.FileServer 对无 index.html 的目录会渲染
@@ -511,16 +504,10 @@ func (s *Server) loopbackOnly(handler gin.HandlerFunc) gin.HandlerFunc {
 	}
 }
 
-// logSystemEvent 落一条系统日志(运营/审计事件)。store 不可用或写失败时静默
-// 降级为控制台输出——运营日志不得阻断业务路径。与模型调用日志(usage_records)
-// 分表分查询面,互不混流。
+// Operation events bypass the diagnostic persistence threshold.
 func (s *Server) logSystemEvent(level, message string, fields map[string]any) {
-	if s.store == nil {
-		return
-	}
-	if err := s.store.InsertSystemLog(context.Background(), level, message, fields); err != nil {
-		log.Printf("system log write failed (%s %s): %v", level, message, err)
-	}
+	l := s.Logger().Component("server")
+	l.WithLevel(logging.ParseLevel(level)).Fields(fields).Str("event_kind", "operation").Msg(message)
 }
 
 func (s *Server) reloadConfig(c *gin.Context) {
@@ -530,15 +517,23 @@ func (s *Server) reloadConfig(c *gin.Context) {
 	oldHost := oldServer.Host
 	oldPort := oldServer.Port
 	oldHTTPTimeout := s.config.GetHTTPTimeout()
+	oldDatabase, oldLogDatabase := s.config.GetDatabasePath(), s.config.GetLogDatabasePath()
+	oldUsage, oldSystem := s.config.GetUsageLogConfig(), s.config.GetSystemLogConfig()
 
 	if err := s.config.Reload(); err != nil {
-		log.Printf("Config reload failed: %v", err)
 		s.logSystemEvent("warn", "config reload failed", map[string]any{"error": err.Error()})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"reloaded": false,
 			"error":    err.Error(),
 		})
 		return
+	}
+	s.Logger().Configure(s.config.GetLoggingOptions())
+	if oldDatabase != s.config.GetDatabasePath() || oldLogDatabase != s.config.GetLogDatabasePath() {
+		s.markRestartRequired()
+	}
+	if s.usageRetention != nil && retentionTightened(oldUsage, s.config.GetUsageLogConfig(), oldSystem, s.config.GetSystemLogConfig()) {
+		s.usageRetention.triggerAsync()
 	}
 	s.logSystemEvent("info", "config reloaded", nil)
 
@@ -547,7 +542,7 @@ func (s *Server) reloadConfig(c *gin.Context) {
 	// httpTimeout 属于 adapter 客户端参数,config.json 路径的热重载也要下发
 	//(此前只有管理端 PUT 会 SetTimeout,文件路径改超时静默不生效直到重启)。
 	if timeout := s.config.GetHTTPTimeout(); timeout != oldHTTPTimeout {
-		log.Printf("HTTP timeout hot-reloaded: %ds -> %ds", oldHTTPTimeout, timeout)
+		s.logEvent("info").Int("old_timeout", oldHTTPTimeout).Int("timeout", timeout).Msg("HTTP timeout hot-reloaded")
 		duration := time.Duration(timeout) * time.Second
 		s.protocolTransport.SetTimeout(duration)
 	}
@@ -557,7 +552,8 @@ func (s *Server) reloadConfig(c *gin.Context) {
 	// 自定义协议存 SQLite，不随 config.json 热重载：管理端点写入时即时同步。
 	s.syncOutboundPolicy()
 	if serverChanged {
-		log.Printf(
+		s.markRestartRequired()
+		s.logEvent("info").Msgf(
 			"Config hot-reloaded successfully, but server listen address change requires restart (old=%s:%d new=%s:%d)",
 			oldHost,
 			oldPort,
@@ -565,7 +561,7 @@ func (s *Server) reloadConfig(c *gin.Context) {
 			newServer.Port,
 		)
 	} else {
-		log.Printf("Config hot-reloaded successfully")
+		s.logEvent("info").Msg("config hot-reloaded successfully")
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -594,35 +590,6 @@ func isLoopbackRequest(r *http.Request) bool {
 
 func (s *Server) chatCompletions(c *gin.Context) { s.serveVersionedPublicIngress(c) }
 func (s *Server) responses(c *gin.Context)       { s.serveVersionedPublicIngress(c) }
-
-// ginStreamWriter 实现 relay.StreamResponseWriter，封装 gin 的 ResponseWriter
-type ginStreamWriter struct {
-	writer http.ResponseWriter
-}
-
-func (w *ginStreamWriter) Write(data []byte) (int, error) {
-	return w.writer.Write(data)
-}
-
-func (w *ginStreamWriter) WriteString(data string) (int, error) {
-	return io.WriteString(w.writer, data)
-}
-
-func (w *ginStreamWriter) Flush() error {
-	// Gin 的 Flush 不返回错误；穿过捕获器和 Gin，读取底层 FlushError。
-	writer := w.writer
-	for {
-		if _, ok := writer.(interface{ FlushError() error }); ok {
-			break
-		}
-		unwrapper, ok := writer.(interface{ Unwrap() http.ResponseWriter })
-		if !ok {
-			break
-		}
-		writer = unwrapper.Unwrap()
-	}
-	return http.NewResponseController(writer).Flush()
-}
 
 // tokenAllowsGroup 校验当前请求的 API key 是否被允许访问指定模型组。
 // 从 gin context 取 authMiddleware 写入的 AllowedGroups：为空表示不限制（放行）；
@@ -931,11 +898,12 @@ func (s *Server) healthCheck(c *gin.Context) {
 	// 公开（无鉴权）健康端点，供负载均衡 / k8s 探针使用。
 	// 深入探测数据库依赖：store 不可用或 Ping 失败时返回 503，
 	// 这样探针能据此摘除不健康实例。
-	dbOK := false
+	dbOK, logDBOK := false, false
 	if s.store != nil {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
 		defer cancel()
 		dbOK = s.store.Ping(ctx) == nil
+		logDBOK = s.store.LogStore.Ping(ctx) == nil
 	}
 
 	status := "ok"
@@ -944,12 +912,12 @@ func (s *Server) healthCheck(c *gin.Context) {
 		status = "degraded"
 		code = http.StatusServiceUnavailable
 	}
-	c.JSON(code, gin.H{"status": status, "database": dbOK, "version": AppVersion, "commit": AppCommit})
+	c.JSON(code, gin.H{"status": status, "database": dbOK, "logDatabase": logDBOK, "version": AppVersion, "commit": AppCommit})
 }
 
-func (s *Server) ListenAndServe() error {
+func (s *Server) ListenAndServe() (result error) {
 	s.initLifecycle()
-	defer s.doShutdown()
+	defer func() { s.doShutdown(); result = errors.Join(result, s.shutdownErr) }()
 	if s.startupErr != nil {
 		return s.startupErr
 	}
@@ -963,31 +931,27 @@ func (s *Server) ListenAndServe() error {
 	s.usageRetention = newUsageRetention(s)
 	s.usageRetention.start()
 
-	addr := fmt.Sprintf("%s:%d", s.config.Server.Host, s.config.Server.Port)
-	log.Printf("Starting server on %s", addr)
+	listen := s.config.GetServer()
+	addr := fmt.Sprintf("%s:%d", listen.Host, listen.Port)
+	s.logEvent("info").Str("address", addr).Msg("starting server")
 
 	// 显式持有 http.Server，便于 /__shutdown 与信号(SIGTERM/SIGINT)优雅关停。
-	s.httpServer = &http.Server{Addr: addr, Handler: http.HandlerFunc(s.serveHTTP), BaseContext: func(net.Listener) context.Context { return s.lifecycleCtx }}
+	s.httpServer = &http.Server{Addr: addr, Handler: http.HandlerFunc(s.serveHTTP), ErrorLog: s.Logger().Standard("http_server"), BaseContext: func(net.Listener) context.Context { return s.lifecycleCtx }}
 
 	// 先绑定再 Serve：监听失败（端口占用等）时不拉起浏览器。
 	listener, listenErr := net.Listen("tcp", addr)
 	if listenErr != nil {
 		return listenErr
 	}
-	launchConsoleBrowser(s.config.OpenBrowserOnStart, s.config.Server.Host, s.config.Server.Port)
+	launchConsoleBrowser(s.config.OpenBrowserOnStart, listen.Host, listen.Port)
 
-	// Signals, the local shutdown endpoint and parent EOF share one shutdown sequence.
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
-	defer signal.Stop(sigCh)
+	// main owns OS signals; every shutdown source calls RequestShutdown.
 	serveDone := make(chan struct{})
 	defer close(serveDone)
 	go func() {
 		select {
-		case <-sigCh:
-			log.Printf("Shutdown signal received, draining...")
 		case <-s.shutdownRequested:
-			log.Printf("Shutdown requested, draining...")
+			s.logEvent("info").Msg("shutdown requested; draining")
 		case <-serveDone:
 			return
 		}
@@ -998,7 +962,6 @@ func (s *Server) ListenAndServe() error {
 	if err == http.ErrServerClosed {
 		// 主动关停(信号或 /__shutdown)属正常退出;等待关停序列完成。
 		<-s.shutdownDone
-		log.Printf("Server stopped gracefully")
 		return nil
 	}
 	// ListenAndServe 其他错误(端口占用等):关停序列未跑,直接返回。
@@ -1046,8 +1009,6 @@ func (s *Server) doShutdown() {
 	s.shutdownOnce.Do(func() {
 		defer close(s.shutdownDone)
 		deadline := time.Now().Add(12 * time.Second)
-		stopWrites := time.AfterFunc(time.Until(deadline), s.usageWriteCancel)
-		defer stopWrites.Stop()
 		defer s.usageWriteCancel()
 		ctx, cancel := context.WithDeadline(context.Background(), deadline)
 		defer cancel()
@@ -1071,7 +1032,8 @@ func (s *Server) doShutdown() {
 		storageSafe := true
 		if agentEngine != nil {
 			if err := agentEngine.Shutdown(ctx); err != nil {
-				log.Printf("agent shutdown error: %v", err)
+				s.logEvent("error").Err(err).Msg("agent shutdown error")
+				s.shutdownErr = errors.Join(s.shutdownErr, err)
 				storageSafe = false
 			}
 		}
@@ -1081,7 +1043,7 @@ func (s *Server) doShutdown() {
 		if s.httpServer != nil {
 			httpCtx, stopHTTP := context.WithTimeout(ctx, 5*time.Second)
 			if err := s.httpServer.Shutdown(httpCtx); err != nil {
-				log.Printf("graceful shutdown error: %v", err)
+				s.logEvent("warn").Err(err).Msg("HTTP graceful shutdown timed out; canceling connections")
 				_ = s.httpServer.Close()
 			}
 			stopHTTP()
@@ -1096,7 +1058,8 @@ func (s *Server) doShutdown() {
 		select {
 		case <-requestsDone:
 		case <-ctx.Done():
-			log.Printf("request shutdown error: %v", ctx.Err())
+			s.logEvent("error").Err(ctx.Err()).Msg("request shutdown error")
+			s.shutdownErr = errors.Join(s.shutdownErr, ctx.Err())
 			storageSafe = false
 		}
 		if s.healthChecker != nil {
@@ -1108,13 +1071,30 @@ func (s *Server) doShutdown() {
 		if s.usageRetention != nil {
 			s.usageRetention.shutdown()
 		}
+		if s.store != nil {
+			s.store.LogStore.StopBackground()
+		}
+		// Give persistence its own budget after producers stop. Request
+		// cancellation must not cancel the final records they enqueue.
+		flushCtx, stopFlush := context.WithTimeout(context.Background(), 15*time.Second)
+		defer stopFlush()
+		cancelWrites := context.AfterFunc(flushCtx, s.usageWriteCancel)
+		defer cancelWrites()
 		s.stopUsageWriter()
+		s.shutdownErr = errors.Join(s.shutdownErr, s.usagePersistenceError())
+		if storageSafe {
+			s.logSystemEvent("info", "server stopped; flushing logs", nil)
+		}
+		if s.logger != nil {
+			s.shutdownErr = errors.Join(s.shutdownErr, s.logger.Close(flushCtx))
+		}
 		if s.store != nil && storageSafe {
 			if err := s.store.Close(); err != nil {
-				log.Printf("store close error: %v", err)
+				logging.Emergency("store close error", err)
+				s.shutdownErr = errors.Join(s.shutdownErr, err)
 			}
 		} else if s.store != nil {
-			log.Printf("shutdown deadline reached; active work still owns storage, leaving cleanup to process exit")
+			logging.Emergency("shutdown deadline reached; active work still owns storage", s.shutdownErr)
 		}
 	})
 }

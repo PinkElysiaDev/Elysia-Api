@@ -2,13 +2,14 @@ package relay
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	log "github.com/elysia-api/backend/logging"
 )
 
 // DefaultDeniedIPRanges 是出站禁止 IP 段的预置默认（CIDR），覆盖旧固定判定
@@ -67,24 +68,10 @@ func SetDeniedIPRanges(ranges []string) {
 		if _, ipNet, err := net.ParseCIDR(entry); err == nil {
 			parsed = append(parsed, ipNet)
 		} else {
-			log.Printf("[outbound-policy] ignoring invalid CIDR %q: %v", entry, err)
+			log.Warn().Str("component", "outbound_policy").Str("cidr", entry).Err(err).Msg("ignoring invalid CIDR")
 		}
 	}
 	deniedIPRanges.Store(&parsed)
-}
-
-// DeniedIPRanges 返回当前生效的禁止段（解析后的 CIDR 文本，去零值）。
-// 供诊断与测试使用。
-func DeniedIPRanges() []string {
-	current := deniedIPRanges.Load()
-	if current == nil {
-		return nil
-	}
-	out := make([]string, 0, len(*current))
-	for _, ipNet := range *current {
-		out = append(out, ipNet.String())
-	}
-	return out
 }
 
 // secureControl 是 net.Dialer.Control 回调：在 DNS 解析之后、实际 connect 之前，

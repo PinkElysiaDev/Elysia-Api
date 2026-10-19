@@ -129,9 +129,12 @@ docker compose logs elysia-api
 | --- | --- |
 | `host` / `port` | `127.0.0.1` / `8765`；改变监听需重启 |
 | `panelAccessToken` | 首次创建时生成；保护管理 API，不是推理令牌 |
-| `databasePath` | `elysia-api.sqlite3`；模型、令牌、会话和日志存储 |
+| `databasePath` | `elysia-api.sqlite3`；模型、令牌、会话等业务数据 |
+| `logDatabasePath` | 默认在业务库文件名后加 `-logs`，如 `elysia-api-logs.sqlite3`；系统日志、调用明细、媒体索引和用量汇总；变更需重启 |
 | `secretKeyPath` | `.master-key`；SQLite 敏感字段的加密密钥 |
 | `logLevel` | `info`；可选 `debug`、`info`、`warn`、`error` |
+| `logPersistLevel` | `info`；数据库诊断日志阈值，与控制台独立；操作事件和 error 始终尝试持久化 |
+| `logFormat` | `auto`；终端可读文本，重定向时 JSON；可显式选 `json` / `console` |
 | `httpTimeout` | 非流式 HTTP 请求总超时；自动创建配置时为 120 秒，显式 `0` 或字段缺省为不限制 |
 | `openBrowserOnStart` | 缺省尝试打开浏览器 |
 | `webuiDir` | 空时使用嵌入资源；非空时覆盖 WebUI 文件目录 |
@@ -139,7 +142,7 @@ docker compose logs elysia-api
 | `maxBodyBytes` | `33554432`（32 MiB）；请求体大小上限 |
 | `debugMode` / `verboseLog` | 默认关闭；详细日志要求两者同时开启 |
 
-`databasePath`、`secretKeyPath`、`webuiDir` 的相对路径按配置文件目录解析。模型源、模型组和访问令牌通过管理 API 保存在 SQLite，不写入此文件。
+`databasePath`、`logDatabasePath`、`secretKeyPath`、`webuiDir` 的相对路径按配置文件目录解析。业务库与日志库必须是不同文件（包括软／硬链接）。模型源、模型组和访问令牌通过管理 API 保存在 SQLite，不写入此文件。
 
 流式 SSE/NDJSON 使用协议的 `framing.idleMillis`：缺省或 `0` 为 10 分钟，显式值允许 1—3600000 毫秒。它限制等待响应头和相邻数据之间的空闲时间，不限制总流时长；`httpTimeout: 0` 不会关闭此保护。长时间思考的上游可调整该协议字段，主动取消仍立即生效。延长等待不能解决上游 429 限流，已开始生成的请求不会自动重放。
 
@@ -151,13 +154,13 @@ docker compose logs elysia-api
 | `ELYSIA_API_OPEN_BROWSER` | 覆盖浏览器启动设置，不写回文件；无效布尔值记录提示并回退 |
 | `ELYSIA_API_MASTER_KEY` | 优先于密钥文件；应由受保护的运行环境注入 |
 
-密钥读取顺序：环境变量 → `secretKeyPath` → 数据库目录中的旧 `.db-key` → 自动创建随机密钥。旧密钥存在时会继续使用，避免升级后无法解密。密钥创建失败会记录告警；检查启动日志，不要将服务启动成功视为加密已建立的证明。
+密钥读取顺序：环境变量 → `secretKeyPath` → 自动创建随机密钥。不再读取旧 `.db-key`；启用加密的存储不接受历史明文密钥字段。密钥创建失败会记录告警；检查启动日志，不要将服务启动成功视为加密已建立的证明。
 
 ### 运行策略
 
 | 配置块 | 字段与默认行为 |
 | --- | --- |
-| `responses` | `enabled: true`，`upstreamMode: "auto"`；模式支持 `native`、`transform`、`auto` |
+| `responses` | `enabled: true`；协议转换由当前协议绑定和转换策略决定 |
 | `usage` | 缺少上游用量时默认估算；`charsPerToken: 4`、`defaultOutputTokenEstimate: 1024`、`imageInputTokenEstimate: 300`、`fileInputTokenEstimatePerKB: 128`；`estimateWhenMissing: false` 关闭估算 |
 | `healthCheck` | 默认关闭；`intervalSeconds: 300`、`timeoutSeconds: 10`、`failureThreshold: 3`；探测可能产生上游请求费用 |
 | `modelCatalog` | 默认启用 models.dev 目录；内置快照及本地缓存，在线失败可回退镜像；`url`、`proxy` 可覆盖，`syncIntervalMinutes` 缺省 1440，显式 `0` 停止定时同步 |
@@ -172,14 +175,14 @@ docker compose logs elysia-api
 
 ## 请求日志
 
-默认记录请求元数据和用量，不保存请求／响应正文，包括失败请求。需要排障正文时，将 `usageLog.bodyMaxKB` 设为正数；WebUI 开关初次启用设置为 1024 KB。自动清理默认关闭。
+默认记录请求元数据和用量，不保存请求／响应正文，包括失败请求。需要排障正文时，将 `usageLog.bodyMaxKB` 设为正数；WebUI 开关初次启用设置为 1024 KB。调用明细默认保留 14 天、内容预算 1024 MiB；显式设置 0 可关闭对应限制。
 
 ```json
 {
   "usageLog": {
     "persistEnabled": true,
-    "retentionDays": 0,
-    "maxContentMB": 0,
+    "retentionDays": 14,
+    "maxContentMB": 1024,
     "maxRecords": 0,
     "bodyMaxKB": 0,
     "bodyOnErrorOnly": false,
@@ -196,12 +199,16 @@ docker compose logs elysia-api
 | `maxContentMB` | 按请求日志 JSON 与去重媒体内容大小限制，`0` 不限制；数据库空闲页独立回收 |
 | `bodyMaxKB` | 四段链路正文分别应用的 KB 上限；`0` 不保存正文 |
 | `bodyOnErrorOnly` | 仅失败请求保存正文，仍需 `bodyMaxKB > 0` |
-| `externalizeMedia` | 将正文内 base64 媒体去重写至数据库目录下的 `usage-assets/`，正文保存占位符 |
+| `externalizeMedia` | 将正文内 base64 媒体去重写至 `<logDatabasePath>-assets/`，正文保存占位符 |
 | `cleanupIntervalMinutes` | 默认 60 分钟，正值最低 5 分钟 |
 
-策略作用于后续请求，不追溯删除旧正文。留存清理保留小时聚合统计；外置媒体随日志删除。现有显式限制在升级时保留。旧键只在一次性迁移时读取，迁移后不再运行时兼容。
+策略作用于后续请求，不追溯删除旧正文。留存清理保留小时聚合统计；外置媒体随日志删除。本版本不迁移旧数据库，不提供旧 schema 兼容；请使用新数据库。
 
-`systemLog.retentionDays`、`systemLog.maxRecords` 和 `systemLog.maxContentMB` 分别限制系统日志的时间、条数及内容字节数，默认均为 `0`（不限）。请求日志预算不包含系统日志、用量汇总、模型配置或 Agent 会话。内容预算不是 SQLite 文件的磁盘硬上限，索引、空闲页和 WAL 单独显示。首次升级会在数据目录保留数据库与配置的 `.pre-log-lifecycle` 备份，不会自动删除；留存清理保留历史用量汇总，只有“重置用量”清除汇总。
+`systemLog.retentionDays`、`systemLog.maxRecords` 和 `systemLog.maxContentMB` 分别限制系统日志的时间、条数及内容字节数，默认 30 天、条数不限、256 MiB。请求日志预算不包含系统日志和用量汇总。内容预算不是 SQLite 文件的磁盘硬上限，索引、空闲页和 WAL 单独显示；留存清理保留历史用量汇总，只有“重置用量”清除汇总。
+
+日志通过 zerolog 输出，HTTP 日志与调用明细共享服务端生成的 `request_id`（响应头 `X-Elysia-Request-Id`）。访问日志为 debug，5xx 与 panic 为 error。系统日志队列最多 2048 条 / 16 MiB，按 64 条或 100 ms 批量提交；普通诊断日志在饱和时丢弃并计数，重要事件同步回退。调用日志队列最多 1024 条 / 128 MiB，按 64 条或 50 ms 提交，队列满时同步回退，写入失败在有界时间内重试。写入指标在设置页及 `GET /api/admin/usage/storage` 的 `writers` 字段提供。
+
+SIGTERM、SIGINT、本地关闭接口与父进程 EOF 共用关停流程：停止请求和后台生产者，再给予日志排空独立的 15 秒预算，最后 checkpoint 并关闭数据库。持久化失败直接写 stderr、计入失败指标，并使服务以非零状态退出；不会宣称成功落盘。内存队列中的记录不能抵御 SIGKILL；已提交记录由 SQLite `synchronous=FULL` 的 WAL 保证持久性，仍依赖底层文件系统正确实现同步写入。
 
 ## 服务托管
 
@@ -219,6 +226,7 @@ ExecStart=/opt/elysia-api/elysia-api-linux-amd64 --config /opt/elysia-api/config
 Environment=ELYSIA_API_OPEN_BROWSER=false
 Restart=on-failure
 RestartSec=3
+TimeoutStopSec=45
 
 [Install]
 WantedBy=multi-user.target
@@ -228,11 +236,11 @@ WantedBy=multi-user.target
 
 ## 升级、备份与恢复
 
-SQLite 使用 WAL、5000 ms busy timeout、外键和 `synchronous=NORMAL`。
+两个 SQLite 库均使用 WAL、5000 ms busy timeout 和外键。业务库使用 `synchronous=NORMAL`，日志库使用 `synchronous=FULL`。业务 schema 版本为 2，日志 schema 版本为 1；旧业务 schema 直接拒绝，不自动迁移。
 
-1. 升级前停止服务，备份 `config.json`、数据库及仍存在的 `-wal` / `-shm` 文件、`usage-assets/`。
+1. 升级前停止服务，备份 `config.json`、业务库、日志库及仍存在的 `-wal` / `-shm` 文件、`<logDatabasePath>-assets/`。
 2. 单独保护并备份实际使用的加密密钥；若来自环境变量，记录其安全恢复方式。数据库和密钥一同泄漏会使静态加密失去保护。
-3. 保留旧程序版本，替换二进制或镜像，使用原配置与数据启动。
+3. 保留旧程序版本，替换二进制或镜像。使用本版本当前 schema 的数据库；从旧 schema 升级时需配置新的数据库路径并重新初始化数据。
 4. 检查 `/health`、面板登录、模型列表和一次推理请求。真实推理会产生上游费用。
 5. 恢复时停止服务，将同一备份的配置、数据库、媒体和匹配密钥放回，并恢复权限，再启动兼容版本。不要仅替换数据库主文件或重新生成密钥。
 
@@ -248,12 +256,14 @@ SQLite 使用 WAL、5000 ms busy timeout、外键和 `synchronous=NORMAL`。
 
 `POST /__reload`、`POST /__shutdown` 只允许回环来源；代理转发时不要将这两个端点公开。
 
-## 旧版本迁移
+## 当前格式要求
 
-- `server.host` / `server.port` 仅在对应顶层字段缺省时作为回退。
-- 当前配置解析不再读取 `tokens`、`modelGroups`，也不把 `dashboardToken` 当作面板令牌。不要依赖旧文档所述的自动迁移；在兼容旧版本导出数据或通过管理接口重建，并保留原备份。
-- 已废弃的 `customProtocols` 字段由启动迁移处理并从配置移除。先备份，启动后在协议设计器检查结果。
-- 模型能力、流式转换和自定义协议的限制见[协议引擎指南](protocol-guide.md)与[协议定义](protocol-definition-reference.md)。升级前保留匹配的程序、数据库、配置和主密钥备份，先做迁移预演；步骤见[升级与回滚](protocol-release-readiness.md#升级与回滚)。
+后端不保留向后兼容或自动迁移路径。使用当前格式的新数据库和配置；已有数据请先独立备份，必要内容通过当前管理接口重建，服务不会替你删除旧文件。
+
+- 监听设置只读取顶层 `host` / `port`，不再读取 `server.host` / `server.port`。
+- API Key、模型和分组只存 SQLite；不读取或导入 `tokens`、`modelGroups`、`customProtocols`。
+- 协议只使用当前定义与显式绑定，平台为 `custom:<协议 ID>`；模型引用必须为 `sourceId:modelId`。
+- 已删除旧协议迁移接口、历史预置改名/路径修补和旧日志布局回填。
 
 ## 故障处理
 
@@ -263,5 +273,5 @@ SQLite 使用 WAL、5000 ms busy timeout、外键和 `synchronous=NORMAL`。
 | 面板 401 | 使用面板令牌；检查配置路径，避免误用推理或 Agent Key |
 | 上游连接被拦截 | 出站 CIDR 策略、DNS 解析结果和代理配置 |
 | 用量日志没有正文 | `bodyMaxKB` 是否为正；历史请求不会补采集 |
-| 升级后密钥不可解密 | 是否使用原主密钥或旧 `.db-key`，环境变量是否改变 |
+| 密钥不可解密 | 是否使用与该数据库匹配的主密钥或 `secretKeyPath`，环境变量是否改变 |
 | 模型列表为空 | 上游模型发现端点、逐 Key 权限、自定义协议的 `models` 定义 |

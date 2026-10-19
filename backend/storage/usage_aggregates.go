@@ -20,7 +20,7 @@ const defaultUsageTopModels = 8
 // (日, 模型) 扫描，在一个读事务（WAL 快照）内精确合并；否则整体走 raw 路径
 // （单次 (日, 模型) 粒度 GROUP BY 扫描 + Go 内按日归并，IO 相比旧版两次全窗
 // 口扫描减半）。输出结构（含日期格式、未知模型归并）与旧版一致。
-func (s *Store) UsageDaily(ctx context.Context, q UsageQuery, utcOffsetMinutes int) ([]UsageDailyBucket, error) {
+func (s *LogStore) UsageDaily(ctx context.Context, q UsageQuery, utcOffsetMinutes int) ([]UsageDailyBucket, error) {
 	offsetMs := int64(utcOffsetMinutes) * msPerMinute
 	rows, err := s.usageDailyRows(ctx, q, offsetMs)
 	if err != nil {
@@ -60,16 +60,16 @@ func (s *Store) UsageDaily(ctx context.Context, q UsageQuery, utcOffsetMinutes i
 // mergeRawRollupSegments 执行「头 raw → 中 rollup → 尾 raw」三段合并扫描：
 // 窗口不跨 rollup 就绪边界时整体走 raw（ok=false）。三个聚合入口
 // （日表/模型分布/总计）共用此骨架，只有 scan 回调不同。
-func mergeRawRollupSegments[T any](ctx context.Context, s *Store, q UsageQuery,
+func mergeRawRollupSegments[T any](ctx context.Context, s *LogStore, q UsageQuery,
 	rawScan func(ctx context.Context, qe sqlQueryer, q UsageQuery) ([]T, error),
 	rollupScan func(ctx context.Context, tx *sql.Tx, q UsageQuery, fromHour, toHour int64) ([]T, error),
 	hourAligned bool,
 ) ([]T, error) {
 	fromHour, toHour, ok := s.rollupSplit(q, hourAligned)
 	if !ok {
-		return rawScan(ctx, s.db, q)
+		return rawScan(ctx, s.readDB, q)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.readDB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func mergeRawRollupSegments[T any](ctx context.Context, s *Store, q UsageQuery,
 	return rows, nil
 }
 
-func (s *Store) usageDailyRows(ctx context.Context, q UsageQuery, offsetMs int64) ([]usageDayRow, error) {
+func (s *LogStore) usageDailyRows(ctx context.Context, q UsageQuery, offsetMs int64) ([]usageDayRow, error) {
 	// 日桶扫描多一个 offset 参数，闭包适配后共用三段合并骨架。
 	return mergeRawRollupSegments(ctx, s, q,
 		func(ctx context.Context, qe sqlQueryer, query UsageQuery) ([]usageDayRow, error) {
@@ -140,7 +140,7 @@ func usageDayKeyDate(dayKey int64) string {
 
 // UsageByModel 按模型聚合（请求数 / 失败数 / tokens），按请求数降序、模型名升序。
 // rollup 就绪时中段走预聚合表、边缘小时走 raw，合并后统一排序。
-func (s *Store) UsageByModel(ctx context.Context, q UsageQuery) ([]UsageModelBucket, error) {
+func (s *LogStore) UsageByModel(ctx context.Context, q UsageQuery) ([]UsageModelBucket, error) {
 	// 无界窗口在 rollup 段后补扫孤儿时间戳（rollup 无法安置的坏行）。
 	orphanFollowUp := q.From.IsZero()
 	rows, err := mergeRawRollupSegments(ctx, s, q,
@@ -203,7 +203,7 @@ func ValidatePulseQuery(q UsageQuery) error {
 // UsagePulse 按固定分钟桶聚合请求数、平均耗时与 P95 耗时，并同时给出整窗 P95。
 // utcOffsetMinutes 与 UsageDaily 相同，用来把桶边界对齐到调用方本地时区。
 // 按桶排序后流式计算桶级指标。P95 在样本数 ≤ pulseP95Reservoir 时精确，超出为估算。
-func (s *Store) UsagePulse(ctx context.Context, q UsageQuery, utcOffsetMinutes, bucketMinutes int) (UsagePulseResult, error) {
+func (s *LogStore) UsagePulse(ctx context.Context, q UsageQuery, utcOffsetMinutes, bucketMinutes int) (UsagePulseResult, error) {
 	if bucketMinutes <= 0 {
 		return UsagePulseResult{}, fmt.Errorf("bucketMinutes must be positive")
 	}
@@ -216,7 +216,7 @@ func (s *Store) UsagePulse(ctx context.Context, q UsageQuery, utcOffsetMinutes, 
 	args = append([]any{offsetMs, bucketMs}, args...)
 	// 口径：Requests（RPM）计全部记录；时延与 token 只累计成功记录——
 	// 失败调用的时延无性能意义，token 存在断流部分估算等非 0 例外。
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.readDB.QueryContext(ctx,
 		`SELECT ((started_ms + ?) / ?) AS bucket, duration_ms, total_tokens, CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END FROM usage_records `+where+` ORDER BY 1, 2`, args...)
 	if err != nil {
 		return UsagePulseResult{}, err
@@ -353,7 +353,7 @@ func percentileInt64(values []int64, p float64) float64 {
 
 // UsageByModelDaily 按本地日 × 模型聚合请求数。total 请求最高的 top 个模型保留原名，其余合并为 isOther。
 // 走与 UsageDaily 相同的 rollup 中段 + raw 边缘路径，避免每次刷新都扫完整 raw 表。
-func (s *Store) UsageByModelDaily(ctx context.Context, q UsageQuery, utcOffsetMinutes, top int) ([]UsageModelDailyBucket, error) {
+func (s *LogStore) UsageByModelDaily(ctx context.Context, q UsageQuery, utcOffsetMinutes, top int) ([]UsageModelDailyBucket, error) {
 	if top <= 0 {
 		top = defaultUsageTopModels
 	}
@@ -453,7 +453,7 @@ func usageInClause(col string, n int) string {
 	return col + " IN (" + placeholders + ")"
 }
 
-func (s *Store) UsageTotals(ctx context.Context, q UsageQuery) (map[string]any, error) {
+func (s *LogStore) UsageTotals(ctx context.Context, q UsageQuery) (map[string]any, error) {
 	acc, err := s.computeUsageTotals(ctx, q)
 	if err != nil {
 		return nil, err
@@ -521,7 +521,7 @@ func (s *Store) UsageTotals(ctx context.Context, q UsageQuery) (map[string]any, 
 // 表（单行聚合）、两侧边缘小时走 raw 单行聚合，在一个读事务内精确合并；
 // 否则整体 raw（阶段一的覆盖索引单行聚合路径）。
 // computeUsageTotals 在同读事务内聚合 totals(方法名曾与返回类型同名遮蔽)。
-func (s *Store) computeUsageTotals(ctx context.Context, q UsageQuery) (*usageTotalsAcc, error) {
+func (s *LogStore) computeUsageTotals(ctx context.Context, q UsageQuery) (*usageTotalsAcc, error) {
 	// 总计是累加语义：骨架产出行后并入同一累加器。
 	acc := &usageTotalsAcc{}
 	into := func(scan func(ctx context.Context, qe sqlQueryer, query UsageQuery) error) func(context.Context, sqlQueryer, UsageQuery) ([]*usageTotalsAcc, error) {

@@ -11,7 +11,7 @@ import (
 // explainPlan 执行 EXPLAIN QUERY PLAN 并拼接全部 detail 行。
 func explainPlan(t *testing.T, store *Store, query string, args ...any) string {
 	t.Helper()
-	rows, err := store.db.QueryContext(context.Background(), "EXPLAIN QUERY PLAN "+query, args...)
+	rows, err := store.LogStore.db.QueryContext(context.Background(), "EXPLAIN QUERY PLAN "+query, args...)
 	if err != nil {
 		t.Fatalf("explain: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestUsageFilteredQueryPlansStayCovering(t *testing.T) {
 
 	// 遗留单列索引不存在（迁移已删除）。
 	var dropped string
-	err = store.db.QueryRowContext(ctx,
+	err = store.LogStore.db.QueryRowContext(ctx,
 		`SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_usage_model','idx_usage_group','idx_usage_started_at')`).Scan(&dropped)
 	if err == nil {
 		t.Fatalf("legacy single-column index %q must be dropped", dropped)

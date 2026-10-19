@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/agent"
-	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
@@ -68,7 +66,7 @@ func (s *Server) protocolAgentEngine() *agent.Engine {
 		// 以及 ask_user/update_plan 等会话专用工具。
 		registry, err := agent.NewRegistry(&elysiaCLITool{server: s}, &updatePlanTool{}, &askUserTool{})
 		if err != nil {
-			log.Printf("agent engine tools unavailable: %v", err)
+			s.logEvent("error").Err(err).Msg("agent engine tools unavailable")
 			return
 		}
 		s.agentEngineInst = agent.NewEngine(
@@ -159,30 +157,11 @@ func (s *Server) adminCreateAgentSession(c *gin.Context) {
 			return
 		}
 		draft, err := service.ReadDraft(c.Request.Context(), protocolID)
-		if err != nil && !errors.Is(err, protocol.ErrNotFound) {
+		if err != nil {
 			respondProtocolError(c, err)
 			return
 		}
-		if err == nil {
-			seed = string(draft.Definition.Bytes())
-		} else {
-			rows, err := store.ListCustomProtocols(c.Request.Context())
-			if err != nil {
-				respondFail(c, http.StatusInternalServerError, "list_failed", err.Error())
-				return
-			}
-			found := false
-			for _, row := range rows {
-				if strings.EqualFold(row.ID, protocolID) {
-					seed, protocolID, found = row.Config, row.ID, true
-					break
-				}
-			}
-			if !found {
-				respondFail(c, http.StatusNotFound, "not_found", fmt.Sprintf("协议 %q 不存在", protocolID))
-				return
-			}
-		}
+		seed = string(draft.Definition.Bytes())
 	}
 	upsert := storage.AgentSessionUpsert{
 		Title:      strings.TrimSpace(payload.Title),

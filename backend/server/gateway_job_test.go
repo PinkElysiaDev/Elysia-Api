@@ -126,6 +126,10 @@ func TestGatewayJobsIndependentMappingsPinnedRevisionAndUsage(t *testing.T) {
 	defer provider.Close()
 	setupGatewayModel(t, s, upstream, provider.URL)
 	t.Cleanup(s.gatewayJobs.stop)
+	// A failed log commit must leave the business outbox pending for recovery.
+	if err := s.store.LogStore.ExecRaw(t.Context(), `CREATE TRIGGER reject_settlement BEFORE INSERT ON usage_records BEGIN SELECT RAISE(ABORT, 'injected settlement failure'); END`); err != nil {
+		t.Fatal(err)
+	}
 	body := `{"deployment":"group","turns":[{"actor":"user","segments":[{"text":"hello"}]}]}`
 	submission := jobGatewayRequest(t, s, "POST", "/gateway/job-alpha/jobs", body, "one")
 	if submission.Code != 202 {
@@ -173,6 +177,26 @@ func TestGatewayJobsIndependentMappingsPinnedRevisionAndUsage(t *testing.T) {
 		}
 	}
 	s.gatewayJobs.stop()
+	pending, err := s.store.PendingJobSettlements(t.Context(), 10)
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("failed settlement was acknowledged: %+v %v", pending, err)
+	}
+	if st := s.usageWriterStats(); st.Written != 0 || st.Failures == 0 || st.LastError == "" {
+		t.Fatalf("settlement failure was not accounted: %+v", st)
+	}
+	if err := s.store.LogStore.ExecRaw(t.Context(), `DROP TRIGGER reject_settlement`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.gatewayJobs.coordinator.Tick(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	pending, err = s.store.PendingJobSettlements(t.Context(), 10)
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("committed settlement remains pending: %+v %v", pending, err)
+	}
+	if st := s.usageWriterStats(); st.Written != 1 || st.LastWriteAt.IsZero() || s.usageSeq.Load() != 1 {
+		t.Fatalf("settlement bypassed shared commit accounting: %+v seq=%d", st, s.usageSeq.Load())
+	}
 	_, logs, err := s.store.QueryUsageLogs(t.Context(), storage.UsageQuery{Limit: 10})
 	if err != nil || len(logs) != 1 || logs[0].CacheHitTokens != 40 || submits.Load() != 1 || results.Load() != 1 {
 		t.Fatalf("settlements/calls: %+v %v submit=%d result=%d", logs, err, submits.Load(), results.Load())

@@ -15,6 +15,7 @@ import (
 )
 
 const sqliteBusyTimeout = 5 * time.Second
+const currentSchemaVersion = 2
 
 func Open(path string) (*Store, error) {
 	return OpenWithKey(path, nil)
@@ -22,10 +23,17 @@ func Open(path string) (*Store, error) {
 
 // OpenWithKey 打开 SQLite store，并用给定 key 对落库的敏感字段
 // （api token、上游 api_key）做透明 AES-256-GCM 加解密。
-// key 为空时退化为明文模式（向后兼容旧库）。
+// key 为空时使用显式明文模式。
 func OpenWithKey(path string, key []byte) (*Store, error) {
+	return OpenWithLogPath(path, DefaultLogPath(path), key)
+}
+
+func OpenWithLogPath(path, logPath string, key []byte) (*Store, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("database path is required")
+	}
+	if err := ValidateDatabasePaths(path, logPath); err != nil {
+		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
@@ -40,25 +48,48 @@ func OpenWithKey(path string, key []byte) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	store := &Store{db: db, codec: codec, path: path, rollupCtx: ctx, rollupCancel: cancel}
-	if err := store.prepareLogLifecycle(context.Background()); err != nil {
-		cancel()
+	store := &Store{db: db, codec: codec, path: path}
+	if err := store.checkSchema(context.Background()); err != nil {
 		db.Close()
 		return nil, err
 	}
 	if err := store.init(context.Background()); err != nil {
-		cancel()
 		db.Close()
 		return nil, err
+	}
+	store.LogStore, err = OpenLogStore(logPath)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("open log database: %w", err)
 	}
 	return store, nil
 }
 
+// Only a new database or this exact schema can be opened. No historical data is
+// rewritten and unsupported databases are rejected before any schema writes.
+func (s *Store) checkSchema(ctx context.Context) error {
+	var version int
+	if err := s.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		return err
+	}
+	if version == currentSchemaVersion {
+		return nil
+	}
+	if version == 0 {
+		var tables int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'`).Scan(&tables); err != nil {
+			return err
+		}
+		if tables == 0 {
+			return nil
+		}
+	}
+	return fmt.Errorf("unsupported database schema %d: use a new database with the current schema; automatic migrations are not supported", version)
+}
+
 func (s *Store) Close() error {
-	s.rollupCancel()
-	s.rollupWG.Wait()
-	return s.db.Close()
+	s.closeOnce.Do(func() { s.closeErr = errors.Join(s.LogStore.Close(), s.db.Close()) })
+	return s.closeErr
 }
 
 // Ping 验证底层 SQLite 连接是否可用，供 /health 依赖探测使用。
@@ -71,15 +102,15 @@ func (s *Store) Ping(ctx context.Context) error {
 
 func (s *Store) init(ctx context.Context) error {
 	pragmas := []string{
+		"PRAGMA auto_vacuum=INCREMENTAL",
 		"PRAGMA journal_mode=WAL",
 		fmt.Sprintf("PRAGMA busy_timeout=%d", sqliteBusyTimeout.Milliseconds()),
 		"PRAGMA foreign_keys=ON",
 		"PRAGMA synchronous=NORMAL",
-		// GROUP BY 的临时 B-tree 进内存而非临时文件；大窗口聚合（日×模型分组）
-		// 依赖临时结构，落盘会让大库统计明显变慢。
+		// Business queries use in-memory temporary structures. Log aggregates
+		// and their separate connection/cache settings belong to LogStore.
 		"PRAGMA temp_store=MEMORY",
-		// 64MiB 页缓存：大索引（idx_usage_agg_cover）扫描时热页驻留内存，
-		// 避免反复从磁盘重读索引页。
+		// Upper bound for the business database's page cache.
 		"PRAGMA cache_size=-65536",
 	}
 	for _, stmt := range pragmas {
@@ -87,25 +118,16 @@ func (s *Store) init(ctx context.Context) error {
 			return fmt.Errorf("%s: %w", stmt, err)
 		}
 	}
-	if err := s.migrate(ctx); err != nil {
+	if err := s.createSchema(ctx); err != nil {
 		return err
 	}
-	if err := s.migrateGenerationJobs(ctx); err != nil {
+	if err := s.createGenerationJobTables(ctx); err != nil {
 		return err
 	}
-	if err := s.migrateConversion(ctx); err != nil {
+	if err := s.createConversionTables(ctx); err != nil {
 		return err
 	}
-	return s.migrateLogLifecycle(ctx)
-}
-
-// addColumnIgnoreDup 执行幂等 ALTER：列已存在（duplicate column）视为成功。
-// migrate 里的容错性列补齐全部走这一条路径。
-func (s *Store) addColumnIgnoreDup(ctx context.Context, stmt string) error {
-	_, err := s.db.ExecContext(ctx, stmt)
-	if err != nil && strings.Contains(err.Error(), "duplicate column") {
-		return nil
-	}
+	_, err := s.db.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version=%d", currentSchemaVersion))
 	return err
 }
 
@@ -188,12 +210,8 @@ func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 	return items, rows.Err()
 }
 
-// decodeStringSlice accepts legacy empty columns, but corruption cannot become
-// an unrestricted authorization list.
+// decodeStringSlice never turns malformed authorization data into unrestricted access.
 func decodeStringSlice(raw string) ([]string, error) {
-	if strings.TrimSpace(raw) == "" {
-		return []string{}, nil
-	}
 	var out []string
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
 		return nil, err

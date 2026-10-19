@@ -11,8 +11,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
+
+	log "github.com/elysia-api/backend/logging"
 )
 
 // hashToken 返回明文 token 的 SHA256 十六进制摘要，用于 token 去重的唯一索引。
@@ -26,14 +27,8 @@ func hashToken(plaintext string) string {
 }
 
 // secretCodec 负责对落库的敏感字段（API token、上游 api_key）做透明
-// 加解密。设计目标：
-//   - 拿到 .sqlite3 文件而没有 master key 时，无法还原任何密钥（修复阻断项2：
-//     旧实现把明文密钥直接写进 SQLite，使配置层的 AES-GCM 加密形同虚设）。
-//   - 向后兼容：未启用 key 时按明文存取；已有明文行在读到时原样返回，
-//     下次写入自动升级为密文。
-//
-// 密文格式： "enc:v1:" + base64(nonce || ciphertext)，AES-256-GCM。
-// 明文（无前缀）按原样返回，因此可与历史明文数据共存并平滑迁移。
+// 加解密。密文格式："enc:v1:" + base64(nonce || ciphertext)，AES-256-GCM。
+// 启用加密时拒绝混入明文；未配置 key 时显式使用明文模式。
 type secretCodec struct {
 	gcm cipher.AEAD // nil 表示未启用加密（明文模式）
 }
@@ -78,10 +73,13 @@ func (c *secretCodec) encrypt(plain string) (string, error) {
 	return secretPrefix + base64.StdEncoding.EncodeToString(combined), nil
 }
 
-// decrypt 还原 "enc:v1:..." 密文。无前缀的值视为历史明文，原样返回。
+// decrypt 还原与当前存储模式一致的值。
 func (c *secretCodec) decrypt(stored string) (string, error) {
 	if !strings.HasPrefix(stored, secretPrefix) {
-		return stored, nil // 历史明文，向后兼容
+		if stored != "" && c.enabled() {
+			return "", fmt.Errorf("plaintext secret found in encrypted storage")
+		}
+		return stored, nil
 	}
 	if !c.enabled() {
 		return "", fmt.Errorf("encrypted secret found but no master key configured")
@@ -136,7 +134,7 @@ func (s *Store) SecretIntegrityProbe(ctx context.Context) (hasEncrypted, decrypt
 func (s *Store) decryptOrClear(kind, id, stored string) string {
 	plain, err := s.codec.decrypt(stored)
 	if err != nil {
-		log.Printf("[secret] %s %s: %v (%s cleared, row kept)", kind, id, err, kind)
+		log.Error().Str("component", "secret").Str("kind", kind).Str("id", id).Err(err).Msg("decryption failed; secret cleared, row kept")
 		return ""
 	}
 	return plain

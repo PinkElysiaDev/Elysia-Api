@@ -10,7 +10,7 @@ import (
 func makeGroup(strategy string, modelNames ...string) *config.ModelGroupConfig {
 	models := make([]config.ModelRef, 0, len(modelNames))
 	for _, name := range modelNames {
-		models = append(models, config.ModelRef{Name: name, BaseURL: "https://example.com/v1", Platform: "openai"})
+		models = append(models, config.ModelRef{ID: name, Name: name, BaseURL: "https://example.com/v1", Platform: "custom:openai-chat-completions"})
 	}
 	return &config.ModelGroupConfig{ID: "g1", Name: "grp", Strategy: strategy, Models: models}
 }

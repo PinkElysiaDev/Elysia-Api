@@ -6,23 +6,19 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/elysia-api/backend/protocol"
 )
 
-const protocolUpgradeSetting = "protocol_engine_v2_migration"
-
-// ProtocolUpgradeRevision is a verified replacement prepared without writes.
-// The original legacy row remains available for inspection and backup recovery.
+// ProtocolUpgradeRevision is a verified runtime revision prepared without writes.
 type ProtocolUpgradeRevision struct {
 	Revision protocol.Revision           `json:"revision"`
 	Report   protocol.VerificationReport `json:"report"`
 	Draft    protocol.Draft              `json:"draft"`
 	// Refresh limits writes to defects found by the runtime recovery check.
-	// Nil retains the legacy migration's complete-write behavior.
+	// Refresh selects the exact writes required by runtime recovery.
 	Refresh *ProtocolRefreshWrite `json:"refresh,omitempty"`
 }
 
@@ -40,13 +36,12 @@ func (w ProtocolRefreshWrite) Changed() bool {
 	return w.Revision || w.Report || w.Draft || w.Activation || w.RepairPreset
 }
 
-// ProtocolUpgrade applies the whole validated graph, never individual rows.
-// Baseline binds the preview to configuration, drafts, activations and bindings.
+// ProtocolUpgrade describes a verified runtime refresh, never individual writes.
+// Baseline binds the refresh to configuration, drafts, activations and bindings.
 type ProtocolUpgrade struct {
-	Baseline    string                    `json:"baseline"`
-	RequestHash string                    `json:"requestHash,omitempty"`
-	Revisions   []ProtocolUpgradeRevision `json:"revisions"`
-	Bindings    []ProtocolBinding         `json:"bindings"`
+	Baseline  string                    `json:"baseline"`
+	Revisions []ProtocolUpgradeRevision `json:"revisions"`
+	Bindings  []ProtocolBinding         `json:"bindings"`
 	// EvidenceBaseline guards reports and conversion configuration, which were
 	// deliberately not part of the original backup fingerprint format.
 	EvidenceBaseline string `json:"evidenceBaseline,omitempty"`
@@ -60,18 +55,6 @@ type ProtocolUpgradeRejection struct {
 	Report     protocol.VerificationReport `json:"report"`
 }
 
-// ProtocolUpgradeReceipt identifies the committed plan and its database backup.
-type ProtocolUpgradeReceipt struct {
-	PlanHash        string            `json:"planHash"`
-	Baseline        string            `json:"baseline"`
-	RequestHash     string            `json:"requestHash,omitempty"`
-	CompilerVersion string            `json:"compilerVersion"`
-	Backup          string            `json:"backup"`
-	BackupMode      string            `json:"backupMode"`
-	Snapshot        *ProtocolSnapshot `json:"snapshot,omitempty"`
-	CompletedAt     time.Time         `json:"completedAt"`
-}
-
 type protocolUpgradeReader interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
@@ -81,7 +64,6 @@ type protocolUpgradeReader interface {
 var protocolUpgradeQueries = []string{
 	`SELECT * FROM protocol_history ORDER BY id`,
 	`SELECT * FROM protocol_revisions ORDER BY protocol_id,content_hash`,
-	`SELECT * FROM custom_protocols ORDER BY id`,
 	`SELECT * FROM model_sources ORDER BY id`,
 	`SELECT * FROM models ORDER BY source_id,id`,
 	`SELECT * FROM model_groups ORDER BY id`,
@@ -91,7 +73,7 @@ var protocolUpgradeQueries = []string{
 	`SELECT * FROM protocol_bindings ORDER BY binding_key`,
 }
 
-// ProtocolUpgradeBaseline returns an opaque hash for a migration preview.
+// ProtocolUpgradeBaseline returns an opaque configuration fingerprint for atomic edits.
 func (store *Store) ProtocolUpgradeBaseline(ctx context.Context) (string, error) {
 	tx, err := store.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -143,78 +125,6 @@ func hashProtocolUpgradeRows(rows *sql.Rows, encoder *json.Encoder, query string
 		}
 	}
 	return rows.Err()
-}
-
-// ProtocolUpgradeStatus reports only a committed migration, never a preview.
-func (store *Store) ProtocolUpgradeStatus(ctx context.Context) (*ProtocolUpgradeReceipt, error) {
-	var raw string
-	err := store.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, protocolUpgradeSetting).Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var receipt ProtocolUpgradeReceipt
-	if err := json.Unmarshal([]byte(raw), &receipt); err != nil {
-		return nil, err
-	}
-	return &receipt, nil
-}
-
-// ApplyProtocolUpgrade commits the prepared revisions and routing graph in one
-// transaction. Stale previews and partial/failed evidence cannot change live state.
-func (store *Store) ApplyProtocolUpgrade(ctx context.Context, plan ProtocolUpgrade) (*ProtocolUpgradeReceipt, error) {
-	raw, err := json.Marshal(plan)
-	if err != nil {
-		return nil, err
-	}
-	digest := sha256.Sum256(raw)
-	planHash := hex.EncodeToString(digest[:])
-	previous, err := store.ProtocolUpgradeStatus(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if previous != nil {
-		isSameRequest := plan.RequestHash != "" && previous.RequestHash == plan.RequestHash && previous.Baseline == plan.Baseline
-		if previous.PlanHash != planHash && !isSameRequest {
-			return nil, protocol.ErrRevisionConflict
-		}
-		return previous, nil
-	}
-	if len(plan.Revisions) == 0 || len(plan.Baseline) != hex.EncodedLen(sha256.Size) {
-		return nil, fmt.Errorf("protocol upgrade requires a complete verified plan and baseline")
-	}
-	if err := validateProtocolUpgrade(plan); err != nil {
-		return nil, err
-	}
-	prepared, snapshot, err := store.prepareProtocolCommit(ctx, plan)
-	if err != nil {
-		return nil, err
-	}
-	tx, err := store.beginProtocolCommit(ctx, prepared)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	if err := writeProtocolCommit(ctx, tx, prepared); err != nil {
-		return nil, err
-	}
-	receipt := &ProtocolUpgradeReceipt{PlanHash: planHash, Baseline: plan.Baseline, RequestHash: plan.RequestHash, CompilerVersion: protocol.CompilerVersion, BackupMode: "not_required", Snapshot: snapshot, CompletedAt: time.Now().UTC()}
-	if snapshot != nil {
-		receipt.Backup, receipt.BackupMode = snapshot.Path, "current_snapshot"
-	}
-	encoded, err := json.Marshal(receipt)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value,updated_at) VALUES(?,?,?)`, protocolUpgradeSetting, string(encoded), nowString()); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return receipt, nil
 }
 
 func validateProtocolUpgrade(plan ProtocolUpgrade) error {

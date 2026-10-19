@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ func (s *Server) updateRuntimeConfig(payload runtimeConfigPayload) (bool, error)
 	defer s.configUpdateMu.Unlock()
 	beforeServer := s.config.GetServer()
 	beforeDatabase := s.config.GetDatabasePath()
+	beforeLogDatabase := s.config.GetLogDatabasePath()
 	beforePprof := s.config.GetEnablePprof()
 	beforeUsage := s.config.GetUsageLogConfig()
 	beforeSystem := s.config.GetSystemLogConfig()
@@ -24,19 +26,23 @@ func (s *Server) updateRuntimeConfig(payload runtimeConfigPayload) (bool, error)
 		applyRuntimeConfig(candidate, payload)
 		return nil
 	}); err != nil {
+		if errors.Is(err, config.ErrDatabasePath) {
+			return false, &runtimeConfigError{400, "invalid_database_path", err.Error()}
+		}
 		return false, err
 	}
+	s.Logger().Configure(s.config.GetLoggingOptions())
 	if payload.HTTPTimeout != nil {
 		s.protocolTransport.SetTimeout(time.Duration(s.config.GetHTTPTimeout()) * time.Second)
 	}
 	if payload.Outbound != nil {
 		s.syncOutboundPolicy()
 	}
-	hasRestartChange := beforeServer != s.config.GetServer() || beforeDatabase != s.config.GetDatabasePath() || beforePprof != s.config.GetEnablePprof()
+	hasRestartChange := beforeServer != s.config.GetServer() || beforeDatabase != s.config.GetDatabasePath() || beforeLogDatabase != s.config.GetLogDatabasePath() || beforePprof != s.config.GetEnablePprof()
 	if hasRestartChange {
 		s.markRestartRequired()
 	}
-	if retentionTightened(beforeUsage, s.config.GetUsageLogConfig(), beforeSystem, s.config.GetSystemLogConfig()) {
+	if s.usageRetention != nil && retentionTightened(beforeUsage, s.config.GetUsageLogConfig(), beforeSystem, s.config.GetSystemLogConfig()) {
 		s.usageRetention.triggerAsync()
 	}
 	return hasRestartChange, nil
@@ -55,6 +61,10 @@ func applyRuntimeConfig(candidate *config.Config, payload runtimeConfigPayload) 
 	if payload.DatabasePath != nil {
 		candidate.SetDatabasePath(*payload.DatabasePath)
 	}
+	if payload.LogDatabasePath != nil {
+		candidate.SetLogDatabasePath(strings.TrimSpace(*payload.LogDatabasePath))
+	}
+	candidate.SetLogOutput(payload.LogFormat, payload.LogPersistLevel)
 	if payload.EnablePprof != nil {
 		candidate.SetEnablePprof(*payload.EnablePprof)
 	}

@@ -1,22 +1,25 @@
 package server
 
 import (
-	"log"
+	"context"
+	"errors"
 	"sync"
+	"time"
+
+	"github.com/elysia-api/backend/logging"
+	"github.com/elysia-api/backend/storage"
 )
 
 // usageQueueCapacity 是异步 usage 写入缓冲区大小。突发流量下若 writer
-// 暂时跟不上，最多缓冲这么多条；超出则该条记录降级为同步写入（保证不丢）。
+// 暂时跟不上，最多缓冲这么多条；超出则同步写入，失败显式报告。
 const usageQueueCapacity = 1024
 
 // Payloads count while queued and while the writer persists them. This bounds
 // asynchronous retention, not active request memory or generation concurrency.
 const usageQueuePayloadBytes int64 = 128 << 20
 
-// usageWriterState 守护队列的关闭语义：优雅关停时 Shutdown 只等 5 秒，
-// 长流请求可能仍在运行并在之后调用 enqueueUsageRecord——直接 close(ch)
-// 会让这些发送 panic。closed 标志 + 互斥锁保证关停后入队安全降级为同步
-// 写盘（丢给 WAL，而不是丢给 runtime panic）。
+// Admission and close share a lock. Shutdown first stops producers, then drains
+// the queue with a separate persistence budget before closing the database.
 type usageWriterState struct {
 	mu            sync.Mutex
 	queue         chan *usageRecord
@@ -38,13 +41,33 @@ func (s *Server) startUsageWriter() {
 	}
 	writer := &usageWriterState{queue: make(chan *usageRecord, usageQueueCapacity)}
 	s.usageWriter = writer
+	s.usageStatsMu.Lock()
+	s.usageStats.Closed = false
+	s.usageStatsMu.Unlock()
 	writer.wg.Add(1)
 	go func() {
 		defer writer.wg.Done()
 		for record := range writer.queue {
-			s.persistUsageRecord(record)
+			batch := []*usageRecord{record}
+			timer := time.NewTimer(50 * time.Millisecond)
+		collect:
+			for len(batch) < 64 {
+				select {
+				case next, ok := <-writer.queue:
+					if !ok {
+						break collect
+					}
+					batch = append(batch, next)
+				case <-timer.C:
+					break collect
+				}
+			}
+			timer.Stop()
+			s.persistUsageBatch(batch)
 			writer.mu.Lock()
-			writer.retainedBytes -= record.queuedPayloadBytes
+			for _, item := range batch {
+				writer.retainedBytes -= item.queuedPayloadBytes
+			}
 			writer.mu.Unlock()
 		}
 	}()
@@ -71,6 +94,9 @@ func (s *Server) stopUsageWriter() {
 	}
 	w.mu.Unlock()
 	w.wg.Wait()
+	s.usageStatsMu.Lock()
+	s.usageStats.Closed = true
+	s.usageStatsMu.Unlock()
 	s.usageWriterMu.Lock()
 	if s.usageWriter == w {
 		s.usageWriter = nil
@@ -101,27 +127,110 @@ func (s *Server) drainUsageQueueFrom(w *usageWriterState) {
 // persistUsageRecord 在 persist 锁下核对 generation 后落库。reset 持同一把锁，
 // 避免清库后旧写入写回。
 func (s *Server) persistUsageRecord(record *usageRecord) {
-	if record == nil || s.store == nil {
+	s.persistUsageBatch([]*usageRecord{record})
+}
+
+func (s *Server) persistUsageBatch(records []*usageRecord) {
+	if s.store == nil {
 		return
 	}
 	s.usagePersistMu.Lock()
-	if record.writeGen != s.usageWriteGen.Load() {
-		s.usagePersistMu.Unlock()
-		return
+	defer s.usagePersistMu.Unlock()
+	// The shared commit path reports failures even when no caller can retry.
+	_ = s.saveUsageBatchToStore(records)
+}
+
+// saveUsageBatchToStore shares preparation, retries and accounting between the
+// queue and synchronous job settlements. The caller holds usagePersistMu so
+// generation checks, asset writes and commits stay atomic with reset and GC.
+func (s *Server) saveUsageBatchToStore(records []*usageRecord) (result error) {
+	s.initLifecycle()
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(s.usageWriteCtx, 5*time.Second)
+	defer cancel()
+	batch := make([]storage.UsageRecordInput, 0, len(records))
+	var canceled int
+	for _, record := range records {
+		if record == nil || record.writeGen != s.usageWriteGen.Load() {
+			continue
+		}
+		if ctx.Err() != nil {
+			canceled++
+			continue
+		}
+		input, err := s.prepareUsageRecord(record)
+		if err != nil {
+			s.recordUsageFailure(err, 1)
+			result = errors.Join(result, err)
+			continue
+		}
+		batch = append(batch, input)
 	}
-	err := s.saveUsageRecordToStore(record)
-	s.usagePersistMu.Unlock()
+	if canceled > 0 {
+		s.recordUsageFailure(ctx.Err(), canceled)
+		result = errors.Join(result, ctx.Err())
+	}
+	if len(batch) == 0 {
+		return result
+	}
+	// Request IDs make retry idempotent, including rollup and asset references.
+	var err error
+	for remaining := 3; remaining > 0; remaining-- {
+		err = s.store.LogStore.SaveUsageBatch(ctx, batch)
+		if err == nil || ctx.Err() != nil || remaining == 1 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	s.usageStatsMu.Lock()
+	s.usageStats.LastBatchDurationMS = time.Since(started).Milliseconds()
+	if err == nil {
+		s.usageStats.Written += uint64(len(batch))
+		s.usageStats.LastWriteAt = time.Now().UTC()
+	}
+	s.usageStatsMu.Unlock()
 	if err != nil {
-		log.Printf("failed to save usage record to sqlite: %v", err)
-		return
+		s.recordUsageFailure(err, len(batch))
+		return errors.Join(result, err)
 	}
 	// 只读缓存按 TTL 活着，不随写入失效的话，KPI/日志会再吃一整轮旧响应。
 	s.usageCache.flush()
-	s.usageSeq.Add(1)
+	s.usageSeq.Add(uint64(len(batch)))
+	return result
+}
+
+func (s *Server) recordUsageFailure(err error, count int) {
+	s.usageStatsMu.Lock()
+	s.usageStats.Failures += uint64(count)
+	s.usageStats.LastError = err.Error()
+	s.usageWriteErr = err
+	s.usageStatsMu.Unlock()
+	logging.Emergency("usage records could not be committed", err)
+}
+
+func (s *Server) usagePersistenceError() error {
+	s.usageStatsMu.Lock()
+	defer s.usageStatsMu.Unlock()
+	return s.usageWriteErr
+}
+
+func (s *Server) usageWriterStats() logging.Stats {
+	s.usageStatsMu.Lock()
+	st := s.usageStats
+	s.usageStatsMu.Unlock()
+	if w := s.usageWriterSnapshot(); w != nil {
+		w.mu.Lock()
+		st.Queued, st.RetainedBytes, st.Closed = len(w.queue), w.retainedBytes, w.closed
+		w.mu.Unlock()
+	}
+	return st
 }
 
 // enqueueUsageRecord 尝试把记录投递到异步队列。队列已满或已关停时返回
-// false，调用方据此降级为同步写入，确保 usage 不丢失。
+// false，调用方据此降级为同步写入；落盘错误计数并影响退出状态。
 func (s *Server) enqueueUsageRecord(record *usageRecord) bool {
 	w := s.usageWriterSnapshot()
 	if w == nil {
@@ -131,6 +240,9 @@ func (s *Server) enqueueUsageRecord(record *usageRecord) bool {
 	defer w.mu.Unlock()
 	payloadBytes := usageRetainedPayloadBytes(record)
 	if w.closed || len(w.queue) == cap(w.queue) || payloadBytes > usageQueuePayloadBytes-w.retainedBytes {
+		s.usageStatsMu.Lock()
+		s.usageStats.Synchronous++
+		s.usageStatsMu.Unlock()
 		return false
 	}
 	// 深拷贝：浅拷贝会让 copied 的切片字段与原记录共享底层数组，一旦调用方

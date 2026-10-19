@@ -71,7 +71,7 @@ func (h *healthChecker) start() {
 		}
 		if cfg := h.server.config.GetHealthCheckConfig(); cfg.Enabled {
 			interval := h.probeInterval()
-			h.server.logInfof("health checker enabled: interval=%s timeout=%ds failureThreshold=%d", interval, cfg.TimeoutSeconds, cfg.FailureThreshold)
+			h.server.logEvent("info").Str("event", "health_checker_enabled").Dur("interval_ms", interval).Int("timeout_seconds", cfg.TimeoutSeconds).Int("failure_threshold", cfg.FailureThreshold).Msg("health checker enabled")
 		}
 		go func() {
 			defer close(h.done)
@@ -118,13 +118,13 @@ func (h *healthChecker) runOnce() {
 	models, err := h.server.store.ListAllModelsForProbe(ctx)
 	if err != nil {
 		if h.ctx.Err() == nil {
-			h.server.logWarnf("health check: failed to list models: %v", err)
+			h.server.logEvent("warn").Err(err).Msg("health check: failed to list models")
 		}
 		return
 	}
 	sources, err := h.server.store.ListSources(ctx)
 	if err != nil {
-		h.server.logWarnf("health check: failed to load current source credentials: %v", err)
+		h.server.logEvent("warn").Err(err).Msg("health check: failed to load current source credentials")
 		return
 	}
 	keyMeta := collectSourceKeys(sources)
@@ -179,18 +179,18 @@ func (h *healthChecker) recordProbeResult(model storage.Model, ok bool, threshol
 	case ok && !model.Available:
 		// 恢复：探测成功且当前被禁用 → 重新启用
 		if _, err := h.server.store.SetModelAvailability(ctx, model.ID, model.SourceID, true); err != nil {
-			h.server.logWarnf("health check: failed to re-enable model %s: %v", model.ID, err)
+			h.server.logEvent("warn").Str("model_id", model.ID).Str("source_id", model.SourceID).Err(err).Msg("health check: failed to re-enable model")
 			return false
 		}
-		h.server.logInfof("health check: model %s (source %s) recovered, re-enabled", model.Name, model.SourceID)
+		h.server.logEvent("info").Str("model_name", model.Name).Str("source_id", model.SourceID).Msg("health check: model recovered and re-enabled")
 		return true
 	case !ok && model.Available && failCount >= threshold:
 		// 禁用：连续失败达到阈值且当前可用 → 禁用
 		if _, err := h.server.store.SetModelAvailability(ctx, model.ID, model.SourceID, false); err != nil {
-			h.server.logWarnf("health check: failed to disable model %s: %v", model.ID, err)
+			h.server.logEvent("warn").Str("model_id", model.ID).Str("source_id", model.SourceID).Err(err).Msg("health check: failed to disable model")
 			return false
 		}
-		h.server.logWarnf("health check: model %s (source %s) failed %d consecutive probes, auto-disabled", model.Name, model.SourceID, failCount)
+		h.server.logEvent("warn").Str("model_name", model.Name).Str("source_id", model.SourceID).Int("consecutive_failures", failCount).Msg("health check: model auto-disabled")
 		return true
 	}
 	return false
@@ -211,7 +211,7 @@ func (h *healthChecker) probe(ctx context.Context, model storage.Model, timeoutS
 	defer cancel()
 	candidate, request, err := h.server.prepareHealthProbe(probeCtx, model)
 	if err != nil {
-		h.server.logWarnf("health check: model %s has no usable probe contract: %v", model.Name, err)
+		h.server.logEvent("warn").Str("model_name", model.Name).Err(err).Msg("health check: model has no usable probe contract")
 		return probeUnavailable
 	}
 	_, err = h.server.collectProtocolGenerationAttempt(probeCtx, candidate, request, nil, nil)

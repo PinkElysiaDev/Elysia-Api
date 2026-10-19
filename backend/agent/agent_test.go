@@ -46,7 +46,7 @@ func (f *fakeCaller) Call(ctx context.Context, req CallRequest, cb StreamCallbac
 	}
 	if next.result != nil && next.result.Content == nil {
 		content := AssistantContent{Text: next.result.Text, Reasoning: next.result.Reasoning, ToolCalls: next.result.ToolCalls}
-		if err := importAssistantContent(&content); err != nil {
+		if err := buildAssistantFixture(&content); err != nil {
 			return nil, err
 		}
 		next.result.Content = content.Content
@@ -131,6 +131,12 @@ func (f *fakeStore) UpdateSessionState(ctx context.Context, id string, update Se
 func (f *fakeStore) AppendMessage(ctx context.Context, sessionID string, role string, content any, model string, usage json.RawMessage) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if assistant, ok := content.(AssistantContent); ok {
+		if err := buildAssistantFixture(&assistant); err != nil {
+			return 0, err
+		}
+		content = assistant
+	}
 	encoded, err := json.Marshal(content)
 	if err != nil {
 		return 0, err

@@ -386,7 +386,7 @@ export function RuntimeConfigPage() {
             <SettingSection
               icon={Database}
               title="持久化存储"
-              description="SQLite 数据库文件路径与用量记录存储"
+              description="业务与日志使用独立 SQLite 数据库"
             >
               <div className="space-y-1">
                 <SettingRow
@@ -425,6 +425,12 @@ export function RuntimeConfigPage() {
                         </p>
                       )}
                   </div>
+                </SettingRow>
+                <SettingRow label="日志数据库路径" htmlFor="runtime-log-database"
+                  description="系统日志、调用明细和用量汇总的专用数据库；不能与业务库相同。变更需重启，不迁移历史数据。" inline={false}>
+                  <Input id="runtime-log-database" aria-describedby="runtime-log-database-description"
+                    className="font-mono text-xs" value={form.logDatabasePath}
+                    onChange={(e) => update("logDatabasePath", e.target.value)} />
                 </SettingRow>
               </div>
             </SettingSection>
@@ -687,7 +693,7 @@ export function RuntimeConfigPage() {
                 <SettingRow
                   label="日志记录级别"
                   htmlFor="runtime-log-level"
-                  description="控制控制台与文件日志输出的详细程度（支持热更新）"
+                  description="控制控制台输出的详细程度，与数据库持久化阈值独立（支持热更新）"
                 >
                   <div className="w-full sm:w-56">
                     <Select
@@ -708,6 +714,28 @@ export function RuntimeConfigPage() {
                 </SettingRow>
 
 
+                <SettingRow label="持久化日志级别" htmlFor="runtime-log-persist-level"
+                  description="诊断日志写入数据库的最低级别；重要操作事件和错误始终尝试落盘">
+                  <Select value={form.logPersistLevel} onValueChange={(v) => update("logPersistLevel", v as LogLevel)}>
+                    <SelectTrigger id="runtime-log-persist-level" aria-describedby="runtime-log-persist-level-description" className="w-full sm:w-56"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="debug">Debug（调试）</SelectItem>
+                      <SelectItem value="info">Info（信息）</SelectItem>
+                      <SelectItem value="warn">Warn（警告）</SelectItem>
+                      <SelectItem value="error">Error（错误）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </SettingRow>
+                <SettingRow label="控制台日志格式" htmlFor="runtime-log-format" description="auto 在终端使用可读格式，重定向和容器环境使用 JSON">
+                  <Select value={form.logFormat} onValueChange={(v) => update("logFormat", v as "auto" | "json" | "console")}>
+                    <SelectTrigger id="runtime-log-format" aria-describedby="runtime-log-format-description" className="w-full sm:w-56"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">自动</SelectItem>
+                      <SelectItem value="json">JSON</SelectItem>
+                      <SelectItem value="console">可读文本</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </SettingRow>
                 {([
                   ['retentionDays', '系统日志保留天数', '天'],
                   ['maxRecords', '系统日志保留条数', '条'],
@@ -761,7 +789,7 @@ export function RuntimeConfigPage() {
                   {storageError && <p role="alert" className="text-ember">无法更新存储占用：{storageError.message}</p>}
                   <dl className="grid grid-cols-1 gap-4 rounded-xl border border-border/60 bg-card/60 p-4 sm:grid-cols-2">
                     {([
-                      ['数据库文件', storage?.db.fileBytes === undefined ? '—' : formatBytes(storage.db.fileBytes)],
+                      ['日志数据库文件', storage?.db.fileBytes === undefined ? '—' : formatBytes(storage.db.fileBytes)],
                       ['媒体目录实际占用（含孤儿文件）', storage?.assets.bytes === undefined ? '—' : formatBytes(storage.assets.bytes)],
                       ['请求日志条数', storage?.content.usageRecords.toLocaleString() ?? '—'],
                       ['系统日志条数', storage?.content.systemRecords.toLocaleString() ?? '—'],
@@ -772,6 +800,19 @@ export function RuntimeConfigPage() {
                       </div>
                     ))}
                   </dl>
+                  {storage?.writers && <div className="grid gap-3 sm:grid-cols-2">
+                    {(['system', 'usage'] as const).map((kind) => {
+                      const writer = storage.writers[kind];
+                      return <dl key={kind} className="space-y-1 rounded-lg border border-border/60 p-3">
+                        <dt className="font-medium">{kind === 'system' ? '系统日志写入' : '调用日志写入'}</dt>
+                        <dd>排队 {writer.queued} 条 · 缓冲 {formatBytes(writer.retainedBytes)}</dd>
+                        <dd>已提交 {writer.written} · 丢弃 {writer.dropped} · 失败 {writer.failures}</dd>
+                        <dd>同步回退 {writer.synchronous} · 最近批次 {writer.lastBatchDurationMs} ms</dd>
+                        <dd>最近落盘：{writer.written > 0 ? new Date(writer.lastWriteAt).toLocaleString() : '—'}</dd>
+                        {writer.lastError && <dd role="alert" className="break-all text-ember">{writer.lastError}</dd>}
+                      </dl>;
+                    })}
+                  </div>}
                   <LogMaintenanceStatus status={maintenance} error={maintenanceError} />
                   <details className="group rounded-lg border border-border/60 px-4">
                     <summary className="cursor-pointer py-3 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">查看占用明细</summary>

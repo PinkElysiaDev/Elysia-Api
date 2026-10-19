@@ -21,7 +21,7 @@ type sqlQueryer interface {
 //   - 带来源筛选（rollup 不含 source_id，历史行也无法回填该维度）；
 //   - 做本地日分桶且 offset 不是整小时倍数（+5:30 等时区的日边界切在小时桶中间）；
 //   - 窗口本身不足一个完整小时。
-func (s *Store) rollupSplit(q UsageQuery, offsetAligned bool) (fromHour, toHour int64, ok bool) {
+func (s *LogStore) rollupSplit(q UsageQuery, offsetAligned bool) (fromHour, toHour int64, ok bool) {
 	if !s.rollupReady.Load() || q.KeyHash != "" || q.SourceID != "" || len(q.SourceIDs) > 0 || !offsetAligned {
 		return 0, 0, false
 	}

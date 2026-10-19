@@ -57,6 +57,9 @@ export interface RuntimeConfig {
   port: number
   panelAccessToken: string
   databasePath: string
+  logDatabasePath: string
+  logFormat: 'auto' | 'json' | 'console'
+  logPersistLevel: LogLevel
   defaultDatabasePath: string
   logLevel: LogLevel
   httpTimeout: number
@@ -105,6 +108,9 @@ export interface RuntimeConfigUpdate {
   httpTimeout?: number
   panelAccessToken?: string
   databasePath?: string
+  logDatabasePath?: string
+  logFormat?: 'auto' | 'json' | 'console'
+  logPersistLevel?: LogLevel
   enablePprof?: boolean
   outbound?: { deniedIpRanges?: string[]; proxyUrl?: string }
   usageLog?: Partial<UsageLogRuntimeConfig>
@@ -143,6 +149,8 @@ export interface LogMaintenance {
 }
 
 export interface UsageStorageStatus {
+  logDatabasePath: string
+  writers: { system: LogWriterStats; usage: LogWriterStats }
   db: {
     fileBytes: number
     usedBytes: number
@@ -166,6 +174,19 @@ export interface UsageStorageStatus {
   usageLog: UsageLogRuntimeConfig
   systemLog: LogRetentionConfig
   maintenance?: LogMaintenance
+}
+
+export interface LogWriterStats {
+  queued: number
+  retainedBytes: number
+  written: number
+  dropped: number
+  failures: number
+  synchronous: number
+  lastWriteAt: string
+  lastBatchDurationMs: number
+  lastError?: string
+  closed: boolean
 }
 
 export interface RuntimeConfigUpdateResult {

@@ -60,7 +60,7 @@ func (coordinator *JobCoordinator) Submit(ctx context.Context, job GenerationJob
 		if reserved.RequestHash != job.RequestHash {
 			return reserved, false, ErrIdempotencyConflict
 		}
-		return classifyJobResult(reserved), false, nil
+		return reserved, false, nil
 	}
 	deadline, stop := context.WithTimeout(ctx, coordinator.operationTimeout)
 	update, operationErr := coordinator.executor.Submit(deadline, reserved, request)
@@ -89,7 +89,7 @@ func (coordinator *JobCoordinator) Read(ctx context.Context, id, owner string) (
 	if job.OwnerHash != owner {
 		return GenerationJob{}, ErrJobNotFound
 	}
-	return classifyJobResult(job), nil
+	return job, nil
 }
 
 // RequestCancel records intent without claiming the provider acknowledged it.
@@ -218,8 +218,7 @@ func (coordinator *JobCoordinator) process(ctx context.Context, job GenerationJo
 	return err
 }
 
-// classifyJobResult also projects legacy completed records without rewriting
-// history or repeating a previously acknowledged settlement.
+// classifyJobResult assigns the terminal status before committing a result.
 func classifyJobResult(job GenerationJob) GenerationJob {
 	if job.Phase != JobTerminal || job.Task.Status != TaskCompleted || job.Task.Result == nil {
 		return job
