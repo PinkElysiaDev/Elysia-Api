@@ -24,6 +24,7 @@ func newHealthTestServer(t *testing.T) *Server {
 
 func bindHealthModel(t *testing.T, server *Server, platform, endpoint string) storage.Model {
 	t.Helper()
+	platform = fixturePlatform(platform)
 	source := storage.ModelSource{ID: "probe-source", Name: "probe-source", Platform: platform, BaseURL: endpoint, APIKey: "probe-key", Enabled: true}
 	if err := server.saveSource(t.Context(), source); err != nil {
 		t.Fatal(err)

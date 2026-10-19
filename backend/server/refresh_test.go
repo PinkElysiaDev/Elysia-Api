@@ -112,8 +112,8 @@ func TestFetchGeminiModelsViaV1BetaModels(t *testing.T) {
 	if models[0].ID != "gemini-1.5-flash" {
 		t.Fatalf("expected id gemini-1.5-flash (models/ prefix stripped), got %q", models[0].ID)
 	}
-	if models[0].Platform != "gemini" {
-		t.Fatalf("expected platform gemini, got %q", models[0].Platform)
+	if models[0].Platform != "custom:google-generate-content" {
+		t.Fatalf("expected Gemini protocol, got %q", models[0].Platform)
 	}
 	if models[0].MaxTokens != 1048576 {
 		t.Fatalf("expected MaxTokens from inputTokenLimit, got %d", models[0].MaxTokens)

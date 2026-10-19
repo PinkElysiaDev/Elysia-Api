@@ -101,7 +101,11 @@ func flameMatrixRequest(t *testing.T, source *protocol.Compiled, stream bool) (s
 		request.Parameters["stream"] = mustProtocolValue(t, fmt.Sprintf("%t", stream))
 	}
 	if source.Identity().DefinitionID == "openai-chat-completions" && stream {
-		request.Parameters["stream_options"] = mustProtocolValue(t, `{"include_usage":true}`)
+		output, err := protocol.ParseClientOutput(mustProtocolValue(t, `{"include_usage":true}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.ClientOutput = output
 	}
 	wire, err := source.EncodeRequest(t.Context(), request, protocol.EvaluationContext{Scope: protocol.Scope{Model: "grp"}})
 	if err != nil {
