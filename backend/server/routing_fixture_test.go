@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 
@@ -61,6 +62,48 @@ func seedRoutingGroups(t *testing.T, s *Server, groups []config.ModelGroupConfig
 // verification directly; no passing evidence is fabricated here.
 var fixtureBindingReports sync.Map
 
+// Resolve policies, model/provider context and capabilities before selecting a
+// cached proof. A changed contract must never inherit another fixture's result.
+func verifyFixtureBinding(t *testing.T, s *Server, binding storage.ProtocolBinding) []protocol.CombinationReport {
+	t.Helper()
+	service, err := s.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := service.View()
+	upstream, ok := view.Pin(binding.Binding.ProtocolID)
+	if !ok {
+		t.Fatal("fixture protocol is not active", binding.Binding.ProtocolID)
+	}
+	policies, bindings, _, err := s.store.ConversionSnapshot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindings = slices.DeleteFunc(bindings, func(old storage.ProtocolBinding) bool { return old.Key() == binding.Key() })
+	bindings = append(bindings, binding)
+	models, err := s.store.ListModels(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources, err := s.store.ListSources(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	checks, err := s.resolveBindingConversions(t.Context(), view, policies, bindings, binding, s.bindingModelReferences(binding, models, collectSourceKeys(sources)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reports []protocol.CombinationReport
+	for _, check := range checks {
+		key := check.ingress.Hash() + ":" + upstream.Hash() + ":" + check.conversion.Hash + ":" + check.conversion.ContextHash() + ":" + protocol.CapabilityContractHash(binding.Binding.Capabilities)
+		entry, _ := fixtureBindingReports.LoadOrStore(key, sync.OnceValue(func() []protocol.CombinationReport {
+			return protocol.VerifyBindingProfiles(context.Background(), check.ingress, upstream, binding.Binding.Capabilities, check.conversion)
+		}))
+		reports = append(reports, entry.(func() []protocol.CombinationReport)()...)
+	}
+	return reports
+}
+
 func seedFixtureBindings(t *testing.T, s *Server, sources map[string]storage.ModelSource) {
 	t.Helper()
 	service, err := s.protocolService()
@@ -69,7 +112,6 @@ func seedFixtureBindings(t *testing.T, s *Server, sources map[string]storage.Mod
 	}
 	view := service.View()
 	bindings := []storage.ProtocolBinding{}
-	sourceRows := []storage.ModelSource{}
 	for _, source := range sources {
 		id, err := protocolIDForPlatform(source.Platform)
 		if err != nil {
@@ -80,30 +122,9 @@ func seedFixtureBindings(t *testing.T, s *Server, sources map[string]storage.Mod
 			t.Fatal("fixture protocol is not active", id)
 		}
 		bindings = append(bindings, makeProtocolBinding(storage.BindingKey{Kind: "source", SourceID: source.ID}, compiled))
-		sourceRows = append(sourceRows, source)
 	}
-	models, err := s.store.ListModels(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	policies, _, _, err := s.store.ConversionSnapshot(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	keys := collectSourceKeys(sourceRows)
 	for _, binding := range bindings {
-		upstream, _ := view.Pin(binding.Binding.ProtocolID)
-		checks, err := s.resolveBindingConversions(t.Context(), view, policies, bindings, binding, s.bindingModelReferences(binding, models, keys))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, check := range checks {
-			key := check.ingress.Hash() + ":" + upstream.Hash() + ":" + check.conversion.Hash + ":" + check.conversion.ContextHash() + ":" + protocol.CapabilityContractHash(binding.Binding.Capabilities)
-			entry, _ := fixtureBindingReports.LoadOrStore(key, sync.OnceValue(func() []protocol.CombinationReport {
-				return protocol.VerifyBindingProfiles(context.Background(), check.ingress, upstream, binding.Binding.Capabilities, check.conversion)
-			}))
-			binding.Combinations = append(binding.Combinations, entry.(func() []protocol.CombinationReport)()...)
-		}
+		binding.Combinations = verifyFixtureBinding(t, s, binding)
 		if !hasPassingGatewayCombination(binding.Combinations) {
 			t.Fatal("fixture has no verified gateway route", binding.SourceID)
 		}

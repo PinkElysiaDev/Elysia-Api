@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -33,6 +34,12 @@ func loadGatewayDefinition(t *testing.T, name string) protocol.Definition {
 
 func activateGatewayDefinition(t *testing.T, server *Server, definition protocol.Definition) *protocol.Compiled {
 	t.Helper()
+	return seedGatewayDefinition(t, server, definition, true)
+}
+
+// Preset batches publish once after all revisions have been persisted.
+func seedGatewayDefinition(t *testing.T, server *Server, definition protocol.Definition, reload bool) *protocol.Compiled {
+	t.Helper()
 	service, err := server.protocolService()
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +62,10 @@ func activateGatewayDefinition(t *testing.T, server *Server, definition protocol
 		if err := protocol.IssuesError(issues); err != nil {
 			t.Fatal(err)
 		}
-		report := protocol.Verify(t.Context(), compiled)
+		entry, _ := fixturePresetReports.LoadOrStore(compiled.Hash(), sync.OnceValue(func() protocol.VerificationReport {
+			return protocol.Verify(context.Background(), compiled)
+		}))
+		report := entry.(func() protocol.VerificationReport)()
 		if !report.Passed {
 			t.Fatal(report.Issues)
 		}
@@ -75,8 +85,10 @@ func activateGatewayDefinition(t *testing.T, server *Server, definition protocol
 		if _, err := server.store.SetProtocolActivation(t.Context(), definition.ID, compiled.Hash(), expectedActive); err != nil {
 			t.Fatal(err)
 		}
-		if err := service.Reload(t.Context()); err != nil {
-			t.Fatal(err)
+		if reload {
+			if err := service.Reload(t.Context()); err != nil {
+				t.Fatal(err)
+			}
 		}
 		return compiled
 	}
@@ -94,6 +106,10 @@ func activateGatewayDefinition(t *testing.T, server *Server, definition protocol
 	compiled, _ := service.Pin(definition.ID)
 	return compiled
 }
+
+// Cache only deterministic fixture proofs; startup, recovery and authoring tests
+// continue to exercise the production verification paths against isolated stores.
+var fixturePresetReports sync.Map
 
 func setupGatewayModel(t *testing.T, server *Server, upstream *protocol.Compiled, url string) {
 	t.Helper()
@@ -118,14 +134,7 @@ func setupGatewayModel(t *testing.T, server *Server, upstream *protocol.Compiled
 		}
 	}
 	binding := storage.ProtocolBinding{Kind: "source", SourceID: source.ID, Binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: transports}}
-	service, err := server.protocolService()
-	if err != nil {
-		t.Fatal(err)
-	}
-	binding.Combinations, err = server.verifyGatewayBinding(t.Context(), service.View(), binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	binding.Combinations = verifyFixtureBinding(t, server, binding)
 	if err := server.store.SaveProtocolBinding(t.Context(), binding); err != nil {
 		t.Fatal(err)
 	}
@@ -142,6 +151,7 @@ func gatewayTestRequest(server *Server, protocolID, body, token string) *httptes
 }
 
 func TestGatewayStandaloneProtocolsBidirectionalHTTP(t *testing.T) {
+	t.Parallel()
 	for _, reverse := range []bool{false, true} {
 		t.Run(map[bool]string{false: "alpha-to-beta", true: "beta-to-alpha"}[reverse], func(t *testing.T) {
 			server, _ := newProtocolAdminTestServer(t)
@@ -205,6 +215,7 @@ func TestGatewayStandaloneProtocolsBidirectionalHTTP(t *testing.T) {
 }
 
 func TestGatewayInFlightRevisionAndStaleBinding(t *testing.T) {
+	t.Parallel()
 	server, _ := newProtocolAdminTestServer(t)
 	definition := loadGatewayDefinition(t, "text-alpha")
 	old := activateGatewayDefinition(t, server, definition)
@@ -234,6 +245,7 @@ func TestGatewayInFlightRevisionAndStaleBinding(t *testing.T) {
 }
 
 func TestGatewayCanceledRequestDoesNotReachUpstream(t *testing.T) {
+	t.Parallel()
 	server, _ := newProtocolAdminTestServer(t)
 	compiled := activateGatewayDefinition(t, server, loadGatewayDefinition(t, "text-alpha"))
 	var calls atomic.Int32

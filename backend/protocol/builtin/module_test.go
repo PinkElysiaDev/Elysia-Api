@@ -20,7 +20,12 @@ func testValue(t *testing.T, text string) p.Value {
 
 func testCompiled(t testing.TB, name string) *p.Compiled {
 	t.Helper()
-	compiler, err := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
+	return testCompiledWithLimits(t, name, p.DefaultLimits())
+}
+
+func testCompiledWithLimits(t testing.TB, name string, limits p.Limits) *p.Compiled {
+	t.Helper()
+	compiler, err := p.NewCompiler(limits, Modules(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

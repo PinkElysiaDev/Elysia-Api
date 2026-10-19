@@ -40,6 +40,7 @@ func declareResponseFailures(t *testing.T, definition protocol.Definition, field
 }
 
 func TestHTTPFailureKeepsStatusAndSafePrimaryCause(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()
@@ -77,6 +78,7 @@ func TestHTTPFailureKeepsStatusAndSafePrimaryCause(t *testing.T) {
 }
 
 func TestCustomHTTPFailuresUseDeclaredResponseDirections(t *testing.T) {
+	t.Parallel()
 	upstreamDefinition := declareResponseFailures(t, standaloneWireDefinition(t, protocol.HTTPJSON), "problem")
 	ingress := declareResponseFailures(t, standaloneWireDefinition(t, protocol.HTTPJSON), "failure")
 	ingress.ID, ingress.Family = "failure-client", "failure-client"
@@ -118,6 +120,7 @@ func TestCustomHTTPFailuresUseDeclaredResponseDirections(t *testing.T) {
 }
 
 func TestGatewayUnmappedFailureKeepsProviderMessageAndConversionIssue(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()

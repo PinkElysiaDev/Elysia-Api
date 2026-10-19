@@ -127,6 +127,7 @@ func a2aFrameStates(frames []map[string]any) []string {
 // ---- 鉴权与总开关 ----
 
 func TestAgentRemoteAuthScopes(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	ctx := context.Background()
 	if err := s.store.UpsertAPIToken(ctx, storage.APIToken{Name: "scoped", Token: "tok-scoped", Enabled: true, Scopes: []string{storage.TokenScopeAgent}}); err != nil {
@@ -180,6 +181,7 @@ func TestAgentRemoteAuthScopes(t *testing.T) {
 // ---- MCP ----
 
 func TestMCPMethodsAndToolsList(t *testing.T) {
+	t.Parallel()
 	s := newOpsTestServer(t)
 	headers := map[string]string{"MCP-Protocol-Version": mcpModernProtocolVersion}
 
@@ -231,6 +233,7 @@ func TestMCPMethodsAndToolsList(t *testing.T) {
 }
 
 func TestMCPModernEra(t *testing.T) {
+	t.Parallel()
 	s := newOpsTestServer(t)
 	modernParams := func(version string) map[string]any {
 		return map[string]any{"_meta": map[string]any{
@@ -274,6 +277,7 @@ func TestMCPModernEra(t *testing.T) {
 // ---- A2A ----
 
 func TestA2AAgentCard(t *testing.T) {
+	t.Parallel()
 	s := newOpsTestServer(t)
 	c, rec := remoteContext(http.MethodGet, "/.well-known/agent-card.json", "", nil)
 	c.Request.Host = "gw.example.com"
@@ -319,6 +323,7 @@ func a2aMessageParams(contextID, taskID, text string, data any) map[string]any {
 }
 
 func TestA2AStreamApprovalResumeFlow(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	// 第 1 次：请求门控工具 → input-required；第 2 次：终稿。
 	fake := newFakeAgentModelServer(t, [][]string{
@@ -412,6 +417,7 @@ func TestA2AStreamApprovalResumeFlow(t *testing.T) {
 }
 
 func TestA2ASendNonBlockingAndV1Wire(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
 		{openAIChunk("c1", map[string]any{"role": "assistant", "content": "收到"}, "", nil),
@@ -494,6 +500,7 @@ func TestA2ASendNonBlockingAndV1Wire(t *testing.T) {
 }
 
 func TestA2APushConfigUnsupported(t *testing.T) {
+	t.Parallel()
 	s := newOpsTestServer(t)
 	_, push, _ := a2aCall(t, s, "tasks/pushNotificationConfig/set", map[string]any{}, "")
 	errObj := push["error"].(map[string]any)
@@ -505,6 +512,7 @@ func TestA2APushConfigUnsupported(t *testing.T) {
 // ---- REST 列表过滤分页 ----
 
 func TestRemoteRESTListFilterPagination(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	for _, title := range []string{"a", "b", "c"} {
 		if _, err := s.createRemoteAgentSession(context.Background(), title, "create", "", nil); err != nil {
@@ -621,6 +629,7 @@ func waitForTaskState(t *testing.T, s *Server, taskID, want string) {
 
 // 取消后的终态不得被后台轮次的迟到帧（完成/失败）改写。
 func TestA2ACancelFinalStateNotOverwritten(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	// 慢模型：轮次存活足够久，保证取消发生在运行中。
 	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -669,6 +678,7 @@ func TestA2ACancelFinalStateNotOverwritten(t *testing.T) {
 // 不带 taskId 的新消息开启新轮次后，同会话悬空的 input-required 旧任务
 // 应转 failed（已被取代）。
 func TestA2ASupersedeStaleTask(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
 		{openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia protocol test"}`), "", nil),
@@ -699,6 +709,7 @@ func TestA2ASupersedeStaleTask(t *testing.T) {
 // 远程面思考档位白名单与管理端同口径（MCP/A2A/远程 REST 共用）：xhigh
 // 合法、未知值拒绝；agent_update_session 的 schema enum 与之同步。
 func TestRemoteThinkingEffortWhitelistAndSchema(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	created, err := s.store.CreateAgentSession(t.Context(), storage.AgentSessionUpsert{Mode: "create"})
 	if err != nil {
@@ -724,6 +735,7 @@ func TestRemoteThinkingEffortWhitelistAndSchema(t *testing.T) {
 
 // 远程面建会话继承最近会话的模型/思考设置；显式指定的模型不被覆盖。
 func TestRemoteSessionInheritsRecentSettings(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	ctx := t.Context()
 

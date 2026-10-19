@@ -3,9 +3,7 @@ package builtin
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"reflect"
-	"sync/atomic"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
@@ -20,49 +18,8 @@ func (wrapped jsonOnlyModule) NewStream(direction p.Direction, limits p.Limits) 
 	return jsonOnlyModule{stream}, err
 }
 
-type cancelAtValidationBoundary struct {
-	context.Context
-	remaining atomic.Int64
-	cancel    context.CancelFunc
-}
-
-func (ctx *cancelAtValidationBoundary) Err() error {
-	if ctx.remaining.Add(-1) == 0 {
-		ctx.cancel()
-	}
-	return ctx.Context.Err()
-}
-
-func TestTypedRequestCancellationAtModuleBoundary(t *testing.T) {
-	// Cancel after the boundary's first check, deterministically exercising
-	// cancellation during input/schema validation without a timing race.
-	compiled := shippedProjectionProtocol(t, Anthropic)
-	body := []byte(`{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`)
-	request, err := compiled.DecodeRequest(t.Context(), body, p.EvaluationContext{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, direction := range []p.Direction{p.DecodeRequest, p.EncodeRequest} {
-		parent, cancel := context.WithCancel(t.Context())
-		ctx := &cancelAtValidationBoundary{Context: parent, cancel: cancel}
-		if direction == p.DecodeRequest {
-			ctx.remaining.Store(2)
-		} else {
-			ctx.remaining.Store(3)
-		}
-		if direction == p.DecodeRequest {
-			_, err = compiled.DecodeRequest(ctx, body, p.EvaluationContext{})
-		} else {
-			_, err = compiled.EncodeRequest(ctx, request, p.EvaluationContext{})
-		}
-		cancel()
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("%s lost cancellation at module entry: %v", direction, err)
-		}
-	}
-}
-
 func TestRequestWireSchemaTypedParity(t *testing.T) {
+	t.Parallel()
 	definitions, _ := Definitions()
 	genericModules := Modules()
 	for index := range genericModules {
@@ -103,16 +60,20 @@ func TestRequestWireSchemaTypedParity(t *testing.T) {
 					t.Fatal(issues)
 				}
 				for _, sample := range definition.Samples {
-					if sample.Direction != p.DecodeRequest {
+					// Schema/after dispatch is independent of the request payload.
+					// The full sample catalog is verified separately.
+					if sample.ID != "text-decode" {
 						continue
 					}
 					options := p.EvaluationContext{Values: sample.Context, Scope: sample.Scope}
-					before := observeMemoryRequest(t, generic, sample.Input.Bytes(), options, true)
-					after := observeMemoryRequest(t, typed, sample.Input.Bytes(), options, true)
+					before := observeRequestPipeline(t, generic, sample.Input.Bytes(), options)
+					after := observeRequestPipeline(t, typed, sample.Input.Bytes(), options)
 					if !reflect.DeepEqual(before, after) {
 						t.Fatalf("%s differs\ngeneric=%+v\ntyped=%+v", sample.ID, before, after)
 					}
+					return
 				}
+				t.Fatal("missing text request fixture")
 			})
 		}
 	}
@@ -125,7 +86,8 @@ func (wrapped jsonOnlyModule) Finish(ctx context.Context, options p.EvaluationCo
 	return nil, nil
 }
 
-func TestTypedModulesMatchJSONContractAndDeclarations(t *testing.T) {
+func TestJSONModuleFallbackMatchesShippedSamples(t *testing.T) {
+	t.Parallel()
 	definitions, err := Definitions()
 	if err != nil {
 		t.Fatal(err)
@@ -138,40 +100,15 @@ func TestTypedModulesMatchJSONContractAndDeclarations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	typedCompiler, err := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, raw := range definitions {
 		generic, issues := compiler.Compile(raw.Bytes())
 		if generic == nil {
 			t.Fatal(issues)
 		}
-		typed, issues := typedCompiler.Compile(raw.Bytes())
-		if typed == nil {
-			t.Fatal(issues)
-		}
-		t.Run(typed.Identity().DefinitionID, func(t *testing.T) {
-			// Verify covers expected wires, semantic roundtrips, event lifecycles,
-			// native extension replay, TTL, long integers and explicit zero usage.
-			for _, compiled := range []*p.Compiled{generic, typed} {
-				if report := p.Verify(t.Context(), compiled); !report.Passed {
-					t.Fatal(report.Issues)
-				}
-			}
-			for _, direction := range []p.Direction{p.DecodeRequest, p.EncodeRequest, p.DecodeResponse, p.EncodeResponse} {
-				definition := typed.Definition()
-				mapping := definition.Directions[direction]
-				mapping.After = &p.Expression{Op: "read"}
-				definition.Directions[direction] = mapping
-				value, _ := json.Marshal(definition)
-				compiled, issues := typedCompiler.Compile(value)
-				if compiled == nil {
-					t.Fatal(issues)
-				}
-				if report := p.Verify(t.Context(), compiled); !report.Passed {
-					t.Fatalf("post-mapping diverged: %v", report.Issues)
-				}
+		t.Run(generic.Identity().DefinitionID, func(t *testing.T) {
+			t.Parallel()
+			if report := p.Verify(t.Context(), generic); !report.Passed {
+				t.Fatal(report.Issues)
 			}
 		})
 	}

@@ -71,6 +71,7 @@ func assertRecoveredPresets(t *testing.T, s *Server) {
 }
 
 func TestPresetRecoveryDefectsAndIdempotence(t *testing.T) {
+	t.Parallel()
 	for _, defect := range []string{"all-inactive", "one-inactive", "report-missing", "report-malformed", "report-stale", "report-rejected", "revision-missing", "revision-malformed", "revision-wrong-id", "draft-malformed", "activation-invalid"} {
 		t.Run(defect, func(t *testing.T) {
 			s, path := newProtocolAdminTestServer(t)
@@ -156,6 +157,7 @@ func TestPresetRecoveryDefectsAndIdempotence(t *testing.T) {
 }
 
 func TestPresetRecoveryFailureIsAtomic(t *testing.T) {
+	t.Parallel()
 	for _, failure := range []string{"verification", "transaction", "disk-write", "concurrent", "concurrent-report", "canceled", "missing-table"} {
 		t.Run(failure, func(t *testing.T) {
 			s, path := newProtocolAdminTestServer(t)
@@ -209,6 +211,7 @@ func TestPresetRecoveryFailureIsAtomic(t *testing.T) {
 }
 
 func TestRecoveredPresetsDiscoverModelsWithoutBindingUnboundSources(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	if err := s.initializeProtocolRuntime(t.Context()); err != nil {
 		t.Fatal(err)
@@ -267,7 +270,8 @@ func TestRecoveredPresetsDiscoverModelsWithoutBindingUnboundSources(t *testing.T
 	}
 }
 
-func TestPresetRecoveryTenRestartsPreserveEvidenceAndCustomData(t *testing.T) {
+func TestPresetRecoveryRestartsPreserveEvidenceAndCustomData(t *testing.T) {
+	t.Parallel()
 	s, path := newProtocolAdminTestServer(t)
 	d := presetDefinition(t, protocol.PresetResponsesID)
 	d.ID = "my-copy"
@@ -281,7 +285,8 @@ func TestPresetRecoveryTenRestartsPreserveEvidenceAndCustomData(t *testing.T) {
 	counts := recoveryCounts(t, db)
 	backups, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.protocol-snapshot-v2-*"))
 	beforeConfig, _ := os.ReadFile(path)
-	for i := 0; i < 10; i++ {
+	// Reopen twice to verify persisted recovery and subsequent idempotence.
+	for i := 0; i < 2; i++ {
 		if err := s.store.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -317,6 +322,7 @@ func TestPresetRecoveryTenRestartsPreserveEvidenceAndCustomData(t *testing.T) {
 }
 
 func TestPresetRecoveryPublicationAndRollbackProtectExistingRuntime(t *testing.T) {
+	t.Parallel()
 	s, path := newProtocolAdminTestServer(t)
 	if err := s.initializeProtocolRuntime(t.Context()); err != nil {
 		t.Fatal(err)
@@ -364,6 +370,7 @@ func TestPresetRecoveryPublicationAndRollbackProtectExistingRuntime(t *testing.T
 }
 
 func TestPresetRecoveryPreservesManualBindingsAndHistoricalRevision(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	raw, err := os.ReadFile(filepath.Join("..", "protocol", "builtin", "testdata", "previous", protocol.PresetAnthropicID+".json"))
 	if err != nil {

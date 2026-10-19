@@ -12,6 +12,7 @@ import (
 )
 
 func TestResponsesSeparateToolLedgerPersistedAcrossClientProjection(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprint(stream), func(t *testing.T) {
 			const ledger = `{"image_gen":{"input_tokens":7,"output_tokens":5,"total_tokens":12,"input_tokens_details":{"image_tokens":4,"text_tokens":3},"output_tokens_details":{"image_tokens":5,"text_tokens":0}},"web_search":{"num_requests":2}}`
@@ -95,6 +96,7 @@ func TestResponsesSeparateToolLedgerPersistedAcrossClientProjection(t *testing.T
 }
 
 func TestReportedToolCountSurvivesFramesWithoutUsage(t *testing.T) {
+	t.Parallel()
 	compiled := compileFixtureDefinition(t, presetDefinition(t, "openai-responses"))
 	for _, count := range []int64{0, 2} {
 		r := &usageRecord{}

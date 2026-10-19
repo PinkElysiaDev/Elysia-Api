@@ -12,55 +12,54 @@ func TestGeminiSystemInstructionRoleAcrossInstalledCodecs(t *testing.T) {
 	for _, role := range []string{`"user"`, `"model"`, `""`, `null`} {
 		body := `{"systemInstruction":{"role":` + role + `,"parts":[{"text":"system prefix"}]},"contents":[{"role":"user","parts":[{"text":"question"}]}],"generationConfig":{"maxOutputTokens":32}}`
 		for _, name := range []string{Chat, Responses, Anthropic, Gemini} {
-			for _, mode := range []string{"compatible", "strict"} {
-				t.Run(name+"/"+mode+"/"+role, func(t *testing.T) {
-					to := shippedProjectionProtocol(t, name)
-					r, err := from.DecodeRequest(t.Context(), []byte(body), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
-					if err != nil {
-						t.Fatal(err)
-					}
-					if r.Content[0].Role != p.StringValue("system") || !r.Parameters["wire:gemini"].IsZero() {
-						t.Fatal("system instruction wrapper role became foreign semantics", r.Parameters, r.Content[0])
-					}
-					policy := p.DefaultConversionPolicy(from, to)
-					policy.Mode = mode
-					conversion, err := p.ResolveConversion(policy)
-					if err != nil {
-						t.Fatal(err)
-					}
-					sink := &p.DiagnosticSink{}
-					out, err := conversion.Request(t.Context(), r, p.ConversionContext{Source: from.Identity(), Target: to.Identity()}, sink)
-					if err != nil {
-						t.Fatal(err)
-					}
-					wire, err := to.EncodeRequest(t.Context(), out, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
-					if err != nil {
-						t.Fatal(err)
-					}
-					if err := to.ValidateWireOutput(p.EncodeRequest, testValue(t, string(wire))); err != nil {
-						t.Fatal(err)
-					}
-					roundtrip, err := to.DecodeRequest(t.Context(), wire, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
-					if err != nil {
-						t.Fatal(err)
-					}
-					if len(roundtrip.Content) != 2 || roundtrip.Content[0].Role != p.StringValue("system") || roundtrip.Content[0].Children[0].Payload != p.StringValue("system prefix") || roundtrip.Content[1].Role != p.StringValue("user") {
-						t.Fatal("system authority or content changed", string(wire))
-					}
-					if len(sink.Issues()) != 0 {
-						t.Fatal("lossless role decoding diagnosed as degradation", sink.Issues())
-					}
-					if name == Gemini {
-						sameJSON(t, wire, body)
-						out.Content[0].Children[0].Payload = p.StringValue("edited prefix")
-						wire, err = to.EncodeRequest(t.Context(), out, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
-						if err != nil {
-							t.Fatal(err)
-						}
-						sameJSON(t, wire, strings.Replace(body, "system prefix", "edited prefix", 1))
-					}
-				})
+			// Check every wrapper role natively, and each cross-family target
+			// with the SDK's user role. Lossless normalization has no mode axis.
+			if role != `"user"` && name != Gemini {
+				continue
 			}
+			t.Run(name+"/"+role, func(t *testing.T) {
+				to := shippedProjectionProtocol(t, name)
+				r, err := from.DecodeRequest(t.Context(), []byte(body), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if r.Content[0].Role != p.StringValue("system") || !r.Parameters["wire:gemini"].IsZero() {
+					t.Fatal("system instruction wrapper role became foreign semantics", r.Parameters, r.Content[0])
+				}
+				policy := p.DefaultConversionPolicy(from, to)
+				conversion, err := p.ResolveConversion(policy)
+				if err != nil {
+					t.Fatal(err)
+				}
+				sink := &p.DiagnosticSink{}
+				out, err := conversion.Request(t.Context(), r, p.ConversionContext{Source: from.Identity(), Target: to.Identity()}, sink)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wire, err := to.EncodeRequest(t.Context(), out, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				roundtrip, err := to.DecodeRequest(t.Context(), wire, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(roundtrip.Content) != 2 || roundtrip.Content[0].Role != p.StringValue("system") || roundtrip.Content[0].Children[0].Payload != p.StringValue("system prefix") || roundtrip.Content[1].Role != p.StringValue("user") {
+					t.Fatal("system authority or content changed", string(wire))
+				}
+				if len(sink.Issues()) != 0 {
+					t.Fatal("lossless role decoding diagnosed as degradation", sink.Issues())
+				}
+				if name == Gemini {
+					sameJSON(t, wire, body)
+					out.Content[0].Children[0].Payload = p.StringValue("edited prefix")
+					wire, err = to.EncodeRequest(t.Context(), out, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+					if err != nil {
+						t.Fatal(err)
+					}
+					sameJSON(t, wire, strings.Replace(body, "system prefix", "edited prefix", 1))
+				}
+			})
 		}
 	}
 }

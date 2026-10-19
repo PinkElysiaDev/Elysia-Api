@@ -31,7 +31,6 @@ func agentContextWithID(method, target, id, body string) (*gin.Context, *httptes
 
 func newAgentIntegrationServer(t *testing.T) *Server {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
 	dir := t.TempDir()
 	cfg := &config.Config{}
 	store, err := storage.Open(filepath.Join(dir, "agent.sqlite3"))
@@ -171,6 +170,7 @@ func hasAgentEvent(events []agentSSEEvent, eventType string) bool {
 }
 
 func TestAgentFullTurnWithDraftTool(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	// 第 1 次调用：elysia_cli 写协议草稿；第 2 次：终稿文本。
 	draftCommand := `{"command":"elysia protocol draft '{\"id\":\"agent-proto\",\"request\":{\"method\":\"POST\",\"path\":\"/v1/x\",\"bodyTemplate\":\"{\\\"model\\\":\\\"{{maheshvara.model}}\\\"}\"}}'"}`
@@ -256,6 +256,7 @@ func TestAgentFullTurnWithDraftTool(t *testing.T) {
 }
 
 func TestAgentGatedToolApprovalFlow(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	// 第 1 次：请求 test_upstream（门控）；恢复后第 2 次：终稿。
 	fake := newFakeAgentModelServer(t, [][]string{
@@ -327,6 +328,7 @@ func TestAgentGatedToolApprovalFlow(t *testing.T) {
 // 审批卡出口：待批命令打码（敏感 flag 不得经 Reason 泄露），同批多个
 // elysia_cli 调用的门控命令全部点名（用户所见即所批）。
 func TestAgentApprovalReasonMaskingAndBatchScope(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
 		{openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia source create --name x --base-url https://u.io --api-key sk-live-789"}`), "", nil),
@@ -370,6 +372,7 @@ func TestAgentApprovalReasonMaskingAndBatchScope(t *testing.T) {
 
 // 旧版本 PendingAction（工具已下线）批准时明确报过期；拒绝仍可收尾。
 func TestAgentStalePendingApprovalRejected(t *testing.T) {
+	t.Parallel()
 	for _, oldName := range []string{"update_model_source", "bash"} {
 		t.Run(oldName, func(t *testing.T) {
 			s := newAgentIntegrationServer(t)
@@ -416,6 +419,7 @@ func TestAgentStalePendingApprovalRejected(t *testing.T) {
 }
 
 func TestAgentDenyApprovalAdapts(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
 		{openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia protocol save"}`), "", nil),
@@ -454,6 +458,7 @@ func TestAgentDenyApprovalAdapts(t *testing.T) {
 }
 
 func TestAgentSessionLifecycle(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	// 建 → 列表 → 清空消息 → 删除
 	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create","title":"生命周期"}`)
@@ -494,6 +499,7 @@ func TestAgentSessionLifecycle(t *testing.T) {
 }
 
 func TestAgentThinkingSettingsMappedToRequest(t *testing.T) {
+	t.Parallel()
 	for _, effort := range []string{"high", "xhigh"} {
 		t.Run(effort, func(t *testing.T) {
 			s := newAgentIntegrationServer(t)
@@ -535,6 +541,7 @@ func TestAgentThinkingSettingsMappedToRequest(t *testing.T) {
 
 // 白名单：xhigh 合法、未知档位 400。
 func TestAgentThinkingEffortWhitelist(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	created, err := s.store.CreateAgentSession(t.Context(), storage.AgentSessionUpsert{Mode: "create"})
 	if err != nil {
@@ -585,6 +592,7 @@ func stateUpdateWithDraft(draft json.RawMessage) agent.SessionStateUpdate {
 
 // 通用运维工具的全链路：模型发起 list_model_groups 工具调用并落终稿。
 func TestAgentFullTurnWithOpsTool(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
 		{openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia group ls"}`), "", nil),
@@ -618,6 +626,7 @@ func TestAgentFullTurnWithOpsTool(t *testing.T) {
 // 明文的 Key（审批暂停）→ 批准续跑 → 验证组与 Key 落库。锁住提示词重构
 // 后模型可见的运行时行为（空结果指引、明文照建、策略语义、审批面）。
 func TestAgentCLIOpsChainE2E(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	ctx := t.Context()
 	// 预置两个源：s0 空（测空清单补救文案）、s1 带手动模型 m1。
@@ -724,6 +733,7 @@ func TestAgentCLIOpsChainE2E(t *testing.T) {
 // 按提示拆分重发只读批成功 → update_plan 定稿暂停 → 用户确认关闭计划模式
 // → 写入批走 save 审批 → 批准建成。锁住模型在计划模式下的自救闭环。
 func TestAgentPlanModeReadOnlySelfRescueE2E(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
 		{ // 第 1 轮：纯只读批 → 计划模式下放行
@@ -827,6 +837,7 @@ func TestAgentPlanModeReadOnlySelfRescueE2E(t *testing.T) {
 // 落库成功（状态回 idle、「轮次已停止」系统消息可查）——收尾写库走
 // WithoutCancel，不再随轮次取消一起失败。
 func TestAgentStopTurnLandsIdleAndMessage(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	// 伪模型：第一块响应后挂住不结束（模拟长流），靠 stop 的 ctx 取消断开。
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -900,6 +911,7 @@ func TestAgentStopTurnLandsIdleAndMessage(t *testing.T) {
 // key create 的明文「仅此一次」：现场 tool_result 事件携带原值交付，落库的
 // 会话消息按值打码——明文不得永久进入会话历史并逐轮回传模型。
 func TestAgentKeyCreateSecretOnlyInLiveEvent(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	ctx := t.Context()
 	if err := s.store.UpsertSource(ctx, storage.ModelSource{ID: "s1", Name: "主力", BaseURL: "https://s1.example", Platform: "openai", Enabled: true,

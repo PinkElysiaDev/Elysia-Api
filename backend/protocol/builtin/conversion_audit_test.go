@@ -15,6 +15,7 @@ var auditResponses = map[string]string{
 }
 
 func TestAuditActualPresetJSONMatrix(t *testing.T) {
+	t.Parallel()
 	for source, raw := range auditResponses {
 		for target := range auditResponses {
 			t.Run(source+"-"+target, func(t *testing.T) {
@@ -74,6 +75,7 @@ func TestAuditActualPresetJSONMatrix(t *testing.T) {
 }
 
 func TestAuditMetadataScopeAndStrict(t *testing.T) {
+	t.Parallel()
 	adapter := module{name: Chat, family: "openai_chat"}
 	response, err := adapter.decodeResponse(testValue(t, auditResponses[Chat]), p.EvaluationContext{})
 	if err != nil {
@@ -103,6 +105,7 @@ func TestAuditMetadataScopeAndStrict(t *testing.T) {
 }
 
 func TestAuditToolProjectionAndHoist(t *testing.T) {
+	t.Parallel()
 	from := shippedProjectionProtocol(t, Gemini)
 	for _, name := range []string{Chat, Responses, Anthropic} {
 		t.Run(name, func(t *testing.T) {

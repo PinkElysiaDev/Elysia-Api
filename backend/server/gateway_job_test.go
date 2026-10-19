@@ -28,6 +28,7 @@ func jobGatewayRequest(t *testing.T, s *Server, method, path, body, key string) 
 }
 
 func TestGatewayJobExplicitWaitTimeoutPolicies(t *testing.T) {
+	t.Parallel()
 	for _, policy := range []string{"cancel", "continue"} {
 		t.Run(policy, func(t *testing.T) {
 			s, _ := newProtocolAdminTestServer(t)
@@ -94,6 +95,7 @@ func TestGatewayJobExplicitWaitTimeoutPolicies(t *testing.T) {
 }
 
 func TestGatewayJobsIndependentMappingsPinnedRevisionAndUsage(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	ingress := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "job-alpha"))
 	definition := loadGatewayDefinition(t, "job-beta")
@@ -215,6 +217,7 @@ func TestGatewayJobsIndependentMappingsPinnedRevisionAndUsage(t *testing.T) {
 }
 
 func TestGatewayJobUncertainOutcomeIsDurableAndNotRetried(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	compiled := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "job-alpha"))
 	var calls atomic.Int32

@@ -10,7 +10,6 @@ import (
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 // 回归（核心修复）：同一图片出现在两个请求里，磁盘只存一份；两个记录的
@@ -35,7 +34,6 @@ func referencedAssetFiles(t *testing.T, store *storage.Store) map[string]bool {
 }
 
 func TestAssetDedupAcrossRequests(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	store, err := storage.Open(filepath.Join(t.TempDir(), "dedup.sqlite3"))
 	if err != nil {
 		t.Fatalf("open: %v", err)

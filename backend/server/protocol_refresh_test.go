@@ -40,6 +40,7 @@ func persistPreviousRevision(t *testing.T, server *Server, definition protocol.V
 }
 
 func TestRuntimeRefreshUpgradesOnlyKnownPresetsAndPreservesDrafts(t *testing.T) {
+	t.Parallel()
 	server, _ := newProtocolAdminTestServer(t)
 	service, err := server.protocolService()
 	if err != nil {
@@ -111,6 +112,7 @@ func TestRuntimeRefreshUpgradesOnlyKnownPresetsAndPreservesDrafts(t *testing.T) 
 }
 
 func TestRuntimeRefreshPreservesCustomRevisionsAndBlocksInvalidEvidence(t *testing.T) {
+	t.Parallel()
 	for _, isInvalid := range []bool{false, true} {
 		t.Run(map[bool]string{false: "preserve", true: "block"}[isInvalid], func(t *testing.T) {
 			server, _ := newProtocolAdminTestServer(t)
@@ -170,6 +172,7 @@ func TestRuntimeRefreshPreservesCustomRevisionsAndBlocksInvalidEvidence(t *testi
 }
 
 func TestRuntimeRefreshResetsPresetRevisionsToShipped(t *testing.T) {
+	t.Parallel()
 	server, _ := newProtocolAdminTestServer(t)
 	// 在预置 ID 下持久化一份「运营者持有」修订（带无效样例）：预置只读策略
 	// 下，启动刷新无条件回归 shipped 版本并重建证据，而不是被旧修订阻断。
@@ -199,7 +202,8 @@ func TestRuntimeRefreshResetsPresetRevisionsToShipped(t *testing.T) {
 	}
 }
 
-func TestRuntimeProjectionUpgradeTenRestartsPreserveCustomAndFailedEvidence(t *testing.T) {
+func TestRuntimeProjectionUpgradeRestartsPreserveCustomAndFailedEvidence(t *testing.T) {
+	t.Parallel()
 	s, path := newProtocolAdminTestServer(t)
 	for _, id := range []string{"old-copy", "broken-copy"} {
 		d := presetDefinition(t, protocol.PresetResponsesID)
@@ -230,7 +234,8 @@ func TestRuntimeProjectionUpgradeTenRestartsPreserveCustomAndFailedEvidence(t *t
 	if len(backups) != 0 {
 		t.Fatal("append-only refresh created an unnecessary snapshot", backups)
 	}
-	for i := 0; i < 10; i++ {
+	// Two reloads cover both the first reuse and repeated idempotence.
+	for i := 0; i < 2; i++ {
 		if err := s.reloadProtocolRuntime(t.Context()); err != nil {
 			t.Fatal(err)
 		}

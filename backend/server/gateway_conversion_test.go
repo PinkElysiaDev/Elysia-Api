@@ -16,6 +16,7 @@ import (
 )
 
 func TestGatewayGeminiClientStreamUsagePreferences(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name, option string
 		want         bool
@@ -80,6 +81,7 @@ func TestGatewayGeminiClientStreamUsagePreferences(t *testing.T) {
 }
 
 func TestGatewayMessagesGeminiContinuationRoundTrip(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()
@@ -129,6 +131,7 @@ func TestGatewayMessagesGeminiContinuationRoundTrip(t *testing.T) {
 // The second request deliberately omits every carrier and reloads SQLite first.
 // This proves recovery does not depend on a process-local map.
 func TestGatewayContinuationPersistenceAndIsolation(t *testing.T) {
+	t.Parallel()
 	s, cfgPath := newProtocolAdminTestServer(t)
 	s.store.Close()
 	dbPath := filepath.Join(filepath.Dir(cfgPath), "encrypted.sqlite3")
@@ -195,6 +198,7 @@ func TestGatewayContinuationPersistenceAndIsolation(t *testing.T) {
 }
 
 func TestGatewayParallelGeminiToolSignatures(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()
@@ -249,6 +253,7 @@ func TestGatewayParallelGeminiToolSignatures(t *testing.T) {
 }
 
 func TestGatewayStrictLateGeminiSignature(t *testing.T) {
+	t.Parallel()
 	s, cfgPath := newProtocolAdminTestServer(t)
 	s.store.Close()
 	var err error
@@ -293,6 +298,7 @@ func TestGatewayStrictLateGeminiSignature(t *testing.T) {
 }
 
 func TestProviderSignatureProbeRequiresAcceptedScopedEvidence(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()

@@ -22,7 +22,6 @@ import (
 // newPersistTestServer 带 store + 可写 config 的 Server（免登录直调 handler）。
 func newPersistTestServer(t *testing.T) (*Server, *config.Config, *storage.Store) {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
 	store, err := storage.Open(filepath.Join(t.TempDir(), "persist.sqlite3"))
 	if err != nil {
 		t.Fatalf("open: %v", err)

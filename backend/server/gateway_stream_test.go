@@ -60,6 +60,7 @@ func gatewayStreamDefinition(t *testing.T, name string, transport protocol.Trans
 }
 
 func TestGatewaySSEAndNDJSONBridgeDrainsUsageAndPersists(t *testing.T) {
+	t.Parallel()
 	for _, ingressTransport := range []protocol.Transport{protocol.SSE, protocol.NDJSON} {
 		t.Run(string(ingressTransport), func(t *testing.T) {
 			server, _ := newProtocolAdminTestServer(t)
@@ -116,6 +117,7 @@ func TestGatewaySSEAndNDJSONBridgeDrainsUsageAndPersists(t *testing.T) {
 }
 
 func TestGatewayBrokenStreamReportsErrorAndNeverRetries(t *testing.T) {
+	t.Parallel()
 	server, _ := newProtocolAdminTestServer(t)
 	definition := gatewayStreamDefinition(t, "text-alpha", protocol.SSE, "event")
 	compiled := activateGatewayDefinition(t, server, definition)

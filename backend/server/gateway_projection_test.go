@@ -15,6 +15,7 @@ import (
 )
 
 func TestGatewayGeminiIncludeAndReasoningProjection(t *testing.T) {
+	t.Parallel()
 	for _, client := range []string{"responses", "messages", "chat", "custom-responses", "custom-messages"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/stream=%v", client, stream), func(t *testing.T) {
@@ -137,6 +138,7 @@ func TestGatewayGeminiIncludeAndReasoningProjection(t *testing.T) {
 }
 
 func TestGatewayInvalidIncludeDoesNotCallUpstream(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()
@@ -157,6 +159,7 @@ func TestGatewayInvalidIncludeDoesNotCallUpstream(t *testing.T) {
 }
 
 func TestGatewayIncludeCarrierDeliveryModes(t *testing.T) {
+	t.Parallel()
 	for _, strict := range []bool{false, true} {
 		for _, signed := range []bool{false, true} {
 			t.Run(fmt.Sprintf("strict=%v/signed=%v", strict, signed), func(t *testing.T) {

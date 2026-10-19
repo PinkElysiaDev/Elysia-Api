@@ -145,10 +145,18 @@ func cacheWireFixtures() []cacheWireFixture {
 }
 
 func TestCacheWireMatrix(t *testing.T) {
+	t.Parallel()
+	// Native wiring plus one cross-family edge per client. Codec matrices own
+	// exhaustive cache-field projection; HTTP tests own forwarding and storage.
+	crossTarget := map[string]string{"openai": "anthropic", "anthropic": "responses", "responses": "gemini", "gemini": "openai"}
 	for _, source := range cacheWireFixtures() {
 		for _, target := range cacheWireFixtures() {
+			if source.platform != target.platform && crossTarget[source.platform] != target.platform {
+				continue
+			}
 			for _, stream := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s_to_%s/stream=%v", source.platform, target.platform, stream), func(t *testing.T) {
+					t.Parallel()
 					captured := make(chan []byte, 1)
 					upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						body, _ := io.ReadAll(r.Body)
@@ -279,9 +287,11 @@ func TestCacheWireMatrix(t *testing.T) {
 }
 
 func TestCacheUsageCreationAndAbsentFields(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		for _, phase := range []string{"creation", "absent"} {
 			t.Run(fmt.Sprintf("%s/stream=%v", phase, stream), func(t *testing.T) {
+				t.Parallel()
 				usage := `{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":90}`
 				if phase == "absent" {
 					usage = `{"input_tokens":100}`

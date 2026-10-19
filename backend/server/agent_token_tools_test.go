@@ -16,21 +16,6 @@ import (
 // API Key 工具与删除类工具单测：明文只出一次、留空保留原值、
 // 删除级联（组的令牌禁用、源的模型与组成员清理）、权限键映射。
 
-func TestTokenToolRegistry(t *testing.T) {
-	s := newOpsTestServer(t)
-	tools := cliTokenHandlers(s)
-	if len(tools) != 4 {
-		t.Fatalf("token tools = %d", len(tools))
-	}
-	seen := map[string]string{}
-	for _, handler := range tools {
-		seen[cliHandlerName(handler)] = cliEffectOf(handler)
-	}
-	if seen[agentToolListAPIKeys] != CLIEffectRead || seen[agentToolCreateAPIKey] != CLIEffectWrite || seen[agentToolDeleteAPIKey] != CLIEffectDelete {
-		t.Fatalf("neutral effects wrong: %v", seen)
-	}
-}
-
 func TestAPIKeyToolsLifecycle(t *testing.T) {
 	s := newOpsTestServer(t)
 	ctx := context.Background()

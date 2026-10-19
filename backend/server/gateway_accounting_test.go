@@ -14,6 +14,7 @@ import (
 )
 
 func TestProtocolEstimateCountsUnicodeFilesAndToolHistoryOnce(t *testing.T) {
+	t.Parallel()
 	server := &Server{config: &config.Config{Usage: config.UsageConfig{CharsPerToken: 1, DefaultOutputTokenEstimate: 100, ImageInputTokenEstimate: 30, FileInputTokenEstimatePerKB: 10}}}
 	request := &protocol.Request{Content: []protocol.Node{
 		{Kind: protocol.MessageNode, Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("你好")}, {Kind: protocol.ImageNode}, {Kind: protocol.DocumentNode, Payload: mustEncodedProtocolValue(t, protocol.Object{"data": protocol.StringValue(strings.Repeat("a", 2049))})}}},
@@ -33,6 +34,7 @@ func TestProtocolEstimateCountsUnicodeFilesAndToolHistoryOnce(t *testing.T) {
 }
 
 func TestProtocolEstimateIncludesStructuredReasoningHistory(t *testing.T) {
+	t.Parallel()
 	s := &Server{config: &config.Config{Usage: config.UsageConfig{CharsPerToken: 1}}}
 	request := &protocol.Request{Content: []protocol.Node{{Kind: protocol.ReasoningNode, ReasoningForm: protocol.StructuredReasoning,
 		Children:         []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("摘要")}},
@@ -44,6 +46,7 @@ func TestProtocolEstimateIncludesStructuredReasoningHistory(t *testing.T) {
 }
 
 func TestHostedToolAccountingDeduplicatesAndHonorsSource(t *testing.T) {
+	t.Parallel()
 	compiled := compileFixtureDefinition(t, presetDefinition(t, "openai-responses"))
 	record := &usageRecord{}
 	for _, wire := range []string{
@@ -73,6 +76,7 @@ func TestHostedToolAccountingDeduplicatesAndHonorsSource(t *testing.T) {
 }
 
 func TestHostedToolUsagePersistedHTTPAndSSE(t *testing.T) {
+	t.Parallel()
 	for _, isStream := range []bool{false, true} {
 		t.Run(fmt.Sprint(isStream), func(t *testing.T) {
 			payload := `{"status":"completed","output":[{"type":"web_search_call","id":"s1","status":"completed"},{"type":"web_search_call","id":"s2","status":"completed"}],"usage":{"input_tokens":9,"output_tokens":2},"id":"r1","model":"m","object":"response","created_at":1}`
@@ -119,6 +123,7 @@ func TestHostedToolUsagePersistedHTTPAndSSE(t *testing.T) {
 }
 
 func TestRejectedRequestIDIdentifiesPersistedCall(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t, presetGroup(t, "custom:openai-responses", "http://127.0.0.1:1"))
 	request, recorder := chatRequestContext(`{"model":"grp","input":"hello","store":42}`)
 	request.Request.URL.Path = "/v1/responses"
@@ -133,6 +138,7 @@ func TestRejectedRequestIDIdentifiesPersistedCall(t *testing.T) {
 }
 
 func TestGatewayReservationUsesExecutableRetryWindow(t *testing.T) {
+	t.Parallel()
 	s := &Server{config: &config.Config{Usage: config.UsageConfig{CharsPerToken: 1, DefaultOutputTokenEstimate: 10}}}
 	request := func(limit string) *protocol.Request {
 		return &protocol.Request{Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, limit)}}

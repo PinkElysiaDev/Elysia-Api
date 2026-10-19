@@ -8,6 +8,7 @@ import (
 )
 
 func TestAnthropicSignatureFragmentsAndRepeatedSnapshots(t *testing.T) {
+	t.Parallel()
 	compiled := testCompiled(t, Anthropic)
 	options := p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}}
 	collector, err := p.NewResponseCollector(p.Target{Protocol: compiled.Identity(), Scope: options.Scope, Direction: p.EncodeEvent, Capabilities: compiled.Capabilities(p.EncodeEvent)}, p.DefaultLimits())
@@ -106,6 +107,7 @@ func convertStream(t *testing.T, source, target string, bodies []string) []p.Val
 }
 
 func TestBuiltinTerminalReasonsAndFailure(t *testing.T) {
+	t.Parallel()
 	for _, target := range []string{Chat, Anthropic, Gemini} {
 		t.Run(target, func(t *testing.T) {
 			frames := convertStream(t, Responses, target, []string{`{"type":"response.created","response":{"id":"r","status":"in_progress","output":[]}}`, `{"type":"response.incomplete","response":{"id":"r","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[]}}`})
@@ -142,6 +144,7 @@ func TestBuiltinTerminalReasonsAndFailure(t *testing.T) {
 }
 
 func TestBuiltinStreamExtensionsStayNative(t *testing.T) {
+	t.Parallel()
 	compiled := testCompiled(t, Chat)
 	options := p.EvaluationContext{State: p.NewEvaluationState()}
 	input := testValue(t, `{"id":"r","choices":[{"index":0,"delta":{"content":"hi","vendor":{"n":9007199254740993}}}],"nullable":null}`)
@@ -171,6 +174,7 @@ func TestBuiltinStreamExtensionsStayNative(t *testing.T) {
 }
 
 func TestResponsesHostedStreamAndSequenceGuard(t *testing.T) {
+	t.Parallel()
 	compiled := testCompiled(t, Responses)
 	options := p.EvaluationContext{State: p.NewEvaluationState()}
 	input := testValue(t, `{"type":"response.web_search_call.searching","sequence_number":7,"item_id":"search","output_index":0,"vendor":false}`)
@@ -192,9 +196,14 @@ func TestResponsesHostedStreamAndSequenceGuard(t *testing.T) {
 }
 
 func TestBuiltinStreamingTextDoesNotAccumulateAtIncrementalTargets(t *testing.T) {
+	t.Parallel()
+	// Exceed a small configured buffer rather than sending tens of MiB just to
+	// prove that incremental output is not retained against that buffer.
+	limits := p.DefaultLimits()
+	limits.BufferBytes = 64 * 1024
 	for _, target := range []string{Chat, Anthropic, Gemini} {
 		t.Run(target, func(t *testing.T) {
-			compiled := testCompiled(t, target)
+			compiled := testCompiledWithLimits(t, target, limits)
 			options := p.EvaluationContext{State: p.NewEvaluationState()}
 			events := []p.Event{{SchemaVersion: 1, Type: p.ResponseStarted}, {SchemaVersion: 1, Type: p.ItemStarted, ItemID: p.StringValue("text"), Item: &p.Node{Kind: p.TextNode}}}
 			for _, event := range events {
@@ -202,8 +211,8 @@ func TestBuiltinStreamingTextDoesNotAccumulateAtIncrementalTargets(t *testing.T)
 					t.Fatal(err)
 				}
 			}
-			delta := p.StringValue(strings.Repeat("x", 64*1024))
-			for index := 0; index < 2*p.DefaultLimits().BufferBytes/(64*1024); index++ {
+			delta := p.StringValue(strings.Repeat("x", 4096))
+			for range 2 * limits.BufferBytes / 4096 {
 				if _, err := compiled.EncodeFrames(t.Context(), p.Event{SchemaVersion: 1, Type: p.ItemDelta, ItemID: p.StringValue("text"), Delta: delta}, options); err != nil {
 					t.Fatal(err)
 				}
@@ -233,6 +242,7 @@ var toolStreams = map[string][]string{
 }
 
 func TestBuiltinStreamToolMatrix(t *testing.T) {
+	t.Parallel()
 	for _, source := range modules {
 		for _, target := range modules {
 			t.Run(source.name+"-"+target.name, func(t *testing.T) {
@@ -274,6 +284,7 @@ func TestBuiltinStreamToolMatrix(t *testing.T) {
 }
 
 func TestBuiltinStreamMatrixPreservesTextAndUsageTails(t *testing.T) {
+	t.Parallel()
 	for _, source := range modules {
 		for _, target := range modules {
 			t.Run(source.name+"-"+target.name, func(t *testing.T) {

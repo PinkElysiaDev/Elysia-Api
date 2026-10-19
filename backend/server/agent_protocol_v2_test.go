@@ -21,6 +21,7 @@ type protocolAuthorContext struct {
 }
 
 func TestAgentProtocolV2SimulatedAuthorRepairAndEnable(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	modelProtocol := activateGatewayDefinition(t, s, agentEnvelopeDefinition(t))
 	definition := loadGatewayDefinition(t, "text-alpha")
@@ -102,6 +103,7 @@ func (ctx *protocolAuthorContext) SetTestTarget(url, key string) error {
 }
 
 func TestAgentProtocolV2AuthoringAndActivation(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	tctx := &protocolAuthorContext{}
 	run := func(command string) CLIResult {
@@ -165,6 +167,7 @@ func mustProtocolValue(t *testing.T, raw string) protocol.Value {
 }
 
 func TestAgentProtocolV2DiagnosticsAndProbe(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	definition := loadGatewayDefinition(t, "text-alpha")
 	raw, _ := json.Marshal(definition)
@@ -250,6 +253,7 @@ func agentEnvelopeDefinition(t *testing.T) protocol.Definition {
 }
 
 func TestAgentUsesBoundCustomProtocolAndRejectsToolMismatch(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	compiled := activateGatewayDefinition(t, s, agentEnvelopeDefinition(t))
 	var calls int

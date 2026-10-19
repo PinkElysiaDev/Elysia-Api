@@ -11,6 +11,7 @@ import (
 )
 
 func TestProviderFailureRetainsCauseWhenUsageTailIsUnsupported(t *testing.T) {
+	t.Parallel()
 	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)

@@ -15,6 +15,7 @@ import (
 // elysia CLI 层测试：解析器、参数映射、门控探针、脱敏、help 与等价执行。
 
 func TestCLIParser(t *testing.T) {
+	t.Parallel()
 	// 引号与 flag=value。
 	tokens, err := cliTokenize(`protocol draft '{"id":"x"}' --example='{"a":1}'`)
 	if err != nil {
@@ -125,6 +126,7 @@ func mapCLI(t *testing.T, line string) map[string]any {
 }
 
 func TestCLIResolveMappers(t *testing.T) {
+	t.Parallel()
 	// 布尔 false / 列表合并 / 缺省保留。
 	params := mapCLI(t, `elysia key update --name k1 --enabled=false --allowed-groups a,b --new-secret sk-2`)
 	if params["enabled"] != false || params["newSecret"] != "sk-2" {
@@ -211,6 +213,7 @@ func mustArgs(t *testing.T, line string) []string {
 // 全部命令：路径必须可被自身组词 resolve（防「syslog 尾随空格」类不可
 // 达回归），带最小合法参数时 mapper 必须成功（防 flag 键名拼写回归）。
 func TestCLIAllCommandsResolve(t *testing.T) {
+	t.Parallel()
 	// 路径词数不得超出 lookupCLICommand 的搜索深度，否则静默不可达。
 	for _, command := range cliCommandTable() {
 		if words := len(strings.Fields(command.Path())); words > cliMaxCommandWords {
@@ -260,6 +263,7 @@ func TestCLIAllCommandsResolve(t *testing.T) {
 }
 
 func TestCLIProbeGates(t *testing.T) {
+	t.Parallel()
 	notes, err := probeAgentCLI("elysia source ls && elysia source create --name a --base-url https://x.io ; elysia key delete --name k")
 	if err != nil {
 		t.Fatalf("probe: %v", err)
@@ -298,6 +302,7 @@ func TestCLIProbeGates(t *testing.T) {
 // 坏语句不得挟带同批门控命令绕过审批：语句级解析失败后继续收集，
 // ProbeGates 只要识别出门控命令就必须走聚合判定。
 func TestCLIProbePartialFailureKeepsGates(t *testing.T) {
+	t.Parallel()
 	notes, err := probeAgentCLI("elysia source ls --bogus ; elysia key delete --name prod")
 	if err == nil {
 		t.Fatalf("parse error must surface alongside notes")
@@ -320,6 +325,7 @@ func TestCLIProbePartialFailureKeepsGates(t *testing.T) {
 
 // 探针上报的命令文本必须打码：它会进审批卡说明等出站出口。
 func TestCLIProbeNotesMasked(t *testing.T) {
+	t.Parallel()
 	notes, err := probeAgentCLI(`elysia source create --name x --base-url https://u.io --api-key sk-live-123`)
 	if err != nil || len(notes) != 1 {
 		t.Fatalf("probe: notes=%+v err=%v", notes, err)
@@ -333,6 +339,7 @@ func TestCLIProbeNotesMasked(t *testing.T) {
 }
 
 func TestCLICommandMasking(t *testing.T) {
+	t.Parallel()
 	raw := json.RawMessage(`{"command":"elysia protocol test --api-key sk-secret-1 --stream"}`)
 	masked := agent.MaskSecretInputs(raw)
 	if strings.Contains(string(masked), "sk-secret-1") {
@@ -350,6 +357,7 @@ func TestCLICommandMasking(t *testing.T) {
 }
 
 func TestCLIHelp(t *testing.T) {
+	t.Parallel()
 	overview := renderCLIHelp(nil)
 	for _, group := range []string{"source", "model", "group", "key", "protocol", "usage", "outbound"} {
 		if !strings.Contains(overview, group) {
@@ -380,6 +388,7 @@ func (s *Server) runAgentCLI(ctx context.Context, tctx agent.ToolContext, script
 
 // 后才有第二个源），t.Run 按声明顺序执行。
 func TestCLIRunEquivalence(t *testing.T) {
+	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	activateDiscoveryPresets(t, s)
 	ctx := context.Background()
@@ -521,6 +530,7 @@ func cliOutputText(t *testing.T, result agent.ToolResult) string {
 // 同步取决于环境(构建脚本同步 vs 纯 go build 占位),断言两态自适应——
 // 有快照时预置原文可读,占位时返回打包提示而非报错堆栈。
 func TestCLICodeSnapshotCommands(t *testing.T) {
+	t.Parallel()
 	if command, rest := lookupCLICommand([]string{"code", "read"}); command == nil || len(rest) != 0 {
 		t.Fatalf("code read must resolve: %+v", command)
 	}

@@ -242,6 +242,8 @@ func (r ModelRef) Identifier() string {
 	return r.ID
 }
 
+// GlobalConfig is published once by init for the executable entry point.
+// Loading another configuration must not replace the running process's config.
 var GlobalConfig *Config
 
 func Load(path string) (*Config, error) {
@@ -270,10 +272,6 @@ func Load(path string) (*Config, error) {
 	if err := cfg.validateLogSettings(); err != nil {
 		return nil, err
 	}
-
-	cfg.mu.Lock()
-	GlobalConfig = cfg
-	cfg.mu.Unlock()
 
 	return cfg, nil
 }

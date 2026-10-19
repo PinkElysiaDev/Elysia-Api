@@ -14,6 +14,7 @@ import (
 )
 
 func TestGatewayResponsesContextBoundaries(t *testing.T) {
+	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()
@@ -96,6 +97,7 @@ func TestGatewayResponsesContextBoundaries(t *testing.T) {
 }
 
 func TestUsageRecordDiagnosticDeduplication(t *testing.T) {
+	t.Parallel()
 	base := protocol.ConversionIssue{Code: protocol.ConversionDegraded, Path: "/include", Stage: "conversion.request", Severity: protocol.SeverityInfo, Fidelity: "preserved", RuleID: "responses-include", PolicyHash: "p", Protocol: protocol.Identity{Revision: "a"}}
 	response := base
 	response.Stage, response.Severity, response.Fidelity = "conversion.response", protocol.SeverityWarning, "lossy_compatible"
@@ -113,6 +115,7 @@ func TestUsageRecordDiagnosticDeduplication(t *testing.T) {
 }
 
 func TestGatewayFailureKeepsEarlierDiagnostics(t *testing.T) {
+	t.Parallel()
 	earlier := protocol.ConversionIssue{Code: protocol.ConversionNormalized, Stage: "request", Path: "/include", Severity: protocol.SeverityInfo}
 	late := protocol.ConversionIssue{Code: protocol.ConversionRejected, Stage: "response", Path: "/usage", Severity: protocol.SeverityError}
 	c, _ := adminProtocolContext(http.MethodPost, "/gateway/test/generate", "{}")

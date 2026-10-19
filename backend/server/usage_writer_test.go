@@ -14,7 +14,6 @@ import (
 )
 
 func TestResetKeepsRecordsSubmittedAfterReturn(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	store, err := storage.Open(filepath.Join(t.TempDir(), "reset-after.sqlite3"))
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -65,7 +64,6 @@ func TestResetKeepsRecordsSubmittedAfterReturn(t *testing.T) {
 }
 
 func TestResetUsageDropsQueuedWrites(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	store, err := storage.Open(filepath.Join(t.TempDir(), "reset-queue.sqlite3"))
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -152,7 +150,6 @@ func TestDoShutdownIsIdempotentAndBlocksEnqueue(t *testing.T) {
 }
 
 func TestResetDrainDoesNotHangWhenQueueCloses(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	store, err := storage.Open(filepath.Join(t.TempDir(), "reset-drain-close.sqlite3"))
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -182,7 +179,6 @@ func TestResetDrainDoesNotHangWhenQueueCloses(t *testing.T) {
 }
 
 func TestUsageSeqIncrementsOnPersistAndReset(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	store, err := storage.Open(filepath.Join(t.TempDir(), "usage-seq.sqlite3"))
 	if err != nil {
 		t.Fatalf("open: %v", err)

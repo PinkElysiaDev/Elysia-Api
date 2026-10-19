@@ -11,7 +11,6 @@ import (
 
 // 协议设计器新增路由与既有 admin 路由注册不冲突（冲突会在启动时 panic）。
 func TestAdminRoutesRegisterWithProtocolEndpoints(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	s := &Server{
 		config:            &config.Config{},
 		engine:            gin.New(),

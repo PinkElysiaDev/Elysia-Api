@@ -11,14 +11,17 @@ import (
 	"testing"
 
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
 )
 
 // Synthetic visible reasoning plus opaque provider state, matching the shape
 // found in the real Responses baseline. No real encrypted payload is stored.
 func TestGatewayResponsesEncryptedReasoningContinuation(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprint(stream), func(t *testing.T) {
+			t.Parallel()
 			s, cfgPath := newProtocolAdminTestServer(t)
 			s.store.Close()
 			var openErr error
@@ -122,6 +125,40 @@ func TestGatewayResponsesEncryptedReasoningContinuation(t *testing.T) {
 					ordered[i] = blocks[i]
 				}
 				content, _ = json.Marshal(ordered)
+			}
+			history := []byte(`{"messages":[{"role":"assistant","content":` + string(content) + `}]}`)
+			_, tokens, err := builtin.ExtractContinuationCarriers(history, "claude", 1<<20)
+			if err != nil || len(tokens) != 1 || calls != 1 {
+				t.Fatal("carrier count", len(tokens), calls, err)
+			}
+			codec, err := protocol.NewContinuationCodec(s.config.GetDBEncryptionKey())
+			if err != nil {
+				t.Fatal(err)
+			}
+			stored, err := codec.Open(tokens[0], 1<<20)
+			if err != nil || len(stored.Node.Resources) != 1 || stored.Node.Resources[0].Kind != "encrypted_content" || stored.Node.Resources[0].ID != protocol.StringValue("synthetic-opaque-state") {
+				t.Fatal("carrier lost original state", stored.Node.Resources, err)
+			}
+			rows := latestUsageRecords(t, s)
+			if len(rows) != 1 {
+				t.Fatal(rows)
+			}
+			data, _, err := s.store.GetUsageRecordJSON(t.Context(), rows[0].RequestID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var record usageRecord
+			if err := json.Unmarshal(data, &record); err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, issue := range record.ConversionIssues {
+				if issue.Fidelity == "recoverable_wrapped" && strings.HasSuffix(issue.RuleID, "-signatures") && issue.PolicyHash != "" {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatal("recovery evidence not persisted", record.ConversionIssues)
 			}
 			second := call(`{"model":"group","max_tokens":64,"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":` + string(content) + `},{"role":"user","content":"continue"}]}`)
 			if second.Code != 200 || calls != 2 {

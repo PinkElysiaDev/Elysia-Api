@@ -14,6 +14,7 @@ import (
 )
 
 func TestGatewayFourPublicEntrypointsUseActiveRuntime(t *testing.T) {
+	t.Parallel()
 	fixtures := []struct{ module, id, family, path, request, response string }{
 		{"openai-chat", "openai-chat-completions", string(builtin.FormatOpenAIChat), "/v1/chat/completions", `{"model":"m","messages":[{"role":"user","content":"hello"}]}`, `{"id":"r1","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"world"},"finish_reason":"stop"}]}`},
 		{"responses", "openai-responses", string(builtin.FormatResponses), "/v1/responses", `{"model":"m","input":[{"role":"user","content":"hello"}]}`, `{"id":"r1","object":"response","created_at":1,"status":"completed","model":"m","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"world"}]}]}`},
