@@ -238,6 +238,7 @@
     "backend/protocol/conversion_stream.go",
     "backend/protocol/conversion_text_shape.go",
     "backend/protocol/conversion_tool_results.go",
+    "backend/protocol/conversion_workloads_test.go",
     "backend/protocol/definition.go",
     "backend/protocol/definition_decode.go",
     "backend/protocol/diagnostic.go",
