@@ -3,6 +3,7 @@ package logging
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -169,12 +170,19 @@ func TestIndependentThresholdsAndHotReload(t *testing.T) {
 	l.SetOutput(&console)
 	logger.Debug().Msg("console debug")
 	l.Event(zerolog.DebugLevel).Msg("hot-reloaded diagnostic")
-	logger.Error().Msg("both")
+	l.Standard("http_server").Println("both")
 	if err := l.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if len(persisted) != 3 {
 		t.Fatalf("persisted %d events, want 3", len(persisted))
+	}
+	var standardEvent map[string]any
+	if err := json.Unmarshal(persisted[2], &standardEvent); err != nil {
+		t.Fatal(err)
+	}
+	if standardEvent["level"] != "error" || standardEvent["component"] != "http_server" || standardEvent["message"] != "both" || bytes.Count(persisted[2], []byte(`"time":`)) != 1 {
+		t.Fatalf("standard log lost its level, component, message or timestamp: %s", persisted[2])
 	}
 	if !bytes.Contains(console.Bytes(), []byte("console debug")) {
 		t.Fatal("existing logger did not observe new threshold")

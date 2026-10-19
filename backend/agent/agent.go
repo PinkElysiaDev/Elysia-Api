@@ -868,7 +868,6 @@ func (e *Engine) runParallel(ctx context.Context, sessionID string, session *Ses
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.SetLimit(toolParallelLimit)
 	for index, call := range calls {
-		index, call := index, call
 		tool := e.tools.Get(call.Name)
 		group.Go(func() (err error) {
 			// errgroup 不 recover——runOneTool 外壳(进度/落库/截断)一旦 panic

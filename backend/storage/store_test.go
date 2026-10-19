@@ -10,7 +10,7 @@ import (
 )
 
 func TestOpenEnablesWALAndInitializesCurrentSchema(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "elysia.sqlite3"))
+	store, err := Open(filepath.Join(t.TempDir(), "elysia #1.sqlite3"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -24,12 +24,21 @@ func TestOpenEnablesWALAndInitializesCurrentSchema(t *testing.T) {
 		t.Fatalf("journal_mode = %q, want wal", journalMode)
 	}
 
-	var busyTimeout int
-	if err := store.db.QueryRow("PRAGMA busy_timeout").Scan(&busyTimeout); err != nil {
-		t.Fatalf("busy_timeout query error = %v", err)
-	}
-	if busyTimeout != 5000 {
-		t.Fatalf("busy_timeout = %d, want 5000", busyTimeout)
+	// Check both the initial connection and a replacement from the pool.
+	for _, maxIdle := range []int{1, 0} {
+		store.db.SetMaxIdleConns(maxIdle)
+		var timeout, foreignKeys, synchronous, tempStore, cacheSize int
+		if err := store.db.QueryRow(`SELECT
+			(SELECT timeout FROM pragma_busy_timeout),
+			(SELECT foreign_keys FROM pragma_foreign_keys),
+			(SELECT synchronous FROM pragma_synchronous),
+			(SELECT temp_store FROM pragma_temp_store),
+			(SELECT cache_size FROM pragma_cache_size)`).Scan(&timeout, &foreignKeys, &synchronous, &tempStore, &cacheSize); err != nil {
+			t.Fatal(err)
+		}
+		if timeout != 5000 || foreignKeys != 1 || synchronous != 1 || tempStore != 2 || cacheSize != -65536 {
+			t.Fatalf("connection settings (maxIdle=%d): %d %d %d %d %d", maxIdle, timeout, foreignKeys, synchronous, tempStore, cacheSize)
+		}
 	}
 
 	if err := store.createSchema(context.Background()); err != nil {

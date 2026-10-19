@@ -6,7 +6,7 @@ Use this guide to verify the native shell, updater and embedded panel. Run comma
 
 ## Prerequisites
 
-The App targets macOS 12+. The build host needs compatible Command Line Tools (or full Xcode), Node.js and Go 1.25+. Its toolchain must link macOS 12 Swift programs for both arm64 and x86_64. The shell uses system frameworks; tests use Swift, AppKit, WebKit, the Python standard library, OpenSSL-generated temporary TLS certificates and Clang-built architecture fixtures. Running and updating the packaged App requires no developer tools.
+The App targets macOS 12+. The build host needs compatible Command Line Tools (or full Xcode), Node.js and Go 1.27.2+. Its toolchain must link macOS 12 Swift programs for both arm64 and x86_64. The shell uses system frameworks; tests use Swift, AppKit, WebKit, the Python standard library, OpenSSL-generated temporary TLS certificates and Clang-built architecture fixtures. Running and updating the packaged App requires no developer tools.
 
 ## Processes and window closure
 

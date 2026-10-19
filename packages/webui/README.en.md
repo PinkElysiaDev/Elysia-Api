@@ -12,7 +12,7 @@ Request details can show four bodies: inbound, forwarded, upstream response and 
 
 ## Prerequisites
 
-Use Node.js 22, npm and Go 1.25. Run the following commands from the repository root unless specified. Run `npm install` for initial setup; see the [development guide](../../docs/development.en.md) for the full environment.
+Use Node.js 22, npm and Go 1.27.2. Run the following commands from the repository root unless specified. Run `npm install` for initial setup; see the [development guide](../../docs/development.en.md) for the full environment.
 
 ## Local development
 

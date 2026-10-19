@@ -6,7 +6,7 @@
 
 ## 前提
 
-App 运行目标为 macOS 12+。构建机需要与其 macOS 版本兼容的 Command Line Tools（或完整 Xcode）、Node.js 和 Go 1.25+；工具链还必须能够链接 arm64 和 x86_64 的 macOS 12 Swift 程序。原生壳仅使用系统框架，测试使用 Swift、AppKit、WebKit、Python 标准库、OpenSSL 生成的一次性 TLS 证书及由 Clang 生成的架构校验夹具。运行及更新已打包的 App 不需要开发工具。
+App 运行目标为 macOS 12+。构建机需要与其 macOS 版本兼容的 Command Line Tools（或完整 Xcode）、Node.js 和 Go 1.27.2+；工具链还必须能够链接 arm64 和 x86_64 的 macOS 12 Swift 程序。原生壳仅使用系统框架，测试使用 Swift、AppKit、WebKit、Python 标准库、OpenSSL 生成的一次性 TLS 证书及由 Clang 生成的架构校验夹具。运行及更新已打包的 App 不需要开发工具。
 
 原生壳源码清单统一放在 `scripts/macos-app/sources.mjs`，构建和测试脚本共同使用。`main.swift` 保留 AppDelegate 状态所有权；后端进程、面板桥接、下载和更新方法分别放在四个 `*Controller.swift` 扩展文件中。跨文件方法采用模块内部可见性，局部帮助方法仍为 private。修改后必须同时检查普通构建与 `NATIVE_TESTS` 构建；Windows 上的 darwin Go 交叉编译不检查这些 Swift 文件。
 

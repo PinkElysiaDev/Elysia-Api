@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -595,20 +596,8 @@ func (s *Server) responses(c *gin.Context)       { s.serveVersionedPublicIngress
 // 从 gin context 取 authMiddleware 写入的 AllowedGroups：为空表示不限制（放行）；
 // 非空则要求 groupName 在白名单内。
 func (s *Server) tokenAllowsGroup(c *gin.Context, groupName string) bool {
-	value, exists := c.Get("elysiaAllowedGroups")
-	if !exists {
-		return true
-	}
-	allowed, ok := value.([]string)
-	if !ok || len(allowed) == 0 {
-		return true // 未设置限制 → 放行
-	}
-	for _, g := range allowed {
-		if g == groupName {
-			return true
-		}
-	}
-	return false
+	allowed := c.GetStringSlice("elysiaAllowedGroups")
+	return len(allowed) == 0 || slices.Contains(allowed, groupName)
 }
 
 // validateModelGroup 验证模型组配置,失败返回按稳定错误分类组织的核心错误
