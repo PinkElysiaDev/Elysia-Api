@@ -89,9 +89,21 @@ curl -N "http://127.0.0.1:8765/api/agent/sessions/<SESSION_ID>/messages" \
 
 ## MCP
 
-只支持版本 `2026-07-28`，不支持旧版握手或缺省版本。每个请求必须在 `params._meta` 中传 `io.modelcontextprotocol/protocolVersion`；使用 `server/discover` 获取能力，结果包含 `resultType`。
+传输层使用官方 `github.com/modelcontextprotocol/go-sdk` v1.8.0。只支持版本 `2026-07-28`，不支持旧版握手或缺省版本。每次调用必须在 `params._meta` 中传 `io.modelcontextprotocol/protocolVersion` 和 `io.modelcontextprotocol/clientCapabilities`（可为空对象）；使用 `server/discover` 获取能力，结果包含 `resultType`。
 
-POST 的 `Accept` 必须包含 `application/json` 和 `text/event-stream`，否则 406。GET / DELETE 返回 405；不支持 JSON-RPC batch。浏览器 `Origin` 需同源或符合回环规则。版本头与 Modern body 不一致返回 `-32020`；提供 `Mcp-Method` / `Mcp-Name` 镜像头时必须与请求一致。Modern `tools/list` 还返回 `ttlMs` / `cacheScope`。
+POST 必须使用 `Content-Type: application/json`（否则 415），且 `Accept` 包含 `application/json` 和 `text/event-stream`（否则 400）。`MCP-Protocol-Version`、`Mcp-Method` 为必填头，`tools/call` 还必须携带 `Mcp-Name`，值须与 body 一致；缺少方法/名称镜像头或镜像不一致返回 `-32020`。GET / DELETE 返回 405；不支持 JSON-RPC batch。浏览器 `Origin` 需同源或符合回环规则，SDK 还启用其默认的本机 Host 校验。响应使用 SDK 默认的 SSE 传输，包括发现和工具列表。`tools/list` 返回 `ttlMs: 300000` 和 `cacheScope: "private"`。
+
+### 取代手写传输层的破坏性迁移
+
+此次迁移直接采用官方 SDK 行为，不保留旧实现的线协议兼容适配。
+
+- SDK 校验必填镜像头和客户端能力元数据。手动构造请求时按下方示例补齐；支持当前协议的 SDK 客户端会自动填充。
+- 当前协议版本已移除 `ping`；发现与连通性检查使用 `server/discover`。
+- 服务端身份位于 `result._meta["io.modelcontextprotocol/serverInfo"]`，不再使用顶层 `serverInfo`。成功的工具结果可能省略 `isError`，缺省即 false。原 `cacheScope: "user"` 改为规范值 `"private"`。
+- 发现和工具列表由原来的单独 JSON 响应改为 SSE。客户端应使用能处理两种声明响应类型的 Streamable HTTP 实现。
+- 传输校验采用 SDK 的 HTTP 状态及错误体：`Accept` 不全由 406 改为 400，媒体类型错误返回 415，body 超限返回 413。部分 HTTP 拒绝使用纯文本而非 JSON-RPC；客户端应先检查状态码和响应类型再解码。
+- 数值型请求 ID 和进度 token 直接采用 SDK 的解码行为。v1.8.0 中超出 `float64` 精确整数范围的值可能被舍入，大数值标识请使用字符串；不提供自定义的数值 ID/token 原值保留层。
+- 鉴权、无状态 CLI 批处理、部分失败结果、进度通知和 POST 断开后的取消保留其业务行为，不协商传输层会话 ID。
 
 ### 客户端配置
 
@@ -109,14 +121,25 @@ POST 的 `Accept` 必须包含 `application/json` 和 `text/event-stream`，否�
 }
 ```
 
-客户端格式不同时，迁移其中的 `url` 和 `headers`，并确认客户端支持当前协议。MCP 只公布一个工具 `elysia_cli`，参数为必填字符串 `command`。最小调用：
+客户端格式不同时，迁移其中的 `url` 和 `headers`，并确认客户端支持当前协议。MCP 只公布一个工具 `elysia_cli`，参数为必填字符串 `command`。手动调用须携带以下请求头：
+
+```http
+Authorization: Bearer <AGENT_KEY>
+Content-Type: application/json
+Accept: application/json, text/event-stream
+MCP-Protocol-Version: 2026-07-28
+Mcp-Method: tools/call
+Mcp-Name: elysia_cli
+```
+
+请求体：
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": 1,
   "method": "tools/call",
-  "params": {"name": "elysia_cli", "arguments": {"command": "elysia source ls"}, "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}}
+  "params": {"name": "elysia_cli", "arguments": {"command": "elysia source ls"}, "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {}}}
 }
 ```
 
@@ -161,7 +184,7 @@ v1.0 的 part 不使用 `kind`。审批缺少 data part 返回 `-32602`。不带
 | --- | --- |
 | 401 / 403 | Key 是否启用，是否含 `agent` 作用域 |
 | 404 | `agentRemote.enabled` 及代理路径 |
-| MCP 406 | `Accept` 是否同时包含两种类型 |
+| MCP 400 / 415 | 版本、方法、名称镜像头，`_meta`，两种 `Accept` 类型及 JSON `Content-Type` |
 | 调用结束后找不到草稿 | MCP 无状态，合并依赖操作到同一调用 |
 | REST 断开后仍在执行 | 轮次独立于连接，调用 `/stop` |
 | 等待审批不继续 | 权限档、计划模式及明确的恢复决策 |

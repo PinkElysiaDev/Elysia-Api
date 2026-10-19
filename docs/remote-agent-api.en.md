@@ -89,9 +89,21 @@ Streams send a keepalive every 15 seconds. Closing REST HTTP does not stop the t
 
 ## MCP
 
-Only version `2026-07-28` is supported. There is no legacy handshake or implicit version. Each request must include `io.modelcontextprotocol/protocolVersion` in `params._meta`; use `server/discover` for capabilities. Results include `resultType`.
+The transport uses the official `github.com/modelcontextprotocol/go-sdk` v1.8.0. Only version `2026-07-28` is supported, with no legacy handshake or implicit version. Each call must include `io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities` (an empty object is sufficient) in `params._meta`. Use `server/discover` for capabilities. Results include `resultType`.
 
-POST `Accept` must contain both `application/json` and `text/event-stream`, otherwise 406. GET / DELETE return 405; JSON-RPC batches are unsupported. Browser `Origin` must be same-origin or satisfy loopback rules. A version-header mismatch with a Modern body returns `-32020`; supplied `Mcp-Method` / `Mcp-Name` headers must match the request. Modern `tools/list` also returns `ttlMs` / `cacheScope`.
+POST requires `Content-Type: application/json` (otherwise 415) and `Accept` containing both `application/json` and `text/event-stream` (otherwise 400). `MCP-Protocol-Version` and `Mcp-Method` are required; `tools/call` also requires `Mcp-Name`. These headers must mirror the body; missing method/name mirrors or mismatches return `-32020`. GET / DELETE return 405; JSON-RPC batches are unsupported. Browser `Origin` must be same-origin or satisfy loopback rules; the SDK also applies its default localhost Host protection. Responses use the SDK's default SSE transport, including discovery and tool lists. `tools/list` returns `ttlMs: 300000` and `cacheScope: "private"`.
+
+### Breaking migration from the hand-written transport
+
+This migration adopts official SDK behavior directly. It does not retain wire-compatibility adapters for the previous implementation.
+
+- Required headers and client capability metadata are now validated by the SDK. Update manually constructed requests using the example below; current SDK clients populate them automatically.
+- `ping` is no longer supported in this protocol version; use `server/discover` for discovery/connectivity checks.
+- Server identity is returned in `result._meta["io.modelcontextprotocol/serverInfo"]`, rather than a top-level `serverInfo` field. Successful tool results may omit `isError`; absence means false. The former `cacheScope: "user"` is now the standard `"private"` value.
+- Discovery and tool lists now use SSE rather than the old method-specific JSON responses. Use a Streamable HTTP client that handles both advertised response media types.
+- Transport validation follows SDK HTTP statuses and error bodies: incomplete `Accept` changes from 406 to 400; unsupported media types return 415; oversized bodies return 413. Some HTTP rejections use plain text rather than JSON-RPC. Clients must check HTTP status and response content type before decoding.
+- Numeric request IDs and progress tokens follow the SDK's decoding behavior. In v1.8.0, values beyond the exact integer range of `float64` may be rounded; use string identifiers for large values. There is no custom numeric-ID/token preservation layer.
+- Authentication, stateless CLI batches, partial failure output, progress notifications, and cancellation on POST disconnection retain their business behavior. No transport session ID is negotiated.
 
 ### Client configuration
 
@@ -109,14 +121,25 @@ Use “Copy MCP JSON” beside an enabled remote key in runtime configuration. I
 }
 ```
 
-For clients with a different format, transfer the `url` and `headers` and ensure current protocol support. MCP publishes only `elysia_cli`, with a required string `command`. Minimal call:
+For clients with a different format, transfer the `url` and `headers` and ensure current protocol support. MCP publishes only `elysia_cli`, with a required string `command`. A manually constructed call needs these headers:
+
+```http
+Authorization: Bearer <AGENT_KEY>
+Content-Type: application/json
+Accept: application/json, text/event-stream
+MCP-Protocol-Version: 2026-07-28
+Mcp-Method: tools/call
+Mcp-Name: elysia_cli
+```
+
+Request body:
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": 1,
   "method": "tools/call",
-  "params": {"name": "elysia_cli", "arguments": {"command": "elysia source ls"}, "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}}
+  "params": {"name": "elysia_cli", "arguments": {"command": "elysia source ls"}, "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {}}}
 }
 ```
 
@@ -161,7 +184,7 @@ v1.0 parts omit `kind`. A missing decision data part returns `-32602`. Omitting 
 | --- | --- |
 | 401 / 403 | Enabled key with the `agent` scope |
 | 404 | `agentRemote.enabled` and proxy paths |
-| MCP 406 | Both required `Accept` types |
+| MCP 400 / 415 | Version/method/name mirror headers, `_meta`, both required `Accept` types, and JSON `Content-Type` |
 | Draft missing after a call | MCP is stateless; combine dependent operations in one call |
 | REST continues after disconnect | Turns outlive connections; call `/stop` |
 | Approval remains pending | Permission settings, plan mode, and an explicit resume decision |

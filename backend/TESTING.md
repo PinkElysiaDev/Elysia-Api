@@ -22,6 +22,17 @@ go test -tags=sonic -parallel=1 -count=1 -timeout=30m ./...
 资源受限的 CI 可以设置 `-parallel=4 -p=2`；`-p` 控制包级并发。
 测量耗时时不要同时运行其他测试或构建，也不要把 `(cached)` 结果当作执行耗时。
 
+## MCP 定向验证
+
+```sh
+go test -tags=sonic -race ./server -run '^Test(MCP|AgentRemote|A2A|RemoteThinkingEffortWhitelistAndSchema)' -count=1 -timeout=3m
+```
+
+`mcp_sdk_test.go` 使用官方 Go SDK 客户端经过真实 HTTP/Gin 鉴权层验证发现、
+工具调用、进度和 Key 撤销；`mcp_cli_tool_test.go` 保留无状态批处理、部分失败、
+脱敏及实际 SSE 断开取消的回归。传输层兼容性变化见
+[远程 Agent 接入](../docs/remote-agent-api.md#取代手写传输层的破坏性迁移)。
+
 ## 测试组织与去重
 
 缓存的定向 benchmark、Otter 替换前后结果及容量语义差异见

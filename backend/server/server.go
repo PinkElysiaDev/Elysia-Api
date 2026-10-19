@@ -67,6 +67,9 @@ type Server struct {
 	a2aTasks      map[string]*a2aTaskEntry
 	a2aMessageIDs map[string]string
 
+	mcpOnce    sync.Once
+	mcpHandler http.Handler
+
 	store       *storage.Store
 	logger      *logging.Logger
 	shutdownErr error

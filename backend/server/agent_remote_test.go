@@ -15,9 +15,10 @@ import (
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// 远程面测试：API Key 作用域鉴权、MCP（legacy/modern 双世代）、A2A
+// 远程面测试：API Key 作用域鉴权、MCP（2026-07-28）、A2A
 //（v0.3/v1.0 双线、审批恢复）、REST 列表过滤分页。
 
 // ---- 上下文构造辅助 ----
@@ -34,8 +35,23 @@ func remoteContext(method, target, body string, headers map[string]string) (*gin
 	return c, rec
 }
 
-func mcpHeaders(extra map[string]string) map[string]string {
-	headers := map[string]string{"Accept": "application/json, text/event-stream"}
+func mcpHeaders(body string, extra map[string]string) map[string]string {
+	var request struct {
+		Method string `json:"method"`
+		Params struct {
+			Name string `json:"name"`
+		} `json:"params"`
+	}
+	_ = sonic.ConfigStd.Unmarshal([]byte(body), &request)
+	headers := map[string]string{
+		"Accept":               "application/json, text/event-stream",
+		"Content-Type":         "application/json",
+		"MCP-Protocol-Version": mcpModernProtocolVersion,
+		"Mcp-Method":           request.Method,
+	}
+	if request.Params.Name != "" {
+		headers["Mcp-Name"] = request.Params.Name
+	}
 	for key, value := range extra {
 		headers[key] = value
 	}
@@ -44,10 +60,18 @@ func mcpHeaders(extra map[string]string) map[string]string {
 
 func mcpCall(t *testing.T, s *Server, body string, extraHeaders map[string]string) (int, map[string]any, string) {
 	t.Helper()
-	c, rec := remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(extraHeaders))
+	c, rec := remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(body, extraHeaders))
 	s.handleMCP(c)
 	var decoded map[string]any
-	_ = sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &decoded)
+	if strings.HasPrefix(rec.Header().Get("Content-Type"), "text/event-stream") {
+		for _, frame := range parseA2AFrames(t, rec.Body.String()) {
+			if frame["id"] != nil {
+				decoded = frame
+			}
+		}
+	} else {
+		_ = sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &decoded)
+	}
 	return rec.Code, decoded, rec.Body.String()
 }
 
@@ -61,9 +85,10 @@ func mcpRequest(id any, method string, params any) string {
 		if meta == nil {
 			meta = map[string]any{}
 		}
-		if _, exists := meta[mcpMetaProtocolVersion]; !exists {
-			meta[mcpMetaProtocolVersion] = mcpModernProtocolVersion
+		if _, exists := meta[mcp.MetaKeyProtocolVersion]; !exists {
+			meta[mcp.MetaKeyProtocolVersion] = mcpModernProtocolVersion
 		}
+		meta[mcp.MetaKeyClientCapabilities] = map[string]any{}
 		object["_meta"] = meta
 		params = object
 	}
@@ -186,15 +211,17 @@ func TestMCPMethodsAndToolsList(t *testing.T) {
 	headers := map[string]string{"MCP-Protocol-Version": mcpModernProtocolVersion}
 
 	// 通知 → 202 无 body。
-	c, rec := remoteContext(http.MethodPost, "/mcp", mcpRequest(nil, "notifications/initialized", nil), mcpHeaders(headers))
+	body := mcpRequest(nil, "notifications/progress", map[string]any{"progressToken": "unused", "progress": 1})
+	c, rec := remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(body, headers))
 	s.handleMCP(c)
+	c.Writer.WriteHeaderNow() // Gin normally commits an empty response after routing.
 	if rec.Code != http.StatusAccepted || rec.Body.Len() != 0 {
-		t.Fatalf("initialized notification: %d %q", rec.Code, rec.Body.String())
+		t.Fatalf("progress notification: %d %q", rec.Code, rec.Body.String())
 	}
 
 	_, ping, _ := mcpCall(t, s, mcpRequest(2, "ping", nil), headers)
-	if ping["result"] == nil {
-		t.Fatalf("ping: %v", ping)
+	if ping["error"] == nil {
+		t.Fatalf("removed ping must fail on 2026-07-28: %v", ping)
 	}
 
 	_, listed, _ := mcpCall(t, s, mcpRequest(3, "tools/list", nil), headers)
@@ -209,7 +236,7 @@ func TestMCPMethodsAndToolsList(t *testing.T) {
 	}
 
 	// 未知方法/未知工具。
-	_, missing, _ := mcpCall(t, s, mcpRequest(4, "resources/list", nil), headers)
+	_, missing, _ := mcpCall(t, s, mcpRequest(4, "tools/unknown", nil), headers)
 	if missing["error"] == nil {
 		t.Fatalf("unknown method must error: %v", missing)
 	}
@@ -218,14 +245,15 @@ func TestMCPMethodsAndToolsList(t *testing.T) {
 		t.Fatalf("unknown tool must error: %v", unknownTool)
 	}
 
-	// Accept 不全 → 406。
-	c, rec = remoteContext(http.MethodPost, "/mcp", mcpRequest(6, "ping", nil), map[string]string{"Accept": "application/json"})
+	// SDK rejects incomplete Accept with HTTP 400.
+	body = mcpRequest(6, "tools/list", nil)
+	c, rec = remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(body, map[string]string{"Accept": "application/json"}))
 	s.handleMCP(c)
-	if rec.Code != http.StatusNotAcceptable {
+	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("partial accept = %d", rec.Code)
 	}
 	// GET → 405。
-	c, rec = remoteContext(http.MethodGet, "/mcp", "", mcpHeaders(headers))
+	c, rec = remoteContext(http.MethodGet, "/mcp", "", mcpHeaders("", headers))
 	s.handleMCP(c)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("GET = %d", rec.Code)
@@ -253,15 +281,15 @@ func TestMCPModernEra(t *testing.T) {
 	}
 
 	// 头与 body 版本不一致 → -32020。
-	_, mismatch, _ := mcpCall(t, s, mcpRequest(2, "ping", modernParams(mcpModernProtocolVersion)), map[string]string{"MCP-Protocol-Version": "mismatched"})
-	if errObj := mismatch["error"].(map[string]any); errObj == nil || errObj["code"] != float64(mcpErrHeaderMismatch) {
+	_, mismatch, _ := mcpCall(t, s, mcpRequest(2, "tools/list", modernParams(mcpModernProtocolVersion)), map[string]string{"MCP-Protocol-Version": "2099-01-01"})
+	if errObj := mismatch["error"].(map[string]any); errObj == nil || errObj["code"] != float64(mcp.CodeHeaderMismatch) {
 		t.Fatalf("header mismatch: %v", mismatch)
 	}
 
 	// 不支持的版本 → -32022 + supported。
-	_, unsupported, _ := mcpCall(t, s, mcpRequest(3, "ping", modernParams("1999-01-01")), map[string]string{"MCP-Protocol-Version": "1999-01-01"})
+	_, unsupported, _ := mcpCall(t, s, mcpRequest(3, "tools/list", modernParams("2099-01-01")), map[string]string{"MCP-Protocol-Version": "2099-01-01"})
 	errObj := unsupported["error"].(map[string]any)
-	if errObj["code"] != float64(mcpErrUnsupportedVersion) {
+	if errObj["code"] != float64(mcp.CodeUnsupportedProtocolVersion) {
 		t.Fatalf("unsupported version: %v", unsupported)
 	}
 

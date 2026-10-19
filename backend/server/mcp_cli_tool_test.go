@@ -14,6 +14,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func mcpTestProtocolDraft(t *testing.T) string {
@@ -31,9 +32,10 @@ const mcpProtocolSample = `'{"schemaVersion":1,"model":"m","content":[{"kind":"m
 
 func callMCPCLI(t *testing.T, s *Server, args map[string]any) (map[string]any, string) {
 	t.Helper()
-	c, rec := remoteContext(http.MethodPost, "/mcp", mcpRequest(1, "tools/call", map[string]any{
+	body := mcpRequest(1, "tools/call", map[string]any{
 		"name": "elysia_cli", "arguments": args, "_meta": map[string]any{"progressToken": "cli-test"},
-	}), mcpHeaders(nil))
+	})
+	c, rec := remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(body, nil))
 	s.handleMCP(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("MCP status: %d %s", rec.Code, rec.Body.String())
@@ -49,7 +51,8 @@ func callMCPCLI(t *testing.T, s *Server, args map[string]any) (map[string]any, s
 
 func cliMCPData(t *testing.T, result map[string]any, failed bool) map[string]any {
 	t.Helper()
-	if result["isError"] != failed {
+	isError, _ := result["isError"].(bool)
+	if isError != failed {
 		t.Fatalf("isError: want %v, got %v", failed, result)
 	}
 	data, ok := result["structuredContent"].(map[string]any)
@@ -61,13 +64,14 @@ func cliMCPData(t *testing.T, result map[string]any, failed bool) map[string]any
 
 func TestMCPCLIDefinitionAndStatelessOperations(t *testing.T) {
 	s := newAgentIntegrationServer(t)
-	tool := mcpFindTool("elysia_cli")
-	if tool == nil || !strings.Contains(tool.description, cliToolDescription) || !strings.Contains(tool.description, "每次调用无状态") {
+	tool := mcpCLITool()
+	if !strings.Contains(tool.Description, cliToolDescription) || !strings.Contains(tool.Description, "每次调用无状态") {
 		t.Fatal("CLI definition is missing its shared contract or direct execution policy")
 	}
-	properties := tool.schema["properties"].(map[string]any)
-	if properties["command"] == nil || properties["sessionId"] != nil || len(tool.schema["required"].([]string)) != 1 {
-		t.Fatalf("unexpected input schema: %v", tool.schema)
+	schema := tool.InputSchema.(map[string]any)
+	properties := schema["properties"].(map[string]any)
+	if properties["command"] == nil || properties["sessionId"] != nil || len(schema["required"].([]string)) != 1 {
+		t.Fatalf("unexpected input schema: %v", schema)
 	}
 	if _, hasSession := (&elysiaCLITool{}).Definition().Parameters["properties"].(map[string]any)["sessionId"]; hasSession {
 		t.Fatal("MCP-specific session parameter leaked into internal tool")
@@ -201,17 +205,18 @@ func TestMCPCLIStatelessBatchAndIsolation(t *testing.T) {
 func TestMCPCLIDiscoveryAndModernCall(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	for _, method := range []string{"server/discover"} {
-		params := map[string]any{"_meta": map[string]any{mcpMetaProtocolVersion: mcpModernProtocolVersion}}
+		params := map[string]any{"_meta": map[string]any{mcp.MetaKeyProtocolVersion: mcpModernProtocolVersion}}
 		_, response, _ := mcpCall(t, s, mcpRequest(1, method, params), nil)
 		result, ok := response["result"].(map[string]any)
 		if !ok || result["instructions"] != mcpInstructions {
 			t.Fatalf("%s does not advertise direct CLI authorization: %v", method, response)
 		}
 	}
-	c, rec := remoteContext(http.MethodPost, "/mcp", mcpRequest(2, "tools/call", map[string]any{
+	body := mcpRequest(2, "tools/call", map[string]any{
 		"name": "elysia_cli", "arguments": map[string]any{"command": "elysia group ls"},
-		"_meta": map[string]any{mcpMetaProtocolVersion: mcpModernProtocolVersion, "progressToken": "modern-cli"},
-	}), mcpHeaders(map[string]string{"MCP-Protocol-Version": mcpModernProtocolVersion, "Mcp-Method": "tools/call", "Mcp-Name": "elysia_cli"}))
+		"_meta": map[string]any{mcp.MetaKeyProtocolVersion: mcpModernProtocolVersion, "progressToken": "modern-cli"},
+	})
+	c, rec := remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(body, nil))
 	s.handleMCP(c)
 	frames := parseA2AFrames(t, rec.Body.String())
 	if rec.Code != http.StatusOK || len(frames) < 2 {
@@ -236,20 +241,42 @@ func TestMCPCLICancellationIsStateless(t *testing.T) {
 		case <-release:
 		}
 	}))
-	t.Cleanup(func() { close(release); upstream.Close() })
+	t.Cleanup(upstream.Close)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	args, _ := sonic.ConfigStd.Marshal(map[string]any{
+	args := map[string]any{
 		"command": mcpTestProtocolDraft(t) + " ; elysia protocol test --operation generate --sample " + mcpProtocolSample + " --base-url " + upstream.URL + "; elysia group create --name must-not-run",
-	})
-	type outcome struct {
-		data any
-		err  error
 	}
-	done := make(chan outcome, 1)
+	// Cross the real HTTP/SSE boundary: cancellation must propagate from the
+	// disconnected POST through the SDK's ephemeral session into the CLI.
+	handlerDone := make(chan struct{})
+	router := gin.New()
+	router.POST("/mcp", func(c *gin.Context) {
+		defer close(handlerDone)
+		s.handleMCP(c)
+	})
+	httpServer := httptest.NewServer(router)
+	defer func() {
+		cancel()
+		close(release)
+		httpServer.Close()
+	}()
+	body := mcpRequest(1, "tools/call", map[string]any{"name": agentToolCLI, "arguments": args, "_meta": map[string]any{"progressToken": "cancel-test"}})
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, httpServer.URL+"/mcp", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range mcpHeaders(body, nil) {
+		request.Header.Set(key, value)
+	}
+	done := make(chan struct{})
 	go func() {
-		data, err := s.runMCPCLI(ctx, args, nil)
-		done <- outcome{data, err}
+		defer close(done)
+		response, err := httpServer.Client().Do(request)
+		if err == nil {
+			defer response.Body.Close()
+			_, _ = io.Copy(io.Discard, response.Body)
+		}
 	}()
 	select {
 	case <-started:
@@ -258,13 +285,14 @@ func TestMCPCLICancellationIsStateless(t *testing.T) {
 	}
 	cancel()
 	select {
-	case got := <-done:
-		data, ok := got.data.(map[string]any)
-		if !errors.Is(got.err, context.Canceled) || !ok || data["ok"] != false || data["output"] == nil {
-			t.Fatalf("cancellation lost status or partial output: %v %v", got.data, got.err)
-		}
+	case <-done:
 	case <-time.After(3 * time.Second):
 		t.Fatal("request cancellation did not stop CLI execution")
+	}
+	select {
+	case <-handlerDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("SDK handler did not drain after client disconnection")
 	}
 	groups, err := s.store.ListGroups(t.Context())
 	if err != nil || len(groups) != 0 {
@@ -304,7 +332,11 @@ func TestMCPCLIAuthAndRemoteSwitch(t *testing.T) {
 		key    string
 		status int
 	}{{"", 401}, {"plain", 403}, {"operator", 200}} {
-		req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(mcpRequest(1, "tools/call", map[string]any{"name": "elysia_cli", "arguments": map[string]any{"command": "elysia group ls"}})))
+		body := mcpRequest(1, "tools/call", map[string]any{"name": "elysia_cli", "arguments": map[string]any{"command": "elysia group ls"}})
+		req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+		for key, value := range mcpHeaders(body, nil) {
+			req.Header.Set(key, value)
+		}
 		req.Header.Set("Authorization", "Bearer "+tc.key)
 		req.Header.Set("Accept", "application/json, text/event-stream")
 		rec := httptest.NewRecorder()
