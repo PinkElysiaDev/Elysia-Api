@@ -66,9 +66,10 @@ type Provenance struct {
 
 // Native contains an immutable source snapshot, not a second semantic model.
 type Native struct {
-	Source         Provenance            `json:"source"`
-	Value          Value                 `json:"value"`
-	RequestContext *NativeRequestContext `json:"requestContext,omitempty"`
+	Source           Provenance            `json:"source"`
+	Value            Value                 `json:"value"`
+	RequestContext   *NativeRequestContext `json:"requestContext,omitempty"`
+	requestWorkspace *requestEncodingWorkspace
 }
 
 // NativeRequestContext preserves decoder inputs that are absent from the wire body.

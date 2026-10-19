@@ -39,12 +39,12 @@ func (state *nativeReconciler) merge(original, before, after Value, path string,
 	if state.nodes > state.limits.Nodes {
 		return Value{}, &ResourceLimitError{Domain: "native_reconciliation", Metric: "nodes", Limit: state.limits.Nodes, Observed: state.nodes, Path: path}
 	}
-	if equalValues(before, after) {
+	if equalNativeValues(before, after) {
 		return original, nil
 	}
 	// A fully represented subtree has no unmapped native fields to associate.
 	// Its semantic replacement is authoritative, including reorders and deletions.
-	if equalValues(original, before) {
+	if equalNativeValues(original, before) {
 		return after, nil
 	}
 	if original.IsObject() && before.IsObject() && after.IsObject() {
@@ -58,9 +58,9 @@ func (state *nativeReconciler) merge(original, before, after Value, path string,
 
 func (state *nativeReconciler) mergeObject(original, before, after Value, path string, depth int) (Value, error) {
 	// Container types were checked at the boundary; Value is already valid JSON.
-	fields, _ := original.ReadObject()
-	oldFields, _ := before.ReadObject()
-	newFields, _ := after.ReadObject()
+	fields, _ := original.readObjectWithin(requestValueReader(original))
+	oldFields, _ := before.readObjectWithin(requestValueReader(before))
+	newFields, _ := after.readObjectWithin(requestValueReader(after))
 	for key := range oldFields {
 		if _, exists := newFields[key]; !exists {
 			delete(fields, key)
@@ -85,9 +85,9 @@ func (state *nativeReconciler) mergeObject(original, before, after Value, path s
 }
 
 func (state *nativeReconciler) mergeArray(original, before, after Value, path string, depth int) (Value, error) {
-	items, _ := readArray(original)
-	oldItems, _ := readArray(before)
-	newItems, _ := readArray(after)
+	items, _ := original.readArrayWithin(requestValueReader(original))
+	oldItems, _ := before.readArrayWithin(requestValueReader(before))
+	newItems, _ := after.readArrayWithin(requestValueReader(after))
 	if len(newItems) == 0 {
 		return after, nil
 	}
@@ -193,4 +193,30 @@ func nativeItemIdentity(item Value, key string) (string, error) {
 		return "", err
 	}
 	return string(canonical.Bytes()), nil
+}
+
+// Most routing changes touch a small root field such as model. Prove inequality
+// before decoding unrelated large strings. Equal/ambiguous values still use the
+// original exact comparator, including its bounded numeric semantics.
+func equalNativeValues(left, right Value) bool {
+	if left.raw == right.raw {
+		return true
+	}
+	if left.IsObject() && right.IsObject() {
+		before, _ := left.readObjectWithin(requestValueReader(left))
+		after, _ := right.readObjectWithin(requestValueReader(right))
+		if len(before) != len(after) {
+			return false
+		}
+		for key, value := range before {
+			other, exists := after[key]
+			if !exists {
+				return false
+			}
+			if len(value.raw) <= requestViewMinBytes && len(other.raw) <= requestViewMinBytes && !equalValues(value, other) {
+				return false
+			}
+		}
+	}
+	return equalValues(left, right)
 }

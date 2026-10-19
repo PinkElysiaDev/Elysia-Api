@@ -15,7 +15,6 @@ func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, option
 
 func (compiled *Compiled) decodeRequest(ctx context.Context, body []byte, options EvaluationContext, boundScope *Scope) (result *Request, err error) {
 	defer func() { err = compiled.runtimeError(DecodeRequest, err) }()
-	sourceContext := &NativeRequestContext{Scope: options.Scope, Values: maps.Clone(options.Values), InterleavedThinking: options.InterleavedThinking}
 	input, err := ParseValue(body)
 	if err != nil {
 		return nil, err
@@ -29,6 +28,20 @@ func (compiled *Compiled) decodeRequest(ctx context.Context, body []byte, option
 	if err != nil {
 		return nil, err
 	}
+
+	var baseline *Request
+	if compiled.native.Preserve && compiled.supportsRequestWorkspace() {
+		baseline = cloneRequestSemantic(request)
+	}
+	request, err = compiled.finishDecodedRequest(ctx, input, request, options, boundScope)
+	if err == nil && baseline != nil {
+		compiled.attachRequestWorkspace(ctx, request, baseline)
+	}
+	return request, err
+}
+
+func (compiled *Compiled) finishDecodedRequest(ctx context.Context, input Value, request *Request, options EvaluationContext, boundScope *Scope) (*Request, error) {
+	sourceContext := &NativeRequestContext{Scope: options.Scope, Values: maps.Clone(options.Values), InterleavedThinking: options.InterleavedThinking}
 	request.SchemaVersion = SemanticSchemaVersion
 	if options.valueReader != nil {
 		detachRequestResources(request)
@@ -433,15 +446,26 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 	var baseline any
 	switch direction {
 	case EncodeRequest:
+
+		request := compiled.requestReplayBaseline(native, snapshotLimits)
 		if source := native.RequestContext; source != nil {
 			options.Scope, options.Values, options.InterleavedThinking = source.Scope, maps.Clone(source.Values), source.InterleavedThinking
 		}
-		request, err := replay.decodeRequest(ctx, original.Bytes(), options, &native.Source.Scope)
+		if request == nil {
+			request, err = replay.decodeRequest(ctx, original.Bytes(), options, &native.Source.Scope)
+		} else {
+			if err = ctx.Err(); err == nil {
+				request, err = replay.finishDecodedRequest(ctx, original, cloneRequestSemantic(request), options, &native.Source.Scope)
+			}
+			err = replay.runtimeError(DecodeRequest, err)
+		}
 		if err != nil {
 			return Value{}, err
 		}
+
 		options.Scope = native.Source.Scope
 		baseline = request
+
 	case EncodeResponse:
 		response, err := compiled.DecodeResponse(ctx, original.Bytes(), options)
 		if err != nil {
@@ -460,14 +484,23 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 	default:
 		return Value{}, fmt.Errorf("native reconciliation requires a request or response direction")
 	}
-	value, err := EncodeSemantic(ctx, direction, baseline)
+
+	var before Value
+	if direction == EncodeRequest && replay.supportsRequestWorkspace() {
+		before, err = encodeRequestMapping(ctx, &replay, baseline.(*Request), options, replay.mappings[direction].module.(TypedModule), func(module TypedModule, input *Request, options EvaluationContext) (Value, error) {
+			return module.EncodeRequest(ctx, input, options)
+		})
+	} else {
+		var value Value
+		value, err = EncodeSemantic(ctx, direction, baseline)
+		if err == nil {
+			before, err = replay.executeMapping(ctx, direction, value, options)
+		}
+	}
 	if err != nil {
 		return Value{}, err
 	}
-	before, err := replay.executeMapping(ctx, direction, value, options)
-	if err != nil {
-		return Value{}, err
-	}
+
 	result, err := reconcileNative(ctx, original, before, output, compiled.native, compiled.wireLimits(ctx, direction))
 	if err != nil {
 		var resource *ResourceLimitError

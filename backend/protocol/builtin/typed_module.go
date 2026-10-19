@@ -6,6 +6,9 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
+// RequestBaselineSafe marks the built-in decoder as pure for native replay.
+func (adapter module) RequestBaselineSafe() {}
+
 func (adapter module) DecodeRequest(ctx context.Context, input p.Value, options p.EvaluationContext) (*p.Request, error) {
 	return adapter.decodeRequest(input, options)
 }

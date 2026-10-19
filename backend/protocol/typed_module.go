@@ -170,38 +170,7 @@ func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 	}
 	if compiled.hasTypedRequestSchema(direction) {
 		if module, ok := compiled.mappings[direction].module.(TypedModule); ok {
-			// This originally ran before executeMapping, including its context check.
-			semanticBudget := semanticLimits(requestLimits(ctx, DefaultLimits(), false))
-			if err := checkSemanticValue(input, semanticBudget); err != nil {
-				return Value{}, err
-			}
-			input = normalizeMappingRequest(input, semanticBudget)
-			fail := func(err error) (Value, error) { return Value{}, compiled.mappingError(direction, err) }
-			if err := ctx.Err(); err != nil {
-				return fail(err)
-			}
-			if err := checkMappingSemantic(input, inputLimits, "mapping_input"); err != nil {
-				return fail(err)
-			}
-			if _, err := EncodeValue(options.Values); err != nil {
-				return fail(err)
-			}
-			options = options.forDefinition(compiled)
-			options.wireLimits = compiled.nativeLimits(ctx, direction)
-			output, err := encode(module, input, options)
-			if err != nil {
-				return fail(err)
-			}
-			if output.IsZero() {
-				return fail(fmt.Errorf("mapping omitted its entire output"))
-			}
-			if err := checkResourceValue(output, outputLimits, "mapping_output"); err != nil {
-				return fail(err)
-			}
-			if err := checkValueSchema(output, compiled.mappings[direction].output, "/output", 1, outputLimits); err != nil {
-				return fail(err)
-			}
-			return output, nil
+			return encodeRequestMapping(ctx, compiled, input, options, module, encode)
 		}
 	}
 
@@ -250,4 +219,43 @@ func (compiled *Compiled) decodeEventValues(ctx context.Context, direction Direc
 		}
 	}
 	return events, nil
+}
+
+// encodeRequestMapping retains the former semantic JSON mapping boundary for
+// native baseline rendering, including evaluate-stage errors and normalization.
+func encodeRequestMapping[T any](ctx context.Context, compiled *Compiled, input *T, options EvaluationContext, module TypedModule, encode func(TypedModule, *T, EvaluationContext) (Value, error)) (Value, error) {
+	direction := EncodeRequest
+	inputLimits, outputLimits, _ := compiled.mappingLimits(ctx, direction)
+	// This originally ran before executeMapping, including its context check.
+	semanticBudget := semanticLimits(requestLimits(ctx, DefaultLimits(), false))
+	if err := checkSemanticValue(input, semanticBudget); err != nil {
+		return Value{}, err
+	}
+	input = normalizeMappingRequest(input, semanticBudget)
+	fail := func(err error) (Value, error) { return Value{}, compiled.mappingError(direction, err) }
+	if err := ctx.Err(); err != nil {
+		return fail(err)
+	}
+	if err := checkMappingSemantic(input, inputLimits, "mapping_input"); err != nil {
+		return fail(err)
+	}
+	if _, err := EncodeValue(options.Values); err != nil {
+		return fail(err)
+	}
+	options = options.forDefinition(compiled)
+	options.wireLimits = compiled.nativeLimits(ctx, direction)
+	output, err := encode(module, input, options)
+	if err != nil {
+		return fail(err)
+	}
+	if output.IsZero() {
+		return fail(fmt.Errorf("mapping omitted its entire output"))
+	}
+	if err := checkResourceValue(output, outputLimits, "mapping_output"); err != nil {
+		return fail(err)
+	}
+	if err := checkValueSchema(output, compiled.mappings[direction].output, "/output", 1, outputLimits); err != nil {
+		return fail(err)
+	}
+	return output, nil
 }
