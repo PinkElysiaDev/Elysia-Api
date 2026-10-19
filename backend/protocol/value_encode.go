@@ -7,14 +7,14 @@ import (
 
 // encodeValueContainer handles only closed containers of validated values.
 // Arbitrary Go objects keep encoding/json's reflection and error behavior.
-func encodeValueContainer(value any) (Value, bool, error) {
+func encodeValueContainer(value any) (Value, bool) {
 	var keys []string
 	var items []Value
 	var isObject bool
 	switch container := value.(type) {
 	case Object:
 		if container == nil {
-			return Value{raw: "null"}, true, nil
+			return Value{raw: "null"}, true
 		}
 		isObject = true
 		keys = sortedKeys(container)
@@ -24,17 +24,17 @@ func encodeValueContainer(value any) (Value, bool, error) {
 		}
 	case []Value:
 		if container == nil {
-			return Value{raw: "null"}, true, nil
+			return Value{raw: "null"}, true
 		}
 		items = container
 	default:
-		return Value{}, false, nil
+		return Value{}, false
 	}
 	for _, item := range items {
 		if item.IsZero() {
 			// Select the old encoder before writing anything so its exact error
 			// type and first offending element remain unchanged.
-			return Value{}, false, nil
+			return Value{}, false
 		}
 	}
 	parts := make([]string, len(items))
@@ -49,13 +49,13 @@ func encodeValueContainer(value any) (Value, bool, error) {
 	for index, item := range items {
 		parts[index] = compactValueString(item.raw)
 		if !add(len(parts[index])) || index > 0 && !add(1) {
-			return Value{}, false, nil
+			return Value{}, false
 		}
 		if isObject {
 			key, _ := json.Marshal(keys[index])
 			keys[index] = string(key)
 			if !add(len(key)) || !add(1) {
-				return Value{}, false, nil
+				return Value{}, false
 			}
 		}
 	}
@@ -81,7 +81,7 @@ func encodeValueContainer(value any) (Value, bool, error) {
 	} else {
 		output.WriteByte(']')
 	}
-	return Value{raw: output.String()}, true, nil
+	return Value{raw: output.String()}, true
 }
 
 // Validated JSON needs only whitespace compaction and encoding/json's HTML /

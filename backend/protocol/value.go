@@ -23,8 +23,8 @@ func ParseValue(raw []byte) (Value, error) {
 
 // EncodeValue converts a Go value at an adapter boundary.
 func EncodeValue(value any) (Value, error) {
-	if encoded, handled, err := encodeValueContainer(value); handled {
-		return encoded, err
+	if encoded, handled := encodeValueContainer(value); handled {
+		return encoded, nil
 	}
 	raw, err := json.Marshal(value)
 	if err != nil {
