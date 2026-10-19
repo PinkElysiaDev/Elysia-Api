@@ -37,6 +37,8 @@ func TestConversionHTTPIsolated(t *testing.T) {
 	if os.Getenv("ELYSIA_CONVERSION_HTTP") != "1" {
 		t.Skip("opt-in isolated local HTTP performance")
 	}
+	size := conversionHTTPInt(t, "ELYSIA_CONVERSION_HTTP_MIB", 31, 31)
+	workers := conversionHTTPInt(t, "ELYSIA_CONVERSION_HTTP_WORKERS", 1, 32)
 	repeats := 5
 	if text := os.Getenv("ELYSIA_CONVERSION_HTTP_REPEATS"); text != "" {
 		var err error
@@ -62,32 +64,45 @@ func TestConversionHTTPIsolated(t *testing.T) {
 	}
 	for pair := range repeats {
 		for _, stream := range []bool{false, true} {
-			body := fmt.Sprintf(`{"model":"grp","stream":%t,"max_tokens":64,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"%s"}}]}]}]}`, stream, strings.Repeat("A", 31<<20))
+			body := fmt.Sprintf(`{"model":"grp","stream":%t,"max_tokens":64,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"%s"}}]}]}]}`, stream, strings.Repeat("A", size<<20))
 			before := metrics(provider.Metrics, "")
 			metrics(gateway.Metrics, "reset")
 			started := time.Now()
-			request, _ := http.NewRequest("POST", gateway.URL+"/v1/messages", io.NopCloser(strings.NewReader(body)))
-			request.Header.Set("Content-Type", "application/json")
-			response, err := client.Do(request)
-			if err != nil {
-				t.Fatal(err)
+
+			var group sync.WaitGroup
+			for range workers {
+				group.Go(func() {
+					request, _ := http.NewRequest("POST", gateway.URL+"/v1/messages", io.NopCloser(strings.NewReader(body)))
+					request.Header.Set("Content-Type", "application/json")
+					response, err := client.Do(request)
+					if err != nil {
+						t.Error(err)
+						return
+					}
+					output, err := io.ReadAll(response.Body)
+					response.Body.Close()
+					if err != nil || response.StatusCode != http.StatusOK || !bytes.Contains(output, []byte("complete")) {
+						t.Errorf("incomplete HTTP response: status=%d error=%v", response.StatusCode, err)
+						return
+					}
+					if stream && (!bytes.Contains(output, []byte("message_stop")) || response.Trailer.Get(gatewayStreamErrorTrailer) != "") {
+						t.Error("incomplete SSE")
+					}
+				})
 			}
-			output, err := io.ReadAll(response.Body)
-			response.Body.Close()
+			group.Wait()
 			elapsed := time.Since(started)
-			if err != nil || response.StatusCode != 200 || !bytes.Contains(output, []byte("complete")) {
-				t.Fatalf("incomplete HTTP response: status=%d error=%v", response.StatusCode, err)
+			if t.Failed() {
+				return
 			}
-			if stream && (!bytes.Contains(output, []byte("message_stop")) || response.Trailer.Get(gatewayStreamErrorTrailer) != "") {
-				t.Fatal("incomplete SSE")
-			}
+
 			after := metrics(provider.Metrics, "")
-			if after.Calls != before.Calls+1 {
+			if after.Calls != before.Calls+int64(workers) {
 				t.Fatal("unexpected upstream generation count", after.Calls-before.Calls)
 			}
-			sample := metrics(gateway.Metrics, "")
+			sample := metrics(gateway.Metrics, "drain")
 			reclaimed := metrics(gateway.Metrics, "reclaim")
-			t.Logf("pair=%d stream=%t elapsed_ms=%.3f gateway_allocated_MiB=%.3f gateway_peak_heap_MiB=%.3f gateway_peak_working_set_MiB=%.3f gateway_reclaimed_heap_MiB=%.3f upstream_calls=1", pair, stream, float64(elapsed)/float64(time.Millisecond), float64(sample.Allocated)/(1<<20), float64(sample.PeakHeap)/(1<<20), float64(sample.PeakWorkingSet)/(1<<20), float64(reclaimed.Heap)/(1<<20))
+			t.Logf("pair=%d stream=%t size_MiB=%d workers=%d elapsed_ms=%.3f gateway_allocated_MiB=%.3f gateway_peak_heap_MiB=%.3f gateway_peak_working_set_MiB=%.3f gateway_reclaimed_heap_MiB=%.3f upstream_calls=%d", pair, stream, size, workers, float64(elapsed)/float64(time.Millisecond), float64(sample.Allocated)/(1<<20), float64(sample.PeakHeap)/(1<<20), float64(sample.PeakWorkingSet)/(1<<20), float64(reclaimed.Heap)/(1<<20), workers)
 		}
 	}
 }
@@ -149,6 +164,9 @@ func TestConversionHTTPProcess(t *testing.T) {
 	if role == "" {
 		t.Skip("subprocess helper")
 	}
+	size := conversionHTTPInt(t, "ELYSIA_CONVERSION_HTTP_MIB", 31, 31)
+	var active atomic.Int64
+	var drain func()
 	var calls atomic.Int64
 	var gateway *httptest.Server
 	if role == "provider" {
@@ -164,7 +182,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 				w.WriteHeader(500)
 				return
 			}
-			if input.Model != "m" || len(input.Messages) != 2 || !bytes.Contains(input.Messages[1], []byte(strings.Repeat("A", 31<<20))) {
+			if input.Model != "m" || len(input.Messages) != 2 || !bytes.Contains(input.Messages[1], []byte(strings.Repeat("A", size<<20))) {
 				t.Error("tool/image history changed")
 				w.WriteHeader(500)
 				return
@@ -188,9 +206,43 @@ func TestConversionHTTPProcess(t *testing.T) {
 		}))
 	} else if role == "gateway" {
 		group := config.ModelGroupConfig{ID: "g", Name: "grp", Enabled: true, Strategy: "round-robin", Models: []config.ModelRef{{ID: "m", Name: "m", BaseURL: os.Getenv("ELYSIA_CONVERSION_HTTP_UPSTREAM"), Platform: "claude", APIKey: "synthetic", ToolsCapable: true, VisionCapable: true}}}
+
+		candidates := conversionHTTPInt(t, "ELYSIA_CONVERSION_HTTP_CANDIDATES", 1, 16)
+		for index := 1; index < candidates; index++ {
+			model := group.Models[0]
+			model.ID = fmt.Sprintf("m%d", index)
+			group.Models = append(group.Models, model)
+		}
 		server := newTestServerWithStore(t, []config.ModelGroupConfig{group})
+		mode := os.Getenv("ELYSIA_CONVERSION_HTTP_LOG")
+		if mode != "" && mode != "off" && mode != "body" && mode != "media" {
+			t.Fatal("unknown log mode")
+		}
+		bodyKB, externalize := 0, mode == "media"
+		if mode == "body" || mode == "media" {
+			bodyKB = 64 << 10
+		}
+		server.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: &bodyKB, ExternalizeMedia: &externalize})
+		server.startUsageWriter()
+		t.Cleanup(server.stopUsageWriter)
+		drain = func() {
+			deadline := time.Now().Add(30 * time.Second)
+			for active.Load() != 0 && time.Now().Before(deadline) {
+				time.Sleep(time.Millisecond)
+			}
+			if active.Load() != 0 {
+				t.Error("gateway requests did not drain")
+			}
+			server.stopUsageWriter()
+			server.startUsageWriter()
+		}
 		server.engine.POST("/v1/messages", server.chatCompletions)
-		gateway = httptest.NewServer(server.engine)
+		gateway = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			active.Add(1)
+			defer active.Add(-1)
+			server.engine.ServeHTTP(w, r)
+		}))
+
 	} else {
 		t.Fatal("unknown child role")
 	}
@@ -220,6 +272,9 @@ func TestConversionHTTPProcess(t *testing.T) {
 	defer func() { close(stop); <-done }()
 	metrics := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		action := r.URL.Query().Get("action")
+		if (action == "drain" || action == "reclaim") && drain != nil {
+			drain()
+		}
 		if action == "reset" || action == "reclaim" {
 			runtime.GC()
 			runtime.GC()
@@ -241,4 +296,17 @@ func TestConversionHTTPProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+}
+
+func conversionHTTPInt(t *testing.T, name string, fallback, maximum int) int {
+	t.Helper()
+	text := os.Getenv(name)
+	if text == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(text)
+	if err != nil || value < 1 || value > maximum {
+		t.Fatalf("invalid %s", name)
+	}
+	return value
 }

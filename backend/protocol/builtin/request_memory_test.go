@@ -186,3 +186,37 @@ func TestRequestMemoryPhases(t *testing.T) {
 	runtime.KeepAlive(request)
 	runtime.KeepAlive(wire)
 }
+
+func BenchmarkRequestMemoryPipeline(b *testing.B) {
+	fixtures := map[string]string{
+		Chat:      `{"model":"m","messages":[{"role":"user","content":"hello"}]}`,
+		Responses: `{"model":"m","input":"hello"}`,
+		Anthropic: `{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`,
+		Gemini:    `{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`,
+	}
+	for _, codec := range []string{Chat, Responses, Anthropic, Gemini} {
+		b.Run(codec, func(b *testing.B) {
+			compiled := testCompiled(b, codec)
+			conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(compiled, compiled))
+			if err != nil {
+				b.Fatal(err)
+			}
+			body := []byte(fixtures[codec])
+			options := p.EvaluationContext{Scope: p.Scope{Model: "m"}}
+			b.ReportAllocs()
+			for b.Loop() {
+				request, err := compiled.DecodeRequest(b.Context(), body, options)
+				if err != nil {
+					b.Fatal(err)
+				}
+				request, err = conversion.Request(b.Context(), request, p.ConversionContext{Source: compiled.Identity(), Target: compiled.Identity()}, nil)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if _, err := compiled.EncodeRequest(b.Context(), request, options); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
