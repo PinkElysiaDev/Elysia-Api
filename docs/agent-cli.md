@@ -93,11 +93,11 @@ elysia code read <路径>
 ````text
 elysia source — 模型源管理
 
-  elysia source create --name <名> --base-url <URL> [--platform openai|anthropic|gemini|responses|custom:<id>] [--api-key <key>] [--auto-fetch] [--manual-models a,b] [--fetch-base-url <URL>]
+  elysia source create --name <名> --base-url <URL> [--platform custom:<id>] [--api-key <key>] [--auto-fetch] [--manual-models a,b] [--fetch-base-url <URL>]
     创建模型源（受权限策略控制）
       --name                   源名称（显示用）
       --base-url               上游 baseUrl（http/https）
-      --platform               openai（默认）/anthropic/gemini/responses/custom:<协议ID>
+      --platform               custom:<协议ID>（默认 custom:openai-chat-completions）
       --api-key                API key（加密存储）
       --auto-fetch             标记为自动源（创建后如需上游实时模型列表，执行 elysia source refresh）
       --manual-models          手动模型名列表（逗号分隔）
@@ -131,13 +131,13 @@ elysia source — 模型源管理
 ### source create
 
 ````text
-elysia source create --name <名> --base-url <URL> [--platform openai|anthropic|gemini|responses|custom:<id>] [--api-key <key>] [--auto-fetch] [--manual-models a,b] [--fetch-base-url <URL>]
+elysia source create --name <名> --base-url <URL> [--platform custom:<id>] [--api-key <key>] [--auto-fetch] [--manual-models a,b] [--fetch-base-url <URL>]
 创建模型源（受权限策略控制）
 
 参数：
   --name                   源名称（显示用）
   --base-url               上游 baseUrl（http/https）
-  --platform               openai（默认）/anthropic/gemini/responses/custom:<协议ID>
+  --platform               custom:<协议ID>（默认 custom:openai-chat-completions）
   --api-key                API key（加密存储）
   --auto-fetch             标记为自动源（创建后如需上游实时模型列表，执行 elysia source refresh）
   --manual-models          手动模型名列表（逗号分隔）
@@ -145,7 +145,7 @@ elysia source create --name <名> --base-url <URL> [--platform openai|anthropic|
 
 示例：elysia source create --name 主源 --base-url https://api.example.com --api-key sk-xxx
 
-详细说明：创建模型源（受服务端权限与业务策略控制）。platform 支持 openai/anthropic/gemini/responses 或 custom:<协议ID>；autoFetchModels=true 标记为自动源（模型列表仍需创建后运行 elysia source refresh 拉取，或用户在页面手动拉取）；手动模型用手动列表或 manualModels。创建前先向用户确认 baseUrl、平台与密钥来源。
+详细说明：创建模型源（受服务端权限与业务策略控制）。platform 使用 custom:<协议ID>，默认 custom:openai-chat-completions；autoFetchModels=true 标记为自动源（模型列表仍需创建后运行 elysia source refresh 拉取，或用户在页面手动拉取）；手动模型用手动列表或 manualModels。创建前先向用户确认 baseUrl、平台与密钥来源。
 ````
 
 ### source delete

@@ -51,11 +51,11 @@ Common combinations:
 ````text
 elysia source — source management
 
-  elysia source create --name <name> --base-url <URL> [--platform openai|anthropic|gemini|responses|custom:<id>] [--api-key <key>] [--auto-fetch] [--manual-models a,b] [--fetch-base-url <URL>]
+  elysia source create --name <name> --base-url <URL> [--platform custom:<id>] [--api-key <key>] [--auto-fetch] [--manual-models a,b] [--fetch-base-url <URL>]
     Create a source (subject to permission policy)
       --name                   Source display name
       --base-url               Upstream baseUrl (http/https)
-      --platform               openai (default)/anthropic/gemini/responses/custom:<protocol-id>
+      --platform               custom:<protocol-id> (default: custom:openai-chat-completions)
       --api-key                API key (encrypted storage)
       --auto-fetch             Mark as automatic; run elysia source refresh after creation for a live upstream model list
       --manual-models          Comma-separated manual model names
@@ -89,13 +89,13 @@ Full semantics and examples: elysia help source <command>.
 ### source create
 
 ````text
-elysia source create --name <name> --base-url <URL> [--platform openai|anthropic|gemini|responses|custom:<id>] [--api-key <key>] [--auto-fetch] [--manual-models a,b] [--fetch-base-url <URL>]
+elysia source create --name <name> --base-url <URL> [--platform custom:<id>] [--api-key <key>] [--auto-fetch] [--manual-models a,b] [--fetch-base-url <URL>]
 Create a source (subject to permission policy)
 
 Arguments:
   --name                   Source display name
   --base-url               Upstream baseUrl (http/https)
-  --platform               openai (default)/anthropic/gemini/responses/custom:<protocol-id>
+  --platform               custom:<protocol-id> (default: custom:openai-chat-completions)
   --api-key                API key (encrypted storage)
   --auto-fetch             Mark as automatic; run elysia source refresh after creation for a live upstream model list
   --manual-models          Comma-separated manual model names
@@ -103,7 +103,7 @@ Arguments:
 
 Example: elysia source create --name primary --base-url https://api.example.com --api-key sk-xxx
 
-Details: Create a source under server permissions and business policies. platform accepts openai/anthropic/gemini/responses or custom:<protocol-id>. autoFetchModels=true marks an automatic source; fetch the list afterward with elysia source refresh or manually in the UI. Manual sources use the manual list or manualModels. Confirm baseUrl, platform and credential provenance with the user before creation.
+Details: Create a source under server permissions and business policies. platform uses custom:<protocol-id>, defaulting to custom:openai-chat-completions. autoFetchModels=true marks an automatic source; fetch the list afterward with elysia source refresh or manually in the UI. Manual sources use the manual list or manualModels. Confirm baseUrl, platform and credential provenance with the user before creation.
 ````
 
 ### source delete
