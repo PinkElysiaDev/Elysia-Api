@@ -165,6 +165,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 		t.Skip("subprocess helper")
 	}
 	size := conversionHTTPInt(t, "ELYSIA_CONVERSION_HTTP_MIB", 31, 31)
+	candidates := conversionHTTPInt(t, "ELYSIA_CONVERSION_HTTP_CANDIDATES", 1, 16)
 	var active atomic.Int64
 	var drain func()
 	var calls atomic.Int64
@@ -182,19 +183,23 @@ func TestConversionHTTPProcess(t *testing.T) {
 				w.WriteHeader(500)
 				return
 			}
-			if input.Model != "m" || len(input.Messages) != 2 || !bytes.Contains(input.Messages[1], []byte(strings.Repeat("A", size<<20))) {
+			isCandidateModel := input.Model == "m"
+			for index := 1; index < candidates; index++ {
+				isCandidateModel = isCandidateModel || input.Model == fmt.Sprintf("m%d", index)
+			}
+			if !isCandidateModel || len(input.Messages) != 2 || !bytes.Contains(input.Messages[1], []byte(strings.Repeat("A", size<<20))) {
 				t.Error("tool/image history changed")
 				w.WriteHeader(500)
 				return
 			}
 			if !input.Stream {
 				w.Header().Set("Content-Type", "application/json")
-				io.WriteString(w, `{"id":"msg_1","type":"message","role":"assistant","model":"m","content":[{"type":"text","text":"complete"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1}}`)
+				fmt.Fprintf(w, `{"id":"msg_1","type":"message","role":"assistant","model":%q,"content":[{"type":"text","text":"complete"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1}}`, input.Model)
 				return
 			}
 			w.Header().Set("Content-Type", "text/event-stream")
 			for _, frame := range []string{
-				`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"m","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}`,
+				fmt.Sprintf(`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":%q,"content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}`, input.Model),
 				`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
 				`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"complete"}}`,
 				`{"type":"content_block_stop","index":0}`,
@@ -207,7 +212,6 @@ func TestConversionHTTPProcess(t *testing.T) {
 	} else if role == "gateway" {
 		group := config.ModelGroupConfig{ID: "g", Name: "grp", Enabled: true, Strategy: "round-robin", Models: []config.ModelRef{{ID: "m", Name: "m", BaseURL: os.Getenv("ELYSIA_CONVERSION_HTTP_UPSTREAM"), Platform: "claude", APIKey: "synthetic", ToolsCapable: true, VisionCapable: true}}}
 
-		candidates := conversionHTTPInt(t, "ELYSIA_CONVERSION_HTTP_CANDIDATES", 1, 16)
 		for index := 1; index < candidates; index++ {
 			model := group.Models[0]
 			model.ID = fmt.Sprintf("m%d", index)
