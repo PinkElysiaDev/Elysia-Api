@@ -2,25 +2,55 @@ package server
 
 import (
 	"context"
+	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/elysia-api/backend/storage"
 )
 
-func TestStoreRoutingFailsClosedOnDatabaseFailure(t *testing.T) {
-	s, _ := newProtocolAdminTestServer(t)
-	if _, exists := s.findAccessToken("deleted-key"); exists {
-		t.Fatal("missing persisted token resurrected from configuration")
+func TestRouteCacheConcurrentReloadFailsClosed(t *testing.T) {
+	t.Parallel()
+	store, err := storage.Open(filepath.Join(t.TempDir(), "routes.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err := s.store.Close(); err != nil {
+	defer store.Close()
+	s := &Server{store: store}
+	if err := store.UpsertAPIToken(t.Context(), storage.APIToken{Name: "key", Token: "test-key", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	checkConcurrent := func(want bool) {
+		t.Helper()
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for range 8 {
+			wg.Go(func() {
+				<-start
+				if _, exists := s.findAccessToken("test-key"); exists != want {
+					t.Errorf("token authorization = %t, want %t", exists, want)
+				}
+			})
+		}
+		close(start)
+		wg.Wait()
+	}
+	checkConcurrent(true)
+	if err := store.DeleteAPIToken(t.Context(), "key"); err != nil {
 		t.Fatal(err)
 	}
 	s.invalidateRouteCache()
+	checkConcurrent(false)
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s.invalidateRouteCache()
+	checkConcurrent(false)
+	if s.routeCacheLoaded {
+		t.Fatal("database failure published a routing snapshot")
+	}
 	if groups := s.getGroups(); len(groups) != 0 {
 		t.Fatal("database failure resurrected legacy routes", groups)
-	}
-	if _, exists := s.findAccessToken("deleted-key"); exists {
-		t.Fatal("database failure resurrected legacy credentials")
 	}
 }
 

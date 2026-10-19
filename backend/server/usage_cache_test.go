@@ -1,8 +1,10 @@
 package server
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,7 +15,7 @@ import (
 )
 
 // TestUsageCacheCoalescesAndServes：并发同 key 请求合并为一次回源、缓存命中
-// 直接回放、参数顺序不同视为同 key、flush 后重新回源。
+// 直接回放、参数顺序不同视为同 key。
 func TestUsageCacheCoalescesAndServes(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -72,78 +74,147 @@ func TestUsageCacheCoalescesAndServes(t *testing.T) {
 		if ct := w.Header().Get("Content-Type"); ct == "" {
 			t.Fatalf("cached response must keep Content-Type")
 		}
+	})
+}
 
-		// flush 后重新回源。
+// Failed and empty responses must neither be shared with waiters nor cached.
+func TestUsageCacheSkipsUncacheableResponses(t *testing.T) {
+	t.Parallel()
+	for _, status := range []int{http.StatusInternalServerError, http.StatusOK} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				cache := &usageResponseCache{}
+				var executions atomic.Int32
+				release := make(chan struct{})
+				unblock := sync.OnceFunc(func() { close(release) })
+				defer unblock()
+				r := gin.New()
+				r.GET("/e", cache.middleware(), func(c *gin.Context) {
+					executions.Add(1)
+					<-release
+					if status == http.StatusOK {
+						c.Status(status)
+					} else {
+						c.JSON(status, gin.H{"error": "boom"})
+					}
+				})
+				request := func() {
+					w := httptest.NewRecorder()
+					r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/e", nil))
+					if w.Code != status {
+						t.Errorf("response status = %d, want %d", w.Code, status)
+					}
+				}
+				var wg sync.WaitGroup
+				for range 3 {
+					wg.Go(request)
+				}
+				synctest.Wait()
+				if got := executions.Load(); got != 1 {
+					t.Fatalf("expected one blocked leader, got %d", got)
+				}
+				unblock()
+				wg.Wait()
+				request()
+				if got := executions.Load(); got != 4 {
+					t.Fatalf("uncacheable response reused: executions = %d, want 4", got)
+				}
+			})
+		})
+	}
+}
+
+// New-generation callers must not join an old flight; old waiters must not
+// replay its result or allow it to overwrite the new cache entry.
+func TestUsageCacheFlushIsolatesFlights(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		cache := &usageResponseCache{}
+		var executions atomic.Int32
+		release := make(chan struct{})
+		unblock := sync.OnceFunc(func() { close(release) })
+		defer unblock()
+		r := gin.New()
+		r.GET("/p", cache.middleware(), func(c *gin.Context) {
+			if executions.Add(1) == 1 {
+				<-release
+				c.JSON(http.StatusOK, gin.H{"gen": 1})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"gen": 2})
+		})
+		request := func() *httptest.ResponseRecorder {
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/p", nil))
+			return w
+		}
+		var leader, waiter *httptest.ResponseRecorder
+		var wg sync.WaitGroup
+		wg.Go(func() { leader = request() })
+		synctest.Wait()
+		wg.Go(func() { waiter = request() })
+		synctest.Wait()
+		if executions.Load() != 1 {
+			t.Fatal("waiter did not join the old flight")
+		}
 		cache.flush()
-		w = httptest.NewRecorder()
-		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/p?a=1&b=2", nil))
-		if got := atomic.LoadInt32(&executions); got != 2 {
-			t.Fatalf("after flush request should re-execute, got %d executions", got)
+		fresh := request() // Must complete while the old leader is still blocked.
+		if fresh.Code != http.StatusOK || !strings.Contains(fresh.Body.String(), `"gen":2`) {
+			t.Fatalf("new generation response = %d %s", fresh.Code, fresh.Body.String())
+		}
+		unblock()
+		wg.Wait()
+		if !strings.Contains(leader.Body.String(), `"gen":1`) || waiter.Body.String() != fresh.Body.String() {
+			t.Fatalf("generation isolation failed: leader=%s waiter=%s", leader.Body.String(), waiter.Body.String())
+		}
+		if cached := request(); cached.Body.String() != fresh.Body.String() || executions.Load() != 3 {
+			t.Fatalf("old flight replaced the fresh cache: body=%s executions=%d", cached.Body.String(), executions.Load())
 		}
 	})
 }
 
-// TestUsageCacheSkipsNonSuccess：非 200 响应不缓存，后续请求重新回源。
-func TestUsageCacheSkipsNonSuccess(t *testing.T) {
+// Exercise panic propagation through Gin, then recovery of the same cache key.
+func TestUsageCacheSurvivesHandlerPanic(t *testing.T) {
 	t.Parallel()
-	cache := &usageResponseCache{}
-	var executions int32
-
-	r := gin.New()
-	r.GET("/e", cache.middleware(), func(c *gin.Context) {
-		atomic.AddInt32(&executions, 1)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "boom"})
-	})
-
-	for i := 0; i < 2; i++ {
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/e", nil))
-		if w.Code != http.StatusInternalServerError {
-			t.Fatalf("request %d: expected 500, got %d", i, w.Code)
-		}
-	}
-	if got := atomic.LoadInt32(&executions); got != 2 {
-		t.Fatalf("non-200 responses must not be cached, got %d executions", got)
-	}
-}
-
-// TestUsageCacheFlushDropsInflightWriteback：reset 期间已开始的 GET 不得把旧响应写回缓存。
-func TestUsageCacheFlushDropsInflightWriteback(t *testing.T) {
-	t.Parallel()
-	cache := &usageResponseCache{}
-	var executions int32
-	started := make(chan struct{})
-	release := make(chan struct{})
-
-	r := gin.New()
-	r.GET("/p", cache.middleware(), func(c *gin.Context) {
-		n := atomic.AddInt32(&executions, 1)
-		if n == 1 {
-			close(started)
+	synctest.Test(t, func(t *testing.T) {
+		cache := &usageResponseCache{}
+		release := make(chan struct{})
+		unblock := sync.OnceFunc(func() { close(release) })
+		defer unblock()
+		fail := true
+		r := gin.New()
+		r.Use(gin.RecoveryWithWriter(io.Discard))
+		r.GET("/p", cache.middleware(), func(c *gin.Context) {
 			<-release
-			c.JSON(http.StatusOK, gin.H{"gen": 1})
-			return
+			if fail {
+				panic("boom")
+			}
+			c.JSON(http.StatusOK, gin.H{"ok": true})
+		})
+		request := func(status int) {
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/p", nil))
+			if w.Code != status {
+				t.Errorf("response status = %d, want %d", w.Code, status)
+			}
 		}
-		c.JSON(http.StatusOK, gin.H{"gen": 2})
+		var wg sync.WaitGroup
+		for range 4 {
+			wg.Go(func() { request(http.StatusInternalServerError) })
+		}
+		synctest.Wait()
+		unblock()
+		wg.Wait()
+		fail = false
+		request(http.StatusOK)
 	})
+}
 
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/p", nil))
-	}()
-	<-started
-	cache.flush()
-	close(release)
-	<-done
-
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/p", nil))
-	if got := atomic.LoadInt32(&executions); got != 2 {
-		t.Fatalf("stale inflight must not populate cache, executions=%d", got)
-	}
-	if !strings.Contains(w.Body.String(), `"gen":2`) {
-		t.Fatalf("expected fresh gen=2 body, got %s", w.Body.String())
+func TestUsageCacheKeyEscaping(t *testing.T) {
+	t.Parallel()
+	left, _ := url.Parse("/p?groupName=b%26keyName%3Da")
+	right, _ := url.Parse("/p?groupName=b&keyName=a")
+	if usageCacheKey(left) == usageCacheKey(right) {
+		t.Fatal("distinct filter sets must not collide")
 	}
 }

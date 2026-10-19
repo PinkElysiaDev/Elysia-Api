@@ -28,6 +28,7 @@ import (
 	"github.com/elysia-api/backend/storage"
 	"github.com/elysia-api/backend/webui"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/sync/singleflight"
 )
 
 type rateLimitState struct {
@@ -129,6 +130,7 @@ type Server struct {
 	cachedTokens         map[string]config.AccessToken
 	routeCacheLoaded     bool
 	routeCacheGeneration uint64
+	routeCacheFlights    singleflight.Group
 
 	// 模型能力元数据目录（models.dev）：刷新模型时自动回填能力字段（方向1）。
 	catalog *modelCatalog
