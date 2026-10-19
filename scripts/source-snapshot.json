@@ -296,6 +296,8 @@
     "backend/protocol/runtime.go",
     "backend/protocol/runtime_test.go",
     "backend/protocol/schema.go",
+    "backend/protocol/semantic_cache.go",
+    "backend/protocol/semantic_cache_test.go",
     "backend/protocol/semantic_compare.go",
     "backend/protocol/semantic_equivalence.go",
     "backend/protocol/semantic_equivalence_test.go",

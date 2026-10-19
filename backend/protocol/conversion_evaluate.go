@@ -284,13 +284,13 @@ func (c *CompiledConversion) applyNodeRule(ctx context.Context, phase Conversion
 	if err := decodeContract(input.Bytes(), document); err != nil {
 		return Value{}, err
 	}
-	if err := c.applyNodeObject(ctx, phase, document, route, sink, rule); err != nil {
+	if err := c.applyNodeObject(ctx, phase, document, route, sink, rule, nil); err != nil {
 		return Value{}, err
 	}
 	return encodeSemanticWithin(document, c.phaseLimits(ctx, phase))
 }
 
-func (c *CompiledConversion) applyNodeObject(ctx context.Context, phase ConversionPhase, document any, route ConversionContext, sink *DiagnosticSink, rule ConversionRule) error {
+func (c *CompiledConversion) applyNodeObject(ctx context.Context, phase ConversionPhase, document any, route ConversionContext, sink *DiagnosticSink, rule ConversionRule, cache *semanticCache) error {
 	var visit func([]Node, string) error
 	visit = func(nodes []Node, base string) error {
 		for i := range nodes {
@@ -298,7 +298,7 @@ func (c *CompiledConversion) applyNodeObject(ctx context.Context, phase Conversi
 			at := fmt.Sprintf("%s/%d", base, i)
 			// Unmatched nodes still have the same resource/encoding contract, but
 			// built-in actions do not need a JSON copy of every ancestor subtree.
-			if err := checkSemanticValue(n, c.phaseLimits(ctx, phase)); err != nil {
+			if err := cache.check(n, c.phaseLimits(ctx, phase)); err != nil {
 				return err
 			}
 			var v Value

@@ -10,13 +10,12 @@ import (
 // actions. Authored JSON operations synchronize it before observing any value.
 // It is never retained by the compiled policy or shared with another call.
 type conversionState struct {
-	wire            Value
-	document        any
-	limits          Limits
-	isStrict        bool
-	needsEncoding   bool
-	normalized      map[Value]Value
-	normalizedBytes int
+	wire          Value
+	document      any
+	limits        Limits
+	isStrict      bool
+	needsEncoding bool
+	cache         *semanticCache
 }
 
 func (state *conversionState) validateContext(phase ConversionPhase) error {
@@ -74,10 +73,13 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 	if err := state.load(phase, rule.Action != "response_metadata"); err != nil {
 		return "", err
 	}
+	if state.cache == nil {
+		state.cache = &semanticCache{limits: state.limits}
+	}
 	var target string
 	var err error
 	if isNodeRule {
-		err = c.applyNodeObject(ctx, phase, state.document, route, sink, rule)
+		err = c.applyNodeObject(ctx, phase, state.document, route, sink, rule, state.cache)
 	} else if rule.Action == "response_metadata" {
 		err = c.metadataObject(phase, state.document, route, rule, sink)
 	} else {
@@ -87,7 +89,7 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 		return "", err
 	}
 	// Match the old pre-serialization check before removing omitted fields.
-	if err := checkSemanticValue(state.document, state.limits); err != nil {
+	if err := state.cache.check(state.document, state.limits); err != nil {
 		return "", err
 	}
 	state.normalize(reflect.ValueOf(state.document), typedLimitPlans[reflect.TypeOf(state.document)])
@@ -116,26 +118,7 @@ func (state *conversionState) normalize(value reflect.Value, plan *typedPlan) {
 		if original.IsZero() {
 			return
 		}
-		if result, ok := state.normalized[original]; ok {
-			value.Set(reflect.ValueOf(result))
-			return
-		}
-		result := original
-		if needsSemanticCompaction(original.raw) {
-			result, _ = EncodeValue(original)
-		}
-		retainedBytes := len(original.raw)
-		if original != result {
-			retainedBytes += len(result.raw)
-		}
-		if len(state.normalized) < state.limits.StateItems && retainedBytes <= state.limits.BufferBytes-state.normalizedBytes {
-			if state.normalized == nil {
-				state.normalized = make(map[Value]Value)
-			}
-			state.normalized[original] = result
-			state.normalizedBytes += retainedBytes
-		}
-		value.Set(reflect.ValueOf(result))
+		value.Set(reflect.ValueOf(state.cache.normalize(original)))
 		return
 	}
 	switch plan.kind {

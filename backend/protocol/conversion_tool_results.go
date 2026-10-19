@@ -3,6 +3,7 @@ package protocol
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 func validateToolResultErrors(nodes []Node, at string) error {
@@ -58,7 +59,7 @@ func (c *CompiledConversion) toolResult(n *Node, route ConversionContext, rule C
 			if err := c.issue(rule, ConversionRequest, route, at+"/payload", "object tool result serialized as JSON text; payload type changes", sink, true); err != nil {
 				return err
 			}
-			n.Payload = StringValue(string(n.Payload.Bytes()))
+			n.Payload = StringValue(n.Payload.raw)
 		}
 		var codec string
 		_ = rule.Value.Decode(&codec)
@@ -105,8 +106,8 @@ func (c *CompiledConversion) toolResult(n *Node, route ConversionContext, rule C
 		n.Payload, n.Children = StringValue(text.String()), nil
 	}
 	if !n.Payload.IsObject() {
-		var text string
-		if (!n.Payload.IsZero() && n.Payload.Decode(&text) != nil) || n.Payload.IsNull() {
+		text, ok := canonicalToolText(n.Payload)
+		if !ok {
 			return streamIssue(InvalidInput, at+"/payload", "tool_result_object requires text or an object")
 		}
 		key := "result"
@@ -116,7 +117,7 @@ func (c *CompiledConversion) toolResult(n *Node, route ConversionContext, rule C
 		if err := c.issue(rule, ConversionRequest, route, at+"/payload", "text tool result wrapped in the configured object field", sink, true); err != nil {
 			return err
 		}
-		n.Payload, _ = EncodeValue(Object{key: StringValue(text)})
+		n.Payload, _ = EncodeValue(Object{key: text})
 	}
 	if !n.Status.IsZero() {
 		if failed {
@@ -129,4 +130,22 @@ func (c *CompiledConversion) toolResult(n *Node, route ConversionContext, rule C
 		n.Status = Value{}
 	}
 	return nil
+}
+
+// Plain JSON strings already have the spelling produced by Decode + StringValue
+// (HTML escaping is applied by the enclosing object encoder). Escapes and invalid
+// UTF-8 retain the old local normalization; unrelated media is never decoded.
+func canonicalToolText(value Value) (Value, bool) {
+	if value.IsZero() {
+		return StringValue(""), true
+	}
+	raw := strings.TrimSpace(value.raw)
+	if len(raw) > 0 && raw[0] == '"' && !strings.Contains(raw, `\`) && utf8.ValidString(raw) {
+		return Value{raw: raw}, true
+	}
+	var text string
+	if value.IsNull() || value.Decode(&text) != nil {
+		return Value{}, false
+	}
+	return StringValue(text), true
 }

@@ -16,6 +16,8 @@ const typedMeterTraversalDepth = 256
 type typedMeter struct {
 	limits              Limits
 	bytes, nodes, depth int
+	maxDepth            int
+	cache               *semanticCache
 }
 
 type typedField struct {
@@ -123,6 +125,7 @@ func (meter *typedMeter) scalar(bytes int) bool {
 
 func (meter *typedMeter) open() bool {
 	meter.depth++
+	meter.maxDepth = max(meter.maxDepth, meter.depth)
 	return meter.scalar(1)
 }
 
@@ -227,6 +230,31 @@ func isEmptyJSONField(value reflect.Value) bool {
 // raw measures encoding/json's compact, HTML-escaped Marshaler output. Value
 // has already validated JSON; this walk never decodes numbers through float64.
 func (meter *typedMeter) raw(raw string) bool {
+	if meter.cache == nil || len(raw) < semanticCacheMinBytes {
+		return meter.scanRaw(raw)
+	}
+	value := Value{raw: raw}
+	entry := meter.cache.entries[value]
+	if !entry.hasMetrics {
+		local := typedMeter{limits: meter.limits}
+		if !local.scanRaw(raw) {
+			return meter.scanRaw(raw)
+		}
+		entry.metrics = semanticMetrics{bytes: local.bytes, nodes: local.nodes, depth: local.maxDepth}
+		entry.hasMetrics = true
+		meter.cache.store(value, entry)
+	}
+	metric := entry.metrics
+	if metric.bytes > meter.limits.BufferBytes-meter.bytes || metric.nodes > meter.limits.Nodes-meter.nodes || metric.depth > min(meter.limits.Depth, typedMeterTraversalDepth)-meter.depth {
+		return meter.scanRaw(raw)
+	}
+	meter.bytes += metric.bytes
+	meter.nodes += metric.nodes
+	meter.maxDepth = max(meter.maxDepth, meter.depth+metric.depth)
+	return meter.fits()
+}
+
+func (meter *typedMeter) scanRaw(raw string) bool {
 	if raw == "" {
 		return false
 	}
