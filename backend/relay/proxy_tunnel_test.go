@@ -38,7 +38,7 @@ func TestProxyHTTPSConnectPreservesTLSAndHidesProxyCredentialsFromUpstream(t *te
 		}
 		target, err := net.DialTimeout("tcp", r.Host, time.Second)
 		if err != nil {
-			http.Error(w, "dial", 502)
+			http.Error(w, "dial", http.StatusBadGateway)
 			return
 		}
 		client, buffered, err := w.(http.Hijacker).Hijack()
