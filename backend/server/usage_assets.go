@@ -204,7 +204,9 @@ func (a *assetSink) register(mime, ext, base64Payload string) (string, bool) {
 		return assetPlaceholder(a.requestID, item.Hash, item.Ext), true
 	}
 	a.byHash[hash] = len(a.items)
-	a.items = append(a.items, mediaAsset{Hash: hash, Ext: ext, Mime: mime, payload: &mediaPayload{content: data}})
+	// MIME/extension can be short slices of a complete data URL. Retained
+	// metadata must not keep that base64 string alive beside decoded media.
+	a.items = append(a.items, mediaAsset{Hash: hash, Ext: strings.Clone(ext), Mime: strings.Clone(mime), payload: &mediaPayload{content: data}})
 	return assetPlaceholder(a.requestID, hash, ext), true
 }
 

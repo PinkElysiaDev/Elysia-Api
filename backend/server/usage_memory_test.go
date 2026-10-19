@@ -136,3 +136,19 @@ func TestUsageQueueReleasesPayloadAfterPersistenceFailure(t *testing.T) {
 		t.Fatal("failed persistence retained its reservation", writer.retainedBytes)
 	}
 }
+
+func TestUsageAssetMetadataDoesNotRetainDataURL(t *testing.T) {
+	url := "data:image/png;base64," + strings.Repeat("A", 1<<20)
+	sink := newAssetSink("synthetic")
+	if _, ok := sink.extractString("url", nil, url); !ok || sink.count() != 1 {
+		t.Fatal("fixture did not extract media")
+	}
+	root := reflect.ValueOf(url).Pointer()
+	mime := reflect.ValueOf(sink.items[0].Mime).Pointer()
+	if mime >= root && mime < root+uintptr(len(url)) {
+		t.Fatal("short MIME metadata retained the base64 URL")
+	}
+	if sink.items[0].Mime != "image/png" {
+		t.Fatal("media type changed")
+	}
+}
