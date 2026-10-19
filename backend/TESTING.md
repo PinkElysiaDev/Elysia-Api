@@ -22,6 +22,9 @@ go test -parallel=1 -count=1 -timeout=30m ./...
 
 ## 测试组织与去重
 
+缓存的定向 benchmark、Otter 替换前后结果及容量语义差异见
+[缓存性能对比](../docs/backend-cache-benchmarks.md)。
+
 具体删除依据、保留的行为验证位置和矩阵缩减数量见
 [测试裁剪记录](../docs/backend-test-review.md)。
 

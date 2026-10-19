@@ -999,6 +999,7 @@ func (s *Server) doShutdown() {
 	s.initLifecycle()
 	s.shutdownOnce.Do(func() {
 		defer close(s.shutdownDone)
+		defer s.closeCaches()
 		deadline := time.Now().Add(12 * time.Second)
 		defer s.usageWriteCancel()
 		ctx, cancel := context.WithDeadline(context.Background(), deadline)
@@ -1088,4 +1089,9 @@ func (s *Server) doShutdown() {
 			logging.Emergency("shutdown deadline reached; active work still owns storage", s.shutdownErr)
 		}
 	})
+}
+
+func (s *Server) closeCaches() {
+	s.affinity.close()
+	s.usageCache.close()
 }

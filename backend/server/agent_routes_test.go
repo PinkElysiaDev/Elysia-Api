@@ -48,6 +48,7 @@ func newAgentIntegrationServer(t *testing.T) *Server {
 		store:                  store,
 		skipOutboundValidation: true,
 	}
+	t.Cleanup(s.closeCaches)
 	activateDiscoveryPresets(t, s)
 	return s
 }

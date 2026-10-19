@@ -8,16 +8,19 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/maypok86/otter/v2"
 	"golang.org/x/sync/singleflight"
 )
 
 // usage 只读端点的短 TTL 响应缓存。切窗三连发与 overview 重叠窗口的并发
 // GET 合并成一次 SQL；写入成功后 flush，避免新调用仍命中旧响应。
 const (
-	usageCacheTTL        = 15 * time.Second
+	usageCacheTTL = 15 * time.Second
+	// Otter maintains this target asynchronously; it is not a hard memory bound.
 	usageCacheMaxEntries = 256
 )
 
@@ -25,17 +28,36 @@ type usageCacheEntry struct {
 	body        []byte
 	contentType string
 	statusCode  int
-	expiresAt   time.Time
 }
 
 // usageResponseCache 缓存 usage 只读端点的响应字节，并把并发同 key 请求
 // 合并为一次回源。失效代际同时隔离缓存写回与 singleflight 调用。
 type usageResponseCache struct {
-	mu      sync.Mutex
-	gen     uint64 // flush 递增，禁止 reset 前启动的回源写回
-	entries map[string]*usageCacheEntry
-	order   []string // 插入序，容量超限时淘汰最旧
+	mu      sync.Mutex // Serializes publication with invalidation and initialization.
+	gen     atomic.Uint64
+	entries atomic.Pointer[otter.Cache[string, *usageCacheEntry]]
+	closed  bool
 	flights singleflight.Group
+}
+
+// Keep the zero value usable by lightweight servers and initialize only when a
+// read endpoint is used. Cache hits do not acquire the publication mutex.
+func (c *usageResponseCache) cache() *otter.Cache[string, *usageCacheEntry] {
+	if entries := c.entries.Load(); entries != nil {
+		return entries
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return nil
+	}
+	if c.entries.Load() == nil {
+		c.entries.Store(otter.Must(&otter.Options[string, *usageCacheEntry]{
+			MaximumSize:      usageCacheMaxEntries,
+			ExpiryCalculator: otter.ExpiryWriting[string, *usageCacheEntry](usageCacheTTL),
+		}))
+	}
+	return c.entries.Load()
 }
 
 func (c *usageResponseCache) middleware() gin.HandlerFunc {
@@ -48,12 +70,13 @@ func (c *usageResponseCache) handle(gc *gin.Context) {
 		return
 	}
 	key := usageCacheKey(gc.Request.URL)
-
-	c.mu.Lock()
-	gen := c.gen
-	e := c.entryLocked(key)
-	c.mu.Unlock()
-	if e != nil {
+	entries := c.cache()
+	if entries == nil {
+		gc.Next()
+		return
+	}
+	gen := c.gen.Load()
+	if e, ok := entries.GetIfPresent(key); ok {
 		serveUsageCacheEntry(gc, e)
 		gc.Abort()
 		return
@@ -63,15 +86,11 @@ func (c *usageResponseCache) handle(gc *gin.Context) {
 	// goroutine, and panics reach gin.Recovery for both leader and waiters.
 	handled := false
 	value, _, _ := c.flights.Do(strconv.FormatUint(gen, 10)+":"+key, func() (any, error) {
-		c.mu.Lock()
-		current := c.gen == gen
-		e := c.entryLocked(key)
-		c.mu.Unlock()
-		if !current {
+		if c.gen.Load() != gen {
 			return nil, nil
 		}
 		// Another flight may have populated the cache since our initial lookup.
-		if e != nil {
+		if e, ok := entries.GetIfPresent(key); ok {
 			return e, nil
 		}
 
@@ -86,12 +105,11 @@ func (c *usageResponseCache) handle(gc *gin.Context) {
 			body:        rec.buf.Bytes(),
 			contentType: rec.Header().Get("Content-Type"),
 			statusCode:  rec.Status(),
-			expiresAt:   time.Now().Add(usageCacheTTL),
 		}
 		c.mu.Lock()
 		defer c.mu.Unlock()
-		if entry.statusCode == http.StatusOK && len(entry.body) > 0 && c.gen == gen {
-			c.storeEntryLocked(key, entry)
+		if entry.statusCode == http.StatusOK && len(entry.body) > 0 && c.gen.Load() == gen && !c.closed {
+			entries.Set(key, entry)
 			return entry, nil
 		}
 		return nil, nil
@@ -99,10 +117,7 @@ func (c *usageResponseCache) handle(gc *gin.Context) {
 	if handled {
 		return // The leader has already written its own response.
 	}
-	c.mu.Lock()
-	current := c.gen == gen
-	c.mu.Unlock()
-	if entry, ok := value.(*usageCacheEntry); ok && current {
+	if entry, ok := value.(*usageCacheEntry); ok && c.gen.Load() == gen {
 		serveUsageCacheEntry(gc, entry)
 		gc.Abort()
 		return
@@ -111,39 +126,29 @@ func (c *usageResponseCache) handle(gc *gin.Context) {
 	gc.Next()
 }
 
-func (c *usageResponseCache) entryLocked(key string) *usageCacheEntry {
-	if entry := c.entries[key]; entry != nil && time.Now().Before(entry.expiresAt) {
-		return entry
-	}
-	return nil
-}
-
 func serveUsageCacheEntry(gc *gin.Context, e *usageCacheEntry) {
 	gc.Data(e.statusCode, e.contentType, e.body)
-}
-
-func (c *usageResponseCache) storeEntryLocked(key string, e *usageCacheEntry) {
-	if c.entries == nil {
-		c.entries = make(map[string]*usageCacheEntry)
-	}
-	if _, exists := c.entries[key]; !exists {
-		c.order = append(c.order, key)
-	}
-	c.entries[key] = e
-	for len(c.order) > usageCacheMaxEntries {
-		oldest := c.order[0]
-		c.order = c.order[1:]
-		delete(c.entries, oldest)
-	}
 }
 
 // flush 清空全部缓存条目并递增 generation，使进行中的回源无法把旧响应写回。
 func (c *usageResponseCache) flush() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.gen++
-	c.entries = nil
-	c.order = nil
+	if entries := c.entries.Load(); entries != nil {
+		entries.InvalidateAll()
+	}
+	// Publish the new generation only after old entries have been removed.
+	c.gen.Add(1)
+}
+
+func (c *usageResponseCache) close() {
+	c.mu.Lock()
+	c.closed = true
+	entries := c.entries.Load()
+	c.mu.Unlock()
+	if entries != nil {
+		entries.StopAllGoroutines()
+	}
 }
 
 // usageCacheRecorder 捕获写入的响应字节，同时保持原 writer 行为（状态码、

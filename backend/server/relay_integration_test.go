@@ -31,11 +31,12 @@ func parseTestIP(t *testing.T, raw string) net.IP {
 }
 
 // newUnboundTestServer constructs the transport shell used by isolated tests.
-func newUnboundTestServer(groups []config.ModelGroupConfig) *Server {
+func newUnboundTestServer(t *testing.T, groups []config.ModelGroupConfig) *Server {
+	t.Helper()
 	// TestMain allows loopback connections to isolated httptest upstreams.
 	cfg := &config.Config{}
 	cfg.Host, cfg.Port = "127.0.0.1", 8765
-	return &Server{
+	s := &Server{
 		config:                 cfg,
 		engine:                 gin.New(),
 		protocolTransport:      relay.NewProtocolTransport(10 * time.Second),
@@ -44,6 +45,8 @@ func newUnboundTestServer(groups []config.ModelGroupConfig) *Server {
 		affinity:               newAffinityCache(),
 		skipOutboundValidation: true,
 	}
+	t.Cleanup(s.closeCaches)
+	return s
 }
 
 // newTestServerWithStore 在 newTestServer 基础上挂临时 SQLite store：
@@ -67,7 +70,7 @@ func newTestServerWithStore(t *testing.T, groups []config.ModelGroupConfig, defi
 			groups[index].VisionCapable = &hasMedia
 		}
 	}
-	s := newUnboundTestServer(groups)
+	s := newUnboundTestServer(t, groups)
 	store, err := storage.Open(filepath.Join(t.TempDir(), "usage-test.sqlite3"))
 	if err != nil {
 		t.Fatalf("storage.Open() error = %v", err)

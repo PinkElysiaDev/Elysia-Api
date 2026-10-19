@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,6 +21,7 @@ func TestUsageCacheCoalescesAndServes(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		cache := &usageResponseCache{}
+		defer cache.close()
 		var executions int32
 		release := make(chan struct{})
 		unblock := sync.OnceFunc(func() { close(release) })
@@ -84,6 +86,7 @@ func TestUsageCacheSkipsUncacheableResponses(t *testing.T) {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				cache := &usageResponseCache{}
+				defer cache.close()
 				var executions atomic.Int32
 				release := make(chan struct{})
 				unblock := sync.OnceFunc(func() { close(release) })
@@ -130,6 +133,7 @@ func TestUsageCacheFlushIsolatesFlights(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		cache := &usageResponseCache{}
+		defer cache.close()
 		var executions atomic.Int32
 		release := make(chan struct{})
 		unblock := sync.OnceFunc(func() { close(release) })
@@ -178,6 +182,7 @@ func TestUsageCacheSurvivesHandlerPanic(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		cache := &usageResponseCache{}
+		defer cache.close()
 		release := make(chan struct{})
 		unblock := sync.OnceFunc(func() { close(release) })
 		defer unblock()
@@ -217,4 +222,51 @@ func TestUsageCacheKeyEscaping(t *testing.T) {
 	if usageCacheKey(left) == usageCacheKey(right) {
 		t.Fatal("distinct filter sets must not collide")
 	}
+}
+
+func TestUsageCacheReadsDoNotExtendTTL(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		cache := &usageResponseCache{}
+		defer cache.close()
+		calls := 0
+		router := gin.New()
+		router.GET("/p", cache.middleware(), func(c *gin.Context) {
+			calls++
+			c.JSON(http.StatusOK, gin.H{"calls": calls})
+		})
+		request := func() string {
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/p", nil))
+			return w.Body.String()
+		}
+		first := request()
+		time.Sleep(usageCacheTTL - time.Second)
+		if got := request(); got != first || calls != 1 {
+			t.Fatalf("cache expired early: body=%s calls=%d", got, calls)
+		}
+		time.Sleep(2 * time.Second)
+		if got := request(); got == first || calls != 2 {
+			t.Fatalf("read extended TTL: body=%s calls=%d", got, calls)
+		}
+	})
+}
+
+func TestCacheShutdownStopsMaintenance(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		s := &Server{affinity: newAffinityCache()}
+		defer s.closeCaches()
+		entries := s.usageCache.cache()
+		s.affinity.set("key", "group", "model")
+		s.closeCaches()
+		if s.affinity.entries.StopAllGoroutines() || entries.StopAllGoroutines() {
+			t.Fatal("server cache cleanup left maintenance running")
+		}
+		var unused usageResponseCache
+		unused.close()
+		if unused.cache() != nil {
+			t.Fatal("cache initialized after shutdown")
+		}
+	})
 }
