@@ -4,7 +4,7 @@
 
 ## 开始使用
 
-将整个 `protocol-audit` 文件夹放在 Elysia-Api 的 `scripts/` 下。需要 Node.js 22+、Go 1.25+ 和已安装项目依赖的源码。以下命令在**项目根目录**执行。
+将整个 `protocol-audit` 文件夹放在 Elysia-Api 的 `scripts/` 下。需要 Node.js 22+、Go 1.27.2+ 和已安装项目依赖的源码。以下命令在**项目根目录**执行。
 
 **1. 首次使用，复制示例配置：**
 

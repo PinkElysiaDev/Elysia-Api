@@ -42,16 +42,8 @@ func (s *LogStore) Checkpoint(ctx context.Context, truncate bool) (CheckpointRes
 }
 
 func (s *LogStore) ReclaimLogPages(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf("PRAGMA incremental_vacuum(%d)", logReclaimPageLimit))
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	// incremental_vacuum yields once per page. Exec or a single Next may only
-	// reclaim one page with drivers which stop at the first SQLITE_ROW.
-	for rows.Next() {
-	}
-	return rows.Err()
+	_, err := s.db.ExecContext(ctx, fmt.Sprintf("PRAGMA incremental_vacuum(%d)", logReclaimPageLimit))
+	return err
 }
 
 type LogContentStats struct {

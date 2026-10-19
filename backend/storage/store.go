@@ -6,12 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	_ "modernc.org/sqlite"
 )
 
 const sqliteBusyTimeout = 5 * time.Second
@@ -38,7 +37,14 @@ func OpenWithLogPath(path, logPath string, key []byte) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", path)
+	dsn, err := sqliteDatabaseDSN(path, url.Values{
+		"_synchronous": {"NORMAL"},
+		"_pragma":      {"cache_size(-65536)"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -104,14 +110,6 @@ func (s *Store) init(ctx context.Context) error {
 	pragmas := []string{
 		"PRAGMA auto_vacuum=INCREMENTAL",
 		"PRAGMA journal_mode=WAL",
-		fmt.Sprintf("PRAGMA busy_timeout=%d", sqliteBusyTimeout.Milliseconds()),
-		"PRAGMA foreign_keys=ON",
-		"PRAGMA synchronous=NORMAL",
-		// Business queries use in-memory temporary structures. Log aggregates
-		// and their separate connection/cache settings belong to LogStore.
-		"PRAGMA temp_store=MEMORY",
-		// Upper bound for the business database's page cache.
-		"PRAGMA cache_size=-65536",
 	}
 	for _, stmt := range pragmas {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {

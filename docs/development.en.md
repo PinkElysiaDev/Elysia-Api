@@ -9,7 +9,7 @@ Develop, validate, and build Elysia API locally. Run commands from the repositor
 | Tool | Requirement |
 | --- | --- |
 | Node.js | 22+; CI uses 22 |
-| Go | 1.25+; CI uses 1.25.x |
+| Go | 1.27.2+; CI uses the version declared in `backend/go.mod` |
 | npm | Included with Node.js; workspace installation and builds |
 | macOS packaging | A macOS host and a Swift / AppKit toolchain that links macOS 12 arm64 and x86_64 targets |
 

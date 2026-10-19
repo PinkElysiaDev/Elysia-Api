@@ -12,7 +12,7 @@ React 18 + TypeScript 管理界面，使用 Vite、Tailwind、Radix、SWR、Rech
 
 ## 前提
 
-使用 Node.js 22、npm 和 Go 1.25。以下命令均在仓库根目录执行。首次安装运行 `npm install`；完整环境说明见[开发指南](../../docs/development.md)。
+使用 Node.js 22、npm 和 Go 1.27.2。以下命令均在仓库根目录执行。首次安装运行 `npm install`；完整环境说明见[开发指南](../../docs/development.md)。
 
 ## 本地开发
 

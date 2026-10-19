@@ -12,7 +12,7 @@ COPY scripts/ scripts/
 COPY packages/webui/ packages/webui/
 RUN npm run build --workspace @root/webui
 
-FROM golang:1.25-bookworm AS backend-builder
+FROM golang:1.27.2-bookworm AS backend-builder
 WORKDIR /workspace/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download

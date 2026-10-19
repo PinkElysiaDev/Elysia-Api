@@ -111,26 +111,16 @@ func OpenLogStore(path string) (*LogStore, error) {
 }
 
 func logDatabaseDSN(path string, readOnly bool) (string, error) {
-	absolute, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-	filePath := filepath.ToSlash(absolute)
-	if !strings.HasPrefix(filePath, "/") {
-		filePath = "/" + filePath
-	}
-	u := url.URL{Scheme: "file", Path: filePath}
-	q := url.Values{"_pragma": {"busy_timeout(5000)", "foreign_keys(1)", "temp_store(MEMORY)"}}
+	q := url.Values{}
 	if readOnly {
 		q.Set("mode", "ro")
-		q.Add("_pragma", "query_only(1)")
+		q.Set("_query_only", "on")
 		q.Add("_pragma", "cache_size(-8192)")
 	} else {
-		q.Add("_pragma", "synchronous(FULL)")
+		q.Set("_synchronous", "FULL")
 		q.Add("_pragma", "cache_size(-32768)")
 	}
-	u.RawQuery = q.Encode()
-	return u.String(), nil
+	return sqliteDatabaseDSN(path, q)
 }
 
 func (s *LogStore) init(ctx context.Context) error {

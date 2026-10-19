@@ -9,7 +9,7 @@
 | 工具 | 要求 |
 | --- | --- |
 | Node.js | 22+；CI 使用 22 |
-| Go | 1.25+；CI 使用 1.25.x |
+| Go | 1.27.2+；CI 使用 `backend/go.mod` 声明的版本 |
 | npm | 随 Node.js 提供，用于 workspace 安装与构建 |
 | macOS 打包 | macOS 主机，以及能链接 macOS 12 arm64 / x86_64 的 Swift / AppKit 工具链 |
 

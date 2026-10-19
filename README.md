@@ -153,7 +153,7 @@ docker run -d --name elysia-api \
 
 ## 构建
 
-依赖：Node.js 22+、Go 1.25+
+依赖：Node.js 22+、Go 1.27.2+
 
 ```bash
 npm install && npm run build

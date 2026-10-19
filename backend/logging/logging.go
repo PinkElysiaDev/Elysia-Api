@@ -8,8 +8,8 @@ import (
 	"encoding/json"
 	"io"
 	stdlog "log"
+	"log/slog"
 	"os"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -79,14 +79,7 @@ func (l *Logger) Event(level zerolog.Level) *zerolog.Event {
 // Standard bridges APIs such as http.Server.ErrorLog, whose public contract
 // requires *log.Logger. Formatting, levels and persistence still use zerolog.
 func (l *Logger) Standard(component string) *stdlog.Logger {
-	return stdlog.New(standardWriter{logger: l.Component(component)}, "", 0)
-}
-
-type standardWriter struct{ logger zerolog.Logger }
-
-func (w standardWriter) Write(p []byte) (int, error) {
-	w.logger.Error().Msg(strings.TrimSpace(string(p)))
-	return len(p), nil
+	return slog.NewLogLogger(zerolog.NewSlogHandler(l.Component(component)), slog.LevelError)
 }
 
 func (l *Logger) Write(p []byte) (int, error) { return l.WriteLevel(zerolog.InfoLevel, p) }

@@ -156,7 +156,7 @@ See [deployment](docs/deployment.en.md) for configuration fields, environment va
 
 ## Build
 
-Requirements: Node.js 22+, Go 1.25+.
+Requirements: Node.js 22+, Go 1.27.2+.
 
 ```bash
 npm install && npm run build
