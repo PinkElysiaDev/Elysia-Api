@@ -1,0 +1,20 @@
+[
+  {
+    "Mode": "cpu",
+    "Workload": "image",
+    "SizeMiB": 31,
+    "Workers": 1,
+    "Repeat": 0,
+    "Requests": 11,
+    "Stream": false,
+    "ElapsedMS": 64343.3093,
+    "Metrics": {
+      "Allocated": 20222939728,
+      "Heap": 491339248,
+      "PeakHeap": 764833296,
+      "WorkingSet": 657313792,
+      "PeakWorkingSet": 831320064,
+      "Calls": 0
+    }
+  }
+]

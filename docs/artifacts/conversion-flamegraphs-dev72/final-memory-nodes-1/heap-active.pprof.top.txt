@@ -1,0 +1,117 @@
+File: server-matrix.test.exe
+Build ID: D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\server-matrix.test.exe2026-10-19 18:54:24.1076818 +0800 CST
+Type: inuse_space
+Time: 2026-10-19 18:56:42 CST
+Showing nodes accounting for 18998.21kB, 100% of 18998.21kB total
+      flat  flat%   sum%        cum   cum%
+ 4096.63kB 21.56% 21.56%  4096.63kB 21.56%  reflect.unsafe_New
+ 3197.71kB 16.83% 38.39%  3197.71kB 16.83%  reflect.unsafe_NewArray
+ 2688.81kB 14.15% 52.55%  2688.81kB 14.15%  github.com/elysia-api/backend/protocol.ParseValue
+ 2055.01kB 10.82% 63.36%  2055.01kB 10.82%  regexp.onePassCopy
+ 2051.25kB 10.80% 74.16%  2051.25kB 10.80%  runtime.mallocgc
+ 1029.53kB  5.42% 79.58%  1029.53kB  5.42%  encoding/json.typeFields
+    1027kB  5.41% 84.99%     1027kB  5.41%  reflect.growslice
+  799.43kB  4.21% 89.19%   799.43kB  4.21%  github.com/elysia-api/backend/protocol.cloneNodes
+  515.19kB  2.71% 91.91%   515.19kB  2.71%  debug/dwarf.init
+  513.50kB  2.70% 94.61%   513.50kB  2.70%  regexp/syntax.(*compiler).inst (inline)
+  512.08kB  2.70% 97.30%  3592.65kB 18.91%  regexp.compile
+  512.05kB  2.70%   100%   512.05kB  2.70%  regexp/syntax.(*parser).newRegexp (inline)
+         0     0%   100%     1027kB  5.41%  encoding/json.(*decodeState).array
+         0     0%   100%     1027kB  5.41%  encoding/json.(*decodeState).object
+         0     0%   100%     1027kB  5.41%  encoding/json.(*decodeState).unmarshal
+         0     0%   100%     1027kB  5.41%  encoding/json.(*decodeState).value
+         0     0%   100%  1029.53kB  5.42%  encoding/json.(*encodeState).marshal
+         0     0%   100%  1029.53kB  5.42%  encoding/json.(*encodeState).reflectValue
+         0     0%   100%  1029.53kB  5.42%  encoding/json.Marshal
+         0     0%   100%     1027kB  5.41%  encoding/json.Unmarshal
+         0     0%   100%  1029.53kB  5.42%  encoding/json.cachedTypeFields
+         0     0%   100%   512.20kB  2.70%  encoding/json.newArrayEncoder
+         0     0%   100%   517.33kB  2.72%  encoding/json.newPtrEncoder
+         0     0%   100%   512.20kB  2.70%  encoding/json.newSliceEncoder
+         0     0%   100%  1029.53kB  5.42%  encoding/json.newStructEncoder (inline)
+         0     0%   100%  1029.53kB  5.42%  encoding/json.newTypeEncoder
+         0     0%   100%  1029.53kB  5.42%  encoding/json.typeEncoder
+         0     0%   100%  1029.53kB  5.42%  encoding/json.typeEncoder.OnceValue[go.shape.func].func3 (inline)
+         0     0%   100%  1029.53kB  5.42%  encoding/json.typeEncoder.func1
+         0     0%   100%  1029.53kB  5.42%  encoding/json.typeEncoder.typeEncoder.OnceValue[go.shape.func].func3.func4
+         0     0%   100%  1029.53kB  5.42%  encoding/json.valueEncoder
+         0     0%   100%  4754.59kB 25.03%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeRequest (inline)
+         0     0%   100%  3359.80kB 17.68%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest
+         0     0%   100%  4754.59kB 25.03%  github.com/elysia-api/backend/protocol.(*Compiled).decodeRequest
+         0     0%   100%  1311.51kB  6.90%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Request
+         0     0%   100%  1311.51kB  6.90%  github.com/elysia-api/backend/protocol.(*CompiledConversion).convertOwnedRequest
+         0     0%   100%   557.26kB  2.93%  github.com/elysia-api/backend/protocol.(*Compiler).Compile
+         0     0%   100%   799.43kB  4.21%  github.com/elysia-api/backend/protocol.(*Request).Clone
+         0     0%   100%   557.26kB  2.93%  github.com/elysia-api/backend/protocol.(*Service).ReloadAvailable (inline)
+         0     0%   100%   557.26kB  2.93%  github.com/elysia-api/backend/protocol.(*Service).loadVerifiedRevision
+         0     0%   100%   557.26kB  2.93%  github.com/elysia-api/backend/protocol.(*Service).reload
+         0     0%   100%   512.20kB  2.70%  github.com/elysia-api/backend/protocol.EncodeValue
+         0     0%   100%   512.20kB  2.70%  github.com/elysia-api/backend/protocol.ResolveConversion
+         0     0%   100%   512.20kB  2.70%  github.com/elysia-api/backend/protocol.Verify
+         0     0%   100%  1823.62kB  9.60%  github.com/elysia-api/backend/protocol.cloneRequestSemantic
+         0     0%   100%  7294.35kB 38.39%  github.com/elysia-api/backend/protocol.cloneSemantic
+         0     0%   100%   799.43kB  4.21%  github.com/elysia-api/backend/protocol.decodeTyped[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0%   100%  3359.80kB 17.68%  github.com/elysia-api/backend/protocol.encodeRequestMapping[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0%   100%  3359.80kB 17.68%  github.com/elysia-api/backend/protocol.encodeTyped[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0%   100%  4159.22kB 21.89%  github.com/elysia-api/backend/protocol.normalizeMappingRequest[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0%   100%   512.20kB  2.70%  github.com/elysia-api/backend/protocol.verifyAgentParameterWire
+         0     0%   100%   512.20kB  2.70%  github.com/elysia-api/backend/protocol.verifyAgentSamples
+         0     0%   100% 11252.33kB 59.23%  github.com/elysia-api/backend/server.(*Server).chatCompletions
+         0     0%   100%   557.26kB  2.93%  github.com/elysia-api/backend/server.(*Server).completeProtocolRuntimeInitialization
+         0     0%   100%  1069.46kB  5.63%  github.com/elysia-api/backend/server.(*Server).initializeProtocolRuntime
+         0     0%   100%   517.33kB  2.72%  github.com/elysia-api/backend/server.(*Server).persistUsageRecord
+         0     0%   100% 11252.33kB 59.23%  github.com/elysia-api/backend/server.(*Server).prepareGatewayPlan
+         0     0%   100%   512.20kB  2.70%  github.com/elysia-api/backend/server.(*Server).prepareProtocolRefresh
+         0     0%   100%   512.20kB  2.70%  github.com/elysia-api/backend/server.(*Server).recoverRequiredPresets
+         0     0%   100%   512.20kB  2.70%  github.com/elysia-api/backend/server.(*Server).refreshProtocolRuntimeScope
+         0     0%   100%   557.26kB  2.93%  github.com/elysia-api/backend/server.(*Server).reloadProtocolRuntime
+         0     0%   100%   517.33kB  2.72%  github.com/elysia-api/backend/server.(*Server).saveUsageRecordToStore
+         0     0%   100% 11252.33kB 59.23%  github.com/elysia-api/backend/server.(*Server).serveProtocolRequest
+         0     0%   100% 11252.33kB 59.23%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress
+         0     0%   100% 11252.33kB 59.23%  github.com/elysia-api/backend/server.(*Server).setupRoutes.(*Server).authMiddleware.func2
+         0     0%   100%   517.33kB  2.72%  github.com/elysia-api/backend/server.(*Server).startUsageWriter.func1
+         0     0%   100%   512.20kB  2.70%  github.com/elysia-api/backend/server.(*protocolRefreshPlan).ensureProtocol
+         0     0%   100%  1069.46kB  5.63%  github.com/elysia-api/backend/server.TestConversionHTTPProcess
+         0     0%   100% 11252.33kB 59.23%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func4
+         0     0%   100%  1069.46kB  5.63%  github.com/elysia-api/backend/server.newTestServerWithStore
+         0     0%   100%     1027kB  5.41%  github.com/elysia-api/backend/storage.(*Store).ConversionSnapshot
+         0     0%   100% 11252.33kB 59.23%  github.com/gin-gonic/gin.(*Context).Next (partial-inline)
+         0     0%   100% 11252.33kB 59.23%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0%   100% 11252.33kB 59.23%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0%   100%  2055.88kB 10.82%  github.com/go-playground/validator/v10.init
+         0     0%   100%  1536.77kB  8.09%  github.com/go-playground/validator/v10.init.0
+         0     0%   100% 11252.33kB 59.23%  net/http.(*conn).serve
+         0     0%   100% 11252.33kB 59.23%  net/http.HandlerFunc.ServeHTTP
+         0     0%   100% 11252.33kB 59.23%  net/http.serverHandler.ServeHTTP
+         0     0%   100%  3197.71kB 16.83%  reflect.MakeSlice
+         0     0%   100%  4096.63kB 21.56%  reflect.New
+         0     0%   100%     1027kB  5.41%  reflect.Value.Grow
+         0     0%   100%     1027kB  5.41%  reflect.Value.grow
+         0     0%   100%  3592.65kB 18.91%  regexp.Compile (inline)
+         0     0%   100%  3592.65kB 18.91%  regexp.MustCompile
+         0     0%   100%  2055.01kB 10.82%  regexp.compileOnePass
+         0     0%   100%   513.50kB  2.70%  regexp/syntax.(*compiler).compile
+         0     0%   100%   513.50kB  2.70%  regexp/syntax.(*compiler).rune
+         0     0%   100%   512.05kB  2.70%  regexp/syntax.(*parser).literal
+         0     0%   100%   513.50kB  2.70%  regexp/syntax.Compile
+         0     0%   100%   512.05kB  2.70%  regexp/syntax.Parse (inline)
+         0     0%   100%   512.05kB  2.70%  regexp/syntax.parse
+         0     0%   100%     1539kB  8.10%  runtime.allocm
+         0     0%   100%  4107.84kB 21.62%  runtime.doInit (inline)
+         0     0%   100%  4107.84kB 21.62%  runtime.doInit1
+         0     0%   100%   512.25kB  2.70%  runtime.gcBgMarkWorker
+         0     0%   100%  4107.84kB 21.62%  runtime.main
+         0     0%   100%     1026kB  5.40%  runtime.mcall
+         0     0%   100%      513kB  2.70%  runtime.mstart
+         0     0%   100%      513kB  2.70%  runtime.mstart0
+         0     0%   100%      513kB  2.70%  runtime.mstart1
+         0     0%   100%     1539kB  8.10%  runtime.newm
+         0     0%   100%  2051.25kB 10.80%  runtime.newobject
+         0     0%   100%     1026kB  5.40%  runtime.park_m
+         0     0%   100%     1026kB  5.40%  runtime.resetspinning
+         0     0%   100%     1539kB  8.10%  runtime.schedule
+         0     0%   100%     1539kB  8.10%  runtime.startm
+         0     0%   100%     1539kB  8.10%  runtime.wakep
+         0     0%   100%  1029.53kB  5.42%  sync.(*Once).Do (inline)
+         0     0%   100%  1029.53kB  5.42%  sync.(*Once).doSlow
+         0     0%   100%  1069.46kB  5.63%  testing.tRunner

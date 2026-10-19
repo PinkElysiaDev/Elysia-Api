@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "mode": "conversion-profiling",
+  "startedAt": "2026-10-19T10:50:55.041Z",
+  "status": "failed",
+  "commit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+  "compilerVersion": "2.0.0-dev.72",
+  "goVersion": "go version go1.26.5 windows/amd64",
+  "platform": "win32",
+  "architecture": "x64",
+  "cpu": "AMD Ryzen 5 7600X 6-Core Processor             ",
+  "steps": [
+    {
+      "name": "final-measure-chat-chat-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.58737564086914,
+        "availableCommitGiB": 0.467193603515625
+      },
+      "commitNeeded": 0.5,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-chat-responses-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:50:56.214Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-measure-chat-responses-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "476dfb25b183234c4b5039e44e0a86f2f702d64de94d96b1d0237a4c1abfb271",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "04d05b2d3df41bfe4f07100fe7fe239fee2779ef26f9149dd74d1a95316ec79b",
+          "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+          "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+          "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+          "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 3206,
+      "finishedAt": "2026-10-19T10:50:59.529Z"
+    },
+    {
+      "name": "final-measure-chat-anthropic-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:50:59.972Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-measure-chat-anthropic-1.log",
+      "status": "failed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "476dfb25b183234c4b5039e44e0a86f2f702d64de94d96b1d0237a4c1abfb271",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "04d05b2d3df41bfe4f07100fe7fe239fee2779ef26f9149dd74d1a95316ec79b",
+          "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+          "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+          "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+          "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 1,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 90043,
+      "finishedAt": "2026-10-19T10:52:30.128Z"
+    }
+  ],
+  "source": {
+    "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+    "trackedDiffSHA256": "476dfb25b183234c4b5039e44e0a86f2f702d64de94d96b1d0237a4c1abfb271",
+    "untrackedSourceSHA256": {
+      "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+      "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+      "backend/server/conversion_flamegraph_matrix_test.go": "04d05b2d3df41bfe4f07100fe7fe239fee2779ef26f9149dd74d1a95316ec79b",
+      "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+      "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+      "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+      "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+      "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+    }
+  },
+  "environment": {
+    "commit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+    "go": "go version go1.26.5 windows/amd64",
+    "created": "2026-10-19T10:50:54.488Z",
+    "cpu": "AMD Ryzen 5 7600X 6-Core Processor             ",
+    "logicalCPUs": 12,
+    "platform": "win32",
+    "architecture": "x64",
+    "GOGC": "100",
+    "GOMEMLIMIT": "8GiB",
+    "GOMAXPROCS": "Go default",
+    "pgo": "off",
+    "memory": {
+      "availablePhysicalGiB": 12.655723571777344,
+      "availableCommitGiB": 0.5282325744628906
+    },
+    "binarySHA256": "5b3be0de403f23dbe88b0adbd4ae014cbef5bd410a168e96d8abd0e1db5666bf",
+    "productionDiff": ""
+  },
+  "reason": "final-measure-chat-anthropic-1",
+  "finishedAt": "2026-10-19T10:52:30.129Z"
+}

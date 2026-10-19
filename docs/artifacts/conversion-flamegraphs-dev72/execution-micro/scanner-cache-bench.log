@@ -1,0 +1,45 @@
+goos: windows
+goarch: amd64
+pkg: github.com/elysia-api/backend/protocol
+cpu: AMD Ryzen 5 7600X 6-Core Processor             
+BenchmarkInvestigationStringScan/small/current-12 	  910078	       411.8 ns/op	 626.58 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/small/current-12 	  842400	       421.3 ns/op	 612.33 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/small/current-12 	  885172	       423.6 ns/op	 609.01 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/small/current-12 	  857284	       421.0 ns/op	 612.89 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/small/current-12 	  875166	       418.0 ns/op	 617.21 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/small/onePassPrototype-12         	 1317818	       271.3 ns/op	 951.11 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/small/onePassPrototype-12         	 1335918	       267.5 ns/op	 964.38 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/small/onePassPrototype-12         	 1364820	       266.6 ns/op	 967.76 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/small/onePassPrototype-12         	 1251000	       282.9 ns/op	 911.92 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/small/onePassPrototype-12         	 1332228	       269.8 ns/op	 956.32 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/2MiB/current-12                   	     100	   3630138 ns/op	 577.71 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/2MiB/current-12                   	     100	   3517724 ns/op	 596.17 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/2MiB/current-12                   	      96	   3505340 ns/op	 598.27 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/2MiB/current-12                   	     100	   3642534 ns/op	 575.74 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/2MiB/current-12                   	     100	   3418501 ns/op	 613.47 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/2MiB/onePassPrototype-12          	     169	   2122772 ns/op	 987.93 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/2MiB/onePassPrototype-12          	     160	   2186704 ns/op	 959.05 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/2MiB/onePassPrototype-12          	     150	   2309059 ns/op	 908.23 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/2MiB/onePassPrototype-12          	     164	   2173770 ns/op	 964.75 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/2MiB/onePassPrototype-12          	     159	   2231118 ns/op	 939.96 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/escaped/current-12                	   23300	     15781 ns/op	 950.66 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/escaped/current-12                	   22507	     16674 ns/op	 899.70 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/escaped/current-12                	   19818	     17251 ns/op	 869.63 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/escaped/current-12                	   21362	     16598 ns/op	 903.83 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/escaped/current-12                	   21421	     17053 ns/op	 879.71 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/escaped/onePassPrototype-12       	   34903	     10886 ns/op	1378.05 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/escaped/onePassPrototype-12       	   33762	     11628 ns/op	1290.18 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/escaped/onePassPrototype-12       	   26432	     12221 ns/op	1227.56 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/escaped/onePassPrototype-12       	   32472	     11117 ns/op	1349.51 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationStringScan/escaped/onePassPrototype-12       	   35344	     10110 ns/op	1483.81 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationCacheLookup/small-12                         	33718915	        10.43 ns/op	24549.62 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationCacheLookup/small-12                         	35315930	        10.49 ns/op	24402.94 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationCacheLookup/small-12                         	35337769	        10.80 ns/op	23713.39 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationCacheLookup/small-12                         	33682948	        10.56 ns/op	24251.28 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationCacheLookup/small-12                         	35897690	        10.51 ns/op	24365.77 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationCacheLookup/2MiB-12                          	   13750	     26130 ns/op	80258.56 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationCacheLookup/2MiB-12                          	   13842	     25933 ns/op	80869.52 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationCacheLookup/2MiB-12                          	   13755	     26253 ns/op	79882.29 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationCacheLookup/2MiB-12                          	   13756	     26149 ns/op	80200.32 MB/s	       0 B/op	       0 allocs/op
+BenchmarkInvestigationCacheLookup/2MiB-12                          	   13665	     26412 ns/op	79401.72 MB/s	       0 B/op	       0 allocs/op
+PASS

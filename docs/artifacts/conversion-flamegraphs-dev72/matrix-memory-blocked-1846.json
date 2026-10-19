@@ -1,0 +1,248 @@
+{
+  "schemaVersion": 1,
+  "mode": "conversion-profiling",
+  "startedAt": "2026-10-19T10:45:27.312Z",
+  "status": "partially_blocked",
+  "commit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+  "compilerVersion": "2.0.0-dev.72",
+  "goVersion": "go version go1.26.5 windows/amd64",
+  "platform": "win32",
+  "architecture": "x64",
+  "cpu": "AMD Ryzen 5 7600X 6-Core Processor             ",
+  "steps": [
+    {
+      "name": "final-measure-chat-chat-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.680740356445312,
+        "availableCommitGiB": 0.8739967346191406
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-chat-responses-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.678321838378906,
+        "availableCommitGiB": 0.8608055114746094
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-chat-anthropic-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.690193176269531,
+        "availableCommitGiB": 0.8797836303710938
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-chat-gemini-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.692535400390625,
+        "availableCommitGiB": 0.8830947875976562
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-responses-chat-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.68768310546875,
+        "availableCommitGiB": 0.8801689147949219
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-responses-responses-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.696441650390625,
+        "availableCommitGiB": 0.8858528137207031
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-responses-anthropic-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.691593170166016,
+        "availableCommitGiB": 0.8748779296875
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-responses-gemini-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.687980651855469,
+        "availableCommitGiB": 0.8691253662109375
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-anthropic-chat-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.686588287353516,
+        "availableCommitGiB": 0.8635711669921875
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-anthropic-responses-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.687767028808594,
+        "availableCommitGiB": 0.8623123168945312
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-anthropic-anthropic-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.69638442993164,
+        "availableCommitGiB": 0.8741607666015625
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-anthropic-gemini-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.692127227783203,
+        "availableCommitGiB": 0.870269775390625
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-gemini-chat-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.72674560546875,
+        "availableCommitGiB": 0.8983383178710938
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-gemini-responses-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.719635009765625,
+        "availableCommitGiB": 0.889251708984375
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-gemini-anthropic-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.717510223388672,
+        "availableCommitGiB": 0.8860893249511719
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-gemini-gemini-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.710548400878906,
+        "availableCommitGiB": 0.8852386474609375
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-chat-chat-tools-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.708263397216797,
+        "availableCommitGiB": 0.8783073425292969
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-chat-responses-tools-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.713973999023438,
+        "availableCommitGiB": 0.8866157531738281
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-chat-anthropic-tools-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.712215423583984,
+        "availableCommitGiB": 0.880523681640625
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-measure-chat-gemini-tools-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.727352142333984,
+        "availableCommitGiB": 0.8798179626464844
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    }
+  ],
+  "source": {
+    "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+    "trackedDiffSHA256": "476dfb25b183234c4b5039e44e0a86f2f702d64de94d96b1d0237a4c1abfb271",
+    "untrackedSourceSHA256": {
+      "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+      "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+      "backend/server/conversion_flamegraph_matrix_test.go": "4755bbfca6f64e677a1f1d57b87e46269ded7eab070a9ad2f06509bb3141af4a",
+      "backend/server/conversion_flamegraph_test.go": "01399ebbc525648aac690005947da6f091f96a1a075354e920ad004d68e5a458",
+      "scripts/profile-conversion.mjs": "11347ce023573f209347ba95d4f9acc884730c9e9ec4ddc8396233edfa5dc1d3",
+      "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+      "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+      "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+    }
+  },
+  "environment": {
+    "commit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+    "go": "go version go1.26.5 windows/amd64",
+    "created": "2026-10-19T10:45:26.779Z",
+    "cpu": "AMD Ryzen 5 7600X 6-Core Processor             ",
+    "logicalCPUs": 12,
+    "platform": "win32",
+    "architecture": "x64",
+    "GOGC": "100",
+    "GOMEMLIMIT": "8GiB",
+    "GOMAXPROCS": "Go default",
+    "pgo": "off",
+    "memory": {
+      "availablePhysicalGiB": 12.730831146240234,
+      "availableCommitGiB": 0.9553642272949219
+    },
+    "binarySHA256": "0e076e5b8fb2468099a4f4ce0613d13f4cc454d1a43e7a39ef9c8ed246646cf3",
+    "productionDiff": ""
+  },
+  "finishedAt": "2026-10-19T10:45:35.993Z"
+}

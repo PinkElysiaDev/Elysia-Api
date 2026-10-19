@@ -1,0 +1,20 @@
+[
+  {
+    "Mode": "memory",
+    "Workload": "events",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 0,
+    "Requests": 1,
+    "Stream": true,
+    "ElapsedMS": 38.1862,
+    "Metrics": {
+      "Allocated": 21971352,
+      "Heap": 6058816,
+      "PeakHeap": 6058816,
+      "WorkingSet": 41652224,
+      "PeakWorkingSet": 41730048,
+      "Calls": 0
+    }
+  }
+]

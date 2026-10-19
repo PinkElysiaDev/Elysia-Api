@@ -1,0 +1,21 @@
+final-measure-chat-chat-1: passed (2556 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-chat-chat-1.log
+final-measure-chat-responses-1: passed (2648 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-chat-responses-1.log
+final-measure-chat-anthropic-1: passed (2178 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-chat-anthropic-1.log
+final-measure-chat-gemini-1: passed (2238 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-chat-gemini-1.log
+final-measure-responses-chat-1: passed (2210 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-responses-chat-1.log
+final-measure-responses-responses-1: passed (2617 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-responses-responses-1.log
+final-measure-responses-anthropic-1: passed (2387 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-responses-anthropic-1.log
+final-measure-responses-gemini-1: passed (2318 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-responses-gemini-1.log
+final-measure-anthropic-chat-1: passed (2091 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-anthropic-chat-1.log
+final-measure-anthropic-responses-1: passed (2515 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-anthropic-responses-1.log
+final-measure-anthropic-anthropic-1: passed (2270 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-anthropic-anthropic-1.log
+final-measure-anthropic-gemini-1: passed (2188 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-anthropic-gemini-1.log
+final-measure-gemini-chat-1: passed (2082 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-gemini-chat-1.log
+final-measure-gemini-responses-1: passed (2547 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-gemini-responses-1.log
+final-measure-gemini-anthropic-1: passed (2269 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-gemini-anthropic-1.log
+final-measure-gemini-gemini-1: passed (2296 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-gemini-gemini-1.log
+final-measure-chat-chat-tools-1: passed (2155 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-chat-chat-tools-1.log
+final-measure-chat-responses-tools-1: passed (2616 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-chat-responses-tools-1.log
+final-measure-chat-anthropic-tools-1: passed (2316 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-chat-anthropic-tools-1.log
+final-measure-chat-gemini-tools-1: passed (2218 ms); D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\final-measure-chat-gemini-tools-1.log
+Verification evidence: D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\report.json

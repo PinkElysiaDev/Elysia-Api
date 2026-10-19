@@ -1,0 +1,933 @@
+{
+  "schemaVersion": 1,
+  "mode": "conversion-profiling",
+  "startedAt": "2026-10-19T11:11:20.145Z",
+  "status": "partially_blocked",
+  "commit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+  "compilerVersion": "2.0.0-dev.72",
+  "goVersion": "go version go1.26.5 windows/amd64",
+  "platform": "win32",
+  "architecture": "x64",
+  "cpu": "AMD Ryzen 5 7600X 6-Core Processor             ",
+  "steps": [
+    {
+      "name": "timing-measure-image2-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:11:20.683Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-image2-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "a74c8c8823721ce7b7b2716691f05c350e81b1e7fa6a206a343a363918a11c6c",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "0987c04164a1d82f6a278767bfb150d18ab2117cb1fe168267f24c2bfeb29b53"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 7236,
+      "finishedAt": "2026-10-19T11:11:28.021Z"
+    },
+    {
+      "name": "timing-measure-image8-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:11:28.421Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-image8-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "a74c8c8823721ce7b7b2716691f05c350e81b1e7fa6a206a343a363918a11c6c",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "0987c04164a1d82f6a278767bfb150d18ab2117cb1fe168267f24c2bfeb29b53"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 20981,
+      "finishedAt": "2026-10-19T11:11:49.516Z"
+    },
+    {
+      "name": "timing-measure-image16-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.63797378540039,
+        "availableCommitGiB": 1.4503593444824219
+      },
+      "commitNeeded": 2,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "timing-measure-image31-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.639949798583984,
+        "availableCommitGiB": 1.446258544921875
+      },
+      "commitNeeded": 2,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "timing-measure-nodes-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:11:50.666Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-nodes-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 6568,
+      "finishedAt": "2026-10-19T11:11:57.336Z"
+    },
+    {
+      "name": "timing-measure-events-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:11:57.796Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-events-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2354,
+      "finishedAt": "2026-10-19T11:12:00.263Z"
+    },
+    {
+      "name": "timing-measure-small-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:12:00.728Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-small-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2153,
+      "finishedAt": "2026-10-19T11:12:02.990Z"
+    },
+    {
+      "name": "timing-measure-small4-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:12:03.409Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-small4-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2228,
+      "finishedAt": "2026-10-19T11:12:05.762Z"
+    },
+    {
+      "name": "timing-measure-small32-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:12:06.170Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-small32-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2876,
+      "finishedAt": "2026-10-19T11:12:09.150Z"
+    },
+    {
+      "name": "timing-measure-image2w4-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:12:09.566Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-image2w4-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 8615,
+      "finishedAt": "2026-10-19T11:12:18.283Z"
+    },
+    {
+      "name": "timing-measure-image8w4-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.63079833984375,
+        "availableCommitGiB": 1.808441162109375
+      },
+      "commitNeeded": 5,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "timing-measure-image31w4-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.63803482055664,
+        "availableCommitGiB": 1.8123054504394531
+      },
+      "commitNeeded": 16,
+      "physicalNeeded": 12
+    },
+    {
+      "name": "timing-measure-image2body-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:12:19.545Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-image2body-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 8702,
+      "finishedAt": "2026-10-19T11:12:28.348Z"
+    },
+    {
+      "name": "timing-measure-image2media-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:12:28.775Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-image2media-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 8207,
+      "finishedAt": "2026-10-19T11:12:37.091Z"
+    },
+    {
+      "name": "timing-measure-image31body-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.639091491699219,
+        "availableCommitGiB": 1.8081245422363281
+      },
+      "commitNeeded": 2,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "timing-measure-image31media-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.644599914550781,
+        "availableCommitGiB": 1.8161430358886719
+      },
+      "commitNeeded": 2,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "timing-measure-candidates4-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:12:38.319Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-candidates4-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 20275,
+      "finishedAt": "2026-10-19T11:12:58.711Z"
+    },
+    {
+      "name": "timing-measure-candidates16-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:12:59.147Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-candidates16-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 69623,
+      "finishedAt": "2026-10-19T11:14:08.885Z"
+    },
+    {
+      "name": "timing-measure-chat-chat-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:09.301Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-chat-chat-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 1969,
+      "finishedAt": "2026-10-19T11:14:11.374Z"
+    },
+    {
+      "name": "timing-measure-chat-responses-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:11.746Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-chat-responses-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2438,
+      "finishedAt": "2026-10-19T11:14:14.284Z"
+    },
+    {
+      "name": "timing-measure-chat-anthropic-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:14.669Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-chat-anthropic-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2318,
+      "finishedAt": "2026-10-19T11:14:17.090Z"
+    },
+    {
+      "name": "timing-measure-chat-gemini-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:17.508Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-chat-gemini-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2258,
+      "finishedAt": "2026-10-19T11:14:19.873Z"
+    },
+    {
+      "name": "timing-measure-responses-chat-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:20.278Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-responses-chat-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2145,
+      "finishedAt": "2026-10-19T11:14:22.527Z"
+    },
+    {
+      "name": "timing-measure-responses-responses-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:22.908Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-responses-responses-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2641,
+      "finishedAt": "2026-10-19T11:14:25.652Z"
+    },
+    {
+      "name": "timing-measure-responses-anthropic-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:26.087Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-responses-anthropic-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2287,
+      "finishedAt": "2026-10-19T11:14:28.489Z"
+    },
+    {
+      "name": "timing-measure-responses-gemini-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:28.899Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-responses-gemini-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2366,
+      "finishedAt": "2026-10-19T11:14:31.371Z"
+    },
+    {
+      "name": "timing-measure-anthropic-chat-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:31.782Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-anthropic-chat-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 1985,
+      "finishedAt": "2026-10-19T11:14:33.869Z"
+    },
+    {
+      "name": "timing-measure-anthropic-responses-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:34.228Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-anthropic-responses-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2505,
+      "finishedAt": "2026-10-19T11:14:36.830Z"
+    },
+    {
+      "name": "timing-measure-anthropic-anthropic-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:37.240Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-anthropic-anthropic-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2315,
+      "finishedAt": "2026-10-19T11:14:39.668Z"
+    },
+    {
+      "name": "timing-measure-anthropic-gemini-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:40.106Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-anthropic-gemini-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2187,
+      "finishedAt": "2026-10-19T11:14:42.423Z"
+    },
+    {
+      "name": "timing-measure-gemini-chat-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:42.841Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-gemini-chat-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2126,
+      "finishedAt": "2026-10-19T11:14:45.072Z"
+    },
+    {
+      "name": "timing-measure-gemini-responses-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:45.476Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-gemini-responses-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2594,
+      "finishedAt": "2026-10-19T11:14:48.174Z"
+    },
+    {
+      "name": "timing-measure-gemini-anthropic-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:48.627Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-gemini-anthropic-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2268,
+      "finishedAt": "2026-10-19T11:14:51.024Z"
+    },
+    {
+      "name": "timing-measure-gemini-gemini-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:51.435Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-gemini-gemini-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2128,
+      "finishedAt": "2026-10-19T11:14:53.671Z"
+    },
+    {
+      "name": "timing-measure-chat-chat-tools-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:54.074Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-chat-chat-tools-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2051,
+      "finishedAt": "2026-10-19T11:14:56.229Z"
+    },
+    {
+      "name": "timing-measure-chat-responses-tools-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:56.672Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-chat-responses-tools-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2568,
+      "finishedAt": "2026-10-19T11:14:59.350Z"
+    },
+    {
+      "name": "timing-measure-chat-anthropic-tools-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:14:59.784Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-chat-anthropic-tools-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2230,
+      "finishedAt": "2026-10-19T11:15:02.121Z"
+    },
+    {
+      "name": "timing-measure-chat-gemini-tools-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-timing.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T11:15:02.519Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\timing-measure-chat-gemini-tools-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "4a9be4cb01123dc5bb43df1697c4593ffadf714b5c684678b7fcbb9a5e33edd8",
+        "untrackedSourceSHA256": {
+          "scripts/package-conversion-profile.mjs": "ece148fd0aca9aedf69453698179243458e02dde57774703ba02f14d2d64eea6"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2122,
+      "finishedAt": "2026-10-19T11:15:04.744Z"
+    }
+  ],
+  "source": {
+    "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+    "trackedDiffSHA256": "a74c8c8823721ce7b7b2716691f05c350e81b1e7fa6a206a343a363918a11c6c",
+    "untrackedSourceSHA256": {
+      "scripts/package-conversion-profile.mjs": "0987c04164a1d82f6a278767bfb150d18ab2117cb1fe168267f24c2bfeb29b53"
+    }
+  },
+  "environment": {
+    "commit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+    "go": "go version go1.26.5 windows/amd64",
+    "created": "2026-10-19T11:11:19.681Z",
+    "cpu": "AMD Ryzen 5 7600X 6-Core Processor             ",
+    "logicalCPUs": 12,
+    "platform": "win32",
+    "architecture": "x64",
+    "GOGC": "100",
+    "GOMEMLIMIT": "8GiB",
+    "GOMAXPROCS": "Go default",
+    "pgo": "off",
+    "memory": {
+      "availablePhysicalGiB": 12.70599365234375,
+      "availableCommitGiB": 2.185230255126953
+    },
+    "binarySHA256": "2dde056ef8f6108a5101bbdeb48ab36f4a23b4be2fb03a637ceded1c2f249cd1",
+    "productionDiff": ""
+  },
+  "finishedAt": "2026-10-19T11:15:04.744Z"
+}

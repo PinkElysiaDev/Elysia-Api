@@ -1,0 +1,32 @@
+{
+  "commit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+  "go": "go version go1.26.5 windows/amd64",
+  "created": "2026-10-19T11:20:45.696Z",
+  "cpu": "AMD Ryzen 5 7600X 6-Core Processor             ",
+  "logicalCPUs": 12,
+  "platform": "win32",
+  "architecture": "x64",
+  "GOGC": "100",
+  "GOMEMLIMIT": "8GiB",
+  "GOMAXPROCS": "Go default",
+  "pgo": "off",
+  "memory": {
+    "availablePhysicalGiB": 12.8033447265625,
+    "availableCommitGiB": 1.5303192138671875
+  },
+  "binarySHA256": "039cb6ac7c94977154a544323711b1f2986f467f349552848fbccde518cad4e0",
+  "productionDiff": "",
+  "sampledAt": "2026-10-19T11:21:00.323Z",
+  "binary": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-verification.test.exe",
+  "mode": "measure",
+  "workload": "small",
+  "sizeMiB": 2,
+  "workers": 1,
+  "log": "off",
+  "candidates": 1,
+  "sourceID": "openai-chat-completions",
+  "targetID": "openai-responses",
+  "matrixTools": "",
+  "forcedGCBeforeTiming": false,
+  "seconds": null
+}

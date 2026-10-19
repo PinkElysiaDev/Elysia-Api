@@ -1,0 +1,43 @@
+File: builtin.test.exe
+Build ID: D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\builtin.test.exe2026-10-19 18:45:25.9485177 +0800 CST
+Type: inuse_space
+Time: 2026-10-19 18:46:09 CST
+Showing nodes accounting for 9913.07kB, 100% of 9913.07kB total
+      flat  flat%   sum%        cum   cum%
+ 2605.81kB 26.29% 26.29%  2605.81kB 26.29%  encoding/json.Marshal
+ 2093.75kB 21.12% 47.41%  2093.75kB 21.12%  github.com/elysia-api/backend/protocol.ParseValue
+ 2093.75kB 21.12% 68.53%  2093.75kB 21.12%  github.com/elysia-api/backend/protocol.Value.Bytes (inline)
+ 2093.75kB 21.12% 89.65%  2093.75kB 21.12%  internal/bytealg.MakeNoZero
+    1026kB 10.35%   100%     1026kB 10.35%  runtime.mallocgc
+         0     0%   100%  4187.51kB 42.24%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeRequest (inline)
+         0     0%   100%  2093.75kB 21.12%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest
+         0     0%   100%  4187.51kB 42.24%  github.com/elysia-api/backend/protocol.(*Compiled).decodeRequest
+         0     0%   100%  2093.75kB 21.12%  github.com/elysia-api/backend/protocol.(*Compiled).decodeRequest.func2
+         0     0%   100%  2093.75kB 21.12%  github.com/elysia-api/backend/protocol.EncodeValue
+         0     0%   100%  2093.75kB 21.12%  github.com/elysia-api/backend/protocol.decodeTyped[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0%   100%  2093.75kB 21.12%  github.com/elysia-api/backend/protocol.encodeValueContainer
+         0     0%   100%  8887.07kB 89.65%  github.com/elysia-api/backend/protocol/builtin.TestConversionInvestigationPhases
+         0     0%   100%  2093.75kB 21.12%  github.com/elysia-api/backend/protocol/builtin.decodeMedia
+         0     0%   100%  2605.81kB 26.29%  github.com/elysia-api/backend/protocol/builtin.investigationBody
+         0     0%   100%  2605.81kB 26.29%  github.com/elysia-api/backend/protocol/builtin.largeAnthropicRequest
+         0     0%   100%  2093.75kB 21.12%  github.com/elysia-api/backend/protocol/builtin.module.DecodeRequest
+         0     0%   100%  2093.75kB 21.12%  github.com/elysia-api/backend/protocol/builtin.module.decodeBlock
+         0     0%   100%  2093.75kB 21.12%  github.com/elysia-api/backend/protocol/builtin.module.decodeContent
+         0     0%   100%  2093.75kB 21.12%  github.com/elysia-api/backend/protocol/builtin.module.decodeMessages
+         0     0%   100%  2093.75kB 21.12%  github.com/elysia-api/backend/protocol/builtin.module.decodeRequest
+         0     0%   100%  2093.75kB 21.12%  github.com/elysia-api/backend/protocol/builtin.object
+         0     0%   100%     1026kB 10.35%  runtime.allocm
+         0     0%   100%      513kB  5.17%  runtime.mcall
+         0     0%   100%      513kB  5.17%  runtime.mstart
+         0     0%   100%      513kB  5.17%  runtime.mstart0
+         0     0%   100%      513kB  5.17%  runtime.mstart1
+         0     0%   100%     1026kB 10.35%  runtime.newm
+         0     0%   100%     1026kB 10.35%  runtime.newobject
+         0     0%   100%      513kB  5.17%  runtime.park_m
+         0     0%   100%     1026kB 10.35%  runtime.resetspinning
+         0     0%   100%     1026kB 10.35%  runtime.schedule
+         0     0%   100%     1026kB 10.35%  runtime.startm
+         0     0%   100%     1026kB 10.35%  runtime.wakep
+         0     0%   100%  2093.75kB 21.12%  strings.(*Builder).Grow
+         0     0%   100%  2093.75kB 21.12%  strings.(*Builder).grow
+         0     0%   100%  8887.07kB 89.65%  testing.tRunner

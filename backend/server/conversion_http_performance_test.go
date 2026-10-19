@@ -155,6 +155,13 @@ func startConversionHTTPChild(t *testing.T, role, upstream string) conversionHTT
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
+		select {
+		case err := <-done:
+			done <- err // Cleanup must still observe the child exit.
+			output, _ := os.ReadFile(filepath.Join(directory, "child.log"))
+			t.Fatalf("%s child exited before ready: %v\n%.8192s", role, err, output)
+		default:
+		}
 	}
 	t.Fatal("child did not publish local address", role)
 	return conversionHTTPAddress{}
@@ -172,51 +179,75 @@ func TestConversionHTTPProcess(t *testing.T) {
 	var calls atomic.Int64
 	var gateway *httptest.Server
 	if role == "provider" {
-		gateway = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			calls.Add(1)
-			var input struct {
-				Model    string
-				Stream   bool
-				Messages []json.RawMessage
-			}
-			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-				t.Error(err)
-				w.WriteHeader(500)
-				return
-			}
-			isCandidateModel := input.Model == "m"
-			for index := 1; index < candidates; index++ {
-				isCandidateModel = isCandidateModel || input.Model == fmt.Sprintf("m%d", index)
-			}
-			if !isCandidateModel || len(input.Messages) != 2 || !bytes.Contains(input.Messages[1], []byte(strings.Repeat("A", size<<20))) {
-				t.Error("tool/image history changed")
-				w.WriteHeader(500)
-				return
-			}
-			if !input.Stream {
-				w.Header().Set("Content-Type", "application/json")
-				fmt.Fprintf(w, `{"id":"msg_1","type":"message","role":"assistant","model":%q,"content":[{"type":"text","text":"complete"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1}}`, input.Model)
-				return
-			}
-			w.Header().Set("Content-Type", "text/event-stream")
-			for _, frame := range []string{
-				fmt.Sprintf(`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":%q,"content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}`, input.Model),
-				`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
-				`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"complete"}}`,
-				`{"type":"content_block_stop","index":0}`,
-				`{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":1}}`,
-				`{"type":"message_stop"}`,
-			} {
-				fmt.Fprintf(w, "data: %s\n\n", frame)
-				if os.Getenv("ELYSIA_CONVERSION_HTTP_CANCEL") == "1" && strings.Contains(frame, `"type":"content_block_delta"`) {
-					w.(http.Flusher).Flush()
-					<-r.Context().Done()
+		if targetID := os.Getenv("ELYSIA_FLAME_TARGET"); targetID != "" {
+			handler := flameMatrixProvider(t, flameMatrixProtocol(t, targetID))
+			gateway = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); handler.ServeHTTP(w, r) }))
+		} else {
+			gateway = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				var input struct {
+					Model    string
+					Stream   bool
+					Messages []json.RawMessage
+				}
+				if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+					t.Error(err)
+					w.WriteHeader(500)
 					return
 				}
-			}
-		}))
+				isCandidateModel := input.Model == "m"
+				for index := 1; index < candidates; index++ {
+					isCandidateModel = isCandidateModel || input.Model == fmt.Sprintf("m%d", index)
+				}
+				isHistoryValid := len(input.Messages) == 2 && bytes.Contains(input.Messages[1], []byte(strings.Repeat("A", size<<20)))
+				if workload := os.Getenv("ELYSIA_FLAME_WORKLOAD"); workload != "" && workload != "image" {
+					isHistoryValid = validFlameHistory(input.Messages, workload)
+				}
+				if !isCandidateModel || !isHistoryValid {
+					t.Error("tool/image history changed")
+					w.WriteHeader(500)
+					return
+				}
+				if !input.Stream {
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprintf(w, `{"id":"msg_1","type":"message","role":"assistant","model":%q,"content":[{"type":"text","text":"complete"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1}}`, input.Model)
+					return
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				frames := []string{
+					fmt.Sprintf(`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":%q,"content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}`, input.Model),
+					`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+					`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"complete"}}`,
+					`{"type":"content_block_stop","index":0}`,
+					`{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":1}}`,
+					`{"type":"message_stop"}`,
+				}
+				if os.Getenv("ELYSIA_FLAME_WORKLOAD") == "events" {
+					prefix := append([]string(nil), frames[:2]...)
+					for range 512 {
+						prefix = append(prefix, `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"chunk"}}`)
+					}
+					frames = append(prefix, frames[2:]...)
+				}
+				for _, frame := range frames {
+					fmt.Fprintf(w, "data: %s\n\n", frame)
+					if os.Getenv("ELYSIA_FLAME_WORKLOAD") == "events" {
+						w.(http.Flusher).Flush()
+					}
+					if os.Getenv("ELYSIA_CONVERSION_HTTP_CANCEL") == "1" && strings.Contains(frame, `"type":"content_block_delta"`) {
+						w.(http.Flusher).Flush()
+						<-r.Context().Done()
+						return
+					}
+				}
+			}))
+		}
 	} else if role == "gateway" {
 		group := config.ModelGroupConfig{ID: "g", Name: "grp", Enabled: true, Strategy: "round-robin", Models: []config.ModelRef{{ID: "m", Name: "m", BaseURL: os.Getenv("ELYSIA_CONVERSION_HTTP_UPSTREAM"), Platform: "claude", APIKey: "synthetic", ToolsCapable: true, VisionCapable: true}}}
+		if targetID := os.Getenv("ELYSIA_FLAME_TARGET"); targetID != "" {
+			group.Models[0].Platform = "custom:" + targetID
+			group.Models[0].BaseURL = loadBase(group.Models[0].BaseURL, flameMatrixProtocol(t, targetID))
+		}
 
 		for index := 1; index < candidates; index++ {
 			model := group.Models[0]
@@ -246,7 +277,11 @@ func TestConversionHTTPProcess(t *testing.T) {
 			server.stopUsageWriter()
 			server.startUsageWriter()
 		}
-		server.engine.POST("/v1/messages", server.chatCompletions)
+		if os.Getenv("ELYSIA_FLAME_WORKLOAD") != "" {
+			configureFlameGateway(t, server)
+		} else {
+			server.engine.POST("/v1/messages", server.chatCompletions)
+		}
 		gateway = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			active.Add(1)
 			defer active.Add(-1)
@@ -293,7 +328,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 		runtime.ReadMemStats(&memory)
 		working := conversionWorkingSetBytes()
 		mutex.Lock()
-		if action == "reset" {
+		if action == "reset" || action == "reset-without-gc" {
 			startAlloc, peakHeap, peakWorkingSet = memory.TotalAlloc, memory.HeapAlloc, working
 		}
 		result := conversionHTTPMetrics{Allocated: memory.TotalAlloc - startAlloc, Heap: memory.HeapAlloc, PeakHeap: max(peakHeap, memory.HeapAlloc), WorkingSet: working, PeakWorkingSet: max(peakWorkingSet, working), Calls: calls.Load()}

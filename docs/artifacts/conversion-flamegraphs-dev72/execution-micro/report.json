@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "mode": "micro",
+  "startedAt": "2026-10-19T10:38:40.617Z",
+  "status": "passed",
+  "commit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+  "compilerVersion": "2.0.0-dev.72",
+  "goVersion": "go version go1.26.5 windows/amd64",
+  "platform": "win32",
+  "architecture": "x64",
+  "cpu": "AMD Ryzen 5 7600X 6-Core Processor             ",
+  "steps": [
+    {
+      "name": "scanner-equivalence",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\protocol.test.exe",
+      "args": [
+        "-test.run=^TestInvestigationStringScan$",
+        "-test.v"
+      ],
+      "startedAt": "2026-10-19T10:38:40.788Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\execution-micro\\scanner-equivalence.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "476dfb25b183234c4b5039e44e0a86f2f702d64de94d96b1d0237a4c1abfb271",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "5efdfd842070a6110f4b55bb754ff84ec8bfae9ccddfb87b096b9bf225f6e812",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "f3e4733b19cbccb8be488807212e66abd543080dd76ec3f34a3a46b5fe3e04b0",
+          "backend/server/conversion_flamegraph_test.go": "01399ebbc525648aac690005947da6f091f96a1a075354e920ad004d68e5a458",
+          "scripts/profile-conversion.mjs": "e213d1d108d83879d23b63c2531b8a0710b4f1636f37964ad00a12141f0aa2a0",
+          "scripts/profile-ledger.mjs": "83ddc0c12a3038f91f1816f7c6de05a361d69ba9335cad0a1a77250ef23f44ed",
+          "scripts/run-conversion-investigation.mjs": "8b088daa0ca62472fb3df2b3b9b9e7568e7be94c6398934f9bbede43f3799c71",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 300,
+      "finishedAt": "2026-10-19T10:38:41.185Z"
+    },
+    {
+      "name": "scanner-cache-bench",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\protocol.test.exe",
+      "args": [
+        "-test.run=^$",
+        "-test.bench=BenchmarkInvestigation",
+        "-test.benchmem",
+        "-test.benchtime=300ms",
+        "-test.count=5"
+      ],
+      "startedAt": "2026-10-19T10:38:41.186Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\execution-micro\\scanner-cache-bench.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "476dfb25b183234c4b5039e44e0a86f2f702d64de94d96b1d0237a4c1abfb271",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "5efdfd842070a6110f4b55bb754ff84ec8bfae9ccddfb87b096b9bf225f6e812",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "f3e4733b19cbccb8be488807212e66abd543080dd76ec3f34a3a46b5fe3e04b0",
+          "backend/server/conversion_flamegraph_test.go": "01399ebbc525648aac690005947da6f091f96a1a075354e920ad004d68e5a458",
+          "scripts/profile-conversion.mjs": "e213d1d108d83879d23b63c2531b8a0710b4f1636f37964ad00a12141f0aa2a0",
+          "scripts/profile-ledger.mjs": "83ddc0c12a3038f91f1816f7c6de05a361d69ba9335cad0a1a77250ef23f44ed",
+          "scripts/run-conversion-investigation.mjs": "8b088daa0ca62472fb3df2b3b9b9e7568e7be94c6398934f9bbede43f3799c71",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 14834,
+      "finishedAt": "2026-10-19T10:38:56.122Z"
+    },
+    {
+      "name": "scanner-fuzz",
+      "command": "go",
+      "args": [
+        "test",
+        "-pgo=off",
+        "./protocol",
+        "-run=^$",
+        "-fuzz=^FuzzInvestigationStringScan$",
+        "-fuzztime=10s",
+        "-parallel=2"
+      ],
+      "startedAt": "2026-10-19T10:38:56.123Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\execution-micro\\scanner-fuzz.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "476dfb25b183234c4b5039e44e0a86f2f702d64de94d96b1d0237a4c1abfb271",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "5efdfd842070a6110f4b55bb754ff84ec8bfae9ccddfb87b096b9bf225f6e812",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "f3e4733b19cbccb8be488807212e66abd543080dd76ec3f34a3a46b5fe3e04b0",
+          "backend/server/conversion_flamegraph_test.go": "01399ebbc525648aac690005947da6f091f96a1a075354e920ad004d68e5a458",
+          "scripts/profile-conversion.mjs": "e213d1d108d83879d23b63c2531b8a0710b4f1636f37964ad00a12141f0aa2a0",
+          "scripts/profile-ledger.mjs": "83ddc0c12a3038f91f1816f7c6de05a361d69ba9335cad0a1a77250ef23f44ed",
+          "scripts/run-conversion-investigation.mjs": "8b088daa0ca62472fb3df2b3b9b9e7568e7be94c6398934f9bbede43f3799c71",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 29610,
+      "finishedAt": "2026-10-19T10:39:25.843Z"
+    }
+  ],
+  "source": {
+    "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+    "trackedDiffSHA256": "476dfb25b183234c4b5039e44e0a86f2f702d64de94d96b1d0237a4c1abfb271",
+    "untrackedSourceSHA256": {
+      "backend/protocol/builtin/conversion_investigation_test.go": "5efdfd842070a6110f4b55bb754ff84ec8bfae9ccddfb87b096b9bf225f6e812",
+      "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+      "backend/server/conversion_flamegraph_matrix_test.go": "f3e4733b19cbccb8be488807212e66abd543080dd76ec3f34a3a46b5fe3e04b0",
+      "backend/server/conversion_flamegraph_test.go": "01399ebbc525648aac690005947da6f091f96a1a075354e920ad004d68e5a458",
+      "scripts/profile-conversion.mjs": "e213d1d108d83879d23b63c2531b8a0710b4f1636f37964ad00a12141f0aa2a0",
+      "scripts/profile-ledger.mjs": "83ddc0c12a3038f91f1816f7c6de05a361d69ba9335cad0a1a77250ef23f44ed",
+      "scripts/run-conversion-investigation.mjs": "8b088daa0ca62472fb3df2b3b9b9e7568e7be94c6398934f9bbede43f3799c71",
+      "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+    }
+  },
+  "finishedAt": "2026-10-19T10:39:25.844Z"
+}

@@ -1,0 +1,74 @@
+[
+  {
+    "Workload": "image",
+    "Phase": "decode",
+    "SizeMiB": 2,
+    "Repeat": 0,
+    "ElapsedMS": 71.316,
+    "Allocated": 4262232,
+    "Heap": 9210048
+  },
+  {
+    "Workload": "image",
+    "Phase": "convert",
+    "SizeMiB": 2,
+    "Repeat": 0,
+    "ElapsedMS": 42.0705,
+    "Allocated": 36456,
+    "Heap": 8499928
+  },
+  {
+    "Workload": "image",
+    "Phase": "encode",
+    "SizeMiB": 2,
+    "Repeat": 0,
+    "ElapsedMS": 162.3603,
+    "Allocated": 40090312,
+    "Heap": 23943320
+  },
+  {
+    "Workload": "image",
+    "Phase": "released",
+    "SizeMiB": 2,
+    "Repeat": 0,
+    "ElapsedMS": 0,
+    "Allocated": 0,
+    "Heap": 10592424
+  },
+  {
+    "Workload": "nodes",
+    "Phase": "decode",
+    "SizeMiB": 2,
+    "Repeat": 0,
+    "ElapsedMS": 53.8784,
+    "Allocated": 16447200,
+    "Heap": 16120112
+  },
+  {
+    "Workload": "nodes",
+    "Phase": "convert",
+    "SizeMiB": 2,
+    "Repeat": 0,
+    "ElapsedMS": 55.6061,
+    "Allocated": 9084400,
+    "Heap": 13655736
+  },
+  {
+    "Workload": "nodes",
+    "Phase": "encode",
+    "SizeMiB": 2,
+    "Repeat": 0,
+    "ElapsedMS": 129.0681,
+    "Allocated": 39270112,
+    "Heap": 13555648
+  },
+  {
+    "Workload": "nodes",
+    "Phase": "released",
+    "SizeMiB": 2,
+    "Repeat": 0,
+    "ElapsedMS": 0,
+    "Allocated": 0,
+    "Heap": 10819224
+  }
+]

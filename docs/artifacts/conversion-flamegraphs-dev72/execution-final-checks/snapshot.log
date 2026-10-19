@@ -1,0 +1,12 @@
+✔ checked-in snapshot manifest matches publishable sources (109.1709ms)
+✔ source archives without Git include only the explicit manifest (9.7456ms)
+✔ runtime config, traversal, duplicates and missing manifests fail closed (4.6961ms)
+✔ a directory link cannot export files outside the source archive (1.9481ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 179.6473

@@ -1,0 +1,714 @@
+{
+  "false": {
+    "convert": null,
+    "decode": [
+      {
+        "Bytes": 2097182,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.decodeMedia",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeContent",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeContent",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.DecodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).decodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.decodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).decodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).DecodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      }
+    ],
+    "encode": [
+      {
+        "Bytes": 2097204,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.anthropicMediaSource",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMedia",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097230,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097232,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.array",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097288,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097290,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.array",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097316,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097412,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.array",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097453,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097204,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.anthropicMediaSource",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMedia",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097230,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097232,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.array",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097288,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097290,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.array",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097316,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097412,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.array",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097453,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      }
+    ],
+    "validateWire": [
+      {
+        "Bytes": 2097182,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.decodeMedia",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeContent",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeContent",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.validateRequestWireContract",
+          "github.com/elysia-api/backend/protocol/builtin.module.validateWireContract",
+          "github.com/elysia-api/backend/protocol/builtin.module.ValidateWireOutput",
+          "github.com/elysia-api/backend/protocol.(*Compiled).ValidateWireOutput",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      }
+    ]
+  },
+  "true": {
+    "convert": null,
+    "decode": [
+      {
+        "Bytes": 2097182,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.decodeMedia",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeContent",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeContent",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.DecodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).decodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.decodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).decodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).DecodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      }
+    ],
+    "encode": [
+      {
+        "Bytes": 2097204,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.anthropicMediaSource",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMedia",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097230,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097232,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.array",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097288,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097290,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.array",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097316,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097412,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.array",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097464,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.encodeTyped[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097204,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.anthropicMediaSource",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMedia",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097230,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097232,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.array",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097288,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097290,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.array",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097316,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097412,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.array",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      },
+      {
+        "Bytes": 2097453,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.module.encodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1",
+          "github.com/elysia-api/backend/protocol.encodeRequestMapping[...]",
+          "github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative",
+          "github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      }
+    ],
+    "validateWire": [
+      {
+        "Bytes": 2097182,
+        "Stack": [
+          "github.com/elysia-api/backend/protocol.encodeValueContainer",
+          "github.com/elysia-api/backend/protocol.EncodeValue",
+          "github.com/elysia-api/backend/protocol/builtin.object",
+          "github.com/elysia-api/backend/protocol/builtin.decodeMedia",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeContent",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeBlock",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeContent",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeMessages",
+          "github.com/elysia-api/backend/protocol/builtin.module.decodeRequest",
+          "github.com/elysia-api/backend/protocol/builtin.module.validateRequestWireContract",
+          "github.com/elysia-api/backend/protocol/builtin.module.validateWireContract",
+          "github.com/elysia-api/backend/protocol/builtin.module.ValidateWireOutput",
+          "github.com/elysia-api/backend/protocol.(*Compiled).ValidateWireOutput",
+          "github.com/elysia-api/backend/protocol/builtin.TestDiagnosticLedger",
+          "testing.tRunner",
+          "runtime.goexit"
+        ]
+      }
+    ]
+  }
+}

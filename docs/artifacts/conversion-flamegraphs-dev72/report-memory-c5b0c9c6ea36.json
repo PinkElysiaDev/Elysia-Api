@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "mode": "conversion-profiling",
+  "startedAt": "2026-10-19T10:56:35.998Z",
+  "status": "passed",
+  "commit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+  "compilerVersion": "2.0.0-dev.72",
+  "goVersion": "go version go1.26.5 windows/amd64",
+  "platform": "win32",
+  "architecture": "x64",
+  "cpu": "AMD Ryzen 5 7600X 6-Core Processor             ",
+  "steps": [
+    {
+      "name": "final-memory-image2-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:56:36.632Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-memory-image2-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "c8a8683948012aa53759b74f97e8ac36db70f14a10b3a4f916d4dd79f3a2a9a1",
+        "untrackedSourceSHA256": {}
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 3012,
+      "finishedAt": "2026-10-19T10:56:39.758Z"
+    },
+    {
+      "name": "final-memory-nodes-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:56:40.192Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-memory-nodes-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "c8a8683948012aa53759b74f97e8ac36db70f14a10b3a4f916d4dd79f3a2a9a1",
+        "untrackedSourceSHA256": {}
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2847,
+      "finishedAt": "2026-10-19T10:56:43.141Z"
+    },
+    {
+      "name": "final-memory-events-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:56:43.575Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-memory-events-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "c8a8683948012aa53759b74f97e8ac36db70f14a10b3a4f916d4dd79f3a2a9a1",
+        "untrackedSourceSHA256": {}
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2433,
+      "finishedAt": "2026-10-19T10:56:46.112Z"
+    }
+  ],
+  "source": {
+    "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+    "trackedDiffSHA256": "c8a8683948012aa53759b74f97e8ac36db70f14a10b3a4f916d4dd79f3a2a9a1",
+    "untrackedSourceSHA256": {}
+  },
+  "environment": {
+    "commit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+    "go": "go version go1.26.5 windows/amd64",
+    "created": "2026-10-19T10:56:35.454Z",
+    "cpu": "AMD Ryzen 5 7600X 6-Core Processor             ",
+    "logicalCPUs": 12,
+    "platform": "win32",
+    "architecture": "x64",
+    "GOGC": "100",
+    "GOMEMLIMIT": "8GiB",
+    "GOMAXPROCS": "Go default",
+    "pgo": "off",
+    "memory": {
+      "availablePhysicalGiB": 13.279930114746094,
+      "availableCommitGiB": 1.7743377685546875
+    },
+    "binarySHA256": "64b191dc27fde1591d24d88ee85ddcdca85712077b5546d68fb7d26487cd2607",
+    "productionDiff": ""
+  },
+  "finishedAt": "2026-10-19T10:56:46.113Z"
+}

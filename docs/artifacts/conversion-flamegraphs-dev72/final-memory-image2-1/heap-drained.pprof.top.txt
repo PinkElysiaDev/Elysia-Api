@@ -1,0 +1,58 @@
+File: server-matrix.test.exe
+Build ID: D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\server-matrix.test.exe2026-10-19 18:54:24.1076818 +0800 CST
+Type: inuse_space
+Time: 2026-10-19 18:56:39 CST
+Showing nodes accounting for 6688.62kB, 100% of 6688.62kB total
+      flat  flat%   sum%        cum   cum%
+ 3589.26kB 53.66% 53.66%  3589.26kB 53.66%  runtime.mallocgc
+  525.43kB  7.86% 61.52%   525.43kB  7.86%  github.com/go-playground/validator/v10.map.init.7
+  518.02kB  7.74% 69.26%   518.02kB  7.74%  regexp/syntax.(*compiler).inst (inline)
+  516.64kB  7.72% 76.99%   516.64kB  7.72%  github.com/elysia-api/backend/server.(*Server).startUsageWriter
+  515.19kB  7.70% 84.69%   515.19kB  7.70%  debug/dwarf.init
+  512.05kB  7.66% 92.34%   512.05kB  7.66%  github.com/gin-gonic/gin.(*node).addRoute
+  512.02kB  7.66%   100%   512.02kB  7.66%  github.com/elysia-api/backend/protocol.buildTypedLimitPlans.func1
+         0     0%   100%   512.02kB  7.66%  github.com/elysia-api/backend/protocol.buildTypedLimitPlans
+         0     0%   100%   512.02kB  7.66%  github.com/elysia-api/backend/protocol.init
+         0     0%   100%   512.05kB  7.66%  github.com/elysia-api/backend/server.(*Server).setupAdminRoutes
+         0     0%   100%   512.05kB  7.66%  github.com/elysia-api/backend/server.(*Server).setupRoutes
+         0     0%   100%   512.05kB  7.66%  github.com/elysia-api/backend/server.TestConversionHTTPProcess
+         0     0%   100%   516.64kB  7.72%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func3
+         0     0%   100%   516.64kB  7.72%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func7
+         0     0%   100%   512.05kB  7.66%  github.com/elysia-api/backend/server.configureFlameGateway
+         0     0%   100%   512.05kB  7.66%  github.com/gin-gonic/gin.(*Engine).addRoute
+         0     0%   100%   512.05kB  7.66%  github.com/gin-gonic/gin.(*RouterGroup).POST (inline)
+         0     0%   100%   512.05kB  7.66%  github.com/gin-gonic/gin.(*RouterGroup).handle
+         0     0%   100%  1043.45kB 15.60%  github.com/go-playground/validator/v10.init
+         0     0%   100%   516.64kB  7.72%  net/http.(*conn).serve
+         0     0%   100%   516.64kB  7.72%  net/http.HandlerFunc.ServeHTTP
+         0     0%   100%   516.64kB  7.72%  net/http.serverHandler.ServeHTTP
+         0     0%   100%   518.02kB  7.74%  regexp.Compile (inline)
+         0     0%   100%   518.02kB  7.74%  regexp.MustCompile
+         0     0%   100%   518.02kB  7.74%  regexp.compile
+         0     0%   100%   518.02kB  7.74%  regexp/syntax.(*compiler).compile
+         0     0%   100%   518.02kB  7.74%  regexp/syntax.(*compiler).rune
+         0     0%   100%   518.02kB  7.74%  regexp/syntax.Compile
+         0     0%   100%   512.01kB  7.65%  runtime.(*scavengerState).sleep
+         0     0%   100%   512.01kB  7.65%  runtime.(*timer).maybeAdd
+         0     0%   100%   512.01kB  7.65%  runtime.(*timer).modify
+         0     0%   100%   512.01kB  7.65%  runtime.(*timer).reset (inline)
+         0     0%   100%   512.01kB  7.65%  runtime.(*timers).addHeap
+         0     0%   100%     2565kB 38.35%  runtime.allocm
+         0     0%   100%   512.01kB  7.65%  runtime.bgscavenge
+         0     0%   100%  2070.67kB 30.96%  runtime.doInit (inline)
+         0     0%   100%  2070.67kB 30.96%  runtime.doInit1
+         0     0%   100%   512.25kB  7.66%  runtime.gcBgMarkWorker
+         0     0%   100%   512.01kB  7.65%  runtime.growslice
+         0     0%   100%  2070.67kB 30.96%  runtime.main
+         0     0%   100%     2052kB 30.68%  runtime.mcall
+         0     0%   100%      513kB  7.67%  runtime.mstart
+         0     0%   100%      513kB  7.67%  runtime.mstart0
+         0     0%   100%      513kB  7.67%  runtime.mstart1
+         0     0%   100%     2565kB 38.35%  runtime.newm
+         0     0%   100%  3077.25kB 46.01%  runtime.newobject
+         0     0%   100%     2052kB 30.68%  runtime.park_m
+         0     0%   100%     2052kB 30.68%  runtime.resetspinning
+         0     0%   100%     2565kB 38.35%  runtime.schedule
+         0     0%   100%     2565kB 38.35%  runtime.startm
+         0     0%   100%     2565kB 38.35%  runtime.wakep
+         0     0%   100%   512.05kB  7.66%  testing.tRunner

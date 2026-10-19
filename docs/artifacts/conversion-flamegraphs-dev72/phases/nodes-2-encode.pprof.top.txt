@@ -1,0 +1,44 @@
+File: builtin.test.exe
+Build ID: D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\builtin.test.exe2026-10-19 18:45:25.9485177 +0800 CST
+Type: inuse_space
+Time: 2026-10-19 18:46:10 CST
+Showing nodes accounting for 9388.44kB, 100% of 9388.44kB total
+      flat  flat%   sum%        cum   cum%
+ 3077.01kB 32.77% 32.77%  3077.01kB 32.77%  runtime.mallocgc
+ 2643.60kB 28.16% 60.93%  2643.60kB 28.16%  encoding/json.Marshal
+ 2131.55kB 22.70% 83.64%  2131.55kB 22.70%  github.com/elysia-api/backend/protocol.Value.Bytes (inline)
+ 1536.28kB 16.36%   100%  1536.28kB 16.36%  reflect.unsafe_New
+         0     0%   100%   512.09kB  5.45%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeRequest (inline)
+         0     0%   100%  2131.55kB 22.70%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest
+         0     0%   100%   512.09kB  5.45%  github.com/elysia-api/backend/protocol.(*Compiled).decodeRequest
+         0     0%   100%  1024.19kB 10.91%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Request
+         0     0%   100%  1024.19kB 10.91%  github.com/elysia-api/backend/protocol.(*CompiledConversion).convertOwnedRequest
+         0     0%   100%   512.09kB  5.45%  github.com/elysia-api/backend/protocol.cloneRequestSemantic
+         0     0%   100%  1536.28kB 16.36%  github.com/elysia-api/backend/protocol.cloneSemantic
+         0     0%   100%  6311.43kB 67.23%  github.com/elysia-api/backend/protocol/builtin.TestConversionInvestigationPhases
+         0     0%   100%  2643.60kB 28.16%  github.com/elysia-api/backend/protocol/builtin.investigationBody
+         0     0%   100%   512.05kB  5.45%  github.com/elysia-api/backend/protocol/builtin.largeAnthropicRequest
+         0     0%   100%  1536.28kB 16.36%  reflect.New
+         0     0%   100%   512.01kB  5.45%  runtime.(*scavengerState).sleep
+         0     0%   100%   512.01kB  5.45%  runtime.(*timer).maybeAdd
+         0     0%   100%   512.01kB  5.45%  runtime.(*timer).modify
+         0     0%   100%   512.01kB  5.45%  runtime.(*timer).reset (inline)
+         0     0%   100%   512.01kB  5.45%  runtime.(*timers).addHeap
+         0     0%   100%     2565kB 27.32%  runtime.allocm
+         0     0%   100%   512.01kB  5.45%  runtime.bgscavenge
+         0     0%   100%   512.01kB  5.45%  runtime.growslice
+         0     0%   100%     1539kB 16.39%  runtime.mcall
+         0     0%   100%      513kB  5.46%  runtime.morestack
+         0     0%   100%      513kB  5.46%  runtime.mstart
+         0     0%   100%      513kB  5.46%  runtime.mstart0
+         0     0%   100%      513kB  5.46%  runtime.mstart1
+         0     0%   100%     2565kB 27.32%  runtime.newm
+         0     0%   100%     2565kB 27.32%  runtime.newobject
+         0     0%   100%      513kB  5.46%  runtime.newstack
+         0     0%   100%     1539kB 16.39%  runtime.park_m
+         0     0%   100%      513kB  5.46%  runtime.preemptPark
+         0     0%   100%     2565kB 27.32%  runtime.resetspinning
+         0     0%   100%     2565kB 27.32%  runtime.schedule
+         0     0%   100%     2565kB 27.32%  runtime.startm
+         0     0%   100%     2565kB 27.32%  runtime.wakep
+         0     0%   100%  6311.43kB 67.23%  testing.tRunner

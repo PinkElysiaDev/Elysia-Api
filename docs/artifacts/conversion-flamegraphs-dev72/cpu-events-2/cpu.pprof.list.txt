@@ -1,0 +1,240 @@
+Total: 71.05s
+ROUTINE ======================== github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative in D:\DevProjects\Elysia-API\Elysia-Api\backend\protocol\runtime.go
+         0       80ms (flat, cum)  0.11% of Total
+         .          .    424:func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Direction, native *Native, output Value, options EvaluationContext) (Value, error) {
+         .          .    425:	// Reconciliation replays a decoder with an already pinned binding. It must
+         .          .    426:	// never repeat authorization/routing or choose a new source account.
+         .          .    427:	options.ResolveRequestScope = nil
+         .          .    428:	target := compiled.target(direction, options)
+         .          .    429:	if !compiled.native.Preserve || native == nil || !CanPreserveNative(native.Source, target) {
+         .          .    430:		return output, nil
+         .          .    431:	}
+         .          .    432:	snapshotLimits := compiled.wireLimits(ctx, direction)
+         .          .    433:	if direction == EncodeRequest {
+         .          .    434:		snapshotLimits = requestLimits(ctx, DefaultLimits(), false)
+         .          .    435:	}
+         .       10ms    436:	original, err := ReplayNative(*native, target, nil, snapshotLimits)
+         .          .    437:	if err != nil {
+         .          .    438:		return Value{}, err
+         .          .    439:	}
+         .          .    440:	// Replay uses the source boundary; the immutable target revision and final
+         .          .    441:	// output still enforce the smaller target limit.
+         .          .    442:	replay := *compiled
+         .          .    443:	if direction == EncodeRequest {
+         .          .    444:		replay.limits, replay.explicitLimits = snapshotLimits, true
+         .          .    445:	}
+         .          .    446:	var baseline any
+         .          .    447:	switch direction {
+         .          .    448:	case EncodeRequest:
+         .          .    449:
+         .          .    450:		request := compiled.requestReplayBaseline(native, snapshotLimits)
+         .          .    451:		if source := native.RequestContext; source != nil {
+         .          .    452:			options.Scope, options.Values, options.InterleavedThinking = source.Scope, maps.Clone(source.Values), source.InterleavedThinking
+         .          .    453:		}
+         .          .    454:		if request == nil {
+         .          .    455:			request, err = replay.decodeRequest(ctx, original.Bytes(), options, &native.Source.Scope)
+         .          .    456:		} else {
+         .          .    457:			if err = ctx.Err(); err == nil {
+         .       40ms    458:				request, err = replay.finishDecodedRequest(ctx, original, cloneRequestSemantic(request), options, &native.Source.Scope)
+         .          .    459:			}
+         .          .    460:			err = replay.runtimeError(DecodeRequest, err)
+         .          .    461:		}
+         .          .    462:		if err != nil {
+         .          .    463:			return Value{}, err
+         .          .    464:		}
+         .          .    465:
+         .          .    466:		options.Scope = native.Source.Scope
+         .          .    467:		baseline = request
+         .          .    468:
+         .          .    469:	case EncodeResponse:
+         .          .    470:		response, err := compiled.DecodeResponse(ctx, original.Bytes(), options)
+         .          .    471:		if err != nil {
+         .          .    472:			return Value{}, err
+         .          .    473:		}
+         .          .    474:		baseline = response
+         .          .    475:	case EncodeEvent, EncodeUpstreamEvent:
+         .          .    476:		events, err := compiled.decodeEvents(ctx, eventDecoder(direction), original, options)
+         .          .    477:		if err != nil {
+         .          .    478:			return Value{}, err
+         .          .    479:		}
+         .          .    480:		if len(events) != 1 {
+         .          .    481:			return Value{}, fmt.Errorf("native frame must map to exactly one event")
+         .          .    482:		}
+         .          .    483:		baseline = events[0]
+         .          .    484:	default:
+         .          .    485:		return Value{}, fmt.Errorf("native reconciliation requires a request or response direction")
+         .          .    486:	}
+         .          .    487:
+         .          .    488:	var before Value
+         .          .    489:	if direction == EncodeRequest && replay.supportsRequestWorkspace() {
+         .       20ms    490:		before, err = encodeRequestMapping(ctx, &replay, baseline.(*Request), options, replay.mappings[direction].module.(TypedModule), func(module TypedModule, input *Request, options EvaluationContext) (Value, error) {
+         .          .    491:			return module.EncodeRequest(ctx, input, options)
+         .          .    492:		})
+         .          .    493:	} else {
+         .          .    494:		var value Value
+         .          .    495:		value, err = EncodeSemantic(ctx, direction, baseline)
+         .          .    496:		if err == nil {
+         .          .    497:			before, err = replay.executeMapping(ctx, direction, value, options)
+         .          .    498:		}
+         .          .    499:	}
+         .          .    500:	if err != nil {
+         .          .    501:		return Value{}, err
+         .          .    502:	}
+         .          .    503:
+         .       10ms    504:	result, err := reconcileNative(ctx, original, before, output, compiled.native, compiled.wireLimits(ctx, direction))
+         .          .    505:	if err != nil {
+         .          .    506:		var resource *ResourceLimitError
+         .          .    507:		if errors.As(err, &resource) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+         .          .    508:			return Value{}, resourceIssue(err, compiled.identity, direction, "preserve")
+         .          .    509:		}
+ROUTINE ======================== github.com/elysia-api/backend/protocol.(*CompiledConversion).convertOwnedRequest in D:\DevProjects\Elysia-API\Elysia-Api\backend\protocol\conversion_apply.go
+      10ms      170ms (flat, cum)  0.24% of Total
+         .          .     60:func (c *CompiledConversion) convertOwnedRequest(ctx context.Context, request *Request, route ConversionContext, sink *DiagnosticSink) (*Request, error) {
+         .          .     61:	plan := typedLimitPlans[reflect.TypeFor[*Request]()]
+         .       10ms     62:	owned := cloneSemantic(reflect.ValueOf(request), plan).Interface().(*Request)
+         .          .     63:	limits := c.phaseLimits(ctx, ConversionRequest)
+         .          .     64:	state := conversionState{document: owned, limits: limits, isStrict: true, needsEncoding: true, cache: &semanticCache{limits: limits}}
+         .       20ms     65:	state.normalize(reflect.ValueOf(owned), plan)
+         .          .     66:	if _, err := c.applyConversionState(ctx, ConversionIngress, Value{}, route, sink, &state, false); err != nil {
+         .          .     67:		return nil, err
+         .          .     68:	}
+      10ms      140ms     69:	if _, err := c.applyConversionState(ctx, ConversionRequest, Value{}, route, sink, &state, false); err != nil {
+         .          .     70:		return nil, err
+         .          .     71:	}
+         .          .     72:	if c.Policy.Usage != nil {
+         .          .     73:		if owned.ClientOutput == nil {
+         .          .     74:			owned.ClientOutput = &ClientOutput{}
+ROUTINE ======================== github.com/elysia-api/backend/protocol.(*typedMeter).scanRaw in D:\DevProjects\Elysia-API\Elysia-Api\backend\protocol\typed_limits.go
+     240ms      390ms (flat, cum)  0.55% of Total
+      10ms       10ms    257:func (meter *typedMeter) scanRaw(raw string) bool {
+      20ms       20ms    258:	if raw == "" {
+         .          .    259:		return false
+         .          .    260:	}
+         .          .    261:	for offset := 0; offset < len(raw); {
+         .          .    262:		switch raw[offset] {
+         .          .    263:		case ' ', '\t', '\r', '\n':
+         .          .    264:			offset++
+         .          .    265:		case ',', ':':
+         .          .    266:			meter.bytes++
+         .          .    267:			offset++
+         .          .    268:		case '{', '[':
+         .          .    269:			if !meter.open() {
+         .          .    270:				return false
+         .          .    271:			}
+         .          .    272:			offset++
+         .          .    273:		case '}', ']':
+         .          .    274:			if !meter.close() {
+         .          .    275:				return false
+         .          .    276:			}
+         .          .    277:			offset++
+         .          .    278:		case '"':
+         .      130ms    279:			end := jsonStringEnd(raw, offset)
+         .          .    280:			length := end - offset
+      70ms       70ms    281:			for index := offset + 1; index < end-1; index++ {
+      60ms       60ms    282:				switch raw[index] {
+      20ms       20ms    283:				case '\\':
+         .          .    284:					index++
+      20ms       20ms    285:				case '<', '>', '&':
+         .          .    286:					length += 5
+      40ms       40ms    287:				case 0xe2:
+         .          .    288:					if index+2 < end && raw[index+1] == 0x80 && (raw[index+2] == 0xa8 || raw[index+2] == 0xa9) {
+         .          .    289:						length += 3
+         .          .    290:						index += 2
+         .          .    291:					}
+         .          .    292:				}
+         .          .    293:			}
+         .       10ms    294:			if !meter.scalar(length) {
+         .          .    295:				return false
+         .          .    296:			}
+         .          .    297:			offset = end
+         .          .    298:		default:
+         .          .    299:			end := jsonValueEnd(raw, offset)
+         .          .    300:			if !meter.scalar(end - offset) {
+         .          .    301:				return false
+         .          .    302:			}
+         .          .    303:			offset = end
+         .          .    304:		}
+         .          .    305:	}
+         .       10ms    306:	return meter.fits()
+         .          .    307:}
+         .          .    308:
+         .          .    309:func jsonStringBytes(value string) int {
+         .          .    310:	if !utf8.ValidString(value) {
+         .          .    311:		raw, _ := json.Marshal(value)
+ROUTINE ======================== github.com/elysia-api/backend/protocol.encodeValueContainer in D:\DevProjects\Elysia-API\Elysia-Api\backend\protocol\value_encode.go
+      10ms       30ms (flat, cum) 0.042% of Total
+         .          .     10:func encodeValueContainer(value any) (Value, bool) {
+         .          .     11:	var keys []string
+         .          .     12:	var items []Value
+         .          .     13:	var isObject bool
+      10ms       10ms     14:	switch container := value.(type) {
+         .          .     15:	case Object:
+         .          .     16:		if container == nil {
+         .          .     17:			return Value{raw: "null"}, true
+         .          .     18:		}
+         .          .     19:		isObject = true
+         .          .     20:		keys = sortedKeys(container)
+         .          .     21:		items = make([]Value, len(keys))
+         .          .     22:		for index, key := range keys {
+         .          .     23:			items[index] = container[key]
+         .          .     24:		}
+         .          .     25:	case []Value:
+         .          .     26:		if container == nil {
+         .          .     27:			return Value{raw: "null"}, true
+         .          .     28:		}
+         .          .     29:		items = container
+         .          .     30:	default:
+         .          .     31:		return Value{}, false
+         .          .     32:	}
+         .          .     33:	for _, item := range items {
+         .          .     34:		if item.IsZero() {
+         .          .     35:			// Select the old encoder before writing anything so its exact error
+         .          .     36:			// type and first offending element remain unchanged.
+         .          .     37:			return Value{}, false
+         .          .     38:		}
+         .          .     39:	}
+         .          .     40:	parts := make([]string, len(items))
+         .          .     41:	length := 2
+         .          .     42:	add := func(count int) bool {
+         .          .     43:		if count > int(^uint(0)>>1)-length {
+         .          .     44:			return false
+         .          .     45:		}
+         .          .     46:		length += count
+         .          .     47:		return true
+         .          .     48:	}
+         .          .     49:	for index, item := range items {
+         .       20ms     50:		parts[index] = compactValueString(item.raw)
+         .          .     51:		if !add(len(parts[index])) || index > 0 && !add(1) {
+         .          .     52:			return Value{}, false
+         .          .     53:		}
+         .          .     54:		if isObject {
+         .          .     55:			key, _ := json.Marshal(keys[index])
+ROUTINE ======================== github.com/elysia-api/backend/protocol.equalNativeValues in D:\DevProjects\Elysia-API\Elysia-Api\backend\protocol\native_reconcile.go
+         0       10ms (flat, cum) 0.014% of Total
+         .          .    201:func equalNativeValues(left, right Value) bool {
+         .          .    202:	if left.raw == right.raw {
+         .          .    203:		return true
+         .          .    204:	}
+         .          .    205:	if left.IsObject() && right.IsObject() {
+         .       10ms    206:		before, _ := left.readObjectWithin(requestValueReader(left))
+         .          .    207:		after, _ := right.readObjectWithin(requestValueReader(right))
+         .          .    208:		if len(before) != len(after) {
+         .          .    209:			return false
+         .          .    210:		}
+         .          .    211:		for key, value := range before {
+ROUTINE ======================== github.com/elysia-api/backend/protocol.needsSemanticCompaction in D:\DevProjects\Elysia-API\Elysia-Api\backend\protocol\conversion_state.go
+      40ms      400ms (flat, cum)  0.56% of Total
+      10ms       10ms    266:func needsSemanticCompaction(raw string) bool {
+         .          .    267:	for offset := 0; offset < len(raw); offset++ {
+         .          .    268:		switch raw[offset] {
+      10ms       10ms    269:		case ' ', '\t', '\r', '\n':
+         .          .    270:			return true
+         .          .    271:		case '"':
+      10ms       60ms    272:			end := jsonStringEnd(raw, offset)
+      10ms       10ms    273:			text := raw[offset:end]
+         .      310ms    274:			if strings.ContainsAny(text, "<>&") || strings.Contains(text, "\u2028") || strings.Contains(text, "\u2029") {
+         .          .    275:				return true
+         .          .    276:			}
+         .          .    277:			offset = end - 1
+         .          .    278:		}
+         .          .    279:	}

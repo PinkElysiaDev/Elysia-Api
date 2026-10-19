@@ -1,0 +1,182 @@
+[
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 0,
+    "Requests": 1,
+    "Stream": false,
+    "ElapsedMS": 6.7812,
+    "Metrics": {
+      "Allocated": 2749816,
+      "Heap": 5996312,
+      "PeakHeap": 7417968,
+      "WorkingSet": 44220416,
+      "PeakWorkingSet": 45035520,
+      "Calls": 0
+    }
+  },
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 1,
+    "Requests": 1,
+    "Stream": false,
+    "ElapsedMS": 5.7614,
+    "Metrics": {
+      "Allocated": 2741384,
+      "Heap": 4935240,
+      "PeakHeap": 6012632,
+      "WorkingSet": 43397120,
+      "PeakWorkingSet": 44220416,
+      "Calls": 0
+    }
+  },
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 2,
+    "Requests": 1,
+    "Stream": false,
+    "ElapsedMS": 5.7183,
+    "Metrics": {
+      "Allocated": 2736480,
+      "Heap": 3989440,
+      "PeakHeap": 4949456,
+      "WorkingSet": 42520576,
+      "PeakWorkingSet": 43397120,
+      "Calls": 0
+    }
+  },
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 3,
+    "Requests": 1,
+    "Stream": false,
+    "ElapsedMS": 5.8479,
+    "Metrics": {
+      "Allocated": 2638872,
+      "Heap": 6644648,
+      "PeakHeap": 6644648,
+      "WorkingSet": 42582016,
+      "PeakWorkingSet": 42582016,
+      "Calls": 0
+    }
+  },
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 4,
+    "Requests": 1,
+    "Stream": false,
+    "ElapsedMS": 6.3019,
+    "Metrics": {
+      "Allocated": 2727544,
+      "Heap": 5899392,
+      "PeakHeap": 6660816,
+      "WorkingSet": 42369024,
+      "PeakWorkingSet": 42582016,
+      "Calls": 0
+    }
+  },
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 0,
+    "Requests": 1,
+    "Stream": true,
+    "ElapsedMS": 50.7926,
+    "Metrics": {
+      "Allocated": 34243864,
+      "Heap": 4736856,
+      "PeakHeap": 9017768,
+      "WorkingSet": 46022656,
+      "PeakWorkingSet": 47222784,
+      "Calls": 0
+    }
+  },
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 1,
+    "Requests": 1,
+    "Stream": true,
+    "ElapsedMS": 48.69,
+    "Metrics": {
+      "Allocated": 34786424,
+      "Heap": 5813288,
+      "PeakHeap": 7825320,
+      "WorkingSet": 46907392,
+      "PeakWorkingSet": 46907392,
+      "Calls": 0
+    }
+  },
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 2,
+    "Requests": 1,
+    "Stream": true,
+    "ElapsedMS": 48.9201,
+    "Metrics": {
+      "Allocated": 35277816,
+      "Heap": 7903280,
+      "PeakHeap": 9141528,
+      "WorkingSet": 47423488,
+      "PeakWorkingSet": 47423488,
+      "Calls": 0
+    }
+  },
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 3,
+    "Requests": 1,
+    "Stream": true,
+    "ElapsedMS": 50.3138,
+    "Metrics": {
+      "Allocated": 34830696,
+      "Heap": 7014312,
+      "PeakHeap": 7919632,
+      "WorkingSet": 46411776,
+      "PeakWorkingSet": 47734784,
+      "Calls": 0
+    }
+  },
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 4,
+    "Requests": 1,
+    "Stream": true,
+    "ElapsedMS": 66.7614,
+    "Metrics": {
+      "Allocated": 34928552,
+      "Heap": 9829976,
+      "PeakHeap": 9829976,
+      "WorkingSet": 47366144,
+      "PeakWorkingSet": 47366144,
+      "Calls": 0
+    }
+  }
+]

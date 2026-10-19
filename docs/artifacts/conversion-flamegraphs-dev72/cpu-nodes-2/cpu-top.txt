@@ -1,0 +1,181 @@
+File: server.test.exe
+Build ID: D:\DevProjects\Elysia-API\Elysia-Api\.tmp-dev\conversion-flames\server.test.exe2026-10-19 18:20:55.7292487 +0800 CST
+Type: cpu
+Time: 2026-10-19 18:30:40 CST
+Duration: 60s, Total samples = 62.59s (104.32%)
+Showing nodes accounting for 52.59s, 84.02% of 62.59s total
+Dropped 682 nodes (cum <= 0.31s)
+      flat  flat%   sum%        cum   cum%
+    15.54s 24.83% 24.83%     15.59s 24.91%  github.com/elysia-api/backend/protocol.jsonStringEnd (inline)
+    12.86s 20.55% 45.37%     18.91s 30.21%  github.com/elysia-api/backend/protocol.(*typedMeter).scanRaw
+     3.86s  6.17% 51.54%      5.43s  8.68%  encoding/json.checkValid
+     1.89s  3.02% 54.56%      1.89s  3.02%  strings.(*asciiSet).contains (inline)
+     1.81s  2.89% 57.45%      2.39s  3.82%  github.com/elysia-api/backend/protocol.jsonStringBytes
+     1.46s  2.33% 59.79%      1.46s  2.33%  encoding/json.stateInString
+     1.21s  1.93% 61.72%      1.21s  1.93%  runtime.memmove
+     1.15s  1.84% 63.56%      1.16s  1.85%  runtime.semawakeup
+     1.12s  1.79% 65.35%      1.12s  1.79%  runtime.sysUnusedOS
+     1.04s  1.66% 67.01%      1.58s  2.52%  reflect.Value.Field
+     0.99s  1.58% 68.59%      0.99s  1.58%  runtime.semasleep
+     0.98s  1.57% 70.15%     24.14s 38.57%  github.com/elysia-api/backend/protocol.(*typedMeter).visit
+     0.86s  1.37% 71.53%      0.86s  1.37%  unicode/utf8.ValidString
+     0.82s  1.31% 72.84%      2.95s  4.71%  strings.IndexAny
+     0.75s  1.20% 74.04%      1.06s  1.69%  runtime.tryDeferToSpanScan
+     0.64s  1.02% 75.06%      0.75s  1.20%  runtime.preemptM
+     0.50s   0.8% 75.86%      4.98s  7.96%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+     0.47s  0.75% 76.61%      1.35s  2.16%  runtime.scanObject
+     0.45s  0.72% 77.33%      0.45s  0.72%  internal/abi.Name.IsExported (inline)
+     0.43s  0.69% 78.02%      0.74s  1.18%  encoding/json.unquoteBytes
+     0.41s  0.66% 78.67%      0.42s  0.67%  internal/runtime/gc/scan.scanSpanPackedAVX512
+     0.38s  0.61% 79.28%      3.14s  5.02%  github.com/elysia-api/backend/protocol.cloneSemantic
+     0.34s  0.54% 79.82%      0.34s  0.54%  runtime.memclrNoHeapPointers
+     0.28s  0.45% 80.27%      0.45s  0.72%  reflect.Value.assignTo
+     0.25s   0.4% 80.67%      1.29s  2.06%  runtime.mallocgcSmallScanNoHeader
+     0.24s  0.38% 81.05%      2.25s  3.59%  runtime.mallocgc
+     0.23s  0.37% 81.42%      0.45s  0.72%  reflect.Value.IsZero
+     0.18s  0.29% 81.71%      1.19s  1.90%  reflect.Value.Set
+     0.13s  0.21% 81.91%      0.49s  0.78%  runtime.typedmemmove
+     0.09s  0.14% 82.06%      1.35s  2.16%  runtime.scanSpan
+     0.09s  0.14% 82.20%      0.48s  0.77%  runtime.sweepone
+     0.08s  0.13% 82.33%      4.51s  7.21%  github.com/elysia-api/backend/protocol.jsonValueEnd
+     0.07s  0.11% 82.44%      0.32s  0.51%  runtime.concatstrings
+     0.06s 0.096% 82.54%      1.13s  1.81%  reflect.New
+     0.06s 0.096% 82.63%      0.54s  0.86%  reflect.typedmemmove
+     0.06s 0.096% 82.73%      0.43s  0.69%  runtime.mallocgcSmallNoscan
+     0.05s  0.08% 82.81%     19.06s 30.45%  github.com/elysia-api/backend/protocol.(*typedMeter).raw
+     0.05s  0.08% 82.89%      7.21s 11.52%  github.com/elysia-api/backend/protocol.needsSemanticCompaction
+     0.05s  0.08% 82.97%      3.45s  5.51%  runtime.gcDrain
+     0.04s 0.064% 83.03%      0.94s  1.50%  encoding/json.(*decodeState).literalStore
+     0.04s 0.064% 83.10%      1.32s  2.11%  github.com/elysia-api/backend/protocol.checkValueLimits
+     0.04s 0.064% 83.16%      2.40s  3.83%  github.com/elysia-api/backend/server.(*Server).estimateProtocolInputTokens.func1
+     0.04s 0.064% 83.22%      1.19s  1.90%  runtime.lock2
+     0.03s 0.048% 83.27%      1.41s  2.25%  encoding/json.(*decodeState).value
+     0.03s 0.048% 83.32%      1.40s  2.24%  github.com/elysia-api/backend/protocol/builtin.module.decodeContent
+     0.03s 0.048% 83.37%      3.85s  6.15%  github.com/elysia-api/backend/protocol/builtin.module.encodeMessages
+     0.03s 0.048% 83.42%      0.94s  1.50%  reflect.unsafe_New
+     0.03s 0.048% 83.46%      0.35s  0.56%  runtime.concatstring2
+     0.03s 0.048% 83.51%      1.69s  2.70%  runtime.findRunnable
+     0.03s 0.048% 83.56%      0.35s  0.56%  runtime.markroot
+     0.03s 0.048% 83.61%      5.90s  9.43%  runtime.systemstack
+     0.02s 0.032% 83.64%      3.02s  4.83%  github.com/elysia-api/backend/protocol.(*semanticCache).normalize
+     0.02s 0.032% 83.67%      1.38s  2.20%  github.com/elysia-api/backend/protocol.Value.readArrayWithin
+     0.02s 0.032% 83.70%      4.95s  7.91%  github.com/elysia-api/backend/protocol.encodeValueContainer
+     0.02s 0.032% 83.74%      0.91s  1.45%  github.com/elysia-api/backend/protocol/builtin.module.decodeBlock
+     0.02s 0.032% 83.77%      1.21s  1.93%  github.com/elysia-api/backend/protocol/builtin.module.encodeBlock
+     0.02s 0.032% 83.80%      0.36s  0.58%  runtime.(*timers).run
+     0.02s 0.032% 83.83%      0.49s  0.78%  runtime.preemptall
+     0.01s 0.016% 83.85%      2.60s  4.15%  encoding/json.Unmarshal
+     0.01s 0.016% 83.86%      0.50s   0.8%  fmt.Sprintf
+     0.01s 0.016% 83.88%      3.75s  5.99%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+     0.01s 0.016% 83.90%      0.46s  0.73%  github.com/elysia-api/backend/protocol.requestCaches.func1
+     0.01s 0.016% 83.91%      2.71s  4.33%  github.com/elysia-api/backend/protocol/builtin.object
+     0.01s 0.016% 83.93%      2.36s  3.77%  github.com/elysia-api/backend/server.estimateValueChars
+     0.01s 0.016% 83.94%      0.44s   0.7%  internal/stringslite.Clone (inline)
+     0.01s 0.016% 83.96%      0.39s  0.62%  runtime.(*timers).check
+     0.01s 0.016% 83.98%      1.17s  1.87%  runtime.notewakeup
+     0.01s 0.016% 83.99%      2.14s  3.42%  runtime.schedule
+     0.01s 0.016% 84.01%      1.17s  1.87%  runtime.startm
+     0.01s 0.016% 84.02%      1.03s  1.65%  runtime.wakep
+         0     0% 84.02%      1.42s  2.27%  encoding/json.(*decodeState).unmarshal
+         0     0% 84.02%      4.30s  6.87%  encoding/json.Valid
+         0     0% 84.02%      2.24s  3.58%  github.com/elysia-api/backend/protocol.(*Compiled).CheckOperationInput
+         0     0% 84.02%      9.40s 15.02%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeRequest (inline)
+         0     0% 84.02%     23.48s 37.51%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest
+         0     0% 84.02%      2.32s  3.71%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2
+         0     0% 84.02%      1.93s  3.08%  github.com/elysia-api/backend/protocol.(*Compiled).ValidateWireOutput
+         0     0% 84.02%      9.40s 15.02%  github.com/elysia-api/backend/protocol.(*Compiled).decodeRequest
+         0     0% 84.02%      1.13s  1.81%  github.com/elysia-api/backend/protocol.(*Compiled).decodeRequest.func2
+         0     0% 84.02%      4.67s  7.46%  github.com/elysia-api/backend/protocol.(*Compiled).finishDecodedRequest
+         0     0% 84.02%     12.30s 19.65%  github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative
+         0     0% 84.02%      2.44s  3.90%  github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1
+         0     0% 84.02%      9.90s 15.82%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Request
+         0     0% 84.02%      6.32s 10.10%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyConversionState
+         0     0% 84.02%      0.99s  1.58%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyNodeObject
+         0     0% 84.02%      0.99s  1.58%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyNodeObject.func1
+         0     0% 84.02%      7.85s 12.54%  github.com/elysia-api/backend/protocol.(*CompiledConversion).convertOwnedRequest
+         0     0% 84.02%      4.64s  7.41%  github.com/elysia-api/backend/protocol.(*conversionState).apply
+         0     0% 84.02%      4.22s  6.74%  github.com/elysia-api/backend/protocol.(*semanticCache).check
+         0     0% 84.02%      0.42s  0.67%  github.com/elysia-api/backend/protocol.(*valueReader).fragment (inline)
+         0     0% 84.02%      4.96s  7.92%  github.com/elysia-api/backend/protocol.EncodeValue
+         0     0% 84.02%      0.67s  1.07%  github.com/elysia-api/backend/protocol.EvaluationContext.ReadArray (inline)
+         0     0% 84.02%      1.30s  2.08%  github.com/elysia-api/backend/protocol.EvaluationContext.ReadObject (inline)
+         0     0% 84.02%      4.47s  7.14%  github.com/elysia-api/backend/protocol.ParseValue
+         0     0% 84.02%      2.65s  4.23%  github.com/elysia-api/backend/protocol.Value.Decode
+         0     0% 84.02%      0.94s  1.50%  github.com/elysia-api/backend/protocol.Value.ReadObject
+         0     0% 84.02%      0.94s  1.50%  github.com/elysia-api/backend/protocol.Value.readObject (inline)
+         0     0% 84.02%      5.66s  9.04%  github.com/elysia-api/backend/protocol.checkMappingSemantic
+         0     0% 84.02%      0.94s  1.50%  github.com/elysia-api/backend/protocol.checkResourceValue
+         0     0% 84.02%     14.26s 22.78%  github.com/elysia-api/backend/protocol.checkSemanticValue
+         0     0% 84.02%      1.64s  2.62%  github.com/elysia-api/backend/protocol.checkValueSchema
+         0     0% 84.02%      0.75s  1.20%  github.com/elysia-api/backend/protocol.cloneRequestSemantic
+         0     0% 84.02%      4.37s  6.98%  github.com/elysia-api/backend/protocol.compactValueString
+         0     0% 84.02%      6.01s  9.60%  github.com/elysia-api/backend/protocol.decodeTyped[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0% 84.02%     17.87s 28.55%  github.com/elysia-api/backend/protocol.encodeRequestMapping[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0% 84.02%      8.95s 14.30%  github.com/elysia-api/backend/protocol.encodeTyped[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0% 84.02%      5.66s  9.04%  github.com/elysia-api/backend/protocol.fitsTypedLimits
+         0     0% 84.02%      4.32s  6.90%  github.com/elysia-api/backend/protocol.normalizeMappingRequest[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0% 84.02%      0.43s  0.69%  github.com/elysia-api/backend/protocol.reconcileNative
+         0     0% 84.02%      0.46s  0.73%  github.com/elysia-api/backend/protocol.requestCaches
+         0     0% 84.02%      0.68s  1.09%  github.com/elysia-api/backend/protocol.validateRequestContext
+         0     0% 84.02%      0.40s  0.64%  github.com/elysia-api/backend/protocol.validateRequestHints
+         0     0% 84.02%      1.58s  2.52%  github.com/elysia-api/backend/protocol/builtin.ExtractContinuationCarriers
+         0     0% 84.02%      1.82s  2.91%  github.com/elysia-api/backend/protocol/builtin.array (inline)
+         0     0% 84.02%      1.13s  1.81%  github.com/elysia-api/backend/protocol/builtin.module.DecodeRequest
+         0     0% 84.02%      4.76s  7.61%  github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest
+         0     0% 84.02%      1.93s  3.08%  github.com/elysia-api/backend/protocol/builtin.module.ValidateWireOutput
+         0     0% 84.02%      2.07s  3.31%  github.com/elysia-api/backend/protocol/builtin.module.decodeMessages
+         0     0% 84.02%      2.47s  3.95%  github.com/elysia-api/backend/protocol/builtin.module.decodeRequest
+         0     0% 84.02%      4.76s  7.61%  github.com/elysia-api/backend/protocol/builtin.module.encodeRequest
+         0     0% 84.02%      1.74s  2.78%  github.com/elysia-api/backend/protocol/builtin.module.validateRequestWireContract
+         0     0% 84.02%      1.92s  3.07%  github.com/elysia-api/backend/protocol/builtin.module.validateWireContract
+         0     0% 84.02%      0.67s  1.07%  github.com/elysia-api/backend/protocol/builtin.readContextArray
+         0     0% 84.02%      0.34s  0.54%  github.com/elysia-api/backend/protocol/builtin.readWireObject
+         0     0% 84.02%     53.48s 85.44%  github.com/elysia-api/backend/server.(*Server).chatCompletions
+         0     0% 84.02%      1.20s  1.92%  github.com/elysia-api/backend/server.(*Server).estimateGatewayAttempt
+         0     0% 84.02%      1.20s  1.92%  github.com/elysia-api/backend/server.(*Server).estimateGatewayReservation
+         0     0% 84.02%      2.40s  3.83%  github.com/elysia-api/backend/server.(*Server).estimateProtocolInputTokens
+         0     0% 84.02%      2.40s  3.83%  github.com/elysia-api/backend/server.(*Server).estimateProtocolTokens
+         0     0% 84.02%      4.83s  7.72%  github.com/elysia-api/backend/server.(*Server).forwardGateway
+         0     0% 84.02%     47.25s 75.49%  github.com/elysia-api/backend/server.(*Server).prepareGatewayPlan
+         0     0% 84.02%     53.28s 85.13%  github.com/elysia-api/backend/server.(*Server).serveProtocolRequest
+         0     0% 84.02%     53.48s 85.44%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress
+         0     0% 84.02%     53.48s 85.44%  github.com/elysia-api/backend/server.(*Server).setupRoutes.(*Server).authMiddleware.func2
+         0     0% 84.02%     53.48s 85.44%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func3
+         0     0% 84.02%      0.82s  1.31%  github.com/elysia-api/backend/server.continuationSession
+         0     0% 84.02%      0.37s  0.59%  github.com/elysia-api/backend/storage.(*Store).ConversionSnapshot
+         0     0% 84.02%     53.48s 85.44%  github.com/gin-gonic/gin.(*Context).Next (partial-inline)
+         0     0% 84.02%     53.48s 85.44%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0% 84.02%     53.48s 85.44%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0% 84.02%      0.43s  0.69%  internal/runtime/gc/scan.ScanSpanPacked (inline)
+         0     0% 84.02%      0.43s  0.69%  internal/runtime/gc/scan.ScanSpanPackedAVX512
+         0     0% 84.02%     53.48s 85.44%  net/http.(*conn).serve
+         0     0% 84.02%     53.48s 85.44%  net/http.HandlerFunc.ServeHTTP
+         0     0% 84.02%     53.48s 85.44%  net/http.serverHandler.ServeHTTP
+         0     0% 84.02%      0.37s  0.59%  runtime.(*mcache).nextFree
+         0     0% 84.02%      0.35s  0.56%  runtime.(*mcache).refill
+         0     0% 84.02%      1.16s  1.85%  runtime.(*pageAlloc).scavenge.func1
+         0     0% 84.02%      1.16s  1.85%  runtime.(*pageAlloc).scavengeOne
+         0     0% 84.02%      0.34s  0.54%  runtime.(*timer).unlockAndRun
+         0     0% 84.02%      0.49s  0.78%  runtime.bgsweep
+         0     0% 84.02%      3.40s  5.43%  runtime.gcBgMarkWorker
+         0     0% 84.02%      3.47s  5.54%  runtime.gcBgMarkWorker.func2
+         0     0% 84.02%      1.74s  2.78%  runtime.gcDrainMarkWorkerDedicated (inline)
+         0     0% 84.02%      1.71s  2.73%  runtime.gcDrainMarkWorkerIdle (inline)
+         0     0% 84.02%      0.78s  1.25%  runtime.gcstopm
+         0     0% 84.02%      0.97s  1.55%  runtime.gopreempt_m (inline)
+         0     0% 84.02%      1.01s  1.61%  runtime.goschedImpl
+         0     0% 84.02%      1.19s  1.90%  runtime.lock (inline)
+         0     0% 84.02%      1.19s  1.90%  runtime.lockWithRank (inline)
+         0     0% 84.02%      1.88s  3.00%  runtime.mcall
+         0     0% 84.02%      0.96s  1.53%  runtime.morestack
+         0     0% 84.02%      0.96s  1.53%  runtime.newstack
+         0     0% 84.02%      1.77s  2.83%  runtime.park_m
+         0     0% 84.02%      0.70s  1.12%  runtime.preemptone
+         0     0% 84.02%      0.43s  0.69%  runtime.resetspinning
+         0     0% 84.02%      0.37s  0.59%  runtime.slicebytetostring
+         0     0% 84.02%      0.35s  0.56%  runtime.stealWork
+         0     0% 84.02%      0.38s  0.61%  runtime.stopTheWorld.func1
+         0     0% 84.02%      0.40s  0.64%  runtime.stopTheWorldWithSema
+         0     0% 84.02%      1.12s  1.79%  runtime.sysUnused (inline)
+         0     0% 84.02%      0.44s   0.7%  strings.Clone (inline)
+         0     0% 84.02%      2.95s  4.71%  strings.ContainsAny (inline)

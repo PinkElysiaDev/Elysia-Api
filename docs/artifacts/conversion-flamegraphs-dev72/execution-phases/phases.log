@@ -1,0 +1,6 @@
+=== RUN   TestConversionInvestigationPhases
+--- PASS: TestConversionInvestigationPhases (2.71s)
+=== RUN   TestConversionInvestigationBoundaries
+    conversion_investigation_test.go:140: opt-in boundary investigation
+--- SKIP: TestConversionInvestigationBoundaries (0.00s)
+PASS

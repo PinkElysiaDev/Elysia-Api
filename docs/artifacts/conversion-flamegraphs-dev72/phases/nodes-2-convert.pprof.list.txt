@@ -1,0 +1,11 @@
+Total: 6.59MB
+ROUTINE ======================== github.com/elysia-api/backend/protocol.(*CompiledConversion).convertOwnedRequest in D:\DevProjects\Elysia-API\Elysia-Api\backend\protocol\conversion_apply.go
+         0        1MB (flat, cum) 15.19% of Total
+         .          .     60:func (c *CompiledConversion) convertOwnedRequest(ctx context.Context, request *Request, route ConversionContext, sink *DiagnosticSink) (*Request, error) {
+         .          .     61:	plan := typedLimitPlans[reflect.TypeFor[*Request]()]
+         .        1MB     62:	owned := cloneSemantic(reflect.ValueOf(request), plan).Interface().(*Request)
+         .          .     63:	limits := c.phaseLimits(ctx, ConversionRequest)
+         .          .     64:	state := conversionState{document: owned, limits: limits, isStrict: true, needsEncoding: true, cache: &semanticCache{limits: limits}}
+         .          .     65:	state.normalize(reflect.ValueOf(owned), plan)
+         .          .     66:	if _, err := c.applyConversionState(ctx, ConversionIngress, Value{}, route, sink, &state, false); err != nil {
+         .          .     67:		return nil, err

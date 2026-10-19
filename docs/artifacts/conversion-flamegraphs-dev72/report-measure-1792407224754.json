@@ -1,0 +1,412 @@
+{
+  "schemaVersion": 1,
+  "mode": "conversion-profiling",
+  "startedAt": "2026-10-19T10:53:13.468Z",
+  "status": "failed",
+  "commit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+  "compilerVersion": "2.0.0-dev.72",
+  "goVersion": "go version go1.26.5 windows/amd64",
+  "platform": "win32",
+  "architecture": "x64",
+  "cpu": "AMD Ryzen 5 7600X 6-Core Processor             ",
+  "steps": [
+    {
+      "name": "final-measure-chat-chat-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:53:14.032Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-measure-chat-chat-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "79058d03ecb59276622699238c9793d8bcf64985d165e631480fdf7e79e1c1fa",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "7f5a9632a70ab854e60d10ae4efe90fed521eb2b27a994894a1350e2812ea29a",
+          "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+          "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+          "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+          "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2617,
+      "finishedAt": "2026-10-19T10:53:16.746Z"
+    },
+    {
+      "name": "final-measure-chat-responses-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:53:17.183Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-measure-chat-responses-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "79058d03ecb59276622699238c9793d8bcf64985d165e631480fdf7e79e1c1fa",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "7f5a9632a70ab854e60d10ae4efe90fed521eb2b27a994894a1350e2812ea29a",
+          "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+          "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+          "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+          "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2534,
+      "finishedAt": "2026-10-19T10:53:19.820Z"
+    },
+    {
+      "name": "final-measure-chat-anthropic-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:53:20.234Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-measure-chat-anthropic-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "79058d03ecb59276622699238c9793d8bcf64985d165e631480fdf7e79e1c1fa",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "7f5a9632a70ab854e60d10ae4efe90fed521eb2b27a994894a1350e2812ea29a",
+          "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+          "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+          "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+          "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2204,
+      "finishedAt": "2026-10-19T10:53:22.548Z"
+    },
+    {
+      "name": "final-measure-chat-gemini-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:53:22.953Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-measure-chat-gemini-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "79058d03ecb59276622699238c9793d8bcf64985d165e631480fdf7e79e1c1fa",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "7f5a9632a70ab854e60d10ae4efe90fed521eb2b27a994894a1350e2812ea29a",
+          "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+          "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+          "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+          "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2120,
+      "finishedAt": "2026-10-19T10:53:25.170Z"
+    },
+    {
+      "name": "final-measure-responses-chat-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:53:25.582Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-measure-responses-chat-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "79058d03ecb59276622699238c9793d8bcf64985d165e631480fdf7e79e1c1fa",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "7f5a9632a70ab854e60d10ae4efe90fed521eb2b27a994894a1350e2812ea29a",
+          "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+          "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+          "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+          "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2189,
+      "finishedAt": "2026-10-19T10:53:27.872Z"
+    },
+    {
+      "name": "final-measure-responses-responses-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:53:28.285Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-measure-responses-responses-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "79058d03ecb59276622699238c9793d8bcf64985d165e631480fdf7e79e1c1fa",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "7f5a9632a70ab854e60d10ae4efe90fed521eb2b27a994894a1350e2812ea29a",
+          "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+          "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+          "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+          "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2536,
+      "finishedAt": "2026-10-19T10:53:30.921Z"
+    },
+    {
+      "name": "final-measure-responses-anthropic-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:53:31.338Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-measure-responses-anthropic-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "79058d03ecb59276622699238c9793d8bcf64985d165e631480fdf7e79e1c1fa",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "7f5a9632a70ab854e60d10ae4efe90fed521eb2b27a994894a1350e2812ea29a",
+          "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+          "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+          "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+          "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2349,
+      "finishedAt": "2026-10-19T10:53:33.787Z"
+    },
+    {
+      "name": "final-measure-responses-gemini-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:53:34.215Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-measure-responses-gemini-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "79058d03ecb59276622699238c9793d8bcf64985d165e631480fdf7e79e1c1fa",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "7f5a9632a70ab854e60d10ae4efe90fed521eb2b27a994894a1350e2812ea29a",
+          "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+          "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+          "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+          "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2280,
+      "finishedAt": "2026-10-19T10:53:36.599Z"
+    },
+    {
+      "name": "final-measure-anthropic-chat-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:53:37.025Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-measure-anthropic-chat-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "79058d03ecb59276622699238c9793d8bcf64985d165e631480fdf7e79e1c1fa",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "7f5a9632a70ab854e60d10ae4efe90fed521eb2b27a994894a1350e2812ea29a",
+          "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+          "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+          "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+          "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2032,
+      "finishedAt": "2026-10-19T10:53:39.174Z"
+    },
+    {
+      "name": "final-measure-anthropic-responses-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:53:39.584Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-measure-anthropic-responses-1.log",
+      "status": "passed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "79058d03ecb59276622699238c9793d8bcf64985d165e631480fdf7e79e1c1fa",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "7f5a9632a70ab854e60d10ae4efe90fed521eb2b27a994894a1350e2812ea29a",
+          "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+          "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+          "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+          "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2483,
+      "finishedAt": "2026-10-19T10:53:42.164Z"
+    },
+    {
+      "name": "final-measure-anthropic-anthropic-1",
+      "command": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\server-matrix.test.exe",
+      "args": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=30m"
+      ],
+      "startedAt": "2026-10-19T10:53:42.596Z",
+      "log": "D:\\DevProjects\\Elysia-API\\Elysia-Api\\.tmp-dev\\conversion-flames\\final-measure-anthropic-anthropic-1.log",
+      "status": "failed",
+      "source": {
+        "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+        "trackedDiffSHA256": "79058d03ecb59276622699238c9793d8bcf64985d165e631480fdf7e79e1c1fa",
+        "untrackedSourceSHA256": {
+          "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+          "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+          "backend/server/conversion_flamegraph_matrix_test.go": "7f5a9632a70ab854e60d10ae4efe90fed521eb2b27a994894a1350e2812ea29a",
+          "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+          "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+          "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+          "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+          "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+        }
+      },
+      "compilerVersion": "2.0.0-dev.72",
+      "code": 1,
+      "signal": null,
+      "timedOut": false,
+      "interrupted": false,
+      "elapsedMillis": 2056,
+      "finishedAt": "2026-10-19T10:53:44.753Z"
+    }
+  ],
+  "source": {
+    "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+    "trackedDiffSHA256": "79058d03ecb59276622699238c9793d8bcf64985d165e631480fdf7e79e1c1fa",
+    "untrackedSourceSHA256": {
+      "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+      "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+      "backend/server/conversion_flamegraph_matrix_test.go": "7f5a9632a70ab854e60d10ae4efe90fed521eb2b27a994894a1350e2812ea29a",
+      "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+      "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+      "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+      "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+      "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+    }
+  },
+  "environment": {
+    "commit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+    "go": "go version go1.26.5 windows/amd64",
+    "created": "2026-10-19T10:53:12.976Z",
+    "cpu": "AMD Ryzen 5 7600X 6-Core Processor             ",
+    "logicalCPUs": 12,
+    "platform": "win32",
+    "architecture": "x64",
+    "GOGC": "100",
+    "GOMEMLIMIT": "8GiB",
+    "GOMAXPROCS": "Go default",
+    "pgo": "off",
+    "memory": {
+      "availablePhysicalGiB": 12.799915313720703,
+      "availableCommitGiB": 1.3150825500488281
+    },
+    "binarySHA256": "a287b7704da4c539ba1f89d7c74ed1920ca4d064b81c49ec64d43e633b03acdf",
+    "productionDiff": ""
+  },
+  "reason": "final-measure-anthropic-anthropic-1",
+  "finishedAt": "2026-10-19T10:53:44.753Z"
+}

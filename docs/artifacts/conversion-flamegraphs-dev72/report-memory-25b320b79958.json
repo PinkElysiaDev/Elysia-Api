@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "mode": "conversion-profiling",
+  "startedAt": "2026-10-19T10:55:48.023Z",
+  "status": "partially_blocked",
+  "commit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+  "compilerVersion": "2.0.0-dev.72",
+  "goVersion": "go version go1.26.5 windows/amd64",
+  "platform": "win32",
+  "architecture": "x64",
+  "cpu": "AMD Ryzen 5 7600X 6-Core Processor             ",
+  "steps": [
+    {
+      "name": "final-memory-image2-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.564037322998047,
+        "availableCommitGiB": 0.8142356872558594
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-memory-image31-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.573230743408203,
+        "availableCommitGiB": 0.7824211120605469
+      },
+      "commitNeeded": 2,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-memory-nodes-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.586418151855469,
+        "availableCommitGiB": 0.7850112915039062
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    },
+    {
+      "name": "final-memory-events-1",
+      "status": "environment_blocked",
+      "memory": {
+        "availablePhysicalGiB": 12.582748413085938,
+        "availableCommitGiB": 0.8013153076171875
+      },
+      "commitNeeded": 1,
+      "physicalNeeded": 2
+    }
+  ],
+  "source": {
+    "baseCommit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+    "trackedDiffSHA256": "79058d03ecb59276622699238c9793d8bcf64985d165e631480fdf7e79e1c1fa",
+    "untrackedSourceSHA256": {
+      "backend/protocol/builtin/conversion_investigation_test.go": "d89f51d16fa244e5ae8d3396cc6eb05b181bfa14b5a94d7cc9d66fb9447d0411",
+      "backend/protocol/conversion_scan_investigation_test.go": "b392483a5bc17c0a8894c8a661b747283a14ba10e622c893ceff284d5653aa71",
+      "backend/server/conversion_flamegraph_matrix_test.go": "e0b1c281c9aae95671c41492013f3a9b5771d8c311a87310e8438edd65b488b6",
+      "backend/server/conversion_flamegraph_test.go": "dfc13866299366d3fe1168486f4a1c702cbb4eb07a8cfaaefe2be3db614157b2",
+      "scripts/profile-conversion.mjs": "da724b1ff7079f7228914edc836a7c0794f40b8aa71d37d3eba0d4ff7d069da2",
+      "scripts/profile-ledger.mjs": "3e89e8a44475ab2a9a3577661769c07d22f68fb3fa7ed5625dc0232fe3844e28",
+      "scripts/run-conversion-investigation.mjs": "d08f16a6dd8883abdb7d4d9bbf6f0d4cfbde80ef6215e9b244bd5cfaabbab460",
+      "scripts/summarize-conversion-profile.mjs": "8ee2d920331d581cba3bbffd5a65cd7cb995ceb327e85866e134cd7949d993cb"
+    }
+  },
+  "environment": {
+    "commit": "31ea3a9f618dbe282b5e2b02960d751973cd0890",
+    "go": "go version go1.26.5 windows/amd64",
+    "created": "2026-10-19T10:55:47.492Z",
+    "cpu": "AMD Ryzen 5 7600X 6-Core Processor             ",
+    "logicalCPUs": 12,
+    "platform": "win32",
+    "architecture": "x64",
+    "GOGC": "100",
+    "GOMEMLIMIT": "8GiB",
+    "GOMAXPROCS": "Go default",
+    "pgo": "off",
+    "memory": {
+      "availablePhysicalGiB": 12.62601089477539,
+      "availableCommitGiB": 0.8760490417480469
+    },
+    "binarySHA256": "64b191dc27fde1591d24d88ee85ddcdca85712077b5546d68fb7d26487cd2607",
+    "productionDiff": ""
+  },
+  "finishedAt": "2026-10-19T10:55:49.958Z"
+}
