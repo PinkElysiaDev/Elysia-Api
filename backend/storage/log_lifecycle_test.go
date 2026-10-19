@@ -17,7 +17,7 @@ func TestLogDatabaseUsesIncrementalReclamation(t *testing.T) {
 	}
 	defer s.Close()
 	var mode int
-	if err := s.db.QueryRow(`PRAGMA auto_vacuum`).Scan(&mode); err != nil {
+	if err := s.LogStore.db.QueryRow(`PRAGMA auto_vacuum`).Scan(&mode); err != nil {
 		t.Fatal(err)
 	}
 	if mode != 2 {
@@ -58,7 +58,7 @@ func TestLogContentBudgetAndAtomicAssets(t *testing.T) {
 		t.Fatal("invalid attachment accepted")
 	}
 	var bad int
-	if err := s.db.QueryRow(`SELECT count(*) FROM usage_records WHERE request_id='bad'`).Scan(&bad); err != nil || bad != 0 {
+	if err := s.LogStore.db.QueryRow(`SELECT count(*) FROM usage_records WHERE request_id='bad'`).Scan(&bad); err != nil || bad != 0 {
 		t.Fatal("failed transaction left row", err)
 	}
 	deleted, err := s.PruneLogBatch(ctx, false, LogPrunePolicy{MaxRecords: 2})
@@ -79,7 +79,7 @@ func TestLogContentBudgetAndAtomicAssets(t *testing.T) {
 		t.Fatalf("media quota: %+v %+v", deleted, after)
 	}
 	var tokens int
-	if err := s.db.QueryRow(`SELECT sum(total_tok) FROM usage_rollup_hour`).Scan(&tokens); err != nil || tokens != 30 {
+	if err := s.LogStore.db.QueryRow(`SELECT sum(total_tok) FROM usage_rollup_hour`).Scan(&tokens); err != nil || tokens != 30 {
 		t.Fatalf("retention changed rollup: %d %v", tokens, err)
 	}
 }
@@ -107,7 +107,7 @@ func TestLogBudgetExcludesBusinessDataAndSystemIsIndependent(t *testing.T) {
 		}
 	}
 	var expected int64
-	if err := s.db.QueryRow(`SELECT sum(length(CAST(created_at||level||message||fields_json AS BLOB))) FROM system_logs`).Scan(&expected); err != nil {
+	if err := s.LogStore.db.QueryRow(`SELECT sum(length(CAST(created_at||level||message||fields_json AS BLOB))) FROM system_logs`).Scan(&expected); err != nil {
 		t.Fatal(err)
 	}
 	stats, _ := s.LogContentStats(ctx)
@@ -135,12 +135,13 @@ func TestIncrementalReclamationAndBusyCheckpoint(t *testing.T) {
 	}
 	defer s.Close()
 	ctx := context.Background()
-	if _, err := s.db.Exec(`INSERT INTO usage_records(request_id,started_at,ended_at,record_json,content_bytes) VALUES('large','now','now',zeroblob(4*1024*1024),4194304)`); err != nil {
+	if _, err := s.LogStore.db.Exec(`INSERT INTO usage_records(request_id,started_at,ended_at,record_json,content_bytes) VALUES('large','now','now',zeroblob(4*1024*1024),4194304)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Checkpoint(ctx, true); err != nil {
 		t.Fatal(err)
 	}
+	p = s.LogStore.Path()
 	before, err := os.Stat(p)
 	if err != nil {
 		t.Fatal(err)

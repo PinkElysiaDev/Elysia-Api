@@ -3,19 +3,21 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"log"
-	"path/filepath"
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/storage"
 )
 
 func (s *Server) saveUsageRecordToStore(record *usageRecord) error {
-	s.initLifecycle()
-	ctx := s.usageWriteCtx
-	if err := ctx.Err(); err != nil {
-		return err
-	}
+	s.usagePersistMu.Lock()
+	defer s.usagePersistMu.Unlock()
+	// A synchronous settlement belongs to the current generation. Pin it under
+	// the reset lock so a skipped stale record cannot acknowledge the job outbox.
+	record.writeGen = s.usageWriteGen.Load()
+	return s.saveUsageBatchToStore([]*usageRecord{record})
+}
+
+func (s *Server) prepareUsageRecord(record *usageRecord) (storage.UsageRecordInput, error) {
 	cfg := s.usageLogConfig()
 	var assets []storage.UsageAsset
 	// bodyOnErrorOnly：成功请求的请求体没有排查价值，四段 body 与外置媒体
@@ -31,7 +33,7 @@ func (s *Server) saveUsageRecordToStore(record *usageRecord) error {
 		assets, err = writeUsageAssets(s.usageAssetsRoot(), record.assets.items)
 		if err != nil {
 			record.RequestWarnings = append(record.RequestWarnings, "media attachment missing: "+err.Error())
-			log.Printf("usage assets: failed to write assets for %s: %v", record.RequestID, err)
+			s.logEvent("error").Str("request_id", record.RequestID).Err(err).Msg("failed to write usage assets")
 		}
 		if len(assets) > 0 {
 			record.RequestWarnings = append(record.RequestWarnings, fmt.Sprintf("%d media assets externalized", len(assets)))
@@ -39,7 +41,7 @@ func (s *Server) saveUsageRecordToStore(record *usageRecord) error {
 	}
 	payload, err := json.Marshal(record)
 	if err != nil {
-		return err
+		return storage.UsageRecordInput{}, err
 	}
 	summary := storage.UsageLogItem{
 		RequestID:           record.RequestID,
@@ -72,7 +74,7 @@ func (s *Server) saveUsageRecordToStore(record *usageRecord) error {
 		RequestTruncated:  record.IncomingBody.Truncated,
 		ResponseTruncated: record.ProviderResponse.Truncated,
 	}
-	return s.store.SaveUsageRecordJSON(ctx, payload, summary, record.EndedAt, assets...)
+	return storage.UsageRecordInput{Payload: payload, Summary: summary, EndedAt: record.EndedAt, Assets: assets}, nil
 }
 
 // usageLogConfig 返回本服务生效的日志策略；无 config 的裸 Server（测试）
@@ -84,7 +86,7 @@ func (s *Server) usageLogConfig() config.UsageLogResolved {
 	return s.config.GetUsageLogConfig()
 }
 
-// usageAssetsRoot 返回媒体资产根目录（数据库同目录下的 usage-assets/）。
+// usageAssetsRoot follows the log database, including separately mounted paths.
 func (s *Server) usageAssetsRoot() string {
 	if s.store != nil {
 		return s.store.UsageAssetsRoot()
@@ -92,9 +94,9 @@ func (s *Server) usageAssetsRoot() string {
 	if s.config == nil {
 		return ""
 	}
-	dbPath := s.config.GetDatabasePath()
+	dbPath := s.config.GetLogDatabasePath()
 	if dbPath == "" {
 		return ""
 	}
-	return filepath.Join(filepath.Dir(dbPath), usageAssetsDirName)
+	return dbPath + "-assets"
 }

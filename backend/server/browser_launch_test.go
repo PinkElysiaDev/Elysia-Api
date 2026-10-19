@@ -2,12 +2,13 @@ package server
 
 import (
 	"bytes"
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	log "github.com/elysia-api/backend/logging"
 )
 
 func TestConsoleBrowserEnvironmentOverride(t *testing.T) {
@@ -52,9 +53,11 @@ func TestConsoleBrowserEnvironmentOverride(t *testing.T) {
 				t.Setenv("ELYSIA_API_OPEN_BROWSER", *tc.env)
 			}
 			var output bytes.Buffer
-			previous := log.Writer()
-			log.SetOutput(&output)
-			t.Cleanup(func() { log.SetOutput(previous) })
+			previous := log.Default()
+			logger := log.New(log.Options{Format: "console"}, nil)
+			logger.SetOutput(&output)
+			log.SetDefault(logger)
+			t.Cleanup(func() { log.SetDefault(previous) })
 			launchConsoleBrowser(tc.configured, "127.0.0.1", 8765)
 			if got := strings.Contains(output.String(), "已尝试在默认浏览器打开控制台"); got != tc.wantOpen {
 				t.Fatalf("opened=%v, want %v; log=%s", got, tc.wantOpen, output.String())

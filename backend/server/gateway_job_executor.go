@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -61,7 +60,9 @@ func (s *Server) startGatewayJobs() error {
 	s.gatewayJobs.cancel, s.gatewayJobs.done = cancel, make(chan struct{})
 	go func() {
 		defer close(s.gatewayJobs.done)
-		coordinator.Run(ctx, func(err error) { log.Printf("generation job worker: %v", err) })
+		coordinator.Run(ctx, func(err error) {
+			s.logEvent("error").Err(err).Str("event", "generation_job_failed").Msg("generation job worker failed")
+		})
 	}()
 	return nil
 }
@@ -246,11 +247,7 @@ func (writer gatewayJobSettlements) SettleJob(ctx context.Context, job protocol.
 	updateRecordProtocolUsage(record, job.Usage)
 	// This synchronous write is idempotent by SettlementID. Only after success
 	// may the coordinator acknowledge its durable outbox entry.
-	if err := writer.server.saveUsageRecordToStore(record); err != nil {
-		return err
-	}
-	writer.server.usageCache.flush()
-	return nil
+	return writer.server.saveUsageRecordToStore(record)
 }
 
 const gatewayJobWaitInterval = 50 * time.Millisecond

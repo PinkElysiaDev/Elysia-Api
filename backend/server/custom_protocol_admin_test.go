@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
@@ -77,7 +78,11 @@ func decodeAdminData(t *testing.T, rec *httptest.ResponseRecorder) map[string]an
 
 func TestSystemLogWrite(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
+	s.logger = logging.New(s.config.GetLoggingOptions(), logging.NewWriter(s.store.LogStore.WriteSystemLogBatch))
 	s.logSystemEvent("info", "server started", map[string]any{"version": "test", "port": 8765})
+	if err := s.logger.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	total, logs, err := s.store.QuerySystemLogs(t.Context(), 10, 0, "")
 	if err != nil {
 		t.Fatalf("query: %v", err)

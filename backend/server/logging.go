@@ -1,40 +1,50 @@
 package server
 
-import "log"
+import (
+	"net/http"
+	"runtime/debug"
+	"time"
 
-// 日志级别优先级。数值越大越严重。LogLevel 配置项决定输出阈值：
-// 只有 >= 当前阈值的日志才会输出。debug < info < warn < error。
-var logLevelPriority = map[string]int{
-	"debug": 0,
-	"info":  1,
-	"warn":  2,
-	"error": 3,
+	"github.com/elysia-api/backend/logging"
+	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
+)
+
+func (s *Server) Logger() *logging.Logger {
+	if s.logger != nil {
+		return s.logger
+	}
+	return logging.Default()
 }
 
-const defaultLogPriority = 1 // 默认 info
-
-// currentLogThreshold 返回当前 LogLevel 对应的优先级阈值。
-// 无效或为空时回退到 info。
-func (s *Server) currentLogThreshold() int {
-	level := s.config.GetLogLevel()
-	if p, ok := logLevelPriority[level]; ok {
-		return p
-	}
-	return defaultLogPriority
+func (s *Server) logEvent(level string) *zerolog.Event {
+	return s.Logger().Event(logging.ParseLevel(level)).Str("component", "server")
 }
 
-// logAt 按级别输出日志：仅当该级别 >= 当前 LogLevel 阈值时才写出。
-// 这让 LogLevel 真正控制日志量（中危4）。
-func (s *Server) logAt(level, format string, args ...interface{}) {
-	p, ok := logLevelPriority[level]
-	if !ok {
-		p = defaultLogPriority
+func (s *Server) requestLogging() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		started := time.Now()
+		id := usageRequestID(started)
+		c.Set("requestID", id)
+		c.Header("X-Elysia-Request-Id", id)
+		logger := s.Logger().Component("http").With().Str("request_id", id).Logger()
+		c.Request = c.Request.WithContext(logger.WithContext(c.Request.Context()))
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				logger.Error().Interface("panic", recovered).Bytes("stack", debug.Stack()).Msg("request panic")
+				c.AbortWithStatus(http.StatusInternalServerError)
+			}
+			level := zerolog.DebugLevel
+			if c.Writer.Status() >= 500 {
+				level = zerolog.ErrorLevel
+			}
+			if s.Logger().Enabled(level) {
+				zerolog.Ctx(c.Request.Context()).WithLevel(level).
+					Str("method", c.Request.Method).Str("path", c.Request.URL.Path).
+					Int("status_code", c.Writer.Status()).Int64("duration_ms", time.Since(started).Milliseconds()).
+					Msg("request completed")
+			}
+		}()
+		c.Next()
 	}
-	if p < s.currentLogThreshold() {
-		return
-	}
-	log.Printf("["+level+"] "+format, args...)
 }
-
-func (s *Server) logWarnf(format string, args ...interface{}) { s.logAt("warn", format, args...) }
-func (s *Server) logInfof(format string, args ...interface{}) { s.logAt("info", format, args...) }

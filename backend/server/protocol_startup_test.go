@@ -31,7 +31,6 @@ func TestProductionStartupPublishesCurrentPresets(t *testing.T) {
 	cfg := startupFixtureConfig(t, t.TempDir())
 	s := New(cfg)
 	defer s.doShutdown()
-	defer s.store.Close()
 	if s.startupErr != nil || !s.protocolRuntimeReady.Load() {
 		t.Fatal("runtime failed to initialize", s.startupErr, s.protocolRuntimeFailure.Load())
 	}
@@ -53,7 +52,6 @@ func TestProductionReloadCompletesPreviouslyFailedStartup(t *testing.T) {
 	recoveryExec(t, db, `CREATE TRIGGER stop_creation BEFORE INSERT ON protocol_verification_reports BEGIN SELECT RAISE(ABORT,'injected creation failure'); END`)
 	s := New(cfg)
 	defer s.doShutdown()
-	defer s.store.Close()
 	if s.protocolRuntimeReady.Load() || s.protocolStartupFailure.Load() == nil {
 		t.Fatal("failure marked ready")
 	}

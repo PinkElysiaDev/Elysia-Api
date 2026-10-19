@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	log "github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 )
@@ -24,7 +24,10 @@ type Config struct {
 	Port             int                 `json:"port,omitempty"`
 	PanelAccessToken string              `json:"panelAccessToken,omitempty"`
 	DatabasePath     string              `json:"databasePath,omitempty"`
+	LogDatabasePath  string              `json:"logDatabasePath,omitempty"`
 	LogLevel         string              `json:"logLevel,omitempty"`
+	LogFormat        string              `json:"logFormat,omitempty"`
+	LogPersistLevel  string              `json:"logPersistLevel,omitempty"`
 	SecretKeyPath    string              `json:"secretKeyPath,omitempty"`
 	WebUIDir         string              `json:"webuiDir,omitempty"`
 	EnablePprof      bool                `json:"enablePprof,omitempty"`
@@ -32,7 +35,7 @@ type Config struct {
 	Responses        ResponsesConfig     `json:"responses,omitempty"` // Responses API 开关
 	Usage            UsageConfig         `json:"usage,omitempty"`     // 用量估算配置
 	SystemLog        LogRetentionConfig  `json:"systemLog,omitempty"`
-	UsageLog         UsageLogConfig      `json:"usageLog,omitempty"`     // 请求日志留存与内容策略（清理默认关闭）
+	UsageLog         UsageLogConfig      `json:"usageLog,omitempty"`     // 请求日志留存与内容策略
 	HTTPTimeout      int                 `json:"httpTimeout,omitempty"`  // HTTP 请求超时时间（秒），0 为不限制
 	DebugMode        bool                `json:"debugMode,omitempty"`    // 调试模式
 	VerboseLog       bool                `json:"verboseLog,omitempty"`   // 详细日志模式
@@ -128,8 +131,7 @@ type UsageConfig struct {
 }
 
 // UsageLogConfig 控制请求日志（usage_records）的留存与内容策略。
-// 三个清理上限（RetentionDays/MaxContentMB/MaxRecords）均为 nil/0 = 不启用：
-// 开箱默认与历史版本一致——日志持续累积，不做自动清理。
+// 未配置时保留 14 天、最多 1024 MiB 内容；显式 0 关闭对应限制。
 //
 // 字段全部用指针以区分「未配置（走默认）」与「显式 0（关闭/不保存）」，
 // 管理端 PUT runtime-config 据此实现局部更新。
@@ -161,6 +163,8 @@ type UsageLogConfig struct {
 // 日志管理默认值：正文保存需显式开启。
 const (
 	DefaultUsageBodyMaxKB        = 0
+	DefaultUsageRetentionDays    = 14
+	DefaultUsageMaxContentMB     = 1024
 	DefaultUsageCleanupIntervalM = 60
 	MinUsageCleanupIntervalM     = 5
 )
@@ -263,6 +267,9 @@ func Load(path string) (*Config, error) {
 	if err := protocol.ValidateRequestBodyLimit(cfg.MaxBodyBytes); err != nil {
 		return nil, err
 	}
+	if err := cfg.validateLogSettings(); err != nil {
+		return nil, err
+	}
 
 	cfg.mu.Lock()
 	GlobalConfig = cfg
@@ -287,6 +294,12 @@ func (c *Config) applyBootstrapDefaults(path string) {
 		c.SecretKeyPath = filepath.Join(filepath.Dir(path), ".master-key")
 	} else if !filepath.IsAbs(c.SecretKeyPath) {
 		c.SecretKeyPath = filepath.Join(filepath.Dir(path), c.SecretKeyPath)
+	}
+	if c.LogDatabasePath != "" && !filepath.IsAbs(c.LogDatabasePath) {
+		c.LogDatabasePath = filepath.Join(filepath.Dir(path), c.LogDatabasePath)
+		if absolute, err := filepath.Abs(c.LogDatabasePath); err == nil {
+			c.LogDatabasePath = absolute
+		}
 	}
 	if c.LogLevel == "" {
 		c.LogLevel = "info"
@@ -339,7 +352,8 @@ func (c *Config) saveLocked() error {
 	}
 	fields := map[string]any{
 		"host": c.Host, "port": c.Port, "panelAccessToken": c.PanelAccessToken,
-		"databasePath": c.DatabasePath, "logLevel": c.LogLevel,
+		"databasePath": c.DatabasePath, "logDatabasePath": c.LogDatabasePath,
+		"logLevel": c.LogLevel, "logFormat": c.LogFormat, "logPersistLevel": c.LogPersistLevel,
 		"enablePprof": c.EnablePprof, "httpTimeout": c.HTTPTimeout,
 	}
 	for key, value := range fields {
@@ -562,6 +576,9 @@ func (c *Config) Reload() error {
 	if err := protocol.ValidateRequestBodyLimit(newCfg.MaxBodyBytes); err != nil {
 		return err
 	}
+	if err := newCfg.validateLogSettings(); err != nil {
+		return err
+	}
 
 	c.publishSettingsLocked(newCfg)
 	return nil
@@ -745,7 +762,7 @@ func (c *Config) GetDBEncryptionKey() []byte {
 	_, _ = rand.Read(raw)
 	key := base64.StdEncoding.EncodeToString(raw)
 	if err := os.WriteFile(target, []byte(key), 0o600); err != nil {
-		log.Printf("warning: failed to persist db encryption key to %s: %v (secrets will be at risk if key is lost)", target, err)
+		log.Warn().Str("component", "config").Str("path", target).Err(err).Msg("failed to persist db encryption key (secrets will be at risk if key is lost)")
 		// 仍返回内存中的 key，本次进程内加密可用；但重启后无法解密，
 		// 因此只在能落盘时才真正启用持久加密。
 		return nil
@@ -753,7 +770,7 @@ func (c *Config) GetDBEncryptionKey() []byte {
 	// 修复 S1：密钥若与数据库同目录，备份/卷快照/cp -r 会同时带走密文与密钥，
 	// at-rest 加密形同虚设。落到同目录时打印醒目告警，引导改用环境变量或独立路径。
 	if dbPath != "" && filepath.Dir(target) == filepath.Dir(dbPath) {
-		log.Printf("warning: db encryption key %s sits in the SAME directory as the database; a backup/snapshot of that directory exposes both ciphertext and key. Prefer ELYSIA_API_MASTER_KEY or point secretKeyPath at a separately-secured location.", target)
+		log.Warn().Str("component", "config").Str("path", target).Msg("db encryption key sits in the SAME directory as the database; a backup/snapshot exposes both ciphertext and key. Prefer ELYSIA_API_MASTER_KEY or a separately-secured secretKeyPath.")
 	}
 	return []byte(key)
 }
@@ -861,8 +878,8 @@ func (c *Config) resolveUsageLogLocked() UsageLogResolved {
 		ExternalizeMedia: cfg.ExternalizeMedia == nil || *cfg.ExternalizeMedia,
 		CleanupInterval:  time.Duration(DefaultUsageCleanupIntervalM) * time.Minute,
 	}
-	res.RetentionDays = positiveOr(cfg.RetentionDays, 0)
-	if mb := positiveOr(cfg.MaxContentMB, 0); mb > 0 {
+	res.RetentionDays = limitOrDefault(cfg.RetentionDays, DefaultUsageRetentionDays)
+	if mb := limitOrDefault(cfg.MaxContentMB, DefaultUsageMaxContentMB); mb > 0 {
 		res.MaxContentBytes = int64(mb) * 1024 * 1024
 	}
 	res.MaxRecords = positiveOr(cfg.MaxRecords, 0)
@@ -930,17 +947,19 @@ func init() {
 
 	cfg, created, err := EnsureConfig(*configFile)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Error().Err(err).Msg("failed to load config")
+		os.Exit(1)
 	}
 
 	if created {
-		log.Printf("No config found at %s; created a default with a generated panelAccessToken.", *configFile)
-		log.Printf("Generated panelAccessToken: %s", cfg.GetPanelAccessToken())
-		log.Printf("Please review %s and rotate the token before exposing the service.", *configFile)
+		log.Info().Str("path", *configFile).Msg("created default config with a generated panelAccessToken")
+		log.Info().Msgf("Generated panelAccessToken: %s", cfg.GetPanelAccessToken())
+		log.Info().Msgf("Please review %s and rotate the token before exposing the service.", *configFile)
 	}
 
 	GlobalConfig = cfg
-	log.Println("Config loaded successfully")
+	log.Default().Configure(cfg.GetLoggingOptions())
+	log.Info().Str("component", "config").Msg("config loaded successfully")
 }
 
 // publishSettingsLocked replaces persisted settings under the configuration lock.
@@ -949,7 +968,10 @@ func (c *Config) publishSettingsLocked(newCfg *Config) {
 	c.Port = newCfg.Port
 	c.PanelAccessToken = newCfg.PanelAccessToken
 	c.DatabasePath = newCfg.DatabasePath
+	c.LogDatabasePath = newCfg.LogDatabasePath
 	c.LogLevel = newCfg.LogLevel
+	c.LogFormat = newCfg.LogFormat
+	c.LogPersistLevel = newCfg.LogPersistLevel
 	c.SecretKeyPath = newCfg.SecretKeyPath
 	c.WebUIDir = newCfg.WebUIDir
 	c.EnablePprof = newCfg.EnablePprof

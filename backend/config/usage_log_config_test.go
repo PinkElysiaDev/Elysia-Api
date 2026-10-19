@@ -8,14 +8,14 @@ import (
 	"time"
 )
 
-func TestUsageLogDefaultsCleanupDisabled(t *testing.T) {
+func TestUsageLogDefaultsBoundedRetention(t *testing.T) {
 	cfg := &Config{}
 	res := cfg.GetUsageLogConfig()
 	if !res.PersistEnabled {
 		t.Fatal("persistEnabled must default to true")
 	}
-	if res.RetentionDays != 0 || res.MaxContentBytes != 0 || res.MaxRecords != 0 {
-		t.Fatalf("auto cleanup must be disabled by default: %+v", res)
+	if res.RetentionDays != 14 || res.MaxContentBytes != 1024<<20 || res.MaxRecords != 0 {
+		t.Fatalf("unexpected retention defaults: %+v", res)
 	}
 	if res.BodyMaxBytes != 0 || DefaultUsageLogResolved().BodyMaxBytes != 0 {
 		t.Fatalf("bodyMaxBytes default = %d", res.BodyMaxBytes)

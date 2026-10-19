@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/elysia-api/backend/protocol"
@@ -88,7 +87,7 @@ func (s *Server) refreshProtocolRuntimeScope(ctx context.Context, service *proto
 	}
 	for _, entry := range plan.Revisions {
 		if protocol.IsPresetProtocolID(entry.Revision.ProtocolID) && entry.Refresh.Changed() {
-			log.Printf("[protocol-recovery] %s restored: revision=%t evidence=%t activation=%t draft=%t", entry.Revision.ProtocolID, entry.Refresh.Revision || entry.Refresh.RepairPreset, entry.Refresh.Report, entry.Refresh.Activation, entry.Refresh.Draft)
+			s.logEvent("info").Str("protocol_id", entry.Revision.ProtocolID).Bool("revision", entry.Refresh.Revision || entry.Refresh.RepairPreset).Bool("evidence", entry.Refresh.Report).Bool("activation", entry.Refresh.Activation).Bool("draft", entry.Refresh.Draft).Msg("protocol restored")
 		}
 	}
 	return nil
@@ -237,7 +236,7 @@ func (s *Server) prepareProtocolRefresh(ctx context.Context, service *protocol.S
 				if !errors.As(err, &conversion) && !errors.Is(err, storage.ErrCorruptProtocolRecord) {
 					return fail(err)
 				}
-				log.Printf("[protocol-refresh] custom %s unavailable: %v", a.ProtocolID, err)
+				s.logEvent("error").Str("protocol_id", a.ProtocolID).Err(err).Msg("custom protocol unavailable")
 			}
 		}
 	}

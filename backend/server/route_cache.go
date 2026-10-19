@@ -81,19 +81,19 @@ func (s *Server) assembleGroupsFromStore() ([]config.ModelGroupConfig, bool) {
 	ctx := context.Background()
 	groups, err := s.store.ListGroups(ctx)
 	if err != nil {
-		s.logWarnf("failed to load model groups from sqlite: %v", err)
+		s.logEvent("error").Err(err).Msg("failed to load model groups from sqlite")
 		return nil, false
 	}
 	models, err := s.store.ListModels(ctx)
 	if err != nil {
-		s.logWarnf("failed to load models from sqlite: %v", err)
+		s.logEvent("error").Err(err).Msg("failed to load models from sqlite")
 		return nil, false
 	}
 	// 源级多 key 元数据：ModelRef 的 key 集合以源为准（models.api_key 冗余列仅作
 	// 单 key 回退，不再随多 key 演进——避免大迁移）。
 	sources, err := s.store.ListSources(ctx)
 	if err != nil {
-		s.logWarnf("failed to load model sources from sqlite: %v", err)
+		s.logEvent("error").Err(err).Msg("failed to load model sources from sqlite")
 		return nil, false
 	}
 	keyMeta := collectSourceKeys(sources)
@@ -180,7 +180,7 @@ func (s *Server) resolveModelSource(model storage.Model, keyMeta map[string]sour
 func (s *Server) loadTokensFromStore() (map[string]config.AccessToken, bool) {
 	items, err := s.store.ListAPITokens(context.Background())
 	if err != nil {
-		s.logWarnf("failed to load api tokens from sqlite: %v", err)
+		s.logEvent("error").Err(err).Msg("failed to load api tokens from sqlite")
 		return nil, false
 	}
 	tokens := make(map[string]config.AccessToken, len(items))

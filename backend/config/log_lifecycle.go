@@ -1,6 +1,19 @@
 package config
 
-// LogRetentionConfig uses content budgets, not a limit on the shared SQLite file.
+import (
+	"errors"
+	"fmt"
+	"path/filepath"
+	"strings"
+
+	"github.com/elysia-api/backend/logging"
+	"github.com/elysia-api/backend/storage"
+)
+
+// ErrDatabasePath identifies invalid database paths independently of HTTP errors.
+var ErrDatabasePath = errors.New("invalid database path")
+
+// LogRetentionConfig uses content budgets, not a physical SQLite file limit.
 type LogRetentionConfig struct {
 	RetentionDays *int `json:"retentionDays,omitempty"`
 	MaxRecords    *int `json:"maxRecords,omitempty"`
@@ -16,7 +29,79 @@ type LogRetentionResolved struct {
 func (c *Config) GetSystemLogConfig() LogRetentionResolved {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return LogRetentionResolved{positiveOr(c.SystemLog.RetentionDays, 0), positiveOr(c.SystemLog.MaxRecords, 0), positiveOr(c.SystemLog.MaxContentMB, 0)}
+	return LogRetentionResolved{limitOrDefault(c.SystemLog.RetentionDays, 30), positiveOr(c.SystemLog.MaxRecords, 0), limitOrDefault(c.SystemLog.MaxContentMB, 256)}
+}
+
+func limitOrDefault(value *int, fallback int) int {
+	if value == nil {
+		return fallback
+	}
+	return max(*value, 0)
+}
+
+func (c *Config) GetLogDatabasePath() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.LogDatabasePath != "" {
+		return c.LogDatabasePath
+	}
+	return storage.DefaultLogPath(c.DatabasePath)
+}
+
+func (c *Config) SetLogDatabasePath(path string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	path = strings.TrimSpace(path)
+	if path != "" && !filepath.IsAbs(path) {
+		path = filepath.Join(filepath.Dir(c.path), path)
+		if absolute, err := filepath.Abs(path); err == nil {
+			path = absolute
+		}
+	}
+	c.LogDatabasePath = path
+}
+
+func (c *Config) GetLoggingOptions() logging.Options {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	format, persist := c.LogFormat, c.LogPersistLevel
+	if format == "" {
+		format = "auto"
+	}
+	if persist == "" {
+		persist = "info"
+	}
+	return logging.Options{Level: c.LogLevel, Format: format, PersistLevel: persist}
+}
+
+func (c *Config) SetLogOutput(format, persist string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if format != "" {
+		c.LogFormat = format
+	}
+	if persist != "" {
+		c.LogPersistLevel = persist
+	}
+}
+
+func (c *Config) validateLogSettings() error {
+	for name, level := range map[string]string{"logLevel": c.LogLevel, "logPersistLevel": c.LogPersistLevel} {
+		switch level {
+		case "", "debug", "info", "warn", "error":
+		default:
+			return fmt.Errorf("%s must be debug/info/warn/error", name)
+		}
+	}
+	switch c.LogFormat {
+	case "", "auto", "json", "console":
+	default:
+		return fmt.Errorf("logFormat must be auto/json/console")
+	}
+	if err := storage.ValidateDatabasePaths(c.DatabasePath, c.GetLogDatabasePath()); err != nil {
+		return fmt.Errorf("%w: %w", ErrDatabasePath, err)
+	}
+	return nil
 }
 
 func (c *Config) SetSystemLogConfig(p LogRetentionConfig) {

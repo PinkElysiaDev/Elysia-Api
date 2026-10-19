@@ -3,8 +3,9 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"log"
 	"time"
+
+	log "github.com/elysia-api/backend/logging"
 )
 
 // 小时级预聚合表（usage_rollup_hour）：把 usage_records 按 (小时, 模型, 组,
@@ -36,7 +37,7 @@ const (
 
 // StartRollupBackfill 在后台 goroutine 里执行/续跑回填；失败仅记日志，
 // 查询继续走 raw 路径（下次启动重试）。
-func (s *Store) StartRollupBackfill() {
+func (s *LogStore) StartRollupBackfill() {
 	s.rollupWG.Add(1)
 	go func() {
 		defer s.rollupWG.Done()
@@ -48,14 +49,14 @@ func (s *Store) StartRollupBackfill() {
 			if ctx.Err() != nil {
 				return
 			}
-			log.Printf("[usage-rollup] backfill failed (queries stay on raw path): %v", err)
+			log.Error().Str("component", "usage_rollup").Err(err).Msg("backfill failed; queries stay on raw path")
 		}
 	}()
 }
 
 // initRollupState 初始化状态行（幂等）并把 ready 载入内存。首次运行把回填
 // 上界固定在当前时刻：此前的记录归回填，此后由写入侧增量维护，两者不重叠。
-func (s *Store) initRollupState(ctx context.Context) error {
+func (s *LogStore) initRollupState(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx,
 		`INSERT OR IGNORE INTO usage_rollup_state(key, int_value) VALUES(?, ?), (?, 0), (?, 0)`,
 		rollupStateUntil, time.Now().UnixMilli(), rollupStateThrough, rollupStateReady); err != nil {
@@ -69,7 +70,7 @@ func (s *Store) initRollupState(ctx context.Context) error {
 	return nil
 }
 
-func (s *Store) rollupStateInt(ctx context.Context, key string) (int64, error) {
+func (s *LogStore) rollupStateInt(ctx context.Context, key string) (int64, error) {
 	var value int64
 	err := s.db.QueryRowContext(ctx, `SELECT int_value FROM usage_rollup_state WHERE key = ?`, key).Scan(&value)
 	if err == sql.ErrNoRows {
@@ -78,14 +79,14 @@ func (s *Store) rollupStateInt(ctx context.Context, key string) (int64, error) {
 	return value, err
 }
 
-func (s *Store) setRollupStateInt(ctx context.Context, key string, value int64) error {
+func (s *LogStore) setRollupStateInt(ctx context.Context, key string, value int64) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO usage_rollup_state(key, int_value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET int_value = excluded.int_value`, key, value)
 	return err
 }
 
 // RunRollupBackfill rebuilds an unfinished derived aggregate, not historical schemas.
-func (s *Store) RunRollupBackfill(ctx context.Context) error {
+func (s *LogStore) RunRollupBackfill(ctx context.Context) error {
 	s.rollupMu.Lock()
 	defer s.rollupMu.Unlock()
 
@@ -114,7 +115,7 @@ func (s *Store) RunRollupBackfill(ctx context.Context) error {
 }
 
 // backfillRollup 是未就绪态的相位：钳起点 → 分块重建 → 推进水位 → 置 ready。
-func (s *Store) backfillRollup(ctx context.Context, through, until int64, startedAt time.Time) error {
+func (s *LogStore) backfillRollup(ctx context.Context, through, until int64, startedAt time.Time) error {
 	total := until - through
 	// 首次回填时把起点钳到最早数据所在小时：水位默认从 0（Unix 纪元）开始。
 	// 空库 MIN(started_ms) 为 NULL/0，若不短路会从 1970 空跑到现在
@@ -143,7 +144,7 @@ func (s *Store) backfillRollup(ctx context.Context, through, until int64, starte
 			return err
 		}
 	}
-	log.Printf("[usage-rollup] backfilling %.1f days of history (one-time, queries stay on raw path until done)", float64(total)/float64(msPerDay))
+	log.Info().Str("component", "usage_rollup").Float64("days", float64(total)/float64(msPerDay)).Msg("backfilling history")
 	if err := s.backfillRollupChunks(ctx, through, until, total); err != nil {
 		return err
 	}
@@ -151,12 +152,12 @@ func (s *Store) backfillRollup(ctx context.Context, through, until int64, starte
 		return err
 	}
 	s.rollupReady.Store(true)
-	log.Printf("[usage-rollup] backfill complete in %s — aggregates now served from rollup", time.Since(startedAt).Round(time.Millisecond))
+	log.Info().Str("component", "usage_rollup").Int64("duration_ms", time.Since(startedAt).Milliseconds()).Msg("backfill complete")
 	return nil
 }
 
 // earliestRollupStart 返回最早记录所在小时的下界；空库时 empty=true。
-func (s *Store) earliestRollupStart(ctx context.Context) (startMs int64, empty bool, err error) {
+func (s *LogStore) earliestRollupStart(ctx context.Context) (startMs int64, empty bool, err error) {
 	var minMs sql.NullInt64
 	if err := s.db.QueryRowContext(ctx, `SELECT MIN(started_ms) FROM usage_records WHERE started_ms > 0`).Scan(&minMs); err != nil {
 		return 0, false, err
@@ -170,7 +171,7 @@ func (s *Store) earliestRollupStart(ctx context.Context) (startMs int64, empty b
 }
 
 // backfillRollupChunks 按 rollupChunkMs 分块重建并推进水位，块间让出连接。
-func (s *Store) backfillRollupChunks(ctx context.Context, through, until, total int64) error {
+func (s *LogStore) backfillRollupChunks(ctx context.Context, through, until, total int64) error {
 	chunks := 0
 	throughInitial := through
 	for through < until {
@@ -188,7 +189,7 @@ func (s *Store) backfillRollupChunks(ctx context.Context, through, until, total 
 		chunks++
 		if chunks%rollupLogEveryChunks == 0 {
 			percent := (through - throughInitial) * 100 / total
-			log.Printf("[usage-rollup] %s %d%%", backfillProgressBar(int(percent), 100), percent)
+			log.Info().Str("component", "usage_rollup").Int("percent", int(percent)).Msg("backfill progress")
 		}
 		timer := time.NewTimer(rollupChunkPauseMs * time.Millisecond)
 		select {
@@ -203,7 +204,7 @@ func (s *Store) backfillRollupChunks(ctx context.Context, through, until, total 
 
 // rebuildRollupRange 以 raw 表为事实来源，重建 [fromMs, toMs) 的 rollup 行。
 // 与水位更新同事务（调用方自行决定是否推进水位），重跑幂等。
-func (s *Store) rebuildRollupRange(ctx context.Context, fromMs, toMs int64) error {
+func (s *LogStore) rebuildRollupRange(ctx context.Context, fromMs, toMs int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

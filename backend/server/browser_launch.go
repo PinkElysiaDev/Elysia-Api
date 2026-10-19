@@ -7,13 +7,14 @@ package server
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
+
+	log "github.com/elysia-api/backend/logging"
 )
 
 // consoleLaunchURL 由监听地址推导浏览器可访问的控制台地址：通配监听
@@ -61,7 +62,7 @@ func launchConsoleBrowser(openBrowser *bool, host string, port int) {
 		if override, err := strconv.ParseBool(strings.TrimSpace(value)); err == nil {
 			enabled = override
 		} else {
-			log.Printf("ELYSIA_API_OPEN_BROWSER 不是有效布尔值，沿用 openBrowserOnStart 配置")
+			log.Warn().Msg("ELYSIA_API_OPEN_BROWSER 不是有效布尔值，沿用 openBrowserOnStart 配置")
 		}
 	}
 	if !enabled {
@@ -69,8 +70,8 @@ func launchConsoleBrowser(openBrowser *bool, host string, port int) {
 	}
 	url := consoleLaunchURL(host, port)
 	if launchBrowser(url) {
-		log.Printf("已尝试在默认浏览器打开控制台: %s（config.json 可设 openBrowserOnStart: false 关闭）", url)
+		log.Info().Msgf("已尝试在默认浏览器打开控制台: %s（config.json 可设 openBrowserOnStart: false 关闭）", url)
 	} else {
-		log.Printf("未拉起浏览器（无可用打开命令或启动失败），控制台地址: %s", url)
+		log.Warn().Msgf("未拉起浏览器（无可用打开命令或启动失败），控制台地址: %s", url)
 	}
 }

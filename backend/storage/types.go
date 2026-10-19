@@ -11,10 +11,21 @@ import (
 )
 
 type Store struct {
-	db    *sql.DB
-	codec *secretCodec
-	path  string
+	*LogStore
+	db        *sql.DB
+	codec     *secretCodec
+	path      string
+	closeOnce sync.Once
+	closeErr  error
+}
 
+// LogStore owns only diagnostic and usage data, in a separate SQLite file.
+type LogStore struct {
+	db        *sql.DB
+	readDB    *sql.DB
+	path      string
+	closeOnce sync.Once
+	closeErr  error
 	// rollupReady：小时级预聚合已完成回填，聚合查询可走 rollup 路径。
 	rollupReady atomic.Bool
 	rollupMu    sync.Mutex // 序列化回填执行（防重复启动）

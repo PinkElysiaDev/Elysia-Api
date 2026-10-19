@@ -108,6 +108,9 @@ export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
     if (!form || !pristineRef.current) return {}
     const pristine = pristineRef.current
     return {
+      ...(pristine.logDatabasePath !== form.logDatabasePath ? { logDatabasePath: form.logDatabasePath } : {}),
+      ...(pristine.logFormat !== form.logFormat ? { logFormat: form.logFormat } : {}),
+      ...(pristine.logPersistLevel !== form.logPersistLevel ? { logPersistLevel: form.logPersistLevel } : {}),
       ...(JSON.stringify(pristine.outbound.deniedIpRanges) !== JSON.stringify(form.outbound.deniedIpRanges)
         || (pristine.outbound.proxyUrl ?? '').trim() !== (form.outbound.proxyUrl ?? '').trim()
         ? {
@@ -136,7 +139,7 @@ export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
 
   const pristine = pristineRef.current
   const isDirty = Boolean(form && pristine && (
-    (['host', 'port', 'logLevel', 'httpTimeout', 'databasePath', 'enablePprof'] as const)
+    (['host', 'port', 'logLevel', 'logPersistLevel', 'logFormat', 'httpTimeout', 'databasePath', 'logDatabasePath', 'enablePprof'] as const)
       .some((key) => form[key] !== pristine[key]) ||
     (form.panelAccessToken.trim() !== '' && form.panelAccessToken !== pristine.panelAccessToken) ||
     Object.keys(dirtyBlockPayload()).length > 0

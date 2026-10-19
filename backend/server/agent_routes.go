@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -67,7 +66,7 @@ func (s *Server) protocolAgentEngine() *agent.Engine {
 		// 以及 ask_user/update_plan 等会话专用工具。
 		registry, err := agent.NewRegistry(&elysiaCLITool{server: s}, &updatePlanTool{}, &askUserTool{})
 		if err != nil {
-			log.Printf("agent engine tools unavailable: %v", err)
+			s.logEvent("error").Err(err).Msg("agent engine tools unavailable")
 			return
 		}
 		s.agentEngineInst = agent.NewEngine(

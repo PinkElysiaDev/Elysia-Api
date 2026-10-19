@@ -11,8 +11,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
+
+	log "github.com/elysia-api/backend/logging"
 )
 
 // hashToken 返回明文 token 的 SHA256 十六进制摘要，用于 token 去重的唯一索引。
@@ -133,7 +134,7 @@ func (s *Store) SecretIntegrityProbe(ctx context.Context) (hasEncrypted, decrypt
 func (s *Store) decryptOrClear(kind, id, stored string) string {
 	plain, err := s.codec.decrypt(stored)
 	if err != nil {
-		log.Printf("[secret] %s %s: %v (%s cleared, row kept)", kind, id, err, kind)
+		log.Error().Str("component", "secret").Str("kind", kind).Str("id", id).Err(err).Msg("decryption failed; secret cleared, row kept")
 		return ""
 	}
 	return plain

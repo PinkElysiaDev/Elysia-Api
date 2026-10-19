@@ -129,9 +129,12 @@ These are the main fields written on first launch. Replace the example token; do
 | --- | --- |
 | `host` / `port` | `127.0.0.1` / `8765`; restart to change the listener |
 | `panelAccessToken` | Generated on first creation; protects management APIs, not inference |
-| `databasePath` | `elysia-api.sqlite3`; models, tokens, sessions, and logs |
+| `databasePath` | `elysia-api.sqlite3`; business data including models, tokens, and sessions |
+| `logDatabasePath` | Defaults to the business filename with `-logs` before its extension; dedicated system/usage logs, aggregates and media references; changing it requires restart |
 | `secretKeyPath` | `.master-key`; encryption key for sensitive SQLite fields |
 | `logLevel` | `info`; accepts `debug`, `info`, `warn`, `error` |
+| `logPersistLevel` | `info`; independent database diagnostic threshold; operations and errors always attempt persistence |
+| `logFormat` | `auto`: readable terminal output, JSON when redirected; also accepts `json` / `console` |
 | `httpTimeout` | Total timeout for non-streaming HTTP requests; 120 seconds in an automatically created config, while explicit `0` or an omitted field means unlimited |
 | `openBrowserOnStart` | Attempts to open a browser when omitted |
 | `webuiDir` | Empty uses embedded assets; nonempty overrides the WebUI directory |
@@ -139,7 +142,7 @@ These are the main fields written on first launch. Replace the example token; do
 | `maxBodyBytes` | `33554432` (32 MiB); request body limit |
 | `debugMode` / `verboseLog` | Disabled by default; verbose logging requires both |
 
-Relative `databasePath`, `secretKeyPath`, and `webuiDir` values resolve against the configuration directory. Model sources, groups, and API tokens are stored in SQLite through management APIs.
+Relative `databasePath`, `logDatabasePath`, `secretKeyPath`, and `webuiDir` values resolve against the configuration directory. The databases must be different files, including symlink and hard-link aliases. Model sources, groups, and API tokens are stored in SQLite through management APIs.
 
 SSE/NDJSON streams use the protocol’s `framing.idleMillis`: omitted or `0` means 10 minutes; explicit values accept 1–3600000 milliseconds. This bounds waiting for headers and idle reads between data, not total stream duration; `httpTimeout: 0` does not disable it. Adjust the protocol field for upstreams with long reasoning pauses. Caller cancellation still takes effect immediately. Longer waits do not resolve upstream 429 rate limits, and generation is never replayed after streaming starts.
 
@@ -172,14 +175,14 @@ The explicitly configured proxy endpoint may be local or private without removin
 
 ## Request logs
 
-By default, logs contain metadata and usage, without request/response bodies, including for failed requests. Set `usageLog.bodyMaxKB` to a positive value to capture bodies; the WebUI initially enables it at 1024 KB. Automatic cleanup is disabled by default.
+By default, logs contain metadata and usage, without request/response bodies, including for failed requests. Set `usageLog.bodyMaxKB` to a positive value to capture bodies; the WebUI initially enables it at 1024 KB. Usage detail defaults to 14 days and a 1024 MiB content budget; explicit zero disables each limit.
 
 ```json
 {
   "usageLog": {
     "persistEnabled": true,
-    "retentionDays": 0,
-    "maxContentMB": 0,
+    "retentionDays": 14,
+    "maxContentMB": 1024,
     "maxRecords": 0,
     "bodyMaxKB": 0,
     "bodyOnErrorOnly": false,
@@ -196,12 +199,16 @@ By default, logs contain metadata and usage, without request/response bodies, in
 | `maxContentMB` | request-log JSON plus deduplicated media content budget; `0` is unlimited; database pages are reclaimed independently |
 | `bodyMaxKB` | KB limit for each of the four request-chain bodies; `0` disables body capture |
 | `bodyOnErrorOnly` | Keep bodies only for failed requests; still requires `bodyMaxKB > 0` |
-| `externalizeMedia` | Deduplicate base64 media under `usage-assets/` beside the database and retain placeholders in bodies |
+| `externalizeMedia` | Deduplicate base64 media under `<logDatabasePath>-assets/` and retain placeholders in bodies |
 | `cleanupIntervalMinutes` | Defaults to 60 minutes; positive values have a minimum of 5 |
 
-Policies affect subsequent requests; old bodies are not retroactively removed. Retention cleanup preserves hourly aggregate statistics and deletes associated media. Explicit existing limits survive upgrades. Legacy keys are read only by the one-time migration and are not used at runtime.
+Policies affect subsequent requests; old bodies are not retroactively removed. Retention cleanup preserves hourly aggregate statistics and deletes associated media. This version does not migrate or support old database schemas; use new databases.
 
-`systemLog.retentionDays`, `systemLog.maxRecords`, and `systemLog.maxContentMB` independently limit system-log age, count, and content bytes; all default to `0` (unlimited). The request-log budget excludes system logs, usage aggregates, model configuration, and Agent sessions. A content budget is not a hard disk limit for the SQLite file: indexes, free pages, and WAL are reported separately. The first upgrade retains `.pre-log-lifecycle` database and configuration backups in the data directory; they are not deleted automatically. Retention keeps historical usage aggregates, while Reset Usage clears them.
+`systemLog.retentionDays`, `systemLog.maxRecords`, and `systemLog.maxContentMB` independently limit system-log age, count, and content bytes; defaults are 30 days, unlimited count, and 256 MiB. Usage detail defaults are 14 days and 1024 MiB. Explicit zero disables the corresponding limit. A content budget is not a hard disk limit: indexes, free pages, and WAL are reported separately. Retention keeps historical usage aggregates, while Reset Usage clears them. Old databases are not migrated or supported.
+
+Zerolog provides structured output. HTTP events and usage records share a server-generated `request_id` (`X-Elysia-Request-Id` response header). Access events use debug; 5xx responses and panics use error. The system queue is bounded to 2048 records / 16 MiB and batches up to 64 records or 100 ms. Saturated diagnostics are dropped and counted; important events use bounded synchronous fallback. The usage queue is bounded to 1024 records / 128 MiB, batches up to 64 records or 50 ms, and falls back to synchronous persistence with bounded retries. Settings and `GET /api/admin/usage/storage` expose both writers' queue, commit, drop, failure and latency statistics.
+
+SIGTERM, SIGINT, the shutdown endpoint and parent EOF share a shutdown sequence: stop producers, give persistence a separate 15-second drain budget, then checkpoint and close databases. Persistence failures go directly to stderr, increment failure metrics, and cause nonzero exit. Queued records cannot survive SIGKILL; committed records use SQLite FULL synchronous WAL durability, subject to filesystem sync guarantees.
 
 ## Process supervision
 
@@ -219,6 +226,7 @@ ExecStart=/opt/elysia-api/elysia-api-linux-amd64 --config /opt/elysia-api/config
 Environment=ELYSIA_API_OPEN_BROWSER=false
 Restart=on-failure
 RestartSec=3
+TimeoutStopSec=45
 
 [Install]
 WantedBy=multi-user.target
@@ -228,11 +236,11 @@ Save it as `/etc/systemd/system/elysia-api.service`, then run `sudo systemctl da
 
 ## Upgrades, backup, and restore
 
-SQLite uses WAL, a 5000 ms busy timeout, foreign keys, and `synchronous=NORMAL`.
+Both databases use WAL, a 5000 ms busy timeout and foreign keys. Business data uses `synchronous=NORMAL`; logs use `synchronous=FULL`. Business schema version is 2 and log schema version is 1. Old business schemas are rejected without migration.
 
-1. Stop the service before upgrading. Back up `config.json`, the database and any remaining `-wal` / `-shm` files, and `usage-assets/`.
+1. Stop the service before upgrading. Back up `config.json`, both databases and any remaining `-wal` / `-shm` files, and `<logDatabasePath>-assets/`.
 2. Protect and back up the active encryption key separately. If supplied by an environment variable, preserve its secure recovery procedure. Leaking both database and key defeats encryption at rest.
-3. Retain the old binary, replace the binary or image, and start with the existing configuration and data.
+3. Retain the old binary and replace the binary or image. Use databases with the current schema; upgrading from an older schema requires new database paths and fresh data initialization.
 4. Check `/health`, panel sign-in, the model list, and an inference request. Real inference incurs upstream charges.
 5. To restore, stop the service, restore matching configuration, database, media, and key from the same backup, restore permissions, then start a compatible version. Do not replace only the main database file or generate a new key.
 

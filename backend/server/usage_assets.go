@@ -340,10 +340,7 @@ func parseAssetFileName(name string) (hash, ext string, ok bool) {
 	return hash, ext, true
 }
 
-// usageAssetsDirName 是数据库同目录下的资产根目录名。
-const usageAssetsDirName = "usage-assets"
-
-// writeUsageAssets 把登记的媒体写入 <DB目录>/usage-assets/（扁平内容寻址：
+// writeUsageAssets 把登记的媒体写入 <logDatabasePath>-assets/（扁平内容寻址：
 // 文件名即内容哈希）。同名文件已存在则跳过——同一图片无论出现在多少个
 // 请求里（多轮对话每轮重发全部历史是常态）都只占一份磁盘；能否删除由
 // usage_asset_refs 引用计数决定（由外键级联删除引用）。

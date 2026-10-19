@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 
@@ -36,7 +35,7 @@ func (s *Server) protocolService() (*protocol.Service, error) {
 		if err := service.Reload(context.Background()); err != nil {
 			// The management service remains available to repair invalid/stale
 			// revisions; no invalid definition is published to the registry.
-			log.Printf("protocol registry requires repair: %v", err)
+			s.logEvent("error").Err(err).Msg("protocol registry requires repair")
 		}
 	})
 	return s.protocolServiceInst, s.protocolServiceErr

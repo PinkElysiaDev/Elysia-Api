@@ -20,14 +20,14 @@ func TestUsageAggregateCoveringIndex(t *testing.T) {
 
 	// 索引存在（迁移幂等创建）。
 	var name string
-	err = store.db.QueryRowContext(ctx,
+	err = store.LogStore.db.QueryRowContext(ctx,
 		`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_usage_agg_cover'`).Scan(&name)
 	if err != nil {
 		t.Fatalf("covering index missing: %v", err)
 	}
 	// 旧的单列时间索引应被删除（前缀冗余）。
 	var dropped string
-	err = store.db.QueryRowContext(ctx,
+	err = store.LogStore.db.QueryRowContext(ctx,
 		`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_usage_started_ms'`).Scan(&dropped)
 	if err == nil {
 		t.Fatalf("redundant idx_usage_started_ms should be dropped")
@@ -44,7 +44,7 @@ func TestUsageAggregateCoveringIndex(t *testing.T) {
 		t.Fatalf("save record: %v", err)
 	}
 
-	plan, err := store.db.QueryContext(ctx, `EXPLAIN QUERY PLAN SELECT COUNT(*), COALESCE(SUM(input_tokens),0), COALESCE(SUM(total_tokens),0) FROM usage_records WHERE started_ms >= ? AND started_ms < ?`, started.Add(-time.Minute).UnixMilli(), time.Now().UnixMilli())
+	plan, err := store.LogStore.db.QueryContext(ctx, `EXPLAIN QUERY PLAN SELECT COUNT(*), COALESCE(SUM(input_tokens),0), COALESCE(SUM(total_tokens),0) FROM usage_records WHERE started_ms >= ? AND started_ms < ?`, started.Add(-time.Minute).UnixMilli(), time.Now().UnixMilli())
 	if err != nil {
 		t.Fatalf("explain: %v", err)
 	}

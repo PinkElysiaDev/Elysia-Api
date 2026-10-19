@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -16,6 +15,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	log "github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -220,7 +220,8 @@ func (e *Engine) RunTurn(ctx context.Context, sessionID string, input *UserConte
 	if err != nil {
 		return nil, err
 	}
-	return e.spawnTurn(turnCtx, sessionID, handle, cancel, input, nil, ApprovalDecision{}), nil
+	logger := log.FromContext(ctx).With().Str("session_id", sessionID).Logger()
+	return e.spawnTurn(logger.WithContext(turnCtx), sessionID, handle, cancel, input, nil, ApprovalDecision{}), nil
 }
 
 // ResumeApproval 恢复一个等待审批的轮次：执行或拒绝待定动作，然后继续
@@ -244,7 +245,8 @@ func (e *Engine) ResumeApproval(ctx context.Context, sessionID string, decision 
 	if err != nil {
 		return nil, err
 	}
-	return e.spawnTurn(turnCtx, sessionID, handle, cancel, nil, session.PendingAction, decision), nil
+	logger := log.FromContext(ctx).With().Str("session_id", sessionID).Logger()
+	return e.spawnTurn(logger.WithContext(turnCtx), sessionID, handle, cancel, nil, session.PendingAction, decision), nil
 }
 
 // spawnTurn 在后台 goroutine 里跑 startTurn 并负责收尾（释放会话锁、
@@ -874,7 +876,7 @@ func (e *Engine) runParallel(ctx context.Context, sessionID string, session *Ses
 			// tool.Execute 的防护同语义)。
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("[agent] parallel tool panic session=%s tool=%s: %v\n%s", sessionID, call.Name, r, debug.Stack())
+					log.FromContext(ctx).Error().Str("tool", call.Name).Interface("panic", r).Bytes("stack", debug.Stack()).Msg("parallel tool panic")
 					infos[index] = ToolResultInfo{
 						CallID: call.ID, Name: call.Name, OK: false,
 						Summary: fmt.Sprintf("工具执行异常(并行): %v", r),
@@ -1212,7 +1214,7 @@ func (e *Engine) setStatus(ctx context.Context, sessionID, status string, clearP
 // 值,栈完全丢失且不落库,偶发 panic(SSE 断开时)事后零痕迹、永远无法定位。
 func (e *Engine) reportTurnPanic(ctx context.Context, sessionID string, r any, stage string) string {
 	stack := debug.Stack()
-	log.Printf("[agent] turn panic session=%s stage=%s: %v\n%s", sessionID, stage, r, stack)
+	log.Error().Str("component", "agent").Str("session_id", sessionID).Str("stage", stage).Interface("panic", r).Bytes("stack", stack).Msg("turn panic")
 	message := fmt.Sprintf("引擎异常(%s): %v", stage, r)
 	if excerpt := panicStackExcerpt(stack); excerpt != "" {
 		message += "\n" + excerpt
@@ -1429,6 +1431,6 @@ func truncateRunes(value string, limit int) string {
 // 复位为 idle（轮次已随进程消失，不复位会让 UI 永远挡在假轮次上）。
 func (e *Engine) ReconcileInterruptedSessions(ctx context.Context) {
 	if err := e.store.ResetRunningSessions(ctx); err != nil {
-		log.Printf("[agent] reconcile interrupted sessions: %v", err)
+		log.Error().Str("component", "agent").Err(err).Msg("reconcile interrupted sessions")
 	}
 }

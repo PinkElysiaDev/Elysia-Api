@@ -298,7 +298,7 @@ func TestDeleteGroupRemovesTokenReferencesAndKeepsUsage(t *testing.T) {
 	}
 
 	var usageCount int
-	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_records WHERE group_name = ?`, "group-a").Scan(&usageCount); err != nil {
+	if err := store.LogStore.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_records WHERE group_name = ?`, "group-a").Scan(&usageCount); err != nil {
 		t.Fatalf("count usage: %v", err)
 	}
 	if usageCount != 1 {
@@ -458,13 +458,13 @@ func TestUnparseableStartedAtExcludedFromRollupIncludedInAllTimeTotals(t *testin
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	if _, err := store.db.Exec(`INSERT INTO usage_records(request_id, started_at, ended_at, record_json, status_code, total_tokens) VALUES('bad','not-a-time','not-a-time','{}', 200, 3)`); err != nil {
+	if _, err := store.LogStore.db.Exec(`INSERT INTO usage_records(request_id, started_at, ended_at, record_json, status_code, total_tokens) VALUES('bad','not-a-time','not-a-time','{}', 200, 3)`); err != nil {
 		t.Fatalf("insert: %v", err)
 	}
 	defer store.Close()
 
 	var startedMs int64
-	if err := store.db.QueryRow(`SELECT started_ms FROM usage_records WHERE request_id='bad'`).Scan(&startedMs); err != nil {
+	if err := store.LogStore.db.QueryRow(`SELECT started_ms FROM usage_records WHERE request_id='bad'`).Scan(&startedMs); err != nil {
 		t.Fatalf("query: %v", err)
 	}
 	if startedMs != 0 {
@@ -475,7 +475,7 @@ func TestUnparseableStartedAtExcludedFromRollupIncludedInAllTimeTotals(t *testin
 		t.Fatalf("backfill: %v", err)
 	}
 	var rollupCnt int
-	if err := store.db.QueryRow(`SELECT COALESCE(SUM(cnt),0) FROM usage_rollup_hour`).Scan(&rollupCnt); err != nil {
+	if err := store.LogStore.db.QueryRow(`SELECT COALESCE(SUM(cnt),0) FROM usage_rollup_hour`).Scan(&rollupCnt); err != nil {
 		t.Fatalf("rollup count: %v", err)
 	}
 	if rollupCnt != 0 {
@@ -498,11 +498,11 @@ func TestUnparseableStartedAtExcludedFromRollupIncludedInAllTimeTotals(t *testin
 		t.Fatalf("daily must not invent a 1970 bucket for orphan timestamps, got %#v", daily)
 	}
 
-	if _, err := store.db.Exec(`UPDATE usage_records SET key_hash = 'kh', source_id = 'src' WHERE request_id = 'bad'`); err != nil {
+	if _, err := store.LogStore.db.Exec(`UPDATE usage_records SET key_hash = 'kh', source_id = 'src' WHERE request_id = 'bad'`); err != nil {
 		t.Fatalf("tag orphan: %v", err)
 	}
 	validAt := time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC)
-	if _, err := store.db.Exec(`INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, model_name, key_hash, source_id, status_code, total_tokens, record_json) VALUES('ok', ?, ?, ?, 'm', 'kh', 'src', 200, 4, '{}')`,
+	if _, err := store.LogStore.db.Exec(`INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, model_name, key_hash, source_id, status_code, total_tokens, record_json) VALUES('ok', ?, ?, ?, 'm', 'kh', 'src', 200, 4, '{}')`,
 		validAt.Format(time.RFC3339Nano), validAt.UnixMilli(), validAt.Add(time.Second).Format(time.RFC3339Nano)); err != nil {
 		t.Fatalf("insert valid: %v", err)
 	}
@@ -564,20 +564,5 @@ func TestStoreCloseCancelsRollupBackfill(t *testing.T) {
 	store.StartRollupBackfill()
 	if err := store.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
-	}
-}
-
-func TestBackfillProgressBar(t *testing.T) {
-	if got := backfillProgressBar(5, 10); got != "[###############...............]" {
-		t.Fatalf("half progress bar wrong: %s", got)
-	}
-	if got := backfillProgressBar(0, 10); got != "[..............................]" {
-		t.Fatalf("empty progress bar wrong: %s", got)
-	}
-	if got := backfillProgressBar(10, 10); got != "[##############################]" {
-		t.Fatalf("full progress bar wrong: %s", got)
-	}
-	if got := backfillProgressBar(3, 0); got != "" {
-		t.Fatalf("zero total must render empty, got %s", got)
 	}
 }

@@ -59,6 +59,8 @@ func writeDefaultConfig(path, token string) error {
 		"panelAccessToken":    token,
 		"databasePath":        "elysia-api.sqlite3",
 		"logLevel":            "info",
+		"logFormat":           "auto",
+		"logPersistLevel":     "info",
 		"httpTimeout":         120,
 		"secretKeyPath":       ".master-key",
 		"logLifecycleVersion": 1,

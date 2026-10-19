@@ -28,6 +28,9 @@ func (c *Config) Update(prepare func(candidate *Config) error) error {
 		return err
 	}
 	candidate.applyEnvironmentOverrides()
+	if err := candidate.validateLogSettings(); err != nil {
+		return err
+	}
 	if _, err := relay.ParseProxyURL(candidate.Outbound.ProxyURL); err != nil {
 		return err
 	}

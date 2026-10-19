@@ -206,6 +206,17 @@ func TestUsageSeqIncrementsOnPersistAndReset(t *testing.T) {
 	if s.usageSeq.Load() != 2 {
 		t.Fatalf("seq after reset = %d", s.usageSeq.Load())
 	}
+	// Synchronous job settlements must use the new generation and publish the
+	// same accounting/cache changes as queued writes, rather than being skipped.
+	if err := s.saveUsageRecordToStore(&usageRecord{RequestID: "after-reset", StartedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := store.GetUsageRecordJSON(t.Context(), "after-reset"); err != nil || !found {
+		t.Fatalf("synchronous write after reset: found=%t err=%v", found, err)
+	}
+	if st := s.usageWriterStats(); st.Written != 2 || st.Failures != 0 || s.usageSeq.Load() != 3 {
+		t.Fatalf("synchronous accounting: %+v seq=%d", st, s.usageSeq.Load())
+	}
 }
 
 func TestEnqueueAfterStopDoesNotPanic(t *testing.T) {
