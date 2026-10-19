@@ -124,6 +124,9 @@ func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 			}
 			options = options.forDefinition(compiled)
 			options.wireLimits = compiled.nativeLimits(ctx, direction)
+			if err := ctx.Err(); err != nil {
+				return fail(err)
+			}
 			output, err := decode(module, options)
 			if err != nil {
 				return fail(err)
@@ -247,6 +250,9 @@ func encodeRequestMapping[T any](ctx context.Context, compiled *Compiled, input 
 	}
 	options = options.forDefinition(compiled)
 	options.wireLimits = compiled.nativeLimits(ctx, direction)
+	if err := ctx.Err(); err != nil {
+		return fail(err)
+	}
 	output, err := encode(module, input, options)
 	if err != nil {
 		return fail(err)

@@ -3,7 +3,9 @@ package builtin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
+	"sync/atomic"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
@@ -16,6 +18,48 @@ type jsonOnlyModule struct{ p.Module }
 func (wrapped jsonOnlyModule) NewStream(direction p.Direction, limits p.Limits) (p.Module, error) {
 	stream, err := wrapped.Module.(p.StreamModule).NewStream(direction, limits)
 	return jsonOnlyModule{stream}, err
+}
+
+type cancelAtValidationBoundary struct {
+	context.Context
+	remaining atomic.Int64
+	cancel    context.CancelFunc
+}
+
+func (ctx *cancelAtValidationBoundary) Err() error {
+	if ctx.remaining.Add(-1) == 0 {
+		ctx.cancel()
+	}
+	return ctx.Context.Err()
+}
+
+func TestTypedRequestCancellationAtModuleBoundary(t *testing.T) {
+	// Cancel after the boundary's first check, deterministically exercising
+	// cancellation during input/schema validation without a timing race.
+	compiled := shippedProjectionProtocol(t, Anthropic)
+	body := []byte(`{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`)
+	request, err := compiled.DecodeRequest(t.Context(), body, p.EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, direction := range []p.Direction{p.DecodeRequest, p.EncodeRequest} {
+		parent, cancel := context.WithCancel(t.Context())
+		ctx := &cancelAtValidationBoundary{Context: parent, cancel: cancel}
+		if direction == p.DecodeRequest {
+			ctx.remaining.Store(2)
+		} else {
+			ctx.remaining.Store(3)
+		}
+		if direction == p.DecodeRequest {
+			_, err = compiled.DecodeRequest(ctx, body, p.EvaluationContext{})
+		} else {
+			_, err = compiled.EncodeRequest(ctx, request, p.EvaluationContext{})
+		}
+		cancel()
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("%s lost cancellation at module entry: %v", direction, err)
+		}
+	}
 }
 
 func TestRequestWireSchemaTypedParity(t *testing.T) {
