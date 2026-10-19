@@ -5,10 +5,10 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -85,7 +85,7 @@ func (store *Store) ProtocolUpgradeBaseline(ctx context.Context) (string, error)
 
 func readProtocolUpgradeBaseline(ctx context.Context, reader protocolUpgradeReader) (string, error) {
 	digest := sha256.New()
-	encoder := json.NewEncoder(digest)
+	encoder := sonic.ConfigStd.NewEncoder(digest)
 	for _, query := range protocolUpgradeQueries {
 		rows, err := reader.QueryContext(ctx, query)
 		if err != nil {
@@ -103,7 +103,7 @@ func readProtocolUpgradeBaseline(ctx context.Context, reader protocolUpgradeRead
 	return hex.EncodeToString(digest.Sum(nil)), nil
 }
 
-func hashProtocolUpgradeRows(rows *sql.Rows, encoder *json.Encoder, query string) error {
+func hashProtocolUpgradeRows(rows *sql.Rows, encoder sonic.Encoder, query string) error {
 	columns, err := rows.Columns()
 	if err != nil {
 		return err

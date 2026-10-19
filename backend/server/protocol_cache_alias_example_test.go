@@ -1,12 +1,12 @@
 package server
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -17,7 +17,7 @@ func cacheAliasExampleDefinition(t *testing.T) protocol.Definition {
 		t.Fatal(err)
 	}
 	var mappings map[protocol.Direction]protocol.Mapping
-	if err := json.Unmarshal(raw, &mappings); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &mappings); err != nil {
 		t.Fatal(err)
 	}
 	definition := presetDefinition(t, "openai-chat-completions")
@@ -27,7 +27,7 @@ func cacheAliasExampleDefinition(t *testing.T) protocol.Definition {
 		t.Fatal(err)
 	}
 	var sample protocol.Sample
-	if err := json.Unmarshal(sampleBytes, &sample); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(sampleBytes, &sample); err != nil {
 		t.Fatal(err)
 	}
 	definition.Samples = append(definition.Samples, sample)

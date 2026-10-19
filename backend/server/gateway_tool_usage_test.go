@@ -1,13 +1,13 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -60,7 +60,7 @@ func TestResponsesSeparateToolLedgerPersistedAcrossClientProjection(t *testing.T
 				t.Fatal(err)
 			}
 			var saved usageRecord
-			if err = json.Unmarshal(body, &saved); err != nil {
+			if err = sonic.ConfigStd.Unmarshal(body, &saved); err != nil {
 				t.Fatal(err)
 			}
 			u := saved.ProtocolUsage

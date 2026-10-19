@@ -1,11 +1,12 @@
 package server
 
 import (
-	"encoding/json"
-	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/storage"
 	"net/http"
 	"testing"
+
+	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/storage"
 )
 
 func TestConversionActivationKeepsPinnedRevision(t *testing.T) {
@@ -23,7 +24,7 @@ func TestConversionActivationKeepsPinnedRevision(t *testing.T) {
 			t.Fatal(err)
 		}
 		previous = r.Hash
-		raw, _ := json.Marshal(map[string]string{"hash": r.Hash})
+		raw, _ := sonic.ConfigStd.Marshal(map[string]string{"hash": r.Hash})
 		rr := revisionAdminRequest(t, s.engine, http.MethodPost, "/api/admin/protocols/conversion-policies/review-pinned/verify", raw, "")
 		if rr.Code != 200 {
 			t.Fatalf("verify=%d %s", rr.Code, rr.Body)
@@ -34,14 +35,14 @@ func TestConversionActivationKeepsPinnedRevision(t *testing.T) {
 	for _, b := range bindings {
 		if b.Kind == "source" && b.SourceID == "gateway-source" {
 			b.Conversion = &protocol.ConversionSelection{PolicyID: revisions[0].ID, RevisionHash: revisions[0].Hash}
-			raw, _ := json.Marshal(b)
+			raw, _ := sonic.ConfigStd.Marshal(b)
 			r := revisionAdminRequest(t, s.engine, http.MethodPut, "/api/admin/protocols/bindings", raw, "")
 			if r.Code != 200 {
 				t.Fatalf("bind=%d %s", r.Code, r.Body)
 			}
 		}
 	}
-	raw, _ := json.Marshal(map[string]any{"hash": revisions[1].Hash, "expectedActive": "", "selector": map[string]string{}})
+	raw, _ := sonic.ConfigStd.Marshal(map[string]any{"hash": revisions[1].Hash, "expectedActive": "", "selector": map[string]string{}})
 	r := revisionAdminRequest(t, s.engine, http.MethodPost, "/api/admin/protocols/conversion-policies/review-pinned/activate", raw, "")
 	if r.Code != 200 {
 		t.Fatalf("activation=%d %s", r.Code, r.Body)

@@ -1,15 +1,16 @@
 package server
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
 )
 
 func TestTurnStateRedactionAcrossLogContainers(t *testing.T) {
 	const state = "synthetic-private-turn-state"
 	const raw = `{"headers":{"X-Codex-Turn-State":"` + state + `"},"n":9007199254740993}`
-	nested, _ := json.Marshal(map[string]string{"body": raw})
+	nested, _ := sonic.ConfigStd.Marshal(map[string]string{"body": raw})
 	for _, body := range []string{raw, string(nested), "event: response.metadata\ndata: " + raw + "\n\n"} {
 		for _, limit := range []int{1 << 20, 54} {
 			record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: limit}}

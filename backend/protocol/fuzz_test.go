@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	stdjson "encoding/json" // Independent token oracle for the resource meter.
 	"io"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 func FuzzJSONResourceLimits(f *testing.F) {
@@ -24,7 +27,7 @@ func FuzzJSONResourceLimits(f *testing.F) {
 		}
 		limits := DefaultLimits()
 		limits.Depth, limits.Nodes = int(depthLimit)+1, int(nodeLimit)+1
-		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder := stdjson.NewDecoder(bytes.NewReader(raw))
 		decoder.UseNumber()
 		depth, nodes, maximum := 0, 0, 0
 		for {
@@ -36,7 +39,7 @@ func FuzzJSONResourceLimits(f *testing.F) {
 				t.Fatal(err)
 			}
 			nodes++
-			if delimiter, ok := token.(json.Delim); ok {
+			if delimiter, ok := token.(stdjson.Delim); ok {
 				if delimiter == '{' || delimiter == '[' {
 					depth++
 				} else {
@@ -71,7 +74,7 @@ func FuzzJSONContainers(f *testing.F) {
 			switch valueType(value) {
 			case ObjectType:
 				var want map[string]json.RawMessage
-				if err := json.Unmarshal(value.Bytes(), &want); err != nil {
+				if err := sonic.ConfigStd.Unmarshal(value.Bytes(), &want); err != nil {
 					t.Fatal(err)
 				}
 				actual, err := value.ReadObject()
@@ -86,7 +89,7 @@ func FuzzJSONContainers(f *testing.F) {
 				}
 			case ArrayType:
 				var want []json.RawMessage
-				if err := json.Unmarshal(value.Bytes(), &want); err != nil {
+				if err := sonic.ConfigStd.Unmarshal(value.Bytes(), &want); err != nil {
 					t.Fatal(err)
 				}
 				actual, err := value.readArray()

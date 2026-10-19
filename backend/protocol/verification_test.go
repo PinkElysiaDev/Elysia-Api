@@ -1,9 +1,10 @@
 package protocol
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
 )
 
 func fixtureValue(t *testing.T, value any) Value {
@@ -169,7 +170,7 @@ func TestVerifySamplesAndDirectionCapabilityHashes(t *testing.T) {
 	mapping := definition.Directions[EncodeRequest]
 	mapping.Capabilities = CapabilitySet{}
 	definition.Directions[EncodeRequest] = mapping
-	raw, err := json.Marshal(definition)
+	raw, err := sonic.ConfigStd.Marshal(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,12 +197,12 @@ func TestVerifyCombinationOfIndependentDefinitions(t *testing.T) {
 	addEventVerification(t, &firstDefinition)
 	secondDefinition := textVerificationDefinition(t, "independent-b")
 	addEventVerification(t, &secondDefinition)
-	raw, err := json.Marshal(secondDefinition)
+	raw, err := sonic.ConfigStd.Marshal(secondDefinition)
 	if err != nil {
 		t.Fatal(err)
 	}
 	renamed := strings.NewReplacer("engine", "deployment", "history", "turns", "answer", "reply", "speaker", "actor", "parts", "chunks").Replace(string(raw))
-	if err := json.Unmarshal([]byte(renamed), &secondDefinition); err != nil {
+	if err := sonic.ConfigStd.Unmarshal([]byte(renamed), &secondDefinition); err != nil {
 		t.Fatal(err)
 	}
 	first, second := compileTestDefinition(t, firstDefinition), compileTestDefinition(t, secondDefinition)

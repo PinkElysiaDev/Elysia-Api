@@ -4,10 +4,11 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/bytedance/sonic"
 )
 
 // modelColumns 是 models 行读取的统一列清单（含 enabled/origin/capability_source）。
@@ -248,7 +249,7 @@ func updateTokenGroupsTx(ctx context.Context, tx *sql.Tx, transform func(groups 
 	now := nowString()
 	emptied := []string{}
 	for _, t := range pending {
-		payload, err := json.Marshal(t.groups)
+		payload, err := sonic.ConfigStd.Marshal(t.groups)
 		if err != nil {
 			return nil, err
 		}

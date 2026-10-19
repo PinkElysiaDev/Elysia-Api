@@ -3,11 +3,11 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -146,7 +146,7 @@ func normalizeProtocolCommit(ctx context.Context, tx *sql.Tx, plan ProtocolUpgra
 			if err != nil {
 				return nil, err
 			}
-			encoded, err := json.Marshal(entry.Report)
+			encoded, err := sonic.ConfigStd.Marshal(entry.Report)
 			if err != nil {
 				return nil, err
 			}
@@ -164,7 +164,7 @@ func normalizeProtocolCommit(ctx context.Context, tx *sql.Tx, plan ProtocolUpgra
 		if err != nil {
 			return nil, err
 		}
-		encoded, err := json.Marshal(binding)
+		encoded, err := sonic.ConfigStd.Marshal(binding)
 		if err != nil {
 			return nil, err
 		}
@@ -195,7 +195,7 @@ func writeProtocolCommit(ctx context.Context, tx *sql.Tx, prepared *protocolComm
 		if err != nil {
 			return err
 		}
-		raw, err := json.Marshal(binding)
+		raw, err := sonic.ConfigStd.Marshal(binding)
 		if err != nil {
 			return err
 		}

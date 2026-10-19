@@ -2,11 +2,12 @@ package protocol
 
 import (
 	"context"
-	"encoding/json"
 	"reflect"
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/bytedance/sonic"
 )
 
 // conversionState owns the decoded document for a contiguous run of built-in
@@ -189,9 +190,9 @@ func (state *conversionState) normalize(value reflect.Value, plan *typedPlan) {
 		}
 	case reflect.String:
 		if !utf8.ValidString(value.String()) {
-			raw, _ := json.Marshal(value.String())
+			raw, _ := sonic.ConfigStd.Marshal(value.String())
 			var normalized string
-			_ = json.Unmarshal(raw, &normalized)
+			_ = sonic.ConfigStd.Unmarshal(raw, &normalized)
 			value.SetString(normalized)
 		}
 	}
@@ -214,9 +215,9 @@ func normalizeSemanticMapKeys(value reflect.Value) {
 	slices.Sort(keys)
 	normalized := reflect.MakeMapWithSize(value.Type(), value.Len())
 	for _, key := range keys {
-		wire, _ := json.Marshal(key)
+		wire, _ := sonic.ConfigStd.Marshal(key)
 		var name string
-		_ = json.Unmarshal(wire, &name)
+		_ = sonic.ConfigStd.Unmarshal(wire, &name)
 		normalized.SetMapIndex(reflect.ValueOf(name), value.MapIndex(reflect.ValueOf(key)))
 	}
 	value.Set(normalized)
@@ -262,7 +263,7 @@ func cloneSemantic(value reflect.Value, plan *typedPlan) reflect.Value {
 }
 
 // Value is already valid JSON. Only whitespace outside strings and the HTML /
-// JavaScript separators escaped by encoding/json can change at this boundary.
+// JavaScript separators and invalid UTF-8 escaped by the codec can change here.
 func needsSemanticCompaction(raw string) bool {
 	for offset := 0; offset < len(raw); offset++ {
 		switch raw[offset] {
@@ -271,7 +272,7 @@ func needsSemanticCompaction(raw string) bool {
 		case '"':
 			end := jsonStringEnd(raw, offset)
 			text := raw[offset:end]
-			if strings.ContainsAny(text, "<>&") || strings.Contains(text, "\u2028") || strings.Contains(text, "\u2029") {
+			if strings.ContainsAny(text, "<>&") || strings.Contains(text, "\u2028") || strings.Contains(text, "\u2029") || !utf8.ValidString(text) {
 				return true
 			}
 			offset = end - 1

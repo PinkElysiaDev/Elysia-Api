@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 // WriteSystemLogBatch consumes zerolog JSON without flattening structured
@@ -20,13 +22,13 @@ func (s *LogStore) WriteSystemLogBatch(ctx context.Context, batch [][]byte) erro
 		defer stmt.Close()
 		for _, payload := range batch {
 			var fields map[string]json.RawMessage
-			if err := json.Unmarshal(payload, &fields); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(payload, &fields); err != nil {
 				return err
 			}
 			var stamp, level, message string
 			for key, dest := range map[string]*string{"time": &stamp, "level": &level, "message": &message} {
 				if raw, ok := fields[key]; ok {
-					if err := json.Unmarshal(raw, dest); err != nil {
+					if err := sonic.ConfigStd.Unmarshal(raw, dest); err != nil {
 						return fmt.Errorf("log %s: %w", key, err)
 					}
 					delete(fields, key)
@@ -36,7 +38,7 @@ func (s *LogStore) WriteSystemLogBatch(ctx context.Context, batch [][]byte) erro
 			if err != nil {
 				return err
 			}
-			body, err := json.Marshal(fields)
+			body, err := sonic.ConfigStd.Marshal(fields)
 			if err != nil {
 				return err
 			}
@@ -49,7 +51,7 @@ func (s *LogStore) WriteSystemLogBatch(ctx context.Context, batch [][]byte) erro
 }
 
 func (s *LogStore) InsertSystemLog(ctx context.Context, level, message string, fields any) error {
-	payload, err := json.Marshal(fields)
+	payload, err := sonic.ConfigStd.Marshal(fields)
 	if err != nil {
 		return err
 	}

@@ -7,6 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/jsonutil"
 )
 
 // Value is immutable JSON. Its zero value means absent; JSON null, false, zero
@@ -15,7 +18,7 @@ type Value struct{ raw string }
 
 // ParseValue validates and copies one JSON value without converting numbers.
 func ParseValue(raw []byte) (Value, error) {
-	if !json.Valid(raw) {
+	if !jsonutil.Valid(raw) {
 		return Value{}, fmt.Errorf("invalid JSON value")
 	}
 	return Value{raw: string(raw)}, nil
@@ -26,7 +29,7 @@ func EncodeValue(value any) (Value, error) {
 	if encoded, handled := encodeValueContainer(value); handled {
 		return encoded, nil
 	}
-	raw, err := json.Marshal(value)
+	raw, err := sonic.ConfigStd.Marshal(value)
 	if err != nil {
 		return Value{}, err
 	}
@@ -35,7 +38,7 @@ func EncodeValue(value any) (Value, error) {
 
 // StringValue constructs a JSON string; strings cannot fail JSON encoding.
 func StringValue(value string) Value {
-	raw, _ := json.Marshal(value)
+	raw, _ := sonic.ConfigStd.Marshal(value)
 	return Value{raw: string(raw)}
 }
 
@@ -49,7 +52,7 @@ func (value Value) IsString(expected string) bool {
 	return value.Decode(&text) == nil && text == expected
 }
 
-// IsZero reports absence, allowing encoding/json's omitzero to preserve null.
+// IsZero reports absence, allowing the codec's omitzero to preserve null.
 func (value Value) IsZero() bool { return value.raw == "" }
 
 // IsNull reports an explicitly supplied JSON null.
@@ -105,9 +108,9 @@ func (value Value) Decode(target any) error {
 		return err
 	case *string, *bool, *int, *int64, *uint64, *json.Number,
 		*Request, *Response, *Event, *[]Event:
-		return json.Unmarshal(value.Bytes(), target)
+		return sonic.ConfigStd.Unmarshal(value.Bytes(), target)
 	}
-	decoder := json.NewDecoder(bytes.NewBufferString(value.raw))
+	decoder := sonic.ConfigStd.NewDecoder(bytes.NewBufferString(value.raw))
 	decoder.UseNumber()
 	return decoder.Decode(target)
 }

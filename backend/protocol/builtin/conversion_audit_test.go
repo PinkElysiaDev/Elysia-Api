@@ -2,9 +2,11 @@ package builtin
 
 import (
 	"encoding/json"
-	p "github.com/elysia-api/backend/protocol"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
+	p "github.com/elysia-api/backend/protocol"
 )
 
 var auditResponses = map[string]string{
@@ -45,7 +47,7 @@ func TestAuditActualPresetJSONMatrix(t *testing.T) {
 					t.Fatal(err, string(wire))
 				}
 				var body map[string]json.RawMessage
-				_ = json.Unmarshal(wire, &body)
+				_ = sonic.ConfigStd.Unmarshal(wire, &body)
 				if target == Chat && len(body["created"]) == 0 {
 					t.Fatal("missing Chat created", string(wire))
 				}
@@ -58,7 +60,7 @@ func TestAuditActualPresetJSONMatrix(t *testing.T) {
 						Status  string
 						Content []map[string]json.RawMessage
 					}
-					_ = json.Unmarshal(body["output"], &output)
+					_ = sonic.ConfigStd.Unmarshal(body["output"], &output)
 					if len(output) == 0 || output[0].ID == "" || output[0].Status == "" || len(output[0].Content[0]["annotations"]) == 0 {
 						t.Fatal("incomplete Responses message", string(wire))
 					}

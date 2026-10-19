@@ -1,11 +1,12 @@
 package builtin
 
 import (
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/jsonutil"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -16,7 +17,7 @@ func largeAnthropicRequest(imageBytes, textBlocks int) []byte {
 	for range textBlocks {
 		blocks = append(blocks, map[string]any{"type": "text", "text": "tool output"})
 	}
-	body, _ := json.Marshal(map[string]any{"model": "m", "max_tokens": 64, "messages": []any{
+	body, _ := sonic.ConfigStd.Marshal(map[string]any{"model": "m", "max_tokens": 64, "messages": []any{
 		map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "tool_use", "id": "call_1", "name": "lookup", "input": map[string]any{}}}},
 		map[string]any{"role": "user", "content": []any{map[string]any{"type": "tool_result", "tool_use_id": "call_1", "content": blocks}}},
 	}})
@@ -47,14 +48,14 @@ func TestLargeRequestSnapshotBudget(t *testing.T) {
 			if err != nil {
 				t.Fatal("encode:", err)
 			}
-			if !json.Valid(out) {
+			if !jsonutil.Valid(out) {
 				t.Fatal("invalid output")
 			}
 			var before, after any
-			_ = json.Unmarshal(body, &before)
-			_ = json.Unmarshal(out, &after)
-			b, _ := json.Marshal(before)
-			a, _ := json.Marshal(after)
+			_ = sonic.ConfigStd.Unmarshal(body, &before)
+			_ = sonic.ConfigStd.Unmarshal(out, &after)
+			b, _ := sonic.ConfigStd.Marshal(before)
+			a, _ := sonic.ConfigStd.Marshal(after)
 			if string(a) != string(b) {
 				t.Fatal("native image/tool history changed")
 			}

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
@@ -483,7 +484,7 @@ func bindAgentStreamJSON(c *gin.Context, target any) error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(body, target)
+	return sonic.ConfigStd.Unmarshal(body, target)
 }
 
 // streamAgentEvents 把引擎事件编码为 SSE 并转发。用量入账在模型调用层
@@ -494,7 +495,7 @@ func (s *Server) streamAgentEvents(c *gin.Context, sessionID string, events <-ch
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	flusher, canFlush := c.Writer.(http.Flusher)
 	write := func(event agent.Event) bool {
-		encoded, err := json.Marshal(event)
+		encoded, err := sonic.ConfigStd.Marshal(event)
 		if err != nil {
 			return true
 		}

@@ -1,13 +1,13 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 )
 
@@ -113,5 +113,5 @@ func TestRuntimeConfigAgentRemote(t *testing.T) {
 
 // decodeJSONBody 是测试侧小工具（信封解析）。
 func decodeJSONBody(body []byte, target any) error {
-	return json.Unmarshal(body, target)
+	return sonic.ConfigStd.Unmarshal(body, target)
 }

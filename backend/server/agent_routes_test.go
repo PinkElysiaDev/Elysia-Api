@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
@@ -93,7 +94,7 @@ func openAIChunk(id string, delta map[string]any, finish string, usage map[strin
 	if usage != nil {
 		chunk["usage"] = usage
 	}
-	encoded, _ := json.Marshal(chunk)
+	encoded, _ := sonic.ConfigStd.Marshal(chunk)
 	return "data: " + string(encoded) + "\n\n"
 }
 
@@ -121,7 +122,7 @@ func agentTestConfig(id string) string {
 			"bodyTemplate": `{"model":"{{maheshvara.model}}"}`,
 		},
 	}
-	encoded, _ := json.Marshal(config)
+	encoded, _ := sonic.ConfigStd.Marshal(config)
 	return string(encoded)
 }
 
@@ -243,7 +244,7 @@ func TestAgentFullTurnWithDraftTool(t *testing.T) {
 	}
 	if draft, _ := session["draftConfig"].(string); !strings.Contains(draft, "agent-proto") {
 		// draftConfig 是 json.RawMessage，可能被序列化为任意 JSON 类型
-		raw, _ := json.Marshal(session["draftConfig"])
+		raw, _ := sonic.ConfigStd.Marshal(session["draftConfig"])
 		if !strings.Contains(string(raw), "agent-proto") {
 			t.Fatalf("draft missing: %v", session["draftConfig"])
 		}

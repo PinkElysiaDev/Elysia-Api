@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -9,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/relay"
@@ -65,7 +65,7 @@ func decodeAdminData(t *testing.T, rec *httptest.ResponseRecorder) map[string]an
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode response %q: %v", rec.Body.String(), err)
 	}
 	if !envelope.OK {

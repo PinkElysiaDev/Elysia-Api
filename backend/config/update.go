@@ -1,9 +1,9 @@
 package config
 
 import (
-	"encoding/json"
 	"slices"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/relay"
 )
 
@@ -13,12 +13,12 @@ import (
 func (c *Config) Update(prepare func(candidate *Config) error) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	encoded, err := json.Marshal(c)
+	encoded, err := sonic.ConfigStd.Marshal(c)
 	if err != nil {
 		return err
 	}
 	var candidate Config
-	if err := json.Unmarshal(encoded, &candidate); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(encoded, &candidate); err != nil {
 		return err
 	}
 	candidate.path = c.path

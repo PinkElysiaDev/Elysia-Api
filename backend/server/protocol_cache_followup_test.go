@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -21,7 +21,7 @@ func (suite *liveSuite) runCacheFollowup(t *testing.T) {
 		t.Fatal(err)
 	}
 	var prior cacheCheckpoint
-	if err := json.Unmarshal(raw, &prior); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &prior); err != nil {
 		t.Fatal(err)
 	}
 	if prior.Origin != suite.Origin || prior.StartedAt.IsZero() || suite.budget.Limit != cacheValidationLimit || suite.budget.CleanupReserve != cacheCleanupReserve {
@@ -43,7 +43,7 @@ func (suite *liveSuite) runCacheFollowup(t *testing.T) {
 	}
 	suite.PreflightHash = liveHash(raw)
 	var evidence liveSuite
-	if err := json.Unmarshal(raw, &evidence); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &evidence); err != nil {
 		t.Fatal(err)
 	}
 	for id, profile := range suite.Targets {

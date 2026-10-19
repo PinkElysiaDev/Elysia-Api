@@ -9,6 +9,8 @@ import (
 	"path"
 	"sort"
 	"strings"
+
+	"github.com/bytedance/sonic"
 )
 
 // 源码快照:构建脚本(scripts/build-standalone.mjs)在编译前把仓库源码
@@ -78,7 +80,7 @@ func (t *codeListTool) Execute(ctx context.Context, tctx CLIContext, args json.R
 		Prefix string `json:"prefix"`
 	}
 	if len(args) > 0 {
-		_ = json.Unmarshal(args, &params)
+		_ = sonic.ConfigStd.Unmarshal(args, &params)
 	}
 	files, err := listSnapshotFiles()
 	if err != nil {

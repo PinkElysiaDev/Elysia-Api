@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -94,7 +94,7 @@ func (run *cacheLiveRun) open(t *testing.T) {
 	}
 	raw, err := os.ReadFile(run.path)
 	if err == nil {
-		if err := json.Unmarshal(raw, &run.checkpoint); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(raw, &run.checkpoint); err != nil {
 			t.Fatal(err)
 		}
 		if run.checkpoint.Compiler != protocol.CompilerVersion || run.checkpoint.Origin != suite.Origin {
@@ -105,7 +105,7 @@ func (run *cacheLiveRun) open(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := json.Unmarshal(raw, &prior); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(raw, &prior); err != nil {
 			t.Fatal(err)
 		}
 		for id, profile := range suite.Targets {
@@ -198,10 +198,10 @@ func (run *cacheLiveRun) generate(t *testing.T, target, route, id, prefix, ttl s
 		}
 		if result.Wire.Status == 200 && resource == "" {
 			var wire map[string]any
-			if err := json.Unmarshal(result.Wire.request, &wire); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(result.Wire.request, &wire); err != nil {
 				t.Fatal(err)
 			}
-			encodedPrefix, _ := json.Marshal(prefix)
+			encodedPrefix, _ := sonic.ConfigStd.Marshal(prefix)
 			if !bytes.Contains(result.Wire.request, encodedPrefix) {
 				result.Status = "failed"
 				result.Reason = "outbound cache prefix changed"

@@ -1,13 +1,13 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
@@ -112,7 +112,7 @@ func TestHostedToolUsagePersistedHTTPAndSSE(t *testing.T) {
 				t.Fatal("usage detail not persisted", err)
 			}
 			var saved usageRecord
-			if err := json.Unmarshal(body, &saved); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(body, &saved); err != nil {
 				t.Fatal(err)
 			}
 			if saved.BuiltinToolUsage.WebSearchCalls != 2 {

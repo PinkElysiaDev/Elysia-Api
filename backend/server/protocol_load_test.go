@@ -3,7 +3,6 @@ package server
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -160,7 +160,7 @@ func TestProtocolLoad(t *testing.T) {
 							measurement := measureGatewayLoad(t, server, client, gateway.URL+path, wire, count, concurrency)
 							measurement.Path, measurement.Workload, measurement.Delayed, measurement.Concurrency, measurement.Repeat = targetID, workload, delayed, concurrency, repeat
 							measurements = append(measurements, measurement)
-							raw, err := json.MarshalIndent(measurements, "", "  ")
+							raw, err := sonic.ConfigStd.MarshalIndent(measurements, "", "  ")
 							if err != nil {
 								t.Fatal(err)
 							}

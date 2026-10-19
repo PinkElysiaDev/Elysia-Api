@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 )
 
@@ -49,7 +50,7 @@ func (s *Server) handleMCP(c *gin.Context) {
 		return
 	}
 	var req jsonrpcRequest
-	if err := json.Unmarshal(body, &req); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(body, &req); err != nil {
 		mcpWriteJSON(c, jsonrpcFail(nil, jsonrpcParseError, err.Error()), http.StatusBadRequest)
 		return
 	}
@@ -97,10 +98,10 @@ func mcpValidateVersion(c *gin.Context, req jsonrpcRequest) (int, string) {
 	var params struct {
 		Meta map[string]json.RawMessage `json:"_meta"`
 	}
-	_ = json.Unmarshal(req.Params, &params)
+	_ = sonic.ConfigStd.Unmarshal(req.Params, &params)
 	if raw, ok := params.Meta[mcpMetaProtocolVersion]; ok {
 		var version string
-		if err := json.Unmarshal(raw, &version); err != nil || version != mcpModernProtocolVersion {
+		if err := sonic.ConfigStd.Unmarshal(raw, &version); err != nil || version != mcpModernProtocolVersion {
 			return mcpErrUnsupportedVersion, "unsupported protocol version"
 		}
 		header := strings.TrimSpace(c.Request.Header.Get("MCP-Protocol-Version"))
@@ -115,7 +116,7 @@ func mcpValidateVersion(c *gin.Context, req jsonrpcRequest) (int, string) {
 			var callParams struct {
 				Name string `json:"name"`
 			}
-			_ = json.Unmarshal(req.Params, &callParams)
+			_ = sonic.ConfigStd.Unmarshal(req.Params, &callParams)
 			if mirror := strings.TrimSpace(c.Request.Header.Get("Mcp-Name")); mirror != "" && callParams.Name != "" && mirror != callParams.Name {
 				return mcpErrHeaderMismatch, "Mcp-Name header does not match tool name"
 			}
@@ -160,7 +161,7 @@ func (s *Server) mcpHandleToolsCall(c *gin.Context, req jsonrpcRequest) {
 			ProgressToken json.RawMessage `json:"progressToken"`
 		} `json:"_meta"`
 	}
-	if err := json.Unmarshal(req.Params, &params); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(req.Params, &params); err != nil {
 		mcpWriteJSON(c, jsonrpcFail(req.ID, jsonrpcInvalidParams, err.Error()), http.StatusOK)
 		return
 	}
@@ -184,7 +185,7 @@ func (s *Server) mcpHandleToolsCall(c *gin.Context, req jsonrpcRequest) {
 func mcpToolCallResult(id json.RawMessage, result any, err error) jsonrpcResponse {
 	content := []gin.H{}
 	if result != nil {
-		encoded, encodeErr := json.Marshal(result)
+		encoded, encodeErr := sonic.ConfigStd.Marshal(result)
 		if encodeErr != nil {
 			result = nil
 			err = fmt.Errorf("encode tool result: %w", encodeErr)
@@ -216,7 +217,7 @@ func (s *Server) mcpStreamToolCall(c *gin.Context, req jsonrpcRequest, tool *mcp
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	flusher, canFlush := c.Writer.(http.Flusher)
 	write := func(payload jsonrpcResponse) bool {
-		encoded, err := json.Marshal(payload)
+		encoded, err := sonic.ConfigStd.Marshal(payload)
 		if err != nil {
 			return true
 		}

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
@@ -32,7 +32,7 @@ func TestGatewayThinkingHTTPAndSSEMatrix(t *testing.T) {
 				calls++
 				raw, _ := io.ReadAll(r.Body)
 				var body map[string]any
-				if err := json.Unmarshal(raw, &body); err != nil {
+				if err := sonic.ConfigStd.Unmarshal(raw, &body); err != nil {
 					t.Error(err)
 				}
 				var effort any
@@ -103,7 +103,7 @@ func TestGatewayThinkingHTTPAndSSEMatrix(t *testing.T) {
 							t.Fatal(err, found)
 						}
 						var saved usageRecord
-						if err := json.Unmarshal(raw, &saved); err != nil {
+						if err := sonic.ConfigStd.Unmarshal(raw, &saved); err != nil {
 							t.Fatal(err)
 						}
 						if saved.ProtocolUsage == nil || saved.ProtocolUsage.CacheRead == nil || saved.ProtocolUsage.CacheRead.Count != 70 || saved.Usage.Estimated {
@@ -467,11 +467,11 @@ func TestGatewayThinkingToolContinuation(t *testing.T) {
 					path = "/v1/responses"
 				}
 				var request map[string]any
-				if err := json.Unmarshal([]byte(raw), &request); err != nil {
+				if err := sonic.ConfigStd.Unmarshal([]byte(raw), &request); err != nil {
 					t.Fatal(err)
 				}
 				perform := func() *httptest.ResponseRecorder {
-					body, err := json.Marshal(request)
+					body, err := sonic.ConfigStd.Marshal(request)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -540,7 +540,7 @@ func thinkingToolWireMessage(t *testing.T, source string, stream bool, raw []byt
 	t.Helper()
 	decode := func(raw []byte) map[string]any {
 		var v map[string]any
-		if err := json.Unmarshal(raw, &v); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(raw, &v); err != nil {
 			t.Fatal(err)
 		}
 		return v
@@ -619,7 +619,7 @@ func thinkingToolWireMessage(t *testing.T, source string, stream bool, raw []byt
 	}
 	for index, raw := range args {
 		var value any
-		if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		if err := sonic.ConfigStd.Unmarshal([]byte(raw), &value); err != nil {
 			t.Fatal(err)
 		}
 		blocks[index].(map[string]any)["input"] = value

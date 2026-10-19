@@ -6,6 +6,9 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/jsonutil"
 )
 
 // MaskedPendingAction 复制待批快照并遮盖调用参数里的密钥类字段，供会话
@@ -155,17 +158,17 @@ func maskJSON(raw json.RawMessage, mask func(any) any) json.RawMessage {
 	if len(raw) == 0 {
 		return raw
 	}
-	if !json.Valid(raw) {
+	if !jsonutil.Valid(raw) {
 		return json.RawMessage(`{"error":"invalid_tool_json"}`)
 	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder := sonic.ConfigStd.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
 	var value any
 	if err := decoder.Decode(&value); err != nil {
 		return json.RawMessage(`{"error":"invalid_tool_json"}`)
 	}
 	// The decoder produces only JSON values; masking changes strings alone.
-	encoded, _ := json.Marshal(mask(value))
+	encoded, _ := sonic.ConfigStd.Marshal(mask(value))
 	return encoded
 }
 

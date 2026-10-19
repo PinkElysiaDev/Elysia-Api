@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elysia-api/backend/protocol/builtin"
-
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
@@ -241,7 +240,7 @@ func TestMissingModelKeepsRequestMetadataWithoutBodies(t *testing.T) {
 				t.Fatalf("status=%d logs=%+v", rec.Code, logs)
 			}
 			var record usageRecord
-			if err := json.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record); err != nil {
+			if err := sonic.ConfigStd.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record); err != nil {
 				t.Fatal(err)
 			}
 			if record.RequestedModelGroup != "missing-model" || !record.Stream || record.IncomingBody.Content != "" {

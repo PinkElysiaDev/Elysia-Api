@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -60,7 +61,7 @@ func protocolCLIError(err error) CLIResult {
 func (tool *protocolV2Tool) Execute(ctx context.Context, tctx CLIContext, raw json.RawMessage) CLIResult {
 	var input protocolCommandInput
 	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, &input); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(raw, &input); err != nil {
 			return protocolCLIError(err)
 		}
 	}

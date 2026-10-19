@@ -1,9 +1,7 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
-	"github.com/elysia-api/backend/protocol"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/protocol"
 )
 
 // Real HTTP gateway, actual embedded definitions and full model bindings. The
@@ -149,12 +150,12 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 								// two content parts, even though SDKs concatenate the text.
 								var response protocol.Object
 								if !stream {
-									_ = json.Unmarshal(rec.Body.Bytes(), &response)
+									_ = sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &response)
 								} else {
 									for _, line := range strings.Split(rec.Body.String(), "\n") {
 										if strings.HasPrefix(line, "data: {") {
 											var event protocol.Object
-											_ = json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event)
+											_ = sonic.ConfigStd.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event)
 											if event["type"] == protocol.StringValue("response.completed") {
 												response, _ = event["response"].ReadObject()
 											}
@@ -247,7 +248,7 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 								t.Fatal(err)
 							}
 							var record usageRecord
-							if err := json.Unmarshal(raw, &record); err != nil {
+							if err := sonic.ConfigStd.Unmarshal(raw, &record); err != nil {
 								t.Fatal(err)
 							}
 							wanted := map[string]bool{"/output_text": false}
@@ -270,7 +271,7 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 								t.Fatal(e)
 							}
 							record := map[string]any{"upstream": upstreamID, "ingress": ingressID, "stream": stream, "body": rec.Body.String(), "headers": rec.Header()}
-							raw, _ := json.Marshal(record)
+							raw, _ := sonic.ConfigStd.Marshal(record)
 							name := fmt.Sprintf("%s-%s-%v.json", upstreamID, ingressID, stream)
 							if e := os.WriteFile(filepath.Join(dir, name), raw, 0600); e != nil {
 								t.Fatal(e)

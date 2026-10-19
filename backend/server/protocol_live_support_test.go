@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 )
@@ -68,7 +69,7 @@ func (budget *liveBudget) reserveOperation(isCleanup bool) error {
 }
 
 func (budget *liveBudget) save() error {
-	raw, err := json.MarshalIndent(budget, "", "  ")
+	raw, err := sonic.ConfigStd.MarshalIndent(budget, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -163,7 +164,7 @@ func reuseLivePreflight(t *testing.T, suite *liveSuite, compiled *protocol.Compi
 		t.Fatal(err)
 	}
 	var prior liveSuite
-	if err := json.Unmarshal(raw, &prior); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &prior); err != nil {
 		t.Fatal(err)
 	}
 	if prior.Model != suite.Model || prior.Origin != suite.Origin || prior.Compiler != suite.Compiler {
@@ -202,7 +203,7 @@ func openLiveSuite(t *testing.T) *liveSuite {
 	t.Cleanup(func() { os.Remove(budgetPath + ".lock") })
 	budget := &liveBudget{path: budgetPath}
 	if raw, err := os.ReadFile(budgetPath); err == nil {
-		if err := json.Unmarshal(raw, budget); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(raw, budget); err != nil {
 			t.Fatal(err)
 		}
 	} else if !os.IsNotExist(err) {
@@ -252,7 +253,7 @@ func (suite *liveSuite) record(t *testing.T, result liveCase) {
 		*artifact.path = name
 	}
 	suite.Cases = append(suite.Cases, result)
-	raw, err := json.MarshalIndent(suite, "", "  ")
+	raw, err := sonic.ConfigStd.MarshalIndent(suite, "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +291,7 @@ func (suite *liveSuite) exchange(ctx context.Context, compiled *protocol.Compile
 func (suite *liveSuite) exchangeOperation(ctx context.Context, base string, operation protocol.Operation, body []byte, isStream bool, writer http.ResponseWriter, isCleanup bool) liveWireEvidence {
 	wire := liveWireEvidence{RequestHash: liveHash(body), RequestBytes: len(body), request: append([]byte(nil), body...), Policies: map[string]any{}}
 	var requestValue any
-	if json.Unmarshal(body, &requestValue) == nil {
+	if sonic.ConfigStd.Unmarshal(body, &requestValue) == nil {
 		collectLivePolicies(requestValue, "", wire.Policies)
 	}
 	if err := suite.budget.reserveOperation(isCleanup); err != nil {
@@ -336,7 +337,7 @@ func (suite *liveSuite) exchangeOperation(ctx context.Context, base string, oper
 		var failure struct {
 			Error json.RawMessage `json:"error"`
 		}
-		if json.Unmarshal(wire.body, &failure) == nil && len(failure.Error) > 0 {
+		if sonic.ConfigStd.Unmarshal(wire.body, &failure) == nil && len(failure.Error) > 0 {
 			wire.Error = string(failure.Error)
 		}
 		wire.Error = strings.ReplaceAll(wire.Error, suite.key, "<redacted>")
@@ -432,7 +433,7 @@ func readLiveUsage(raw []byte, operation protocol.Operation, isStream bool) []ma
 	}
 	decode := func(raw []byte) {
 		var value any
-		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder := sonic.ConfigStd.NewDecoder(bytes.NewReader(raw))
 		decoder.UseNumber()
 		if decoder.Decode(&value) == nil {
 			visit(value)
@@ -497,7 +498,7 @@ func (suite *liveSuite) observer(compiled *protocol.Compiled) (*httptest.Server,
 		var flags struct {
 			Stream bool `json:"stream"`
 		}
-		_ = json.Unmarshal(body, &flags)
+		_ = sonic.ConfigStd.Unmarshal(body, &flags)
 		isStream := flags.Stream || strings.Contains(request.URL.Path, ":streamGenerateContent")
 		wire := suite.exchange(request.Context(), compiled, body, isStream, writer)
 		if wire.Status == 0 {

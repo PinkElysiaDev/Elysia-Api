@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/elysia-api/backend/storage"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/storage"
 )
 
 func TestGatewayGeminiClientStreamUsagePreferences(t *testing.T) {
@@ -69,7 +70,7 @@ func TestGatewayGeminiClientStreamUsagePreferences(t *testing.T) {
 					Choices []any           `json:"choices"`
 					Usage   json.RawMessage `json:"usage"`
 				}
-				if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &chunk) == nil && len(chunk.Choices) == 0 && len(chunk.Usage) > 0 && string(chunk.Usage) != "null" {
+				if sonic.ConfigStd.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &chunk) == nil && len(chunk.Choices) == 0 && len(chunk.Usage) > 0 && string(chunk.Usage) != "null" {
 					hasUsage = true
 				}
 			}
@@ -116,7 +117,7 @@ func TestGatewayMessagesGeminiContinuationRoundTrip(t *testing.T) {
 	var response struct {
 		Content json.RawMessage `json:"content"`
 	}
-	if err := json.Unmarshal(first.Body.Bytes(), &response); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(first.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(response.Content), protocol.ContinuationPrefix) {
@@ -190,7 +191,7 @@ func TestGatewayContinuationPersistenceAndIsolation(t *testing.T) {
 	var response struct {
 		Content json.RawMessage `json:"content"`
 	}
-	if err = json.Unmarshal(first.Body.Bytes(), &response); err != nil {
+	if err = sonic.ConfigStd.Unmarshal(first.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
 	bodyWithCarrier := strings.Replace(body, `[{"type":"text","text":"hello"}]`, string(response.Content), 1)
@@ -243,7 +244,7 @@ func TestGatewayParallelGeminiToolSignatures(t *testing.T) {
 	var result struct {
 		Content json.RawMessage `json:"content"`
 	}
-	if err := json.Unmarshal(first.Body.Bytes(), &result); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(first.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
 	call(`{"model":"group","max_tokens":100,"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":` + string(result.Content) + `},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-a","content":"answer-a"},{"type":"tool_result","tool_use_id":"call-b","content":"answer-b"}]}]}`)

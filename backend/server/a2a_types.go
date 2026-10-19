@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 )
 
@@ -247,7 +248,7 @@ func parseA2AMessage(raw json.RawMessage) (a2aIncomingMessage, error) {
 			Data json.RawMessage `json:"data"`
 		} `json:"parts"`
 	}
-	if err := json.Unmarshal(raw, &wire); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &wire); err != nil {
 		return a2aIncomingMessage{}, err
 	}
 	out := a2aIncomingMessage{MessageID: wire.MessageID, TaskID: wire.TaskID, ContextID: wire.ContextID}
@@ -261,7 +262,7 @@ func parseA2AMessage(raw json.RawMessage) (a2aIncomingMessage, error) {
 		case part.Kind == "data" || (part.Kind == "" && len(part.Data) > 0):
 			out.HasData = true
 			var decision agentApprovalDecision
-			if err := json.Unmarshal(part.Data, &decision); err == nil {
+			if err := sonic.ConfigStd.Unmarshal(part.Data, &decision); err == nil {
 				out.Decision = &decision
 			}
 		}

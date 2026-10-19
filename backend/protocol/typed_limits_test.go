@@ -2,7 +2,7 @@ package protocol
 
 import (
 	"bytes"
-	"encoding/json"
+	stdjson "encoding/json" // Independent token oracle for the resource meter.
 	"io"
 	"reflect"
 	"strings"
@@ -28,7 +28,7 @@ func checkMeterEquivalent(t *testing.T, value any) {
 	if !meter.visit(typedLimitPlans[reflect.TypeOf(value)], reflect.ValueOf(value)) {
 		t.Fatal("valid semantic model was not measured")
 	}
-	decoder := json.NewDecoder(bytes.NewReader(encoded.Bytes()))
+	decoder := stdjson.NewDecoder(bytes.NewReader(encoded.Bytes()))
 	decoder.UseNumber()
 	nodes, depth, maxDepth := 0, 0, 0
 	for {
@@ -40,7 +40,7 @@ func checkMeterEquivalent(t *testing.T, value any) {
 			t.Fatal(err)
 		}
 		nodes++
-		if delimiter, ok := token.(json.Delim); ok {
+		if delimiter, ok := token.(stdjson.Delim); ok {
 			if delimiter == '{' || delimiter == '[' {
 				depth++
 				if depth > maxDepth {
@@ -144,7 +144,7 @@ func TestTypedMeterRetainsEncoderFailures(t *testing.T) {
 }
 
 func FuzzTypedLimitEquivalence(f *testing.F) {
-	for _, seed := range []string{`null`, `{"x":[0,false,null,"<>&"]}`, `"\u2028"`, `9007199254740993`, ` [ "x" ] `} {
+	for _, seed := range []string{`null`, `{"x":[0,false,null,"<>&"]}`, `"\u2028"`, `9007199254740993`, ` [ "x" ] `, "\"\xff\"", "\"\xe2\x80\""} {
 		f.Add([]byte(seed), uint16(31))
 	}
 	f.Fuzz(func(t *testing.T, raw []byte, flags uint16) {

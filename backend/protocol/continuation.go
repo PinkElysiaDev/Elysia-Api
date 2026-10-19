@@ -8,10 +8,11 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 const ContinuationPrefix = "elysia-continuation.v1."
@@ -62,7 +63,7 @@ func (c *ContinuationCodec) Digest(value string) string {
 }
 
 func (c *ContinuationCodec) Seal(record ContinuationRecord, limit int) (string, error) {
-	raw, err := json.Marshal(record)
+	raw, err := sonic.ConfigStd.Marshal(record)
 	if err != nil {
 		return "", err
 	}

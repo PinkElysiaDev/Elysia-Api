@@ -3,11 +3,13 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/elysia-api/backend/protocol"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/protocol"
 )
 
 func TestGatewayVisibleReasoningHistoryAndSummaryRejection(t *testing.T) {
@@ -27,7 +29,7 @@ func TestGatewayVisibleReasoningHistoryAndSummaryRejection(t *testing.T) {
 				Calls    []json.RawMessage `json:"tool_calls"`
 			}
 		}
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		if err := sonic.ConfigStd.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Error(err)
 			w.WriteHeader(400)
 			return

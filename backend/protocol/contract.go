@@ -2,9 +2,10 @@ package protocol
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
+
+	"github.com/bytedance/sonic"
 )
 
 // DecodeRequestContract accepts one versioned semantic request. Unknown fields
@@ -21,7 +22,7 @@ func DecodeRequestContract(raw []byte) (*Request, error) {
 }
 
 func decodeContract(raw []byte, target any) error {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder := sonic.ConfigStd.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	decoder.UseNumber()
 	if err := decoder.Decode(target); err != nil {

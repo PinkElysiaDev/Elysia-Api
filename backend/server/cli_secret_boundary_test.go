@@ -1,10 +1,11 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
 )
 
 func TestCLISecretRenderingBeforeLossyOperations(t *testing.T) {
@@ -40,7 +41,7 @@ func TestCLISecretIsMaskedBeforeJSONRendering(t *testing.T) {
 	var stored struct {
 		Output string `json:"output"`
 	}
-	if err := json.Unmarshal(result.RedactedData, &stored); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(result.RedactedData, &stored); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(stored.Output, "sensitive-before") || strings.Contains(stored.Output, `\u003cvalue`) {

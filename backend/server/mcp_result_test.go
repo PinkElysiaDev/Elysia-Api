@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 )
 
@@ -24,7 +25,7 @@ func TestMCPToolResultTextAndStructuredContent(t *testing.T) {
 		}
 		content := payload["content"].([]gin.H)
 		var textData map[string]any
-		if err := json.Unmarshal([]byte(content[0]["text"].(string)), &textData); err != nil {
+		if err := sonic.ConfigStd.Unmarshal([]byte(content[0]["text"].(string)), &textData); err != nil {
 			t.Fatal(err)
 		}
 		if textData["output"] != data["output"] || payload["structuredContent"] == nil {

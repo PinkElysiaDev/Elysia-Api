@@ -1,9 +1,9 @@
 package server
 
 import (
-	"encoding/json"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -31,7 +31,7 @@ func TestProtocolWorkflowPreviewUsesSessionAndTaskRuntime(t *testing.T) {
 		if len(expected.Issues) > 0 {
 			t.Fatal(expected.Issues)
 		}
-		body, err := json.Marshal(input)
+		body, err := sonic.ConfigStd.Marshal(input)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -43,7 +43,7 @@ func TestProtocolWorkflowPreviewUsesSessionAndTaskRuntime(t *testing.T) {
 		var decoded struct {
 			Data protocol.PreviewResult `json:"data"`
 		}
-		if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
 			t.Fatal(err)
 		}
 		if string(decoded.Data.Output.Bytes()) != string(expected.Output.Bytes()) || string(decoded.Data.Semantic.Bytes()) != string(expected.Semantic.Bytes()) {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -121,7 +122,7 @@ func MetaOf(tool Tool) ToolMeta {
 type ToolResult struct {
 	OK      bool
 	Summary string
-	Data    any // 会被 json.Marshal；字符串原样传递
+	Data    any // 会被 Sonic 序列化；字符串原样传递
 	// SecretValues 声明结果文本/数据里出现的明文密钥（如 key create 生成的
 	// token）：现场 SSE 事件保留原值（明文仅此一次交付给用户），落库与回放
 	// 出口按值精确打码，防止明文永久存进会话历史并逐轮回传模型。
@@ -135,7 +136,7 @@ func (r ToolResult) MarshalData() (json.RawMessage, error) {
 	if r.Data == nil {
 		return json.RawMessage(`{}`), nil
 	}
-	return json.Marshal(r.Data)
+	return sonic.ConfigStd.Marshal(r.Data)
 }
 
 // Registry 是工具注册表。新增能力 = 实现 Tool + 注册一行，引擎零改动。

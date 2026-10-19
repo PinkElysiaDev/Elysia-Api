@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/gin-gonic/gin"
@@ -187,7 +188,7 @@ func TestStandaloneProtocolFourPublicIngresses(t *testing.T) {
 					Turns      []json.RawMessage `json:"turns"`
 					Parameters map[string]any    `json:"parameters"`
 				}
-				if err := json.Unmarshal(captured, &upstream); err != nil || upstream.Deployment != "preset-model" || len(upstream.Turns) != 1 || upstream.Parameters["stream"] != (transport != protocol.HTTPJSON) {
+				if err := sonic.ConfigStd.Unmarshal(captured, &upstream); err != nil || upstream.Deployment != "preset-model" || len(upstream.Turns) != 1 || upstream.Parameters["stream"] != (transport != protocol.HTTPJSON) {
 					t.Fatal("request semantics lost", string(captured), err)
 				}
 				if source.id == "chat" && upstream.Parameters["temperature"] != 0.4 {

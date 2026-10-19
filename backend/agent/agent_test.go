@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/jsonutil"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -137,7 +139,7 @@ func (f *fakeStore) AppendMessage(ctx context.Context, sessionID string, role st
 		}
 		content = assistant
 	}
-	encoded, err := json.Marshal(content)
+	encoded, err := sonic.ConfigStd.Marshal(content)
 	if err != nil {
 		return 0, err
 	}
@@ -815,7 +817,7 @@ func TestExecuteCalls_ParallelReadOnlyToolsOverlap(t *testing.T) {
 func TestClampJSON_TailKeepsEnding(t *testing.T) {
 	raw := json.RawMessage(`{"head":"` + strings.Repeat("a", 400) + `","tail":"ENDMARK"}`)
 	clamped := clampJSON(raw, 80, "tail")
-	if !json.Valid(clamped) || !strings.Contains(string(clamped), "ENDMARK") {
+	if !jsonutil.Valid(clamped) || !strings.Contains(string(clamped), "ENDMARK") {
 		t.Fatalf("tail clamp lost the ending: %s", clamped)
 	}
 }
@@ -849,11 +851,11 @@ func TestMicroCompact_ClearsOldToolResults(t *testing.T) {
 func TestClampJSON_TruncationStaysValidJSON(t *testing.T) {
 	huge := json.RawMessage(`{"data":"` + strings.Repeat("x", 200*1024) + `"}`)
 	clamped := clampJSON(huge, 64*1024, "head")
-	if !json.Valid(clamped) {
+	if !jsonutil.Valid(clamped) {
 		t.Fatalf("clamped output must be valid JSON: %.80s", clamped)
 	}
 	var envelope map[string]any
-	if err := json.Unmarshal(clamped, &envelope); err != nil || envelope["truncated"] != true {
+	if err := sonic.ConfigStd.Unmarshal(clamped, &envelope); err != nil || envelope["truncated"] != true {
 		t.Fatalf("envelope shape wrong: %.120s", clamped)
 	}
 	small := clampJSON(json.RawMessage(`{"a":1}`), 64*1024, "head")
@@ -885,7 +887,7 @@ func TestRunTurn_OversizedToolResultPersists(t *testing.T) {
 			continue
 		}
 		sawToolResult = true
-		if !json.Valid(message.Content) {
+		if !jsonutil.Valid(message.Content) {
 			t.Fatalf("persisted tool_result content is not valid JSON: %.80s", message.Content)
 		}
 	}
@@ -1005,7 +1007,7 @@ func (f *fakeStore) ResetRunningSessions(ctx context.Context) error { return nil
 func TestMaskSecretInputs(t *testing.T) {
 	masked := MaskSecretInputs(json.RawMessage(`{"baseUrl":"http://x","apiKey":"sk-live-123","nested":{"api_key":"k2","name":"ok"},"token":"t1","note":"keep"}`))
 	var decoded map[string]any
-	if err := json.Unmarshal(masked, &decoded); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(masked, &decoded); err != nil {
 		t.Fatalf("masked output invalid: %s", masked)
 	}
 	if decoded["apiKey"] != "***" {
@@ -1019,7 +1021,7 @@ func TestMaskSecretInputs(t *testing.T) {
 		t.Fatalf("unexpected collateral masking: %s", masked)
 	}
 	broken := MaskSecretInputs(json.RawMessage(`{oops`))
-	if !json.Valid(broken) || strings.Contains(string(broken), "oops") {
+	if !jsonutil.Valid(broken) || strings.Contains(string(broken), "oops") {
 		t.Fatalf("invalid JSON must be replaced, got %s", broken)
 	}
 }
@@ -1038,7 +1040,7 @@ func stubAskParser(t *testing.T) Options {
 			Question    string `json:"question"`
 			AllowCustom bool   `json:"allow_custom"`
 		}
-		if err := json.Unmarshal(call.Arguments, &payload); err != nil || payload.Question == "" {
+		if err := sonic.ConfigStd.Unmarshal(call.Arguments, &payload); err != nil || payload.Question == "" {
 			return AskQuestion{}, false
 		}
 		return AskQuestion{CallID: call.ID, Question: payload.Question, AllowCustom: payload.AllowCustom}, true
@@ -1089,7 +1091,7 @@ func TestResumeApproval_QuestionAnswerFeedsModelAndCancelsRest(t *testing.T) {
 			continue
 		}
 		var info ToolResultInfo
-		if json.Unmarshal(message.Content, &info) == nil && info.CallID == "q1" {
+		if sonic.ConfigStd.Unmarshal(message.Content, &info) == nil && info.CallID == "q1" {
 			storedQuestion = &info
 		}
 	}
@@ -1289,7 +1291,7 @@ func TestTurnStartSummary_RecordsBoundaryAndReplaysKeptHalf(t *testing.T) {
 			continue
 		}
 		var content SystemContent
-		if json.Unmarshal(messages[index].Content, &content) == nil && content.Kind == "summary" {
+		if sonic.ConfigStd.Unmarshal(messages[index].Content, &content) == nil && content.Kind == "summary" {
 			summary = &messages[index]
 		}
 	}
@@ -1297,7 +1299,7 @@ func TestTurnStartSummary_RecordsBoundaryAndReplaysKeptHalf(t *testing.T) {
 		t.Fatalf("summary message not persisted: %+v", messages)
 	}
 	var content SystemContent
-	if err := json.Unmarshal(summary.Content, &content); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(summary.Content, &content); err != nil {
 		t.Fatalf("summary content: %v", err)
 	}
 	if content.BoundarySeq != seqMid {

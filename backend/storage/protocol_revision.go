@@ -3,11 +3,11 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -37,7 +37,7 @@ func (s *Store) ListProtocolUpstreamReports(ctx context.Context, id, hash string
 			return nil, err
 		}
 		var report protocol.VerificationReport
-		if err := json.Unmarshal([]byte(encoded), &report); err != nil {
+		if err := sonic.ConfigStd.Unmarshal([]byte(encoded), &report); err != nil {
 			return nil, err
 		}
 		reports = append(reports, report)
@@ -197,7 +197,7 @@ func saveProtocolReport(ctx context.Context, executor protocolSQLExecutor, id, h
 	if hash != report.DefinitionHash {
 		return errors.New("verification report does not match revision hash")
 	}
-	encoded, err := json.Marshal(report)
+	encoded, err := sonic.ConfigStd.Marshal(report)
 	if err != nil {
 		return err
 	}
@@ -216,7 +216,7 @@ func (s *Store) ReadProtocolReport(ctx context.Context, id, hash string) (protoc
 		return protocol.VerificationReport{}, protocolRowError(err)
 	}
 	var report protocol.VerificationReport
-	if err := json.Unmarshal([]byte(encoded), &report); err != nil {
+	if err := sonic.ConfigStd.Unmarshal([]byte(encoded), &report); err != nil {
 		return report, fmt.Errorf("%w: report %s/%s: %v", ErrCorruptProtocolRecord, id, hash, err)
 	}
 	return report, nil

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,12 +9,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
 func TestCacheAliasEditorAgentAndForwardingShareContract(t *testing.T) {
 	definition := cacheAliasExampleDefinition(t)
-	raw, err := json.Marshal(definition)
+	raw, err := sonic.ConfigStd.Marshal(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestCacheAliasEditorAgentAndForwardingShareContract(t *testing.T) {
 	if compiled == nil {
 		t.Fatal(issues)
 	}
-	activation, _ := json.Marshal(map[string]string{"id": definition.ID, "hash": compiled.Hash()})
+	activation, _ := sonic.ConfigStd.Marshal(map[string]string{"id": definition.ID, "hash": compiled.Hash()})
 	result := (&protocolV2Tool{server: s, action: "activate"}).Execute(t.Context(), author, activation)
 	if !result.OK {
 		t.Fatal(result.Summary, mustCLIData(t, result))
@@ -48,7 +48,7 @@ func TestCacheAliasEditorAgentAndForwardingShareContract(t *testing.T) {
 	alias := `"cached_tokens":70},"provider_metrics":{"write_tokens":20,"keep":"extension"`
 	body := strings.ReplaceAll(fixture.response, usage, alias)
 	input := mustProtocolValue(t, body)
-	preview, _ := json.Marshal(protocol.PreviewInput{Definition: mustEncodedProtocolValue(t, definition), Direction: protocol.DecodeResponse, Input: input})
+	preview, _ := sonic.ConfigStd.Marshal(protocol.PreviewInput{Definition: mustEncodedProtocolValue(t, definition), Direction: protocol.DecodeResponse, Input: input})
 	ctx, recorder := adminProtocolContext("POST", "/api/admin/protocols/preview", string(preview))
 	s.adminProtocolPreviewV2(ctx)
 	if recorder.Code != http.StatusOK {
@@ -57,10 +57,10 @@ func TestCacheAliasEditorAgentAndForwardingShareContract(t *testing.T) {
 	var editor struct {
 		Data protocol.PreviewResult `json:"data"`
 	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &editor); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(recorder.Body.Bytes(), &editor); err != nil {
 		t.Fatal(err)
 	}
-	command, _ := json.Marshal(protocolCommandInput{Direction: protocol.DecodeResponse, SampleRequest: input})
+	command, _ := sonic.ConfigStd.Marshal(protocolCommandInput{Direction: protocol.DecodeResponse, SampleRequest: input})
 	agent := (&protocolV2Tool{server: s, action: "preview"}).Execute(t.Context(), author, command)
 	if !agent.OK || string(agent.Data.(protocol.PreviewResult).Semantic.Bytes()) != string(editor.Data.Semantic.Bytes()) {
 		t.Fatal("editor and Agent cache previews differ", mustCLIData(t, agent))

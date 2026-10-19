@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -80,7 +80,7 @@ func TestGatewayResponsesContextBoundaries(t *testing.T) {
 					t.Fatal(err)
 				}
 				var record usageRecord
-				if err = json.Unmarshal(raw, &record); err != nil {
+				if err = sonic.ConfigStd.Unmarshal(raw, &record); err != nil {
 					t.Fatal(err)
 				}
 				for _, issue := range record.ConversionIssues {

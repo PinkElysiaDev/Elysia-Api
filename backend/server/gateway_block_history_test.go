@@ -3,13 +3,15 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/storage"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/storage"
 )
 
 func TestGatewayResponsesReturnsSignedThinkingWithItsAnthropicToolTurn(t *testing.T) {
@@ -43,7 +45,7 @@ func TestGatewayResponsesReturnsSignedThinkingWithItsAnthropicToolTurn(t *testin
 							}
 						}
 					}
-					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					if err := sonic.ConfigStd.NewDecoder(r.Body).Decode(&body); err != nil {
 						t.Error(err)
 						w.WriteHeader(400)
 						return
@@ -119,13 +121,13 @@ func TestGatewayResponsesReturnsSignedThinkingWithItsAnthropicToolTurn(t *testin
 						Type     string
 						Response json.RawMessage
 					}
-					if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &e) == nil && e.Type == "response.completed" {
-						if err = json.Unmarshal(e.Response, &response); err != nil {
+					if sonic.ConfigStd.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &e) == nil && e.Type == "response.completed" {
+						if err = sonic.ConfigStd.Unmarshal(e.Response, &response); err != nil {
 							t.Fatal(err)
 						}
 					}
 				}
-			} else if err = json.Unmarshal(first.Body.Bytes(), &response); err != nil {
+			} else if err = sonic.ConfigStd.Unmarshal(first.Body.Bytes(), &response); err != nil {
 				t.Fatal(err)
 			}
 			if len(response.Output) < 3 || !strings.Contains(first.Body.String(), protocol.ContinuationPrefix) {
@@ -134,7 +136,7 @@ func TestGatewayResponsesReturnsSignedThinkingWithItsAnthropicToolTurn(t *testin
 			items := []json.RawMessage{json.RawMessage(`{"role":"user","content":"hi"}`)}
 			items = append(items, response.Output...)
 			items = append(items, json.RawMessage(`{"type":"function_call_output","call_id":"call1","output":"done"}`))
-			history, _ := json.Marshal(items)
+			history, _ := sonic.ConfigStd.Marshal(items)
 			second := call(`{"model":"group","max_output_tokens":64,"store":false,"input":` + string(history) + `}`)
 			if second.Code != 200 || calls != 2 {
 				t.Fatal(second.Code, calls, second.Body.String())

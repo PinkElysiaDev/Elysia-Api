@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -72,7 +72,7 @@ func TestConversionClientToolRoundTrip(t *testing.T) {
 					}
 				}
 				response := map[string]any{"responseId": "client-response", "modelVersion": "upstream-model", "candidates": []any{map[string]any{"index": 0, "content": map[string]any{"role": "model", "parts": []any{part}}, "finishReason": "STOP"}}, "usageMetadata": map[string]any{"promptTokenCount": 3, "candidatesTokenCount": 2, "totalTokenCount": 5}}
-				encoded, _ := json.Marshal(response)
+				encoded, _ := sonic.ConfigStd.Marshal(response)
 				if strings.Contains(r.URL.Path, "streamGenerateContent") {
 					w.Header().Set("Content-Type", "text/event-stream")
 					fmt.Fprintf(w, "data: %s\n\n", encoded)

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
@@ -118,7 +119,7 @@ func (m *modelCatalog) loadFromSnapshot() {
 		return
 	}
 	var snapshot catalogCacheFile
-	if err := json.Unmarshal(modelCatalogSnapshotJSON, &snapshot); err != nil || len(snapshot.Body) == 0 {
+	if err := sonic.ConfigStd.Unmarshal(modelCatalogSnapshotJSON, &snapshot); err != nil || len(snapshot.Body) == 0 {
 		return
 	}
 	dataset, err := parseCatalogDataset(snapshot.Body)
@@ -154,7 +155,7 @@ func (m *modelCatalog) loadFromCache() {
 		return
 	}
 	var cached catalogCacheFile
-	if err := json.Unmarshal(raw, &cached); err != nil || len(cached.Body) == 0 {
+	if err := sonic.ConfigStd.Unmarshal(raw, &cached); err != nil || len(cached.Body) == 0 {
 		return
 	}
 	dataset, err := parseCatalogDataset(cached.Body)
@@ -187,7 +188,7 @@ func (m *modelCatalog) saveToCache(body []byte, fetchedAt time.Time) {
 		m.mu.Unlock()
 		return
 	}
-	payload, err := json.Marshal(catalogCacheFile{FetchedAt: fetchedAt, Body: body})
+	payload, err := sonic.ConfigStd.Marshal(catalogCacheFile{FetchedAt: fetchedAt, Body: body})
 	if err != nil {
 		return
 	}
@@ -475,13 +476,13 @@ func (m *modelCatalog) fetch(ctx context.Context, cfg config.ModelCatalogConfig)
 // 以及镜像常见的顶层 "providers" 包裹：{ "providers": { ... } }。
 func parseCatalogDataset(body []byte) (*catalogDataset, error) {
 	var providers map[string]json.RawMessage
-	if err := json.Unmarshal(body, &providers); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(body, &providers); err != nil {
 		return nil, fmt.Errorf("model catalog JSON decode failed: %w", err)
 	}
 	// 镜像包裹：顶层只有 providers 一个有效节点时下钻一层。
 	if wrapped, ok := providers["providers"]; ok {
 		var inner map[string]json.RawMessage
-		if err := json.Unmarshal(wrapped, &inner); err == nil {
+		if err := sonic.ConfigStd.Unmarshal(wrapped, &inner); err == nil {
 			providers = inner
 		}
 	}
@@ -496,7 +497,7 @@ func parseCatalogDataset(body []byte) (*catalogDataset, error) {
 		var providerObj struct {
 			Models json.RawMessage `json:"models"`
 		}
-		if err := json.Unmarshal(providers[slug], &providerObj); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(providers[slug], &providerObj); err != nil {
 			continue // 跳过无法解析的 provider 节点
 		}
 		if len(providerObj.Models) == 0 {
@@ -504,7 +505,7 @@ func parseCatalogDataset(body []byte) (*catalogDataset, error) {
 		}
 		register := func(raw json.RawMessage, fallbackID string) {
 			var model catalogModelJSON
-			if err := json.Unmarshal(raw, &model); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(raw, &model); err != nil {
 				return
 			}
 			if model.ID == "" {
@@ -516,14 +517,14 @@ func parseCatalogDataset(body []byte) (*catalogDataset, error) {
 			dataset.register(newCatalogEntry(slug, model))
 		}
 		var asObject map[string]json.RawMessage
-		if err := json.Unmarshal(providerObj.Models, &asObject); err == nil {
+		if err := sonic.ConfigStd.Unmarshal(providerObj.Models, &asObject); err == nil {
 			for id, raw := range asObject {
 				register(raw, id)
 			}
 			continue
 		}
 		var asArray []json.RawMessage
-		if err := json.Unmarshal(providerObj.Models, &asArray); err == nil {
+		if err := sonic.ConfigStd.Unmarshal(providerObj.Models, &asArray); err == nil {
 			for _, raw := range asArray {
 				register(raw, "")
 			}

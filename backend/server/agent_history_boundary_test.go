@@ -1,10 +1,10 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/storage"
 )
@@ -38,15 +38,15 @@ func TestAgentHistoryRejectsInvalidBoundaryWithoutMutation(t *testing.T) {
 					Code string `json:"code"`
 				} `json:"error"`
 			}
-			if err := json.Unmarshal(rec.Body.Bytes(), &failure); err != nil || failure.Error.Code != "invalid_after_seq" {
+			if err := sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &failure); err != nil || failure.Error.Code != "invalid_after_seq" {
 				t.Fatalf("unexpected error: %s", rec.Body.String())
 			}
 			after, err := s.store.GetAgentSession(t.Context(), session.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			beforeJSON, _ := json.Marshal(before)
-			afterJSON, _ := json.Marshal(after)
+			beforeJSON, _ := sonic.ConfigStd.Marshal(before)
+			afterJSON, _ := sonic.ConfigStd.Marshal(after)
 			messages, err := s.store.ListMessages(t.Context(), session.ID)
 			if err != nil || len(messages) != 1 || string(beforeJSON) != string(afterJSON) {
 				t.Fatalf("invalid boundary changed session/history: %v", err)

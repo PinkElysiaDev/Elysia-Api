@@ -1,11 +1,12 @@
 package protocol
 
 import (
-	"encoding/json"
 	"reflect"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/bytedance/sonic"
 )
 
 // A bounded structural walk proves the successful resource-check path without
@@ -42,7 +43,7 @@ var typedLimitPlans = buildTypedLimitPlans()
 func buildTypedLimitPlans() map[reflect.Type]*typedPlan {
 	plans := map[reflect.Type]*typedPlan{}
 	jsonType := reflect.TypeFor[Value]()
-	marshaler := reflect.TypeFor[json.Marshaler]()
+	marshaler := reflect.TypeFor[interface{ MarshalJSON() ([]byte, error) }]()
 	var build func(reflect.Type) *typedPlan
 	build = func(kind reflect.Type) *typedPlan {
 		if plan := plans[kind]; plan != nil {
@@ -227,7 +228,7 @@ func isEmptyJSONField(value reflect.Value) bool {
 	return false
 }
 
-// raw measures encoding/json's compact, HTML-escaped Marshaler output. Value
+// raw measures the codec's compact, HTML-escaped Marshaler output. Value
 // has already validated JSON; this walk never decodes numbers through float64.
 func (meter *typedMeter) raw(raw string) bool {
 	if meter.cache == nil || len(raw) < semanticCacheMinBytes {
@@ -284,11 +285,18 @@ func (meter *typedMeter) scanRaw(raw string) bool {
 					index++
 				case '<', '>', '&':
 					length += 5
-				case 0xe2:
-					if index+2 < end && raw[index+1] == 0x80 && (raw[index+2] == 0xa8 || raw[index+2] == 0xa9) {
-						length += 3
-						index += 2
+				default:
+					if raw[index] < utf8.RuneSelf {
+						continue
 					}
+					character, width := utf8.DecodeRuneInString(raw[index : end-1])
+					if width == 1 {
+						// Sonic validates Marshaler strings and emits \ufffd.
+						length += 5
+					} else if character == '\u2028' || character == '\u2029' {
+						length += 3
+					}
+					index += width - 1
 				}
 			}
 			if !meter.scalar(length) {
@@ -308,7 +316,7 @@ func (meter *typedMeter) scanRaw(raw string) bool {
 
 func jsonStringBytes(value string) int {
 	if !utf8.ValidString(value) {
-		raw, _ := json.Marshal(value)
+		raw, _ := sonic.ConfigStd.Marshal(value)
 		return len(raw)
 	}
 	length := 2

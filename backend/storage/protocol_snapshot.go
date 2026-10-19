@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -70,7 +70,7 @@ func (s *Store) ensureProtocolSnapshot(ctx context.Context, baseline, evidence s
 		return nil, readErr
 	}
 	var previous ProtocolSnapshot
-	if readErr == nil && json.Unmarshal([]byte(raw), &previous) == nil && previous.FormatVersion == 2 && previous.Baseline == baseline && previous.EvidenceBaseline == evidence {
+	if readErr == nil && sonic.ConfigStd.Unmarshal([]byte(raw), &previous) == nil && previous.FormatVersion == 2 && previous.Baseline == baseline && previous.EvidenceBaseline == evidence {
 		if checkErr := checkProtocolSnapshot(ctx, &previous); checkErr == nil {
 			return &previous, nil
 		}
@@ -144,7 +144,7 @@ func (s *Store) ensureProtocolSnapshot(ctx context.Context, baseline, evidence s
 	if err = checkProtocolCommitBaseline(ctx, tx, ProtocolUpgrade{Baseline: baseline, EvidenceBaseline: evidence}); err != nil {
 		return nil, err
 	}
-	encoded, err := json.Marshal(snapshot)
+	encoded, err := sonic.ConfigStd.Marshal(snapshot)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func (s *Store) ensureProtocolSnapshot(ctx context.Context, baseline, evidence s
 func (s *Store) removeUnreferencedSnapshot(path string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), snapshotCleanupTimeout)
 	defer cancel()
-	encoded, _ := json.Marshal(path)
+	encoded, _ := sonic.ConfigStd.Marshal(path)
 	var isReferenced bool
 	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM settings WHERE instr(value, ?) > 0)`, string(encoded)).Scan(&isReferenced); err != nil {
 		return fmt.Errorf("snapshot retained because references could not be checked: %w", err)

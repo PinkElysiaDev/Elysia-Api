@@ -1,8 +1,9 @@
 package protocol
 
 import (
-	"encoding/json"
 	"strings"
+
+	"github.com/elysia-api/backend/internal/jsonutil"
 )
 
 type streamTool struct {
@@ -171,7 +172,7 @@ func (state *StreamState) ValidateComplete() error {
 }
 
 func (state *StreamState) finishTool(key string, tool *streamTool) error {
-	if tool.kind == JSONInput && !json.Valid([]byte(tool.input.String())) {
+	if tool.kind == JSONInput && !jsonutil.Valid([]byte(tool.input.String())) {
 		return streamIssue(UpstreamContractViolation, key, "completed function arguments are missing or invalid JSON")
 	}
 	state.buffered -= tool.input.Len()

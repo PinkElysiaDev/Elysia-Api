@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
@@ -199,7 +200,7 @@ func TestOpsUsageQueryTools(t *testing.T) {
 	if !logs.OK {
 		t.Fatalf("logs: %s", logs.Summary)
 	}
-	encoded, _ := json.Marshal(logs.Data)
+	encoded, _ := sonic.ConfigStd.Marshal(logs.Data)
 	if !strings.Contains(string(encoded), "req-fail-1") || strings.Contains(string(encoded), "req-ok-1") {
 		t.Fatalf("failed filter wrong: %s", encoded)
 	}
@@ -360,7 +361,7 @@ func TestOpsTestUpstreamCredentialParams(t *testing.T) {
 		t.Fatal(serviceErr)
 	}
 	compiled, _ := service.Pin("openai-chat-completions")
-	draft, err := json.Marshal(compiled.Definition())
+	draft, err := sonic.ConfigStd.Marshal(compiled.Definition())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +435,7 @@ func TestOutboundPolicyTool(t *testing.T) {
 			trimmed = append(trimmed, entry)
 		}
 	}
-	encoded, _ := json.Marshal(trimmed)
+	encoded, _ := sonic.ConfigStd.Marshal(trimmed)
 	replaced := opsExecute(t, tool, fmt.Sprintf(`{"ranges":%s}`, encoded))
 	if !replaced.OK {
 		t.Fatalf("replace failed: %+v", replaced)

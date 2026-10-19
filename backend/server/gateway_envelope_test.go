@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -57,7 +57,7 @@ func TestGatewayAnthropicEnvelopeAndClients(t *testing.T) {
 			for _, line := range strings.Split(rec.Body.String(), "\n") {
 				if strings.HasPrefix(line, "data: ") {
 					var frame map[string]any
-					if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &frame) != nil {
+					if sonic.ConfigStd.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &frame) != nil {
 						continue
 					}
 					switch frame["type"] {
@@ -89,7 +89,7 @@ func TestGatewayAnthropicEnvelopeAndClients(t *testing.T) {
 				t.Fatal(err)
 			}
 			var record usageRecord
-			if err = json.Unmarshal(data, &record); err != nil {
+			if err = sonic.ConfigStd.Unmarshal(data, &record); err != nil {
 				t.Fatal(err)
 			}
 			if scenario == "missing" && record.ProtocolUsage != nil {
@@ -159,7 +159,7 @@ func TestGatewayResponsesStorage(t *testing.T) {
 			continue
 		}
 		var result map[string]any
-		_ = json.Unmarshal(rec.Body.Bytes(), &result)
+		_ = sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &result)
 		if rec.Code != 200 || calls != before+1 || result["store"] != false {
 			t.Fatal(value, rec.Code, rec.Body.String())
 		}
@@ -180,7 +180,7 @@ func TestGatewayResponsesStorage(t *testing.T) {
 			Type     string         `json:"type"`
 			Response map[string]any `json:"response"`
 		}
-		if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &frame) != nil {
+		if sonic.ConfigStd.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &frame) != nil {
 			continue
 		}
 		if frame.Type == "response.created" || frame.Type == "response.completed" {

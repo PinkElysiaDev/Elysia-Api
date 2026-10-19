@@ -1,13 +1,14 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
 )
 
 func TestCLIRenamedToolPermissions(t *testing.T) {
@@ -42,7 +43,7 @@ func TestCLIRenamedToolPermissions(t *testing.T) {
 					} `json:"function"`
 				} `json:"tools"`
 			}
-			if err := json.Unmarshal([]byte(fake.bodies[0]), &request); err != nil {
+			if err := sonic.ConfigStd.Unmarshal([]byte(fake.bodies[0]), &request); err != nil {
 				t.Fatal(err)
 			}
 			names := map[string]bool{}

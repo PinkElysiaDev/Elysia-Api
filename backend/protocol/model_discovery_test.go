@@ -1,8 +1,9 @@
 package protocol
 
 import (
-	"encoding/json"
 	"testing"
+
+	"github.com/bytedance/sonic"
 )
 
 func discoveryDefinition(t *testing.T) Definition {
@@ -65,7 +66,7 @@ func TestDiscoveryCompilerRejectsCredentialAndMappingConflicts(t *testing.T) {
 		change(&operation)
 		definition.Operations["models"] = operation
 		compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
-		raw, _ := json.Marshal(definition)
+		raw, _ := sonic.ConfigStd.Marshal(definition)
 		if _, issues := compiler.Compile(raw); IssuesError(issues) == nil {
 			t.Fatal("invalid discovery operation compiled")
 		}

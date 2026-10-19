@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
 )
@@ -75,7 +75,7 @@ func TestGatewayAuditFailureDetailsReachAllClients(t *testing.T) {
 				t.Fatal(err)
 			}
 			var saved usageRecord
-			if err := json.Unmarshal(raw, &saved); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(raw, &saved); err != nil {
 				t.Fatal(err)
 			}
 			if stream {
@@ -133,7 +133,7 @@ func TestHTTP524GatewayAndAgentPreserveObservedFailure(t *testing.T) {
 				t.Fatal(err)
 			}
 			var record usageRecord
-			if err := json.Unmarshal(raw, &record); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(raw, &record); err != nil {
 				t.Fatal(err)
 			}
 			if record.UpstreamHTTPStatus != 524 || record.StatusCode != 524 || record.ErrorKind != "upstream" || len(record.ConversionIssues) == 0 {

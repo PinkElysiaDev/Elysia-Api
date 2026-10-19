@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -314,8 +314,8 @@ func TestPresetRecoveryRestartsPreserveEvidenceAndCustomData(t *testing.T) {
 	if !ok {
 		t.Fatal("custom disappeared")
 	}
-	actual, _ := json.Marshal(custom.Definition())
-	expected, _ := json.Marshal(d)
+	actual, _ := sonic.ConfigStd.Marshal(custom.Definition())
+	expected, _ := sonic.ConfigStd.Marshal(d)
 	if string(actual) != string(expected) {
 		t.Fatal("same-name custom was overwritten")
 	}

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
@@ -19,7 +20,7 @@ func mcpTestProtocolDraft(t *testing.T) string {
 	t.Helper()
 	definition := loadGatewayDefinition(t, "text-alpha")
 	definition.ID = "mcp-draft"
-	raw, err := json.Marshal(definition)
+	raw, err := sonic.ConfigStd.Marshal(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +239,7 @@ func TestMCPCLICancellationIsStateless(t *testing.T) {
 	t.Cleanup(func() { close(release); upstream.Close() })
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	args, _ := json.Marshal(map[string]any{
+	args, _ := sonic.ConfigStd.Marshal(map[string]any{
 		"command": mcpTestProtocolDraft(t) + " ; elysia protocol test --operation generate --sample " + mcpProtocolSample + " --base-url " + upstream.URL + "; elysia group create --name must-not-run",
 	})
 	type outcome struct {

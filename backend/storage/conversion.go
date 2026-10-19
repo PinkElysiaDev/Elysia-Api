@@ -5,12 +5,12 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -97,7 +97,7 @@ type ConversionPolicyRecord struct {
 
 func (s *Store) SaveConversionDraft(ctx context.Context, p protocol.ConversionPolicy, expected string) (ConversionPolicyRecord, error) {
 	// Drafts may be incomplete; only verification/activation compile them.
-	raw, err := json.Marshal(p)
+	raw, err := sonic.ConfigStd.Marshal(p)
 	if err != nil {
 		return ConversionPolicyRecord{}, err
 	}
@@ -143,10 +143,10 @@ func (s *Store) ListConversionPolicies(ctx context.Context, activeOnly bool) ([]
 		if err := rows.Scan(&item.ID, &item.Hash, &raw, &item.ActiveHash, &selector); err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal([]byte(raw), &item.Policy); err != nil {
+		if err := sonic.ConfigStd.Unmarshal([]byte(raw), &item.Policy); err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal([]byte(selector), &item.Selector); err != nil {
+		if err := sonic.ConfigStd.Unmarshal([]byte(selector), &item.Selector); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -155,11 +155,11 @@ func (s *Store) ListConversionPolicies(ctx context.Context, activeOnly bool) ([]
 }
 
 func (s *Store) SaveConversionRevision(ctx context.Context, record ConversionPolicyRecord) error {
-	raw, err := json.Marshal(record.Policy)
+	raw, err := sonic.ConfigStd.Marshal(record.Policy)
 	if err != nil {
 		return err
 	}
-	reports, err := json.Marshal(record.Reports)
+	reports, err := sonic.ConfigStd.Marshal(record.Reports)
 	if err != nil {
 		return err
 	}
@@ -198,10 +198,10 @@ func (s *Store) ConversionRevisions(ctx context.Context, id string) ([]Conversio
 		if err := rows.Scan(&r.Hash, &raw, &reports, &r.CompilerVersion); err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal([]byte(raw), &r.Policy); err != nil {
+		if err := sonic.ConfigStd.Unmarshal([]byte(raw), &r.Policy); err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal([]byte(reports), &r.Reports); err != nil {
+		if err := sonic.ConfigStd.Unmarshal([]byte(reports), &r.Reports); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -251,12 +251,12 @@ func (s *Store) ActivateConversion(ctx context.Context, id, hash, expected strin
 		if err := tx.QueryRowContext(ctx, "SELECT binding FROM protocol_bindings WHERE binding_key=?", key).Scan(&raw); err != nil {
 			return err
 		}
-		current, _ := json.Marshal(b)
+		current, _ := sonic.ConfigStd.Marshal(b)
 		var existing ProtocolBinding
-		if err := json.Unmarshal([]byte(raw), &existing); err != nil {
+		if err := sonic.ConfigStd.Unmarshal([]byte(raw), &existing); err != nil {
 			return err
 		}
-		normalized, _ := json.Marshal(existing)
+		normalized, _ := sonic.ConfigStd.Marshal(existing)
 		if string(current) != string(normalized) {
 			return protocol.ErrRevisionConflict
 		}
@@ -266,7 +266,7 @@ func (s *Store) ActivateConversion(ctx context.Context, id, hash, expected strin
 			return err
 		}
 	}
-	raw, err := json.Marshal(selector)
+	raw, err := sonic.ConfigStd.Marshal(selector)
 	if err != nil {
 		return err
 	}

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/gin-gonic/gin"
@@ -103,7 +104,7 @@ func decodeProtocolAdminBody(c *gin.Context, target any) (err error) {
 	if err != nil {
 		return err
 	}
-	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder := sonic.ConfigStd.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return err

@@ -1,10 +1,10 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -24,7 +24,7 @@ func TestProtocolBindingAPIGeneratesCurrentReportsAndRejectsInvalidClaims(t *tes
 	}
 	server.setupProtocolRevisionRoutes(server.engine.Group("/api/admin"))
 	binding := storage.ProtocolBinding{Kind: "model", SourceID: "gateway-source", ModelID: "upstream-model", Binding: protocol.Binding{ProtocolID: "text-beta", RevisionHash: upstream.Hash(), Capabilities: protocol.CapabilitySet{protocol.TextCapability: true}, Transports: []protocol.Transport{protocol.HTTPJSON}}, Combinations: []protocol.CombinationReport{{Passed: true, SourceHash: "forged", TargetHash: "forged"}}}
-	raw, _ := json.Marshal(binding)
+	raw, _ := sonic.ConfigStd.Marshal(binding)
 	result := revisionAdminRequest(t, server.engine, http.MethodPut, "/api/admin/protocols/bindings", raw, "")
 	if result.Code != 200 {
 		t.Fatalf("binding: %d %s", result.Code, result.Body)
@@ -49,7 +49,7 @@ func TestProtocolBindingAPIGeneratesCurrentReportsAndRejectsInvalidClaims(t *tes
 		t.Fatalf("current paired evidence absent: %+v", rows)
 	}
 	binding.Binding.Capabilities[protocol.FunctionToolsCapability] = true
-	raw, _ = json.Marshal(binding)
+	raw, _ = sonic.ConfigStd.Marshal(binding)
 	result = revisionAdminRequest(t, server.engine, http.MethodPut, "/api/admin/protocols/bindings", raw, "")
 	if result.Code != 400 {
 		t.Fatalf("text-only protocol claimed tools: %d %s", result.Code, result.Body)
@@ -63,7 +63,7 @@ func TestProtocolBindingAPIGeneratesCurrentReportsAndRejectsInvalidClaims(t *tes
 			}
 		}
 	}
-	raw, _ = json.Marshal(binding)
+	raw, _ = sonic.ConfigStd.Marshal(binding)
 	result = revisionAdminRequest(t, server.engine, http.MethodPut, "/api/admin/protocols/bindings", raw, "")
 	if result.Code != 400 {
 		t.Fatalf("targeted validation ignored inherited source policy: %d %s", result.Code, result.Body)

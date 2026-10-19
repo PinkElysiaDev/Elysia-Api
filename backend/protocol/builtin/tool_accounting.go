@@ -1,10 +1,10 @@
 package builtin
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 
+	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -34,7 +34,7 @@ func (accounting *ToolAccounting) Observe(identity p.Identity, wire []byte) erro
 		return nil
 	}
 	var fields p.Object
-	err := json.Unmarshal(wire, &fields)
+	err := sonic.ConfigStd.Unmarshal(wire, &fields)
 	if err != nil {
 		return err
 	}

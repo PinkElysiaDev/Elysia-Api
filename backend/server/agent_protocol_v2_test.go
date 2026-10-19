@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
@@ -25,7 +26,7 @@ func TestAgentProtocolV2SimulatedAuthorRepairAndEnable(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	modelProtocol := activateGatewayDefinition(t, s, agentEnvelopeDefinition(t))
 	definition := loadGatewayDefinition(t, "text-alpha")
-	raw, _ := json.Marshal(definition)
+	raw, _ := sonic.ConfigStd.Marshal(definition)
 	service, _ := s.protocolService()
 	compiled, issues := service.Validate(raw)
 	if compiled == nil {
@@ -116,7 +117,7 @@ func TestAgentProtocolV2AuthoringAndActivation(t *testing.T) {
 	}
 	definition := loadGatewayDefinition(t, "text-alpha")
 	definition.Extensions = protocol.Object{"exact": mustProtocolValue(t, `9007199254740993`)}
-	raw, _ := json.Marshal(definition)
+	raw, _ := sonic.ConfigStd.Marshal(definition)
 	run("elysia protocol schema --section semantic --type Request")
 	run("elysia protocol draft '" + string(raw) + "'")
 	run("elysia protocol validate")
@@ -136,7 +137,7 @@ func TestAgentProtocolV2AuthoringAndActivation(t *testing.T) {
 	run("elysia protocol read --id " + definition.ID)
 	oldHash, oldDraftHash := compiled.Hash(), draft.Hash
 	definition.Version = "2"
-	raw, _ = json.Marshal(definition)
+	raw, _ = sonic.ConfigStd.Marshal(definition)
 	run("elysia protocol draft '" + string(raw) + "'")
 	run("elysia protocol save --expected " + oldDraftHash)
 	draft, err = service.ReadDraft(t.Context(), definition.ID)
@@ -170,7 +171,7 @@ func TestAgentProtocolV2DiagnosticsAndProbe(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	definition := loadGatewayDefinition(t, "text-alpha")
-	raw, _ := json.Marshal(definition)
+	raw, _ := sonic.ConfigStd.Marshal(definition)
 	tctx := &protocolAuthorContext{draft: raw}
 	service, _ := s.protocolService()
 	compiled, _ := service.Validate(raw)
@@ -186,7 +187,7 @@ func TestAgentProtocolV2DiagnosticsAndProbe(t *testing.T) {
 				_, _ = w.Write([]byte(`{"answer":"invalid"}`))
 			}
 		}))
-		input, _ := json.Marshal(protocolCommandInput{Operation: "generate", SampleRequest: mustEncodedProtocolValue(t, request), BaseURL: provider.URL})
+		input, _ := sonic.ConfigStd.Marshal(protocolCommandInput{Operation: "generate", SampleRequest: mustEncodedProtocolValue(t, request), BaseURL: provider.URL})
 		result := (&protocolV2Tool{server: s, action: "test"}).Execute(t.Context(), tctx, input)
 		provider.Close()
 		if result.OK != valid {
@@ -197,7 +198,7 @@ func TestAgentProtocolV2DiagnosticsAndProbe(t *testing.T) {
 		}
 	}
 	definition.Capabilities[protocol.FunctionToolsCapability] = true
-	raw, _ = json.Marshal(definition)
+	raw, _ = sonic.ConfigStd.Marshal(definition)
 	tctx.draft = raw
 	result := (&protocolV2Tool{server: s, action: "verify"}).Execute(t.Context(), tctx, nil)
 	compiled, issues := service.Validate(raw)
@@ -262,7 +263,7 @@ func TestAgentUsesBoundCustomProtocolAndRejectsToolMismatch(t *testing.T) {
 		var body struct {
 			Payload protocol.Request `json:"payload"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := sonic.ConfigStd.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
 		if len(body.Payload.Tools) != 1 || string(body.Payload.Tools[0].Name.Bytes()) != `"lookup"` {

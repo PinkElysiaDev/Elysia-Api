@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	p "github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
@@ -105,7 +105,7 @@ func TestGatewayResponsesTurnStateFullStreamsAndCollector(t *testing.T) {
 					t.Fatal("state persisted in call log")
 				}
 				var saved usageRecord
-				if err := json.Unmarshal(raw, &saved); err != nil {
+				if err := sonic.ConfigStd.Unmarshal(raw, &saved); err != nil {
 					t.Fatal(err)
 				}
 				if saved.StatusCode != 200 || saved.RetryCount != 0 {

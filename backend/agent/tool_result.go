@@ -1,6 +1,10 @@
 package agent
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/elysia-api/backend/internal/jsonutil"
+)
 
 const invalidToolResultSummary = "工具返回的数据不是合法 JSON，未重试已执行的工具"
 
@@ -14,7 +18,7 @@ func rejectToolResult(info ToolResultInfo) ToolResultInfo {
 }
 
 func validateToolResult(info ToolResultInfo) ToolResultInfo {
-	if (len(info.Data) > 0 && !json.Valid(info.Data)) || (info.RedactedData != nil && !json.Valid(info.RedactedData)) {
+	if (len(info.Data) > 0 && !jsonutil.Valid(info.Data)) || (info.RedactedData != nil && !jsonutil.Valid(info.RedactedData)) {
 		return rejectToolResult(info)
 	}
 	return info

@@ -1,13 +1,13 @@
 package server
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/gin-gonic/gin"
 )
@@ -54,7 +54,7 @@ func TestChatCompletionsClaudePassthroughPreservesFields(t *testing.T) {
 	}
 
 	var sent map[string]any
-	if err := json.Unmarshal(gotBody, &sent); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(gotBody, &sent); err != nil {
 		t.Fatalf("upstream body not JSON: %v (%s)", err, gotBody)
 	}
 	if sent["model"] != "upstream-claude" {

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -71,7 +71,7 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			previewBody, _ := json.Marshal(map[string]any{"policy": policy, "phase": "request", "context": protocol.ConversionContext{Source: source.Identity(), Target: target.Identity(), Model: "upstream-model"}, "input": decoded})
+			previewBody, _ := sonic.ConfigStd.Marshal(map[string]any{"policy": policy, "phase": "request", "context": protocol.ConversionContext{Source: source.Identity(), Target: target.Identity(), Model: "upstream-model"}, "input": decoded})
 			ctx, preview := adminProtocolContext("POST", "/api/admin/protocols/conversion-policies/preview", string(previewBody))
 			s.adminConversionPreview(ctx)
 			rec := perform(protocol.PresetResponsesID, "/responses", raw)
@@ -90,7 +90,7 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 						PersistentWrites bool
 					}
 				}
-				if err := json.Unmarshal(preview.Body.Bytes(), &result); err != nil {
+				if err := sonic.ConfigStd.Unmarshal(preview.Body.Bytes(), &result); err != nil {
 					t.Fatal(err)
 				}
 				if result.Data.PersistentWrites {
@@ -102,8 +102,8 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 					t.Fatal(err)
 				}
 				var a, b any
-				json.Unmarshal(predicted, &a)
-				json.Unmarshal(sent, &b)
+				sonic.ConfigStd.Unmarshal(predicted, &a)
+				sonic.ConfigStd.Unmarshal(sent, &b)
 				if !reflect.DeepEqual(a, b) {
 					t.Fatalf("preview and forwarding differ: %s vs %s", predicted, sent)
 				}
@@ -119,7 +119,7 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			previewBody, _ = json.Marshal(map[string]any{"policy": policy, "phase": "request", "context": protocol.ConversionContext{Source: anthropic.Identity(), Target: target.Identity(), Model: "upstream-model"}, "input": toolRequest})
+			previewBody, _ = sonic.ConfigStd.Marshal(map[string]any{"policy": policy, "phase": "request", "context": protocol.ConversionContext{Source: anthropic.Identity(), Target: target.Identity(), Model: "upstream-model"}, "input": toolRequest})
 			ctx, preview = adminProtocolContext("POST", "/api/admin/protocols/conversion-policies/preview", string(previewBody))
 			s.adminConversionPreview(ctx)
 			before := calls
@@ -150,7 +150,7 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				previewBody, _ := json.Marshal(map[string]any{"policy": policy, "phase": "request", "context": protocol.ConversionContext{Source: anthropic.Identity(), Target: target.Identity(), Model: "upstream-model"}, "input": decoded})
+				previewBody, _ := sonic.ConfigStd.Marshal(map[string]any{"policy": policy, "phase": "request", "context": protocol.ConversionContext{Source: anthropic.Identity(), Target: target.Identity(), Model: "upstream-model"}, "input": decoded})
 				ctx, preview := adminProtocolContext("POST", "/api/admin/protocols/conversion-policies/preview", string(previewBody))
 				s.adminConversionPreview(ctx)
 				before := calls
@@ -169,7 +169,7 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 							PersistentWrites bool
 						}
 					}
-					if err := json.Unmarshal(preview.Body.Bytes(), &result); err != nil || result.Data.PersistentWrites {
+					if err := sonic.ConfigStd.Unmarshal(preview.Body.Bytes(), &result); err != nil || result.Data.PersistentWrites {
 						t.Fatal("invalid result preview", err)
 					}
 					result.Data.Output.Model = protocol.StringValue("upstream-model")
@@ -178,8 +178,8 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 						t.Fatal(err)
 					}
 					var a, b any
-					json.Unmarshal(predicted, &a)
-					json.Unmarshal(sent, &b)
+					sonic.ConfigStd.Unmarshal(predicted, &a)
+					sonic.ConfigStd.Unmarshal(sent, &b)
 					if !reflect.DeepEqual(a, b) || strings.Contains(string(sent), `"error":`) != (flag == "true") || !strings.Contains(string(sent), `"id":"call_1"`) || !strings.Contains(string(sent), "result-body") {
 						t.Fatal("result preview or error state differs from forwarding", string(predicted), string(sent))
 					}

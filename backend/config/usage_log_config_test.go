@@ -1,11 +1,12 @@
 package config
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 func TestUsageLogDefaultsBoundedRetention(t *testing.T) {
@@ -103,7 +104,7 @@ func TestUsageLogCleanupIntervalClamp(t *testing.T) {
 
 func TestUsageLogJSONRoundTripOmitsZeroBlock(t *testing.T) {
 	cfg := UsageLogConfig{}
-	out, err := json.Marshal(cfg)
+	out, err := sonic.ConfigStd.Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +114,7 @@ func TestUsageLogJSONRoundTripOmitsZeroBlock(t *testing.T) {
 	// 指针指向 0 的字段是显式值，必须保留在 JSON 中。
 	zero := 0
 	cfg.RetentionDays = &zero
-	out, _ = json.Marshal(cfg)
+	out, _ = sonic.ConfigStd.Marshal(cfg)
 	if string(out) == "{}" {
 		t.Fatal("explicit zero retentionDays must survive marshaling")
 	}
@@ -145,7 +146,7 @@ func TestSavePersistsHostPortAndModelCatalog(t *testing.T) {
 
 	raw, _ := os.ReadFile(path)
 	var persisted map[string]any
-	if err := json.Unmarshal(raw, &persisted); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &persisted); err != nil {
 		t.Fatal(err)
 	}
 	if persisted["host"] != "0.0.0.0" || persisted["port"] != float64(9000) {
@@ -240,7 +241,7 @@ reloadLoop:
 	var onDisk struct {
 		LogLevel string `json:"logLevel"`
 	}
-	if err := json.Unmarshal(raw, &onDisk); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &onDisk); err != nil {
 		t.Fatal(err)
 	}
 	if onDisk.LogLevel != "warn" {

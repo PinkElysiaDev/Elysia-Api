@@ -1,12 +1,12 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -70,12 +70,12 @@ func decodeDiscoveryCLIResult(t *testing.T, result CLIResult, target any) {
 	var envelope struct {
 		Output string `json:"output"`
 	}
-	if err := json.Unmarshal(mustCLIData(t, result), &envelope); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(mustCLIData(t, result), &envelope); err != nil {
 		t.Fatal(err)
 	}
 	for _, line := range strings.Split(envelope.Output, "\n") {
 		if strings.HasPrefix(line, "{") {
-			if err := json.Unmarshal([]byte(line), target); err != nil {
+			if err := sonic.ConfigStd.Unmarshal([]byte(line), target); err != nil {
 				t.Fatal(err)
 			}
 			return
@@ -189,8 +189,8 @@ func TestSourceSaveIsolatesUnrelatedInvalidBindings(t *testing.T) {
 			}
 		}
 		if binding.SourceID == quarantined.SourceID {
-			before, _ := json.Marshal(quarantined)
-			after, _ := json.Marshal(binding)
+			before, _ := sonic.ConfigStd.Marshal(quarantined)
+			after, _ := sonic.ConfigStd.Marshal(binding)
 			if string(before) != string(after) {
 				t.Fatal("unrelated quarantine evidence changed", string(after))
 			}

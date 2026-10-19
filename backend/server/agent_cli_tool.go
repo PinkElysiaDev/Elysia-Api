@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 )
 
@@ -145,7 +146,7 @@ func probeAgentCLI(script string) ([]agent.GateNote, error) {
 
 func parseCLIToolParams(args json.RawMessage) (cliToolParams, error) {
 	var params cliToolParams
-	if err := json.Unmarshal(args, &params); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(args, &params); err != nil {
 		return params, fmt.Errorf("%w", err)
 	}
 	return params, nil

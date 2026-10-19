@@ -2,13 +2,13 @@ package server
 
 import (
 	"database/sql"
-	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/storage"
 )
@@ -16,7 +16,7 @@ import (
 func startupFixtureConfig(t *testing.T, directory string) *config.Config {
 	t.Helper()
 	path := filepath.Join(directory, "config.json")
-	raw, _ := json.Marshal(map[string]any{"databasePath": filepath.Join(directory, "test.sqlite3"), "modelCatalog": map[string]any{"enabled": false}, "openBrowserOnStart": false})
+	raw, _ := sonic.ConfigStd.Marshal(map[string]any{"databasePath": filepath.Join(directory, "test.sqlite3"), "modelCatalog": map[string]any{"enabled": false}, "openBrowserOnStart": false})
 	if err := os.WriteFile(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}

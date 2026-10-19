@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/storage"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -47,7 +47,7 @@ func mcpCall(t *testing.T, s *Server, body string, extraHeaders map[string]strin
 	c, rec := remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(extraHeaders))
 	s.handleMCP(c)
 	var decoded map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &decoded)
+	_ = sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &decoded)
 	return rec.Code, decoded, rec.Body.String()
 }
 
@@ -74,7 +74,7 @@ func mcpRequest(id any, method string, params any) string {
 	if params != nil {
 		payload["params"] = params
 	}
-	encoded, _ := json.Marshal(payload)
+	encoded, _ := sonic.ConfigStd.Marshal(payload)
 	return string(encoded)
 }
 
@@ -87,7 +87,7 @@ func a2aCall(t *testing.T, s *Server, method string, params any, version string)
 	c, rec := remoteContext(http.MethodPost, "/a2a", mcpRequest(1, method, params), headers)
 	s.handleA2A(c)
 	var decoded map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &decoded)
+	_ = sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &decoded)
 	return rec.Code, decoded, rec.Body.String()
 }
 
@@ -99,7 +99,7 @@ func parseA2AFrames(t *testing.T, body string) []map[string]any {
 		for _, line := range strings.Split(block, "\n") {
 			if strings.HasPrefix(line, "data: ") {
 				var decoded map[string]any
-				if err := json.Unmarshal([]byte(line[6:]), &decoded); err == nil {
+				if err := sonic.ConfigStd.Unmarshal([]byte(line[6:]), &decoded); err == nil {
 					frames = append(frames, decoded)
 				}
 			}
@@ -283,7 +283,7 @@ func TestA2AAgentCard(t *testing.T) {
 	c.Request.Host = "gw.example.com"
 	s.handleAgentCard(c)
 	var card map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &card); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &card); err != nil {
 		t.Fatalf("card: %v", err)
 	}
 	if card["protocolVersion"] != a2aVersionV03 || !strings.HasSuffix(card["url"].(string), "/a2a") {
@@ -294,7 +294,7 @@ func TestA2AAgentCard(t *testing.T) {
 	c.Request.Host = "gw.example.com"
 	s.handleAgentCard(c)
 	var v1Card map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &v1Card)
+	_ = sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &v1Card)
 	if v1Card["supportedInterfaces"] == nil || v1Card["protocolVersion"] != nil {
 		t.Fatalf("v1.0 card wrong: %v", v1Card)
 	}
@@ -531,7 +531,7 @@ func TestRemoteRESTListFilterPagination(t *testing.T) {
 				Total int              `json:"total"`
 			} `json:"data"`
 		}
-		if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
 			t.Fatalf("decode: %v", err)
 		}
 		return map[string]any{"items": envelope.Data.Items, "total": envelope.Data.Total}

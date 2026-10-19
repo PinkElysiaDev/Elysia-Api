@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/storage"
 )
@@ -471,7 +472,7 @@ func TestCLIRunEquivalence(t *testing.T) {
 
 	t.Run("update_preserves_edit_target", func(t *testing.T) {
 		draftArgs := mapCLI(t, mcpTestProtocolDraft(t))
-		draft, _ := json.Marshal(draftArgs["config"])
+		draft, _ := sonic.ConfigStd.Marshal(draftArgs["config"])
 		tctx := &sessionToolContext{session: &agent.Session{Mode: agent.ModeEdit, ProtocolID: "original", DraftConfig: draft}}
 		result := s.runCLI(ctx, tctx, "elysia protocol save")
 		if result.OK || !strings.Contains(string(mustCLIData(t, result)), "id_mismatch") {
@@ -552,7 +553,7 @@ func TestCLICodeSnapshotCommands(t *testing.T) {
 	}
 	if snapshotAvailable() {
 		for _, path := range []string{"packages/webui/src/lib/protocol-v2.ts", "docs/protocol-guide.md", "docs/protocol-guide.en.md", "docs/examples/cached-text-v2.json"} {
-			args, err := json.Marshal(map[string]string{"path": path})
+			args, err := sonic.ConfigStd.Marshal(map[string]string{"path": path})
 			if err != nil {
 				t.Fatal(err)
 			}

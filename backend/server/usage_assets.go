@@ -4,13 +4,13 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/storage"
 )
@@ -131,11 +131,11 @@ func (a *assetSink) extractFromSSE(content string) string {
 			continue
 		}
 		var value interface{}
-		if err := json.Unmarshal([]byte(payload), &value); err != nil {
+		if err := sonic.ConfigStd.Unmarshal([]byte(payload), &value); err != nil {
 			continue
 		}
 		a.extractFromValue(value)
-		if replaced, err := json.Marshal(value); err == nil {
+		if replaced, err := sonic.ConfigStd.Marshal(value); err == nil {
 			// 用定位而非 TrimSuffix 重建：payload 已经 TrimSpace，CRLF/尾空白行
 			// 不以 payload 结尾，TrimSuffix 不匹配会把原文与替换体拼在同一行
 			// （原文 base64 未外置 + 追加了第二份 JSON）。行尾的 \r 随替换丢弃，

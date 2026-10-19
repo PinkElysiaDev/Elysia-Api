@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/bytedance/sonic"
 )
 
 func mcpCLITool() mcpTool {
@@ -25,7 +27,7 @@ func mcpCLITool() mcpTool {
 
 func (s *Server) runMCPCLI(ctx context.Context, args json.RawMessage, progress func(string)) (any, error) {
 	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(args, &raw); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(args, &raw); err != nil {
 		return nil, fmt.Errorf("参数解析失败: %w", err)
 	}
 	if _, exists := raw["sessionId"]; exists {
@@ -34,7 +36,7 @@ func (s *Server) runMCPCLI(ctx context.Context, args json.RawMessage, progress f
 	var params struct {
 		Command string `json:"command"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(args, &params); err != nil {
 		return nil, fmt.Errorf("参数解析失败: %w", err)
 	}
 	if strings.TrimSpace(params.Command) == "" {
@@ -50,7 +52,7 @@ func (s *Server) runMCPCLI(ctx context.Context, args json.RawMessage, progress f
 	if err != nil {
 		return nil, fmt.Errorf("invalid CLI result: %w", err)
 	}
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder := sonic.ConfigStd.NewDecoder(bytes.NewReader(encoded))
 	decoder.UseNumber()
 	if err := decoder.Decode(&view); err != nil {
 		return nil, fmt.Errorf("invalid CLI result object: %w", err)

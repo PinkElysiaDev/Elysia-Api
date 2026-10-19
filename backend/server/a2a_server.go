@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -113,7 +113,7 @@ func (s *Server) handleA2A(c *gin.Context) {
 		return
 	}
 	var req jsonrpcRequest
-	if err := json.Unmarshal(body, &req); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(body, &req); err != nil {
 		c.JSON(http.StatusBadRequest, jsonrpcFail(nil, jsonrpcParseError, err.Error()))
 		return
 	}
@@ -288,7 +288,7 @@ func (s *Server) a2aHandleSend(c *gin.Context, req jsonrpcRequest, wire a2aWire,
 	var params struct {
 		Message json.RawMessage `json:"message"`
 	}
-	if err := json.Unmarshal(req.Params, &params); err != nil || len(params.Message) == 0 {
+	if err := sonic.ConfigStd.Unmarshal(req.Params, &params); err != nil || len(params.Message) == 0 {
 		c.JSON(http.StatusOK, jsonrpcFail(req.ID, jsonrpcInvalidParams, "params.message is required"))
 		return
 	}
@@ -586,7 +586,7 @@ func (s *Server) a2aStreamLive(c *gin.Context, req jsonrpcRequest, wire a2aWire,
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	flusher, canFlush := c.Writer.(http.Flusher)
 	writeResult := func(result gin.H) bool {
-		encoded, err := json.Marshal(jsonrpcOK(req.ID, result))
+		encoded, err := sonic.ConfigStd.Marshal(jsonrpcOK(req.ID, result))
 		if err != nil {
 			return true
 		}
@@ -619,7 +619,7 @@ func (s *Server) a2aStreamReplay(c *gin.Context, req jsonrpcRequest, wire a2aWir
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	flusher, canFlush := c.Writer.(http.Flusher)
 	writeResult := func(result gin.H) bool {
-		encoded, err := json.Marshal(jsonrpcOK(req.ID, result))
+		encoded, err := sonic.ConfigStd.Marshal(jsonrpcOK(req.ID, result))
 		if err != nil {
 			return true
 		}
@@ -669,7 +669,7 @@ func (s *Server) a2aHandleGetTask(c *gin.Context, req jsonrpcRequest, wire a2aWi
 	var params struct {
 		ID string `json:"id"`
 	}
-	_ = json.Unmarshal(req.Params, &params)
+	_ = sonic.ConfigStd.Unmarshal(req.Params, &params)
 	entry := s.a2aFindEntry(strings.TrimSpace(params.ID))
 	if entry == nil {
 		c.JSON(http.StatusOK, jsonrpcFailData(req.ID, a2aErrTaskNotFound, "task not found",
@@ -683,7 +683,7 @@ func (s *Server) a2aHandleCancel(c *gin.Context, req jsonrpcRequest, wire a2aWir
 	var params struct {
 		ID string `json:"id"`
 	}
-	_ = json.Unmarshal(req.Params, &params)
+	_ = sonic.ConfigStd.Unmarshal(req.Params, &params)
 	taskID := strings.TrimSpace(params.ID)
 	entry := s.a2aFindEntry(taskID)
 	if entry == nil {
@@ -718,7 +718,7 @@ func (s *Server) a2aHandleResubscribe(c *gin.Context, req jsonrpcRequest, wire a
 	var params struct {
 		ID string `json:"id"`
 	}
-	_ = json.Unmarshal(req.Params, &params)
+	_ = sonic.ConfigStd.Unmarshal(req.Params, &params)
 	entry := s.a2aFindEntry(strings.TrimSpace(params.ID))
 	if entry == nil {
 		c.JSON(http.StatusOK, jsonrpcFailData(req.ID, a2aErrTaskNotFound, "task not found",
@@ -733,7 +733,7 @@ func (s *Server) a2aHandleListTasks(c *gin.Context, req jsonrpcRequest, wire a2a
 		Cursor   string `json:"cursor"`
 		PageSize int    `json:"pageSize"`
 	}
-	_ = json.Unmarshal(req.Params, &params)
+	_ = sonic.ConfigStd.Unmarshal(req.Params, &params)
 	tasks, _ := s.a2aRegistry()
 	s.a2aMu.Lock()
 	ids := make([]string, 0, len(tasks))

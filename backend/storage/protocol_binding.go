@@ -2,9 +2,9 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -54,7 +54,7 @@ func (binding ProtocolBinding) key() (string, error) {
 	default:
 		return "", fmt.Errorf("unknown protocol binding kind")
 	}
-	key, err := json.Marshal([]string{binding.Kind, binding.SourceID, binding.ModelID, binding.GroupID})
+	key, err := sonic.ConfigStd.Marshal([]string{binding.Kind, binding.SourceID, binding.ModelID, binding.GroupID})
 	return string(key), err
 }
 
@@ -120,7 +120,7 @@ func saveProtocolBinding(ctx context.Context, executor protocolSQLExecutor, bind
 	if err != nil {
 		return err
 	}
-	raw, err := json.Marshal(binding)
+	raw, err := sonic.ConfigStd.Marshal(binding)
 	if err != nil {
 		return err
 	}
@@ -142,7 +142,7 @@ func (store *Store) ListProtocolBindings(ctx context.Context) ([]ProtocolBinding
 			return nil, err
 		}
 		var binding ProtocolBinding
-		if err := json.Unmarshal([]byte(raw), &binding); err != nil {
+		if err := sonic.ConfigStd.Unmarshal([]byte(raw), &binding); err != nil {
 			return nil, err
 		}
 		bindings = append(bindings, binding)

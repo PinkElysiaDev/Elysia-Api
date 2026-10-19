@@ -1,12 +1,12 @@
 package builtin
 
 import (
-	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -64,8 +64,8 @@ func TestBuiltinFailureNativeExtensionsStayScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 	var before, after any
-	json.Unmarshal([]byte(raw), &before)
-	json.Unmarshal(encoded, &after)
+	sonic.ConfigStd.Unmarshal([]byte(raw), &before)
+	sonic.ConfigStd.Unmarshal(encoded, &after)
 	if !reflect.DeepEqual(before, after) || !strings.Contains(string(encoded), "9007199254740993") {
 		t.Fatalf("native error changed: %s", encoded)
 	}

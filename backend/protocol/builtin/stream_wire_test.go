@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -39,15 +40,15 @@ func TestResponsesStreamWireItemIdentity(t *testing.T) {
 			var hasDone, hasTerminal bool
 			for index, frame := range frames {
 				var fields map[string]json.RawMessage
-				if err := json.Unmarshal(frame.Bytes(), &fields); err != nil {
+				if err := sonic.ConfigStd.Unmarshal(frame.Bytes(), &fields); err != nil {
 					t.Fatal(err)
 				}
 				var kind string
-				if err := json.Unmarshal(fields["type"], &kind); err != nil {
+				if err := sonic.ConfigStd.Unmarshal(fields["type"], &kind); err != nil {
 					t.Fatal(err)
 				}
 				var sequence int
-				if err := json.Unmarshal(fields["sequence_number"], &sequence); err != nil || sequence != index {
+				if err := sonic.ConfigStd.Unmarshal(fields["sequence_number"], &sequence); err != nil || sequence != index {
 					t.Fatalf("sequence %s: %v", frame.Bytes(), err)
 				}
 				if kind == "response.output_item.added" || kind == "response.output_item.done" {
@@ -55,7 +56,7 @@ func TestResponsesStreamWireItemIdentity(t *testing.T) {
 						ID, Type string
 						Content  []map[string]json.RawMessage
 					}
-					if err := json.Unmarshal(fields["item"], &item); err != nil {
+					if err := sonic.ConfigStd.Unmarshal(fields["item"], &item); err != nil {
 						t.Fatal(err)
 					}
 					if item.Type != fixture.kind || item.ID == "" {
@@ -71,7 +72,7 @@ func TestResponsesStreamWireItemIdentity(t *testing.T) {
 				}
 				if raw, exists := fields["item_id"]; exists {
 					var id string
-					if err := json.Unmarshal(raw, &id); err != nil || id != itemID {
+					if err := sonic.ConfigStd.Unmarshal(raw, &id); err != nil || id != itemID {
 						t.Fatalf("unassociated frame: %s", frame.Bytes())
 					}
 				}
@@ -82,7 +83,7 @@ func TestResponsesStreamWireItemIdentity(t *testing.T) {
 							Content  []struct{ Type, Text string }
 						}
 					}
-					if err := json.Unmarshal(fields["response"], &response); err != nil {
+					if err := sonic.ConfigStd.Unmarshal(fields["response"], &response); err != nil {
 						t.Fatal(err)
 					}
 					if len(response.Output) != 1 || response.Output[0].ID != itemID || response.Output[0].Type != fixture.kind {

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/protocol"
-
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -50,7 +50,7 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 	record := &usageRecord{RequestID: usageRequestID(started), StartedAt: started, KeyName: AgentUsageKeyName, RequestedModelGroup: input.Model, ModelName: model.Name, SourceID: model.SourceID, Platform: model.Platform, TargetFormat: entry.Binding.ProtocolID, UpstreamRevision: compiled.Hash(), RelayMode: agentRelayMode, Stream: isStream, StatusCode: http.StatusOK, bodyOpts: usageBodyOptions{maxBytes: logConfig.BodyMaxBytes, externalize: logConfig.ExternalizeMedia}}
 	record.assets = newAssetSink(record.RequestID)
 	if record.bodyOpts.maxBytes > 0 {
-		body, err := json.Marshal(input)
+		body, err := sonic.ConfigStd.Marshal(input)
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +112,7 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 		setUsageError(record, ctx, err)
 	}
 	if record.bodyOpts.maxBytes > 0 {
-		body, marshalErr := json.Marshal(struct {
+		body, marshalErr := sonic.ConfigStd.Marshal(struct {
 			Result *agent.CallResult `json:"result"`
 			Error  string            `json:"error,omitempty"`
 		}{result, record.Error})

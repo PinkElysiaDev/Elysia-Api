@@ -2,10 +2,10 @@ package builtin
 
 import (
 	"context"
-	"encoding/json"
 	"reflect"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -29,13 +29,13 @@ func TestRequestWireSchemaTypedParity(t *testing.T) {
 	genericCompiler, _ := p.NewCompiler(p.DefaultLimits(), genericModules, nil)
 	for _, raw := range definitions {
 		var original p.Definition
-		if err := json.Unmarshal(raw.Bytes(), &original); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(raw.Bytes(), &original); err != nil {
 			t.Fatal(err)
 		}
 		for _, mode := range []string{"wire", "semantic", "after", "reject-input", "reject-output"} {
 			t.Run(original.ID+"/"+mode, func(t *testing.T) {
 				var definition p.Definition
-				_ = json.Unmarshal(raw.Bytes(), &definition)
+				_ = sonic.ConfigStd.Unmarshal(raw.Bytes(), &definition)
 				decode, encode := definition.Directions[p.DecodeRequest], definition.Directions[p.EncodeRequest]
 				wire := &p.ValueSchema{Type: p.ObjectType, AllowUnknown: true}
 				decode.Input, encode.Output = wire, wire
@@ -50,7 +50,7 @@ func TestRequestWireSchemaTypedParity(t *testing.T) {
 					encode.Output = &p.ValueSchema{Type: p.ObjectType, Properties: map[string]p.ValueSchema{"synthetic_required": {Type: p.StringType}}, Required: []string{"synthetic_required"}, AllowUnknown: true}
 				}
 				definition.Directions[p.DecodeRequest], definition.Directions[p.EncodeRequest] = decode, encode
-				wireDefinition, _ := json.Marshal(definition)
+				wireDefinition, _ := sonic.ConfigStd.Marshal(definition)
 				typed, issues := typedCompiler.Compile(wireDefinition)
 				if typed == nil {
 					t.Fatal(issues)

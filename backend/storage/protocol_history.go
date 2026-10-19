@@ -3,11 +3,11 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -67,7 +67,7 @@ func scanProtocolHistory(row interface{ Scan(...any) error }) (ProtocolHistory, 
 		Version string `json:"version"`
 	}
 	if err == nil {
-		err = json.Unmarshal([]byte(raw), &meta)
+		err = sonic.ConfigStd.Unmarshal([]byte(raw), &meta)
 	}
 	if err != nil {
 		item.RawDefinition, item.ReadError = raw, err.Error()
@@ -193,7 +193,7 @@ func (s *Store) protocolRevisionReferences(ctx context.Context, tx *sql.Tx, id, 
 			return nil, err
 		}
 		var b ProtocolBinding
-		if err := json.Unmarshal([]byte(raw), &b); err != nil {
+		if err := sonic.ConfigStd.Unmarshal([]byte(raw), &b); err != nil {
 			rows.Close()
 			return nil, err
 		}

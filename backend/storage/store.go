@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -11,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 const sqliteBusyTimeout = 5 * time.Second
@@ -148,7 +149,7 @@ func parseTime(raw string) time.Time {
 }
 
 func (s *Store) SetSetting(ctx context.Context, key string, value any) error {
-	payload, err := json.Marshal(value)
+	payload, err := sonic.ConfigStd.Marshal(value)
 	if err != nil {
 		return err
 	}
@@ -165,7 +166,7 @@ func (s *Store) GetSetting(ctx context.Context, key string, target any) (bool, e
 	if err != nil {
 		return false, err
 	}
-	return true, json.Unmarshal([]byte(payload), target)
+	return true, sonic.ConfigStd.Unmarshal([]byte(payload), target)
 }
 
 // scanAPIToken 是 api_tokens 行的统一映射（列表与按名查询共用）：
@@ -211,7 +212,7 @@ func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 // decodeStringSlice never turns malformed authorization data into unrestricted access.
 func decodeStringSlice(raw string) ([]string, error) {
 	var out []string
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+	if err := sonic.ConfigStd.Unmarshal([]byte(raw), &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -253,11 +254,11 @@ func (s *Store) writeAPIToken(ctx context.Context, executor interface {
 	if len(item.Scopes) > 0 {
 		item.AllowedGroups = []string{TokenScopeAgent}
 	}
-	allowedGroups, err := json.Marshal(item.AllowedGroups)
+	allowedGroups, err := sonic.ConfigStd.Marshal(item.AllowedGroups)
 	if err != nil {
 		return err
 	}
-	scopes, err := json.Marshal(item.Scopes)
+	scopes, err := sonic.ConfigStd.Marshal(item.Scopes)
 	if err != nil {
 		return err
 	}

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/gin-gonic/gin"
 )
@@ -43,7 +43,7 @@ func TestCacheGeminiReferenceDoesNotInventSystem(t *testing.T) {
 		t.Fatal(err)
 	}
 	var wire map[string]any
-	if err := json.Unmarshal(body, &wire); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(body, &wire); err != nil {
 		t.Fatal(err)
 	}
 	if wire["systemInstruction"] != nil || wire["tools"] != nil || wire["cachedContent"] != "cachedContents/existing" {
@@ -106,10 +106,10 @@ func TestCachePresetStablePrefix(t *testing.T) {
 func assertCacheWirePrefix(t *testing.T, platform string, beforeBody, afterBody []byte) {
 	t.Helper()
 	var before, after map[string]any
-	if err := json.Unmarshal(beforeBody, &before); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(beforeBody, &before); err != nil {
 		t.Fatal(err)
 	}
-	if err := json.Unmarshal(afterBody, &after); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(afterBody, &after); err != nil {
 		t.Fatal(err)
 	}
 	field := map[string]string{"openai": "messages", "anthropic": "messages", "responses": "input", "gemini": "contents"}[platform]
@@ -181,7 +181,7 @@ func TestCacheWireMatrix(t *testing.T) {
 					groups[0].Models[0].ToolsCapable = true
 					s := newTestServerWithStore(t, groups)
 					var request map[string]any
-					if err := json.Unmarshal([]byte(source.request), &request); err != nil {
+					if err := sonic.ConfigStd.Unmarshal([]byte(source.request), &request); err != nil {
 						t.Fatal(err)
 					}
 					path := source.path
@@ -193,7 +193,7 @@ func TestCacheWireMatrix(t *testing.T) {
 					} else if stream {
 						path = strings.ReplaceAll(path, ":generateContent", ":streamGenerateContent")
 					}
-					encoded, _ := json.Marshal(request)
+					encoded, _ := sonic.ConfigStd.Marshal(request)
 					c, rec := adminProtocolContext("POST", path, string(encoded))
 					if source.platform == "gemini" {
 						c.Params = gin.Params{{Key: "action", Value: strings.TrimPrefix(path, "/v1beta/models/")}}
@@ -228,7 +228,7 @@ func TestCacheWireMatrix(t *testing.T) {
 						t.Fatalf("stable prompt/tool history lost: %s", outbound)
 					}
 					var sent map[string]any
-					_ = json.Unmarshal(outbound, &sent)
+					_ = sonic.ConfigStd.Unmarshal(outbound, &sent)
 					if (source.platform == "openai" || source.platform == "responses") && (target.platform == "openai" || target.platform == "responses") {
 						if sent["prompt_cache_key"] != "stable-key" || sent["prompt_cache_retention"] != "24h" {
 							t.Fatalf("cache key/retention lost: %s", outbound)
@@ -264,7 +264,7 @@ func TestCacheWireMatrix(t *testing.T) {
 						t.Fatalf("persisted usage: %v", err)
 					}
 					var record usageRecord
-					if err := json.Unmarshal(data, &record); err != nil {
+					if err := sonic.ConfigStd.Unmarshal(data, &record); err != nil {
 						t.Fatal(err)
 					}
 					if derefInt(record.Usage.CacheHitTokens) != 70 || derefInt(record.Usage.InputTokens) != 100 || derefInt(record.Usage.TotalTokens) != 105 {
@@ -319,7 +319,7 @@ func TestCacheUsageCreationAndAbsentFields(t *testing.T) {
 					t.Fatal(err)
 				}
 				var record usageRecord
-				_ = json.Unmarshal(data, &record)
+				_ = sonic.ConfigStd.Unmarshal(data, &record)
 				if derefInt(record.Usage.InputTokens) != 100 || derefInt(record.Usage.TotalTokens) != 105 || derefInt(record.Usage.CacheHitTokens) != 0 {
 					t.Fatalf("phase usage: %+v", record.Usage)
 				}

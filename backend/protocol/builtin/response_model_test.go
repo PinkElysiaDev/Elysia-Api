@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -74,7 +75,7 @@ func october14Fixture(t *testing.T, name string) p.Value {
 		t.Fatal(err)
 	}
 	var fixtures map[string]json.RawMessage
-	if err := json.Unmarshal(body, &fixtures); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(body, &fixtures); err != nil {
 		t.Fatal(err)
 	}
 	return testValue(t, string(fixtures[name]))

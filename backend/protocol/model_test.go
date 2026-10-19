@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
 )
 
 func parseTestValue(t *testing.T, raw string) Value {
@@ -23,7 +25,7 @@ func TestValuePresenceAndPrecision(t *testing.T) {
 			if value.IsZero() {
 				t.Fatal("present value classified as missing")
 			}
-			encoded, err := json.Marshal(struct {
+			encoded, err := sonic.ConfigStd.Marshal(struct {
 				Field Value `json:"field,omitzero"`
 			}{value})
 			if err != nil {
@@ -39,7 +41,7 @@ func TestValuePresenceAndPrecision(t *testing.T) {
 			}
 		})
 	}
-	encoded, err := json.Marshal(struct {
+	encoded, err := sonic.ConfigStd.Marshal(struct {
 		Field Value `json:"field,omitzero"`
 	}{})
 	if err != nil || string(encoded) != `{}` {
@@ -52,7 +54,7 @@ func TestValuePresenceAndPrecision(t *testing.T) {
 	if decoded != json.Number("9007199254740993123456789") {
 		t.Fatalf("number converted: %#v", decoded)
 	}
-	if _, err := json.Marshal(Object{"bad": {}}); err == nil {
+	if _, err := sonic.ConfigStd.Marshal(Object{"bad": {}}); err == nil {
 		t.Fatal("absent value silently became null")
 	}
 }
@@ -72,7 +74,7 @@ func TestOrderedContractRoundTrip(t *testing.T) {
 		Parameters: Object{"seed": parseTestValue(t, `9007199254740993123`), "stream": parseTestValue(t, `false`)},
 		Cache:      []CacheIntent{{Kind: "resource", Location: "request", Resource: &Resource{Kind: "cache", ID: StringValue("cache/1"), Scope: Scope{Provider: "p", Account: "account-a", Model: "m"}}}},
 	}
-	encoded, err := json.Marshal(request)
+	encoded, err := sonic.ConfigStd.Marshal(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,12 +97,12 @@ func TestOrderedContractRoundTrip(t *testing.T) {
 
 func TestUsagePresenceAndOrigin(t *testing.T) {
 	usage := Usage{Input: &Counter{Count: 0, Origin: ObservedCount}, Total: &Counter{Count: 7, Origin: InferredCount}}
-	encoded, err := json.Marshal(usage)
+	encoded, err := sonic.ConfigStd.Marshal(usage)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var restored Usage
-	if err := json.Unmarshal(encoded, &restored); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(encoded, &restored); err != nil {
 		t.Fatal(err)
 	}
 	if restored.Input == nil || restored.Input.Count != 0 || restored.CacheRead != nil || restored.Total.Origin != InferredCount {

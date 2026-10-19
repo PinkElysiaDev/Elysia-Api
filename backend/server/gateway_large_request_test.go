@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
 )
@@ -29,7 +30,7 @@ func TestGatewayLargeAnthropicRequest(t *testing.T) {
 			Stream   bool
 			Messages []json.RawMessage
 		}
-		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		if err := sonic.ConfigStd.NewDecoder(r.Body).Decode(&input); err != nil {
 			t.Error(err)
 			w.WriteHeader(500)
 			return
@@ -106,7 +107,7 @@ func TestGatewayConfiguredRequestLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	var record usageRecord
-	if err := json.Unmarshal(raw, &record); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &record); err != nil {
 		t.Fatal(err)
 	}
 	if record.ErrorKind != "limit_exceeded" || record.UpstreamHTTPStatus != 0 || len(record.ConversionIssues) != 1 || record.ConversionIssues[0].Direction != protocol.DecodeRequest {
@@ -142,14 +143,14 @@ func TestLargeRequestPreviewAndCollector(t *testing.T) {
 	body := []byte(`{"model":"m","messages":[{"role":"user","content":"` + strings.Repeat("a", 9<<20) + `"}]}`)
 	input, _ := protocol.ParseValue(body)
 	definition, _ := protocol.EncodeValue(compiled.Definition())
-	envelope, _ := json.Marshal(protocol.PreviewInput{Definition: definition, Direction: protocol.DecodeRequest, Input: input})
+	envelope, _ := sonic.ConfigStd.Marshal(protocol.PreviewInput{Definition: definition, Direction: protocol.DecodeRequest, Input: input})
 	ctx, rec := adminProtocolContext("POST", "/api/admin/protocols/preview", string(envelope))
 	s.adminProtocolPreviewV2(ctx)
 	if rec.Code != 200 {
 		t.Fatalf("preview status %d", rec.Code)
 	}
 	var result struct{ Data protocol.PreviewResult }
-	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
 	if err := protocol.IssuesError(result.Data.Issues); err != nil {

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/config"
 )
@@ -71,7 +71,7 @@ func TestGatewayUsageBodyPolicy(t *testing.T) {
 						t.Fatalf("tokens=%d", logs[0].TotalTokens)
 					}
 					var record usageRecord
-					if err := json.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record); err != nil {
+					if err := sonic.ConfigStd.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record); err != nil {
 						t.Fatal(err)
 					}
 					for name, body := range map[string]usageBody{"incoming": record.IncomingBody, "outgoing": record.OutgoingBody, "provider": record.ProviderResponse, "downstream": record.DownstreamResponse} {
@@ -121,7 +121,7 @@ func TestAgentCallerDefaultLogsMetadataOnly(t *testing.T) {
 				t.Fatalf("logs=%+v", logs)
 			}
 			var record usageRecord
-			if err := json.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record); err != nil {
+			if err := sonic.ConfigStd.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record); err != nil {
 				t.Fatal(err)
 			}
 			if record.IncomingBody.Content != "" || record.OutgoingBody.Content != "" || record.ProviderResponse.Content != "" || record.DownstreamResponse.Content != "" {

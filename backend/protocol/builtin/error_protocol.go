@@ -1,8 +1,6 @@
 package builtin
 
-import (
-	"encoding/json"
-)
+import "github.com/bytedance/sonic"
 
 // Public ingress failures can occur before a protocol revision is pinned.
 // This renderer shares category mappings with the verified built-in adapters.
@@ -137,7 +135,7 @@ func ProtocolErrorBody(format FormatType, e *GatewayError) (int, []byte) {
 		if class == ErrorClassOverloaded && e.Status == 0 {
 			status = 529
 		}
-		body, _ = json.Marshal(map[string]any{
+		body, _ = sonic.ConfigStd.Marshal(map[string]any{
 			"type": "error",
 			"error": map[string]any{
 				"type":    class.anthropicType(),
@@ -145,7 +143,7 @@ func ProtocolErrorBody(format FormatType, e *GatewayError) (int, []byte) {
 			},
 		})
 	case FormatGemini:
-		body, _ = json.Marshal(map[string]any{
+		body, _ = sonic.ConfigStd.Marshal(map[string]any{
 			"error": map[string]any{
 				"code":    status,
 				"message": e.Message,
@@ -164,7 +162,7 @@ func ProtocolErrorBody(format FormatType, e *GatewayError) (int, []byte) {
 		} else if class == ErrorClassModelNotFound {
 			param = "model"
 		}
-		body, _ = json.Marshal(map[string]any{
+		body, _ = sonic.ConfigStd.Marshal(map[string]any{
 			"error": map[string]any{
 				"message": e.Message,
 				"type":    typ,

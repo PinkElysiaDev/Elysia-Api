@@ -2,10 +2,10 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -192,7 +192,7 @@ func applySummaryBoundary(messages []Message) []Message {
 			continue
 		}
 		var content SystemContent
-		if err := json.Unmarshal(messages[index].Content, &content); err != nil || content.Kind != "summary" {
+		if err := sonic.ConfigStd.Unmarshal(messages[index].Content, &content); err != nil || content.Kind != "summary" {
 			continue
 		}
 		boundary = content.BoundarySeq
@@ -203,7 +203,7 @@ func applySummaryBoundary(messages []Message) []Message {
 		return messages
 	}
 	kept := make([]Message, 0, len(messages))
-	encoded, _ := json.Marshal(UserContent{Text: "以下是此前对话的摘要，请据此继续：\n" + summary.Text})
+	encoded, _ := sonic.ConfigStd.Marshal(UserContent{Text: "以下是此前对话的摘要，请据此继续：\n" + summary.Text})
 	kept = append(kept, Message{Role: RoleUser, Content: encoded})
 	for _, message := range messages {
 		if message.Seq > boundary {
@@ -216,7 +216,7 @@ func applySummaryBoundary(messages []Message) []Message {
 // estimateTokens 用字符数粗估 token（中英混合按 3 字一个 token）。只用于
 // 决定是否压缩，不用于计费。
 func estimateTokens(conversation []conversationTurn) int {
-	encoded, err := json.Marshal(conversation)
+	encoded, err := sonic.ConfigStd.Marshal(conversation)
 	if err != nil {
 		return 0
 	}

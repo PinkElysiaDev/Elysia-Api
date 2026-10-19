@@ -2,10 +2,10 @@ package builtin
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -28,7 +28,7 @@ func compileAgentDefinition(t *testing.T, mutate func(*p.Definition)) *p.Compile
 		if err != nil {
 			t.Fatal(err)
 		}
-		raw, err := json.Marshal(definition)
+		raw, err := sonic.ConfigStd.Marshal(definition)
 		if err != nil {
 			t.Fatal(err)
 		}

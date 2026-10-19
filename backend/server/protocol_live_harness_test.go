@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -95,7 +95,7 @@ func TestLiveObserverChecksFourEvidenceLayersWithoutStoringCredentials(t *testin
 				t.Fatal("credential leaked into report")
 			}
 			var saved liveSuite
-			if err := json.Unmarshal(raw, &saved); err != nil || len(saved.Cases) != 2 {
+			if err := sonic.ConfigStd.Unmarshal(raw, &saved); err != nil || len(saved.Cases) != 2 {
 				t.Fatal("invalid evidence", err)
 			}
 		})

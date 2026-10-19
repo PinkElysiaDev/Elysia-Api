@@ -4,12 +4,13 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"reflect"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 const sourceColumns = `id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, fetch_base_url, api_keys, key_strategy, cache_synthesis, created_at, updated_at`
@@ -46,10 +47,10 @@ func (s *Store) scanSource(row interface{ Scan(...any) error }) (ModelSource, er
 	item.CreatedAt = parseTime(created)
 	item.UpdatedAt = parseTime(updated)
 	item.APIKey = s.decryptOrClear("source api_key", item.ID, item.APIKey)
-	_ = json.Unmarshal([]byte(manual), &item.ManualModels)
+	_ = sonic.ConfigStd.Unmarshal([]byte(manual), &item.ManualModels)
 	if storedKeys != "" {
 		if plain := s.decryptOrClear("source api_keys", item.ID, storedKeys); plain != "" {
-			_ = json.Unmarshal([]byte(plain), &item.APIKeys)
+			_ = sonic.ConfigStd.Unmarshal([]byte(plain), &item.APIKeys)
 		}
 	}
 	return item, nil
@@ -120,7 +121,7 @@ func (s *Store) saveSourceRecord(ctx context.Context, executor protocolSQLExecut
 			item.APIKeys[i].FetchedModels = nil
 		}
 	}
-	manual, err := json.Marshal(item.ManualModels)
+	manual, err := sonic.ConfigStd.Marshal(item.ManualModels)
 	if err != nil {
 		return err
 	}
@@ -131,7 +132,7 @@ func (s *Store) saveSourceRecord(ctx context.Context, executor protocolSQLExecut
 	// api_keys 为 JSON 数组整体加密存储；空列表落空串（单 key 模式）。
 	storedKeys := ""
 	if len(item.APIKeys) > 0 {
-		payload, err := json.Marshal(item.APIKeys)
+		payload, err := sonic.ConfigStd.Marshal(item.APIKeys)
 		if err != nil {
 			return err
 		}
@@ -154,7 +155,7 @@ func (s *Store) saveSourceRecord(ctx context.Context, executor protocolSQLExecut
 
 // UpdateSourceAPIKeys 供历史数据迁移改写 Key 列表；在线刷新使用 CommitSourceRefresh。
 func (s *Store) UpdateSourceAPIKeys(ctx context.Context, sourceID string, keys []SourceAPIKey) error {
-	payload, err := json.Marshal(keys)
+	payload, err := sonic.ConfigStd.Marshal(keys)
 	if err != nil {
 		return err
 	}
@@ -435,7 +436,7 @@ func (s *Store) CommitSourceRefresh(ctx context.Context, source ModelSource, inc
 		}
 		source.APIKeys[index].FetchedModels = slices.Clone(models)
 	}
-	payload, err := json.Marshal(source.APIKeys)
+	payload, err := sonic.ConfigStd.Marshal(source.APIKeys)
 	if err != nil {
 		return empty, err
 	}

@@ -2,12 +2,13 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 func TestUsageDailyUsesFixedUTCOffset(t *testing.T) {
@@ -403,7 +404,7 @@ func TestUsageDailyZeroSuccessRequestsStayInJSON(t *testing.T) {
 	if len(buckets) != 1 || buckets[0].SuccessRequests != 0 || buckets[0].FailedRequests != 1 {
 		t.Fatalf("all-fail day = %#v", buckets)
 	}
-	payload, err := json.Marshal(buckets[0])
+	payload, err := sonic.ConfigStd.Marshal(buckets[0])
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
