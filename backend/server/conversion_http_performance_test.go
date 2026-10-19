@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -207,6 +208,11 @@ func TestConversionHTTPProcess(t *testing.T) {
 				`{"type":"message_stop"}`,
 			} {
 				fmt.Fprintf(w, "data: %s\n\n", frame)
+				if os.Getenv("ELYSIA_CONVERSION_HTTP_CANCEL") == "1" && strings.Contains(frame, `"type":"content_block_delta"`) {
+					w.(http.Flusher).Flush()
+					<-r.Context().Done()
+					return
+				}
 			}
 		}))
 	} else if role == "gateway" {
@@ -313,4 +319,80 @@ func conversionHTTPInt(t *testing.T, name string, fallback, maximum int) int {
 		t.Fatalf("invalid %s", name)
 	}
 	return value
+}
+
+// Cancellation retention is measured separately from successful-response
+// timing. Each client waits for a real event before cancelling its own stream.
+func TestConversionHTTPCancellationIsolated(t *testing.T) {
+	if os.Getenv("ELYSIA_CONVERSION_HTTP_CANCEL") != "1" {
+		t.Skip("opt-in isolated stream cancellation retention")
+	}
+	size := conversionHTTPInt(t, "ELYSIA_CONVERSION_HTTP_MIB", 2, 31)
+	workers := conversionHTTPInt(t, "ELYSIA_CONVERSION_HTTP_WORKERS", 4, 32)
+	provider := startConversionHTTPChild(t, "provider", "")
+	gateway := startConversionHTTPChild(t, "gateway", provider.URL)
+	client := &http.Client{Timeout: 2 * time.Minute}
+	metrics := func(address, action string) conversionHTTPMetrics {
+		response, err := client.Get(address + "?action=" + action)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		var result conversionHTTPMetrics
+		if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	body := fmt.Sprintf(`{"model":"grp","stream":true,"max_tokens":64,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"%s"}}]}]}]}`, strings.Repeat("A", size<<20))
+	for batch := range 5 {
+		before := metrics(provider.Metrics, "")
+		metrics(gateway.Metrics, "reset")
+		var group sync.WaitGroup
+		for range workers {
+			group.Go(func() {
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				request, err := http.NewRequestWithContext(ctx, "POST", gateway.URL+"/v1/messages", strings.NewReader(body))
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				request.Header.Set("Content-Type", "application/json")
+				response, err := client.Do(request)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				defer response.Body.Close()
+				if response.StatusCode != http.StatusOK {
+					t.Errorf("unexpected cancellation response: %d", response.StatusCode)
+					return
+				}
+				reader := bufio.NewReader(response.Body)
+				for {
+					line, err := reader.ReadString('\n')
+					if err != nil {
+						t.Error("stream ended before cancellation", err)
+						return
+					}
+					if strings.HasPrefix(line, "data:") {
+						cancel()
+						return
+					}
+				}
+			})
+		}
+		group.Wait()
+		if t.Failed() {
+			return
+		}
+		sample := metrics(gateway.Metrics, "drain")
+		reclaimed := metrics(gateway.Metrics, "reclaim")
+		after := metrics(provider.Metrics, "")
+		if after.Calls-before.Calls != int64(workers) {
+			t.Fatal("cancellation caused repeated generation", after.Calls-before.Calls)
+		}
+		t.Logf("batch=%d size_MiB=%d workers=%d cancelled_calls=%d gateway_peak_heap_MiB=%.3f gateway_reclaimed_heap_MiB=%.3f", batch, size, workers, workers, float64(sample.PeakHeap)/(1<<20), float64(reclaimed.Heap)/(1<<20))
+	}
 }
