@@ -91,3 +91,24 @@ func TestSSECancellationAndConsumerError(t *testing.T) {
 		t.Fatalf("consumer error lost: %v", err)
 	}
 }
+
+func BenchmarkSSECompleteReader(b *testing.B) {
+	const frame = "data: {\"text\":\"hello\"}\r\n\r\n"
+	var source strings.Reader
+	reader := completeReader{ctx: b.Context(), reader: &source}
+	var buffer [8]byte
+	b.ReportAllocs()
+	b.SetBytes(int64(len(frame)))
+	for b.Loop() {
+		source.Reset(frame)
+		for {
+			_, err := reader.Read(buffer[:])
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+}

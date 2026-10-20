@@ -160,10 +160,11 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	if err := s.validateOutbound(candidate.model.BaseURL); err != nil {
 		return &gatewayFailure{http.StatusForbidden, fmt.Errorf("target base URL rejected: %w", err)}
 	}
-	request := plan.request.Clone()
+	prepared := plan.request
 	if candidate.prepared != nil {
-		request = candidate.prepared.Clone()
+		prepared = candidate.prepared
 	}
+	request := prepared.Clone()
 	// 上行模型串用 API id；Name 是显示名（Gemini displayName 直接拼路径会 404）。
 	request.Model = protocol.StringValue(candidate.model.Identifier())
 	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}, ClientOutput: request.ClientOutput}

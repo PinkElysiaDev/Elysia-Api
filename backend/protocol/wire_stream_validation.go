@@ -49,13 +49,31 @@ func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 			return v.compiled.runtimeError(EncodeEvent, err)
 		}
 	}
-	events, err := v.decoder.Convert(ctx, DecodeEvent, frame, v.options)
-	if err != nil {
-		return err
-	}
 	var batch []Event
-	if err = events.Decode(&batch); err != nil {
-		return err
+	if decoder, ok := v.decoder.(TypedEventModule); ok {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		events, err := decoder.DecodeEvents(ctx, frame, v.options)
+		if err != nil {
+			return err
+		}
+		// Preserve Convert's EncodeSemantic budget and JSON normalization.
+		// Decoder state may retain nested pointers, so provenance stamping and
+		// normalization operate on owned containers, not the decoder's state.
+		limits := semanticLimits(DefaultLimits())
+		if err := checkSemanticValue(events, limits); err != nil {
+			return err
+		}
+		batch = normalizeMappingSemantic(events, limits)
+	} else {
+		events, err := v.decoder.Convert(ctx, DecodeEvent, frame, v.options)
+		if err != nil {
+			return err
+		}
+		if err = events.Decode(&batch); err != nil {
+			return err
+		}
 	}
 	for _, event := range batch {
 		event.SchemaVersion, event.Source = SemanticSchemaVersion, v.compiled.identity
@@ -65,7 +83,7 @@ func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 		if event.Type == NativeEvent {
 			event.Native = &Native{Source: Provenance{Protocol: v.compiled.identity, Direction: DecodeEvent, Scope: v.options.Scope}, Value: frame}
 		}
-		if _, err = v.replay.Consume(event); err != nil {
+		if _, err := v.replay.Consume(event); err != nil {
 			return err
 		}
 	}

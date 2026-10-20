@@ -99,3 +99,25 @@ go tool pprof -http=127.0.0.1:0 \
 ```
 
 后续优化以相同场景复测：同时比较 allocs/request、B/request、CPU/request、峰值和空闲恢复曲线。减少分配不能以持续抬高驻留内存为代价。零分配预算限定在具体 helper/稳定阶段，HTTP 管线预算应在获得足够重复样本后制定。原始证据保留于 CI artifact 或本地输出目录；PR/issue 发布结果摘要与采集条件。
+
+## 局部复用与分配预算
+
+局部优化使用资源所属的请求、流或 writer 管理生命周期：
+
+- SSE 完整性检查只持有四个尾部字节；分片读取和 EOF 检查不创建尾部字符串。
+- 每个上游流复用一个 idle timer 和通知 channel。每次 Read 结束后停止 timer；若回调已触发则先等待回调通知，再允许下一次使用。消费处理时间不计入上游空闲，Close 通过取消请求中断正在等待的 Read。
+- usage writer 复用容量为 64 的批次存储和 timer，在提交完成（包括失败）后清除批次引用，维持原有 50ms 收集窗口和 payload 预算。
+- 最终 wire 校验对 typed event decoder 直接读取结构化事件，同时保留语义预算、JSON 规范化和可变容器隔离；最终字节检查和生命周期 replay 仍执行。JSON-only decoder 保留通用路径。
+- 语义深克隆只为可变容器及目标结构申请存储，标量通过容器字段赋值复制；不可变 Value 字节仍可共享。
+
+下面的 helper 基准分别测量分片 SSE 尾部检查、已建立流的单次读取，以及 256 个增量加起止帧的最终校验。前两者的稳定路径目标为 `0 B/op, 0 allocs/op`，不包含流的构造、网络传输或任意 Reader 的内部成本。
+
+```sh
+cd backend
+GOMAXPROCS=4 go test -tags=sonic -pgo=off \
+  ./internal/eventstream ./relay ./protocol/builtin -run '^$' \
+  -bench '^(BenchmarkSSECompleteReader|BenchmarkStreamBodyRead|BenchmarkFinalWireValidation)$' \
+  -benchmem -benchtime=300ms -count=5
+```
+
+`TestFinalWireValidationTypedParity` 使用相同的内置协议样本比较 typed 和 JSON 最终校验，包括失败位置和终态。定向回归还覆盖 timer 重用、消费者暂停、并发 Close、候选请求隔离以及 writer 的关闭和失败释放。

@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -16,6 +17,109 @@ type jsonOnlyModule struct{ p.Module }
 func (wrapped jsonOnlyModule) NewStream(direction p.Direction, limits p.Limits) (p.Module, error) {
 	stream, err := wrapped.Module.(p.StreamModule).NewStream(direction, limits)
 	return jsonOnlyModule{stream}, err
+}
+
+// Keep the installed wire validators while hiding only typed event decoding.
+// This exercises the previous final-validation boundary on identical frames.
+type jsonEventFactory struct{ module }
+type jsonEventStream struct{ p.Module }
+
+func (factory jsonEventFactory) NewStream(direction p.Direction, limits p.Limits) (p.Module, error) {
+	stream, err := factory.module.NewStream(direction, limits)
+	return jsonEventStream{stream}, err
+}
+
+func (stream jsonEventStream) ValidateWireEvent(frame p.Value) error {
+	return stream.Module.(p.WireEventValidator).ValidateWireEvent(frame)
+}
+
+func TestFinalWireValidationTypedParity(t *testing.T) {
+	t.Parallel()
+	modules := Modules()
+	for i, adapter := range modules {
+		modules[i] = jsonEventFactory{adapter.(module)}
+	}
+	genericCompiler, err := p.NewCompiler(p.DefaultLimits(), modules, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitions, err := Definitions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range definitions {
+		generic, issues := genericCompiler.Compile(raw.Bytes())
+		if generic == nil {
+			t.Fatal(issues)
+		}
+		typed := testCompiled(t, generic.Codec(p.DecodeEvent))
+		for _, sample := range generic.Definition().Samples {
+			if sample.Direction != p.DecodeEvent {
+				continue
+			}
+			t.Run(generic.Identity().DefinitionID+"/"+sample.ID, func(t *testing.T) {
+				frames := []p.Value{sample.Input}
+				if sample.Sequence {
+					if err := sample.Input.Decode(&frames); err != nil {
+						t.Fatal(err)
+					}
+				}
+				observe := func(compiled *p.Compiled) []string {
+					validation, err := compiled.NewWireStreamValidation(sample.Scope)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var result []string
+					for _, frame := range frames {
+						err = validation.Consume(t.Context(), frame)
+						result = append(result, fmt.Sprint(err))
+						if err != nil {
+							return result
+						}
+					}
+					return append(result, fmt.Sprint(validation.Finish()))
+				}
+				if before, after := observe(generic), observe(typed); !reflect.DeepEqual(before, after) {
+					t.Fatalf("final wire validation differs\nJSON: %v\ntyped: %v", before, after)
+				}
+			})
+		}
+	}
+}
+
+func BenchmarkFinalWireValidation(b *testing.B) {
+	compiled := testCompiled(b, Chat)
+	parse := func(delta, finish string) p.Value {
+		value, err := p.ParseValue([]byte(chatContractFrame("r", "m", 1, delta, finish)))
+		if err != nil {
+			b.Fatal(err)
+		}
+		return value
+	}
+	start := parse(`{"role":"assistant"}`, `null`)
+	delta := parse(`{"content":"hello"}`, `null`)
+	end := parse(`{}`, `"stop"`)
+	b.ReportAllocs()
+	for b.Loop() {
+		validation, err := compiled.NewWireStreamValidation(p.Scope{})
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err := validation.Consume(b.Context(), start); err != nil {
+			b.Fatal(err)
+		}
+		for range 256 {
+			if err := validation.Consume(b.Context(), delta); err != nil {
+				b.Fatal(err)
+			}
+		}
+		if err := validation.Consume(b.Context(), end); err != nil {
+			b.Fatal(err)
+		}
+		if err := validation.Finish(); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 func TestRequestWireSchemaTypedParity(t *testing.T) {
