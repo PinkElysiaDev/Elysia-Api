@@ -41,6 +41,7 @@ Elysia API 的部署、协议、接口和开发参考。首次使用从[快速�
 | [数据库参考](storage-schema.md) | 表结构、加密、迁移与统计约束 |
 | [协议验证与发布](protocol-release-readiness.md) | 测试层次、命令、真实渠道、性能与升级检查 |
 | [开发指南](development.md) | 环境、本地开发、测试、交叉编译与发布产物 |
+| [后端性能基准](backend-performance.md) | 分配次数、资源复用、突发内存峰值与空闲恢复的隔离测量 |
 | [WebUI 开发](../packages/webui/README.md) | 前端命令、代理、构建与交互约定 |
 | [macOS 验证](macos-testing.md) | 原生工具链、自动检查与真机验收 |
 | [发布后优化记录](post-release-review-2026-10-12.md) | 本轮正确性修复、兜底审查、测试证据和未完成的验收边界 |

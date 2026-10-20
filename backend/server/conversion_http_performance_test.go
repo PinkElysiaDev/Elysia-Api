@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/metrics"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,6 +32,26 @@ type conversionHTTPAddress struct {
 type conversionHTTPMetrics struct {
 	Allocated, Heap, PeakHeap, WorkingSet, PeakWorkingSet uint64
 	Calls                                                 int64
+	Allocations, GCPauseNS                                uint64
+	GCCycles                                              uint32
+	CPUTimeNS                                             int64
+	GCCPUSeconds                                          float64
+	Goroutines, ActiveRequests, QueueDepth                int
+	QueuedPayloadBytes                                    int64
+	Timeline                                              []conversionMemorySample `json:",omitempty"`
+	DroppedSamples                                        int
+}
+
+type conversionMemorySample struct {
+	ElapsedMS                                    float64
+	Heap, HeapInuse, HeapIdle, HeapReleased, RSS uint64
+	Goroutines, ActiveRequests                   int
+}
+
+func conversionGCCPUSeconds() float64 {
+	samples := []metrics.Sample{{Name: "/cpu/classes/gc/total:cpu-seconds"}}
+	metrics.Read(samples)
+	return samples[0].Value.Float64()
 }
 
 // The load generator, gateway and mock provider run in different processes so
@@ -177,6 +198,10 @@ func TestConversionHTTPProcess(t *testing.T) {
 	candidates := conversionHTTPInt(t, "ELYSIA_CONVERSION_HTTP_CANDIDATES", 1, 16)
 	var active atomic.Int64
 	var drain func()
+	var settle func() error
+	var reload func(context.Context) error
+	var usageStats func() (int, int64)
+	var completed atomic.Int64
 	var calls atomic.Int64
 	var gateway *httptest.Server
 	if role == "provider" {
@@ -267,6 +292,33 @@ func TestConversionHTTPProcess(t *testing.T) {
 		server.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: &bodyKB, ExternalizeMedia: &externalize})
 		server.startUsageWriter()
 		t.Cleanup(server.stopUsageWriter)
+		reload = func(ctx context.Context) error {
+			if err := server.reloadProtocolRuntime(ctx); err != nil {
+				return err
+			}
+			server.invalidateRouteCache()
+			return nil
+		}
+		// Unlike drain, settle leaves the writer and its buffers alive. Memory
+		// recovery measurements must observe the normal long-lived service.
+		settle = func() error {
+			deadline := time.Now().Add(30 * time.Second)
+			for time.Now().Before(deadline) {
+				stats := server.usageWriterStats()
+				if active.Load() == 0 && stats.Written >= uint64(completed.Load()) && stats.Queued == 0 && stats.RetainedBytes == 0 {
+					return nil
+				}
+				if stats.Failures > 0 {
+					return fmt.Errorf("usage persistence failed: %s", stats.LastError)
+				}
+				time.Sleep(time.Millisecond)
+			}
+			return fmt.Errorf("gateway requests or usage writes did not settle")
+		}
+		usageStats = func() (int, int64) {
+			stats := server.usageWriterStats()
+			return stats.Queued, stats.RetainedBytes
+		}
 		drain = func() {
 			deadline := time.Now().Add(30 * time.Second)
 			for active.Load() != 0 && time.Now().Before(deadline) {
@@ -284,8 +336,12 @@ func TestConversionHTTPProcess(t *testing.T) {
 			server.engine.POST("/v1/messages", server.chatCompletions)
 		}
 		gateway = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/debug/pprof/") {
+				server.engine.ServeHTTP(w, r)
+				return
+			}
 			active.Add(1)
-			defer active.Add(-1)
+			defer func() { completed.Add(1); active.Add(-1) }()
 			server.engine.ServeHTTP(w, r)
 		}))
 
@@ -295,6 +351,14 @@ func TestConversionHTTPProcess(t *testing.T) {
 	defer gateway.Close()
 	var mutex sync.Mutex
 	var startAlloc, peakHeap, peakWorkingSet uint64
+	var startMallocs, startPause uint64
+	var startGC uint32
+	var startCPU time.Duration
+	var startGCCPU float64
+	var timeline []conversionMemorySample
+	var droppedSamples int
+	started := time.Now()
+	collectTimeline := os.Getenv("ELYSIA_FLAME_TIMELINE") == "1"
 	stop, done := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(done)
@@ -305,12 +369,24 @@ func TestConversionHTTPProcess(t *testing.T) {
 			case <-stop:
 				return
 			case <-ticker.C:
+				sampledAt := time.Now()
 				var memory runtime.MemStats
 				runtime.ReadMemStats(&memory)
 				working := conversionWorkingSetBytes()
 				mutex.Lock()
+				if sampledAt.Before(started) {
+					mutex.Unlock()
+					continue // A reset overtook this sample; do not mix windows.
+				}
 				peakHeap = max(peakHeap, memory.HeapAlloc)
 				peakWorkingSet = max(peakWorkingSet, working)
+				if collectTimeline {
+					if len(timeline) < 9000 {
+						timeline = append(timeline, conversionMemorySample{ElapsedMS: float64(time.Since(started)) / float64(time.Millisecond), Heap: memory.HeapAlloc, HeapInuse: memory.HeapInuse, HeapIdle: memory.HeapIdle, HeapReleased: memory.HeapReleased, RSS: working, Goroutines: runtime.NumGoroutine(), ActiveRequests: int(active.Load())})
+					} else {
+						droppedSamples++
+					}
+				}
 				mutex.Unlock()
 			}
 		}
@@ -318,6 +394,18 @@ func TestConversionHTTPProcess(t *testing.T) {
 	defer func() { close(stop); <-done }()
 	metrics := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		action := r.URL.Query().Get("action")
+		if action == "reload" && reload != nil {
+			if err := reload(r.Context()); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		if action == "settle" && settle != nil {
+			if err := settle(); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
 		if (action == "drain" || action == "reclaim") && drain != nil {
 			drain()
 		}
@@ -328,12 +416,31 @@ func TestConversionHTTPProcess(t *testing.T) {
 		var memory runtime.MemStats
 		runtime.ReadMemStats(&memory)
 		working := conversionWorkingSetBytes()
+		cpu, err := loadCPUTime()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		gcCPU := conversionGCCPUSeconds()
 		mutex.Lock()
 		if action == "reset" || action == "reset-without-gc" {
 			startAlloc, peakHeap, peakWorkingSet = memory.TotalAlloc, memory.HeapAlloc, working
+			startMallocs, startPause, startGC, startCPU, startGCCPU = memory.Mallocs, memory.PauseTotalNs, memory.NumGC, cpu, gcCPU
+			started = time.Now()
+			timeline, droppedSamples = nil, 0
 		}
 		result := conversionHTTPMetrics{Allocated: memory.TotalAlloc - startAlloc, Heap: memory.HeapAlloc, PeakHeap: max(peakHeap, memory.HeapAlloc), WorkingSet: working, PeakWorkingSet: max(peakWorkingSet, working), Calls: calls.Load()}
+		result.Allocations, result.GCPauseNS, result.GCCycles = memory.Mallocs-startMallocs, memory.PauseTotalNs-startPause, memory.NumGC-startGC
+		result.CPUTimeNS, result.GCCPUSeconds = int64(cpu-startCPU), gcCPU-startGCCPU
+		result.Goroutines, result.ActiveRequests = runtime.NumGoroutine(), int(active.Load())
+		if r.URL.Query().Get("timeline") == "1" {
+			result.Timeline = append([]conversionMemorySample(nil), timeline...)
+			result.DroppedSamples = droppedSamples
+		}
 		mutex.Unlock()
+		if usageStats != nil {
+			result.QueueDepth, result.QueuedPayloadBytes = usageStats()
+		}
 		sonic.ConfigStd.NewEncoder(w).Encode(result)
 	}))
 	defer metrics.Close()
@@ -430,5 +537,17 @@ func TestConversionHTTPCancellationIsolated(t *testing.T) {
 			t.Fatal("cancellation caused repeated generation", after.Calls-before.Calls)
 		}
 		t.Logf("batch=%d size_MiB=%d workers=%d cancelled_calls=%d gateway_peak_heap_MiB=%.3f gateway_reclaimed_heap_MiB=%.3f", batch, size, workers, workers, float64(sample.PeakHeap)/(1<<20), float64(reclaimed.Heap)/(1<<20))
+		if directory := os.Getenv("ELYSIA_CONVERSION_HTTP_OUTPUT"); directory != "" {
+			raw, err := sonic.ConfigStd.MarshalIndent(struct {
+				Workers, SizeMiB   int
+				Settled, Reclaimed conversionHTTPMetrics
+			}{workers, size, sample, reclaimed}, "", "  ")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(directory, fmt.Sprintf("cancellation-%d.json", batch)), raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }

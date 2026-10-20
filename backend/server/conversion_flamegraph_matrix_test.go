@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -20,6 +21,12 @@ func flameMatrixProtocol(t *testing.T, name string) *protocol.Compiled {
 
 func flameMatrixProvider(t *testing.T, target *protocol.Compiled) http.Handler {
 	frames, body := flameMatrixResponse(t, target)
+	var expected *protocol.Request
+	var expectedText string
+	if workload := os.Getenv("ELYSIA_FLAME_REQUEST"); workload != "" {
+		expected = loadRequest(t, workload)
+		expectedText = flameRequestText(expected.Content)
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -32,6 +39,19 @@ func flameMatrixProvider(t *testing.T, target *protocol.Compiled) http.Handler {
 			t.Errorf("matrix upstream input: %v", err)
 			w.WriteHeader(400)
 			return
+		}
+		if expected != nil {
+			valid := flameRequestText(input.Content) == expectedText && len(input.Tools) == len(expected.Tools)
+			if valid {
+				for i, tool := range input.Tools {
+					valid = valid && tool.Name == expected.Tools[i].Name && !tool.InputSchema.IsZero()
+				}
+			}
+			if !valid {
+				t.Error("matrix upstream request lost history or tools")
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
 		}
 		var isStream bool
 		_ = input.Parameters["stream"].Decode(&isStream)
@@ -51,6 +71,23 @@ func flameMatrixProvider(t *testing.T, target *protocol.Compiled) http.Handler {
 	})
 }
 
+func flameRequestText(nodes []protocol.Node) string {
+	var result strings.Builder
+	var visit func([]protocol.Node)
+	visit = func(nodes []protocol.Node) {
+		for _, node := range nodes {
+			if node.Kind == protocol.TextNode {
+				var text string
+				_ = node.Payload.Decode(&text)
+				result.WriteString(text)
+			}
+			visit(node.Children)
+		}
+	}
+	visit(nodes)
+	return result.String()
+}
+
 func flameMatrixResponse(t *testing.T, compiled *protocol.Compiled) ([][]byte, []byte) {
 	t.Helper()
 	usage := &protocol.Usage{Input: &protocol.Counter{Count: 100, Origin: protocol.ObservedCount}, Output: &protocol.Counter{Count: 5, Origin: protocol.ObservedCount}, Total: &protocol.Counter{Count: 105, Origin: protocol.ObservedCount}}
@@ -67,8 +104,12 @@ func flameMatrixResponse(t *testing.T, compiled *protocol.Compiled) ([][]byte, [
 	index := 0
 	identity := &protocol.Response{SchemaVersion: 1, ID: response.ID, Model: response.Model, Status: protocol.StringValue("in_progress"), Usage: &protocol.Usage{Input: usage.Input, Output: &protocol.Counter{Count: 0, Origin: protocol.ObservedCount}}, Attributes: protocol.Object{"created_at": mustProtocolValue(t, "1")}}
 	events := []protocol.Event{{SchemaVersion: 1, Type: protocol.ResponseStarted, Response: identity}, {SchemaVersion: 1, Type: protocol.ItemStarted, ItemID: protocol.StringValue("text"), Index: &index, Item: &protocol.Node{Kind: protocol.TextNode, Payload: protocol.StringValue("")}}}
-	for range 16 {
-		events = append(events, protocol.Event{SchemaVersion: 1, Type: protocol.ItemDelta, ItemID: protocol.StringValue("text"), Index: &index, Delta: protocol.StringValue(strings.Repeat("x", 4096))})
+	frameCount, frameBytes, err := flameStreamShape()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range frameCount {
+		events = append(events, protocol.Event{SchemaVersion: 1, Type: protocol.ItemDelta, ItemID: protocol.StringValue("text"), Index: &index, Delta: protocol.StringValue(strings.Repeat("x", frameBytes))})
 	}
 	events = append(events, protocol.Event{SchemaVersion: 1, Type: protocol.ItemFinished, ItemID: protocol.StringValue("text"), Index: &index}, protocol.Event{SchemaVersion: 1, Type: protocol.ResponseFinished, Response: &protocol.Response{SchemaVersion: 1, ID: response.ID, Model: response.Model, Status: protocol.StringValue("completed"), Content: []protocol.Node{}, Usage: usage, Attributes: attributes}}, protocol.Event{SchemaVersion: 1, Type: protocol.UsageUpdated, Usage: usage})
 	options := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
@@ -94,7 +135,16 @@ func flameMatrixResponse(t *testing.T, compiled *protocol.Compiled) ([][]byte, [
 
 func flameMatrixRequest(t *testing.T, source *protocol.Compiled, stream bool) (string, string) {
 	t.Helper()
-	request := loadRequest(t, "short")
+	workload := os.Getenv("ELYSIA_FLAME_REQUEST")
+	if workload == "" {
+		workload = "short"
+	}
+	switch workload {
+	case "short", "prefix32k", "history256k", "tools32":
+	default:
+		t.Fatal("invalid matrix request workload")
+	}
+	request := loadRequest(t, workload)
 	request.Parameters["stream"] = mustProtocolValue(t, fmt.Sprintf("%t", stream))
 	if os.Getenv("ELYSIA_FLAME_MATRIX_TOOLS") == "1" {
 		request = loadRequest(t, "tools32")
@@ -129,9 +179,27 @@ func flameMatrixRequest(t *testing.T, source *protocol.Compiled, stream bool) (s
 func validateFlameMatrixOutput(ctx context.Context, source *protocol.Compiled, body []byte, stream bool) error {
 	expected := "ok"
 	if stream {
-		expected = strings.Repeat("x", 16*4096)
+		frames, width, err := flameStreamShape()
+		if err != nil {
+			return err
+		}
+		expected = strings.Repeat("x", frames*width)
 	}
 	return validateFlameOutput(ctx, source, body, stream, expected, 100, 5)
+}
+
+func flameStreamShape() (int, int, error) {
+	values := []int{16, 4096}
+	for i, name := range []string{"ELYSIA_FLAME_FRAMES", "ELYSIA_FLAME_FRAME_BYTES"} {
+		if text := os.Getenv(name); text != "" {
+			value, err := strconv.Atoi(text)
+			if err != nil || value < 1 || value > 4096 {
+				return 0, 0, fmt.Errorf("invalid %s", name)
+			}
+			values[i] = value
+		}
+	}
+	return values[0], values[1], nil
 }
 
 func validateFlameOutput(ctx context.Context, source *protocol.Compiled, body []byte, stream bool, expected string, inputCount, outputCount int64) error {

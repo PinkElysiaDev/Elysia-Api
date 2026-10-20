@@ -18,6 +18,15 @@ go test -tags=sonic -parallel=1 -count=1 -timeout=30m ./...
 
 `-tags=sonic` 启用 Gin 的 Sonic 编解码，使测试与构建脚本、Docker 和 CI 使用相同实现。
 
+## 性能基线与分配归因
+
+在仓库根目录运行 `node scripts/benchmark-performance.mjs --output=.tmp-dev/performance-baseline`。
+工具串行执行微基准、三进程隔离 HTTP 测量、独立 CPU/分配 profile 及取消诊断；
+包含分配次数、累计字节、GC、逐请求延迟、采样峰值和自然空闲恢复曲线。
+场景、参数、测量边界与证据说明见[性能基准](../docs/backend-performance.md)。
+
+## 并行与隔离
+
 `-parallel` 限制每个测试进程内的并行用例数，默认使用 `GOMAXPROCS`。
 资源受限的 CI 可以设置 `-parallel=4 -p=2`；`-p` 控制包级并发。
 测量耗时时不要同时运行其他测试或构建，也不要把 `(cached)` 结果当作执行耗时。
