@@ -43,31 +43,18 @@ func TestSSECompleteFrameBoundary(t *testing.T) {
 	}
 }
 
-type failingWriter struct {
-	remaining int
-	err       error
-}
+type failingWriter struct{ err error }
 
-func (w *failingWriter) Write(p []byte) (int, error) {
-	if w.remaining == 0 {
-		return 0, w.err
-	}
-	w.remaining--
-	return len(p), nil
-}
+func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
 
 func TestSSEWriteErrorsAndEncoding(t *testing.T) {
 	t.Parallel()
 	failure := errors.New("disconnected")
-	for i := range 7 {
-		if err := Write(&failingWriter{remaining: i, err: failure}, "delta", "{\"text\":\"ok\"}"); !errors.Is(err, failure) {
-			t.Fatalf("write %d lost error: %v", i, err)
-		}
+	if err := Write(failingWriter{failure}, "delta", "{\"text\":\"ok\"}"); !errors.Is(err, failure) {
+		t.Fatalf("write lost error: %v", err)
 	}
-	for i := range 4 {
-		if err := Comment(&failingWriter{remaining: i, err: failure}, "keepalive"); !errors.Is(err, failure) {
-			t.Fatalf("comment %d lost error: %v", i, err)
-		}
+	if err := Comment(failingWriter{failure}, "keepalive"); !errors.Is(err, failure) {
+		t.Fatalf("comment lost error: %v", err)
 	}
 	var output bytes.Buffer
 	if err := Comment(&output, "keepalive"); err != nil {

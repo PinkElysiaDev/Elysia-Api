@@ -8,7 +8,7 @@ Adopt the existing **Sonic v1.15.4 AST/Search APIs for JSON Pointer reads**. Ret
 
 The old pointer implementation materialized and detached every member of each object/array along a path. The selected implementation enumerates an object's AST properties and uses Search for array indices, retaining raw intermediate fragments only during the call. It copies only the final selected fragment. This reduces unrelated payload copying while retaining the existing `Value` contract.
 
-The full AST-container prototype improved large-payload cases but increased memory and/or execution time in small-object, wide-object and array cases. It was removed from the final implementation. The existing container scanners also support domain-specific resource accounting; they remain available to those consumers and as a compatibility fallback.
+The full AST-container prototype improved large-payload cases but increased memory and/or execution time in small-object, wide-object and array cases. It was removed from the final implementation. The existing container scanners remain for bulk readers and domain-specific resource accounting.
 
 ## Semantic and ownership requirements
 
@@ -17,7 +17,7 @@ The full AST-container prototype improved large-payload cases but increased memo
 - Object lookup remains **last-decoded-key-wins**, including duplicate keys with escaped spellings. Sonic Search's string-key lookup returns the first match, so object selection uses AST property iteration instead. Invalid UTF-8 keys retain the standard decoder's replacement behavior.
 - AST nodes and searchers are call-local. Intermediate slices may borrow the validated input; the final nonidentity selection uses independent storage. An empty pointer preserves identity behavior. Existing request-scoped bulk-view ownership rules are retained.
 - `Value` validates external JSON before these operations. Search skips redundant validation only on that immutable representation. Compiler/execution resource checks retain their existing role.
-- Sonic's nesting ceiling is lower than the existing `Value` parser's accepted range. If Sonic cannot inspect an already validated value, selection reuses the existing bulk reader with transient views. This preserves accepted deep inputs without raising protocol resource limits or retaining input buffers in the final result.
+- `Value` validation and pointer selection both use Sonic after #49. The old fallback for the standard decoder's higher nesting ceiling has been removed; AST/search failures propagate directly. The deepest accepted sibling remains covered by a focused regression.
 
 No public API or JSON Pointer behavior change is intended. No new dependency is added.
 
@@ -57,7 +57,7 @@ Observed timing ranges across the five samples (ns/op):
 | Large tail | 510,019–520,834 | 45,305–46,673 |
 | Array | 7,245–7,814 | 3,567–3,653 |
 
-These are microbenchmarks of selected reads, not gateway request latency measurements. The additional small-path check used the same five-sample settings and showed a tradeoff: roughly 27% more time and 1.3 KiB more allocation per read, despite fewer allocation objects. This implementation favors reducing unrelated copying in wide/large inputs and array traversal; it does not claim every pointer read is faster. Object selection still visits every property to preserve duplicate-key behavior. Large-result copying and compatibility fallback costs remain workload dependent.
+These are historical microbenchmarks of selected reads, not gateway request latency measurements. The additional small-path check used the same five-sample settings and showed a tradeoff: roughly 27% more time and 1.3 KiB more allocation per read, despite fewer allocation objects. This implementation favors reducing unrelated copying in wide/large inputs and array traversal; it does not claim every pointer read is faster. Object selection still visits every property to preserve duplicate-key behavior. Large-result copying costs remain workload dependent.
 
 ### Reproduce
 

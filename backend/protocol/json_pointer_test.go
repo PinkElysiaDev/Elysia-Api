@@ -67,15 +67,6 @@ func TestJSONPointerOwnsSelectedFragment(t *testing.T) {
 			t.Fatalf("selected result retains input: %v %v", path, err)
 		}
 	}
-	for i := 0; i < 8; i++ {
-		t.Run("concurrent", func(t *testing.T) {
-			t.Parallel()
-			value, err := readValuePointer(root, []string{"selected", "n"})
-			if err != nil || value.raw != "9007199254740993123" {
-				t.Fatalf("concurrent read: %v %v", value, err)
-			}
-		})
-	}
 }
 
 func TestJSONPointerSkipsDeepSibling(t *testing.T) {

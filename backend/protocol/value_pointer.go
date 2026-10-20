@@ -24,13 +24,7 @@ func readValuePointer(value Value, pointer []string) (Value, error) {
 		if value.IsObject() {
 			next, err := sonicObjectMember(value, key)
 			if err != nil {
-				// Value is already validated. Sonic has a lower nesting ceiling;
-				// reuse the bulk reader if it cannot represent an accepted Value.
-				fields, fallbackErr := value.readObjectWithin(requestValueReader(value))
-				if fallbackErr != nil {
-					return Value{}, fallbackErr
-				}
-				next = fields[key]
+				return Value{}, err
 			}
 			value = next
 			continue
@@ -49,15 +43,7 @@ func readValuePointer(value Value, pointer []string) (Value, error) {
 			return Value{}, nil
 		}
 		if err != nil {
-			items, fallbackErr := value.readArrayWithin(requestValueReader(value))
-			if fallbackErr != nil {
-				return Value{}, fallbackErr
-			}
-			if index >= len(items) {
-				return Value{}, nil
-			}
-			value = items[index]
-			continue
+			return Value{}, err
 		}
 		raw, err := node.Raw()
 		if err != nil {

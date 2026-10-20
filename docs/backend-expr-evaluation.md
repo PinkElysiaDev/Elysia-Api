@@ -6,7 +6,7 @@ Tracking: [#50](https://github.com/PinkElysiaDev/Elysia-Api/issues/50). Baseline
 
 **Defer production adoption.** Keep the current protocol DSL compiler/evaluator. The evaluated native mapping changes important semantics; the compatibility-oriented scalar prototype adds compilation, callbacks, and budget/diagnostic adaptation without removing the domain-specific machinery. It also regresses most measured workloads and has a demonstrated operand-budget ordering gap.
 
-This completes the focused prototype evaluation, not a production migration. There is no new runtime dependency, compiler-version change, or public compatibility change. A runnable isolated experiment is committed so the decision can be revisited with evidence rather than a permanently maintained second executor.
+This completes the focused prototype evaluation, not a production migration. There is no new runtime dependency, compiler-version change, or public compatibility change. The one-off experiment was removed during the #50 consolidation review. Its source remains available in commit `44c3e13`; this report records the adoption decision and historical measurements.
 
 The results concern the tested adapters and this DSL, not Expr's general performance or suitability for other expression languages.
 
@@ -86,7 +86,7 @@ Different lowering strategies, VM reuse or workload mixes may change these numbe
 
 ## Reproduction and validation
 
-From the repository root:
+Run these historical commands from a checkout of `44c3e13` (the prototype is not part of the maintained tree):
 
 ```sh
 python3 tools/expr-evaluation/run.py -race \

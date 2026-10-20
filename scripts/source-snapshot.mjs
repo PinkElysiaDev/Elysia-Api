@@ -11,6 +11,7 @@ function isSnapshotSource(path) {
   if (path.startsWith('backend/server/_snapshot/') || path.startsWith('backend/webui/')) return false
   if (/(?:^|\/)(?:config(?:\.[^/]+)?\.json|credentials[^/]*|\.env[^/]*|\.master-key|master\.key)$/.test(path)) return false
   return /^backend\/.*\.go$/.test(path)
+    || /^backend\/storage\/sql\/.*\.sql$/.test(path)
     || /^backend\/(?:.*\/(?:testdata|definitions|presets)\/.*|server\/model_catalog_snapshot)\.json$/.test(path)
     || /^packages\/webui\/src\/.*\.(?:ts|tsx|css|json)$/.test(path)
     || documentation.test(path)

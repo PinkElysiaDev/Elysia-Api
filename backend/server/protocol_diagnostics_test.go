@@ -92,7 +92,7 @@ func TestEncodingFailureKeepsCandidateAndExactField(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	compiled, _ := s.protocolServiceInst.Pin("google-generate-content")
 	request := &protocol.Request{SchemaVersion: protocol.SemanticSchemaVersion, Source: protocol.AgentIdentity(), Model: protocol.StringValue("m"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("system"), ID: protocol.StringValue("sensitive-id"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("secret prompt")}}}}, Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, "64")}}
-	candidate := gatewayCandidate{compiled: compiled, binding: protocol.Binding{ProtocolID: "google-generate-content"}, operation: compiled.Operations()["generate"]}
+	candidate := gatewayCandidate{compiled: compiled, binding: protocol.Binding{ProtocolID: "google-generate-content"}, operation: compiled.Operations()["generate"], operationName: "generate"}
 	candidate.model.Name = "candidate"
 	candidate.model.BaseURL = "https://example.invalid"
 	candidate.model.SourceID = "source"

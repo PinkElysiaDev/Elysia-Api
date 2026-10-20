@@ -59,7 +59,7 @@ func (s *Server) probeProtocol(ctx context.Context, input protocolProbeInput) (*
 		result.Models, runErr = s.discoverProtocolModels(ctx, compiled, input.BaseURL, input.APIKey)
 	} else {
 		binding := protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.Capabilities(protocol.EncodeRequest), Transports: []protocol.Transport{operation.Transport}, Operation: input.Operation}
-		candidate := gatewayCandidate{model: ref, compiled: compiled, binding: binding, operation: operation, scope: scope}
+		candidate := gatewayCandidate{model: ref, compiled: compiled, binding: binding, operation: operation, operationName: input.Operation, scope: scope}
 		result.Response, runErr = s.collectProtocolGeneration(ctx, candidate, &input.Request, nil, nil)
 	}
 	report := protocol.VerificationReport{DefinitionHash: compiled.Hash(), CompilerVersion: protocol.CompilerVersion, SamplesHash: compiled.SamplesHash(), Kind: protocol.UpstreamVerification, VerifiedAt: time.Now().UTC(), Passed: runErr == nil, Target: &scope, Checks: []protocol.VerificationCheck{{SampleID: input.Operation, Direction: protocol.DecodeResponse, Passed: runErr == nil, Reason: "Observed " + operation.Kind + " contract for this target only; does not prove other operations, all capabilities or cache hits."}}}

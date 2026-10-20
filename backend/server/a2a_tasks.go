@@ -109,11 +109,14 @@ func (h *a2aService) register(id a2a.TaskID, contextID string, running bool) *a2
 	}
 	if len(h.tasks) >= a2aRegistryLimit {
 		var oldest *a2aTaskEntry
+		var oldestTerminal bool
 		for _, entry := range h.tasks {
-			terminal := entry.snapshot().Status.State.Terminal()
-			if oldest == nil || (terminal && !oldest.snapshot().Status.State.Terminal()) ||
-				(terminal == oldest.snapshot().Status.State.Terminal() && entry.createdAt.Before(oldest.createdAt)) {
-				oldest = entry
+			entry.mu.Lock()
+			terminal := entry.task.Status.State.Terminal()
+			entry.mu.Unlock()
+			if oldest == nil || (terminal && !oldestTerminal) ||
+				(terminal == oldestTerminal && entry.createdAt.Before(oldest.createdAt)) {
+				oldest, oldestTerminal = entry, terminal
 			}
 		}
 		delete(h.tasks, oldest.id)

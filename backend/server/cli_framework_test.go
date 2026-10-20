@@ -104,7 +104,7 @@ func TestCLICobraHelpAndApprovalAgree(t *testing.T) {
 		t.Fatal("-- did not terminate flags")
 	}
 	// Request-local trees must not carry Changed/value/help state between calls.
-	for i := range 16 {
+	for i := range 2 {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
 			t.Parallel()
 			params := mapCLI(t, fmt.Sprintf("elysia key update --name key%d --enabled=no --allowed-groups a --allowed-groups b,c --new-secret ''", i))

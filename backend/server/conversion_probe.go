@@ -191,7 +191,7 @@ func (s *Server) adminConversionSignatureProbe(c *gin.Context) {
 		fail(err)
 		return
 	}
-	if err = candidate.compiled.CheckOperationInput(candidate.operation, body); err != nil {
+	if err = candidate.compiled.CheckOperationInput(candidate.operationName, body); err != nil {
 		fail(err)
 		return
 	}

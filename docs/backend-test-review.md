@@ -5,6 +5,25 @@
 
 ## 已删除的测试与依据
 
+### #50 依赖迁移的整体复审
+
+| 调整 | 依据与当前验证位置 |
+| --- | --- |
+| 删除 `tools/expr-evaluation/` | Expr 已决定不采用，549 行实验代码无生产调用者；结论与历史提交入口保存在评估报告。 |
+| 删除 `storage/sqlc_generate_test.go` | 运行时已嵌入同一份 SQL；再次执行 `CREATE TABLE IF NOT EXISTS` 无法证明列定义一致。分组结果由真实存储业务测试验证。 |
+| 缩减 MCP HTTP 矩阵 | 删除 SDK 自有的 method/name 元数据、Content-Type、Accept、batch 校验断言；保留网关版本策略、Origin、无状态方法、body 上限及官方客户端授权/执行链路。 |
+| 简化 SSE 写入错误测试 | 每个包装入口验证一次错误传播，不再绑定依赖内部恰好调用 7 次/4 次 `Write`。完整帧 EOF、取消和消费者错误仍覆盖网关适配逻辑。 |
+| 删除原子文件并发读写压力测试 | 80 次文件替换主要重复验证依赖及操作系统的 rename 语义；显式权限、失败保留/清理、symlink 策略及配置/密钥/目录缓存/快照集成仍有覆盖。 |
+| 精简重复并发循环 | Schema catalog 隔离只验证两份可编辑结果；指针所有权只验证实际存储；CLI 保留两个并发调用，版本内操作校验保留两个并发读者。需要压力重复时使用 `-count`。 |
+| 统一 Schema 测试依赖 | 使用生产 runtime validator 校验反射库的输出，不再直接依赖 MCP 的另一个 Schema 校验库。 |
+
+生产实现同步收敛：操作输入按名称使用版本内预编译 Schema，删除请求期 Schema 序列化和临时编译兼容路径；
+Sonic 指针选择删除针对旧解析器深度上限的回退；缓存键转义交给 `url.Values.Encode`。
+缓存代际、A2A 审批/订阅生命周期、字面 CLI 子集、SSE 完整帧和精确数值预算属于网关语义，继续由应用适配层负责。
+同时修复源码快照清单：补入迁移遗漏的 28 个 Go 文件，移除 5 个已删除路径，并将抽出的 SQL 源文件纳入发布快照。
+
+### 此前测试裁剪
+
 | 类别 | 删除内容 | 判断依据与保留的验证位置 |
 | --- | --- | --- |
 | 过期优化对照实现 | `protocol/conversion_baseline_test.go`、`conversion_differential_test.go`、`conversion_workloads_test.go`、`conversion_performance_test.go` | 测试内保留了 927 行旧转换实现，并继续复用当前生产业务函数；它不是独立的业务预期。删除 650 个冻结实现对拍组合、旧版对照 benchmark 和按 `Context.Err()` 调用次数取消的测试。转换规则、原生字段、精度、恢复、取消由对应行为测试负责。并发请求所有权断言移入 `builtin/conversion_isolation_test.go`。 |

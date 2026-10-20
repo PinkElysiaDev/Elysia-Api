@@ -4,9 +4,8 @@ import (
 	"bytes"
 	"net/http"
 	"net/url"
-	"sort"
+	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -173,22 +172,8 @@ func (r *usageCacheRecorder) WriteString(s string) (int, error) {
 // 符的筛选拼接出与多参数组合相同的键。
 func usageCacheKey(u *url.URL) string {
 	values := u.Query()
-	keys := make([]string, 0, len(values))
-	for k := range values {
-		keys = append(keys, k)
+	for _, items := range values {
+		slices.Sort(items)
 	}
-	sort.Strings(keys)
-	var b strings.Builder
-	b.WriteString(u.Path)
-	for _, k := range keys {
-		vs := append([]string(nil), values[k]...)
-		sort.Strings(vs)
-		for _, v := range vs {
-			b.WriteByte('&')
-			b.WriteString(url.QueryEscape(k))
-			b.WriteByte('=')
-			b.WriteString(url.QueryEscape(v))
-		}
-	}
-	return b.String()
+	return u.Path + "?" + values.Encode()
 }
