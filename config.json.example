@@ -8,6 +8,13 @@
   "logFormat": "auto",
   "logPersistLevel": "info",
   "httpTimeout": 120,
+  "preparation": {
+    "enabled": true,
+    "maxConcurrent": 8,
+    "maxQueued": 32,
+    "maxReservedBodyBytes": 67108864,
+    "queueTimeoutMillis": 5000
+  },
   "secretKeyPath": ".master-key",
   "openBrowserOnStart": true,
   "agentRemote": {

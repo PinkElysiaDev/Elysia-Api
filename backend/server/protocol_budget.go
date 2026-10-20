@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -40,10 +42,31 @@ func (s *Server) readGatewayRequest(c *gin.Context, compiled *protocol.Compiled)
 	if !s.pinProtocolRequest(c) {
 		return nil, false
 	}
-	body, err := protocol.ReadBoundedBody(c.Request.Body, compiled.RequestLimits(c.Request.Context()).BufferBytes)
+	limit := compiled.RequestLimits(c.Request.Context()).BufferBytes
+	declared := c.Request.ContentLength
+	reservation := int64(limit)
+	if declared >= 0 {
+		reservation = min(reservation, max(1, declared))
+	}
+	if err := s.acquireGatewayPreparation(c, reservation); err != nil {
+		s.rejectPreparation(c, compiled, err)
+		return nil, false
+	}
+	// A declared length is not trusted: read at most one extra byte and reject
+	// mismatches rather than extending a reservation while holding other slots.
+	// Unknown/chunked input reserves the full pinned request limit up front.
+	reader := io.Reader(c.Request.Body)
+	if declared >= 0 && declared < int64(limit) {
+		reader = io.LimitReader(reader, declared+1)
+	}
+	body, err := protocol.ReadBoundedBody(reader, limit)
+	if err == nil && declared >= 0 && int64(len(body)) != declared {
+		err = fmt.Errorf("request body length differs from Content-Length")
+	}
 	if err == nil {
 		return body, true
 	}
+	s.releaseGatewayPreparation(c)
 	err = protocol.AnnotateResourceError(err, compiled.Identity(), protocol.DecodeRequest, "read.request")
 	record := s.initUsageRecord(c, time.Now(), nil, builtin.FormatType(compiled.Identity().Family))
 	record.IngressRevision, record.SourceFormat = compiled.Hash(), compiled.Identity().DefinitionID

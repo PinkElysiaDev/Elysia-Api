@@ -111,6 +111,7 @@ func (s *Server) doShutdown() {
 		s.requestMu.Lock()
 		s.stopping = true
 		s.requestMu.Unlock()
+		s.preparationLimiter().Close()
 		s.lifecycleCancel()
 		if s.healthChecker != nil {
 			s.healthChecker.cancel()

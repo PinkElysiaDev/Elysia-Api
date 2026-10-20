@@ -1,0 +1,4 @@
+ok  	github.com/elysia-api/backend/internal/admission	1.015s
+ok  	github.com/elysia-api/backend/config	1.221s
+ok  	github.com/elysia-api/backend/internal/architecture	1.620s
+ok  	github.com/elysia-api/backend/server	35.948s

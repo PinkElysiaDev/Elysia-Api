@@ -23,6 +23,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/internal/admission"
 )
 
 type conversionHTTPAddress struct {
@@ -30,6 +31,7 @@ type conversionHTTPAddress struct {
 	PID          int
 }
 type conversionHTTPMetrics struct {
+	Preparation                                           admission.Stats
 	Allocated, Heap, PeakHeap, WorkingSet, PeakWorkingSet uint64
 	Calls                                                 int64
 	Allocations, GCPauseNS                                uint64
@@ -201,6 +203,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 	var settle func() error
 	var reload func(context.Context) error
 	var usageStats func() (int, int64)
+	var preparationStats func() admission.Stats
 	var completed atomic.Int64
 	var calls atomic.Int64
 	var gateway *httptest.Server
@@ -281,6 +284,23 @@ func TestConversionHTTPProcess(t *testing.T) {
 			group.Models = append(group.Models, model)
 		}
 		server := newTestServerWithStore(t, []config.ModelGroupConfig{group})
+		// Test-only policy selection for same-binary admission/memory attribution.
+		// The normal runner clears these fixture variables before every scenario.
+		if raw := os.Getenv("ELYSIA_CONVERSION_HTTP_PREPARATION"); raw != "" {
+			policy := config.PreparationConfig{}
+			if raw == "off" {
+				off := false
+				policy.Enabled = &off
+			} else {
+				maximum, err := strconv.Atoi(raw)
+				if err != nil || maximum < 1 || maximum > 1024 {
+					t.Fatal("invalid preparation fixture policy")
+				}
+				policy.MaxConcurrent = maximum
+			}
+			server.config.SetPreparation(policy)
+		}
+		preparationStats = func() admission.Stats { return server.preparationLimiter().Snapshot() }
 		mode := os.Getenv("ELYSIA_CONVERSION_HTTP_LOG")
 		if mode != "" && mode != "off" && mode != "body" && mode != "media" {
 			t.Fatal("unknown log mode")
@@ -440,6 +460,9 @@ func TestConversionHTTPProcess(t *testing.T) {
 		mutex.Unlock()
 		if usageStats != nil {
 			result.QueueDepth, result.QueuedPayloadBytes = usageStats()
+		}
+		if preparationStats != nil {
+			result.Preparation = preparationStats()
 		}
 		sonic.ConfigStd.NewEncoder(w).Encode(result)
 	}))

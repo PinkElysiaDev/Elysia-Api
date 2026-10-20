@@ -1,0 +1,38 @@
+{
+  "status": "passed",
+  "binarySHA256": "ff2be89dda7bbc1b0deab104b2cfb658b4890e504ff91280d1f184cd97e0c7ab",
+  "order": [
+    "off",
+    "8",
+    "8",
+    "off"
+  ],
+  "results": [
+    {
+      "policy": "off",
+      "requests": 192,
+      "bytes": 21890893,
+      "allocations": 4950.09375,
+      "cpuMS": 38.575828125,
+      "latencyP50MS": 137.815528,
+      "peakHeap": 302973368,
+      "peakRSS": 375468032,
+      "peakPreparation": 16,
+      "peakQueued": 0,
+      "peakReservedBodyBytes": 33559360
+    },
+    {
+      "policy": "8",
+      "requests": 192,
+      "bytes": 21926649.5,
+      "allocations": 4958.75,
+      "cpuMS": 36.323421874999994,
+      "latencyP50MS": 129.6632165,
+      "peakHeap": 301027160,
+      "peakRSS": 381964288,
+      "peakPreparation": 8,
+      "peakQueued": 8,
+      "peakReservedBodyBytes": 16779680
+    }
+  ]
+}
