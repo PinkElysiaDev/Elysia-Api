@@ -129,7 +129,7 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 		}
 		err := s.forwardGateway(c, record, plan, candidate)
 		if err == nil {
-			s.affinity.set(record.KeyHash, plan.group.ID, candidate.model.Name, time.Now())
+			s.affinity.set(record.KeyHash, plan.group.ID, candidate.model.Name)
 			return
 		}
 		if c.Writer.Written() {

@@ -167,7 +167,7 @@ func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView,
 	} else if adapter.HasFailed() {
 		record.StatusCode, record.Error = http.StatusBadGateway, "upstream session failed"
 	} else {
-		s.affinity.set(record.KeyHash, plan.group.ID, candidate.model.Name, time.Now())
+		s.affinity.set(record.KeyHash, plan.group.ID, candidate.model.Name)
 	}
 }
 

@@ -1,11 +1,8 @@
 package server
 
 import (
-	"strings"
-	"sync"
-	"time"
-
 	"github.com/elysia-api/backend/config"
+	"github.com/maypok86/otter/v2"
 )
 
 // 渠道亲和性（channel affinity / sticky routing）：
@@ -19,52 +16,36 @@ import (
 // 不改变可用候选集合，因此与故障转移完全兼容：粘连模型失败时照常转移到
 // 其他候选，并在成功后更新粘连目标。
 
-type affinityEntry struct {
-	modelName string
-	expiresAt time.Time
+type affinityCacheKey struct {
+	keyHash string
+	groupID string
 }
 
 type affinityCache struct {
-	mu      sync.Mutex
-	entries map[string]affinityEntry
+	entries *otter.Cache[affinityCacheKey, string]
 }
 
 func newAffinityCache() *affinityCache {
-	return &affinityCache{entries: make(map[string]affinityEntry)}
-}
-
-func affinityKey(keyHash, groupID string) string {
-	return keyHash + nulSeparator + groupID
+	return &affinityCache{entries: otter.Must(&otter.Options[affinityCacheKey, string]{
+		ExpiryCalculator: otter.ExpiryWriting[affinityCacheKey, string](AffinityTTL),
+	})}
 }
 
 // get 返回未过期的粘连模型名；无或已过期返回 ""。
-func (a *affinityCache) get(keyHash, groupID string, now time.Time) string {
+func (a *affinityCache) get(keyHash, groupID string) string {
 	if a == nil || keyHash == "" {
 		return ""
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	entry, ok := a.entries[affinityKey(keyHash, groupID)]
-	if !ok || now.After(entry.expiresAt) {
-		return ""
-	}
-	return entry.modelName
+	model, _ := a.entries.GetIfPresent(affinityCacheKey{keyHash, groupID})
+	return model
 }
 
 // set 记录一次成功的模型，刷新 TTL。
-func (a *affinityCache) set(keyHash, groupID, modelName string, now time.Time) {
+func (a *affinityCache) set(keyHash, groupID, modelName string) {
 	if a == nil || keyHash == "" || modelName == "" {
 		return
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	// 顺手清理已过期项，控制 map 增长（个人网关 key 数量有限，开销可忽略）。
-	for k, v := range a.entries {
-		if now.After(v.expiresAt) {
-			delete(a.entries, k)
-		}
-	}
-	a.entries[affinityKey(keyHash, groupID)] = affinityEntry{modelName: modelName, expiresAt: now.Add(AffinityTTL)}
+	a.entries.Set(affinityCacheKey{keyHash, groupID}, modelName)
 }
 
 // removeGroup 删除与指定模型组相关的全部粘滞条目，供组被删除时清理运行时状态。
@@ -72,13 +53,16 @@ func (a *affinityCache) removeGroup(groupID string) {
 	if a == nil {
 		return
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	suffix := nulSeparator + groupID
-	for key := range a.entries {
-		if strings.HasSuffix(key, suffix) {
-			delete(a.entries, key)
+	for key := range a.entries.Keys() {
+		if key.groupID == groupID {
+			a.entries.Invalidate(key)
 		}
+	}
+}
+
+func (a *affinityCache) close() {
+	if a != nil {
+		a.entries.StopAllGoroutines()
 	}
 }
 

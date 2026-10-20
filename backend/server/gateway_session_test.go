@@ -182,7 +182,7 @@ func TestGatewayWebSocketIndependentProtocolsAndUsage(t *testing.T) {
 		if record.IngressRevision != ingress.Hash() || record.UpstreamRevision != upstream.Hash() || record.StatusCode != 200 {
 			t.Fatalf("settlement identity: %s", body)
 		}
-		sticky := server.affinity.get(record.KeyHash, "gateway-group", time.Now())
+		sticky := server.affinity.get(record.KeyHash, "gateway-group")
 		candidates := []config.ModelRef{{ID: "other-model", Name: "Other model"}, {ID: "upstream-model", Name: displayName}}
 		if record.KeyHash == "" || applyAffinity(candidates, sticky)[0].Identifier() != "upstream-model" {
 			t.Fatalf("completed session did not preserve model affinity: key=%q sticky=%q", record.KeyHash, sticky)

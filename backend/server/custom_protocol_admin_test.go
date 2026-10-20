@@ -34,7 +34,7 @@ func newProtocolAdminTestServer(t *testing.T) (*Server, string) {
 		t.Fatalf("storage.Open: %v", err)
 	}
 	t.Cleanup(func() { store.Close() })
-	return &Server{
+	s := &Server{
 		config:                 cfg,
 		engine:                 gin.New(),
 		protocolTransport:      relay.NewProtocolTransport(10 * time.Second),
@@ -43,7 +43,9 @@ func newProtocolAdminTestServer(t *testing.T) (*Server, string) {
 		affinity:               newAffinityCache(),
 		store:                  store,
 		skipOutboundValidation: true,
-	}, cfgPath
+	}
+	t.Cleanup(s.closeCaches)
+	return s, cfgPath
 }
 
 func adminProtocolContext(method, target, body string) (*gin.Context, *httptest.ResponseRecorder) {
