@@ -79,7 +79,14 @@ func escapeLike(value string) string {
 }
 
 func (s *Store) ListGroups(ctx context.Context) ([]ModelGroup, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, enabled, strategy, max_retries, retry_interval, max_concurrency, daily_limit_max_requests, daily_limit_max_tokens, type, max_tokens, vision_capable, tools_capable FROM model_groups ORDER BY name`)
+	// Read both sets from the same SQLite snapshot. Fetching members in bulk
+	// avoids N+1 queries without duplicating group metadata for every member.
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `SELECT id, name, enabled, strategy, max_retries, retry_interval, max_concurrency, daily_limit_max_requests, daily_limit_max_tokens, type, max_tokens, vision_capable, tools_capable FROM model_groups ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -106,29 +113,34 @@ func (s *Store) ListGroups(ctx context.Context) ([]ModelGroup, error) {
 		return nil, err
 	}
 
+	byID := make(map[string]int, len(items))
 	for i := range items {
-		// 组成员引用完整返回，即使所属模型源已停用。编辑页打开后无修改保存
-		// 会走 UpsertGroup 的「先删后写」；若此处按源 enabled 过滤，停用源下的
-		// 成员会从 payload 消失并被永久删除。调度热路径仍通过 ListModels 过滤
-		// 停用源，不会把请求打到已停用源。
-		modelRows, err := s.db.QueryContext(ctx, `SELECT mgm.model_id, mgm.source_id FROM model_group_models mgm WHERE mgm.group_id = ? ORDER BY mgm.position`, items[i].ID)
-		if err != nil {
+		byID[items[i].ID] = i
+	}
+	// Keep disabled-source and unresolved members: editing an unchanged group
+	// must not silently delete them. Scheduling filters sources separately.
+	modelRows, err := tx.QueryContext(ctx, `SELECT group_id, model_id, source_id FROM model_group_models ORDER BY group_id, position`)
+	if err != nil {
+		return nil, err
+	}
+	for modelRows.Next() {
+		var groupID, id, sourceID string
+		if err := modelRows.Scan(&groupID, &id, &sourceID); err != nil {
+			modelRows.Close()
 			return nil, err
 		}
-		for modelRows.Next() {
-			var id, sourceID string
-			if err := modelRows.Scan(&id, &sourceID); err != nil {
-				modelRows.Close()
-				return nil, err
-			}
+		if i, exists := byID[groupID]; exists {
 			items[i].Models = append(items[i].Models, sourceID+":"+id)
 		}
-		if err := modelRows.Close(); err != nil {
-			return nil, err
-		}
-		if err := modelRows.Err(); err != nil {
-			return nil, err
-		}
+	}
+	if err := modelRows.Close(); err != nil {
+		return nil, err
+	}
+	if err := modelRows.Err(); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 	return items, nil
 }
