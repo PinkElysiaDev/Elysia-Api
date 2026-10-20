@@ -19,8 +19,31 @@ type semanticValueEntry struct {
 type semanticCache struct {
 	limits        Limits
 	entries       map[Value]semanticValueEntry
+	inline        *[2]semanticCacheEntry
+	inlineCount   int
 	retainedBytes int
 }
+
+type semanticCacheEntry struct {
+	value Value
+	entry semanticValueEntry
+}
+
+// Most frame-local segments visit only a payload and its native envelope. A
+// lazily allocated two-entry workspace avoids a hash table (and hashing large
+// identical strings) without increasing storage for executions that cache none.
+// Wider segments spill to the same bounded map; no storage crosses requests.
+func (cache *semanticCache) lookup(value Value) (semanticValueEntry, bool) {
+	for index := range cache.inlineCount {
+		if cached := cache.inline[index]; cached.value == value {
+			return cached.entry, true
+		}
+	}
+	entry, exists := cache.entries[value]
+	return entry, exists
+}
+
+func (cache *semanticCache) size() int { return cache.inlineCount + len(cache.entries) }
 
 func (cache *semanticCache) check(value any, limits Limits) error {
 	if cache == nil {
@@ -45,8 +68,8 @@ func (entry semanticValueEntry) retainedBytes(value Value) int {
 }
 
 func (cache *semanticCache) store(value Value, entry semanticValueEntry) {
-	previous, exists := cache.entries[value]
-	if !exists && len(cache.entries) >= cache.limits.StateItems {
+	previous, exists := cache.lookup(value)
+	if !exists && cache.size() >= cache.limits.StateItems {
 		return
 	}
 	previousBytes := 0
@@ -60,15 +83,30 @@ func (cache *semanticCache) store(value Value, entry semanticValueEntry) {
 	if entry.hasNormalized && entry.normalized != value && len(entry.normalized.raw) > remaining-len(value.raw) {
 		return
 	}
-	if cache.entries == nil {
-		cache.entries = make(map[Value]semanticValueEntry)
+	for index := range cache.inlineCount {
+		if cache.inline[index].value == value {
+			cache.inline[index].entry = entry
+			cache.retainedBytes += entry.retainedBytes(value) - previousBytes
+			return
+		}
 	}
-	cache.entries[value] = entry
+	if !exists && cache.inlineCount < 2 {
+		if cache.inline == nil {
+			cache.inline = new([2]semanticCacheEntry)
+		}
+		cache.inline[cache.inlineCount] = semanticCacheEntry{value, entry}
+		cache.inlineCount++
+	} else {
+		if cache.entries == nil {
+			cache.entries = make(map[Value]semanticValueEntry)
+		}
+		cache.entries[value] = entry
+	}
 	cache.retainedBytes += entry.retainedBytes(value) - previousBytes
 }
 
 func (cache *semanticCache) normalize(value Value) Value {
-	entry := cache.entries[value]
+	entry, _ := cache.lookup(value)
 	if entry.hasNormalized {
 		return entry.normalized
 	}

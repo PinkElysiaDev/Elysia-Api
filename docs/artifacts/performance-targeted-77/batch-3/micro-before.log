@@ -1,0 +1,16 @@
+goos: linux
+goarch: amd64
+pkg: github.com/elysia-api/backend/protocol
+cpu: AMD Ryzen 7 8845H w/ Radeon 780M Graphics
+BenchmarkProfilingWorkspace/normalize-event-4         	  431596	      6022 ns/op	    1072 B/op	       7 allocs/op
+BenchmarkProfilingWorkspace/normalize-event-4         	   64219	      7876 ns/op	    1072 B/op	       7 allocs/op
+BenchmarkProfilingWorkspace/normalize-event-4         	  224211	      3198 ns/op	    1072 B/op	       7 allocs/op
+BenchmarkProfilingWorkspace/normalize-event-4         	  106900	      7841 ns/op	    1072 B/op	       7 allocs/op
+BenchmarkProfilingWorkspace/normalize-event-4         	   70302	      7852 ns/op	    1072 B/op	       7 allocs/op
+BenchmarkProfilingWorkspace/text-append-4             	  508806	      1088 ns/op	     256 B/op	       1 allocs/op
+BenchmarkProfilingWorkspace/text-append-4             	  975152	       597.6 ns/op	     256 B/op	       1 allocs/op
+BenchmarkProfilingWorkspace/text-append-4             	  853933	      1240 ns/op	     256 B/op	       1 allocs/op
+BenchmarkProfilingWorkspace/text-append-4             	  675408	       983.3 ns/op	     256 B/op	       1 allocs/op
+BenchmarkProfilingWorkspace/text-append-4             	  596649	      1114 ns/op	     256 B/op	       1 allocs/op
+PASS
+ok  	github.com/elysia-api/backend/protocol	8.771s

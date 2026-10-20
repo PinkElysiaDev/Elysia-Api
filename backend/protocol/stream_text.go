@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"fmt"
 	"hash"
@@ -9,16 +10,24 @@ import (
 // TextTracker verifies cumulative snapshots against the prefix already sent.
 // It retains a digest and byte count, not the entire forwarded text.
 type TextTracker struct {
-	digest hash.Hash
-	length int
+	digest  hash.Hash
+	length  int
+	scratch *[256]byte
 }
 
 // Append records a delta without retaining its payload.
 func (tracker *TextTracker) Append(delta string) {
 	if tracker.digest == nil {
 		tracker.digest = sha256.New()
+		tracker.scratch = new([256]byte)
 	}
-	_, _ = tracker.digest.Write([]byte(delta))
+	for offset := 0; offset < len(delta); {
+		n := copy(tracker.scratch[:], delta[offset:])
+		_, _ = tracker.digest.Write(tracker.scratch[:n])
+		offset += n
+	}
+	// Retain neither the string nor its text in the owner-local workspace.
+	clear(tracker.scratch[:])
 	tracker.length += len(delta)
 }
 
@@ -30,7 +39,9 @@ func (tracker *TextTracker) Snapshot(snapshot string) (string, error) {
 	}
 	if tracker.length > 0 {
 		prefix := sha256.Sum256([]byte(snapshot[:tracker.length]))
-		if string(prefix[:]) != string(tracker.digest.Sum(nil)) {
+		matches := bytes.Equal(prefix[:], tracker.digest.Sum(tracker.scratch[:0]))
+		clear(tracker.scratch[:])
+		if !matches {
 			return "", streamIssue(UpstreamContractViolation, "snapshot", "cumulative content rewrote an already forwarded prefix")
 		}
 	}
