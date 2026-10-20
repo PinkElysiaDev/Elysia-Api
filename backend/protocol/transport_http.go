@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +13,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/bytedance/sonic/encoder"
+	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/eventstream"
+	sse "github.com/tmaxmax/go-sse"
 )
 
 // DefaultStreamIdleMillis allows long reasoning pauses without limiting total stream duration.
@@ -138,9 +141,6 @@ func ReadFrames(ctx context.Context, reader io.Reader, operation Operation, limi
 	if operation.Transport != SSE && operation.Transport != NDJSON {
 		return fmt.Errorf("operation is not an HTTP event stream")
 	}
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, min(limit, 4096)), limit)
-	var data []byte
 	var name, id string
 	isDone := false
 	emit := func(raw []byte) error {
@@ -154,47 +154,42 @@ func ReadFrames(ctx context.Context, reader io.Reader, operation Operation, limi
 		}
 		return consume(value, Object{"eventName": StringValue(name), "eventId": StringValue(id)})
 	}
+	if operation.Transport == SSE {
+		// Stop on an explicit transport marker, not on semantic completion: late
+		// usage frames must still be consumed before that marker.
+		done := errors.New("SSE transport done")
+		err := eventstream.Read(ctx, reader, limit, func(event sse.Event) error {
+			name, id = event.Type, event.LastEventID
+			if err := emit([]byte(event.Data)); err != nil {
+				return err
+			}
+			if isDone {
+				return done
+			}
+			return nil
+		})
+		if errors.Is(err, done) {
+			return nil
+		}
+		if errors.Is(err, bufio.ErrTooLong) {
+			return resourceFailure("response_frame", "bytes", limit, limit+1)
+		}
+		return err
+	}
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, min(limit, 4096)), limit)
 	for scanner.Scan() {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		line := scanner.Text()
-		if operation.Transport == NDJSON {
-			if strings.TrimSpace(line) != "" {
-				if err := emit([]byte(line)); err != nil {
-					return err
-				}
-				if isDone {
-					return nil
-				}
+		if strings.TrimSpace(line) != "" {
+			if err := emit([]byte(line)); err != nil {
+				return err
 			}
-			continue
-		}
-		if line == "" {
-			if len(data) > 0 {
-				if err := emit(data[:len(data)-1]); err != nil {
-					return err
-				}
-				if isDone {
-					return nil
-				}
+			if isDone {
+				return nil
 			}
-			data, name = data[:0], ""
-			continue
-		}
-		field, value, _ := strings.Cut(line, ":")
-		value = strings.TrimPrefix(value, " ")
-		switch field {
-		case "data":
-			if len(data)+len(value)+1 > limit {
-				return resourceFailure("response_frame", "bytes", limit, len(data)+len(value)+1)
-			}
-			data = append(data, value...)
-			data = append(data, '\n')
-		case "event":
-			name = value
-		case "id":
-			id = value
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -203,16 +198,16 @@ func ReadFrames(ctx context.Context, reader io.Reader, operation Operation, limi
 		}
 		return err
 	}
-	if len(data) > 0 {
-		return fmt.Errorf("upstream ended with an incomplete SSE frame")
-	}
 	return ctx.Err()
 }
+
+// Compact raw JSON without decoding numbers or adding HTML escaping.
+var streamJSON = sonic.Config{CompactMarshaler: true}.Froze()
 
 // WriteFrame emits one body using the declared downstream framing.
 func WriteFrame(writer io.Writer, operation Operation, value Value) error {
 	// Both SSE and NDJSON require physical line boundaries owned by framing.
-	compact, err := encoder.Encode(value, encoder.CompactMarshaler)
+	compact, err := streamJSON.Marshal(json.RawMessage(value.Bytes()))
 	if err != nil {
 		return err
 	}
@@ -223,8 +218,9 @@ func WriteFrame(writer io.Writer, operation Operation, value Value) error {
 	if operation.Transport != SSE {
 		return fmt.Errorf("operation is not an HTTP event stream")
 	}
+	name := ""
 	if operation.Framing != nil {
-		name := operation.Framing.EventName
+		name = operation.Framing.EventName
 		if path := operation.Framing.EventNamePath; path != "" {
 			pointer, err := parsePointer(path)
 			if err != nil {
@@ -239,15 +235,6 @@ func WriteFrame(writer io.Writer, operation Operation, value Value) error {
 				return fmt.Errorf("SSE event name path must resolve to a nonempty string")
 			}
 		}
-		if strings.ContainsAny(name, "\r\n\x00") {
-			return fmt.Errorf("invalid SSE event name")
-		}
-		if name != "" {
-			if _, err := fmt.Fprintf(writer, "event: %s\n", name); err != nil {
-				return err
-			}
-		}
 	}
-	_, err = fmt.Fprintf(writer, "data: %s\n\n", compact)
-	return err
+	return eventstream.Write(writer, name, string(compact))
 }

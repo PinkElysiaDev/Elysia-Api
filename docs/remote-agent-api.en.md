@@ -74,6 +74,8 @@ Each `documents` entry is `{name,mime?,text?,dataUrl?}`. Supply text or a data U
 
 ### SSE and lifecycle
 
+REST/admin Agent events and heartbeat comments are encoded with `go-sse` v0.11.0; JSON payloads use Sonic. Event names, per-event flushing, and detached turn lifetimes retain their existing behavior. See the [backend SSE migration](backend-sse-migration.md) for upstream framing limits and EOF handling.
+
 | Event | Contents |
 | --- | --- |
 | `status` | Model-call or tool-execution phase |

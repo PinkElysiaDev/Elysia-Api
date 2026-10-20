@@ -73,10 +73,21 @@ func TestGatewaySSEAndNDJSONBridgeDrainsUsageAndPersists(t *testing.T) {
 			upstream := activateGatewayDefinition(t, server, definition)
 			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				writer.Header().Set("Content-Type", protocol.TransportContentType(upstreamTransport))
+				if upstreamTransport == protocol.SSE {
+					// Independent wire fixture: BOM, CR-only boundaries and control
+					// frames must reach the real gateway's usage-tail drain path.
+					fmt.Fprint(writer, "\xef\xbb\xbf: keepalive\r\rid: source-1\r\rretry: 200\r\r")
+				}
 				var frames []protocol.Value
 				definition.Samples[len(definition.Samples)-2].Input.Decode(&frames)
 				for _, frame := range frames {
-					if err := protocol.WriteFrame(writer, definition.Operations["generate"], frame); err != nil {
+					var err error
+					if upstreamTransport == protocol.SSE {
+						_, err = fmt.Fprintf(writer, "data: %s\r\r", frame.Bytes())
+					} else {
+						err = protocol.WriteFrame(writer, definition.Operations["generate"], frame)
+					}
+					if err != nil {
 						t.Error(err)
 					}
 					writer.(http.Flusher).Flush()

@@ -2,9 +2,12 @@ package protocol
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/elysia-api/backend/internal/eventstream"
 )
 
 type fragmentedReader struct{ content string }
@@ -21,6 +24,75 @@ func TestHTTPEventNamesUseDeclaredPath(t *testing.T) {
 		value, _ := ParseValue([]byte(body))
 		if err := WriteFrame(&output, operation, value); err == nil || output.Len() != 0 {
 			t.Fatalf("invalid name partially emitted: %s", body)
+		}
+	}
+}
+
+func TestHTTPSSELibraryMetadataAndControlFrames(t *testing.T) {
+	t.Parallel()
+	for _, newline := range []string{"\n", "\r\n", "\r"} {
+		input := "\xef\xbb\xbf: initial heartbeat\n\nid: first\n\nretry: 200\n\nunknown: ignored\n\n" +
+			"event: delta\ndata: {\ndata: \"n\":9007199254740993123,\"value\":null,\"ok\":false}\n\n" +
+			": keepalive\n\nid: invalid\x00id\ndata: {}\n\nid:\ndata: {}\n\ndata: [DONE]\n\ndata: invalid\n\n"
+		input = strings.ReplaceAll(input, "\n", newline)
+		var values []Value
+		var metadata []Object
+		err := ReadFrames(t.Context(), &fragmentedReader{input}, Operation{Transport: SSE, Framing: &Framing{Done: []string{"[DONE]"}}}, 1024, func(value Value, meta Object) error {
+			values = append(values, value)
+			metadata = append(metadata, meta)
+			return nil
+		})
+		if err != nil || len(values) != 3 {
+			t.Fatalf("newline %q: values=%v err=%v", newline, values, err)
+		}
+		if !strings.Contains(values[0].raw, "9007199254740993123") || !strings.Contains(values[0].raw, `"value":null`) || !strings.Contains(values[0].raw, `"ok":false`) {
+			t.Fatalf("JSON changed: %s", values[0].raw)
+		}
+		for i, wantID := range []string{`"first"`, `"first"`, `""`} {
+			if metadata[i]["eventId"].raw != wantID {
+				t.Fatalf("ID %d: %v", i, metadata[i])
+			}
+		}
+		if metadata[0]["eventName"].raw != `"delta"` || metadata[1]["eventName"].raw != `""` {
+			t.Fatalf("event names: %v", metadata)
+		}
+	}
+}
+
+func TestHTTPSSELibraryFrameBudgetAndTruncation(t *testing.T) {
+	t.Parallel()
+	for _, input := range []string{
+		"event: " + strings.Repeat("x", 70) + "\ndata: {}\n\n",
+		": " + strings.Repeat("x", 70) + "\n\ndata: {}\n\n",
+		strings.Repeat("data: 1\n", 9) + "\n",
+	} {
+		err := ReadFrames(t.Context(), strings.NewReader(input), Operation{Transport: SSE}, 64, func(Value, Object) error { t.Fatal("oversized event delivered"); return nil })
+		if err == nil || !strings.Contains(err.Error(), "response_frame") {
+			t.Fatalf("frame bound not mapped: %v", err)
+		}
+	}
+	count := 0
+	err := ReadFrames(t.Context(), strings.NewReader("data: {}\n\ndata: {\"finished\":true}\n"), Operation{Transport: SSE}, 100, func(Value, Object) error { count++; return nil })
+	if !errors.Is(err, eventstream.ErrIncomplete) || count != 1 {
+		t.Fatalf("partial final frame accepted: count=%d err=%v", count, err)
+	}
+}
+
+func TestHTTPStreamCompactionPreservesRawJSON(t *testing.T) {
+	t.Parallel()
+	value, err := ParseValue([]byte("{\n\"n\":9007199254740993123, \"html\":\"<>&\", \"zero\":-0, \"null\":null, \"false\":false}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, transport := range []Transport{SSE, NDJSON} {
+		var output bytes.Buffer
+		if err := WriteFrame(&output, Operation{Transport: transport}, value); err != nil {
+			t.Fatal(err)
+		}
+		for _, text := range []string{"9007199254740993123", "<>&", `"zero":-0`, `"null":null`, `"false":false`} {
+			if !strings.Contains(output.String(), text) {
+				t.Fatalf("%s lost %s: %s", transport, text, output.String())
+			}
 		}
 	}
 }

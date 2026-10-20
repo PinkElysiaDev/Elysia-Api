@@ -59,6 +59,18 @@ go test -tags=sonic -race ./server ./agent ./internal/clishell \
 UPDATE_AGENT_CLI_DOCS=1 go test -tags=sonic ./server -run '^TestCLIReferenceUpToDate$' -count=1
 ```
 
+## SSE 库迁移定向验证
+
+```sh
+go test -tags=sonic -race ./internal/eventstream ./protocol ./relay ./server \
+  -run '^Test(SSE|HTTP|StreamIdle|OpenAIStreamNotCut|GatewaySSEAndNDJSON|GatewayBrokenStream|GatewayResponsesNativeFailure|GatewayFailureEncoding|ProviderFailureRetains|CustomProtocolStream|TransportFailure|FailureEvidence|AgentCaller|AgentFullTurn|AgentGatedToolApproval|AgentStopTurn|AgentKeyCreateSecret|OpenAIChatPassthroughStream|ResponsesPassthroughStream|StreamCancellationUsage|ToolOnlyStreamWithoutUsage|CanceledConnection)' \
+  -count=1 -timeout=4m
+```
+
+覆盖库适配的完整帧 EOF、LF/CRLF/CR 分隔、BOM、事件 ID、控制帧、整帧预算、写失败及取消，
+并验证真实 HTTP 桥接、尾部用量入账、Agent 事件和上游错误归属。
+选型与兼容性差异见 [SSE 迁移说明](../docs/backend-sse-migration.md)。
+
 ## 测试组织与去重
 
 缓存的定向 benchmark、Otter 替换前后结果及容量语义差异见

@@ -12,6 +12,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/rs/zerolog v1.35.1
 	github.com/spf13/cobra v1.10.2
+	github.com/tmaxmax/go-sse v0.11.0
 	golang.org/x/net v0.61.0
 	golang.org/x/sync v0.24.0
 	modernc.org/sqlite v1.60.1

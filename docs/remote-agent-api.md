@@ -74,6 +74,8 @@ curl -N "http://127.0.0.1:8765/api/agent/sessions/<SESSION_ID>/messages" \
 
 ### SSE 与生命周期
 
+REST/admin Agent 事件及心跳注释使用 `go-sse` v0.11.0 编码，JSON 载荷使用 Sonic。事件名、逐事件 flush 及独立轮次生命周期保持原有行为。上游帧大小限制与 EOF 处理差异见 [SSE 迁移说明](backend-sse-migration.md)。
+
 | 事件 | 内容 |
 | --- | --- |
 | `status` | 调用模型、执行工具等阶段 |

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/elysia-api/backend/internal/eventstream"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/gin-gonic/gin"
@@ -274,7 +275,7 @@ func (stream *gatewayStream) finish(err error) error {
 		// Done lists accepted alternatives; output uses the first canonical marker.
 		marker := stream.plan.operation.Framing.Done[0]
 		if stream.plan.operation.Transport == protocol.SSE {
-			if _, err := fmt.Fprintf(stream.context.Writer, "data: %s\n\n", marker); err != nil {
+			if err := eventstream.Write(stream.context.Writer, "", marker); err != nil {
 				return err
 			}
 		} else if _, err := fmt.Fprintln(stream.context.Writer, marker); err != nil {
