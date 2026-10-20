@@ -1,0 +1,312 @@
+diff --git a/backend/protocol/builtin/continuation.go b/backend/protocol/builtin/continuation.go
+index 2db968c..52a938d 100644
+--- a/backend/protocol/builtin/continuation.go
++++ b/backend/protocol/builtin/continuation.go
+@@ -36,6 +36,7 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
+ 			return raw, nil
+ 		}
+ 		out := make([]p.Value, 0, len(blocks))
++		changed := false
+ 		for _, block := range blocks {
+ 			b, e := block.ReadObject()
+ 			if e != nil {
+@@ -44,6 +45,7 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
+ 			}
+ 			typ, _ := stringValue(b["type"])
+ 			if typ == "thinking" && add(b["signature"]) {
++				changed = true
+ 				if b["thinking"].IsZero() || b["thinking"].IsString("") {
+ 					continue
+ 				}
+@@ -52,10 +54,14 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
+ 				continue
+ 			}
+ 			if typ == "reasoning" && add(b["encrypted_content"]) {
++				changed = true
+ 				continue
+ 			}
+ 			out = append(out, block)
+ 		}
++		if !changed {
++			return raw, nil
++		}
+ 		return p.EncodeValue(out)
+ 	}
+ 	history := "messages"
+@@ -76,6 +82,7 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
+ 		if family == "openai_responses" && m["type"].IsString("reasoning") && add(m["encrypted_content"]) {
+ 			continue
+ 		}
++		changed := false
+ 		if m["role"].IsString("assistant") {
+ 			if family == "openai_chat" {
+ 				var carriers []p.Value
+@@ -89,18 +96,24 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
+ 						}
+ 					}
+ 					delete(m, "elysia_continuation")
++					changed = true
+ 				}
+ 			}
+ 			if family == "claude" {
+-				m["content"], err = stripBlocks(m["content"])
++				original := m["content"]
++				m["content"], err = stripBlocks(original)
+ 				if err != nil {
+ 					return nil, nil, err
+ 				}
++				changed = m["content"] != original
+ 			}
+ 		}
+-		value, err := p.EncodeValue(m)
+-		if err != nil {
+-			return nil, nil, err
++		value := message
++		if changed {
++			value, err = p.EncodeValue(m)
++			if err != nil {
++				return nil, nil, err
++			}
+ 		}
+ 		out = append(out, value)
+ 	}
+diff --git a/backend/protocol/builtin/json.go b/backend/protocol/builtin/json.go
+index 19ffc28..6ac6699 100644
+--- a/backend/protocol/builtin/json.go
++++ b/backend/protocol/builtin/json.go
+@@ -2,6 +2,7 @@ package builtin
+ 
+ import (
+ 	"fmt"
++	"slices"
+ 	"sort"
+ 	"strings"
+ 
+@@ -92,9 +93,15 @@ func encodeJSONArguments(value p.Value) p.Value {
+ }
+ 
+ func collectUnknown(fields p.Object, known []string) p.Value {
+-	extra := copyFields(fields)
+-	for _, name := range known {
+-		delete(extra, name)
++	var extra p.Object
++	for name, value := range fields {
++		if slices.Contains(known, name) {
++			continue
++		}
++		if extra == nil {
++			extra = p.Object{}
++		}
++		extra[name] = value
+ 	}
+ 	if len(extra) == 0 {
+ 		return p.Value{}
+diff --git a/backend/protocol/routing.go b/backend/protocol/routing.go
+index 2f168cf..fcea349 100644
+--- a/backend/protocol/routing.go
++++ b/backend/protocol/routing.go
+@@ -72,7 +72,9 @@ func checkBinding(binding Binding, compiled *Compiled, requestDirection, respons
+ 			issues = append(issues, entry)
+ 		}
+ 	}
+-	operations := compiled.Operations()
++	// This package owns the immutable revision. Binding checks only inspect
++	// metadata; copying schemas and task expressions adds no isolation here.
++	operations := compiled.operations
+ 	if binding.Wait != nil {
+ 		operation := operations[binding.Operation]
+ 		wait := binding.Wait
+diff --git a/backend/server/gateway_public.go b/backend/server/gateway_public.go
+index 72efe34..b915441 100644
+--- a/backend/server/gateway_public.go
++++ b/backend/server/gateway_public.go
+@@ -56,7 +56,7 @@ func (s *Server) serveVersionedPublicIngress(c *gin.Context) {
+ 	// Existing base URLs can include /v1 or /v1beta; operation paths remain
+ 	// relative to that configured base. Try only these documented API prefixes.
+ 	for _, candidate := range []string{path, strings.TrimPrefix(path, "/v1"), strings.TrimPrefix(path, "/v1beta")} {
+-		for _, operation := range ingress.Operations() {
++		for _, operation := range ingress.OperationRoutes() {
+ 			if _, matches := protocol.MatchOperationPath(operation.Path, candidate); matches {
+ 				s.serveProtocolRequest(c, view, ingress, candidate, body)
+ 				return
+diff --git a/backend/storage/log_store.go b/backend/storage/log_store.go
+index 100394b..19554d0 100644
+--- a/backend/storage/log_store.go
++++ b/backend/storage/log_store.go
+@@ -56,6 +56,16 @@ func OpenLogStore(path string) (*LogStore, error) {
+ 		db.Close()
+ 		return nil, err
+ 	}
++	s.usageInsert, err = db.PrepareContext(ctx, insertUsageRecordSQL)
++	if err == nil {
++		s.usageRollup, err = db.PrepareContext(ctx, upsertUsageRollupSQL)
++	}
++	if err != nil {
++		cancel()
++		s.readDB.Close()
++		db.Close()
++		return nil, err
++	}
+ 	return s, nil
+ }
+ 
+@@ -115,7 +125,7 @@ func (s *LogStore) Close() error {
+ 		// FULL synchronous commits are durable in WAL even if another reader
+ 		// prevents truncation. Checkpoint is for orderly file reclamation.
+ 		_, err := s.Checkpoint(ctx, true)
+-		s.closeErr = errors.Join(readErr, err, s.db.Close())
++		s.closeErr = errors.Join(readErr, err, s.usageInsert.Close(), s.usageRollup.Close(), s.db.Close())
+ 	})
+ 	return s.closeErr
+ }
+diff --git a/backend/storage/log_store_test.go b/backend/storage/log_store_test.go
+index 6419c86..70944cc 100644
+--- a/backend/storage/log_store_test.go
++++ b/backend/storage/log_store_test.go
+@@ -132,6 +132,35 @@ func TestUsageBatchRollbackKeepsRollupsConsistent(t *testing.T) {
+ 	}
+ }
+ 
++func TestUsagePreparedStatementsSurviveReconnect(t *testing.T) {
++	s, err := OpenLogStore(filepath.Join(t.TempDir(), "log.db"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer s.Close()
++	// database/sql must reprepare the store-owned statements on replacement
++	// connections; transaction-local wrappers must not close their parent.
++	s.db.SetMaxIdleConns(0)
++	for _, id := range []string{"one", "two", "three"} {
++		records := []UsageRecordInput{{Payload: []byte(`{}`), Summary: UsageLogItem{RequestID: id, TotalTokens: 7}}}
++		for range 2 {
++			if err := s.SaveUsageBatch(t.Context(), records); err != nil {
++				t.Fatal(err)
++			}
++		}
++	}
++	var rows, tokens int
++	if err := s.db.QueryRow("SELECT count(*) FROM usage_records").Scan(&rows); err != nil {
++		t.Fatal(err)
++	}
++	if err := s.db.QueryRow("SELECT coalesce(sum(total_tok),0) FROM usage_rollup_hour").Scan(&tokens); err != nil {
++		t.Fatal(err)
++	}
++	if rows != 3 || tokens != 21 {
++		t.Fatalf("prepared writes lost idempotence: %d rows, %d tokens", rows, tokens)
++	}
++}
++
+ func TestLogReadersDoNotBlockWriterAndConfigureEveryConnection(t *testing.T) {
+ 	s, err := OpenLogStore(filepath.Join(t.TempDir(), "events #1.db"))
+ 	if err != nil {
+diff --git a/backend/storage/rollup.go b/backend/storage/rollup.go
+index 6ca85fb..003d3f3 100644
+--- a/backend/storage/rollup.go
++++ b/backend/storage/rollup.go
+@@ -232,8 +232,8 @@ FROM usage_records WHERE started_ms > 0 AND started_ms >= ? AND started_ms < ? G
+ 	return tx.Commit()
+ }
+ 
+-// upsertUsageRollupTx 把一条记录增量并入其 (小时, 维度) 桶。与原始行同事务。
+-func upsertUsageRollupTx(ctx context.Context, tx *sql.Tx, summary UsageLogItem) error {
++// upsertUsageRollup uses a prepared statement bound to the raw record's transaction.
++func upsertUsageRollup(ctx context.Context, statement *sql.Stmt, summary UsageLogItem) error {
+ 	startedMs := summary.StartedAt.UnixMilli()
+ 	hourMs := startedMs / msPerHour * msPerHour
+ 	var fbSum, fbCnt int64
+@@ -244,7 +244,14 @@ func upsertUsageRollupTx(ctx context.Context, tx *sql.Tx, summary UsageLogItem)
+ 	if summary.UsageReportMask&UsageReportCreation != 0 {
+ 		ccRows = 1
+ 	}
+-	_, err := tx.ExecContext(ctx, `INSERT INTO usage_rollup_hour(hour_ms, model_name, group_name, key_name, status_code, cnt, in_tok, out_tok, total_tok, cache_tok, cc_tok, cc_rows, dur_ms_sum, fb_ms_sum, fb_cnt, min_started_ms, max_started_ms)
++	_, err := statement.ExecContext(ctx,
++		hourMs, summary.ModelName, summary.GroupName, summary.KeyName, summary.StatusCode,
++		summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, summary.CacheCreationTokens, ccRows,
++		summary.DurationMs, fbSum, fbCnt, startedMs, startedMs)
++	return err
++}
++
++const upsertUsageRollupSQL = `INSERT INTO usage_rollup_hour(hour_ms, model_name, group_name, key_name, status_code, cnt, in_tok, out_tok, total_tok, cache_tok, cc_tok, cc_rows, dur_ms_sum, fb_ms_sum, fb_cnt, min_started_ms, max_started_ms)
+ VALUES(?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ ON CONFLICT(hour_ms, model_name, group_name, key_name, status_code) DO UPDATE SET
+   cnt = cnt + 1,
+@@ -258,9 +265,4 @@ ON CONFLICT(hour_ms, model_name, group_name, key_name, status_code) DO UPDATE SE
+   fb_ms_sum = fb_ms_sum + excluded.fb_ms_sum,
+   fb_cnt = fb_cnt + excluded.fb_cnt,
+   min_started_ms = MIN(min_started_ms, excluded.min_started_ms),
+-  max_started_ms = MAX(max_started_ms, excluded.max_started_ms)`,
+-		hourMs, summary.ModelName, summary.GroupName, summary.KeyName, summary.StatusCode,
+-		summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, summary.CacheCreationTokens, ccRows,
+-		summary.DurationMs, fbSum, fbCnt, startedMs, startedMs)
+-	return err
+-}
++  max_started_ms = MAX(max_started_ms, excluded.max_started_ms)`
+diff --git a/backend/storage/types.go b/backend/storage/types.go
+index c6ff887..afae068 100644
+--- a/backend/storage/types.go
++++ b/backend/storage/types.go
+@@ -21,11 +21,13 @@ type Store struct {
+ 
+ // LogStore owns only diagnostic and usage data, in a separate SQLite file.
+ type LogStore struct {
+-	db        *sql.DB
+-	readDB    *sql.DB
+-	path      string
+-	closeOnce sync.Once
+-	closeErr  error
++	db          *sql.DB
++	readDB      *sql.DB
++	usageInsert *sql.Stmt
++	usageRollup *sql.Stmt
++	path        string
++	closeOnce   sync.Once
++	closeErr    error
+ 	// rollupReady：小时级预聚合已完成回填，聚合查询可走 rollup 路径。
+ 	rollupReady atomic.Bool
+ 	rollupMu    sync.Mutex // 序列化回填执行（防重复启动）
+diff --git a/backend/storage/usage_logs.go b/backend/storage/usage_logs.go
+index 7134de8..24a9748 100644
+--- a/backend/storage/usage_logs.go
++++ b/backend/storage/usage_logs.go
+@@ -23,6 +23,10 @@ type UsageRecordInput struct {
+ func (s *LogStore) SaveUsageBatch(ctx context.Context, records []UsageRecordInput) error {
+ 	// Raw records, attachment references and rollup increments commit together.
+ 	return withTx(ctx, s.db, func(tx *sql.Tx) error {
++		insert := tx.StmtContext(ctx, s.usageInsert)
++		defer insert.Close()
++		rollup := tx.StmtContext(ctx, s.usageRollup)
++		defer rollup.Close()
+ 		for _, record := range records {
+ 			if record.EndedAt.IsZero() {
+ 				record.EndedAt = time.Now()
+@@ -30,7 +34,7 @@ func (s *LogStore) SaveUsageBatch(ctx context.Context, records []UsageRecordInpu
+ 			if record.Summary.StartedAt.IsZero() {
+ 				record.Summary.StartedAt = record.EndedAt
+ 			}
+-			if err := saveUsageRecordTx(ctx, tx, record.Payload, record.Summary, record.EndedAt, record.Assets); err != nil {
++			if err := saveUsageRecordTx(ctx, tx, insert, rollup, record.Payload, record.Summary, record.EndedAt, record.Assets); err != nil {
+ 				return err
+ 			}
+ 		}
+@@ -38,8 +42,10 @@ func (s *LogStore) SaveUsageBatch(ctx context.Context, records []UsageRecordInpu
+ 	})
+ }
+ 
+-func saveUsageRecordTx(ctx context.Context, tx *sql.Tx, payload []byte, summary UsageLogItem, endedAt time.Time, assets []UsageAsset) error {
+-	res, err := tx.ExecContext(ctx, `INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, key_name, key_hash, requested_model_group, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, cache_creation_tokens, usage_report_mask, request_truncated, response_truncated, record_json, content_bytes) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(request_id) DO NOTHING`, summary.RequestID, summary.StartedAt.UTC().Format(time.RFC3339Nano), summary.StartedAt.UnixMilli(), endedAt.UTC().Format(time.RFC3339Nano), summary.KeyName, summary.KeyHash, summary.RequestedModelGroup, summary.GroupName, summary.ModelName, summary.SourceID, summary.Platform, summary.SourceFormat, summary.TargetFormat, summary.RelayMode, summary.ResponsesMode, summary.UsageSource, sqlBoolToInt(summary.Stream), summary.StatusCode, summary.Error, summary.FirstByteMs, summary.DurationMs, summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, summary.CacheCreationTokens, summary.UsageReportMask, sqlBoolToInt(summary.RequestTruncated), sqlBoolToInt(summary.ResponseTruncated), string(payload), len(payload))
++const insertUsageRecordSQL = `INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, key_name, key_hash, requested_model_group, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, cache_creation_tokens, usage_report_mask, request_truncated, response_truncated, record_json, content_bytes) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(request_id) DO NOTHING`
++
++func saveUsageRecordTx(ctx context.Context, tx *sql.Tx, insert, rollup *sql.Stmt, payload []byte, summary UsageLogItem, endedAt time.Time, assets []UsageAsset) error {
++	res, err := insert.ExecContext(ctx, summary.RequestID, summary.StartedAt.UTC().Format(time.RFC3339Nano), summary.StartedAt.UnixMilli(), endedAt.UTC().Format(time.RFC3339Nano), summary.KeyName, summary.KeyHash, summary.RequestedModelGroup, summary.GroupName, summary.ModelName, summary.SourceID, summary.Platform, summary.SourceFormat, summary.TargetFormat, summary.RelayMode, summary.ResponsesMode, summary.UsageSource, sqlBoolToInt(summary.Stream), summary.StatusCode, summary.Error, summary.FirstByteMs, summary.DurationMs, summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, summary.CacheCreationTokens, summary.UsageReportMask, sqlBoolToInt(summary.RequestTruncated), sqlBoolToInt(summary.ResponseTruncated), string(payload), len(payload))
+ 	if err != nil {
+ 		return err
+ 	}
+@@ -56,7 +62,7 @@ func saveUsageRecordTx(ctx context.Context, tx *sql.Tx, payload []byte, summary
+ 			return err
+ 		}
+ 	}
+-	return upsertUsageRollupTx(ctx, tx, summary)
++	return upsertUsageRollup(ctx, rollup, summary)
+ }
+ 
+ func (s *LogStore) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageLogItem, error) {

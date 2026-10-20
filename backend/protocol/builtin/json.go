@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -92,9 +93,15 @@ func encodeJSONArguments(value p.Value) p.Value {
 }
 
 func collectUnknown(fields p.Object, known []string) p.Value {
-	extra := copyFields(fields)
-	for _, name := range known {
-		delete(extra, name)
+	var extra p.Object
+	for name, value := range fields {
+		if slices.Contains(known, name) {
+			continue
+		}
+		if extra == nil {
+			extra = p.Object{}
+		}
+		extra[name] = value
 	}
 	if len(extra) == 0 {
 		return p.Value{}

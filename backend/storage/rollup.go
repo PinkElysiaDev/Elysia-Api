@@ -232,8 +232,8 @@ FROM usage_records WHERE started_ms > 0 AND started_ms >= ? AND started_ms < ? G
 	return tx.Commit()
 }
 
-// upsertUsageRollupTx 把一条记录增量并入其 (小时, 维度) 桶。与原始行同事务。
-func upsertUsageRollupTx(ctx context.Context, tx *sql.Tx, summary UsageLogItem) error {
+// upsertUsageRollup uses a prepared statement bound to the raw record's transaction.
+func upsertUsageRollup(ctx context.Context, statement *sql.Stmt, summary UsageLogItem) error {
 	startedMs := summary.StartedAt.UnixMilli()
 	hourMs := startedMs / msPerHour * msPerHour
 	var fbSum, fbCnt int64
@@ -244,7 +244,14 @@ func upsertUsageRollupTx(ctx context.Context, tx *sql.Tx, summary UsageLogItem) 
 	if summary.UsageReportMask&UsageReportCreation != 0 {
 		ccRows = 1
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO usage_rollup_hour(hour_ms, model_name, group_name, key_name, status_code, cnt, in_tok, out_tok, total_tok, cache_tok, cc_tok, cc_rows, dur_ms_sum, fb_ms_sum, fb_cnt, min_started_ms, max_started_ms)
+	_, err := statement.ExecContext(ctx,
+		hourMs, summary.ModelName, summary.GroupName, summary.KeyName, summary.StatusCode,
+		summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, summary.CacheCreationTokens, ccRows,
+		summary.DurationMs, fbSum, fbCnt, startedMs, startedMs)
+	return err
+}
+
+const upsertUsageRollupSQL = `INSERT INTO usage_rollup_hour(hour_ms, model_name, group_name, key_name, status_code, cnt, in_tok, out_tok, total_tok, cache_tok, cc_tok, cc_rows, dur_ms_sum, fb_ms_sum, fb_cnt, min_started_ms, max_started_ms)
 VALUES(?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(hour_ms, model_name, group_name, key_name, status_code) DO UPDATE SET
   cnt = cnt + 1,
@@ -258,9 +265,4 @@ ON CONFLICT(hour_ms, model_name, group_name, key_name, status_code) DO UPDATE SE
   fb_ms_sum = fb_ms_sum + excluded.fb_ms_sum,
   fb_cnt = fb_cnt + excluded.fb_cnt,
   min_started_ms = MIN(min_started_ms, excluded.min_started_ms),
-  max_started_ms = MAX(max_started_ms, excluded.max_started_ms)`,
-		hourMs, summary.ModelName, summary.GroupName, summary.KeyName, summary.StatusCode,
-		summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, summary.CacheCreationTokens, ccRows,
-		summary.DurationMs, fbSum, fbCnt, startedMs, startedMs)
-	return err
-}
+  max_started_ms = MAX(max_started_ms, excluded.max_started_ms)`

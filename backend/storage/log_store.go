@@ -56,6 +56,16 @@ func OpenLogStore(path string) (*LogStore, error) {
 		db.Close()
 		return nil, err
 	}
+	s.usageInsert, err = db.PrepareContext(ctx, insertUsageRecordSQL)
+	if err == nil {
+		s.usageRollup, err = db.PrepareContext(ctx, upsertUsageRollupSQL)
+	}
+	if err != nil {
+		cancel()
+		s.readDB.Close()
+		db.Close()
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -115,7 +125,7 @@ func (s *LogStore) Close() error {
 		// FULL synchronous commits are durable in WAL even if another reader
 		// prevents truncation. Checkpoint is for orderly file reclamation.
 		_, err := s.Checkpoint(ctx, true)
-		s.closeErr = errors.Join(readErr, err, s.db.Close())
+		s.closeErr = errors.Join(readErr, err, s.usageInsert.Close(), s.usageRollup.Close(), s.db.Close())
 	})
 	return s.closeErr
 }

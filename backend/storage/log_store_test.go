@@ -132,6 +132,35 @@ func TestUsageBatchRollbackKeepsRollupsConsistent(t *testing.T) {
 	}
 }
 
+func TestUsagePreparedStatementsSurviveReconnect(t *testing.T) {
+	s, err := OpenLogStore(filepath.Join(t.TempDir(), "log.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	// database/sql must reprepare the store-owned statements on replacement
+	// connections; transaction-local wrappers must not close their parent.
+	s.db.SetMaxIdleConns(0)
+	for _, id := range []string{"one", "two", "three"} {
+		records := []UsageRecordInput{{Payload: []byte(`{}`), Summary: UsageLogItem{RequestID: id, TotalTokens: 7}}}
+		for range 2 {
+			if err := s.SaveUsageBatch(t.Context(), records); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	var rows, tokens int
+	if err := s.db.QueryRow("SELECT count(*) FROM usage_records").Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRow("SELECT coalesce(sum(total_tok),0) FROM usage_rollup_hour").Scan(&tokens); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 3 || tokens != 21 {
+		t.Fatalf("prepared writes lost idempotence: %d rows, %d tokens", rows, tokens)
+	}
+}
+
 func TestLogReadersDoNotBlockWriterAndConfigureEveryConnection(t *testing.T) {
 	s, err := OpenLogStore(filepath.Join(t.TempDir(), "events #1.db"))
 	if err != nil {
