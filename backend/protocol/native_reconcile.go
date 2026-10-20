@@ -10,8 +10,12 @@ import (
 // Arrays need a declared identity when several changed nodes carry extensions;
 // guessing their association would move extensions to the wrong tool/message.
 func reconcileNative(ctx context.Context, original, before, after Value, policy NativePolicy, limits Limits) (Value, error) {
-	state := nativeReconciler{ctx: ctx, policy: policy, limits: limits}
-	value, err := state.merge(original, before, after, "", 1)
+	state := nativeReconciler{ctx: ctx, policy: policy, limits: limits, deferred: max(original.Len(), before.Len(), after.Len()) >= 64<<10}
+	output, err := state.merge(original, before, after, "", 1)
+	if err != nil {
+		return Value{}, err
+	}
+	value, err := output.Encode(ctx)
 	if err != nil {
 		return Value{}, err
 	}
@@ -22,30 +26,31 @@ func reconcileNative(ctx context.Context, original, before, after Value, policy 
 }
 
 type nativeReconciler struct {
-	ctx    context.Context
-	policy NativePolicy
-	limits Limits
-	nodes  int
+	ctx      context.Context
+	policy   NativePolicy
+	limits   Limits
+	nodes    int
+	deferred bool
 }
 
-func (state *nativeReconciler) merge(original, before, after Value, path string, depth int) (Value, error) {
+func (state *nativeReconciler) merge(original, before, after Value, path string, depth int) (JSONOutput, error) {
 	if err := state.ctx.Err(); err != nil {
-		return Value{}, err
+		return JSONOutput{}, err
 	}
 	state.nodes++
 	if depth > state.limits.Depth {
-		return Value{}, &ResourceLimitError{Domain: "native_reconciliation", Metric: "depth", Limit: state.limits.Depth, Observed: depth, Path: path}
+		return JSONOutput{}, &ResourceLimitError{Domain: "native_reconciliation", Metric: "depth", Limit: state.limits.Depth, Observed: depth, Path: path}
 	}
 	if state.nodes > state.limits.Nodes {
-		return Value{}, &ResourceLimitError{Domain: "native_reconciliation", Metric: "nodes", Limit: state.limits.Nodes, Observed: state.nodes, Path: path}
+		return JSONOutput{}, &ResourceLimitError{Domain: "native_reconciliation", Metric: "nodes", Limit: state.limits.Nodes, Observed: state.nodes, Path: path}
 	}
 	if equalNativeValues(before, after) {
-		return original, nil
+		return JSONLeaf(original), nil
 	}
 	// A fully represented subtree has no unmapped native fields to associate.
 	// Its semantic replacement is authoritative, including reorders and deletions.
 	if equalNativeValues(original, before) {
-		return after, nil
+		return JSONLeaf(after), nil
 	}
 	if original.IsObject() && before.IsObject() && after.IsObject() {
 		return state.mergeObject(original, before, after, path, depth)
@@ -53,10 +58,10 @@ func (state *nativeReconciler) merge(original, before, after Value, path string,
 	if valueType(original) == ArrayType && valueType(before) == ArrayType && valueType(after) == ArrayType {
 		return state.mergeArray(original, before, after, path, depth)
 	}
-	return after, nil
+	return JSONLeaf(after), nil
 }
 
-func (state *nativeReconciler) mergeObject(original, before, after Value, path string, depth int) (Value, error) {
+func (state *nativeReconciler) mergeObject(original, before, after Value, path string, depth int) (JSONOutput, error) {
 	// Container types were checked at the boundary; Value is already valid JSON.
 	fields, _ := original.readObjectWithin(requestValueReader(original))
 	oldFields, _ := before.readObjectWithin(requestValueReader(before))
@@ -66,52 +71,89 @@ func (state *nativeReconciler) mergeObject(original, before, after Value, path s
 			delete(fields, key)
 		}
 	}
+	var result map[string]JSONOutput
+	if state.deferred {
+		result = make(map[string]JSONOutput, max(len(fields), len(newFields)))
+		for key, value := range fields {
+			result[key] = JSONLeaf(value)
+		}
+	}
 	for _, key := range sortedKeys(newFields) {
 		oldValue, wasPresent := oldFields[key]
 		newValue := newFields[key]
 		if !wasPresent {
-			fields[key] = newValue
+			if state.deferred {
+				result[key] = JSONLeaf(newValue)
+			} else {
+				fields[key] = newValue
+			}
 			continue
 		}
 		merged, err := state.merge(fields[key], oldValue, newValue, path+"/"+escapePointer(key), depth+1)
 		if err != nil {
-			return Value{}, err
+			return JSONOutput{}, err
 		}
 		if !merged.IsZero() {
-			fields[key] = merged
+			if state.deferred {
+				result[key] = merged
+			} else {
+				fields[key] = merged.value
+			}
 		}
 	}
-	return EncodeValue(fields)
+	if state.deferred {
+		return JSONObject(result), nil
+	}
+	value, err := EncodeValue(fields)
+	return JSONLeaf(value), err
 }
 
-func (state *nativeReconciler) mergeArray(original, before, after Value, path string, depth int) (Value, error) {
+func (state *nativeReconciler) mergeArray(original, before, after Value, path string, depth int) (JSONOutput, error) {
 	items, _ := original.readArrayWithin(requestValueReader(original))
 	oldItems, _ := before.readArrayWithin(requestValueReader(before))
 	newItems, _ := after.readArrayWithin(requestValueReader(after))
 	if len(newItems) == 0 {
-		return after, nil
+		return JSONLeaf(after), nil
 	}
 	if len(items) != len(oldItems) {
-		return Value{}, fmt.Errorf("%s: decoder/encoder changed native array cardinality; an explicit mapping is required", path)
+		return JSONOutput{}, fmt.Errorf("%s: decoder/encoder changed native array cardinality; an explicit mapping is required", path)
 	}
 	indices, err := matchNativeItems(oldItems, newItems, state.policy.ArrayKeys[path])
 	if err != nil {
-		return Value{}, fmt.Errorf("%s: %w", path, err)
+		return JSONOutput{}, fmt.Errorf("%s: %w", path, err)
 	}
-	result := make([]Value, len(newItems))
+	var result []JSONOutput
+	var values []Value
+	if state.deferred {
+		result = make([]JSONOutput, len(newItems))
+	} else {
+		values = make([]Value, len(newItems))
+	}
 	for index, item := range newItems {
 		previous := indices[index]
 		if previous < 0 {
-			result[index] = item
+			if state.deferred {
+				result[index] = JSONLeaf(item)
+			} else {
+				values[index] = item
+			}
 			continue
 		}
 		merged, err := state.merge(items[previous], oldItems[previous], item, fmt.Sprintf("%s/%d", path, index), depth+1)
 		if err != nil {
-			return Value{}, err
+			return JSONOutput{}, err
 		}
-		result[index] = merged
+		if state.deferred {
+			result[index] = merged
+		} else {
+			values[index] = merged.value
+		}
 	}
-	return EncodeValue(result)
+	if state.deferred {
+		return JSONArray(result), nil
+	}
+	value, err := EncodeValue(values)
+	return JSONLeaf(value), err
 }
 
 func matchNativeItems(before, after []Value, key string) ([]int, error) {

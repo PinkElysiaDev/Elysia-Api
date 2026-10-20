@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -246,7 +247,11 @@ func associateResultNames(nodes []p.Node, names map[string]p.Value) {
 	}
 }
 
-func (adapter module) encodeRequest(request *p.Request, options p.EvaluationContext) (p.Value, error) {
+func (adapter module) encodeRequest(ctx context.Context, request *p.Request, options p.EvaluationContext) (p.Value, error) {
+	return adapter.encodeRequestOutput(ctx, request, options, adapter.canDeferRequest(request))
+}
+
+func (adapter module) encodeRequestOutput(ctx context.Context, request *p.Request, options p.EvaluationContext, deferred bool) (p.Value, error) {
 	if err := checkRequestChoices(request); err != nil {
 		return p.Value{}, err
 	}
@@ -285,19 +290,28 @@ func (adapter module) encodeRequest(request *p.Request, options p.EvaluationCont
 		fields["instructions"] = instructions
 		nodes = nodes[1:]
 	}
-	content, system, err := adapter.encodeMessages(nodes, p.EncodeRequest, options)
-	if err != nil {
-		return p.Value{}, err
-	}
-	switch adapter.name {
-	case Chat:
-		fields["messages"] = content
-	case Responses:
-		fields["input"] = content
-	case Anthropic:
-		fields["messages"], fields["system"] = content, system
-	case Gemini:
-		fields["contents"], fields["systemInstruction"] = content, system
+	var planned map[string]p.JSONOutput
+	if deferred {
+		content, err := adapter.planAnthropicMessages(ctx, nodes, options)
+		if err != nil {
+			return p.Value{}, err
+		}
+		planned = map[string]p.JSONOutput{"messages": content}
+	} else {
+		content, system, err := adapter.encodeMessages(nodes, p.EncodeRequest, options)
+		if err != nil {
+			return p.Value{}, err
+		}
+		switch adapter.name {
+		case Chat:
+			fields["messages"] = content
+		case Responses:
+			fields["input"] = content
+		case Anthropic:
+			fields["messages"], fields["system"] = content, system
+		case Gemini:
+			fields["contents"], fields["systemInstruction"] = content, system
+		}
 	}
 	fields["tools"], err = adapter.encodeTools(request.Tools, options)
 	if err != nil {
@@ -331,6 +345,9 @@ func (adapter module) encodeRequest(request *p.Request, options p.EvaluationCont
 	}
 	if err := adapter.preserveExtensions(fields, request.Parameters); err != nil {
 		return p.Value{}, err
+	}
+	if deferred {
+		return plannedObject(fields, planned).Encode(ctx)
 	}
 	return object(fields), nil
 }

@@ -50,7 +50,7 @@ func (adapter module) Convert(ctx context.Context, direction p.Direction, input 
 		if err := input.Decode(&request); err != nil {
 			return p.Value{}, err
 		}
-		return adapter.encodeRequest(&request, options)
+		return adapter.encodeRequest(ctx, &request, options)
 	case p.DecodeResponse:
 		response, err := adapter.decodeResponse(input, options)
 		if err != nil {
