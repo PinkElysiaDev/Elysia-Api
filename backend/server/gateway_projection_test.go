@@ -16,35 +16,14 @@ import (
 
 func TestGatewayGeminiIncludeAndReasoningProjection(t *testing.T) {
 	t.Parallel()
-	for _, client := range []string{"responses", "messages", "chat", "custom-responses", "custom-messages"} {
+	for _, client := range []string{"responses", "messages", "chat"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/stream=%v", client, stream), func(t *testing.T) {
 				s, _ := newProtocolAdminTestServer(t)
 				activateDiscoveryPresets(t, s)
 				service, _ := s.protocolService()
 				upstream, _ := service.Pin(protocol.PresetGeminiID)
-				clientKind := strings.TrimPrefix(client, "custom-")
-				customIngress := ""
-				if clientKind != client {
-					definition := upstream.Definition()
-					definition.ID = "legacy-gemini"
-					definition.Requires = []string{protocol.ReasoningControlsFeature}
-					persistPreviousRevision(t, s, mustEncodedProtocolValue(t, definition))
-					id := protocol.PresetResponsesID
-					if clientKind == "messages" {
-						id = protocol.PresetAnthropicID
-					}
-					original, _ := service.Pin(id)
-					definition = original.Definition()
-					definition.ID = "legacy-" + clientKind
-					definition.Requires = []string{protocol.ReasoningControlsFeature}
-					customIngress = definition.ID
-					persistPreviousRevision(t, s, mustEncodedProtocolValue(t, definition))
-					if err := s.reloadProtocolRuntime(t.Context()); err != nil {
-						t.Fatal(err)
-					}
-					upstream, _ = service.Pin("legacy-gemini")
-				}
+				clientKind := client
 				calls := 0
 				provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					calls++
@@ -72,13 +51,6 @@ func TestGatewayGeminiIncludeAndReasoningProjection(t *testing.T) {
 				if clientKind == "chat" {
 					path = "/gateway/openai-chat-completions/chat/completions"
 					body = fmt.Sprintf(`{"model":"group","messages":[{"role":"user","content":"hi"}],"stream":%v,"stream_options":{"include_usage":true}}`, stream)
-				}
-				if customIngress != "" {
-					suffix := "/responses"
-					if clientKind == "messages" {
-						suffix = "/v1/messages"
-					}
-					path = "/gateway/" + customIngress + suffix
 				}
 				req := httptest.NewRequest("POST", path, strings.NewReader(body))
 				req.Header.Set("Authorization", "Bearer gateway-test-token")

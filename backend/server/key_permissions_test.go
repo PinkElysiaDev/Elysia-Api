@@ -23,7 +23,7 @@ func newKeyPermissionTestServer(t *testing.T) *Server {
 	s.initLifecycle()
 	t.Cleanup(func() {
 		s.lifecycleCancel()
-		s.sourceRefreshWG.Wait()
+		s.sourceRefreshJobs().wait()
 	})
 	activateDiscoveryPresets(t, s)
 	return s

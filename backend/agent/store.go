@@ -53,6 +53,9 @@ var ErrSessionRunning = errors.New("agent session already has a running turn")
 
 var ErrEngineClosed = errors.New("agent engine is shutting down")
 
+// ErrSessionNotFound identifies an absent session without exposing the storage driver.
+var ErrSessionNotFound = errors.New("agent session not found")
+
 // ErrNoPendingApproval 会话不在等待审批状态。
 var ErrNoPendingApproval = errors.New("agent session has no pending approval")
 

@@ -22,7 +22,7 @@ func newSourceRefreshTestServer(t *testing.T) *Server {
 	s.initLifecycle()
 	t.Cleanup(func() {
 		s.lifecycleCancel()
-		s.sourceRefreshWG.Wait()
+		s.sourceRefreshJobs().wait()
 	})
 	definition := loadGatewayDefinition(t, "text-alpha")
 	definition.ID, definition.Name = "refresh-jobs", "refresh-jobs"
@@ -48,7 +48,7 @@ func seedRefreshJobSource(t *testing.T, s *Server, url string, keys []storage.So
 // evidence verification as a stuck refresh. The test runner bounds the wait.
 func waitForSourceRefreshDone(t *testing.T, s *Server, sourceID string) {
 	t.Helper()
-	s.sourceRefreshWG.Wait()
+	s.sourceRefreshJobs().wait()
 	if state := s.sourceRefreshStateOf(sourceID); state.Refreshing {
 		t.Fatalf("source %s remained refreshing after its jobs completed: %+v", sourceID, state)
 	}
@@ -247,14 +247,15 @@ func TestSourceRefreshLoadsLatestSnapshotAfterQueue(t *testing.T) {
 	defer upstream.Close()
 	s := newSourceRefreshTestServer(t)
 	src := seedRefreshJobSource(t, s, upstream.URL, []storage.SourceAPIKey{{Value: "old"}}, "old")
-	s.refreshSem = make(chan struct{}, 1)
-	s.refreshSem <- struct{}{}
+	jobs := s.sourceRefreshJobs()
+	jobs.sem = make(chan struct{}, 1)
+	jobs.sem <- struct{}{}
 	s.launchSourceRefresh(src.ID)
 	src.APIKeys = []storage.SourceAPIKey{{Value: "new"}}
 	if err := s.saveSource(t.Context(), src); err != nil {
 		t.Fatal(err)
 	}
-	<-s.refreshSem
+	<-jobs.sem
 	waitForSourceRefreshDone(t, s, src.ID)
 	if !slices.Equal(discoveryModelIDs(t, s), []string{"fresh"}) {
 		t.Fatal("queued refresh did not load new source")

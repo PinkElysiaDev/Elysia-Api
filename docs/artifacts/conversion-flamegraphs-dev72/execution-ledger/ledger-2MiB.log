@@ -1,4 +1,0 @@
-=== RUN   TestDiagnosticLedger
---- PASS: TestDiagnosticLedger (0.61s)
-PASS
-ok  	github.com/elysia-api/backend/protocol/builtin	1.313s

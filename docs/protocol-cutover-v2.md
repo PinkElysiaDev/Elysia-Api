@@ -3,11 +3,10 @@
 [Documentation index](README.en.md) · [Protocol guide](protocol-guide.en.md)
 
 The gateway, native Agent, health checks, model discovery, CLI, MCP and editor
-now consume pinned v2 definitions. `backend/relay` retains HTTP/WebSocket
-transport and the legacy definition importer; it no longer executes the old
-Maheshvara converters or string-template interpreter. Historical types are
-read-only import/hash inputs. A failed migration leaves management available
-for repair and prevents inference using an unverified graph.
+consume pinned current definitions. `backend/relay` provides HTTP/WebSocket
+transport only. There is no historical definition importer or old-schema
+migration path. An unverified graph cannot authorize inference; management
+remains available for current-format repair.
 
 ## Changes protocol authors must account for
 
@@ -84,7 +83,7 @@ remain absent. See the definition expression catalog for typed construction.
 
 ## Upgrade and rollback
 
-Compiler changes require current verification evidence. Shipped presets are read-only and refreshed to the definitions bundled with the program; customization belongs under a separate ID. Custom revisions are reverified without overwriting their content or drafts. Explicit unbound states remain intact. Failed custom bindings are isolated with diagnostics, and concurrent configuration changes invalidate a prepared refresh baseline. See [migration](protocol-migration-v2.md) and [preset recovery (Chinese)](protocol-preset-recovery.md).
+Compiler changes require current verification evidence. Shipped presets are read-only and refreshed to the definitions bundled with the program; customization belongs under a separate ID. Current-format custom revisions are reverified, not executed under historical module semantics. Explicit unbound states remain intact. Failed custom bindings are isolated with diagnostics, and concurrent configuration changes invalidate a prepared refresh baseline. See [deployment](deployment.en.md) and [preset recovery (Chinese)](protocol-preset-recovery.md).
 
 Back up the database, encryption key and configuration and retain the old
 executable. Restore that matching set to roll back a runtime/database upgrade;

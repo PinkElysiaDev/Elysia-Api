@@ -202,17 +202,9 @@ async function render() {
   await writeFile(join(output, 'index.html'), `<!doctype html><meta charset="utf-8"><title>Conversion flame graphs</title><style>body{font:16px sans-serif;margin:2em}img{max-width:100%}</style><h1>Conversion flame graphs</h1><p>Width = selected sample weight; horizontal position is not time. alloc_space is cumulative allocation, inuse_space is sampled live allocation sites, neither is a peak breakdown. Use the profile viewer command for interactive inspection.</p>${profiles.map(item => `<h2>${item.scenario} / ${item.sample} / ${item.focus || 'all'}</h2><a href="${item.png}"><img loading="lazy" src="${item.png}"></a>`).join('\n')}`)
 }
 
-async function history() {
-  const source = resolve(process.env.LOCALAPPDATA, 'Temp/elysia-request-memory-dev72')
-  const folder = join(output, 'historical'); await mkdir(folder, { recursive: true })
-  for (const [from, to] of [['optimized-codecs.cpu.pprof', 'cpu.pprof'], ['optimized-codecs.alloc.pprof', 'alloc.pprof'], ['optimized-builtin.test.exe', 'builtin.test.exe']]) await copyFile(join(source, from), join(folder, to))
-  await writeFile(join(folder, 'metadata.json'), JSON.stringify({ source, runtimeCommit: 'a8341c2', workload: '2 MiB codecs, short historical diagnostic; preparation included', cpuSamplesMS: 370, binarySHA256: digest(await readFile(join(folder, 'builtin.test.exe'))) }, null, 2))
-}
-
 const command = args[0]
 if (command === 'run') await measure()
 else if (command === 'render') await render()
-else if (command === 'history') await history()
 else if (command === 'view') {
   const profile = resolve(option('profile', ''))
   const folder = basename(dirname(profile))
@@ -220,4 +212,4 @@ else if (command === 'view') {
   const selectedBinary = option('binary', localBinary)
   const child = spawn('go', ['tool', 'pprof', `-http=127.0.0.1:${await viewerPort()}`, '-no_browser', `-sample_index=${option('sample', 'cpu')}`, selectedBinary, profile], { stdio: 'inherit', windowsHide: true })
   await new Promise(resolve => child.once('close', resolve))
-} else throw new Error('Usage: node scripts/profile-conversion.mjs history|run|render|view [--mode=cpu|memory|measure] [--cases=image2,image31,nodes,events] [--output=directory]')
+} else throw new Error('Usage: node scripts/profile-conversion.mjs run|render|view [--mode=cpu|memory|measure] [--cases=image2,image31,nodes,events] [--output=directory]')

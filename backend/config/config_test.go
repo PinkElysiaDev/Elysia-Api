@@ -36,8 +36,7 @@ func TestLoadHostEnvironmentOverride(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	content := `{
-  "host": "127.0.0.1",
-  "server": {"host": "127.0.0.1"}
+  "host": "127.0.0.1"
 }`
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)

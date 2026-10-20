@@ -212,10 +212,8 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 	if err := checkRequestChoices(request); err != nil {
 		return nil, err
 	}
-	if options.DefinitionRequires(p.ReasoningControlsFeature) {
-		if err := p.NormalizeReasoningParameters(request, adapter.name, options.InterleavedThinking); err != nil {
-			return nil, err
-		}
+	if err := p.NormalizeReasoningParameters(request, adapter.name, options.InterleavedThinking); err != nil {
+		return nil, err
 	}
 	return request, nil
 }

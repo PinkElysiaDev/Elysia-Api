@@ -459,9 +459,7 @@ func TestUsageQueryWholeSecondBoundary(t *testing.T) {
 	}
 }
 
-// 回归：旧 schema 库（无 started_ms / cache_hit_tokens 列）打开时自动迁移并
-// 回填 started_ms；整秒、毫秒、9 位小数三种 RFC3339Nano 时间戳都必须转换正确。
-// 迁移分批提交，崩溃后重开只补 started_ms=0 的剩余行（幂等）。
+// Malformed timestamps must not create an epoch bucket in daily statistics.
 func TestUnparseableStartedAtExcludedFromRollupIncludedInAllTimeTotals(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bad-ts.sqlite3")
 	store, err := Open(path)
@@ -537,13 +535,7 @@ func TestUnparseableStartedAtExcludedFromRollupIncludedInAllTimeTotals(t *testin
 	}
 	assertNo1970(t, "rollup not ready", rawDaily)
 
-	byHash, err := store.UsageDaily(context.Background(), UsageQuery{KeyHash: "kh"}, 0)
-	if err != nil {
-		t.Fatalf("daily keyHash: %v", err)
-	}
-	assertNo1970(t, "keyHash", byHash)
-
-	bySource, err := store.UsageDaily(context.Background(), UsageQuery{SourceID: "src"}, 0)
+	bySource, err := store.UsageDaily(context.Background(), UsageQuery{SourceIDs: []string{"src"}}, 0)
 	if err != nil {
 		t.Fatalf("daily sourceId: %v", err)
 	}
@@ -555,7 +547,7 @@ func TestUnparseableStartedAtExcludedFromRollupIncludedInAllTimeTotals(t *testin
 	}
 	assertNo1970(t, "+05:30", halfHour)
 
-	modelDaily, err := store.UsageByModelDaily(context.Background(), UsageQuery{SourceID: "src"}, 0, 8)
+	modelDaily, err := store.UsageByModelDaily(context.Background(), UsageQuery{SourceIDs: []string{"src"}}, 0, 8)
 	if err != nil {
 		t.Fatalf("by-model-daily: %v", err)
 	}

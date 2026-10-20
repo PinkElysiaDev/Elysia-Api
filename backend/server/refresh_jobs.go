@@ -2,7 +2,8 @@ package server
 
 import (
 	"context"
-	"fmt"
+	"slices"
+	"sync"
 	"time"
 )
 
@@ -28,106 +29,95 @@ type sourceRefreshState struct {
 	LastKeys       []keyFetchOutcome `json:"lastKeys,omitempty"`
 }
 
-func (s *Server) beginSourceRefresh(sourceID string) bool {
-	s.initLifecycle()
-	s.sourceRefreshMu.Lock()
-	defer s.sourceRefreshMu.Unlock()
-	if s.lifecycleCtx.Err() != nil || s.sourceRefreshing[sourceID] {
-		return false
-	}
-	if s.sourceRefreshing == nil {
-		s.sourceRefreshing = make(map[string]bool)
-	}
-	if s.sourceRefreshPending == nil {
-		s.sourceRefreshPending = make(map[string]bool)
-	}
-	if s.sourceLastFetch == nil {
-		s.sourceLastFetch = make(map[string]sourceRefreshState)
-	}
-	if s.refreshSem == nil {
-		s.refreshSem = make(chan struct{}, sourceRefreshConcurrency)
-	}
-	s.sourceRefreshing[sourceID] = true
-	s.sourceRefreshWG.Add(1)
-	return true
+// sourceRefreshJobs owns registration, coalescing and completion. Its callbacks
+// adapt source persistence and protocol discovery without exposing Server.
+type sourceRefreshJobs struct {
+	once       sync.Once
+	mu         sync.Mutex
+	wg         sync.WaitGroup
+	ctx        context.Context
+	refresh    func(context.Context, string) (refreshSummary, error)
+	exists     func(context.Context, string) (bool, error)
+	invalidate func()
+	log        func(string, string, map[string]any)
+	running    map[string]bool
+	pending    map[string]bool
+	last       map[string]sourceRefreshState
+	sem        chan struct{}
 }
 
-func (s *Server) launchSourceRefresh(sourceID string) bool {
-	if !s.beginSourceRefresh(sourceID) {
+func (j *sourceRefreshJobs) begin(sourceID string) bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.ctx.Err() != nil || j.running[sourceID] {
 		return false
 	}
-	go s.runSourceRefresh(s.lifecycleCtx, sourceID)
+	if j.running == nil {
+		j.running = make(map[string]bool)
+	}
+	if j.pending == nil {
+		j.pending = make(map[string]bool)
+	}
+	if j.last == nil {
+		j.last = make(map[string]sourceRefreshState)
+	}
+	if j.sem == nil {
+		j.sem = make(chan struct{}, sourceRefreshConcurrency)
+	}
+	j.running[sourceID] = true
+	j.wg.Add(1)
 	return true
 }
 
 // Saves coalesce into one follow-up; ordinary refresh clicks only deduplicate.
-func (s *Server) noteSourceSaved(sourceID string, autoFetch bool) {
-	s.sourceRefreshMu.Lock()
-	defer s.sourceRefreshMu.Unlock()
-	if s.sourceRefreshing[sourceID] {
-		s.sourceRefreshPending[sourceID] = autoFetch
+func (j *sourceRefreshJobs) noteSaved(sourceID string, autoFetch bool) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.running[sourceID] {
+		j.pending[sourceID] = autoFetch
 	}
 }
 
-func (s *Server) startSourceRefreshByID(ctx context.Context, sourceID string) (bool, bool, error) {
-	_, found, err := s.findSourceByID(ctx, sourceID)
-	if err != nil {
-		return false, false, err
-	}
-	if !found {
-		return false, false, fmt.Errorf("model source %q not found", sourceID)
-	}
-	started := s.launchSourceRefresh(sourceID)
-	return started, !started, nil
-}
-
-func (s *Server) refreshSourceSync(ctx context.Context, sourceID string) (refreshSummary, error) {
-	if !s.beginSourceRefresh(sourceID) {
-		return refreshSummary{Added: []string{}, Removed: []string{}}, fmt.Errorf("model source %q is already refreshing or server is stopping", sourceID)
-	}
-	return s.runSourceRefresh(ctx, sourceID)
-}
-
-func (s *Server) runSourceRefresh(parent context.Context, sourceID string) (refreshSummary, error) {
-	defer s.sourceRefreshWG.Done()
+func (j *sourceRefreshJobs) run(parent context.Context, sourceID string) (refreshSummary, error) {
+	defer j.wg.Done()
 	defer func() {
-		s.sourceRefreshMu.Lock()
-		defer s.sourceRefreshMu.Unlock()
-		if s.sourceRefreshPending[sourceID] && s.lifecycleCtx.Err() == nil {
+		j.mu.Lock()
+		defer j.mu.Unlock()
+		if j.pending[sourceID] && j.ctx.Err() == nil {
 			// A saved configuration outlives a canceled synchronous caller.
-			s.sourceRefreshWG.Add(1)
-			go s.runSourceRefresh(s.lifecycleCtx, sourceID)
+			j.wg.Add(1)
+			go j.run(j.ctx, sourceID)
 		} else {
-			delete(s.sourceRefreshing, sourceID)
-			delete(s.sourceRefreshPending, sourceID)
+			delete(j.running, sourceID)
+			delete(j.pending, sourceID)
 		}
 	}()
 	ctx, cancel := context.WithTimeout(parent, sourceRefreshBudget)
 	defer cancel()
-	stop := context.AfterFunc(s.lifecycleCtx, cancel)
+	stop := context.AfterFunc(j.ctx, cancel)
 	defer stop()
 	select {
-	case s.refreshSem <- struct{}{}:
+	case j.sem <- struct{}{}:
 	case <-ctx.Done():
 		return refreshSummary{}, ctx.Err()
 	}
-	defer func() { <-s.refreshSem }()
+	defer func() { <-j.sem }()
 
 	for {
-		s.sourceRefreshMu.Lock()
-		delete(s.sourceRefreshPending, sourceID)
-		s.sourceRefreshMu.Unlock()
-		summary, err := s.refreshSourceByID(ctx, sourceID)
+		j.mu.Lock()
+		delete(j.pending, sourceID)
+		j.mu.Unlock()
+		summary, err := j.refresh(ctx, sourceID)
 		if err == nil {
-			s.invalidateRouteCache()
+			j.invalidate()
 		}
-		s.sourceRefreshMu.Lock()
-		if s.sourceRefreshPending[sourceID] && ctx.Err() == nil {
-			s.sourceRefreshMu.Unlock()
+		j.mu.Lock()
+		if j.pending[sourceID] && ctx.Err() == nil {
+			j.mu.Unlock()
 			continue
 		}
 		logCtx, logCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		_, found, lookupErr := s.findSourceByID(logCtx, sourceID)
+		found, lookupErr := j.exists(logCtx, sourceID)
 		if found && lookupErr == nil {
 			state := sourceRefreshState{
 				LastCount: summary.Count, LastAdded: len(summary.Added), LastRemoved: len(summary.Removed),
@@ -138,29 +128,38 @@ func (s *Server) runSourceRefresh(parent context.Context, sourceID string) (refr
 				state.LastError = err.Error()
 				level, message = "warn", "model source refresh failed"
 			}
-			s.sourceLastFetch[sourceID] = state
-			s.logSystemEvent(level, message, map[string]any{
+			j.last[sourceID] = state
+			j.log(level, message, map[string]any{
 				"sourceId": sourceID, "count": summary.Count, "error": state.LastError,
 			})
 		}
 		logCancel()
-		s.sourceRefreshMu.Unlock()
+		j.mu.Unlock()
 		return summary, err
 	}
 }
 
-// sourceRefreshStateOf 返回指定源的当前拉取状态快照（含进行中标志）。
-func (s *Server) sourceRefreshStateOf(sourceID string) sourceRefreshState {
-	s.sourceRefreshMu.Lock()
-	defer s.sourceRefreshMu.Unlock()
-	state := sourceRefreshState{Refreshing: s.sourceRefreshing[sourceID]}
-	if last, ok := s.sourceLastFetch[sourceID]; ok {
-		state.LastCount = last.LastCount
-		state.LastAdded = last.LastAdded
-		state.LastRemoved = last.LastRemoved
-		state.LastError = last.LastError
-		state.LastFinishedAt = last.LastFinishedAt
-		state.LastKeys = last.LastKeys
-	}
+func (j *sourceRefreshJobs) state(sourceID string) sourceRefreshState {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	state := j.last[sourceID]
+	state.Refreshing = j.running[sourceID]
+	state.LastKeys = slices.Clone(state.LastKeys)
 	return state
+}
+
+func (j *sourceRefreshJobs) forget(sourceID string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	delete(j.pending, sourceID)
+	delete(j.last, sourceID)
+}
+
+// Cancellation must precede wait: synchronize with the last registration before
+// joining workers. Follow-ups register before their predecessor releases ownership.
+func (j *sourceRefreshJobs) wait() {
+	j.mu.Lock()
+	//lint:ignore SA2001 Synchronize registration before joining workers.
+	j.mu.Unlock()
+	j.wg.Wait()
 }

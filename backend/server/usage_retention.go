@@ -10,21 +10,27 @@ import (
 	"sync"
 	"time"
 
+	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/storage"
 )
 
 // One worker owns retention, attachment GC, and database reclamation. Wakeups
 // coalesce, but a wakeup received during maintenance always schedules another run.
 type usageRetention struct {
-	server    *Server
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wake      chan struct{}
-	done      chan struct{}
-	startOnce sync.Once
-	runMu     sync.Mutex
-	statsMu   sync.Mutex
-	stats     retentionStats
+	store           *storage.Store
+	systemLogConfig func() config.LogRetentionResolved
+	usageLogConfig  func() config.UsageLogResolved
+	usageAssetsRoot func() string
+	persistMu       *sync.Mutex
+	changed         func()
+	ctx             context.Context
+	cancel          context.CancelFunc
+	wake            chan struct{}
+	done            chan struct{}
+	startOnce       sync.Once
+	runMu           sync.Mutex
+	statsMu         sync.Mutex
+	stats           retentionStats
 }
 
 type retentionStats struct {
@@ -51,21 +57,16 @@ const (
 	retentionYieldPause        = 10 * time.Millisecond
 )
 
-func newUsageRetention(s *Server) *usageRetention {
-	ctx, cancel := context.WithCancel(context.Background())
-	return &usageRetention{server: s, ctx: ctx, cancel: cancel, wake: make(chan struct{}, 1), done: make(chan struct{}), stats: retentionStats{State: "idle", Phase: "idle"}}
-}
-
 func (r *usageRetention) start() {
 	r.startOnce.Do(func() {
 		go func() {
 			defer close(r.done)
-			if r.server.store == nil {
+			if r.store == nil {
 				return
 			}
 			r.runOnce()
 			for {
-				delay := r.server.usageLogConfig().CleanupInterval
+				delay := r.usageLogConfig().CleanupInterval
 				state := r.snapshotStats().State
 				if state == "waiting" {
 					delay = retentionWaitingRetryDelay
@@ -127,7 +128,7 @@ func (r *usageRetention) publish(st retentionStats) {
 func (r *usageRetention) runOnce() {
 	r.runMu.Lock()
 	defer r.runMu.Unlock()
-	if r.ctx.Err() != nil || r.server.store == nil {
+	if r.ctx.Err() != nil || r.store == nil {
 		return
 	}
 	st := retentionStats{State: "running", Phase: "retention", LastRunAt: time.Now()}
@@ -171,19 +172,17 @@ func (r *usageRetention) maintain(st *retentionStats) error {
 // 错误并入 cleanupErr(不中断另一类型的修剪);返回非 nil 仅代表巡检被
 // 取消(调用方应终止整个维护流程)。
 func (r *usageRetention) pruneLogType(st *retentionStats, system bool, cleanupErr *error) error {
-	s, ctx := r.server, r.ctx
+	ctx := r.ctx
 	policy := storage.LogPrunePolicy{}
 	if system {
-		if s.config != nil {
-			sys := s.config.GetSystemLogConfig()
-			policy.MaxRecords = int64(sys.MaxRecords)
-			policy.MaxContentBytes = int64(sys.MaxContentMB) * 1024 * 1024
-			if sys.RetentionDays > 0 {
-				policy.CutoffMS = time.Now().AddDate(0, 0, -sys.RetentionDays).UnixMilli()
-			}
+		sys := r.systemLogConfig()
+		policy.MaxRecords = int64(sys.MaxRecords)
+		policy.MaxContentBytes = int64(sys.MaxContentMB) * 1024 * 1024
+		if sys.RetentionDays > 0 {
+			policy.CutoffMS = time.Now().AddDate(0, 0, -sys.RetentionDays).UnixMilli()
 		}
 	} else {
-		cfg := s.usageLogConfig()
+		cfg := r.usageLogConfig()
 		policy = storage.LogPrunePolicy{MaxRecords: int64(cfg.MaxRecords), MaxContentBytes: cfg.MaxContentBytes}
 		if cfg.RetentionDays > 0 {
 			policy.CutoffMS = time.Now().AddDate(0, 0, -cfg.RetentionDays).UnixMilli()
@@ -195,9 +194,9 @@ func (r *usageRetention) pruneLogType(st *retentionStats, system bool, cleanupEr
 		}
 		// Short transactions share the attachment lifecycle lock with persistence
 		// and reset. No file can acquire a new reference between GC's check/unlink.
-		s.usagePersistMu.Lock()
-		deleted, err := s.store.PruneLogBatch(ctx, system, policy)
-		s.usagePersistMu.Unlock()
+		r.persistMu.Lock()
+		deleted, err := r.store.PruneLogBatch(ctx, system, policy)
+		r.persistMu.Unlock()
 		if err != nil {
 			*cleanupErr = errors.Join(*cleanupErr, err)
 			return nil
@@ -214,8 +213,7 @@ func (r *usageRetention) pruneLogType(st *retentionStats, system bool, cleanupEr
 			return nil
 		}
 		if !system {
-			s.usageCache.flush()
-			s.usageSeq.Add(1)
+			r.changed()
 		}
 		if err := r.yield(); err != nil {
 			return err
@@ -226,11 +224,11 @@ func (r *usageRetention) pruneLogType(st *retentionStats, system bool, cleanupEr
 // reclaimFreePages 回收 auto_vacuum 空闲页直至清零,最后做一次 TRUNCATE
 // checkpoint;checkpoint 被并发读者占用(Busy)时标记受阻并留待下轮。
 func (r *usageRetention) reclaimFreePages(st *retentionStats) error {
-	s, ctx := r.server, r.ctx
+	ctx := r.ctx
 	st.Phase = "reclaim"
 	r.publish(*st)
 	for {
-		pages, err := s.store.UsageDBPageStats(ctx)
+		pages, err := r.store.UsageDBPageStats(ctx)
 		if err != nil {
 			return err
 		}
@@ -239,17 +237,17 @@ func (r *usageRetention) reclaimFreePages(st *retentionStats) error {
 		if pages.FreePages == 0 {
 			break
 		}
-		if err := s.store.ReclaimLogPages(ctx); err != nil {
+		if err := r.store.ReclaimLogPages(ctx); err != nil {
 			return err
 		}
-		cp, err := s.store.Checkpoint(ctx, false)
+		cp, err := r.store.Checkpoint(ctx, false)
 		if err != nil {
 			return err
 		}
 		if cp.Busy {
 			// Stop generating WAL while a reader pins the old snapshot. Retry later.
 			st.CheckpointBlocked = true
-			pages, err = s.store.UsageDBPageStats(ctx)
+			pages, err = r.store.UsageDBPageStats(ctx)
 			if err != nil {
 				return err
 			}
@@ -262,7 +260,7 @@ func (r *usageRetention) reclaimFreePages(st *retentionStats) error {
 	}
 	st.Phase = "checkpoint"
 	r.publish(*st)
-	cp, err := s.store.Checkpoint(ctx, true)
+	cp, err := r.store.Checkpoint(ctx, true)
 	st.CheckpointBlocked = cp.Busy
 	return err
 }
@@ -279,14 +277,13 @@ func (r *usageRetention) yield() error {
 }
 
 func (r *usageRetention) sweepAssets(ctx context.Context) (int, error) {
-	s := r.server
-	s.usagePersistMu.Lock()
-	defer s.usagePersistMu.Unlock()
-	assets, err := s.store.UsageAssets(ctx)
+	r.persistMu.Lock()
+	defer r.persistMu.Unlock()
+	assets, err := r.store.UsageAssets(ctx)
 	if err != nil {
 		return 0, err
 	}
-	root := s.usageAssetsRoot()
+	root := r.usageAssetsRoot()
 	if root == "" {
 		if len(assets) > 0 {
 			return 0, fmt.Errorf("attachment directory is unavailable")
@@ -313,7 +310,7 @@ func (r *usageRetention) sweepAssets(ctx context.Context) (int, error) {
 			failures = errors.Join(failures, err)
 			continue
 		}
-		if err := s.store.ForgetUnusedAsset(ctx, asset.File); err != nil {
+		if err := r.store.ForgetUnusedAsset(ctx, asset.File); err != nil {
 			failures = errors.Join(failures, err)
 			continue
 		}

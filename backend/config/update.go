@@ -4,7 +4,6 @@ import (
 	"slices"
 
 	"github.com/bytedance/sonic"
-	"github.com/elysia-api/backend/internal/outbound"
 )
 
 // Update prepares an isolated candidate and saves it before publishing settings.
@@ -31,7 +30,7 @@ func (c *Config) Update(prepare func(candidate *Config) error) error {
 	if err := candidate.validateLogSettings(); err != nil {
 		return err
 	}
-	if _, err := outbound.ParseProxyURL(candidate.Outbound.ProxyURL); err != nil {
+	if err := candidate.validateProxySettings(); err != nil {
 		return err
 	}
 	if err := candidate.saveLocked(); err != nil {

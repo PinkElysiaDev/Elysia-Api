@@ -15,16 +15,14 @@ import (
 var outboundProxyURL atomic.Pointer[string]
 
 // ParseProxyURL never includes credentials in validation errors.
-func ParseProxyURL(raw string) (*url.URL, error) { return parseProxyURL(raw, false) }
-
-func parseProxyURL(raw string, catalogOverride bool) (*url.URL, error) {
+func ParseProxyURL(raw string) (*url.URL, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
 	}
 	invalid := fmt.Errorf("proxyUrl must be an HTTP proxy URL such as http://127.0.0.1:7890, without a path, query or fragment")
 	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "http" && !(catalogOverride && (u.Scheme == "https" || u.Scheme == "socks5" || u.Scheme == "socks5h"))) || u.Hostname() == "" || u.Opaque != "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+	if err != nil || u.Scheme != "http" || u.Hostname() == "" || u.Opaque != "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
 		return nil, invalid
 	}
 	if strings.Contains(u.Hostname(), ":") && net.ParseIP(u.Hostname()) == nil {
@@ -64,7 +62,7 @@ func (t *outboundTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	}
 	t.mu.Lock()
 	if t.transport == nil || raw != t.current {
-		proxy, err := parseProxyURL(raw, t.override != "")
+		proxy, err := ParseProxyURL(raw)
 		if err != nil {
 			t.mu.Unlock()
 			return nil, err

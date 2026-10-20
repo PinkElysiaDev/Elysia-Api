@@ -84,7 +84,7 @@ func TestResponsesStorageConversion(t *testing.T) {
 		for i := range policy.Rules {
 			if policy.Rules[i].Action == "responses_storage" {
 				if reject {
-					policy.Rules[i].Value = testValue(t, `{"targetCodec":"gemini","onUnsupported":"reject"}`)
+					policy.Rules[i].Value = testValue(t, `{"sourceCodec":"responses","targetCodec":"gemini","onUnsupported":"reject"}`)
 				} else {
 					policy.Rules[i].Enabled = false
 				}

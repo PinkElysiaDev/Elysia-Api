@@ -66,9 +66,9 @@ See [development](development.en.md#release-builds) for builds. Cross-compilatio
 ## Upgrade and rollback
 
 1. Retain the old executable and matching configuration, database and master key. Stop writes before copying or use a consistent SQLite backup; include committed WAL data.
-2. Preview migration on a copy and resolve custom-definition and binding diagnostics. The server reverifies before committing atomically; failure leaves management available for repair.
+2. This release provides no old-schema/configuration compatibility or migration. Initialize a current-format environment, recreate required records through current management APIs, and resolve definition/binding diagnostics.
 3. Shipped presets follow the program version. Keep customization under separate protocol IDs. Check custom revisions, drafts, explicit unbound states and repeated restarts.
 4. Check `runtimeReady`, effective bindings and actual requests. A successful `/health` response alone does not establish protocol readiness.
 5. Revision rollback requires current-engine verification. Program/database rollback restores a matching executable, database, configuration and key; retain the current database first to preserve later records.
 
-`git revert` does not reverse database migration. See [migration](protocol-migration-v2.md) and [preset recovery (Chinese)](protocol-preset-recovery.md).
+`git revert` does not restore persisted data. See [deployment](deployment.en.md#upgrade-backup-and-restore) for upgrade requirements and [preset recovery (Chinese)](protocol-preset-recovery.md) for current protocol recovery.

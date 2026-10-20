@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -145,6 +146,9 @@ func (s *Store) getAgentSession(ctx context.Context, id string, withSecret bool)
 		status, pending_action, plan_summary, created_at, updated_at
 		FROM agent_sessions WHERE id = ?`, strings.TrimSpace(id))
 	session, err := s.scanAgentSessionRow(row, withSecret)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, agent.ErrSessionNotFound
+	}
 	if err != nil {
 		return nil, err
 	}

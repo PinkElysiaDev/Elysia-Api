@@ -84,7 +84,7 @@ Anthropic `thinking.display` 接受 `summarized`、`omitted`、Beta SDK 声明�
 
 ## 旧定义和验证
 
-新内置定义声明 `conversion.reasoning.v1` 并使用统一语义。自定义定义按当前语义契约维护，不保证历史参数形状兼容。内置 Agent 设置也进入同一转换流程。Responses Agent 使用 `store:false` 并请求 `reasoning.encrypted_content`，在工具第二轮回传加密思考和完整工具历史。编译器版本变化后，已有证据必须重新验证。
+内置协议模块始终使用统一思考语义，不再根据定义是否声明 `conversion.reasoning.v1` 选择旧参数表示；`requires` 仍可声明所需引擎能力。自定义定义按当前语义契约维护，不保证历史参数形状兼容。内置 Agent 设置也进入同一转换流程。Responses Agent 使用 `store:false` 并请求 `reasoning.encrypted_content`，在工具第二轮回传加密思考和完整工具历史。编译器版本变化后，已有证据必须重新验证。
 
 覆盖包括四协议 16 个方向的 JSON/SSE 实际出站检查、合法独立控制、哨兵值、Native 防恢复、两种模式硬约束拒绝、零上游调用、候选顺序交换、预算及默认值、证据快照、Agent 绑定模型、缓存用量和签名工具续传。真实端点、SDK 与性能验证方法见[验证与发布检查](protocol-release-readiness.md)。
 

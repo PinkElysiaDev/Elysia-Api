@@ -313,7 +313,6 @@ function serializeUsage(params: UsageQueryParams): Record<string, QueryValue> {
     limit: params.limit,
     offset: params.offset,
     keyName: params.keyName,
-    keyHash: params.keyHash,
     groupName: params.groupName,
     modelName: params.modelName,
     status: params.status,

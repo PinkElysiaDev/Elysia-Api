@@ -17,12 +17,11 @@ type sqlQueryer interface {
 // rollupSplit 计算 rollup 表可精确供数的完整小时区间 [fromHour, toHour)。
 // 返回 ok=false 时调用方必须整体走 raw 路径（优雅降级，行为与阶段一一致）：
 //   - rollup 未就绪（回填未完成或失败）；
-//   - 带 keyHash 筛选（rollup 不含该维度，仅遗留面板使用）；
 //   - 带来源筛选（rollup 不含 source_id，历史行也无法回填该维度）；
 //   - 做本地日分桶且 offset 不是整小时倍数（+5:30 等时区的日边界切在小时桶中间）；
 //   - 窗口本身不足一个完整小时。
 func (s *LogStore) rollupSplit(q UsageQuery, offsetAligned bool) (fromHour, toHour int64, ok bool) {
-	if !s.rollupReady.Load() || q.KeyHash != "" || q.SourceID != "" || len(q.SourceIDs) > 0 || !offsetAligned {
+	if !s.rollupReady.Load() || len(q.SourceIDs) > 0 || !offsetAligned {
 		return 0, 0, false
 	}
 	var fromMs int64
@@ -83,10 +82,10 @@ func rollupEdgeBounds(q UsageQuery, fromHour, toHour int64) (headFrom, headTo, t
 }
 
 // usageRollupWhere 生成 rollup 表的筛选条件（与 usageWhere 的维度语义一致，
-// 但不含时间与 key_hash：时间由小时区间显式给出，keyHash 走 raw 回退）。
+// 但不含时间：时间由小时区间显式给出）。
 // 筛选链构造复用 usageFilterClauses（与 raw 表共享同一份判定逻辑）。
 func usageRollupWhere(q UsageQuery) (string, []any) {
-	clauses, args := usageFilterClauses(q, false, false)
+	clauses, args := usageFilterClauses(q, false)
 	return " AND " + clauses, args
 }
 

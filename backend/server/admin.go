@@ -385,24 +385,14 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 			return
 		}
 		if found {
-			item.APIKey = existing.APIKey
-			// 多 key 池同理:部分更新式 PUT(不回传 apiKeys)会把整池清空
-			// (UpsertSource 空列表=清空),静默降级为单 key。
-			if len(item.APIKeys) == 0 {
-				item.APIKeys = existing.APIKeys
-			}
+			preserveSourceCredentials(&item, existing)
 		}
 	}
 	// 保存前预校验出站地址(请求与拉取都会走该地址):内网/云元数据目标
 	// 在保存时即拒绝,与拨号级校验形成双层防护。
-	for _, raw := range []string{strings.TrimSpace(item.BaseURL), strings.TrimSpace(item.FetchBaseURL)} {
-		if raw == "" {
-			continue
-		}
-		if err := s.validateOutbound(raw); err != nil {
-			respondFail(c, 400, "invalid_base_url", fmt.Sprintf("base url rejected: %v", err))
-			return
-		}
+	if err := s.validateSourceURLs(item); err != nil {
+		respondFail(c, 400, "invalid_base_url", err.Error())
+		return
 	}
 	if err := s.saveSource(c.Request.Context(), item); err != nil {
 		respondFail(c, 400, "save_source_failed", err.Error())
@@ -431,25 +421,6 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 	respondOK(c, item)
 }
 
-// findSourceByID 按 id 查找模型源（用于「留空即不变」保留原 secret）。
-// 查询失败必须显式报错：把错误当「不存在」会让调用方把留空的 api_key 当
-// 「不需要保留」直接写空，静默抹掉存量密钥。
-func (s *Server) findSourceByID(ctx context.Context, id string) (storage.ModelSource, bool, error) {
-	if s.store == nil || id == "" {
-		return storage.ModelSource{}, false, nil
-	}
-	sources, err := s.store.ListSources(ctx)
-	if err != nil {
-		return storage.ModelSource{}, false, err
-	}
-	for _, src := range sources {
-		if src.ID == id {
-			return src, true, nil
-		}
-	}
-	return storage.ModelSource{}, false, nil
-}
-
 func (s *Server) adminDeleteSource(c *gin.Context) {
 	store, okStore := s.requireStore(c)
 	if !okStore {
@@ -460,23 +431,6 @@ func (s *Server) adminDeleteSource(c *gin.Context) {
 		return
 	}
 	respondOK(c, gin.H{"deleted": true})
-}
-
-// deleteSourceCascade 删除模型源并清理运行时残留（源级多 key RR 游标、路由
-// 缓存）。管理端点与 agent 工具共用，保证两条入口的清理语义一致。
-func (s *Server) deleteSourceCascade(ctx context.Context, store *storage.Store, id string) error {
-	if err := store.DeleteSource(ctx, id); err != nil {
-		return err
-	}
-	s.sourceRefreshMu.Lock()
-	delete(s.sourceRefreshPending, id)
-	delete(s.sourceLastFetch, id)
-	s.sourceRefreshMu.Unlock()
-	s.logSystemEvent("warn", "model source deleted", map[string]any{"sourceId": id})
-	// 游标以 sourceID 为键，删除/重建循环下不清理会让 map 随历史源数量无限增长。
-	s.scheduler.ForgetSource(id)
-	s.invalidateRouteCache()
-	return nil
 }
 
 // adminFetchSource 发起指定源的后台模型拉取：**立即返回**，任务在后台执行
@@ -1210,35 +1164,19 @@ func usageQueryFromRequest(c *gin.Context) storage.UsageQuery {
 	if status != "success" && status != "failed" {
 		status = ""
 	}
-	// 多选筛选：QueryArray 收集重复出现的同名参数（?keyName=a&keyName=b）；
-	// 为空时下沉到单值字段，保持与旧调用方（含遗留 /__usage 面板）的兼容。
+	// Repeated canonical parameters also represent a single selection.
 	return storage.UsageQuery{
 		From:       from,
 		To:         to,
 		Limit:      parsePositiveInt(c.Query("limit"), UsageLogsDefaultPageSize),
 		Offset:     parsePositiveInt(c.Query("offset"), 0),
-		KeyName:    c.Query("keyName"),
-		KeyHash:    c.Query("keyHash"),
-		GroupName:  firstNonEmpty(c.Query("groupName"), c.Query("modelGroup")),
-		ModelName:  c.Query("modelName"),
 		Status:     status,
 		StatusCode: parsePositiveInt(c.Query("statusCode"), 0),
 		KeyNames:   compactQueryArray(c.QueryArray("keyName")),
-		GroupNames: compactQueryArray(firstNonEmptyArray(c.QueryArray("groupName"), c.QueryArray("modelGroup"))),
+		GroupNames: compactQueryArray(c.QueryArray("groupName")),
 		ModelNames: compactQueryArray(c.QueryArray("modelName")),
-		SourceID:   c.Query("sourceId"),
 		SourceIDs:  compactQueryArray(c.QueryArray("sourceId")),
 	}
-}
-
-// firstNonEmptyArray 返回第一个非空切片，用于 groupName/modelGroup 两个别名取其一。
-func firstNonEmptyArray(values ...[]string) []string {
-	for _, v := range values {
-		if len(v) > 0 {
-			return v
-		}
-	}
-	return nil
 }
 
 func slugID(value string) string {

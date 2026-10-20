@@ -151,9 +151,9 @@ func (p usageQueryParams) usageQuery() (storage.UsageQuery, error) {
 	}
 	return storage.UsageQuery{
 		From: from, To: to,
-		ModelName:  strings.TrimSpace(p.ModelName),
-		KeyName:    strings.TrimSpace(p.KeyName),
-		GroupName:  strings.TrimSpace(p.GroupName),
+		ModelNames: compactQueryArray([]string{p.ModelName}),
+		KeyNames:   compactQueryArray([]string{p.KeyName}),
+		GroupNames: compactQueryArray([]string{p.GroupName}),
 		Status:     status,
 		StatusCode: p.StatusCode,
 	}, nil
@@ -712,18 +712,14 @@ func (s *Server) validateAgentSource(ctx context.Context, item *storage.ModelSou
 	if err := s.validateSourceProtocol(item); err != nil {
 		return err
 	}
-	if err := s.validateOutbound(item.BaseURL); err != nil {
-		return fmt.Errorf("baseUrl 校验失败: %w", err)
+	if strings.TrimSpace(item.BaseURL) == "" {
+		return fmt.Errorf("baseUrl is required")
 	}
-	if strings.TrimSpace(item.FetchBaseURL) != "" {
-		if err := s.validateOutbound(item.FetchBaseURL); err != nil {
-			return fmt.Errorf("fetchBaseUrl 校验失败: %w", err)
-		}
+	if err := s.validateSourceURLs(*item); err != nil {
+		return err
 	}
-	if item.APIKey == "" && existing != nil {
-		// 留空保留原 key（与管理端点语义一致）。
-		item.APIKey = existing.APIKey
-		item.APIKeys = existing.APIKeys
+	if existing != nil {
+		preserveSourceCredentials(item, *existing)
 	}
 	return nil
 }

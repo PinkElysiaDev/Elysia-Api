@@ -146,7 +146,7 @@ Authorization: Bearer <PANEL_TOKEN>
 
 ## 用量
 
-查询时间使用 RFC3339，范围为 `[from, to)`。`keyName`、`groupName`、`modelName`、`sourceId` 支持重复参数，多选不是逗号拼接。还支持 `keyHash`、`statusCode`、`status=success|failed`，`modelGroup` 为组名兼容参数。
+查询时间使用 RFC3339，范围为 `[from, to)`。`keyName`、`groupName`、`modelName`、`sourceId` 使用同一套重复参数表示单选和多选，不是逗号拼接。还支持 `statusCode`、`status=success|failed`。旧 `keyHash` 筛选和 `modelGroup` 别名已删除。
 
 | GET 路径（前缀 `/api/admin/usage`） | 内容 |
 | --- | --- |
@@ -180,8 +180,6 @@ Authorization: Bearer <PANEL_TOKEN>
 | POST | `/api/admin/protocols/combinations` | 验证入口/上游的能力组合 |
 | GET / PUT | `/api/admin/protocols/bindings` | 读取 / 保存模型源及模型组协议约束 |
 | POST | `/api/admin/protocols/reload` | 编译成功后原子替换注册表 |
-| GET | `/api/admin/protocols/migration` | 迁移状态 |
-| POST | `/api/admin/protocols/migration/preview`、`/api/admin/protocols/migration/apply` | 全图迁移预演及事务切换 |
 
 旧 `/custom-protocols` 执行端点已移除。保存不启用；离线报告必须匹配内容哈希和当前编译器。真实验证与离线报告独立。完整路径、请求结构和并发要求见[协议定义](protocol-definition-reference.md)、[处理器](../backend/server/protocol_revision_admin.go)及[前端 v2 契约](../packages/webui/src/lib/protocol-v2.ts)。
 
