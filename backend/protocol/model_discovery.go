@@ -75,6 +75,13 @@ func (compiler *Compiler) compileModelMappings(compiled *Compiled, definition De
 		}
 		compiled.modelMappings[name] = entry
 	}
+	if len(compiled.modelMappings) > 0 {
+		validator, err := compileValueSchema(&modelPageSchema, compiled.limits)
+		if err != nil {
+			return err
+		}
+		compiled.modelPageValidator = validator
+	}
 	seen := map[string]bool{}
 	for _, sample := range definition.ModelSamples {
 		_, exists := compiled.modelMappings[sample.Operation]
@@ -98,7 +105,7 @@ func (compiled *Compiled) DecodeModelPage(ctx context.Context, operation string,
 	if err != nil {
 		return page, err
 	}
-	if err := checkValueSchema(output, &modelPageSchema, "/models", 0, compiled.limits); err != nil {
+	if err := compiled.modelPageValidator.validate(output, "/models", compiled.limits); err != nil {
 		return page, err
 	}
 	if err := decodeContract(output.Bytes(), &page); err != nil {

@@ -4,6 +4,12 @@
 
 The configuration format is `schemaVersion: 2`; semantic documents use version 1. Author version, content hash and compiler version are independent. Legacy request/response/shape templates are import-only. Read the live contract with `GET /api/admin/protocols/schema` or `elysia protocol schema`: [Definition](../backend/protocol/definition.go), [semantic model](../backend/protocol/model.go), [compiler](../backend/protocol/compiler.go).
 
+## Runtime value-schema validation
+
+The compiler translates the restricted `ValueSchema` language into draft 2020-12 schemas and precompiles them with **santhosh-tekuri/jsonschema/v6 v6.0.3**. Mapping, operation-input and model-page validation reuse revision-owned validators. `nullable` accepts null even when enum is present; exact numbers and last-decoded duplicate keys retain their semantics. Application-owned decoding uses Sonic with `UseNumber`.
+
+**Migration compatibility:** compiler version `2.0.0-dev.73` requires renewed verification evidence. Schema-validated values (including unknown descendants and enum entries) now enforce the numeric conversion bound: at most 4096 bytes per number spelling and exponent in -4096…4096. Complete-value byte/node/depth budgets run before decoding. Diagnostics use library error trees and escaped instance paths; message wording and error ordering can change. See [the migration report](backend-runtime-schema-migration.md) for scope, benchmarks and validation.
+
 ## Generated JSON Schema
 
 The live catalog uses **`github.com/invopop/jsonschema` v0.14.0** to reflect the Go models into JSON Schema draft 2020-12. It provides definition, binding, conversion-policy, and semantic schemas. Structs reject unknown properties; JSON `omitempty` and `omitzero` tags control required fields. The protocol's `Value` type is explicitly mapped to an unrestricted JSON schema, retaining arbitrary JSON values, including null, false, zero, and large numbers. Cache-intent descriptions use the library's `jsonschema_description` tag.

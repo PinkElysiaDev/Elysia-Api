@@ -100,6 +100,22 @@ GOMAXPROCS=1 go test -tags=sonic ./protocol -run '^$' \
 选型与前后基准见 [JSON 遍历评估](../docs/backend-json-traversal-benchmarks.md)。
 本次采用 Sonic Pointer 定点读取；全量 AST 容器替换因小对象、宽对象和数组场景回退而未采用。
 
+## 运行时 Schema 校验迁移
+
+```sh
+go test -tags=sonic -race ./protocol ./protocol/builtin ./server \
+  -run '^Test(RuntimeSchema|Expression|Compile|Operation|Model|Request|JSONModule|Native|Mutation|Typed|Verification|Schema|AgentProtocolV2|ProtocolRevision|ProtocolAdmin|CLIReference)' \
+  -count=1 -timeout=3m
+go test -tags=sonic -race ./protocol/builtin \
+  -run '^Test(ShippedDefinitionsVerify|BuiltinVerifiedProfilesKeepTextRoutesAndFullDiagnostics)$' \
+  -count=1 -timeout=3m
+GOMAXPROCS=1 go test -tags=sonic ./protocol -run '^$' \
+  -bench '^BenchmarkRuntimeSchema' -benchmem -benchtime=200ms -count=3
+```
+
+覆盖精确数字、nullable/enum、缺失、对象与数组约束、资源边界、并发复用和操作元数据隔离。
+运行时与编译成本分别测量，含回退结果；见[迁移报告](../docs/backend-runtime-schema-migration.md)。
+
 ## 测试组织与去重
 
 缓存的定向 benchmark、Otter 替换前后结果及容量语义差异见

@@ -116,7 +116,7 @@ func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 			if err := checkResourceValue(input, inputLimits, "mapping_input"); err != nil {
 				return fail(err)
 			}
-			if err := checkValueSchema(input, compiled.mappings[direction].input, "/input", 1, inputLimits); err != nil {
+			if err := compiled.mappings[direction].input.validate(input, "/input", inputLimits); err != nil {
 				return fail(err)
 			}
 			if _, err := EncodeValue(options.Values); err != nil {
@@ -263,7 +263,7 @@ func encodeRequestMapping[T any](ctx context.Context, compiled *Compiled, input 
 	if err := checkResourceValue(output, outputLimits, "mapping_output"); err != nil {
 		return fail(err)
 	}
-	if err := checkValueSchema(output, compiled.mappings[direction].output, "/output", 1, outputLimits); err != nil {
+	if err := compiled.mappings[direction].output.validate(output, "/output", outputLimits); err != nil {
 		return fail(err)
 	}
 	return output, nil
