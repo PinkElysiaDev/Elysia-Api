@@ -33,6 +33,7 @@ type Config struct {
 	WebUIDir         string              `json:"webuiDir,omitempty"`
 	EnablePprof      bool                `json:"enablePprof,omitempty"`
 	MaxBodyBytes     int64               `json:"maxBodyBytes,omitempty"`
+	Preparation      PreparationConfig   `json:"preparation,omitempty"`
 	Responses        ResponsesConfig     `json:"responses,omitempty"` // Responses API 开关
 	Usage            UsageConfig         `json:"usage,omitempty"`     // 用量估算配置
 	SystemLog        LogRetentionConfig  `json:"systemLog,omitempty"`
@@ -271,6 +272,9 @@ func Load(path string) (*Config, error) {
 	if err := cfg.validateLogSettings(); err != nil {
 		return nil, err
 	}
+	if err := cfg.validatePreparation(); err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
 }
@@ -368,6 +372,7 @@ func (c *Config) saveLocked() error {
 	for key, value := range map[string]any{
 		"usageLog": c.UsageLog, "systemLog": c.SystemLog, "modelCatalog": c.ModelCatalog,
 		"agentRemote": c.AgentRemote, "agent": c.Agent, "outbound": c.Outbound,
+		"preparation": c.Preparation,
 	} {
 		encoded, err := mergeConfigSection(raw[key], value)
 		if err != nil {
@@ -547,6 +552,9 @@ func (c *Config) Reload() error {
 		return err
 	}
 	if err := newCfg.validateLogSettings(); err != nil {
+		return err
+	}
+	if err := newCfg.validatePreparation(); err != nil {
 		return err
 	}
 
@@ -917,6 +925,7 @@ func (c *Config) publishSettingsLocked(newCfg *Config) {
 	c.WebUIDir = newCfg.WebUIDir
 	c.EnablePprof = newCfg.EnablePprof
 	c.MaxBodyBytes = newCfg.MaxBodyBytes
+	c.Preparation = newCfg.Preparation
 	c.Responses = newCfg.Responses
 	c.Usage = newCfg.Usage
 	c.UsageLog = newCfg.UsageLog

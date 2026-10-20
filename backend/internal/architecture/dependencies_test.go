@@ -16,16 +16,17 @@ import (
 // symbol names. A new dependency must be reviewed together with this contract.
 func TestPackageBoundaries(t *testing.T) {
 	allowed := map[string][]string{
-		"server":            {"agent", "config", "internal/atomicfile", "internal/clishell", "internal/eventstream", "internal/jsonutil", "internal/outbound", "internal/routing", "logging", "protocol", "protocol/builtin", "relay", "storage", "webui"},
-		"config":            {"internal/atomicfile", "internal/dbpath", "internal/outbound", "logging", "protocol"},
-		"agent":             {"internal/clishell", "internal/jsonutil", "logging", "protocol"},
-		"protocol":          {"internal/eventstream", "internal/jsonutil"},
-		"protocol/builtin":  {"protocol"},
-		"relay":             {"internal/outbound", "protocol", "protocol/builtin"},
-		"storage":           {"agent", "internal/atomicfile", "internal/dbpath", "internal/storagequery", "logging", "protocol", "protocol/builtin"},
-		"internal/routing":  {"config", "storage"},
-		"internal/outbound": {"logging"},
-		"internal/dbpath":   {}, "internal/atomicfile": {}, "internal/clishell": {},
+		"server":             {"agent", "config", "internal/admission", "internal/atomicfile", "internal/clishell", "internal/eventstream", "internal/jsonutil", "internal/outbound", "internal/routing", "logging", "protocol", "protocol/builtin", "relay", "storage", "webui"},
+		"config":             {"internal/atomicfile", "internal/dbpath", "internal/outbound", "logging", "protocol"},
+		"agent":              {"internal/clishell", "internal/jsonutil", "logging", "protocol"},
+		"protocol":           {"internal/eventstream", "internal/jsonutil"},
+		"protocol/builtin":   {"protocol"},
+		"relay":              {"internal/outbound", "protocol", "protocol/builtin"},
+		"storage":            {"agent", "internal/atomicfile", "internal/dbpath", "internal/storagequery", "logging", "protocol", "protocol/builtin"},
+		"internal/routing":   {"config", "storage"},
+		"internal/admission": {},
+		"internal/outbound":  {"logging"},
+		"internal/dbpath":    {}, "internal/atomicfile": {}, "internal/clishell": {},
 		"internal/eventstream": {}, "internal/jsonutil": {}, "internal/storagequery": {},
 		"logging": {}, "webui": {},
 	}

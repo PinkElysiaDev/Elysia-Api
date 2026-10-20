@@ -4,6 +4,10 @@ Tracking: [issue #81](https://github.com/PinkElysiaDev/Elysia-Api/issues/81), fo
 
 - [Item 1: nested output construction](../../backend-performance-structural-81-item-1.md)
 - [Item 2: immutable request reuse](../../backend-performance-structural-81-item-2.md)
+- [Item 4: preparation admission](../../backend-performance-structural-81-item-4.md)
+- [Policy documentation](../../backend-preparation-admission.md)
+- `item-4/`: default-policy normal-path acceptance after item 2.
+- `item-4-memory/`, `item-4-default-memory/`: same-binary off/one-slot and off/default-eight-slot concurrency/memory attribution, including all counter/rejection/recovery checks.
 - `item-2/`: incremental accepted HTTP results after item 1.
 - `baseline/`, `item-1-final/`: selected HTTP acceptance, original reports/commands/source patches and binary hashes.
 - `item-1-confirmed/`: initial prototype timing investigation, explicitly not the accepted implementation.

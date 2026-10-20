@@ -48,6 +48,7 @@ func (s *Server) serveVersionedPublicIngress(c *gin.Context) {
 			return
 		}
 	}
+	defer s.releaseGatewayPreparation(c)
 	body, ok := s.readGatewayRequest(c, ingress)
 	if !ok {
 		return

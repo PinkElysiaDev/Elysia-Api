@@ -33,6 +33,9 @@ func (c *Config) Update(prepare func(candidate *Config) error) error {
 	if err := candidate.validateProxySettings(); err != nil {
 		return err
 	}
+	if err := candidate.validatePreparation(); err != nil {
+		return err
+	}
 	if err := candidate.saveLocked(); err != nil {
 		return err
 	}

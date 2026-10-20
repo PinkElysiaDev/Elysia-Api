@@ -1,0 +1,1213 @@
+diff --git a/backend/config/config.go b/backend/config/config.go
+index 47ae703..dffdf8b 100644
+--- a/backend/config/config.go
++++ b/backend/config/config.go
+@@ -33,6 +33,7 @@ type Config struct {
+ 	WebUIDir         string              `json:"webuiDir,omitempty"`
+ 	EnablePprof      bool                `json:"enablePprof,omitempty"`
+ 	MaxBodyBytes     int64               `json:"maxBodyBytes,omitempty"`
++	Preparation      PreparationConfig   `json:"preparation,omitempty"`
+ 	Responses        ResponsesConfig     `json:"responses,omitempty"` // Responses API 开关
+ 	Usage            UsageConfig         `json:"usage,omitempty"`     // 用量估算配置
+ 	SystemLog        LogRetentionConfig  `json:"systemLog,omitempty"`
+@@ -271,6 +272,9 @@ func Load(path string) (*Config, error) {
+ 	if err := cfg.validateLogSettings(); err != nil {
+ 		return nil, err
+ 	}
++	if err := cfg.validatePreparation(); err != nil {
++		return nil, err
++	}
+ 
+ 	return cfg, nil
+ }
+@@ -368,6 +372,7 @@ func (c *Config) saveLocked() error {
+ 	for key, value := range map[string]any{
+ 		"usageLog": c.UsageLog, "systemLog": c.SystemLog, "modelCatalog": c.ModelCatalog,
+ 		"agentRemote": c.AgentRemote, "agent": c.Agent, "outbound": c.Outbound,
++		"preparation": c.Preparation,
+ 	} {
+ 		encoded, err := mergeConfigSection(raw[key], value)
+ 		if err != nil {
+@@ -549,6 +554,9 @@ func (c *Config) Reload() error {
+ 	if err := newCfg.validateLogSettings(); err != nil {
+ 		return err
+ 	}
++	if err := newCfg.validatePreparation(); err != nil {
++		return err
++	}
+ 
+ 	c.publishSettingsLocked(newCfg)
+ 	return nil
+@@ -917,6 +925,7 @@ func (c *Config) publishSettingsLocked(newCfg *Config) {
+ 	c.WebUIDir = newCfg.WebUIDir
+ 	c.EnablePprof = newCfg.EnablePprof
+ 	c.MaxBodyBytes = newCfg.MaxBodyBytes
++	c.Preparation = newCfg.Preparation
+ 	c.Responses = newCfg.Responses
+ 	c.Usage = newCfg.Usage
+ 	c.UsageLog = newCfg.UsageLog
+diff --git a/backend/config/preparation.go b/backend/config/preparation.go
+new file mode 100644
+index 0000000..18b709a
+--- /dev/null
++++ b/backend/config/preparation.go
+@@ -0,0 +1,78 @@
++package config
++
++import (
++	"fmt"
++	"time"
++
++	"github.com/elysia-api/backend/protocol"
++)
++
++// PreparationConfig is a startup policy. Changing it requires a server restart;
++// model-group concurrency/daily quotas remain separate and are not replaced.
++type PreparationConfig struct {
++	Enabled              *bool `json:"enabled,omitempty"`
++	MaxConcurrent        int   `json:"maxConcurrent,omitempty"`
++	MaxQueued            *int  `json:"maxQueued,omitempty"`
++	MaxReservedBodyBytes int64 `json:"maxReservedBodyBytes,omitempty"`
++	QueueTimeoutMillis   int   `json:"queueTimeoutMillis,omitempty"`
++}
++
++type PreparationLimits struct {
++	Enabled                  bool
++	MaxConcurrent, MaxQueued int
++	MaxReservedBodyBytes     int64
++	QueueTimeout             time.Duration
++}
++
++func (c *Config) validatePreparation() error {
++	p := c.Preparation
++	if p.MaxConcurrent < 0 || p.MaxConcurrent > 1024 || p.MaxQueued != nil && (*p.MaxQueued < 0 || *p.MaxQueued > 65536) || p.QueueTimeoutMillis < 0 || p.QueueTimeoutMillis > 600000 {
++		return fmt.Errorf("invalid preparation concurrency, queue size or queue timeout")
++	}
++	if p.MaxReservedBodyBytes < 0 {
++		return fmt.Errorf("preparation body reservation must not be negative")
++	}
++	if p.MaxReservedBodyBytes > 0 {
++		return protocol.ValidateRequestBodyLimit(p.MaxReservedBodyBytes)
++	}
++	return nil
++}
++
++func (c *Config) GetPreparationLimits() PreparationLimits {
++	c.mu.RLock()
++	defer c.mu.RUnlock()
++	p := c.Preparation
++	limits := PreparationLimits{Enabled: true, MaxConcurrent: 8, MaxQueued: 32, MaxReservedBodyBytes: max(64<<20, c.MaxBodyBytes), QueueTimeout: 5 * time.Second}
++	if p.Enabled != nil {
++		limits.Enabled = *p.Enabled
++	}
++	if p.MaxConcurrent > 0 {
++		limits.MaxConcurrent = p.MaxConcurrent
++	}
++	if p.MaxQueued != nil {
++		limits.MaxQueued = max(0, *p.MaxQueued)
++	}
++	if p.MaxReservedBodyBytes > 0 {
++		limits.MaxReservedBodyBytes = p.MaxReservedBodyBytes
++	}
++	if p.QueueTimeoutMillis > 0 {
++		limits.QueueTimeout = time.Duration(p.QueueTimeoutMillis) * time.Millisecond
++	}
++	return limits
++}
++
++// SetPreparation configures a new limiter before its first request. Existing
++// server instances keep their frozen startup policy until restart.
++func (c *Config) SetPreparation(value PreparationConfig) {
++	if value.Enabled != nil {
++		enabled := *value.Enabled
++		value.Enabled = &enabled
++	}
++	if value.MaxQueued != nil {
++		queued := *value.MaxQueued
++		value.MaxQueued = &queued
++	}
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	c.Preparation = value
++}
+diff --git a/backend/config/preparation_test.go b/backend/config/preparation_test.go
+new file mode 100644
+index 0000000..e17f402
+--- /dev/null
++++ b/backend/config/preparation_test.go
+@@ -0,0 +1,68 @@
++package config
++
++import (
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++	"time"
++)
++
++func TestPreparationDefaultsPersistenceAndValidation(t *testing.T) {
++	path := filepath.Join(t.TempDir(), "config.json")
++	if err := os.WriteFile(path, []byte(`{}`), 0600); err != nil {
++		t.Fatal(err)
++	}
++	cfg, err := Load(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if limits := cfg.GetPreparationLimits(); !limits.Enabled || limits.MaxConcurrent != 8 || limits.MaxQueued != 32 || limits.MaxReservedBodyBytes != 64<<20 || limits.QueueTimeout != 5*time.Second {
++		t.Fatal(limits)
++	}
++	zero, off := 0, false
++	cfg.SetPreparation(PreparationConfig{Enabled: &off, MaxConcurrent: 1, MaxQueued: &zero, MaxReservedBodyBytes: 128 << 20, QueueTimeoutMillis: 250})
++	if err := cfg.Save(); err != nil {
++		t.Fatal(err)
++	}
++	loaded, err := Load(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if limits := loaded.GetPreparationLimits(); limits.Enabled || limits.MaxConcurrent != 1 || limits.MaxQueued != 0 || limits.MaxReservedBodyBytes != 128<<20 || limits.QueueTimeout != 250*time.Millisecond {
++		t.Fatal(limits)
++	}
++	for _, invalid := range []string{`{"maxConcurrent":-1}`, `{"maxQueued":-1}`, `{"maxReservedBodyBytes":-1}`, `{"queueTimeoutMillis":600001}`} {
++		if err := os.WriteFile(path, []byte(`{"preparation":`+invalid+`}`), 0600); err != nil {
++			t.Fatal(err)
++		}
++		if _, err := Load(path); err == nil {
++			t.Fatal("invalid policy accepted", invalid)
++		}
++		before := loaded.GetPreparationLimits()
++		if err := loaded.Reload(); err == nil || loaded.GetPreparationLimits() != before {
++			t.Fatal("invalid reload published")
++		}
++	}
++	if err := os.WriteFile(path, []byte(`{"preparation":{"maxConcurrent":2,"futureOption":true}}`), 0600); err != nil {
++		t.Fatal(err)
++	}
++	loaded, err = Load(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := loaded.Save(); err != nil {
++		t.Fatal(err)
++	}
++	raw, _ := os.ReadFile(path)
++	if !strings.Contains(string(raw), `"futureOption"`) {
++		t.Fatal("unknown preparation setting lost")
++	}
++	before := loaded.GetPreparationLimits()
++	if err := loaded.Update(func(candidate *Config) error {
++		candidate.SetPreparation(PreparationConfig{MaxConcurrent: -1})
++		return nil
++	}); err == nil || loaded.GetPreparationLimits() != before {
++		t.Fatal("invalid transactional update published")
++	}
++}
+diff --git a/backend/config/update.go b/backend/config/update.go
+index 8e55dbe..1e10655 100644
+--- a/backend/config/update.go
++++ b/backend/config/update.go
+@@ -33,6 +33,9 @@ func (c *Config) Update(prepare func(candidate *Config) error) error {
+ 	if err := candidate.validateProxySettings(); err != nil {
+ 		return err
+ 	}
++	if err := candidate.validatePreparation(); err != nil {
++		return err
++	}
+ 	if err := candidate.saveLocked(); err != nil {
+ 		return err
+ 	}
+diff --git a/backend/internal/admission/preparation.go b/backend/internal/admission/preparation.go
+new file mode 100644
+index 0000000..e9ba45c
+--- /dev/null
++++ b/backend/internal/admission/preparation.go
+@@ -0,0 +1,196 @@
++// Package admission owns bounded preparation reservations independently of HTTP,
++// configuration storage, model quotas and upstream request lifetimes.
++package admission
++
++import (
++	"container/list"
++	"context"
++	"errors"
++	"sync"
++	"time"
++)
++
++var (
++	ErrClosed   = errors.New("gateway preparation is shutting down")
++	ErrFull     = errors.New("gateway preparation queue is full")
++	ErrTimeout  = errors.New("gateway preparation queue deadline exceeded")
++	ErrCapacity = errors.New("request body reservation exceeds gateway preparation capacity")
++)
++
++type Limits struct {
++	Enabled                  bool
++	MaxConcurrent, MaxQueued int
++	MaxReservedBodyBytes     int64
++	QueueTimeout             time.Duration
++}
++
++type Stats struct {
++	Active, Queued, PeakActive, PeakQueued   int
++	ReservedBodyBytes, PeakReservedBodyBytes int64
++	Rejected, TimedOut, Canceled             uint64
++}
++
++// Limiter freezes limits at construction. Waiting is bounded and FIFO; a large
++// head reservation cannot be starved by new smaller requests. Disabled limits
++// retain diagnostics/close handling but deliberately do not bound admission.
++type Limiter struct {
++	mu      sync.Mutex
++	limits  Limits
++	closed  bool
++	waiters list.List
++	stats   Stats
++}
++
++type waiter struct {
++	bytes int64
++	ready chan struct{}
++	lease *Lease
++	err   error
++}
++
++type Lease struct {
++	owner *Limiter
++	bytes int64
++	once  sync.Once
++}
++
++func New(limits Limits) *Limiter { return &Limiter{limits: limits} }
++
++func (l *Limiter) fits(bytes int64) bool {
++	return !l.limits.Enabled || l.stats.Active < l.limits.MaxConcurrent && bytes <= l.limits.MaxReservedBodyBytes-l.stats.ReservedBodyBytes
++}
++
++func (l *Limiter) grant(bytes int64) *Lease {
++	l.stats.Active++
++	l.stats.ReservedBodyBytes += bytes
++	l.stats.PeakActive = max(l.stats.PeakActive, l.stats.Active)
++	l.stats.PeakReservedBodyBytes = max(l.stats.PeakReservedBodyBytes, l.stats.ReservedBodyBytes)
++	return &Lease{owner: l, bytes: bytes}
++}
++
++func (l *Limiter) Acquire(ctx context.Context, bytes int64) (*Lease, error) {
++	if err := ctx.Err(); err != nil {
++		return nil, err
++	}
++	bytes = max(1, bytes)
++	l.mu.Lock()
++	if l.closed {
++		l.mu.Unlock()
++		return nil, ErrClosed
++	}
++	if l.limits.Enabled && bytes > l.limits.MaxReservedBodyBytes {
++		l.stats.Rejected++
++		l.mu.Unlock()
++		return nil, ErrCapacity
++	}
++	if l.waiters.Len() == 0 && l.fits(bytes) {
++		lease := l.grant(bytes)
++		l.mu.Unlock()
++		return lease, nil
++	}
++	if l.waiters.Len() >= l.limits.MaxQueued {
++		l.stats.Rejected++
++		l.mu.Unlock()
++		return nil, ErrFull
++	}
++	w := &waiter{bytes: bytes, ready: make(chan struct{})}
++	element := l.waiters.PushBack(w)
++	l.stats.Queued = l.waiters.Len()
++	l.stats.PeakQueued = max(l.stats.PeakQueued, l.stats.Queued)
++	l.mu.Unlock()
++	timer := time.NewTimer(l.limits.QueueTimeout)
++	defer timer.Stop()
++	var err error
++	select {
++	case <-w.ready:
++		if w.err != nil {
++			return nil, w.err
++		}
++		if err = ctx.Err(); err == nil {
++			l.mu.Lock()
++			closed := l.closed
++			l.mu.Unlock()
++			if !closed {
++				return w.lease, nil
++			}
++			err = ErrClosed
++		}
++		w.lease.Release()
++		return nil, err
++	case <-ctx.Done():
++		err = ctx.Err()
++	case <-timer.C:
++		err = ErrTimeout
++	}
++	l.mu.Lock()
++	if ctx.Err() != nil {
++		err = ctx.Err()
++	}
++	if errors.Is(err, ErrTimeout) {
++		l.stats.TimedOut++
++	} else {
++		l.stats.Canceled++
++	}
++	if w.lease == nil && w.err == nil {
++		l.waiters.Remove(element)
++		l.stats.Queued = l.waiters.Len()
++		l.drain()
++	}
++	lease := w.lease
++	l.mu.Unlock()
++	if lease != nil {
++		lease.Release()
++	}
++	return nil, err
++}
++
++func (l *Limiter) drain() {
++	for !l.closed && l.waiters.Len() > 0 {
++		element := l.waiters.Front()
++		w := element.Value.(*waiter)
++		if !l.fits(w.bytes) {
++			return
++		}
++		l.waiters.Remove(element)
++		w.lease = l.grant(w.bytes)
++		l.stats.Queued = l.waiters.Len()
++		close(w.ready)
++	}
++}
++
++func (lease *Lease) Release() {
++	if lease == nil {
++		return
++	}
++	lease.once.Do(func() {
++		l := lease.owner
++		l.mu.Lock()
++		defer l.mu.Unlock()
++		l.stats.Active--
++		l.stats.ReservedBodyBytes -= lease.bytes
++		l.drain()
++	})
++}
++
++func (l *Limiter) Close() {
++	l.mu.Lock()
++	defer l.mu.Unlock()
++	if l.closed {
++		return
++	}
++	l.closed = true
++	for l.waiters.Len() > 0 {
++		element := l.waiters.Front()
++		w := element.Value.(*waiter)
++		l.waiters.Remove(element)
++		w.err = ErrClosed
++		close(w.ready)
++	}
++	l.stats.Queued = 0
++}
++
++func (l *Limiter) Snapshot() Stats {
++	l.mu.Lock()
++	defer l.mu.Unlock()
++	return l.stats
++}
+diff --git a/backend/internal/admission/preparation_test.go b/backend/internal/admission/preparation_test.go
+new file mode 100644
+index 0000000..5a19b9f
+--- /dev/null
++++ b/backend/internal/admission/preparation_test.go
+@@ -0,0 +1,124 @@
++package admission
++
++import (
++	"context"
++	"errors"
++	"testing"
++	"testing/synctest"
++	"time"
++)
++
++func TestPreparationFIFOAndBudgets(t *testing.T) {
++	synctest.Test(t, func(t *testing.T) {
++		l := New(Limits{Enabled: true, MaxConcurrent: 2, MaxQueued: 2, MaxReservedBodyBytes: 10, QueueTimeout: time.Hour})
++		a, _ := l.Acquire(t.Context(), 6)
++		b, _ := l.Acquire(t.Context(), 4)
++		first, second := make(chan *Lease, 1), make(chan *Lease, 1)
++		go func() {
++			lease, err := l.Acquire(t.Context(), 6)
++			if err != nil {
++				t.Error(err)
++			}
++			first <- lease
++		}()
++		synctest.Wait()
++		go func() {
++			lease, err := l.Acquire(t.Context(), 1)
++			if err != nil {
++				t.Error(err)
++			}
++			second <- lease
++		}()
++		synctest.Wait()
++		if _, err := l.Acquire(t.Context(), 1); !errors.Is(err, ErrFull) {
++			t.Fatal("unbounded queue", err)
++		}
++		a.Release()
++		synctest.Wait()
++		c := <-first
++		select {
++		case <-second:
++			t.Fatal("small waiter bypassed FIFO/reservation budget")
++		default:
++		}
++		b.Release()
++		d := <-second
++		c.Release()
++		d.Release()
++		d.Release()
++		stats := l.Snapshot()
++		if stats.Active != 0 || stats.Queued != 0 || stats.ReservedBodyBytes != 0 || stats.PeakActive != 2 || stats.PeakReservedBodyBytes != 10 || stats.PeakQueued != 2 {
++			t.Fatal(stats)
++		}
++		if _, err := l.Acquire(t.Context(), 11); !errors.Is(err, ErrCapacity) {
++			t.Fatal("oversized reservation admitted", err)
++		}
++	})
++}
++
++func TestPreparationTimeoutCancelAndClose(t *testing.T) {
++	synctest.Test(t, func(t *testing.T) {
++		l := New(Limits{Enabled: true, MaxConcurrent: 1, MaxQueued: 1, MaxReservedBodyBytes: 10, QueueTimeout: time.Second})
++		hold, _ := l.Acquire(t.Context(), 10)
++		done := make(chan error, 1)
++		go func() { _, err := l.Acquire(t.Context(), 1); done <- err }()
++		time.Sleep(2 * time.Second)
++		if err := <-done; !errors.Is(err, ErrTimeout) {
++			t.Fatal(err)
++		}
++		ctx, cancel := context.WithCancel(t.Context())
++		go func() { _, err := l.Acquire(ctx, 1); done <- err }()
++		synctest.Wait()
++		cancel()
++		if err := <-done; !errors.Is(err, context.Canceled) {
++			t.Fatal(err)
++		}
++		go func() { _, err := l.Acquire(t.Context(), 1); done <- err }()
++		synctest.Wait()
++		l.Close()
++		l.Close()
++		if err := <-done; !errors.Is(err, ErrClosed) {
++			t.Fatal(err)
++		}
++		hold.Release()
++		if _, err := l.Acquire(t.Context(), 1); !errors.Is(err, ErrClosed) {
++			t.Fatal(err)
++		}
++		stats := l.Snapshot()
++		if stats.Active != 0 || stats.Queued != 0 || stats.ReservedBodyBytes != 0 || stats.TimedOut != 1 || stats.Canceled != 1 {
++			t.Fatal(stats)
++		}
++	})
++}
++
++func TestPreparationGrantCancellationRaceReleases(t *testing.T) {
++	synctest.Test(t, func(t *testing.T) {
++		l := New(Limits{Enabled: true, MaxConcurrent: 1, MaxQueued: 1, MaxReservedBodyBytes: 10, QueueTimeout: time.Hour})
++		for range 100 {
++			hold, _ := l.Acquire(t.Context(), 10)
++			ctx, cancel := context.WithCancel(t.Context())
++			done := make(chan struct{})
++			go func() { lease, _ := l.Acquire(ctx, 10); lease.Release(); close(done) }()
++			synctest.Wait()
++			go hold.Release()
++			go cancel()
++			<-done
++			synctest.Wait()
++			if stats := l.Snapshot(); stats.Active != 0 || stats.Queued != 0 || stats.ReservedBodyBytes != 0 {
++				t.Fatal(stats)
++			}
++		}
++	})
++}
++
++func BenchmarkPreparationAdmission(b *testing.B) {
++	l := New(Limits{Enabled: true, MaxConcurrent: 8, MaxQueued: 32, MaxReservedBodyBytes: 64 << 20, QueueTimeout: time.Second})
++	b.ReportAllocs()
++	for b.Loop() {
++		lease, err := l.Acquire(b.Context(), 1024)
++		if err != nil {
++			b.Fatal(err)
++		}
++		lease.Release()
++	}
++}
+diff --git a/backend/internal/architecture/dependencies_test.go b/backend/internal/architecture/dependencies_test.go
+index a81e565..ea30877 100644
+--- a/backend/internal/architecture/dependencies_test.go
++++ b/backend/internal/architecture/dependencies_test.go
+@@ -16,16 +16,17 @@ import (
+ // symbol names. A new dependency must be reviewed together with this contract.
+ func TestPackageBoundaries(t *testing.T) {
+ 	allowed := map[string][]string{
+-		"server":            {"agent", "config", "internal/atomicfile", "internal/clishell", "internal/eventstream", "internal/jsonutil", "internal/outbound", "internal/routing", "logging", "protocol", "protocol/builtin", "relay", "storage", "webui"},
+-		"config":            {"internal/atomicfile", "internal/dbpath", "internal/outbound", "logging", "protocol"},
+-		"agent":             {"internal/clishell", "internal/jsonutil", "logging", "protocol"},
+-		"protocol":          {"internal/eventstream", "internal/jsonutil"},
+-		"protocol/builtin":  {"protocol"},
+-		"relay":             {"internal/outbound", "protocol", "protocol/builtin"},
+-		"storage":           {"agent", "internal/atomicfile", "internal/dbpath", "internal/storagequery", "logging", "protocol", "protocol/builtin"},
+-		"internal/routing":  {"config", "storage"},
+-		"internal/outbound": {"logging"},
+-		"internal/dbpath":   {}, "internal/atomicfile": {}, "internal/clishell": {},
++		"server":             {"agent", "config", "internal/admission", "internal/atomicfile", "internal/clishell", "internal/eventstream", "internal/jsonutil", "internal/outbound", "internal/routing", "logging", "protocol", "protocol/builtin", "relay", "storage", "webui"},
++		"config":             {"internal/atomicfile", "internal/dbpath", "internal/outbound", "logging", "protocol"},
++		"agent":              {"internal/clishell", "internal/jsonutil", "logging", "protocol"},
++		"protocol":           {"internal/eventstream", "internal/jsonutil"},
++		"protocol/builtin":   {"protocol"},
++		"relay":              {"internal/outbound", "protocol", "protocol/builtin"},
++		"storage":            {"agent", "internal/atomicfile", "internal/dbpath", "internal/storagequery", "logging", "protocol", "protocol/builtin"},
++		"internal/routing":   {"config", "storage"},
++		"internal/admission": {},
++		"internal/outbound":  {"logging"},
++		"internal/dbpath":    {}, "internal/atomicfile": {}, "internal/clishell": {},
+ 		"internal/eventstream": {}, "internal/jsonutil": {}, "internal/storagequery": {},
+ 		"logging": {}, "webui": {},
+ 	}
+diff --git a/backend/server/conversion_http_performance_test.go b/backend/server/conversion_http_performance_test.go
+index c1b30bb..83f75ed 100644
+--- a/backend/server/conversion_http_performance_test.go
++++ b/backend/server/conversion_http_performance_test.go
+@@ -23,6 +23,7 @@ import (
+ 
+ 	"github.com/bytedance/sonic"
+ 	"github.com/elysia-api/backend/config"
++	"github.com/elysia-api/backend/internal/admission"
+ )
+ 
+ type conversionHTTPAddress struct {
+@@ -30,6 +31,7 @@ type conversionHTTPAddress struct {
+ 	PID          int
+ }
+ type conversionHTTPMetrics struct {
++	Preparation                                           admission.Stats
+ 	Allocated, Heap, PeakHeap, WorkingSet, PeakWorkingSet uint64
+ 	Calls                                                 int64
+ 	Allocations, GCPauseNS                                uint64
+@@ -201,6 +203,7 @@ func TestConversionHTTPProcess(t *testing.T) {
+ 	var settle func() error
+ 	var reload func(context.Context) error
+ 	var usageStats func() (int, int64)
++	var preparationStats func() admission.Stats
+ 	var completed atomic.Int64
+ 	var calls atomic.Int64
+ 	var gateway *httptest.Server
+@@ -281,6 +284,23 @@ func TestConversionHTTPProcess(t *testing.T) {
+ 			group.Models = append(group.Models, model)
+ 		}
+ 		server := newTestServerWithStore(t, []config.ModelGroupConfig{group})
++		// Test-only policy selection for same-binary admission/memory attribution.
++		// The normal runner clears these fixture variables before every scenario.
++		if raw := os.Getenv("ELYSIA_CONVERSION_HTTP_PREPARATION"); raw != "" {
++			policy := config.PreparationConfig{}
++			if raw == "off" {
++				off := false
++				policy.Enabled = &off
++			} else {
++				maximum, err := strconv.Atoi(raw)
++				if err != nil || maximum < 1 || maximum > 1024 {
++					t.Fatal("invalid preparation fixture policy")
++				}
++				policy.MaxConcurrent = maximum
++			}
++			server.config.SetPreparation(policy)
++		}
++		preparationStats = func() admission.Stats { return server.preparationLimiter().Snapshot() }
+ 		mode := os.Getenv("ELYSIA_CONVERSION_HTTP_LOG")
+ 		if mode != "" && mode != "off" && mode != "body" && mode != "media" {
+ 			t.Fatal("unknown log mode")
+@@ -441,6 +461,9 @@ func TestConversionHTTPProcess(t *testing.T) {
+ 		if usageStats != nil {
+ 			result.QueueDepth, result.QueuedPayloadBytes = usageStats()
+ 		}
++		if preparationStats != nil {
++			result.Preparation = preparationStats()
++		}
+ 		sonic.ConfigStd.NewEncoder(w).Encode(result)
+ 	}))
+ 	defer metrics.Close()
+diff --git a/backend/server/gateway_protocol.go b/backend/server/gateway_protocol.go
+index f47f075..c4fb4bd 100644
+--- a/backend/server/gateway_protocol.go
++++ b/backend/server/gateway_protocol.go
+@@ -63,6 +63,7 @@ func (s *Server) gatewayProtocol(c *gin.Context) {
+ 		s.serveGatewaySession(c, view, ingress, c.Param("path"), handshake.Bytes())
+ 		return
+ 	}
++	defer s.releaseGatewayPreparation(c)
+ 	body, ok := s.readGatewayRequest(c, ingress)
+ 	if !ok {
+ 		return
+@@ -74,6 +75,11 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
+ 	if !s.pinProtocolRequest(c) {
+ 		return
+ 	}
++	if err := s.acquireGatewayPreparation(c, int64(len(body))); err != nil {
++		s.rejectPreparation(c, ingress, err)
++		return
++	}
++	defer s.releaseGatewayPreparation(c)
+ 	start := time.Now()
+ 	record := s.initUsageRecord(c, start, body, builtin.FormatType(ingress.Identity().Family))
+ 	record.IngressRevision, record.SourceEndpoint, record.SourceFormat = ingress.Hash(), c.Request.URL.Path, ingress.Identity().DefinitionID
+@@ -91,6 +97,7 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
+ 		return
+ 	}
+ 	if plan.candidates[0].operation.Kind == "submit" {
++		s.releaseGatewayPreparation(c) // Task workers have their own lifetime/admission.
+ 		isTaskOwned = s.submitGatewayJob(c, record, plan, plan.candidates[0])
+ 		return
+ 	}
+@@ -151,6 +158,15 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
+ }
+ 
+ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate) error {
++	// A retry reacquires preparation capacity; no lease spans provider I/O or
++	// retry backoff. The initial attempt reuses the ingress/preflight lease.
++	if err := s.acquireGatewayPreparation(c, int64(plan.bodyBytes)); err != nil {
++		if preparationStatus(err) == http.StatusServiceUnavailable {
++			c.Header("Retry-After", "1")
++		}
++		return &gatewayFailure{preparationStatus(err), err}
++	}
++	defer s.releaseGatewayPreparation(c)
+ 	defer candidate.releaseRequestEncoding()
+ 	record.UpstreamHTTPStatus = 0
+ 	record.TransportFailure = nil
+@@ -211,6 +227,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
+ 	record.UpstreamRevision, record.TargetEndpoint, record.TargetFormat = candidate.compiled.Hash(), candidate.operation.Path, candidate.binding.ProtocolID
+ 	record.OutgoingBody = record.sanitizeBody(body)
+ 	outboundBody := body
++	s.releaseGatewayPreparation(c)
+ 	response, err := s.protocolTransport.SendProtocolRequest(c.Request.Context(), candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Identifier()})
+ 	if err != nil {
+ 		return err
+@@ -313,6 +330,9 @@ func (s *Server) failGateway(c *gin.Context, record *usageRecord, status int, er
+ 	}
+ 	record.StatusCode, record.Error, record.ErrorKind = status, err.Error(), ErrorKindUpstream
+ 	recordFailureEvidence(record, err)
++	if isPreparationFailure(err) && record.UpstreamHTTPStatus == 0 {
++		record.ErrorKind = "preparation_overloaded"
++	}
+ 	class := generationFailureClass(err)
+ 	if class != "" {
+ 		record.ErrorKind = string(class)
+diff --git a/backend/server/gateway_public.go b/backend/server/gateway_public.go
+index b915441..3707151 100644
+--- a/backend/server/gateway_public.go
++++ b/backend/server/gateway_public.go
+@@ -48,6 +48,7 @@ func (s *Server) serveVersionedPublicIngress(c *gin.Context) {
+ 			return
+ 		}
+ 	}
++	defer s.releaseGatewayPreparation(c)
+ 	body, ok := s.readGatewayRequest(c, ingress)
+ 	if !ok {
+ 		return
+diff --git a/backend/server/gateway_route.go b/backend/server/gateway_route.go
+index a9472f2..0409ff2 100644
+--- a/backend/server/gateway_route.go
++++ b/backend/server/gateway_route.go
+@@ -33,6 +33,7 @@ type gatewayCandidate struct {
+ }
+ 
+ type gatewayPlan struct {
++	bodyBytes     int
+ 	carriers      []string
+ 	session       string
+ 	group         *config.ModelGroupConfig
+@@ -56,7 +57,7 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView,
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	plan := &gatewayPlan{ingress: ingress, session: continuationSession(c, input)}
++	plan := &gatewayPlan{ingress: ingress, session: continuationSession(c, input), bodyBytes: len(body)}
+ 	input, plan.carriers, err = builtin.ExtractContinuationCarriersValue(input, ingress.Identity().Family, ingress.RequestLimits(c.Request.Context()).BufferBytes)
+ 	if err != nil {
+ 		return nil, err
+diff --git a/backend/server/lifecycle.go b/backend/server/lifecycle.go
+index d4e112c..00c6b00 100644
+--- a/backend/server/lifecycle.go
++++ b/backend/server/lifecycle.go
+@@ -111,6 +111,7 @@ func (s *Server) doShutdown() {
+ 		s.requestMu.Lock()
+ 		s.stopping = true
+ 		s.requestMu.Unlock()
++		s.preparationLimiter().Close()
+ 		s.lifecycleCancel()
+ 		if s.healthChecker != nil {
+ 			s.healthChecker.cancel()
+diff --git a/backend/server/preparation.go b/backend/server/preparation.go
+new file mode 100644
+index 0000000..b0be193
+--- /dev/null
++++ b/backend/server/preparation.go
+@@ -0,0 +1,68 @@
++package server
++
++import (
++	"errors"
++	"net/http"
++	"time"
++
++	"github.com/elysia-api/backend/config"
++	"github.com/elysia-api/backend/internal/admission"
++	"github.com/elysia-api/backend/protocol"
++	"github.com/elysia-api/backend/protocol/builtin"
++	"github.com/gin-gonic/gin"
++)
++
++const preparationLeaseKey = "elysiaPreparationLease"
++
++func (s *Server) preparationLimiter() *admission.Limiter {
++	s.preparationOnce.Do(func() {
++		cfg := s.config
++		if cfg == nil {
++			cfg = &config.Config{}
++		}
++		limits := cfg.GetPreparationLimits()
++		s.preparation = admission.New(admission.Limits{Enabled: limits.Enabled, MaxConcurrent: limits.MaxConcurrent, MaxQueued: limits.MaxQueued, MaxReservedBodyBytes: limits.MaxReservedBodyBytes, QueueTimeout: limits.QueueTimeout})
++	})
++	return s.preparation
++}
++
++func (s *Server) acquireGatewayPreparation(c *gin.Context, bytes int64) error {
++	if value, exists := c.Get(preparationLeaseKey); exists && value != nil {
++		return nil
++	}
++	lease, err := s.preparationLimiter().Acquire(c.Request.Context(), bytes)
++	if err == nil {
++		c.Set(preparationLeaseKey, lease)
++	}
++	return err
++}
++
++func (s *Server) releaseGatewayPreparation(c *gin.Context) {
++	if value, exists := c.Get(preparationLeaseKey); exists && value != nil {
++		value.(*admission.Lease).Release()
++		c.Set(preparationLeaseKey, nil)
++	}
++}
++
++func preparationStatus(err error) int {
++	if errors.Is(err, admission.ErrCapacity) {
++		return http.StatusRequestEntityTooLarge
++	}
++	return http.StatusServiceUnavailable
++}
++
++func isPreparationFailure(err error) bool {
++	return errors.Is(err, admission.ErrFull) || errors.Is(err, admission.ErrTimeout) || errors.Is(err, admission.ErrClosed) || errors.Is(err, admission.ErrCapacity)
++}
++
++func (s *Server) rejectPreparation(c *gin.Context, compiled *protocol.Compiled, err error) {
++	status := preparationStatus(err)
++	if status == http.StatusServiceUnavailable {
++		c.Header("Retry-After", "1")
++	}
++	record := s.initUsageRecord(c, time.Now(), nil, builtin.FormatType(compiled.Identity().Family))
++	record.IngressRevision, record.SourceFormat, record.RelayMode = compiled.Hash(), compiled.Identity().DefinitionID, "protocol_v2"
++	installDownstreamCapture(c, record, downstreamCaptureLimit(s.usageLogConfig()))
++	s.failGateway(c, record, status, err)
++	s.recordUsage(record)
++}
+diff --git a/backend/server/preparation_test.go b/backend/server/preparation_test.go
+new file mode 100644
+index 0000000..3c7ed7f
+--- /dev/null
++++ b/backend/server/preparation_test.go
+@@ -0,0 +1,238 @@
++package server
++
++import (
++	"context"
++	"errors"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"sync/atomic"
++	"testing"
++	"testing/synctest"
++	"time"
++
++	"github.com/elysia-api/backend/config"
++	"github.com/elysia-api/backend/internal/admission"
++	"github.com/elysia-api/backend/protocol"
++	"github.com/elysia-api/backend/protocol/builtin"
++	"github.com/gin-gonic/gin"
++)
++
++type preparationBody struct {
++	io.Reader
++	bytes int
++}
++
++func (r *preparationBody) Read(p []byte) (int, error) {
++	n, err := r.Reader.Read(p)
++	r.bytes += n
++	return n, err
++}
++func (*preparationBody) Close() error { return nil }
++
++func preparationProtocol(t *testing.T) *protocol.Compiled {
++	t.Helper()
++	compiler, _ := protocol.NewCompiler(protocol.DefaultLimits(), builtin.Modules(), nil)
++	definitions, _ := builtin.Definitions()
++	for _, raw := range definitions {
++		entry, issues := compiler.Compile(raw.Bytes())
++		if entry == nil {
++			t.Fatal(issues)
++		}
++		if entry.Identity().DefinitionID == protocol.PresetAnthropicID {
++			return entry
++		}
++	}
++	t.Fatal("missing Anthropic codec")
++	return nil
++}
++
++func TestPreparationRejectsBeforeBodyRead(t *testing.T) {
++	zero := 0
++	cfg := &config.Config{MaxBodyBytes: 64}
++	cfg.SetPreparation(config.PreparationConfig{MaxConcurrent: 1, MaxQueued: &zero, MaxReservedBodyBytes: 64})
++	s := &Server{config: cfg}
++	compiled := preparationProtocol(t)
++	hold, _ := s.preparationLimiter().Acquire(t.Context(), 64)
++	ctx, recorder := adminProtocolContext("POST", "/v1/messages", `{}`)
++	body := &preparationBody{Reader: strings.NewReader(`{}`)}
++	ctx.Request.Body = body
++	if _, ok := s.readGatewayRequest(ctx, compiled); ok || recorder.Code != 503 || recorder.Header().Get("Retry-After") != "1" || body.bytes != 0 {
++		t.Fatalf("overload read body: %d %d", recorder.Code, body.bytes)
++	}
++	hold.Release()
++	if stats := s.preparationLimiter().Snapshot(); stats.Active != 0 || stats.ReservedBodyBytes != 0 || stats.Queued != 0 {
++		t.Fatal(stats)
++	}
++	// Authentication remains before admission/body reading.
++	engine := gin.New()
++	engine.POST("/v1/messages", s.authMiddleware(), func(c *gin.Context) { t.Error("unauthenticated request entered preparation") })
++	body = &preparationBody{Reader: strings.NewReader(`{}`)}
++	req := httptest.NewRequest("POST", "/v1/messages", body)
++	rec := httptest.NewRecorder()
++	engine.ServeHTTP(rec, req)
++	if rec.Code != 401 || body.bytes != 0 {
++		t.Fatalf("auth/body boundary: %d %d", rec.Code, body.bytes)
++	}
++}
++
++func TestPreparationDeclaredAndUnknownLength(t *testing.T) {
++	compiled := preparationProtocol(t)
++	for _, tc := range []struct {
++		name     string
++		declared int64
++		body     string
++		status   int
++	}{
++		{"known", 2, `{}`, 200}, {"chunked", -1, `{}`, 200},
++		{"underdeclared", 1, strings.Repeat("x", 4096), 400},
++		{"overdeclared", 3, `{}`, 400}, {"unknown over budget", -1, strings.Repeat("x", 65), 413},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			cfg := &config.Config{MaxBodyBytes: 64}
++			cfg.SetPreparation(config.PreparationConfig{MaxConcurrent: 1, MaxReservedBodyBytes: 64})
++			s := &Server{config: cfg}
++			ctx, rec := adminProtocolContext("POST", "/v1/messages", "")
++			body := &preparationBody{Reader: strings.NewReader(tc.body)}
++			ctx.Request.Body, ctx.Request.ContentLength = body, tc.declared
++			_, ok := s.readGatewayRequest(ctx, compiled)
++			if ok != (tc.status == 200) || !ok && rec.Code != tc.status {
++				t.Fatalf("status=%d ok=%t", rec.Code, ok)
++			}
++			if tc.declared == 1 && body.bytes > 2 {
++				t.Fatal("untrusted length extended reservation", body.bytes)
++			}
++			if ok {
++				stats := s.preparationLimiter().Snapshot()
++				want := tc.declared
++				if want < 0 {
++					want = 64
++				}
++				if stats.Active != 1 || stats.ReservedBodyBytes != want {
++					t.Fatal(stats)
++				}
++			}
++			s.releaseGatewayPreparation(ctx)
++			if stats := s.preparationLimiter().Snapshot(); stats.Active != 0 || stats.ReservedBodyBytes != 0 {
++				t.Fatal(stats)
++			}
++		})
++	}
++}
++
++func TestPreparationStartupPolicyAndClose(t *testing.T) {
++	zero := 0
++	cfg := &config.Config{}
++	cfg.SetPreparation(config.PreparationConfig{MaxConcurrent: 1, MaxQueued: &zero})
++	s := &Server{config: cfg}
++	l := s.preparationLimiter()
++	cfg.SetPreparation(config.PreparationConfig{MaxConcurrent: 2})
++	lease, _ := l.Acquire(t.Context(), 1)
++	if _, err := l.Acquire(t.Context(), 1); !errors.Is(err, admission.ErrFull) {
++		t.Fatal("startup policy changed without restart", err)
++	}
++	lease.Release()
++	l.Close()
++	if _, err := l.Acquire(t.Context(), 1); !errors.Is(err, admission.ErrClosed) {
++		t.Fatal("closed server admitted work", err)
++	}
++}
++
++func TestPreparationQueuedCancellationAndShutdown(t *testing.T) {
++	compiled := preparationProtocol(t)
++	for _, mode := range []string{"cancel", "close"} {
++		t.Run(mode, func(t *testing.T) {
++			synctest.Test(t, func(t *testing.T) {
++				one := 1
++				cfg := &config.Config{MaxBodyBytes: 64}
++				cfg.SetPreparation(config.PreparationConfig{MaxConcurrent: 1, MaxQueued: &one, MaxReservedBodyBytes: 64})
++				s := &Server{config: cfg}
++				hold, _ := s.preparationLimiter().Acquire(t.Context(), 64)
++				ctx, rec := adminProtocolContext("POST", "/v1/messages", `{}`)
++				requestContext, cancel := context.WithCancel(t.Context())
++				defer cancel()
++				ctx.Request = ctx.Request.WithContext(requestContext)
++				body := &preparationBody{Reader: strings.NewReader(`{}`)}
++				ctx.Request.Body = body
++				done := make(chan bool, 1)
++				go func() { _, ok := s.readGatewayRequest(ctx, compiled); done <- ok }()
++				synctest.Wait()
++				if s.preparationLimiter().Snapshot().Queued != 1 {
++					t.Fatal("request did not queue before body read")
++				}
++				want := 503
++				if mode == "cancel" {
++					want = 499
++					cancel()
++				} else {
++					s.preparationLimiter().Close()
++				}
++				if <-done || rec.Code != want || body.bytes != 0 {
++					t.Fatalf("queued request consumed body: %d %d", rec.Code, body.bytes)
++				}
++				hold.Release()
++				if stats := s.preparationLimiter().Snapshot(); stats.Active != 0 || stats.Queued != 0 || stats.ReservedBodyBytes != 0 {
++					t.Fatal(stats)
++				}
++			})
++		})
++	}
++}
++
++func TestPreparationReleasedBeforeUpstream(t *testing.T) {
++	var calls atomic.Int32
++	started, unblock := make(chan struct{}), make(chan struct{})
++	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		_, _ = io.Copy(io.Discard, r.Body)
++		if calls.Add(1) == 1 {
++			close(started)
++			<-unblock
++		}
++		w.Header().Set("Content-Type", "application/json")
++		io.WriteString(w, `{"id":"msg","type":"message","role":"assistant","model":"m","content":[{"type":"text","text":"complete"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1}}`)
++	}))
++	defer provider.Close()
++	s := newTestServerWithStore(t, []config.ModelGroupConfig{{ID: "g", Name: "grp", Enabled: true, Models: []config.ModelRef{{ID: "m", Name: "m", BaseURL: provider.URL, Platform: "claude", APIKey: "synthetic"}}}})
++	zero := 0
++	s.config.SetPreparation(config.PreparationConfig{MaxConcurrent: 1, MaxQueued: &zero})
++	s.engine.POST("/v1/messages", s.chatCompletions)
++	gateway := httptest.NewServer(s.engine)
++	defer gateway.Close()
++	client := gateway.Client()
++	client.Timeout = 10 * time.Second
++	do := func() error {
++		req, _ := http.NewRequestWithContext(context.Background(), "POST", gateway.URL+"/v1/messages", strings.NewReader(`{"model":"grp","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}`))
++		req.Header.Set("Content-Type", "application/json")
++		response, err := client.Do(req)
++		if err != nil {
++			return err
++		}
++		defer response.Body.Close()
++		_, err = io.Copy(io.Discard, response.Body)
++		if response.StatusCode != 200 {
++			return errors.New(response.Status)
++		}
++		return err
++	}
++	done := make(chan error, 1)
++	go func() { done <- do() }()
++	select {
++	case <-started:
++	case err := <-done:
++		close(unblock)
++		t.Fatal("first request did not reach provider", err)
++	}
++	if stats := s.preparationLimiter().Snapshot(); stats.Active != 0 {
++		close(unblock)
++		t.Fatal("lease spans provider I/O", stats)
++	}
++	err := do()
++	close(unblock)
++	if first := <-done; err != nil || first != nil {
++		t.Fatal(err, first)
++	}
++	if stats := s.preparationLimiter().Snapshot(); stats.Active != 0 || stats.Queued != 0 || stats.ReservedBodyBytes != 0 || stats.PeakActive != 1 || calls.Load() != 2 {
++		t.Fatal(stats, calls.Load())
++	}
++}
+diff --git a/backend/server/protocol_budget.go b/backend/server/protocol_budget.go
+index dd773af..cd4c2b6 100644
+--- a/backend/server/protocol_budget.go
++++ b/backend/server/protocol_budget.go
+@@ -3,6 +3,8 @@ package server
+ import (
+ 	"context"
+ 	"errors"
++	"fmt"
++	"io"
+ 	"net/http"
+ 	"strings"
+ 	"time"
+@@ -40,10 +42,31 @@ func (s *Server) readGatewayRequest(c *gin.Context, compiled *protocol.Compiled)
+ 	if !s.pinProtocolRequest(c) {
+ 		return nil, false
+ 	}
+-	body, err := protocol.ReadBoundedBody(c.Request.Body, compiled.RequestLimits(c.Request.Context()).BufferBytes)
++	limit := compiled.RequestLimits(c.Request.Context()).BufferBytes
++	declared := c.Request.ContentLength
++	reservation := int64(limit)
++	if declared >= 0 {
++		reservation = min(reservation, max(1, declared))
++	}
++	if err := s.acquireGatewayPreparation(c, reservation); err != nil {
++		s.rejectPreparation(c, compiled, err)
++		return nil, false
++	}
++	// A declared length is not trusted: read at most one extra byte and reject
++	// mismatches rather than extending a reservation while holding other slots.
++	// Unknown/chunked input reserves the full pinned request limit up front.
++	reader := io.Reader(c.Request.Body)
++	if declared >= 0 && declared < int64(limit) {
++		reader = io.LimitReader(reader, declared+1)
++	}
++	body, err := protocol.ReadBoundedBody(reader, limit)
++	if err == nil && declared >= 0 && int64(len(body)) != declared {
++		err = fmt.Errorf("request body length differs from Content-Length")
++	}
+ 	if err == nil {
+ 		return body, true
+ 	}
++	s.releaseGatewayPreparation(c)
+ 	err = protocol.AnnotateResourceError(err, compiled.Identity(), protocol.DecodeRequest, "read.request")
+ 	record := s.initUsageRecord(c, time.Now(), nil, builtin.FormatType(compiled.Identity().Family))
+ 	record.IngressRevision, record.SourceFormat = compiled.Hash(), compiled.Identity().DefinitionID
+diff --git a/backend/server/server.go b/backend/server/server.go
+index e3ef3b1..94feb50 100644
+--- a/backend/server/server.go
++++ b/backend/server/server.go
+@@ -9,6 +9,7 @@ import (
+ 
+ 	"github.com/elysia-api/backend/agent"
+ 	"github.com/elysia-api/backend/config"
++	"github.com/elysia-api/backend/internal/admission"
+ 	"github.com/elysia-api/backend/internal/routing"
+ 	"github.com/elysia-api/backend/logging"
+ 	"github.com/elysia-api/backend/protocol"
+@@ -33,6 +34,8 @@ type Server struct {
+ 	limiter         routing.Limiter
+ 	affinity        *affinityCache
+ 	conversionPlans gatewayConversionPlans
++	preparationOnce sync.Once
++	preparation     *admission.Limiter
+ 
+ 	refreshJobs   sourceRefreshJobs
+ 	catalog       *modelCatalog
+diff --git a/config.json.example b/config.json.example
+index 2a6bec0..9e63f8a 100644
+--- a/config.json.example
++++ b/config.json.example
+@@ -8,6 +8,13 @@
+   "logFormat": "auto",
+   "logPersistLevel": "info",
+   "httpTimeout": 120,
++  "preparation": {
++    "enabled": true,
++    "maxConcurrent": 8,
++    "maxQueued": 32,
++    "maxReservedBodyBytes": 67108864,
++    "queueTimeoutMillis": 5000
++  },
+   "secretKeyPath": ".master-key",
+   "openBrowserOnStart": true,
+   "agentRemote": {
+diff --git a/docs/backend-preparation-admission.md b/docs/backend-preparation-admission.md
+new file mode 100644
+index 0000000..2be8a02
+--- /dev/null
++++ b/docs/backend-preparation-admission.md
+@@ -0,0 +1,47 @@
++# Gateway request-preparation admission
++
++The HTTP inference ingress has an instance-wide preparation limiter, separate from model-group concurrency and daily quotas. It starts after inference authentication/protocol selection, before request-body reading, and covers decoding, candidate conversion/preflight, final wire/operation validation and transport-body materialization. It releases immediately before provider dispatch, not at the end of a potentially long provider response. Retries reacquire; failure paths release idempotently. Group quotas still run unchanged.
++
++## Configuration
++
++Optional `config.json` section (also shown in `config.json.example`):
++
++```json
++{
++  "preparation": {
++    "enabled": true,
++    "maxConcurrent": 8,
++    "maxQueued": 32,
++    "maxReservedBodyBytes": 67108864,
++    "queueTimeoutMillis": 5000
++  }
++}
++```
++
++The policy is frozen on the server instance's first admission/diagnostic access. **Restart the server after changing it.** It is not exposed as a hot-editable WebUI setting. Config Load/Reload/transactional Update validate and preserve the section; updating stored settings does not mutate in-flight reservations.
++
++| Setting | Omitted/zero behavior | Range / meaning |
++| --- | --- | --- |
++| `enabled` | true | Explicit false restores unbounded admission for troubleshooting, not a safe memory cap |
++| `maxConcurrent` | 8 | 1–1024 active preparation leases |
++| `maxQueued` | 32 when omitted | 0–65536; explicit zero rejects immediately instead of queueing |
++| `maxReservedBodyBytes` | max(64 MiB, configured global `maxBodyBytes`) | Aggregate admitted **input body reservations**, not exact heap bytes |
++| `queueTimeoutMillis` | 5000 | 1–600000 ms maximum queue wait; not a provider or active-body-read timeout |
++
++If you raise `maxBodyBytes` after a limiter has been initialized, restart and coordinate its reservation policy as well. An explicit reservation capacity lower than an unknown-length request's pinned limit can reject that request even if its eventual body would have been small.
++
++## Length, queueing and rejection rules
++
++- A nonnegative Content-Length reserves that declared size (at least one byte), capped at the pinned protocol request limit. It is **not trusted**: reading is bounded by both the protocol limit and one byte past the declaration; mismatches are rejected before semantic preparation, without extending a held reservation.
++- Unknown/chunked length reserves the complete pinned protocol request limit before reading. This avoids unbounded incremental growth or multiple requests deadlocking while trying to enlarge reservations. It is intentionally conservative.
++- Waiting is bounded FIFO. A smaller newcomer cannot jump past a larger queued reservation. Body reading has not started while waiting.
++- A queue-full/wait-timeout/closed limiter returns a protocol-shaped HTTP 503 with `Retry-After: 1`; a reservation that can never fit returns HTTP 413. Client cancellation wins with the existing 499 accounting. Local admission failures are classified as `preparation_overloaded`, not observed provider failures.
++- Shutdown closes admission and wakes queued waiters before normal request draining. Granted work retains ownership until it stops; releasing capacity early on cancellation would allow overlapping work that has not actually exited.
++
++## What is and is not bounded
++
++This bounds concurrent expensive preparation and admitted input-body reservations. It is **not** an exact process-heap, GC/RSS, generated-output, logging, or all-in-flight-request memory limit. Encoders and semantic graphs can require multiples of input bytes; slow upstream responses can retain request data after preparation release. Use model-group concurrency, transport deadlines and usage payload budgets alongside it. Existing HTTP read/connection policy controls active slow uploads; queue timeout is not a replacement for those controls.
++
++HTTP asynchronous submission releases after initial preparation; task workers, Agent invocations and WebSocket session lanes retain their own lifecycles and are not claimed to be covered by this HTTP generation preparation policy. No final-wire/schema/resource/scope checks, unknown-field protection, usage durability or model quotas are disabled.
++
++For performance evidence, see the item-4 report in the [#81 structural follow-up](https://github.com/PinkElysiaDev/Elysia-Api/issues/81). The controlled memory experiment uses the same binary with admission off vs a stricter one-slot policy; it must not be confused with default-policy throughput or a universal RSS improvement.

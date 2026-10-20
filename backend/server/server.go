@@ -9,6 +9,7 @@ import (
 
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/internal/admission"
 	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/protocol"
@@ -33,6 +34,8 @@ type Server struct {
 	limiter         routing.Limiter
 	affinity        *affinityCache
 	conversionPlans gatewayConversionPlans
+	preparationOnce sync.Once
+	preparation     *admission.Limiter
 
 	refreshJobs   sourceRefreshJobs
 	catalog       *modelCatalog

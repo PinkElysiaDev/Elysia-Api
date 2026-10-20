@@ -1,0 +1,6 @@
+=== RUN   TestConversionFlamegraph
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=0 requests=16 elapsed_ms=516.464 heap_peak_MiB=13.453
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=1 requests=16 elapsed_ms=568.015 heap_peak_MiB=13.194
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=2 requests=16 elapsed_ms=319.467 heap_peak_MiB=12.448
+--- PASS: TestConversionFlamegraph (6.71s)
+PASS

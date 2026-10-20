@@ -33,6 +33,7 @@ type gatewayCandidate struct {
 }
 
 type gatewayPlan struct {
+	bodyBytes     int
 	carriers      []string
 	session       string
 	group         *config.ModelGroupConfig
@@ -56,7 +57,7 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 	if err != nil {
 		return nil, err
 	}
-	plan := &gatewayPlan{ingress: ingress, session: continuationSession(c, input)}
+	plan := &gatewayPlan{ingress: ingress, session: continuationSession(c, input), bodyBytes: len(body)}
 	input, plan.carriers, err = builtin.ExtractContinuationCarriersValue(input, ingress.Identity().Family, ingress.RequestLimits(c.Request.Context()).BufferBytes)
 	if err != nil {
 		return nil, err

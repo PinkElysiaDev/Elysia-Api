@@ -63,6 +63,7 @@ func (s *Server) gatewayProtocol(c *gin.Context) {
 		s.serveGatewaySession(c, view, ingress, c.Param("path"), handshake.Bytes())
 		return
 	}
+	defer s.releaseGatewayPreparation(c)
 	body, ok := s.readGatewayRequest(c, ingress)
 	if !ok {
 		return
@@ -74,6 +75,11 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 	if !s.pinProtocolRequest(c) {
 		return
 	}
+	if err := s.acquireGatewayPreparation(c, int64(len(body))); err != nil {
+		s.rejectPreparation(c, ingress, err)
+		return
+	}
+	defer s.releaseGatewayPreparation(c)
 	start := time.Now()
 	record := s.initUsageRecord(c, start, body, builtin.FormatType(ingress.Identity().Family))
 	record.IngressRevision, record.SourceEndpoint, record.SourceFormat = ingress.Hash(), c.Request.URL.Path, ingress.Identity().DefinitionID
@@ -91,6 +97,7 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 		return
 	}
 	if plan.candidates[0].operation.Kind == "submit" {
+		s.releaseGatewayPreparation(c) // Task workers have their own lifetime/admission.
 		isTaskOwned = s.submitGatewayJob(c, record, plan, plan.candidates[0])
 		return
 	}
@@ -151,6 +158,15 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 }
 
 func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate) error {
+	// A retry reacquires preparation capacity; no lease spans provider I/O or
+	// retry backoff. The initial attempt reuses the ingress/preflight lease.
+	if err := s.acquireGatewayPreparation(c, int64(plan.bodyBytes)); err != nil {
+		if preparationStatus(err) == http.StatusServiceUnavailable {
+			c.Header("Retry-After", "1")
+		}
+		return &gatewayFailure{preparationStatus(err), err}
+	}
+	defer s.releaseGatewayPreparation(c)
 	defer candidate.releaseRequestEncoding()
 	record.UpstreamHTTPStatus = 0
 	record.TransportFailure = nil
@@ -211,6 +227,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	record.UpstreamRevision, record.TargetEndpoint, record.TargetFormat = candidate.compiled.Hash(), candidate.operation.Path, candidate.binding.ProtocolID
 	record.OutgoingBody = record.sanitizeBody(body)
 	outboundBody := body
+	s.releaseGatewayPreparation(c)
 	response, err := s.protocolTransport.SendProtocolRequest(c.Request.Context(), candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Identifier()})
 	if err != nil {
 		return err
@@ -313,6 +330,9 @@ func (s *Server) failGateway(c *gin.Context, record *usageRecord, status int, er
 	}
 	record.StatusCode, record.Error, record.ErrorKind = status, err.Error(), ErrorKindUpstream
 	recordFailureEvidence(record, err)
+	if isPreparationFailure(err) && record.UpstreamHTTPStatus == 0 {
+		record.ErrorKind = "preparation_overloaded"
+	}
 	class := generationFailureClass(err)
 	if class != "" {
 		record.ErrorKind = string(class)
