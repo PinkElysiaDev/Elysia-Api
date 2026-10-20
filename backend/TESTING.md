@@ -116,6 +116,23 @@ GOMAXPROCS=1 go test -tags=sonic ./protocol -run '^$' \
 覆盖精确数字、nullable/enum、缺失、对象与数组约束、资源边界、并发复用和操作元数据隔离。
 运行时与编译成本分别测量，含回退结果；见[迁移报告](../docs/backend-runtime-schema-migration.md)。
 
+## Expr 表达式执行评估
+
+从仓库根目录运行隔离原型（不改变 backend 依赖或生产执行器）：
+
+```sh
+python3 tools/expr-evaluation/run.py -race \
+  -run '^(Test(ExprEvaluation|Expression|CompileChecksNestedOutputSchema)|FuzzExprEvaluationSubset)' \
+  -count=1 -timeout=2m
+python3 tools/expr-evaluation/run.py -run '^$' \
+  -fuzz '^FuzzExprEvaluationSubset$' -fuzztime=15s -parallel=2
+GOMAXPROCS=1 python3 tools/expr-evaluation/run.py -run '^$' \
+  -bench '^BenchmarkExprEvaluation' -benchmem -benchtime=200ms -count=3
+```
+
+结论为暂不采用 Expr：原生语义存在差异，适配层仍需保留精确值、预算及诊断逻辑，且多数已测路径回退。
+测试包含明确断言已知不兼容行为的探针；通过不代表完整 DSL 等价。详见[评估报告](../docs/backend-expr-evaluation.md)。
+
 ## 测试组织与去重
 
 缓存的定向 benchmark、Otter 替换前后结果及容量语义差异见
