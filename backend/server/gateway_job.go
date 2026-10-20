@@ -80,6 +80,18 @@ func (s *Server) waitGatewayJob(c *gin.Context, coordinator *protocol.JobCoordin
 	defer stop()
 	ticker := time.NewTicker(gatewayJobWaitInterval)
 	defer ticker.Stop()
+	finishWait := func() {
+		if policy.OnTimeout == "cancel" {
+			deadline, cancel := context.WithTimeout(context.WithoutCancel(ctx), protocol.DefaultJobCommitTimeout)
+			_, err := coordinator.RequestCancel(deadline, job.Task.ID, job.OwnerHash)
+			cancel()
+			if err != nil {
+				s.failGateway(c, record, http.StatusBadGateway, err)
+				return
+			}
+		}
+		s.failGateway(c, record, http.StatusGatewayTimeout, fmt.Errorf("generation wait ended; task %s follows the declared %s policy", job.Task.ID, policy.OnTimeout))
+	}
 	for {
 		if job.Phase == protocol.JobTerminal {
 			s.writeGatewayJobResult(c, ingress, job)
@@ -87,24 +99,21 @@ func (s *Server) waitGatewayJob(c *gin.Context, coordinator *protocol.JobCoordin
 		}
 		select {
 		case <-ctx.Done():
-			if policy.OnTimeout == "cancel" {
-				deadline, cancel := context.WithTimeout(context.WithoutCancel(ctx), protocol.DefaultJobCommitTimeout)
-				_, err := coordinator.RequestCancel(deadline, job.Task.ID, job.OwnerHash)
-				cancel()
-				if err != nil {
-					s.failGateway(c, record, 502, err)
-					return
-				}
-			}
-			s.failGateway(c, record, http.StatusGatewayTimeout, fmt.Errorf("generation wait ended; task %s follows the declared %s policy", job.Task.ID, policy.OnTimeout))
+			finishWait()
 			return
 		case <-ticker.C:
-			var err error
-			job, err = coordinator.Read(ctx, job.Task.ID, job.OwnerHash)
+			nextJob, err := coordinator.Read(ctx, job.Task.ID, job.OwnerHash)
 			if err != nil {
-				s.failGateway(c, record, 502, err)
+				if ctx.Err() != nil {
+					// A read can outlive the wait budget. Apply the same policy as
+					// the timer branch, using the last valid task/owner identity.
+					finishWait()
+				} else {
+					s.failGateway(c, record, http.StatusBadGateway, err)
+				}
 				return
 			}
+			job = nextJob
 		}
 	}
 }

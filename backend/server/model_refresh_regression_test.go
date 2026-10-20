@@ -17,6 +17,11 @@ import (
 func seedDiscoverySource(t *testing.T, s *Server, url string, keys []storage.SourceAPIKey, ids ...string) storage.ModelSource {
 	t.Helper()
 	src := storage.ModelSource{ID: "discovery", Name: "discovery", BaseURL: url, Platform: "custom:openai-chat-completions", Enabled: true, AutoFetchModels: true, APIKeys: keys}
+	return seedDiscoveryModels(t, s, src, ids...)
+}
+
+func seedDiscoveryModels(t *testing.T, s *Server, src storage.ModelSource, ids ...string) storage.ModelSource {
+	t.Helper()
 	if err := s.store.UpsertSource(t.Context(), src); err != nil {
 		t.Fatal(err)
 	}

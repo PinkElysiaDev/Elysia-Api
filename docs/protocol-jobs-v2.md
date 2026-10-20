@@ -60,6 +60,12 @@ Timeout and disconnected waiters use that policy. A wait timeout returns 504
 with Location; an uncertain submit returns an error and Location. Native async
 submissions always return a receipt rather than waiting implicitly.
 
+The timeout policy also applies when the wait deadline expires during a job
+repository read. The gateway preserves the last successfully read task identity
+and records cancellation with a separate bounded commit context when requested.
+An ordinary repository failure, or failure to persist cancellation intent, is
+reported as 502 rather than being presented as a successful timeout transition.
+
 ## Durability and boundaries
 
 Reservation precedes network submission. Submission timeout, invalid provider

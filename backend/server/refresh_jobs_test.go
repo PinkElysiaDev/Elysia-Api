@@ -10,22 +10,47 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
 
-// waitForSourceRefreshDone 轮询等待指定源的后台拉取任务结束（带超时兜底）。
+// Scheduler tests use a small, verified text protocol with the real discovery
+// operation. Saving a source still verifies and commits its binding, without
+// repeatedly evaluating the entire built-in protocol matrix inside a barrier.
+func newSourceRefreshTestServer(t *testing.T) *Server {
+	t.Helper()
+	s, _ := newProtocolAdminTestServer(t)
+	s.initLifecycle()
+	t.Cleanup(func() {
+		s.lifecycleCancel()
+		s.sourceRefreshWG.Wait()
+	})
+	definition := loadGatewayDefinition(t, "text-alpha")
+	definition.ID, definition.Name = "refresh-jobs", "refresh-jobs"
+	catalog := presetDefinition(t, "openai-chat-completions")
+	definition.Operations["models"] = catalog.Operations["models"]
+	definition.ModelSamples = catalog.ModelSamples
+	activateGatewayDefinition(t, s, definition)
+	// Discovery retains its production context budget. The fixture's generic
+	// HTTP timeout must not cancel the explicitly gated request first.
+	s.protocolTransport.SetTimeout(0)
+	return s
+}
+
+func seedRefreshJobSource(t *testing.T, s *Server, url string, keys []storage.SourceAPIKey, ids ...string) storage.ModelSource {
+	t.Helper()
+	return seedDiscoveryModels(t, s, storage.ModelSource{
+		ID: "discovery", Name: "discovery", BaseURL: url, Platform: "custom:refresh-jobs",
+		Enabled: true, AutoFetchModels: true, APIKeys: keys,
+	}, ids...)
+}
+
+// Join registered jobs, including follow-ups, rather than treating slow offline
+// evidence verification as a stuck refresh. The test runner bounds the wait.
 func waitForSourceRefreshDone(t *testing.T, s *Server, sourceID string) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		if !s.sourceRefreshStateOf(sourceID).Refreshing {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("source %s refresh job did not finish in time", sourceID)
-		}
-		time.Sleep(20 * time.Millisecond)
+	s.sourceRefreshWG.Wait()
+	if state := s.sourceRefreshStateOf(sourceID); state.Refreshing {
+		t.Fatalf("source %s remained refreshing after its jobs completed: %+v", sourceID, state)
 	}
 }
 
@@ -47,10 +72,10 @@ func TestSourceRefreshJobDedup(t *testing.T) {
 	defer srv.Close()
 	defer unblock()
 
-	s := newKeyPermissionTestServer(t)
+	s := newSourceRefreshTestServer(t)
 	ctx := context.Background()
 	source := storage.ModelSource{
-		ID: "src1", Name: "slow", BaseURL: srv.URL, Platform: "custom:openai-chat-completions",
+		ID: "src1", Name: "slow", BaseURL: srv.URL, Platform: "custom:refresh-jobs",
 		Enabled: true, AutoFetchModels: true, APIKey: "k",
 	}
 	if err := s.store.UpsertSource(ctx, source); err != nil {
@@ -91,10 +116,10 @@ func TestSourceRefreshJobRecordsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s := newKeyPermissionTestServer(t)
+	s := newSourceRefreshTestServer(t)
 	ctx := context.Background()
 	source := storage.ModelSource{
-		ID: "src1", Name: "unauthorized", BaseURL: srv.URL, Platform: "custom:openai-chat-completions",
+		ID: "src1", Name: "unauthorized", BaseURL: srv.URL, Platform: "custom:refresh-jobs",
 		Enabled: true, AutoFetchModels: true, APIKey: "bad-key",
 	}
 	if err := s.store.UpsertSource(ctx, source); err != nil {
@@ -115,9 +140,8 @@ func TestSourceRefreshJobRecordsError(t *testing.T) {
 }
 
 func TestSourceRefreshCoalescesSavesAndSharesSyncGate(t *testing.T) {
-	// Keep the two real verification-backed saves within model discovery's
-	// deadline even under -race. The channel, rather than elapsed time, holds
-	// the old request until both saves have completed.
+	t.Parallel()
+	// Hold the old request until both verification-backed saves have committed.
 	entered, release := make(chan struct{}, 1), make(chan struct{})
 	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -141,11 +165,8 @@ func TestSourceRefreshCoalescesSavesAndSharesSyncGate(t *testing.T) {
 			close(release)
 		}
 	}()
-	s := newKeyPermissionTestServer(t)
-	src := seedDiscoverySource(t, s, upstream.URL, []storage.SourceAPIKey{{Value: "old"}}, "original")
-	// The discovery context still bounds the request; the fixture's shorter
-	// ordinary HTTP timeout must not release the barrier during verification.
-	s.protocolTransport = relay.NewProtocolTransport(0)
+	s := newSourceRefreshTestServer(t)
+	src := seedRefreshJobSource(t, s, upstream.URL, []storage.SourceAPIKey{{Value: "old"}}, "original")
 	if !s.launchSourceRefresh(src.ID) {
 		t.Fatal("not started")
 	}
@@ -191,8 +212,8 @@ func TestSourceRefreshSwitchToManualInvalidatesFetchedResult(t *testing.T) {
 			close(release)
 		}
 	}()
-	s := newKeyPermissionTestServer(t)
-	src := seedDiscoverySource(t, s, upstream.URL, []storage.SourceAPIKey{{Value: "key", FetchedModels: []string{"original"}, AllowedModels: []string{"manual"}}}, "original")
+	s := newSourceRefreshTestServer(t)
+	src := seedRefreshJobSource(t, s, upstream.URL, []storage.SourceAPIKey{{Value: "key", FetchedModels: []string{"original"}, AllowedModels: []string{"manual"}}}, "original")
 	s.launchSourceRefresh(src.ID)
 	select {
 	case <-entered:
@@ -224,8 +245,8 @@ func TestSourceRefreshLoadsLatestSnapshotAfterQueue(t *testing.T) {
 		w.Write([]byte(`{"data":[{"id":"fresh"}]}`))
 	}))
 	defer upstream.Close()
-	s := newKeyPermissionTestServer(t)
-	src := seedDiscoverySource(t, s, upstream.URL, []storage.SourceAPIKey{{Value: "old"}}, "old")
+	s := newSourceRefreshTestServer(t)
+	src := seedRefreshJobSource(t, s, upstream.URL, []storage.SourceAPIKey{{Value: "old"}}, "old")
 	s.refreshSem = make(chan struct{}, 1)
 	s.refreshSem <- struct{}{}
 	s.launchSourceRefresh(src.ID)
@@ -254,8 +275,8 @@ func TestSourceRefreshCanceledCallerKeepsPendingSave(t *testing.T) {
 		w.Write([]byte(`{"data":[{"id":"latest"}]}`))
 	}))
 	defer upstream.Close()
-	s := newKeyPermissionTestServer(t)
-	src := seedDiscoverySource(t, s, upstream.URL, []storage.SourceAPIKey{{Value: "old"}}, "original")
+	s := newSourceRefreshTestServer(t)
+	src := seedRefreshJobSource(t, s, upstream.URL, []storage.SourceAPIKey{{Value: "old"}}, "original")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)

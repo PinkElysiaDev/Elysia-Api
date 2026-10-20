@@ -20,6 +20,11 @@ func newKeyPermissionTestServer(t *testing.T) *Server {
 	t.Cleanup(func() { store.Close() })
 	s := newUnboundTestServer(t, nil)
 	s.store = store
+	s.initLifecycle()
+	t.Cleanup(func() {
+		s.lifecycleCancel()
+		s.sourceRefreshWG.Wait()
+	})
 	activateDiscoveryPresets(t, s)
 	return s
 }
