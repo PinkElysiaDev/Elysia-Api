@@ -157,16 +157,28 @@ See the [CLI reference](agent-cli.en.md) for complete semantics.
 
 ## A2A
 
-`A2A-Version` defaults to `0.3.0`; `1.0.0` is also supported. Unknown versions return 400. The Agent Card follows the requested version.
+The transport uses official `github.com/a2aproject/a2a-go/v2` v2.6.0: the native JSON-RPC binding serves 1.0 and the SDK's `a2acompat/a2av0` binding serves 0.3. `A2A-Version` defaults to `0.3`; `1.0` selects the current binding. Existing `0.3.0` and `1.0.0` headers remain aliases. Unknown versions return 400 for both requests and Agent Cards. Cards advertise the SDK version strings `0.3` and `1.0`; the 0.3 card uses the official combined compatibility representation.
 
 | v0.3 method | v1.0 method | Behavior |
 | --- | --- | --- |
-| `message/send` | `SendMessage` | Create a turn nonblockingly and return a snapshot |
+| `message/send` | `SendMessage` | Wait for completion/input-required, or return immediately when configured |
 | `message/stream` | `SendStreamingMessage` | Follow over SSE until final state or input required |
 | `tasks/get` | `GetTask` | Read a task |
 | `tasks/cancel` | `CancelTask` | Stop a running turn; deny a pending input action |
 | `tasks/resubscribe` | `SubscribeToTask` | Replay and follow |
-| — | `ListTasks` | Cursor pagination |
+| — | `ListTasks` | `pageToken` / `nextPageToken` pagination, page size 1–100 (default 50) |
+
+### SDK wire-format migration
+
+Both protocol generations remain available, but clients relying on the old hand-written wire format must update:
+
+- Use the method names belonging to the selected protocol version; cross-version method aliases are no longer accepted.
+- For asynchronous send, explicitly set `configuration.blocking: false` on 0.3 or `configuration.returnImmediately: true` on 1.0. By default send waits for completion or input-required, bounded by the HTTP request context. A disconnected request does not cancel the engine's detached task; use the task cancellation method.
+- The 1.0 send result is `{ "task": ... }` (or a message). Stream results are wrapped as `task`, `statusUpdate`, or `artifactUpdate`. `GetTask` and `CancelTask` return the task directly. The SDK supplies 0.3 `kind` discriminators.
+- `ListTasks` replaces the old `cursor` / `nextCursor` fields with `pageToken` / `nextPageToken`, adds `totalSize` / `pageSize`, and supports context, state, and update-time filters. Artifacts are included only with `includeArtifacts: true`.
+- Agent Card security and capability fields, protocol errors, JSON-RPC validation, and SSE encoding follow the official bindings. In particular, unsupported push notification operations use the SDK error code (`-32003` on 0.3), rather than the former custom mapping.
+- New tasks require a nonempty text part and a user-role message with a message ID. Approval data is interpreted by the gateway after SDK decoding; an explicit `approved: false` remains distinct from an absent decision.
+- Application-owned JSON decoding/encoding uses Sonic; SDK-internal wire serialization is managed by the dependency.
 
 `contextId` identifies a session; missing or unknown IDs create a session. Each task is one turn, with `taskId` shaped as `sessionID:userMessageSeq`. Running, waiting, completed, failed, and canceled map to `working`, `input-required`, `completed`, `failed`, and `canceled`; v1.0 uses `TASK_STATE_*` enums. Completed artifacts include final text and `{rounds,model,durationMs}`.
 
@@ -176,7 +188,7 @@ To resume an input-required task, send the same `taskId`. Approval or plan confi
 {"parts":[{"kind":"data","data":{"approved":true}}]}
 ```
 
-v1.0 parts omit `kind`. A missing decision data part returns `-32602`. Omitting `taskId` creates another turn in the session. `messageId` deduplication uses a single-instance in-memory LRU and is not durable across restarts. Push notifications and extended cards are not implemented.
+v1.0 parts omit `kind`. A missing decision data part returns an SDK invalid-parameters error. Omitting `taskId` creates another turn in the session. Concurrent duplicate `messageId` requests share one start/resume operation. Task snapshots and replay events are process-local; the registry holds at most 512 tasks, evicting the oldest terminal task first (or oldest active task if all are active) and removing its deduplication records. This is not durable across restarts. A durable Agent session still awaiting approval can restore its task mapping when resumed. Subscriptions replay stored events and follow future updates, including across input-required/resume boundaries; disconnecting one subscriber does not stop the task or other subscribers. Push notifications and extended cards are not implemented.
 
 ## Troubleshooting and permissions
 

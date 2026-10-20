@@ -157,16 +157,28 @@ Mcp-Name: elysia_cli
 
 ## A2A
 
-`A2A-Version` 缺省 `0.3.0`，还支持 `1.0.0`；未知版本返回 400。Agent Card 随版本头返回对应结构。
+传输层使用官方 `github.com/a2aproject/a2a-go/v2` v2.6.0：原生 JSON-RPC binding 服务 1.0，SDK 的 `a2acompat/a2av0` 模块服务 0.3。`A2A-Version` 缺省 `0.3`，`1.0` 选择当前 binding；原 `0.3.0`、`1.0.0` 请求头仍作为别名接受。请求及 Agent Card 的未知版本均返回 400。卡片公布 SDK 版本字符串 `0.3`、`1.0`，0.3 卡使用官方的合并兼容表示。
 
 | v0.3 方法 | v1.0 方法 | 行为 |
 | --- | --- | --- |
-| `message/send` | `SendMessage` | 非阻塞创建轮次并返回快照 |
+| `message/send` | `SendMessage` | 默认等到完成或等待输入；可配置为立即返回 |
 | `message/stream` | `SendStreamingMessage` | SSE 跟踪任务至终态或等待输入 |
 | `tasks/get` | `GetTask` | 读取任务 |
 | `tasks/cancel` | `CancelTask` | 停止运行轮次；等待输入时以拒绝结束 |
 | `tasks/resubscribe` | `SubscribeToTask` | 回放并跟随 |
-| — | `ListTasks` | 游标分页 |
+| — | `ListTasks` | `pageToken` / `nextPageToken` 分页，页大小 1–100，默认 50 |
+
+### SDK 线协议迁移
+
+两代协议继续可用，但依赖原手写格式的客户端需要调整：
+
+- 方法名必须匹配所选协议版本，不再接受跨版本的方法别名。
+- 异步发送须显式配置：0.3 使用 `configuration.blocking: false`，1.0 使用 `configuration.returnImmediately: true`。默认等待完成或等待输入，等待受 HTTP 请求上下文约束。断开请求不会取消引擎中的独立任务，终止任务需调用取消方法。
+- 1.0 的 send 结果包装为 `{ "task": ... }`（或 message），流式结果按 `task`、`statusUpdate`、`artifactUpdate` 包装；`GetTask` 和 `CancelTask` 直接返回 task。0.3 的 `kind` 判别字段由 SDK 生成。
+- `ListTasks` 将旧 `cursor` / `nextCursor` 改为 `pageToken` / `nextPageToken`，增加 `totalSize` / `pageSize`，支持按会话、状态和更新时间过滤。只有 `includeArtifacts: true` 时包含产物。
+- Agent Card 安全与能力字段、协议错误、JSON-RPC 校验及 SSE 编码均采用官方 binding。Push 不支持错误使用 SDK 错误码（0.3 为 `-32003`），替代原自定义映射。
+- 新任务要求非空文本、用户角色及消息 ID。审批 data 由 SDK 解码后交给网关解释，显式 `approved: false` 与缺少决策仍有区别。
+- 应用层 JSON 编解码使用 Sonic，SDK 内部线协议序列化由依赖管理。
 
 `contextId` 对应会话；缺省或未知时新建。一个任务对应一轮，`taskId` 为 `会话ID:用户消息seq`。运行、等待输入、完成、失败、取消分别映射至 `working`、`input-required`、`completed`、`failed`、`canceled`；v1.0 使用 `TASK_STATE_*` 枚举。完成产物包含最终文本及 `{rounds,model,durationMs}`。
 
@@ -176,7 +188,7 @@ Mcp-Name: elysia_cli
 {"parts":[{"kind":"data","data":{"approved":true}}]}
 ```
 
-v1.0 的 part 不使用 `kind`。审批缺少 data part 返回 `-32602`。不带 `taskId` 则在该会话创建新一轮。消息按 `messageId` 在单实例内存 LRU 中去重，不提供跨重启的持久幂等保证。Push notifications 与扩展卡未实现。
+v1.0 的 part 不使用 `kind`。审批缺少 data part 返回 SDK 参数错误。不带 `taskId` 则在该会话创建新一轮；并发重复 `messageId` 共享一次启动或恢复。任务快照与回放事件保存在进程内，登记表最多 512 个任务，优先淘汰最旧终态任务（全在运行则淘汰最旧活动任务），并移除其去重记录，不提供跨重启的持久幂等保证。持久化 Agent 会话仍等待审批时，恢复请求可重建任务映射。订阅回放已有事件并跟随更新，可跨越等待输入和恢复；一个订阅断开不停止任务或其他订阅。Push notifications 与扩展卡未实现。
 
 ## 排障与权限
 

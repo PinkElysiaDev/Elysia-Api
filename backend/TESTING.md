@@ -33,6 +33,17 @@ go test -tags=sonic -race ./server -run '^Test(MCP|AgentRemote|A2A|RemoteThinkin
 脱敏及实际 SSE 断开取消的回归。传输层兼容性变化见
 [远程 Agent 接入](../docs/remote-agent-api.md#取代手写传输层的破坏性迁移)。
 
+## A2A 定向验证
+
+```sh
+go test -tags=sonic -race ./server -run '^Test(A2A|AgentRemote|Remote|MCP)' -count=1 -timeout=3m
+```
+
+`a2a_sdk_test.go` 使用官方 0.3 / 1.0 客户端验证真实 HTTP/SSE、鉴权撤销、
+断开后继续执行、并发重复消息、任务重放、订阅广播及分页淘汰。
+`agent_remote_test.go` 保留审批恢复、显式裁决、取消终态和旧任务取代的集成回归。
+版本与响应差异见[远程 Agent 接入](../docs/remote-agent-api.md#sdk-线协议迁移)。
+
 ## 测试组织与去重
 
 缓存的定向 benchmark、Otter 替换前后结果及容量语义差异见
