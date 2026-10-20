@@ -145,6 +145,20 @@ GOMAXPROCS=1 go test -tags=sonic ./storage -run '^$' \
 
 本次只把固定的模型组和 settings 查询交给 sqlc，`ListGroups` 消除 N+1；生成文件与运行时 schema 通过定向测试校对。基准和范围见 [sqlc 迁移报告](../docs/backend-sqlc-migration.md)。
 
+## 原子文件写入验证
+
+```sh
+go test -tags=sonic -race ./internal/atomicfile ./config ./storage ./server \
+  -run '^Test(WriteFile|Config|AgentSettingsSave|EnsureConfig|Bootstrap|DBEncryption|Secret|ModelCatalogCache|Catalog|ProtocolSnapshot|SnapshotCleanup|RuntimeConfigAtomic)' \
+  -count=1 -timeout=3m
+GOOS=windows GOARCH=amd64 go test -tags=sonic ./internal/atomicfile \
+  -run '^$' -c -o /tmp/opencode/atomicfile-windows.test.exe
+GOMAXPROCS=1 go test -tags=sonic ./internal/atomicfile -run '^$' \
+  -bench '^BenchmarkAtomicWrite$' -benchmem -benchtime=200ms -count=3
+```
+
+验证配置、密钥、模型目录缓存和协议快照发布的完整替换、失败保留、权限、临时文件清理及并发读写；不宣称父目录 fsync 耐久性。详见[原子写入迁移报告](../docs/backend-atomic-file-migration.md)。
+
 ## 测试组织与去重
 
 缓存的定向 benchmark、Otter 替换前后结果及容量语义差异见

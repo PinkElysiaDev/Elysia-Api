@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/atomicfile"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -127,7 +128,7 @@ func (s *Store) ensureProtocolSnapshot(ctx context.Context, baseline, evidence s
 		return nil, protocol.ErrRevisionConflict
 	}
 	final := s.path + ".protocol-snapshot-v2-" + filepath.Base(temporary)
-	if err = os.Rename(temporary, final); err != nil {
+	if err = atomicfile.ReplaceFile(temporary, final); err != nil {
 		return nil, err
 	}
 	defer func() {
