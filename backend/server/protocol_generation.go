@@ -73,7 +73,7 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if err != nil {
 		return nil, err
 	}
-	if err := candidate.compiled.CheckOperationInput(candidate.operationName, body); err != nil {
+	if err := candidate.compiled.CheckOperationInput(ctx, candidate.operationName, body); err != nil {
 		return nil, err
 	}
 	if record != nil {

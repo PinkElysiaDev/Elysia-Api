@@ -272,5 +272,5 @@ func (s *Server) prepareHealthProbe(ctx context.Context, model storage.Model) (g
 	if err != nil {
 		return candidate, nil, err
 	}
-	return candidate, request, candidate.compiled.CheckOperationInput(candidate.operationName, body)
+	return candidate, request, candidate.compiled.CheckOperationInput(ctx, candidate.operationName, body)
 }

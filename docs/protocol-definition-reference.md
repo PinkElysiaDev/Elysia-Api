@@ -10,6 +10,8 @@
 
 **迁移兼容性：** 编译器版本 `2.0.0-dev.73` 要求重新生成验证证据。进入 Schema 校验的值（包括未知子字段与 enum）统一限制数字转换规模：数字原文最多 4096 字节，指数范围 -4096…4096；解码前检查完整值的字节、节点及深度预算。诊断采用库的错误树及转义后的实例路径，消息措辞与错误顺序可能变化。范围、基准与验证结果见[迁移报告](backend-runtime-schema-migration.md)。
 
+**请求预算修正：** 编译器版本 `2.0.0-dev.74` 使 operation 输入校验使用固定到请求上下文的请求体预算（默认 32 MiB），与请求解码、编码保持一致。协议显式配置的更小上限仍然生效，响应与事件预算保持独立。已有验证证据需要按修正后的校验行为重新生成。
+
 ## 生成的 JSON Schema
 
 实时 catalog 使用 **`github.com/invopop/jsonschema` v0.14.0** 将 Go 模型反射为 JSON Schema draft 2020-12，覆盖协议定义、绑定、转换策略及语义模型。结构体拒绝未知属性，JSON 的 `omitempty` 和 `omitzero` 标签决定字段是否必需。协议 `Value` 类型显式映射为不限制类型的 JSON schema，保留任意 JSON 值，包括 null、false、零与大整数。缓存意图字段说明使用依赖的 `jsonschema_description` 标签。

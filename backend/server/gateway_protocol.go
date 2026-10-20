@@ -205,7 +205,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	} else if e = candidate.compiled.ValidateWireOutput(protocol.EncodeRequest, v); e != nil {
 		return e
 	}
-	if err := candidate.compiled.CheckOperationInput(candidate.operationName, body); err != nil {
+	if err := candidate.compiled.CheckOperationInput(c.Request.Context(), candidate.operationName, body); err != nil {
 		return &gatewayFailure{http.StatusBadRequest, err}
 	}
 	setRecordModel(record, candidate.model, builtin.Platform("custom:"+candidate.binding.ProtocolID))
