@@ -9,6 +9,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/jsonschema-go v0.4.3
 	github.com/invopop/jsonschema v0.14.0
+	github.com/marwatk/atomicfile v1.0.2
 	github.com/mattn/go-isatty v0.0.24
 	github.com/maypok86/otter/v2 v2.3.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0

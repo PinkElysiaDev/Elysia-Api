@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/atomicfile"
 	log "github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
@@ -431,31 +432,10 @@ func mergeConfigSection(original json.RawMessage, section any) ([]byte, error) {
 	return sonic.ConfigStd.Marshal(fields)
 }
 
-// WriteFileAtomic 以"写临时文件 + fsync + 原子重命名"落盘：进程在写入中途
-// 崩溃或断电时，目标文件要么是完整旧内容、要么是完整新内容。
+// WriteFileAtomic stages and syncs complete contents before platform-aware
+// replacement. It does not promise parent-directory durability after power loss.
 func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName) // Rename 成功后为 no-op
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmpName, perm); err != nil {
-		return err
-	}
-	return os.Rename(tmpName, path)
+	return atomicfile.WriteFile(path, data, perm)
 }
 
 func (c *Config) SetPanelAccessToken(token string) {
@@ -760,7 +740,7 @@ func (c *Config) GetDBEncryptionKey() []byte {
 	raw := make([]byte, 32)
 	_, _ = rand.Read(raw)
 	key := base64.StdEncoding.EncodeToString(raw)
-	if err := os.WriteFile(target, []byte(key), 0o600); err != nil {
+	if err := WriteFileAtomic(target, []byte(key), 0o600); err != nil {
 		log.Warn().Str("component", "config").Str("path", target).Err(err).Msg("failed to persist db encryption key (secrets will be at risk if key is lost)")
 		// 仍返回内存中的 key，本次进程内加密可用；但重启后无法解密，
 		// 因此只在能落盘时才真正启用持久加密。

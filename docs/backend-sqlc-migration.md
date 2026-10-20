@@ -42,7 +42,7 @@ The 1,000-group case is approximately **2.8× faster** and removes roughly 16,00
 The checked-in files were generated with the official release binary:
 
 ```sh
-sqlc v1.31.1
+sqlc version # expected: v1.31.1
 sqlc generate
 ```
 

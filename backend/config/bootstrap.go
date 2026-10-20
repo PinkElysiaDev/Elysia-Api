@@ -70,5 +70,5 @@ func writeDefaultConfig(path, token string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, out, 0o600)
+	return WriteFileAtomic(path, out, 0o600)
 }

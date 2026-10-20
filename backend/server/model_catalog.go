@@ -18,6 +18,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/internal/atomicfile"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
@@ -192,15 +193,11 @@ func (m *modelCatalog) saveToCache(body []byte, fetchedAt time.Time) {
 	if err != nil {
 		return
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, payload, 0o644); err != nil {
+	if err := atomicfile.WriteFile(path, payload, 0o644); err != nil {
 		m.mu.Lock()
 		m.lastError = fmt.Sprintf("cache write: %v", err)
 		m.mu.Unlock()
 		return
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
 	}
 }
 
