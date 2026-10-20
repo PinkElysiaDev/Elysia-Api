@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
@@ -457,7 +456,7 @@ func (s *Server) bindGatewayRequest(c *gin.Context, view protocol.RegistryView, 
 
 func (s *Server) collectGatewayCandidates(view protocol.RegistryView, bindings []storage.ProtocolBinding, plan *gatewayPlan, record *usageRecord) error {
 	models := s.buildCandidates(plan.group)
-	if sticky := s.affinity.get(record.KeyHash, plan.group.ID, time.Now()); sticky != "" {
+	if sticky := s.affinity.get(record.KeyHash, plan.group.ID); sticky != "" {
 		models = applyAffinity(models, sticky)
 	}
 	models = s.expandCandidatesByKeyStrategy(models)

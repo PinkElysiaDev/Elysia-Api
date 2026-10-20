@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/storage"
@@ -29,25 +30,36 @@ func (s *Server) ensureRouteCache() bool {
 		return true
 	}
 
-	// 装配在锁外完成，减少持锁时间；多个并发请求可能重复装配一次，
-	// 但结果一致且幂等，可接受（最终落缓存的以 gen 校验为准）。
-	groups, okGroups := s.assembleGroupsFromStore()
-	tokens, okTokens := s.loadTokensFromStore()
-	if !okGroups || !okTokens {
-		return false // 存储失败时不得使用过期授权或猜测路由。
-	}
+	// Each generation has its own flight, so invalidation never makes new
+	// callers wait for an obsolete snapshot. Recheck after entering the flight
+	// in case another caller completed between the initial lookup and Do.
+	result, _, _ := s.routeCacheFlights.Do(strconv.FormatUint(generation, 10), func() (any, error) {
+		s.routeCacheMu.RLock()
+		current, loaded := s.routeCacheGeneration == generation, s.routeCacheLoaded
+		s.routeCacheMu.RUnlock()
+		if !current || loaded {
+			return current && loaded, nil
+		}
 
-	s.routeCacheMu.Lock()
-	if s.routeCacheGeneration != generation {
-		// 装配期间发生失效：丢弃本快照，让下次读取重新装配。
-		s.routeCacheMu.Unlock()
-		return false
-	}
-	s.cachedGroups = groups
-	s.cachedTokens = tokens
-	s.routeCacheLoaded = true
-	s.routeCacheMu.Unlock()
-	return true
+		groups, okGroups := s.assembleGroupsFromStore()
+		tokens, okTokens := s.loadTokensFromStore()
+		if !okGroups || !okTokens {
+			return false, nil // 存储失败时不得使用过期授权或猜测路由。
+		}
+
+		s.routeCacheMu.Lock()
+		defer s.routeCacheMu.Unlock()
+		if s.routeCacheGeneration != generation {
+			return false, nil
+		}
+		s.cachedGroups = groups
+		s.cachedTokens = tokens
+		s.routeCacheLoaded = true
+		return true, nil
+	})
+	s.routeCacheMu.RLock()
+	defer s.routeCacheMu.RUnlock()
+	return result.(bool) && s.routeCacheGeneration == generation && s.routeCacheLoaded
 }
 
 // invalidateRouteCache 标记缓存失效，下次读取时重建。
