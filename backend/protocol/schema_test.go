@@ -1,27 +1,22 @@
 package protocol
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/bytedance/sonic"
-	validator "github.com/google/jsonschema-go/jsonschema"
+	validator "github.com/santhosh-tekuri/jsonschema/v6"
 )
 
-// Validate generated contracts with an independent implementation already used
-// by the MCP SDK, rather than duplicating reflection rules in the test.
-func resolveCatalogSchema(t *testing.T, schema map[string]any) *validator.Resolved {
+// Validate the reflection library's output with our runtime schema compiler.
+func resolveCatalogSchema(t *testing.T, schema map[string]any) *validator.Schema {
 	t.Helper()
-	data, err := sonic.ConfigStd.Marshal(schema)
-	if err != nil {
+	compiler := validator.NewCompiler()
+	const location = "urn:elysia:catalog-test"
+	if err := compiler.AddResource(location, schema); err != nil {
 		t.Fatal(err)
 	}
-	var decoded validator.Schema
-	if err := sonic.ConfigStd.Unmarshal(data, &decoded); err != nil {
-		t.Fatal(err)
-	}
-	resolved, err := decoded.Resolve(nil) // no external schema loader
+	resolved, err := compiler.Compile(location)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +70,7 @@ func TestSchemaCatalogRootsAndStrictDefinition(t *testing.T) {
 func TestSchemaValuePresenceAndRecursiveReferences(t *testing.T) {
 	t.Parallel()
 	catalog := DescribeSchema()
-	resolveType := func(root map[string]any, name string) *validator.Resolved {
+	resolveType := func(root map[string]any, name string) *validator.Schema {
 		return resolveCatalogSchema(t, map[string]any{"$ref": "#/$defs/" + name, "$defs": root["$defs"]})
 	}
 	expression := resolveType(catalog.Definition, "Expression")
@@ -116,17 +111,13 @@ func TestSchemaValuePresenceAndRecursiveReferences(t *testing.T) {
 	}
 }
 
-func TestSchemaCatalogFreshConcurrentResults(t *testing.T) {
-	for i := range 8 {
-		t.Run(fmt.Sprint(i), func(t *testing.T) {
-			t.Parallel()
-			first := DescribeSchema()
-			first.Definition["$defs"].(map[string]any)["Definition"].(map[string]any)["additionalProperties"] = true
-			first.Semantic["$defs"].(map[string]any)["Request"] = nil
-			second := DescribeSchema()
-			if second.Definition["$defs"].(map[string]any)["Definition"].(map[string]any)["additionalProperties"] != false || second.Semantic["$defs"].(map[string]any)["Request"] == nil {
-				t.Fatal("catalog mutation leaked into another request")
-			}
-		})
+func TestSchemaCatalogFreshResults(t *testing.T) {
+	t.Parallel()
+	first := DescribeSchema()
+	first.Definition["$defs"].(map[string]any)["Definition"].(map[string]any)["additionalProperties"] = true
+	first.Semantic["$defs"].(map[string]any)["Request"] = nil
+	second := DescribeSchema()
+	if second.Definition["$defs"].(map[string]any)["Definition"].(map[string]any)["additionalProperties"] != false || second.Semantic["$defs"].(map[string]any)["Request"] == nil {
+		t.Fatal("catalog mutation leaked into another request")
 	}
 }

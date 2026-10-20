@@ -168,16 +168,17 @@ func TestLargeRequestPreviewAndCollector(t *testing.T) {
 	}))
 	defer provider.Close()
 	var operation protocol.Operation
-	for _, entry := range compiled.Operations() {
+	var operationName string
+	for name, entry := range compiled.Operations() {
 		if entry.Kind == "generate" && entry.Transport == protocol.HTTPJSON {
-			operation = entry
+			operation, operationName = entry, name
 		}
 	}
 	conversion, err := protocol.ResolveConversion(protocol.DefaultConversionPolicy(compiled, compiled))
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidate := gatewayCandidate{compiled: compiled, conversion: conversion, operation: operation, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
+	candidate := gatewayCandidate{compiled: compiled, conversion: conversion, operation: operation, operationName: operationName, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
 	request, err := compiled.DecodeRequest(t.Context(), body, protocol.EvaluationContext{})
 	if err != nil {
 		t.Fatal(err)

@@ -120,37 +120,20 @@ func TestRuntimeSchemaErrorLocations(t *testing.T) {
 	}
 }
 
-func TestRuntimeSchemaCompiledIsolationAndConcurrency(t *testing.T) {
+func TestRuntimeSchemaConcurrentOperationValidation(t *testing.T) {
 	definition := testDefinition("schema-library", "model", "history", "tools", "answer")
 	op := definition.Operations["generate"]
 	op.Input = &ValueSchema{Type: ObjectType, Required: []string{"id"}, Properties: map[string]ValueSchema{"id": {Type: IntegerType}}}
 	definition.Operations["generate"] = op
 	compiled := compileTestDefinition(t, definition)
-	if len(compiled.operationSchemas) != 1 {
-		t.Fatal("operation schema not precompiled")
-	}
-	operation := compiled.Operations()["generate"]
-	if err := compiled.CheckOperationInput(operation, []byte(`{"id":9007199254740993123}`)); err != nil {
-		t.Fatal(err)
-	}
-	operation.Input.Properties["id"] = ValueSchema{Type: StringType}
-	if err := compiled.CheckOperationInput(operation, []byte(`{"id":"customized"}`)); err != nil {
-		t.Fatalf("customized schema ignored: %v", err)
-	}
-	if err := compiled.CheckOperationInput(operation, []byte(`{"id":1}`)); err == nil {
-		t.Fatal("stale validator reused for customized metadata")
-	}
-	for range 8 {
+	for range 2 {
 		t.Run("reader", func(t *testing.T) {
 			t.Parallel()
-			for range 20 {
-				original := compiled.Operations()["generate"]
-				if err := compiled.CheckOperationInput(original, []byte(`{"id":1}`)); err != nil {
-					t.Fatal(err)
-				}
-				if err := compiled.CheckOperationInput(original, []byte(`{"id":"wrong"}`)); err == nil {
-					t.Fatal("compiled schema mutated")
-				}
+			if err := compiled.CheckOperationInput("generate", []byte(`{"id":9007199254740993123}`)); err != nil {
+				t.Fatal(err)
+			}
+			if err := compiled.CheckOperationInput("generate", []byte(`{"id":"wrong"}`)); err == nil {
+				t.Fatal("invalid operation input accepted")
 			}
 		})
 	}
@@ -164,10 +147,6 @@ func TestRuntimeSchemaMappingValidation(t *testing.T) {
 		Transform: expressionPointer(readExpression("input", "/value")),
 	}
 	compiled := compileTestDefinition(t, definition)
-	mapping := compiled.mappings[EncodeRequest]
-	if mapping.input == nil || mapping.output == nil {
-		t.Fatal("mapping schemas were not precompiled")
-	}
 	for _, tc := range []struct{ raw, want, errorPath string }{
 		{`{"value":9007199254740993123}`, `9007199254740993123`, ""},
 		{`{}`, "", "/input"},

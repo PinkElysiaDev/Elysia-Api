@@ -40,7 +40,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 				if operation.Kind != "generate" || (sample.Operation != "" && sample.Operation != name) {
 					continue
 				}
-				if err = compiled.CheckOperationInput(operation, wire.Bytes()); err != nil {
+				if err = compiled.CheckOperationInput(name, wire.Bytes()); err != nil {
 					break
 				}
 			}

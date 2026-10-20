@@ -201,18 +201,11 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 		if input == nil {
 			continue
 		}
-		key, err := runtimeSchemaKey(input)
-		if err != nil {
-			return fail("/operations/"+name+"/input", err)
-		}
-		if _, exists := compiled.operationSchemas[key]; exists {
-			continue
-		}
 		validator, err := compileValueSchema(input, limits)
 		if err != nil {
 			return fail("/operations/"+name+"/input", err)
 		}
-		compiled.operationSchemas[key] = validator
+		compiled.operationSchemas[name] = validator
 	}
 	for capability, supported := range definition.Capabilities {
 		compiled.capabilities[capability] = supported
@@ -626,7 +619,8 @@ func (compiled *Compiled) ResourceLimits() Limits { return compiled.limits }
 func (compiled *Compiled) SamplesHash() string { return compiled.samplesHash }
 
 // Operations copies compiled transport metadata without reparsing expressions
-// or fixtures. Callers may customize their copy for one pinned request.
+// or fixtures. Transport overrides apply to the copy; input validation always
+// uses the named operation's compiled schema.
 func (compiled *Compiled) Operations() map[string]Operation {
 	operations := make(map[string]Operation, len(compiled.operations))
 	for name, operation := range compiled.operations {

@@ -46,9 +46,10 @@ func TestCollectedChatModelRepairAndPreview(t *testing.T) {
 	}))
 	defer provider.Close()
 	var operation protocol.Operation
-	for _, entry := range upstream.Operations() {
+	var operationName string
+	for name, entry := range upstream.Operations() {
 		if entry.Kind == "generate" && entry.Transport == protocol.HTTPJSON {
-			operation = entry
+			operation, operationName = entry, name
 		}
 	}
 	outbound := []byte(`{"model":"sent-model","messages":[{"role":"user","content":"synthetic"}]}`)
@@ -71,7 +72,7 @@ func TestCollectedChatModelRepairAndPreview(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			candidate := gatewayCandidate{compiled: upstream, conversion: conversion, operation: operation, model: config.ModelRef{ID: "configured-model", Name: "configured-model", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
+			candidate := gatewayCandidate{compiled: upstream, conversion: conversion, operation: operation, operationName: operationName, model: config.ModelRef{ID: "configured-model", Name: "configured-model", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
 			record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: 1 << 20}}
 			before := calls
 			result, collectErr := s.collectProtocolGeneration(t.Context(), candidate, request, record, nil)

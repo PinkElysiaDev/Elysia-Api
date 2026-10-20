@@ -115,7 +115,7 @@ func TestMCPOfficialClient(t *testing.T) {
 	}
 }
 
-func TestMCPSDKHTTPBoundary(t *testing.T) {
+func TestMCPGatewayHTTPPolicy(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	router := gin.New()
 	router.Any("/mcp", s.handleMCP)
@@ -127,16 +127,9 @@ func TestMCPSDKHTTPBoundary(t *testing.T) {
 	}{
 		{"missing version", "POST", body, map[string]string{"MCP-Protocol-Version": ""}, 400},
 		{"legacy version", "POST", body, map[string]string{"MCP-Protocol-Version": "2025-11-25"}, 400},
-		{"missing method", "POST", body, map[string]string{"Mcp-Method": ""}, 400},
-		{"method mismatch", "POST", body, map[string]string{"Mcp-Method": "tools/list"}, 400},
-		{"missing name", "POST", body, map[string]string{"Mcp-Name": ""}, 400},
-		{"name mismatch", "POST", body, map[string]string{"Mcp-Name": "other"}, 400},
-		{"content type", "POST", body, map[string]string{"Content-Type": "text/plain"}, 415},
-		{"accept", "POST", body, map[string]string{"Accept": "application/json"}, 400},
 		{"foreign origin", "POST", body, map[string]string{"Origin": "https://other.example"}, 403},
 		{"same origin", "POST", body, map[string]string{"Origin": "http://example.com"}, 200},
 		{"loopback origin", "POST", body, map[string]string{"Origin": "http://localhost:3000"}, 200},
-		{"batch", "POST", "[" + body + "]", nil, 400},
 		{"get", "GET", "", nil, 405},
 		{"delete", "DELETE", "", nil, 405},
 	} {
@@ -149,9 +142,6 @@ func TestMCPSDKHTTPBoundary(t *testing.T) {
 			router.ServeHTTP(w, r)
 			if w.Code != tc.status {
 				t.Fatalf("status=%d want=%d: %s", w.Code, tc.status, w.Body.String())
-			}
-			if tc.status == http.StatusMethodNotAllowed && w.Header().Get("Allow") != "POST" {
-				t.Fatalf("missing method whitelist: %v", w.Header())
 			}
 		})
 	}

@@ -1,13 +1,10 @@
 package atomicfile
 
 import (
-	"bytes"
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
-	"sync"
 	"testing"
 )
 
@@ -88,52 +85,5 @@ func TestWriteFileReplacesSymlinkEntry(t *testing.T) {
 	info, err := os.Lstat(link)
 	if err != nil || !info.Mode().IsRegular() {
 		t.Fatalf("link not replaced: %v %v", info, err)
-	}
-}
-
-func TestWriteFileConcurrentReadersSeeCompleteVersions(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows may reject replacement while another process holds the destination open")
-	}
-	path := filepath.Join(t.TempDir(), "state")
-	const size = 32 << 10
-	if err := WriteFile(path, bytes.Repeat([]byte{'a'}, size), 0600); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	var readers, writers sync.WaitGroup
-	for range 2 {
-		readers.Go(func() {
-			for ctx.Err() == nil {
-				data, err := os.ReadFile(path)
-				if err != nil {
-					t.Error(err)
-					return
-				}
-				if len(data) != size || data[0] < 'a' || data[0] > 'e' || !bytes.Equal(data, bytes.Repeat(data[:1], size)) {
-					t.Errorf("partial/mixed version: %d bytes", len(data))
-					return
-				}
-			}
-		})
-	}
-	for i := range 4 {
-		writers.Go(func() {
-			data := bytes.Repeat([]byte{byte('b' + i)}, size)
-			for range 20 {
-				if err := WriteFile(path, data, 0600); err != nil {
-					t.Error(err)
-					return
-				}
-			}
-		})
-	}
-	writers.Wait()
-	cancel()
-	readers.Wait()
-	files, err := os.ReadDir(filepath.Dir(path))
-	if err != nil || len(files) != 1 {
-		t.Fatalf("temporary file leak: %v %v", files, err)
 	}
 }

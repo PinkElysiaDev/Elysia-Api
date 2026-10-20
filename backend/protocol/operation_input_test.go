@@ -18,11 +18,14 @@ func TestOperationSchemaIsVerifiedAndImmutable(t *testing.T) {
 	}
 	copy := compiled.Operations()[name]
 	copy.Input.Required[0] = "missing"
-	if err := compiled.CheckOperationInput(compiled.Operations()[name], definition.Samples[0].Input.Bytes()); err != nil {
+	if err := compiled.CheckOperationInput(name, definition.Samples[0].Input.Bytes()); err != nil {
 		t.Fatal("operation snapshot mutated", err)
 	}
-	if err := compiled.CheckOperationInput(compiled.Operations()[name], []byte(`{}`)); err == nil {
+	if err := compiled.CheckOperationInput(name, []byte(`{}`)); err == nil {
 		t.Fatal("missing required field accepted")
+	}
+	if err := compiled.CheckOperationInput("missing", []byte(`{}`)); err == nil {
+		t.Fatal("unknown operation accepted")
 	}
 	operation.Input.Required = []string{"missing"}
 	operation.Input.Properties["missing"] = ValueSchema{Type: StringType}

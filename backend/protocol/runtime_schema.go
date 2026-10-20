@@ -131,9 +131,8 @@ func (schema *runtimeValueSchema) validate(value Value, path string, limits Limi
 	return nil
 }
 
-// Standalone compilation is used only by compile-time literal checks and by
-// callers supplying a customized operation schema. Request mappings reuse the
-// validator stored in the compiled revision.
+// Standalone compilation is used by compile-time literal checks. Requests reuse
+// the validators stored in the compiled revision.
 func checkValueSchema(value Value, schema *ValueSchema, path string, depth int, limits Limits) error {
 	if schema == nil {
 		return nil
@@ -148,11 +147,7 @@ func checkValueSchema(value Value, schema *ValueSchema, path string, depth int, 
 	return compiled.validate(value, path, limits)
 }
 
-var schemaJSON = sonic.Config{UseNumber: true, SortMapKeys: true}.Froze()
-
-func runtimeSchemaKey(schema *ValueSchema) (string, error) {
-	return schemaJSON.MarshalToString(schema)
-}
+var schemaJSON = sonic.Config{UseNumber: true}.Froze()
 
 func decodeSchemaValue(value Value, path string, limits Limits) (any, error) {
 	// Bound the entire value before materializing an interface tree, including

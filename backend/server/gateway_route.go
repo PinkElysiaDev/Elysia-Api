@@ -33,13 +33,14 @@ type gatewayCandidate struct {
 }
 
 type gatewayPlan struct {
-	carriers   []string
-	session    string
-	group      *config.ModelGroupConfig
-	request    *protocol.Request
-	candidates []gatewayCandidate
-	ingress    *protocol.Compiled
-	operation  protocol.Operation
+	carriers      []string
+	session       string
+	group         *config.ModelGroupConfig
+	request       *protocol.Request
+	candidates    []gatewayCandidate
+	ingress       *protocol.Compiled
+	operation     protocol.Operation
+	operationName string
 }
 
 func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, ingress *protocol.Compiled, path string, body []byte, record *usageRecord) (*gatewayPlan, error) {
@@ -71,7 +72,7 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		return nil, err
 	}
 	plan.request = request
-	if err := ingress.CheckOperationInput(plan.operation, body); err != nil {
+	if err := ingress.CheckOperationInput(plan.operationName, body); err != nil {
 		return nil, err
 	}
 	if plan.operation.Transport != protocol.WebSocket {
@@ -143,7 +144,7 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		}
 		body, encodeErr := candidate.compiled.EncodeRequest(c.Request.Context(), probe, probeOptions)
 		if encodeErr == nil {
-			encodeErr = candidate.compiled.CheckOperationInput(candidate.operation, body)
+			encodeErr = candidate.compiled.CheckOperationInput(candidate.operationName, body)
 		}
 		if encodeErr != nil {
 			if c.Request.Context().Err() != nil {
@@ -372,43 +373,47 @@ func constrainGatewayCapabilities(binding protocol.Binding, model config.ModelRe
 	return binding
 }
 
-func selectGatewayIngressOperation(compiled *protocol.Compiled, method, path string, request *protocol.Request) (protocol.Operation, error) {
-	var choices []protocol.Operation
-	for _, operation := range compiled.Operations() {
+func selectGatewayIngressOperation(compiled *protocol.Compiled, method, path string, request *protocol.Request) (string, protocol.Operation, error) {
+	operations := compiled.Operations()
+	var choices []string
+	for name, operation := range operations {
 		_, isMatch := protocol.MatchOperationPath(operation.Path, path)
 		if operation.Method == method && isMatch && (operation.Kind == "generate" || operation.Kind == "session" || operation.Kind == "submit") {
-			choices = append(choices, operation)
+			choices = append(choices, name)
 		}
 	}
 	if len(choices) > 1 {
 		var isStream bool
 		if stream := request.Parameters["stream"]; !stream.IsZero() {
 			if err := stream.Decode(&isStream); err != nil {
-				return protocol.Operation{}, err
+				return "", protocol.Operation{}, err
 			}
 		}
-		choices = slices.DeleteFunc(choices, func(operation protocol.Operation) bool { return (operation.Transport != protocol.HTTPJSON) != isStream })
+		choices = slices.DeleteFunc(choices, func(name string) bool { return (operations[name].Transport != protocol.HTTPJSON) != isStream })
 	}
 	if len(choices) != 1 {
-		return protocol.Operation{}, gatewayIssue(compiled.Identity(), protocol.InvalidDefinition, "/operations", "client path/method does not select one generation operation")
+		return "", protocol.Operation{}, gatewayIssue(compiled.Identity(), protocol.InvalidDefinition, "/operations", "client path/method does not select one generation operation")
 	}
-	if choices[0].Transport == protocol.HTTPJSON && !compiled.Supports(protocol.EncodeResponse) {
-		return protocol.Operation{}, gatewayIssue(compiled.Identity(), protocol.UnsupportedCapability, "/directions/encode_response", "HTTP ingress requires a response encoder")
+	name := choices[0]
+	operation := operations[name]
+	if operation.Transport == protocol.HTTPJSON && !compiled.Supports(protocol.EncodeResponse) {
+		return "", protocol.Operation{}, gatewayIssue(compiled.Identity(), protocol.UnsupportedCapability, "/directions/encode_response", "HTTP ingress requires a response encoder")
 	}
-	if choices[0].Transport != protocol.HTTPJSON && !compiled.Supports(protocol.EncodeEvent) {
-		return protocol.Operation{}, gatewayIssue(compiled.Identity(), protocol.UnsupportedCapability, "/directions/encode_event", "streaming ingress requires an event encoder")
+	if operation.Transport != protocol.HTTPJSON && !compiled.Supports(protocol.EncodeEvent) {
+		return "", protocol.Operation{}, gatewayIssue(compiled.Identity(), protocol.UnsupportedCapability, "/directions/encode_event", "streaming ingress requires an event encoder")
 	}
-	return choices[0], nil
+	return name, operation, nil
 }
 
 func (s *Server) bindGatewayRequest(c *gin.Context, view protocol.RegistryView, bindings []storage.ProtocolBinding, plan *gatewayPlan, path string, request *protocol.Request, record *usageRecord) (protocol.Scope, error) {
 	ingress := plan.ingress
 
-	operation, err := selectGatewayIngressOperation(ingress, c.Request.Method, path, request)
+	name, operation, err := selectGatewayIngressOperation(ingress, c.Request.Method, path, request)
 	if err != nil {
 		return protocol.Scope{}, err
 	}
 	plan.operation = operation
+	plan.operationName = name
 	record.Stream = operation.Transport != protocol.HTTPJSON
 	var groupName string
 	if err := request.Model.Decode(&groupName); err != nil || strings.TrimSpace(groupName) == "" {

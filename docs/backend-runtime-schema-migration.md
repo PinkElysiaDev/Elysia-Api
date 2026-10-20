@@ -8,7 +8,7 @@ Use **`github.com/santhosh-tekuri/jsonschema/v6` v6.0.3**, pinned to JSON Schema
 
 `ValueSchema` remains the closed gateway authoring subset. The compiler still rejects unsupported types, misplaced object/array rules, unknown/duplicate required keys, incompatible enum types, and schemas exceeding its depth budget. Expression type inference and static output analysis remain compiler responsibilities. The library receives only generated in-memory schemas, with no user-authored `$ref` or remote schema vocabulary.
 
-Mappings (including task/model/Agent mappings), operation inputs, and the model-page contract are compiled with their protocol revision. Typed and JSON mapping execution reuse the same immutable validators. Operation metadata is customizable: unchanged schema content selects a revision-owned validator through a canonical Sonic key; a customized schema is compiled for that call without modifying the revision or populating an unbounded global cache. Compile-time literal checks also use the library.
+Mappings (including task/model/Agent mappings), operation inputs, and the model-page contract are compiled with their protocol revision. Typed and JSON mapping execution reuse the same immutable validators. `CheckOperationInput(name, body)` selects the revision-owned validator by operation name. Transport metadata copies cannot alter the input contract; schema changes require compiling a new definition. This removes per-request schema serialization and the unused customized-schema compilation path introduced by the initial migration. Compile-time literal checks also use the library.
 
 ## Adapter semantics
 
@@ -84,7 +84,7 @@ go test -tags=sonic -race ./protocol \
 
 All passed: first command `protocol` **4.209s**, `protocol/builtin` **3.565s**, `server` **22.287s**; shipped-definition/profile checks **4.997s**; additional mapping-cause/location regression **1.066s**.
 
-Tests cover exact integers and decimal equivalence, enum deduplication, nullable enums, open/closed objects, empty containers, absent values, duplicate/escaped/invalid-Unicode keys, escaped diagnostic paths, numeric/resource bounds, schema-free values, precompiled operation reuse, customized operation isolation, mapping input/output validation, and concurrent readers. Shipped definitions and verification profiles pass with the new compiler version.
+Tests cover exact integers and decimal equivalence, enum deduplication, nullable enums, open/closed objects, empty containers, absent values, duplicate/escaped/invalid-Unicode keys, escaped diagnostic paths, numeric/resource bounds, schema-free values, precompiled operation reuse, metadata isolation, mapping input/output validation, and concurrent readers. Shipped definitions and verification profiles pass with the new compiler version.
 
 A **temporary Go overlay** extracted `checkValueSchema` from `9077dff`, renamed it as the historical oracle, and added a differential fuzz harness over the benchmark schemas plus nullable enum cases. The harness compared acceptance on valid JSON inside the new numeric/resource bounds; it did not assert equality for intentional breaking changes. A 15-second run with two workers passed **193,338 executions**, with 24 new interesting inputs. The historical validator and temporary harness were not retained as redundant production/test implementations. Local artifacts: `/tmp/opencode/runtime-schema-{legacy_test.go,differential_test.go,differential-overlay.json}`.
 

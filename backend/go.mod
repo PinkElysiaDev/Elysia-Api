@@ -7,7 +7,6 @@ require (
 	github.com/bytedance/sonic v1.15.4
 	github.com/coder/websocket v1.8.15
 	github.com/gin-gonic/gin v1.12.0
-	github.com/google/jsonschema-go v0.4.3
 	github.com/invopop/jsonschema v0.14.0
 	github.com/marwatk/atomicfile v1.0.2
 	github.com/mattn/go-isatty v0.0.24
@@ -38,6 +37,7 @@ require (
 	github.com/go-playground/validator/v10 v10.30.5 // indirect
 	github.com/goccy/go-json v0.11.2 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
+	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

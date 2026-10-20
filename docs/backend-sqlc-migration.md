@@ -19,7 +19,7 @@ The generated package is internal and does not expose `sqlc` types through the s
 
 `ListGroups` previously issued one membership query per group. The generated fixed queries provide a meaningful bounded migration target while removing the N+1 pattern. Dynamic filtering, transaction-specific writes, encrypted fields and JSON transformation remain hand-adapted until their query shapes and ownership boundaries justify separate slices.
 
-This PR does not claim that every SQL statement should be generated immediately. It establishes reproducible generation and a runtime-schema compatibility test.
+This PR does not claim that every SQL statement should be generated immediately. It establishes reproducible generation from the same schema used at runtime; storage behavior tests exercise the generated queries through the public store methods.
 
 ## Compatibility
 
@@ -65,7 +65,7 @@ GOMAXPROCS=1 go test -tags=sonic ./storage -run '^$' \
   -bench '^BenchmarkListGroups$' -benchmem -benchtime=200ms -count=3
 ```
 
-Both focused package groups passed under race detection: `storage` **1.834s**, `server` **5.981s**. The generated-query/schema compatibility test exercises settings upsert/get, missing settings, group reads and member reads against the runtime SQLite schema.
+Historical migration results: both focused package groups passed under race detection: `storage` **1.834s**, `server` **5.981s**. The separate generated-query/schema test was subsequently removed: rerunning the shared `CREATE TABLE IF NOT EXISTS` statements did not detect schema drift. Current coverage uses the store's group/settings business paths.
 
 ## Next sqlc slices
 
