@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"net/http"
@@ -123,7 +122,6 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, metadata protocol.Object) error {
 	stream.options.Values = metadata
 	var err error
-	originalEvents, _ := protocol.EncodeValue(decoded.Events)
 	acceptedEvents := []protocol.Event{}
 	deliveryEvents := decoded.Events
 	if stream.candidate.conversion.HasAnthropicEnvelope(protocol.ConversionEvent, stream.route) {
@@ -177,13 +175,10 @@ func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, me
 	if len(decoded.Events) > 0 && len(acceptedEvents) == 0 {
 		return nil
 	}
-	updatedEvents, _ := protocol.EncodeValue(acceptedEvents)
-	if stream.eventState.Buffered || !bytes.Equal(originalEvents.Bytes(), updatedEvents.Bytes()) {
+	if stream.eventState.Buffered {
 		decoded = &protocol.EventFrame{Events: acceptedEvents}
-	} else {
-		decoded.Events = acceptedEvents
 	}
-	frames, err := stream.plan.ingress.EncodeFrame(stream.context.Request.Context(), decoded, stream.options)
+	frames, err := stream.plan.ingress.EncodeConvertedFrame(stream.context.Request.Context(), decoded, acceptedEvents, stream.options)
 	if err != nil {
 		return err
 	}

@@ -109,6 +109,14 @@ func (s *Store) ConversionSnapshot(ctx context.Context) ([]ConversionPolicyRecor
 	return policies, bindings, generation, nil
 }
 
+// ConversionGeneration identifies the committed policy/binding snapshot. Readers
+// may reuse a previously decoded snapshot until this transaction generation changes.
+func (s *Store) ConversionGeneration(ctx context.Context) (int64, error) {
+	var generation int64
+	err := s.db.QueryRowContext(ctx, "SELECT generation FROM conversion_generation WHERE id=1").Scan(&generation)
+	return generation, err
+}
+
 func checkConversionGeneration(ctx context.Context, tx *sql.Tx, expected []int64) error {
 	if len(expected) == 0 {
 		return nil

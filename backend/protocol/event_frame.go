@@ -66,6 +66,29 @@ func (compiled *Compiled) EncodeFrame(ctx context.Context, frame *EventFrame, op
 }
 
 func (compiled *Compiled) encodeFrame(ctx context.Context, direction Direction, frame *EventFrame, options EvaluationContext) ([]Value, error) {
+	return compiled.encodeCheckedFrame(ctx, direction, frame, options, false)
+}
+
+// EncodeConvertedFrame reconciles a completed conversion batch against the
+// decode-time native digest and immediately encodes it. The equality proof never
+// escapes this call, so publicly mutable EventFrame values still get checked on
+// every EncodeFrame call. Callers must exclusively own events for the duration.
+func (compiled *Compiled) EncodeConvertedFrame(ctx context.Context, frame *EventFrame, events []Event, options EvaluationContext) ([]Value, error) {
+	converted := *frame
+	converted.Events = events
+	if converted.native != nil {
+		encoded, err := EncodeValue(events)
+		if err != nil {
+			return nil, err
+		}
+		if converted.digest != sha256.Sum256(encoded.Bytes()) {
+			converted.native = nil
+		}
+	}
+	return compiled.encodeCheckedFrame(ctx, EncodeEvent, &converted, options, true)
+}
+
+func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Direction, frame *EventFrame, options EvaluationContext, checked bool) ([]Value, error) {
 	target := compiled.target(direction, options)
 	canReplay := compiled.native.Preserve && frame.native != nil && CanPreserveNative(frame.native.Source, target)
 	if canReplay {
@@ -75,18 +98,20 @@ func (compiled *Compiled) encodeFrame(ctx context.Context, direction Direction, 
 		if !CheckScope(frame.native.Source.Scope, target.Scope) {
 			return nil, streamIssue(ResourceScopeMismatch, "/frame", "native frame scope differs from target")
 		}
-		encoded, err := EncodeValue(frame.Events)
-		if err != nil {
-			return nil, err
-		}
-		if frame.digest != sha256.Sum256(encoded.Bytes()) {
-			mapping := compiled.mappings[direction]
-			if len(frame.Events) == 1 && mapping.module == nil && !mapping.frameBatch {
-				event := frame.Events[0]
-				event.Native = frame.native
-				return compiled.encodeFrames(ctx, direction, event, options)
+		if !checked {
+			encoded, err := EncodeValue(frame.Events)
+			if err != nil {
+				return nil, err
 			}
-			return nil, fmt.Errorf("modified compound native frame requires explicit wire mutations")
+			if frame.digest != sha256.Sum256(encoded.Bytes()) {
+				mapping := compiled.mappings[direction]
+				if len(frame.Events) == 1 && mapping.module == nil && !mapping.frameBatch {
+					event := frame.Events[0]
+					event.Native = frame.native
+					return compiled.encodeFrames(ctx, direction, event, options)
+				}
+				return nil, fmt.Errorf("modified compound native frame requires explicit wire mutations")
+			}
 		}
 	}
 	var frames []Value

@@ -307,11 +307,7 @@ func (compiled *Compiled) encodeEvent(ctx context.Context, direction Direction, 
 	if err := IssuesError(CheckEvent(event, compiled.target(direction, options), compiled.limits)); err != nil {
 		return Value{}, err
 	}
-	input, err := EncodeSemantic(ctx, direction, event)
-	if err != nil {
-		return Value{}, err
-	}
-	output, err := compiled.executeMapping(ctx, direction, input, options)
+	output, err := compiled.encodeEventValue(ctx, direction, event, options)
 	if err != nil {
 		return Value{}, err
 	}

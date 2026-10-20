@@ -1,6 +1,32 @@
 package protocol
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
+
+func TestConvertedFrameChecksNativeAtEncodingBoundary(t *testing.T) {
+	compiled := compileTestDefinition(t, compoundFrameDefinition(t))
+	value, _ := ParseValue([]byte(`{"events":[{"schemaVersion":1,"type":"item.delta","itemId":"a","delta":"hello"},{"schemaVersion":1,"type":"item.delta","itemId":"a","delta":"world"}],"vendor":9007199254740993}`))
+	frame, err := compiled.DecodeFrame(t.Context(), value, EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := slices.Clone(frame.Events)
+	frames, err := compiled.EncodeConvertedFrame(t.Context(), frame, events, EvaluationContext{})
+	if err != nil || len(frames) != 1 || frames[0] != value {
+		t.Fatal("unchanged native frame lost", frames, err)
+	}
+	events[0].Delta = StringValue("edited")
+	frames, err = compiled.EncodeConvertedFrame(t.Context(), frame, events, EvaluationContext{})
+	if err != nil || len(frames) != 2 || frames[0] == value {
+		t.Fatal("conversion edit lost", frames, err)
+	}
+	frame.Events[0].Delta = StringValue("externally edited")
+	if _, err := compiled.EncodeFrame(t.Context(), frame, EvaluationContext{}); err == nil {
+		t.Fatal("earlier conversion cached a stale equality proof")
+	}
+}
 
 func compoundFrameDefinition(t *testing.T) Definition {
 	t.Helper()
