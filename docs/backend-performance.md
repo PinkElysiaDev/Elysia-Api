@@ -121,3 +121,16 @@ GOMAXPROCS=4 go test -tags=sonic -pgo=off \
 ```
 
 `TestFinalWireValidationTypedParity` 使用相同的内置协议样本比较 typed 和 JSON 最终校验，包括失败位置和终态。定向回归还覆盖 timer 重用、消费者暂停、并发 Close、候选请求隔离以及 writer 的关闭和失败释放。
+## 版本化执行计划与 typed 流水线
+
+网关读取 SQLite 已提交的 conversion generation，并为整个请求固定已解码的策略/绑定快照。绑定、激活、模型、源和模型组写入通过现有数据库触发器更新 generation；新请求使用新快照，在途请求保留旧快照。读取失败会返回错误。
+
+快照按源/目标协议 revision hash、源/模型 ID、模型标识、operation 和 transport 惰性编译并复用转换计划。编译受锁保护，每个快照最多缓存 256 个计划；达到上限后清空索引，已固定的执行实例仍有效。协议热更新即使未改变 conversion generation，也会使用新的 revision key。规则按阶段预先索引，typed 路径资格在编译时确定。
+
+共享计划只包含只读策略及编译程序，每个候选获得独立执行外壳。provider evidence 仍按当前账户/模型 scope、上游 revision 和时间逐次读取；诊断、delivery、scope 和 continuation 状态属于请求。Operation 选择只遍历标量路由元数据，选定后才深复制对应的 transport 元数据。
+
+内置事件转换在独占且已归一化的语义容器上执行，依赖 JSON 的自定义规则保留通用路径。Typed 事件编码保留语义预算、mapping 预算、上下文验证、取消和输出检查；带 schema、后置 transform 或 initial 输出的 mapping 继续使用通用路径。最终 wire 校验始终保留。
+
+`EncodeConvertedFrame` 用解码时的 native digest 检查转换后事件，随后立即编码，省去单独序列化原始批次及调用内重复比较。比较结果不会缓存到公开可变的事件对象；普通 `EncodeFrame` 每次仍检测外部修改。修改过或经过缓冲的网关批次显式重新编码。
+
+回归覆盖四种内置协议的文本/工具流 typed/JSON 差分、归一化与资源/取消边界、native 修改检测、并发执行实例隔离及 generation/revision 更新。第三阶段性能对照使用第二阶段的干净提交及相同 HTTP 矩阵、环境。

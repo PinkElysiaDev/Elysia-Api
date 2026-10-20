@@ -26,6 +26,65 @@ type TypedEventModule interface {
 	DecodeEvents(context.Context, Value, EvaluationContext) ([]Event, error)
 }
 
+// TypedEventEncoder retains the module's wire result (including frame batches)
+// while accepting an owned, JSON-normalized semantic event.
+type TypedEventEncoder interface {
+	Module
+	EncodeEventValue(context.Context, Event, EvaluationContext) (Value, error)
+}
+
+func (compiled *Compiled) encodeEventValue(ctx context.Context, direction Direction, event Event, options EvaluationContext) (Value, error) {
+	if !compiled.hasTypedMapping(direction) {
+		input, err := EncodeSemantic(ctx, direction, event)
+		if err != nil {
+			return Value{}, err
+		}
+		return compiled.executeMapping(ctx, direction, input, options)
+	}
+	// The original semantic boundary precedes executeMapping's cancellation check.
+	budget := semanticLimits(DefaultLimits())
+	if err := checkSemanticValue(event, budget); err != nil {
+		return Value{}, err
+	}
+	input := normalizeMappingSemantic(&event, budget)
+	fail := func(err error) (Value, error) { return Value{}, compiled.mappingError(direction, err) }
+	if err := ctx.Err(); err != nil {
+		return fail(err)
+	}
+	inputLimits, outputLimits, _ := compiled.mappingLimits(ctx, direction)
+	if err := checkMappingSemantic(input, inputLimits, "mapping_input"); err != nil {
+		return fail(err)
+	}
+	if _, err := EncodeValue(options.Values); err != nil {
+		return fail(err)
+	}
+	options = options.forDefinition(compiled)
+	options.wireLimits = compiled.nativeLimits(ctx, direction)
+	instance, err := options.State.resolve(compiled, direction, compiled.mappings[direction].module)
+	if err != nil {
+		return fail(err)
+	}
+	encoder, ok := instance.(TypedEventEncoder)
+	if !ok {
+		value, err := EncodeSemantic(ctx, direction, event)
+		if err != nil {
+			return Value{}, err
+		}
+		return compiled.executeMapping(ctx, direction, value, options)
+	}
+	output, err := encoder.EncodeEventValue(ctx, *input, options)
+	if err != nil {
+		return fail(err)
+	}
+	if output.IsZero() {
+		return fail(fmt.Errorf("mapping omitted its entire output"))
+	}
+	if err := checkResourceValue(output, outputLimits, "mapping_output"); err != nil {
+		return fail(err)
+	}
+	return output, nil
+}
+
 func (compiled *Compiled) hasTypedMapping(direction Direction) bool {
 	mapping := compiled.mappings[direction]
 	return mapping.module != nil && mapping.after == nil && mapping.initial == nil && mapping.input == nil && mapping.output == nil

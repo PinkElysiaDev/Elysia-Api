@@ -122,3 +122,17 @@ GOMAXPROCS=4 go test -tags=sonic -pgo=off \
 ```
 
 `TestFinalWireValidationTypedParity` compares typed and JSON final validation over identical built-in protocol samples, including rejection positions and terminal results. Focused regressions also cover timer reuse, consumer pauses, concurrent Close, candidate request isolation, and writer shutdown/failure release.
+
+## Versioned plans and typed streaming
+
+Gateway requests pin a decoded policy/binding snapshot after reading SQLite's committed conversion generation. Binding, activation, model, source and group writes advance that generation through existing database triggers. A new generation replaces the server's snapshot; in-flight requests retain their pinned snapshot. Read errors fail the request rather than serving a stale snapshot.
+
+Each snapshot lazily compiles reusable conversion plans keyed by source/target revision hashes, source/model IDs, model identifier, operation and transport. At most 256 plans are retained per snapshot; reaching the cap clears the lookup without invalidating already-pinned executions. Compilation is synchronized. Protocol reloads select a different revision key even when the conversion generation is unchanged. Compiled rules are indexed by phase and typed eligibility is decided at compile time.
+
+The shared plan contains only read-only policy/program data. Each candidate receives a separate execution wrapper. Provider evidence is loaded with the current account/model scope, upstream revision and time on each attempt; it is never stored in the shared plan. Diagnostics, delivery state, scope and continuation state remain request-owned. Operation selection iterates scalar route metadata and deep-copies only the selected transport operation.
+
+Built-in event conversion operates on owned, normalized semantic containers. Authored JSON-dependent rules retain the JSON execution path. Typed event encoding preserves semantic preflight, mapping limits, context validation, cancellation and wire-output checks; mappings with schemas, post-transforms or initial output retain the generic path. No typed eligibility decision removes final wire validation.
+
+`EncodeConvertedFrame` compares the completed conversion batch with the decode-time native digest and immediately encodes it. This avoids separately serializing the original batch and repeating the equality check within the call. It never exports or caches an equality proof for publicly mutable events; ordinary `EncodeFrame` continues to detect external edits on every call. Changed or buffered gateway batches are explicitly re-encoded.
+
+Regression coverage includes typed/JSON event conversion and wire encoding across the four built-in text/tool stream families, normalization and resource/cancellation boundaries, native mutation checks, and concurrent execution-wrapper isolation plus generation/revision changes. Compare phase-three evidence against the clean phase-two commit, using the same HTTP matrix and environment above.

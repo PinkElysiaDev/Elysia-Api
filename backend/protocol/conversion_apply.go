@@ -45,16 +45,7 @@ func (c *CompiledConversion) canOwnRequest() bool {
 	if c == nil {
 		return false
 	}
-	var state conversionState
-	for _, rule := range c.Policy.Rules {
-		if !rule.Enabled {
-			continue
-		}
-		if rule.Phase == ConversionIngress || (rule.Phase == ConversionRequest && !state.accepts(ConversionRequest, rule)) {
-			return false
-		}
-	}
-	return true
+	return !c.HasPhase(ConversionIngress) && c.canOwnPhase(ConversionRequest)
 }
 
 func (c *CompiledConversion) convertOwnedRequest(ctx context.Context, request *Request, route ConversionContext, sink *DiagnosticSink) (*Request, error) {
@@ -94,6 +85,18 @@ func (c *CompiledConversion) Response(ctx context.Context, response *Response, r
 }
 
 func (c *CompiledConversion) Event(ctx context.Context, event Event, route ConversionContext, sink *DiagnosticSink) (Event, error) {
+	if c != nil && c.canOwnPhase(ConversionEvent) {
+		budget := semanticLimits(DefaultLimits())
+		if err := checkSemanticValue(event, budget); err != nil {
+			return Event{}, err
+		}
+		owned := normalizeMappingSemantic(&event, budget)
+		state := conversionState{document: owned, isStrict: true, needsEncoding: true, cache: &semanticCache{limits: budget}}
+		if _, err := c.applyConversionState(ctx, ConversionEvent, Value{}, route, sink, &state, false); err != nil {
+			return Event{}, err
+		}
+		return *owned, nil
+	}
 	v, err := EncodeSemantic(ctx, DecodeEvent, event)
 	if err == nil {
 		v, err = c.ApplyValue(ctx, ConversionEvent, v, route, sink)
@@ -104,6 +107,10 @@ func (c *CompiledConversion) Event(ctx context.Context, event Event, route Conve
 	var result Event
 	err = decodeContract(v.Bytes(), &result)
 	return result, err
+}
+
+func (c *CompiledConversion) canOwnPhase(phase ConversionPhase) bool {
+	return c.ownedPhases[phase]
 }
 
 func (c *CompiledConversion) streamOptions(request *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {

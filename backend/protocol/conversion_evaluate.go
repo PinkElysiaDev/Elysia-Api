@@ -75,10 +75,7 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 	}
 	value := input
 	var reasoningTarget string
-	for _, rule := range c.Policy.Rules {
-		if !rule.Enabled || rule.Phase != phase {
-			continue
-		}
+	for _, rule := range c.phases[phase] {
 		activeRule = rule
 		if err := ctx.Err(); err != nil {
 			return Value{}, err

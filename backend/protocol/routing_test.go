@@ -65,6 +65,12 @@ func TestCompiledOperationsReturnIndependentMetadata(t *testing.T) {
 	copy := compiled.Operations()
 	copy["generate"].Headers["X-Mode"] = "changed"
 	copy["generate"].Framing.Done[0] = "changed"
+	selected, exists := compiled.Operation("generate")
+	if !exists {
+		t.Fatal("selected operation missing")
+	}
+	selected.Headers["X-Mode"] = "selected"
+	selected.Framing.Done[0] = "selected"
 	if compiled.Operations()["generate"].Headers["X-Mode"] != "original" || compiled.Operations()["generate"].Framing.Done[0] != "[DONE]" {
 		t.Fatal("caller changed compiled transport metadata")
 	}

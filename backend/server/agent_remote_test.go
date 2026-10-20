@@ -461,6 +461,9 @@ func TestA2ASendNonBlockingAndV1Wire(t *testing.T) {
 		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "v1 收到"}, "", nil),
 			openAIChunk("c2", map[string]any{}, "stop", nil),
 			openAIDone()},
+		{openAIChunk("c3", map[string]any{"role": "assistant", "content": "新线程收到"}, "", nil),
+			openAIChunk("c3", map[string]any{}, "stop", nil),
+			openAIDone()},
 	})
 	seedAgentModel(t, s, fake.URL)
 	session, err := s.createRemoteAgentSession(context.Background(), "非阻塞", "create", "", &agent.Settings{ModelSourceID: "s1", ModelName: "fake-model"})
@@ -520,11 +523,23 @@ func TestA2ASendNonBlockingAndV1Wire(t *testing.T) {
 		t.Fatalf("v1 task did not complete: %q", v1State)
 	}
 
-	// 空 contextId：服务端新建会话并照常建任务（未配模型 → 转终态）。
+	// 空 contextId：新会话继承最近会话的模型配置，完成独立的第三轮。
 	_, fresh, _ := a2aCall(t, s, "message/send", a2aMessageParams("", "", "新线程", nil), "")
 	freshTask, ok := fresh["result"].(map[string]any)
 	if !ok || freshTask["contextId"] == "" || freshTask["id"] == "" {
 		t.Fatalf("fresh task wrong: %v", fresh)
+	}
+	freshState := ""
+	for i := 0; i < 50; i++ {
+		_, got, _ := a2aCall(t, s, "tasks/get", map[string]any{"id": freshTask["id"]}, "")
+		freshState = got["result"].(map[string]any)["status"].(map[string]any)["state"].(string)
+		if freshState == "completed" || freshState == "failed" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if freshState != "completed" || fake.calls.Load() != 3 {
+		t.Fatalf("fresh task state=%q model calls=%d", freshState, fake.calls.Load())
 	}
 
 	// 未知版本头 → 400。

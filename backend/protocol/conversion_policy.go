@@ -98,6 +98,8 @@ type ConversionContext struct {
 }
 
 type CompiledConversion struct {
+	phases                map[ConversionPhase][]ConversionRule
+	ownedPhases           map[ConversionPhase]bool
 	options               map[string]conversionOption
 	VerifiedProviderRules map[string]bool    `json:"-"`
 	VerificationContext   *ConversionContext `json:"-"`
@@ -107,6 +109,16 @@ type CompiledConversion struct {
 	RuleRevisions         map[string]string  `json:"ruleRevisions"`
 	expressions           map[string]*compiledExpression
 	limits                Limits
+}
+
+// ForExecution shares immutable compiled policy data but gives each execution
+// its own provider-evidence and verification slots. Policy metadata must not be
+// mutated after compilation.
+func (c *CompiledConversion) ForExecution() *CompiledConversion {
+	copy := *c
+	copy.VerifiedProviderRules = nil
+	copy.VerificationContext = nil
+	return &copy
 }
 
 // ResolveConversion applies complete rule replacement by stable ID; no implicit
@@ -267,6 +279,19 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		return nil, err
 	}
 	c.Hash = hashValue(value)
+	c.phases = make(map[ConversionPhase][]ConversionRule)
+	c.ownedPhases = make(map[ConversionPhase]bool)
+	var state conversionState
+	for _, phase := range conversionPhases() {
+		c.ownedPhases[phase] = true
+	}
+	for _, rule := range c.Policy.Rules {
+		if !rule.Enabled {
+			continue
+		}
+		c.phases[rule.Phase] = append(c.phases[rule.Phase], rule)
+		c.ownedPhases[rule.Phase] = c.ownedPhases[rule.Phase] && state.accepts(rule.Phase, rule)
+	}
 	return c, nil
 }
 
@@ -358,12 +383,7 @@ func (c *CompiledConversion) HasPhase(phase ConversionPhase) bool {
 	if c == nil {
 		return false
 	}
-	for _, r := range c.Policy.Rules {
-		if r.Enabled && r.Phase == phase {
-			return true
-		}
-	}
-	return false
+	return len(c.phases[phase]) != 0
 }
 
 func (c *CompiledConversion) Wire(ctx context.Context, body []byte, route ConversionContext, sink *DiagnosticSink) ([]byte, error) {

@@ -47,17 +47,18 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 	if !ingress.Supports(protocol.DecodeRequest) {
 		return nil, gatewayIssue(ingress.Identity(), protocol.UnsupportedCapability, "/directions", "protocol is not a client ingress")
 	}
-	policies, bindings, _, err := s.store.ConversionSnapshot(c.Request.Context())
+	conversions, err := s.pinGatewayConversions(c.Request.Context())
 	if err != nil {
 		return nil, err
 	}
+	bindings := conversions.bindings
 	plan := &gatewayPlan{ingress: ingress, session: continuationSession(c, body)}
 	body, plan.carriers, err = builtin.ExtractContinuationCarriers(body, ingress.Identity().Family, ingress.RequestLimits(c.Request.Context()).BufferBytes)
 	if err != nil {
 		return nil, err
 	}
 	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(protocol.Operation{Headers: map[string]string{"anthropic-beta": c.GetHeader("anthropic-beta")}}), Values: protocol.Object{"path": protocol.StringValue(path)}}
-	for _, operation := range ingress.Operations() {
+	for _, operation := range ingress.OperationRoutes() {
 		if parameters, matches := protocol.MatchOperationPath(operation.Path, path); matches {
 			for name, value := range parameters {
 				options.Values[name] = protocol.StringValue(value)
@@ -97,7 +98,7 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 			}
 		}
 		constrained := constrainGatewayCapabilities(candidate.binding, candidate.model, plan.group, bindings)
-		candidate.conversion, err = resolveGatewayConversion(policies, bindings, ingress, candidate.compiled, candidate.model, candidate.operationName, candidate.operation.Transport)
+		candidate.conversion, err = conversions.resolve(ingress, candidate.compiled, candidate.model, candidate.operationName, candidate.operation.Transport)
 		if err != nil {
 			return nil, err
 		}
@@ -186,26 +187,28 @@ func makeGatewayCandidate(view protocol.RegistryView, bindings []storage.Protoco
 	if issues := protocol.CheckBinding(binding, compiled); len(issues) > 0 {
 		return candidate, &protocol.ConversionError{Issues: issues}
 	}
-	var operation *protocol.Operation
-	if kind == "generate" && binding.Wait != nil && compiled.Operations()[binding.Operation].Kind == "submit" {
-		kind = "submit"
+	if kind == "generate" && binding.Wait != nil {
+		for name, operation := range compiled.OperationRoutes() {
+			if name == binding.Operation && operation.Kind == "submit" {
+				kind = "submit"
+			}
+		}
 	}
-	for name, entry := range compiled.Operations() {
+	for name, entry := range compiled.OperationRoutes() {
 		isCompatibleStream := (transport == protocol.SSE || transport == protocol.NDJSON) && (entry.Transport == protocol.SSE || entry.Transport == protocol.NDJSON)
 		if entry.Kind != kind || (entry.Transport != transport && !isCompatibleStream) || !slices.Contains(binding.Transports, entry.Transport) || (binding.Operation != "" && name != binding.Operation) {
 			continue
 		}
-		if operation != nil {
+		if candidate.operationName != "" {
 			return candidate, gatewayIssue(compiled.Identity(), protocol.InvalidDefinition, "/operations", "multiple upstream generation operations require an explicit selection")
 		}
-		value := entry
-		operation = &value
 		candidate.operationName = name
 	}
-	if operation == nil {
+	if candidate.operationName == "" {
 		return candidate, gatewayIssue(compiled.Identity(), protocol.UnsupportedCapability, "/operations", "upstream has no operation for the requested transport")
 	}
-	candidate.binding, candidate.compiled, candidate.operation, candidate.scope = binding, compiled, *operation, modelProtocolScope(model)
+	operation, _ := compiled.Operation(candidate.operationName)
+	candidate.binding, candidate.compiled, candidate.operation, candidate.scope = binding, compiled, operation, modelProtocolScope(model)
 	candidate.combinations = entry.Combinations
 	return candidate, nil
 }
@@ -374,12 +377,15 @@ func constrainGatewayCapabilities(binding protocol.Binding, model config.ModelRe
 }
 
 func selectGatewayIngressOperation(compiled *protocol.Compiled, method, path string, request *protocol.Request) (string, protocol.Operation, error) {
-	operations := compiled.Operations()
-	var choices []string
-	for name, operation := range operations {
+	type choice struct {
+		name   string
+		stream bool
+	}
+	var choices []choice
+	for name, operation := range compiled.OperationRoutes() {
 		_, isMatch := protocol.MatchOperationPath(operation.Path, path)
 		if operation.Method == method && isMatch && (operation.Kind == "generate" || operation.Kind == "session" || operation.Kind == "submit") {
-			choices = append(choices, name)
+			choices = append(choices, choice{name, operation.Transport != protocol.HTTPJSON})
 		}
 	}
 	if len(choices) > 1 {
@@ -389,13 +395,13 @@ func selectGatewayIngressOperation(compiled *protocol.Compiled, method, path str
 				return "", protocol.Operation{}, err
 			}
 		}
-		choices = slices.DeleteFunc(choices, func(name string) bool { return (operations[name].Transport != protocol.HTTPJSON) != isStream })
+		choices = slices.DeleteFunc(choices, func(candidate choice) bool { return candidate.stream != isStream })
 	}
 	if len(choices) != 1 {
 		return "", protocol.Operation{}, gatewayIssue(compiled.Identity(), protocol.InvalidDefinition, "/operations", "client path/method does not select one generation operation")
 	}
-	name := choices[0]
-	operation := operations[name]
+	name := choices[0].name
+	operation, _ := compiled.Operation(name)
 	if operation.Transport == protocol.HTTPJSON && !compiled.Supports(protocol.EncodeResponse) {
 		return "", protocol.Operation{}, gatewayIssue(compiled.Identity(), protocol.UnsupportedCapability, "/directions/encode_response", "HTTP ingress requires a response encoder")
 	}

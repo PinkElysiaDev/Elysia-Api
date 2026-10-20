@@ -623,49 +623,75 @@ func (compiled *Compiled) SamplesHash() string { return compiled.samplesHash }
 // uses the named operation's compiled schema.
 func (compiled *Compiled) Operations() map[string]Operation {
 	operations := make(map[string]Operation, len(compiled.operations))
-	for name, operation := range compiled.operations {
-		operation.Headers, operation.Query = maps.Clone(operation.Headers), maps.Clone(operation.Query)
-		if operation.Input != nil {
-			var input ValueSchema
-			value, _ := EncodeValue(operation.Input)
-			_ = value.Decode(&input)
-			operation.Input = &input
-		}
-		if operation.Framing != nil {
-			framing := *operation.Framing
-			framing.Done = append([]string(nil), framing.Done...)
-			operation.Framing = &framing
-		}
-		if operation.Task != nil {
-			task := *operation.Task
-			// Deep copy expressions so callers cannot mutate the pinned revision.
-			value, _ := EncodeValue(task)
-			_ = value.Decode(&task)
-			operation.Task = &task
-		}
-		if operation.Models != nil {
-			var discovery ModelDiscovery
-			value, _ := EncodeValue(operation.Models)
-			_ = value.Decode(&discovery)
-			operation.Models = &discovery
-		}
-		if operation.Session != nil {
-			session := *operation.Session
-			session.QueryFields = append([]string(nil), session.QueryFields...)
-			session.HeaderFields = append([]string(nil), session.HeaderFields...)
-			if session.InputMedia != nil {
-				media := *session.InputMedia
-				session.InputMedia = &media
-			}
-			if session.OutputMedia != nil {
-				media := *session.OutputMedia
-				session.OutputMedia = &media
-			}
-			operation.Session = &session
-		}
-		operations[name] = operation
+	for name := range compiled.operations {
+		operations[name], _ = compiled.Operation(name)
 	}
 	return operations
+}
+
+// OperationRoute exposes only immutable routing fields. Iteration never copies
+// schemas, task expressions or mutable transport metadata for rejected choices.
+type OperationRoute struct {
+	Method, Path, Kind string
+	Transport          Transport
+}
+
+func (compiled *Compiled) OperationRoutes() func(func(string, OperationRoute) bool) {
+	return func(yield func(string, OperationRoute) bool) {
+		for name, operation := range compiled.operations {
+			if !yield(name, OperationRoute{operation.Method, operation.Path, operation.Kind, operation.Transport}) {
+				return
+			}
+		}
+	}
+}
+
+// Operation copies only the selected operation; callers own every mutable field.
+func (compiled *Compiled) Operation(name string) (Operation, bool) {
+	operation, exists := compiled.operations[name]
+	if !exists {
+		return Operation{}, false
+	}
+	operation.Headers, operation.Query = maps.Clone(operation.Headers), maps.Clone(operation.Query)
+	if operation.Input != nil {
+		var input ValueSchema
+		value, _ := EncodeValue(operation.Input)
+		_ = value.Decode(&input)
+		operation.Input = &input
+	}
+	if operation.Framing != nil {
+		framing := *operation.Framing
+		framing.Done = append([]string(nil), framing.Done...)
+		operation.Framing = &framing
+	}
+	if operation.Task != nil {
+		task := *operation.Task
+		// Deep copy expressions so callers cannot mutate the pinned revision.
+		value, _ := EncodeValue(task)
+		_ = value.Decode(&task)
+		operation.Task = &task
+	}
+	if operation.Models != nil {
+		var discovery ModelDiscovery
+		value, _ := EncodeValue(operation.Models)
+		_ = value.Decode(&discovery)
+		operation.Models = &discovery
+	}
+	if operation.Session != nil {
+		session := *operation.Session
+		session.QueryFields = append([]string(nil), session.QueryFields...)
+		session.HeaderFields = append([]string(nil), session.HeaderFields...)
+		if session.InputMedia != nil {
+			media := *session.InputMedia
+			session.InputMedia = &media
+		}
+		if session.OutputMedia != nil {
+			media := *session.OutputMedia
+			session.OutputMedia = &media
+		}
+		operation.Session = &session
+	}
+	return operation, true
 }
 
 // Definition returns an independent copy suitable for editing or persistence.

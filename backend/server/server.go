@@ -132,6 +132,7 @@ type Server struct {
 	routeCacheLoaded     bool
 	routeCacheGeneration uint64
 	routeCacheFlights    singleflight.Group
+	conversionPlans      gatewayConversionPlans
 
 	// 模型能力元数据目录（models.dev）：刷新模型时自动回填能力字段（方向1）。
 	catalog *modelCatalog
