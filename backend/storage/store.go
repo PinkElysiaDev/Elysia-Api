@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/storagequery"
 )
 
 const sqliteBusyTimeout = 5 * time.Second
@@ -153,13 +154,12 @@ func (s *Store) SetSetting(ctx context.Context, key string, value any) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO settings(key, value, updated_at) VALUES(?, ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`, key, string(payload), nowString())
-	return err
+	return storagequery.New(s.db).SetSetting(ctx, storagequery.SetSettingParams{Key: key, Value: string(payload), UpdatedAt: nowString()})
 }
 
 func (s *Store) GetSetting(ctx context.Context, key string, target any) (bool, error) {
 	var payload string
-	err := s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, key).Scan(&payload)
+	payload, err := storagequery.New(s.db).GetSetting(ctx, key)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}

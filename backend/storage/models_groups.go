@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/storagequery"
 )
 
 // modelColumns 是 models 行读取的统一列清单（含 enabled/origin/capability_source）。
@@ -79,56 +80,49 @@ func escapeLike(value string) string {
 }
 
 func (s *Store) ListGroups(ctx context.Context) ([]ModelGroup, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, enabled, strategy, max_retries, retry_interval, max_concurrency, daily_limit_max_requests, daily_limit_max_tokens, type, max_tokens, vision_capable, tools_capable FROM model_groups ORDER BY name`)
+	// Read both sets from the same SQLite snapshot. Fetching members in bulk
+	// avoids N+1 queries without duplicating group metadata for every member.
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, err
 	}
-	items := []ModelGroup{}
-	for rows.Next() {
-		var item ModelGroup
-		var enabled, vision, tools int
-		if err := rows.Scan(&item.ID, &item.Name, &enabled, &item.Strategy, &item.MaxRetries, &item.RetryInterval, &item.MaxConcurrency, &item.DailyLimitMaxRequests, &item.DailyLimitMaxTokens, &item.Type, &item.MaxTokens, &vision, &tools); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		item.Enabled = sqlIntToBool(enabled)
-		item.VisionCapable = sqlIntToBool(vision)
-		item.ToolsCapable = sqlIntToBool(tools)
+	defer tx.Rollback()
+	queries := storagequery.New(tx)
+	groupRows, err := queries.ListGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]ModelGroup, 0, len(groupRows))
+	for _, row := range groupRows {
 		// Models 必须以空数组而非 nil 序列化：前端 groups 列表直接调用
 		// group.models.slice(...)，nil 会被 JSON 编码为 null 并导致整页崩溃。
-		item.Models = []string{}
-		items = append(items, item)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+		items = append(items, ModelGroup{
+			ID: row.ID, Name: row.Name, Enabled: sqlIntToBool(row.Enabled),
+			Strategy: row.Strategy, MaxRetries: row.MaxRetries, RetryInterval: row.RetryInterval,
+			MaxConcurrency: row.MaxConcurrency, DailyLimitMaxRequests: row.DailyLimitMaxRequests,
+			DailyLimitMaxTokens: row.DailyLimitMaxTokens, Type: row.Type, MaxTokens: row.MaxTokens,
+			VisionCapable: sqlIntToBool(row.VisionCapable), ToolsCapable: sqlIntToBool(row.ToolsCapable),
+			Models: []string{},
+		})
 	}
 
+	byID := make(map[string]int, len(items))
 	for i := range items {
-		// 组成员引用完整返回，即使所属模型源已停用。编辑页打开后无修改保存
-		// 会走 UpsertGroup 的「先删后写」；若此处按源 enabled 过滤，停用源下的
-		// 成员会从 payload 消失并被永久删除。调度热路径仍通过 ListModels 过滤
-		// 停用源，不会把请求打到已停用源。
-		modelRows, err := s.db.QueryContext(ctx, `SELECT mgm.model_id, mgm.source_id FROM model_group_models mgm WHERE mgm.group_id = ? ORDER BY mgm.position`, items[i].ID)
-		if err != nil {
-			return nil, err
+		byID[items[i].ID] = i
+	}
+	// Keep disabled-source and unresolved members: editing an unchanged group
+	// must not silently delete them. Scheduling filters sources separately.
+	modelRows, err := queries.ListGroupMembers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range modelRows {
+		if i, exists := byID[row.GroupID]; exists {
+			items[i].Models = append(items[i].Models, row.SourceID+":"+row.ModelID)
 		}
-		for modelRows.Next() {
-			var id, sourceID string
-			if err := modelRows.Scan(&id, &sourceID); err != nil {
-				modelRows.Close()
-				return nil, err
-			}
-			items[i].Models = append(items[i].Models, sourceID+":"+id)
-		}
-		if err := modelRows.Close(); err != nil {
-			return nil, err
-		}
-		if err := modelRows.Err(); err != nil {
-			return nil, err
-		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 	return items, nil
 }

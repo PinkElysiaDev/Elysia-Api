@@ -133,6 +133,18 @@ GOMAXPROCS=1 python3 tools/expr-evaluation/run.py -run '^$' \
 结论为暂不采用 Expr：原生语义存在差异，适配层仍需保留精确值、预算及诊断逻辑，且多数已测路径回退。
 测试包含明确断言已知不兼容行为的探针；通过不代表完整 DSL 等价。详见[评估报告](../docs/backend-expr-evaluation.md)。
 
+## sqlc 增量查询验证
+
+```sh
+go test -tags=sonic -race ./storage ./server \
+  -run '^Test(SQLC|ListGroups|Group|CreateGroup|AddGroup|RemoveGroup|DeleteGroup|SourceModelsGroupsTokensAndUsage|ModelGroup|UpsertGroup|RuntimeConfig|AdminListGroups)' \
+  -count=1 -timeout=3m
+GOMAXPROCS=1 go test -tags=sonic ./storage -run '^$' \
+  -bench '^BenchmarkListGroups$' -benchmem -benchtime=200ms -count=3
+```
+
+本次只把固定的模型组和 settings 查询交给 sqlc，`ListGroups` 消除 N+1；生成文件与运行时 schema 通过定向测试校对。基准和范围见 [sqlc 迁移报告](../docs/backend-sqlc-migration.md)。
+
 ## 测试组织与去重
 
 缓存的定向 benchmark、Otter 替换前后结果及容量语义差异见
