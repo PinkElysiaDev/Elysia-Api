@@ -6,7 +6,19 @@ import (
 )
 
 func (adapter module) ValidateWireOutput(direction p.Direction, value p.Value) error {
-	if err := adapter.validateWireContract(direction, value); err != nil {
+	if direction != p.EncodeRequest && direction != p.EncodeResponse && direction != p.EncodeEvent {
+		return nil
+	}
+	fields, err := readWireObject(value, "")
+	if err != nil {
+		return err
+	}
+	return adapter.ValidateWireObjectOutput(direction, value, fields)
+}
+
+// ValidateWireObjectOutput never mutates or retains the caller's field map.
+func (adapter module) ValidateWireObjectOutput(direction p.Direction, value p.Value, fields p.Object) error {
+	if err := adapter.validateWireObjectContract(direction, value, fields); err != nil {
 		return err
 	}
 	if adapter.name != Anthropic || (direction != p.EncodeResponse && direction != p.EncodeEvent) {
@@ -68,10 +80,6 @@ func (adapter module) ValidateWireOutput(direction p.Direction, value p.Value) e
 			}
 		}
 		return usage(m["usage"], base+"/usage", true)
-	}
-	fields, err := readWireObject(value, "")
-	if err != nil {
-		return err
 	}
 	if fields["type"].IsString("error") {
 		_, err := readWireObject(fields["error"], "/error")

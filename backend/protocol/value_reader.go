@@ -13,6 +13,16 @@ func requestValueReader(root Value) *valueReader {
 	return &valueReader{minimumSharedBytes: max(requestViewMinBytes, len(root.raw)/4)}
 }
 
+// WithValueReader scopes large immutable views to a trusted adapter invocation.
+// Containers are always caller-owned and small values are detached. Do not keep
+// this context or large views beyond the invocation unless they intentionally
+// own the payload; detach any values saved as long-lived resource identifiers.
+// The public Value.ReadObject and Value.Decode ownership contracts are unchanged.
+func (options EvaluationContext) WithValueReader(root Value) EvaluationContext {
+	options.valueReader = requestValueReader(root)
+	return options
+}
+
 func (reader *valueReader) fragment(raw string) string {
 	if reader != nil && len(raw) >= reader.minimumSharedBytes {
 		return raw

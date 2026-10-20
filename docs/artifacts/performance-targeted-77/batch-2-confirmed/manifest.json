@@ -1,0 +1,14 @@
+[
+  {
+    "path": "report.json.gz",
+    "sha256": "3a755c3d963f8bac53cb7a3c38e537a4d1e3b6fd69d304d464baa500c0f8ce55"
+  },
+  {
+    "path": "runner.mjs",
+    "sha256": "2db3de9208332f777b3f2301c4e1aad3d5e31d675b87fdcf8586be14f32c238d"
+  },
+  {
+    "path": "summary.json",
+    "sha256": "7d4963a8b90fd5328a801cdc791994d156b7a46ace58bff7f5bacc1a0c331ec0"
+  }
+]

@@ -109,7 +109,7 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 		if err := stream.finalValidation.Consume(stream.context.Request.Context(), frame); err != nil {
 			return err
 		}
-		if len(frame.Bytes()) > stream.limits.BufferBytes {
+		if frame.Len() > stream.limits.BufferBytes {
 			return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.LimitExceeded, Severity: protocol.SeverityError, Stage: "continuation", Path: "/frame", Reason: "frame including continuation carriers exceeds target buffer limit"}})
 		}
 		if err := protocol.WriteFrame(stream.context.Writer, stream.plan.operation, frame); err != nil {

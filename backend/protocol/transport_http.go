@@ -207,7 +207,7 @@ var streamJSON = sonic.Config{CompactMarshaler: true}.Froze()
 // WriteFrame emits one body using the declared downstream framing.
 func WriteFrame(writer io.Writer, operation Operation, value Value) error {
 	// Both SSE and NDJSON require physical line boundaries owned by framing.
-	compact, err := streamJSON.Marshal(json.RawMessage(value.Bytes()))
+	compact, err := streamJSON.MarshalToString(json.RawMessage(value.Bytes()))
 	if err != nil {
 		return err
 	}
@@ -236,5 +236,5 @@ func WriteFrame(writer io.Writer, operation Operation, value Value) error {
 			}
 		}
 	}
-	return eventstream.Write(writer, name, string(compact))
+	return eventstream.Write(writer, name, compact)
 }

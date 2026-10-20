@@ -15,7 +15,7 @@ func sharesValueStorage(root, child Value) bool {
 
 func TestRequestViewsSharePayloadAndDetachSmallFields(t *testing.T) {
 	root, _ := ParseValue([]byte(`{"small":"retained","payload":{"data":"` + strings.Repeat("A", 2<<20) + `"},"items":[{"data":"` + strings.Repeat("B", 2<<20) + `"}]}`))
-	options := EvaluationContext{valueReader: requestValueReader(root)}
+	options := (EvaluationContext{}).WithValueReader(root)
 	fields, err := options.ReadObject(root)
 	if err != nil {
 		t.Fatal(err)
@@ -39,6 +39,28 @@ func TestRequestViewsSharePayloadAndDetachSmallFields(t *testing.T) {
 	copy[0] = '['
 	if !root.IsObject() {
 		t.Fatal("Bytes exposed mutable storage")
+	}
+}
+
+func TestValueImmutableStringAndLength(t *testing.T) {
+	raw := []byte(`{"n":9007199254740993,"s":"escaped\\text"}`)
+	value, err := ParseValue(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := value.JSONString()
+	raw[0] = '['
+	copy := value.Bytes()
+	copy[0] = '['
+	if wire != `{"n":9007199254740993,"s":"escaped\\text"}` || value.Len() != len(wire) || !value.IsObject() {
+		t.Fatal("immutable wire exposed caller-owned bytes or changed number spelling")
+	}
+	if got := testing.AllocsPerRun(100, func() {
+		if value.Len() != len(value.JSONString()) {
+			t.Fatal("inconsistent wire length")
+		}
+	}); got != 0 {
+		t.Fatalf("read-only wire access allocated: %g", got)
 	}
 }
 

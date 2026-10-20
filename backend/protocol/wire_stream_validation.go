@@ -9,6 +9,16 @@ type WireEventValidator interface {
 	ValidateWireEvent(Value) error
 }
 
+// WireObjectEventValidator and TypedObjectEventModule share only the current
+// frame's read-only field map. Implementations must not mutate or retain it.
+type WireObjectEventValidator interface {
+	ValidateWireObjectEvent(Value, Object) error
+}
+
+type TypedObjectEventModule interface {
+	DecodeObjectEvents(context.Context, Value, Object, EvaluationContext) ([]Event, error)
+}
+
 // WireStreamValidation checks the bytes after after-mappings, wire rules and
 // carrier insertion. It uses the installed target codec, not a user-authored
 // decode mapping that could hide a malformed wire frame.
@@ -38,13 +48,25 @@ func (c *Compiled) NewWireStreamValidation(scope Scope) (*WireStreamValidation, 
 }
 
 func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
-	if err := v.compiled.ValidateWireOutput(EncodeEvent, frame); err != nil {
+	var fields Object
+	if _, ok := v.compiled.mappings[EncodeEvent].module.(WireObjectOutputValidator); ok && frame.IsObject() {
+		var err error
+		fields, err = (EvaluationContext{}).WithValueReader(frame).ReadObject(frame)
+		if err != nil {
+			return err
+		}
+	}
+	if err := v.compiled.validateWireOutput(EncodeEvent, frame, fields); err != nil {
 		return err
 	}
 	if v.decoder == nil {
 		return nil
 	}
-	if validator, ok := v.decoder.(WireEventValidator); ok {
+	if validator, ok := v.decoder.(WireObjectEventValidator); ok && fields != nil {
+		if err := validator.ValidateWireObjectEvent(frame, fields); err != nil {
+			return v.compiled.runtimeError(EncodeEvent, err)
+		}
+	} else if validator, ok := v.decoder.(WireEventValidator); ok {
 		if err := validator.ValidateWireEvent(frame); err != nil {
 			return v.compiled.runtimeError(EncodeEvent, err)
 		}
@@ -54,7 +76,13 @@ func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		events, err := decoder.DecodeEvents(ctx, frame, v.options)
+		var events []Event
+		var err error
+		if objectDecoder, ok := decoder.(TypedObjectEventModule); ok && fields != nil {
+			events, err = objectDecoder.DecodeObjectEvents(ctx, frame, fields, v.options)
+		} else {
+			events, err = decoder.DecodeEvents(ctx, frame, v.options)
+		}
 		if err != nil {
 			return err
 		}

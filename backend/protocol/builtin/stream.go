@@ -123,11 +123,17 @@ func (stream *streamModule) EncodeEventValue(ctx context.Context, event p.Event,
 }
 
 func (stream *streamModule) DecodeEvents(ctx context.Context, input p.Value, options p.EvaluationContext) ([]p.Event, error) {
-	stream.sourceFrameNumber++
 	fields, err := input.ReadObject()
 	if err != nil {
+		stream.sourceFrameNumber++
 		return nil, err
 	}
+	return stream.DecodeObjectEvents(ctx, input, fields, options)
+}
+
+func (stream *streamModule) DecodeObjectEvents(ctx context.Context, input p.Value, fields p.Object, options p.EvaluationContext) ([]p.Event, error) {
+	stream.sourceFrameNumber++
+	var err error
 	if stream.name == Responses {
 		if fields["type"].IsString("response.metadata") {
 			if err := p.ValidateResponsesTurnStateFrame(input); err != nil {
