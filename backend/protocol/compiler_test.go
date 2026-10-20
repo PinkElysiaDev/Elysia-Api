@@ -2,9 +2,10 @@ package protocol
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
 )
 
 func literalExpression(value any) Expression {
@@ -46,7 +47,7 @@ func compileTestDefinition(t *testing.T, definition Definition) *Compiled {
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := json.Marshal(definition)
+	encoded, err := sonic.ConfigStd.Marshal(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +70,7 @@ func TestCompilerHTTPStreamIdleRange(t *testing.T) {
 			operation.Transport = transport
 			operation.Framing = &Framing{IdleMillis: idle}
 			definition.Operations["generate"] = operation
-			body, err := json.Marshal(definition)
+			body, err := sonic.ConfigStd.Marshal(definition)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -154,7 +155,7 @@ func TestCompilerPreservesScalarPresenceAndExactNumbers(t *testing.T) {
 
 func TestCompilerRejectsUnknownAndInvalidDefinitions(t *testing.T) {
 	base := testDefinition("invalid", "m", "h", "t", "r")
-	raw, _ := json.Marshal(base)
+	raw, _ := sonic.ConfigStd.Marshal(base)
 	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
 	for name, body := range map[string][]byte{
 		"unknown root":         []byte(strings.TrimSuffix(string(raw), "}") + `,"ignoredCriticalOption":true}`),
@@ -198,7 +199,7 @@ func TestCompilerRejectsUnknownAndInvalidDefinitions(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			definition := testDefinition("invalid", "m", "h", "t", "r")
 			edit(&definition)
-			body, _ := json.Marshal(definition)
+			body, _ := sonic.ConfigStd.Marshal(definition)
 			if compiled, issues := compiler.Compile(body); compiled != nil || IssuesError(issues) == nil {
 				t.Fatal("invalid definition compiled")
 			}
@@ -226,7 +227,7 @@ func TestCompilerRequiresAllDeclaredDiscriminatorBranches(t *testing.T) {
 	definition := testDefinition("branches", "m", "h", "t", "r")
 	definition.Directions[DecodeEvent] = Mapping{Input: &ValueSchema{Type: ObjectType, Properties: map[string]ValueSchema{"type": {Type: StringType, Enum: []Value{StringValue("text"), StringValue("tool")}}}}, Transform: &Expression{Op: "choose", Source: expressionPointer(readExpression("input", "/type")), Cases: map[string]Expression{"text": literalExpression("text")}}}
 	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
-	body, _ := json.Marshal(definition)
+	body, _ := sonic.ConfigStd.Marshal(definition)
 	_, issues := compiler.Compile(body)
 	if len(issues) == 0 || issues[0].Path != "/directions/decode_event/transform" {
 		t.Fatalf("missing branch was not located: %+v", issues)

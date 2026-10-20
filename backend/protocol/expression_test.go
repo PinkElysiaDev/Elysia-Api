@@ -3,6 +3,8 @@ package protocol
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/bytedance/sonic"
 )
 
 func TestExpressionOperationsAndFailureBoundaries(t *testing.T) {
@@ -84,7 +86,7 @@ func TestCompileChecksNestedOutputSchema(t *testing.T) {
 	definition := testDefinition("typed", "m", "h", "t", "r")
 	definition.Directions[EncodeRequest] = Mapping{Transform: expressionPointer(objectExpression(map[string]Expression{"name": literalExpression(false)})), Output: &ValueSchema{Type: ObjectType, Required: []string{"name"}, Properties: map[string]ValueSchema{"name": {Type: StringType}}}}
 	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
-	raw, _ := json.Marshal(definition)
+	raw, _ := sonic.ConfigStd.Marshal(definition)
 	if _, issues := compiler.Compile(raw); IssuesError(issues) == nil {
 		t.Fatal("incompatible nested output compiled")
 	}
@@ -107,12 +109,12 @@ func TestExpressionLimitsAndNullSource(t *testing.T) {
 		t.Fatal("unbounded evaluation accepted")
 	}
 	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
-	raw, _ := json.Marshal(definition)
+	raw, _ := sonic.ConfigStd.Marshal(definition)
 	var document map[string]any
-	_ = json.Unmarshal(raw, &document)
+	_ = sonic.ConfigStd.Unmarshal(raw, &document)
 	direction := document["directions"].(map[string]any)["encode_request"].(map[string]any)
 	direction["transform"] = map[string]any{"op": "map", "source": nil, "body": map[string]any{"op": "literal", "value": 1}}
-	raw, _ = json.Marshal(document)
+	raw, _ = sonic.ConfigStd.Marshal(document)
 	if _, issues := compiler.Compile(raw); IssuesError(issues) == nil {
 		t.Fatal("null source accepted")
 	}

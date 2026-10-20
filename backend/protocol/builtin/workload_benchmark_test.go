@@ -1,11 +1,11 @@
 package builtin
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -78,7 +78,7 @@ func benchmarkEnvelope(b *testing.B) *p.Compiled {
 		p.DecodeRequest: {Transform: &p.Expression{Op: "read", Path: "/packet"}},
 		p.EncodeRequest: {Transform: &p.Expression{Op: "object", Fields: map[string]p.Expression{"packet": {Op: "object", Fields: fields}}}},
 	}, Operations: map[string]p.Operation{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: p.HTTPJSON, Auth: p.Credential{Location: "none"}}}}
-	raw, err := json.Marshal(definition)
+	raw, err := sonic.ConfigStd.Marshal(definition)
 	if err != nil {
 		b.Fatal(err)
 	}

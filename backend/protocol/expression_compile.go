@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/bytedance/sonic"
 )
 
 type compiledExpression struct {
@@ -191,12 +193,12 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 }
 
 func checkExpressionFields(expression Expression, operation OperationInfo, path string) error {
-	encoded, err := json.Marshal(expression)
+	encoded, err := sonic.ConfigStd.Marshal(expression)
 	if err != nil {
 		return err
 	}
 	var object map[string]json.RawMessage
-	if err := json.Unmarshal(encoded, &object); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(encoded, &object); err != nil {
 		return err
 	}
 	for key := range expression.present {

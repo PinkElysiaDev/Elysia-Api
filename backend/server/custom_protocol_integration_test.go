@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -22,13 +22,13 @@ func dashscopeStreamDefinition(t *testing.T) protocol.Definition {
 	operation.Framing.Done = []string{"[DONE]"}
 	definition.Operations["generate"] = operation
 	mapping := definition.Directions[protocol.DecodeEvent]
-	raw, err := json.Marshal(mapping)
+	raw, err := sonic.ConfigStd.Marshal(mapping)
 	if err != nil {
 		t.Fatal(err)
 	}
 	raw = []byte(strings.ReplaceAll(string(raw), `"path":"/payload/text"`, `"path":"/output/choices/0/message/content"`))
 	raw = []byte(strings.ReplaceAll(string(raw), `{"op":"read","path":"/finished"}`, `{"op":"equal","items":[{"op":"read","path":"/output/choices/0/finish_reason"},{"op":"literal","value":"stop"}]}`))
-	if err := json.Unmarshal(raw, &mapping); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &mapping); err != nil {
 		t.Fatal(err)
 	}
 	snapshot := mapping.Rules[2].Emit.Items[0].Then.Items[0]

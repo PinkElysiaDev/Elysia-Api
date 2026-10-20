@@ -1,9 +1,9 @@
 package server
 
 import (
-	"encoding/json"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -20,7 +20,7 @@ func TestEnabledProtocolCatalogUsesPinnedRevision(t *testing.T) {
 	definition.ID = "unactivated-copy"
 	delete(definition.Operations, "models")
 	definition.Agent = nil
-	raw, err := json.Marshal(definition)
+	raw, err := sonic.ConfigStd.Marshal(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestEnabledProtocolCatalogUsesPinnedRevision(t *testing.T) {
 			Items []enabledProtocol `json:"items"`
 		} `json:"data"`
 	}
-	if err = json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+	if err = sonic.ConfigStd.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
 		t.Fatal(err)
 	}
 	if len(envelope.Data.Items) != 4 {

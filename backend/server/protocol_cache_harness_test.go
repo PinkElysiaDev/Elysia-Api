@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -31,7 +31,7 @@ func TestCacheCheckpointNeverReplaysUncertainWarmup(t *testing.T) {
 	}
 	var restored cacheCheckpoint
 	raw, _ := os.ReadFile(run.path)
-	if err := json.Unmarshal(raw, &restored); err != nil || restored.Attempts["anthropic-messages/warm"] != "started" {
+	if err := sonic.ConfigStd.Unmarshal(raw, &restored); err != nil || restored.Attempts["anthropic-messages/warm"] != "started" {
 		t.Fatal("attempt identity lost", err)
 	}
 }

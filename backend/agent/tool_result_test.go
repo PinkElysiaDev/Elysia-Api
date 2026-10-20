@@ -6,6 +6,9 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/jsonutil"
 )
 
 type secretResultTool struct {
@@ -20,7 +23,7 @@ type failingToolResultStore struct {
 
 func (store *failingToolResultStore) AppendMessage(ctx context.Context, sessionID, role string, content any, model string, usage json.RawMessage) (int, error) {
 	if role == RoleToolResult {
-		store.attempted, _ = json.Marshal(content)
+		store.attempted, _ = sonic.ConfigStd.Marshal(content)
 		return 0, errors.New("injected tool result write failure")
 	}
 	return store.fakeStore.AppendMessage(ctx, sessionID, role, content, model, usage)
@@ -42,7 +45,7 @@ func TestToolResultWriteFailureKeepsModelCopyRedacted(t *testing.T) {
 	if tool.executions != 1 || caller.requestCount() != 2 {
 		t.Fatalf("executions=%d, model calls=%d", tool.executions, caller.requestCount())
 	}
-	request, _ := json.Marshal(caller.lastRequest())
+	request, _ := sonic.ConfigStd.Marshal(caller.lastRequest())
 	for _, raw := range [][]byte{request, failing.attempted} {
 		if strings.Contains(string(raw), secret) || !strings.Contains(string(raw), "9007199254740993") {
 			t.Fatalf("unsafe result after storage failure: %s", raw)
@@ -92,7 +95,7 @@ func TestToolSecretsStayOutOfModelAndHistory(t *testing.T) {
 			if first.executions != 1 || caller.requestCount() != 2 {
 				t.Fatalf("tool executions=%d, model calls=%d", first.executions, caller.requestCount())
 			}
-			request, _ := json.Marshal(caller.lastRequest())
+			request, _ := sonic.ConfigStd.Marshal(caller.lastRequest())
 			if strings.Contains(string(request), "private-marker") || !strings.Contains(string(request), "9007199254740993") {
 				t.Fatalf("model result leaked or changed numeric precision: %s", request)
 			}
@@ -119,7 +122,7 @@ func TestToolSecretsStayOutOfModelAndHistory(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			replay, _ := json.Marshal(conversation)
+			replay, _ := sonic.ConfigStd.Marshal(conversation)
 			if strings.Contains(string(replay), "private-marker") {
 				t.Fatal("secret in history replay")
 			}
@@ -146,7 +149,7 @@ func TestInvalidToolResultIsFailureWithoutRetry(t *testing.T) {
 			if tool.executions != 1 {
 				t.Fatalf("executions=%d", tool.executions)
 			}
-			request, _ := json.Marshal(caller.lastRequest())
+			request, _ := sonic.ConfigStd.Marshal(caller.lastRequest())
 			if !strings.Contains(string(request), "invalid_tool_result") {
 				t.Fatalf("missing failure result: %s", request)
 			}
@@ -161,7 +164,7 @@ func TestMaskingPreservesNumbersAndRejectsInvalidJSON(t *testing.T) {
 			t.Fatalf("incorrect masking: %s", masked)
 		}
 	}
-	if masked := MaskSecretData([]byte(`private-marker`), []string{"private-marker"}); !json.Valid(masked) || strings.Contains(string(masked), "private-marker") {
+	if masked := MaskSecretData([]byte(`private-marker`), []string{"private-marker"}); !jsonutil.Valid(masked) || strings.Contains(string(masked), "private-marker") {
 		t.Fatalf("invalid JSON escaped masking: %s", masked)
 	}
 }

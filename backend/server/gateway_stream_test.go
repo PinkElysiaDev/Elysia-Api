@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -106,7 +106,7 @@ func TestGatewaySSEAndNDJSONBridgeDrainsUsageAndPersists(t *testing.T) {
 				t.Fatal(err)
 			}
 			var record usageRecord
-			if err := json.Unmarshal(raw, &record); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(raw, &record); err != nil {
 				t.Fatal(err)
 			}
 			if record.ProtocolUsage.CacheRead.Count != 40 || record.UsageDetail.CacheCreationInputTokens == nil || *record.UsageDetail.CacheCreationInputTokens != 0 || record.IngressRevision != ingress.Hash() || record.UpstreamRevision != upstream.Hash() {

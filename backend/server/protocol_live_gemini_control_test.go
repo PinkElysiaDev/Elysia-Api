@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -53,7 +54,7 @@ func buildGeminiNativeFollowup(t *testing.T, request, response []byte) []byte {
 			Content json.RawMessage `json:"content"`
 		} `json:"candidates"`
 	}
-	if err := json.Unmarshal(response, &envelope); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(response, &envelope); err != nil {
 		t.Fatal(err)
 	}
 	if len(envelope.Candidates) != 1 {
@@ -65,7 +66,7 @@ func buildGeminiNativeFollowup(t *testing.T, request, response []byte) []byte {
 			Call *geminiControlCall `json:"functionCall"`
 		} `json:"parts"`
 	}
-	if err := json.Unmarshal(content, &message); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(content, &message); err != nil {
 		t.Fatal(err)
 	}
 	if len(message.Parts) != 1 || message.Parts[0].Call == nil {
@@ -76,11 +77,11 @@ func buildGeminiNativeFollowup(t *testing.T, request, response []byte) []byte {
 		t.Fatal("native control returned unexpected tool input")
 	}
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(request, &fields); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(request, &fields); err != nil {
 		t.Fatal(err)
 	}
 	var history []json.RawMessage
-	if err := json.Unmarshal(fields["contents"], &history); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(fields["contents"], &history); err != nil {
 		t.Fatal(err)
 	}
 	resultFields := map[string]any{"name": call.Name, "response": map[string]int{"value": 7}}
@@ -101,7 +102,7 @@ func TestGeminiNativeControlPreservesHistoryAndIDPresence(t *testing.T) {
 		var followup struct {
 			Contents []json.RawMessage `json:"contents"`
 		}
-		if err := json.Unmarshal(wire, &followup); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(wire, &followup); err != nil {
 			t.Fatal(err)
 		}
 		if len(followup.Contents) != 3 || string(followup.Contents[1]) != original {
@@ -112,7 +113,7 @@ func TestGeminiNativeControlPreservesHistoryAndIDPresence(t *testing.T) {
 				Response map[string]json.RawMessage `json:"functionResponse"`
 			} `json:"parts"`
 		}
-		if err := json.Unmarshal(followup.Contents[2], &result); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(followup.Contents[2], &result); err != nil {
 			t.Fatal(err)
 		}
 		actual, hasID := result.Parts[0].Response["id"]

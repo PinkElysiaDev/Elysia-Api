@@ -1,11 +1,11 @@
 package builtin
 
 import (
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -189,7 +189,7 @@ func TestResponsesContextSemanticValidationAndEvidence(t *testing.T) {
 		Input:    testValue(t, `{"model":"m","input":"hello","store":false,"previous_response_id":null,"include":["reasoning.encrypted_content"]}`),
 		Expected: testValue(t, `{"schemaVersion":1,"source":{},"model":"m","content":[{"kind":"message","role":"user","children":[{"kind":"text","payload":"hello"}]}],"parameters":{"store":false,"responses_previous_response_id":null,"responses_include":["reasoning.encrypted_content"]}}`),
 	})
-	raw, _ := json.Marshal(definition)
+	raw, _ := sonic.ConfigStd.Marshal(definition)
 	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
 	ingress, issues := compiler.Compile(raw)
 	if err := p.IssuesError(issues); err != nil {

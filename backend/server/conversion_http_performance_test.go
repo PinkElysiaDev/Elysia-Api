@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 )
 
@@ -58,7 +59,7 @@ func TestConversionHTTPIsolated(t *testing.T) {
 		}
 		defer response.Body.Close()
 		var result conversionHTTPMetrics
-		if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		if err := sonic.ConfigStd.NewDecoder(response.Body).Decode(&result); err != nil {
 			t.Fatal(err)
 		}
 		return result
@@ -150,7 +151,7 @@ func startConversionHTTPChild(t *testing.T, role, upstream string) conversionHTT
 	for time.Now().Before(deadline) {
 		if raw, err := os.ReadFile(ready); err == nil {
 			var address conversionHTTPAddress
-			if json.Unmarshal(raw, &address) == nil {
+			if sonic.ConfigStd.Unmarshal(raw, &address) == nil {
 				return address
 			}
 		}
@@ -190,7 +191,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 					Stream   bool
 					Messages []json.RawMessage
 				}
-				if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+				if err := sonic.ConfigStd.NewDecoder(r.Body).Decode(&input); err != nil {
 					t.Error(err)
 					w.WriteHeader(500)
 					return
@@ -333,10 +334,10 @@ func TestConversionHTTPProcess(t *testing.T) {
 		}
 		result := conversionHTTPMetrics{Allocated: memory.TotalAlloc - startAlloc, Heap: memory.HeapAlloc, PeakHeap: max(peakHeap, memory.HeapAlloc), WorkingSet: working, PeakWorkingSet: max(peakWorkingSet, working), Calls: calls.Load()}
 		mutex.Unlock()
-		json.NewEncoder(w).Encode(result)
+		sonic.ConfigStd.NewEncoder(w).Encode(result)
 	}))
 	defer metrics.Close()
-	address, _ := json.Marshal(conversionHTTPAddress{URL: gateway.URL, Metrics: metrics.URL, PID: os.Getpid()})
+	address, _ := sonic.ConfigStd.Marshal(conversionHTTPAddress{URL: gateway.URL, Metrics: metrics.URL, PID: os.Getpid()})
 	if err := os.WriteFile(os.Getenv("ELYSIA_CONVERSION_HTTP_READY"), address, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +375,7 @@ func TestConversionHTTPCancellationIsolated(t *testing.T) {
 		}
 		defer response.Body.Close()
 		var result conversionHTTPMetrics
-		if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		if err := sonic.ConfigStd.NewDecoder(response.Body).Decode(&result); err != nil {
 			t.Fatal(err)
 		}
 		return result

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
@@ -65,7 +65,7 @@ func TestGatewayChatWireContractFailure(t *testing.T) {
 				t.Fatal("native prefix changed or success/duplicate error was emitted", string(body))
 			}
 			var failure struct{ Error struct{ Message string } }
-			if err := json.Unmarshal([]byte(frames[1]), &failure); err != nil {
+			if err := sonic.ConfigStd.Unmarshal([]byte(frames[1]), &failure); err != nil {
 				t.Fatal(err)
 			}
 			if !strings.Contains(failure.Error.Message, tc.path) {
@@ -82,7 +82,7 @@ func TestGatewayChatWireContractFailure(t *testing.T) {
 				if err := os.MkdirAll(directory, 0700); err != nil {
 					t.Fatal(err)
 				}
-				raw, _ := json.Marshal(map[string]any{"body": string(body), "status": response.StatusCode, "trailer": response.Trailer, "cause": failure.Error.Message})
+				raw, _ := sonic.ConfigStd.Marshal(map[string]any{"body": string(body), "status": response.StatusCode, "trailer": response.Trailer, "cause": failure.Error.Message})
 				if err := os.WriteFile(filepath.Join(directory, "chat-contract-error-"+tc.name+".json"), raw, 0600); err != nil {
 					t.Fatal(err)
 				}

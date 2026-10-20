@@ -9,6 +9,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/bytedance/sonic"
+	"github.com/bytedance/sonic/encoder"
 )
 
 func TestConfigUpdatePreservesUnknownSectionFields(t *testing.T) {
@@ -47,7 +50,7 @@ func TestConfigUpdatePreservesUnknownSectionFields(t *testing.T) {
 			t.Fatal(err)
 		}
 		var sections map[string]json.RawMessage
-		if err := json.Unmarshal(saved, &sections); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(saved, &sections); err != nil {
 			t.Fatal(err)
 		}
 		for section, managedField := range map[string]string{
@@ -55,19 +58,19 @@ func TestConfigUpdatePreservesUnknownSectionFields(t *testing.T) {
 			"systemLog": "maxRecords", "usageLog": "bodyMaxKB", "outbound": "deniedIpRanges",
 		} {
 			var fields map[string]json.RawMessage
-			if err := json.Unmarshal(sections[section], &fields); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(sections[section], &fields); err != nil {
 				t.Fatalf("%s: %v", section, err)
 			}
-			var vendor bytes.Buffer
-			if err := json.Compact(&vendor, fields["vendor"]); err != nil {
+			vendor, err := encoder.Encode(fields["vendor"], encoder.CompactMarshaler)
+			if err != nil {
 				t.Fatalf("%s lost vendor field: %v", section, err)
 			}
 			wantVendor := "9007199254740993"
 			if section == "agent" {
 				wantVendor = `{"n":9007199254740993}`
 			}
-			if vendor.String() != wantVendor {
-				t.Fatalf("%s changed vendor value: %s", section, vendor.String())
+			if string(vendor) != wantVendor {
+				t.Fatalf("%s changed vendor value: %s", section, vendor)
 			}
 			if shouldClearSettings && section != "outbound" && fields[managedField] != nil {
 				t.Fatalf("%s retained cleared field %s", section, managedField)

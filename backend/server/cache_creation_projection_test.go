@@ -1,12 +1,13 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
 )
 
 // An Anthropic upstream reports its cache-creation TTL breakdown, and the
@@ -49,7 +50,7 @@ func TestCacheCreationBucketProjectionAcrossProtocols(t *testing.T) {
 				t.Fatal(err)
 			}
 			var record usageRecord
-			if err := json.Unmarshal(data, &record); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(data, &record); err != nil {
 				t.Fatal(err)
 			}
 			// The omission is a diagnostic, never a silent drop, and the record

@@ -3,13 +3,13 @@ package logging
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/rs/zerolog"
 )
 
@@ -178,7 +178,7 @@ func TestIndependentThresholdsAndHotReload(t *testing.T) {
 		t.Fatalf("persisted %d events, want 3", len(persisted))
 	}
 	var standardEvent map[string]any
-	if err := json.Unmarshal(persisted[2], &standardEvent); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(persisted[2], &standardEvent); err != nil {
 		t.Fatal(err)
 	}
 	if standardEvent["level"] != "error" || standardEvent["component"] != "http_server" || standardEvent["message"] != "both" || bytes.Count(persisted[2], []byte(`"time":`)) != 1 {

@@ -2,15 +2,14 @@ package server
 
 import (
 	"bytes"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/elysia-api/backend/protocol/builtin"
-
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/protocol/builtin"
 )
 
 func TestGatewayFourPublicEntrypointsUseActiveRuntime(t *testing.T) {
@@ -56,7 +55,7 @@ func TestGatewayFourPublicEntrypointsUseActiveRuntime(t *testing.T) {
 			upstream := activateGatewayDefinition(t, server, upstreamDefinition)
 			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				var body map[string]any
-				if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+				if err := sonic.ConfigStd.NewDecoder(request.Body).Decode(&body); err != nil {
 					t.Error(err)
 				}
 				if body["engine"] != "upstream-model" {
@@ -85,7 +84,7 @@ func TestGatewayFourPublicEntrypointsUseActiveRuntime(t *testing.T) {
 				t.Fatalf("logs: %+v", logs)
 			}
 			var record usageRecord
-			if err := json.Unmarshal([]byte(storedRecordJSON(t, server.store, logs[0].RequestID)), &record); err != nil {
+			if err := sonic.ConfigStd.Unmarshal([]byte(storedRecordJSON(t, server.store, logs[0].RequestID)), &record); err != nil {
 				t.Fatal(err)
 			}
 			if record.IngressRevision != ingress.Hash() || record.RelayMode != "protocol_v2" || record.ConversionPolicyHash == "" {

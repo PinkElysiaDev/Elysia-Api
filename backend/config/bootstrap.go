@@ -3,8 +3,9 @@ package config
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"os"
+
+	"github.com/bytedance/sonic"
 )
 
 const panelTokenRandomBytes = 32
@@ -65,7 +66,7 @@ func writeDefaultConfig(path, token string) error {
 		"secretKeyPath":       ".master-key",
 		"logLifecycleVersion": 1,
 	}
-	out, err := json.MarshalIndent(defaults, "", "  ")
+	out, err := sonic.ConfigStd.MarshalIndent(defaults, "", "  ")
 	if err != nil {
 		return err
 	}

@@ -1,8 +1,9 @@
 package builtin
 
 import (
-	"encoding/json"
 	"testing"
+
+	"github.com/bytedance/sonic"
 )
 
 // 四线制错误渲染矩阵:分类 → HTTP 状态 + 各协议标准体的关键字段。
@@ -41,7 +42,7 @@ func TestProtocolErrorBodyMatrix(t *testing.T) {
 						Code    *string `json:"code"`
 					} `json:"error"`
 				}
-				if err := json.Unmarshal(body, &parsed); err != nil {
+				if err := sonic.ConfigStd.Unmarshal(body, &parsed); err != nil {
 					t.Fatalf("%s openai body: %v", tc.class, err)
 				}
 				// 四字段 required:param/code 为 null 而非缺席。
@@ -71,7 +72,7 @@ func TestProtocolErrorBodyMatrix(t *testing.T) {
 						Message string `json:"message"`
 					} `json:"error"`
 				}
-				if err := json.Unmarshal(body, &parsed); err != nil {
+				if err := sonic.ConfigStd.Unmarshal(body, &parsed); err != nil {
 					t.Fatalf("%s anthropic body: %v", tc.class, err)
 				}
 				if parsed.Type != "error" || parsed.Error.Type != tc.anthropicType || parsed.Error.Message != "boom" {
@@ -86,7 +87,7 @@ func TestProtocolErrorBodyMatrix(t *testing.T) {
 						Status  string `json:"status"`
 					} `json:"error"`
 				}
-				if err := json.Unmarshal(body, &parsed); err != nil {
+				if err := sonic.ConfigStd.Unmarshal(body, &parsed); err != nil {
 					t.Fatalf("%s gemini body: %v", tc.class, err)
 				}
 				if parsed.Error.Status != tc.geminiStatus || parsed.Error.Message != "boom" {
@@ -135,7 +136,7 @@ func TestProtocolErrorBodyUpstreamOverride(t *testing.T) {
 			Code any `json:"code"`
 		} `json:"error"`
 	}
-	if json.Unmarshal(body, &parsed) != nil || parsed.Error.Code != "slow_down" {
+	if sonic.ConfigStd.Unmarshal(body, &parsed) != nil || parsed.Error.Code != "slow_down" {
 		t.Fatalf("code passthrough failed: %s", body)
 	}
 }

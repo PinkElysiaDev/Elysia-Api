@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -82,7 +83,7 @@ func TestResponsesIncludeProjection(t *testing.T) {
 			t.Fatal(err)
 		}
 		var fields map[string]json.RawMessage
-		_ = json.Unmarshal(wire, &fields)
+		_ = sonic.ConfigStd.Unmarshal(wire, &fields)
 		sameJSON(t, fields["include"], value)
 	}
 }

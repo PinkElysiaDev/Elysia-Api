@@ -2,14 +2,13 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/elysia-api/backend/protocol"
-
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -234,7 +233,7 @@ func collectRemoteTurn(sessionID string, events <-chan agent.Event, onEvent func
 			// 一条，终稿即最后一条。
 			if event.Message != nil && event.Message.Role == agent.RoleAssistant {
 				var content agent.AssistantContent
-				if json.Unmarshal(event.Message.Content, &content) == nil {
+				if sonic.ConfigStd.Unmarshal(event.Message.Content, &content) == nil {
 					outcome.Reply = content.Text
 				}
 			}

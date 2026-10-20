@@ -1,6 +1,10 @@
 package protocol
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/bytedance/sonic"
+)
 
 // UnmarshalJSON rejects unknown expression keys and retains the presence of
 // empty/false fields so an unrelated key cannot evade operation validation.
@@ -11,7 +15,7 @@ func (expression *Expression) UnmarshalJSON(raw []byte) error {
 		return err
 	}
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &fields); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &fields); err != nil {
 		return err
 	}
 	*expression = Expression(decoded)

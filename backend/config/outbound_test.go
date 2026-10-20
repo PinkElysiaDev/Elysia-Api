@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/relay"
 )
 
@@ -46,7 +47,7 @@ func TestOutboundExplicitEmptyListRoundtrip(t *testing.T) {
 		t.Fatalf("read back: %v", err)
 	}
 	var doc map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &doc); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	block, ok := doc["outbound"]
@@ -60,5 +61,5 @@ func TestOutboundExplicitEmptyListRoundtrip(t *testing.T) {
 
 func containsJSONKey(raw json.RawMessage, key string) bool {
 	var obj map[string]json.RawMessage
-	return json.Unmarshal(raw, &obj) == nil && obj[key] != nil
+	return sonic.ConfigStd.Unmarshal(raw, &obj) == nil && obj[key] != nil
 }

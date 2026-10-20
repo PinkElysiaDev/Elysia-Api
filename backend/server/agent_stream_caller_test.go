@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
@@ -83,7 +84,7 @@ func TestAgentNonReasoningDefault(t *testing.T) {
 			s := newAgentIntegrationServer(t)
 			upstream := newCapturingUpstream(t, func(w http.ResponseWriter, body string, _ int) {
 				var request map[string]any
-				if err := json.Unmarshal([]byte(body), &request); err != nil {
+				if err := sonic.ConfigStd.Unmarshal([]byte(body), &request); err != nil {
 					t.Error(err)
 				}
 				if request["reasoning"] != nil || request["reasoning_effort"] != nil {
@@ -203,7 +204,7 @@ func TestAgentCallerOpenAIChatViaAdapter(t *testing.T) {
 		t.Fatalf("authorization = %q", req.Auth)
 	}
 	var body map[string]any
-	if err := json.Unmarshal([]byte(req.Body), &body); err != nil {
+	if err := sonic.ConfigStd.Unmarshal([]byte(req.Body), &body); err != nil {
 		t.Fatalf("body not json: %v", err)
 	}
 	if body["stream"] != true {
@@ -240,7 +241,7 @@ func TestAgentCallerOpenAIChatViaAdapter(t *testing.T) {
 		t.Fatalf("outgoing body missing from usage detail: %.200s", detail)
 	}
 	var record usageRecord
-	if err := json.Unmarshal(detail, &record); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(detail, &record); err != nil {
 		t.Fatal(err)
 	}
 	if record.RequestedModelGroup != "fake-model" || record.TargetFormat == "" || record.UsageSource == "" || record.KeyName != "AI 助手" {
@@ -288,7 +289,7 @@ func TestAgentCallerRetryAndCancelLogs(t *testing.T) {
 				t.Fatalf("logs=%d", len(logs))
 			}
 			var record usageRecord
-			json.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record)
+			sonic.ConfigStd.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record)
 			if scenario == "retry" {
 				if err != nil || record.StatusCode != 200 || record.RetryCount != 1 || len(record.RetryEvents) != 1 || strings.Contains(record.ProviderResponse.Content, "first-attempt-error") {
 					t.Fatalf("retry log: %+v, err=%v", record, err)
@@ -502,7 +503,7 @@ func TestAgentAttachmentBase64IsTextNotBinary(t *testing.T) {
 			} `json:"content"`
 		} `json:"messages"`
 	}
-	if err := json.Unmarshal(anthropicBody, &claudeMsg); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(anthropicBody, &claudeMsg); err != nil {
 		t.Fatalf("anthropic body: %v", err)
 	}
 	if len(claudeMsg.Messages) == 0 || len(claudeMsg.Messages[0].Content) == 0 {
@@ -530,7 +531,7 @@ func TestAgentAttachmentBase64IsTextNotBinary(t *testing.T) {
 			} `json:"parts"`
 		} `json:"contents"`
 	}
-	if err := json.Unmarshal(geminiBody, &geminiReq); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(geminiBody, &geminiReq); err != nil {
 		t.Fatalf("gemini body: %v", err)
 	}
 	if len(geminiReq.Contents) == 0 || len(geminiReq.Contents[0].Parts) == 0 {
@@ -666,7 +667,7 @@ func TestAgentCallerResponsesStatelessToolContinuation(t *testing.T) {
 					Include []string        `json:"include"`
 					Input   json.RawMessage `json:"input"`
 				}
-				if err := json.Unmarshal([]byte(body), &request); err != nil {
+				if err := sonic.ConfigStd.Unmarshal([]byte(body), &request); err != nil {
 					t.Error(err)
 				}
 				if request.Store == nil || *request.Store || len(request.Include) != 1 || request.Include[0] != "reasoning.encrypted_content" {
@@ -774,7 +775,7 @@ func TestAgentCallerAnthropicPresetSignatureRoundTrip(t *testing.T) {
 					}
 				}
 			}
-			if err := json.Unmarshal([]byte(body), &history); err != nil {
+			if err := sonic.ConfigStd.Unmarshal([]byte(body), &history); err != nil {
 				t.Error(err)
 				return
 			}
@@ -845,7 +846,7 @@ func TestAgentCallerAnthropicPresetSignatureRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := json.Marshal(messages)
+	encoded, err := sonic.ConfigStd.Marshal(messages)
 	if err != nil || !strings.Contains(string(encoded), "sig-roundtrip") {
 		t.Fatalf("signature missing from persisted history: %s, %v", encoded, err)
 	}

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/gin-gonic/gin"
@@ -111,7 +111,7 @@ func TestCustomHTTPFailuresUseDeclaredResponseDirections(t *testing.T) {
 				wantStatus = http.StatusBadGateway
 			}
 			var decoded map[string]map[string]string
-			decodeErr := json.Unmarshal(recorder.Body.Bytes(), &decoded)
+			decodeErr := sonic.ConfigStd.Unmarshal(recorder.Body.Bytes(), &decoded)
 			if recorder.Code != wantStatus || decodeErr != nil || len(decoded) != 1 || len(decoded["failure"]) != 2 || decoded["failure"]["code"] != "exhausted" || decoded["failure"]["message"] != "quota exhausted" {
 				t.Fatalf("declared failure was not converted: %d %s", recorder.Code, recorder.Body.String())
 			}

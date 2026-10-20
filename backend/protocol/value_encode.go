@@ -1,12 +1,13 @@
 package protocol
 
 import (
-	"encoding/json"
 	"strings"
+
+	"github.com/bytedance/sonic"
 )
 
 // encodeValueContainer handles only closed containers of validated values.
-// Arbitrary Go objects keep encoding/json's reflection and error behavior.
+// Arbitrary Go objects use the shared Sonic codec.
 func encodeValueContainer(value any) (Value, bool) {
 	var keys []string
 	var items []Value
@@ -52,7 +53,7 @@ func encodeValueContainer(value any) (Value, bool) {
 			return Value{}, false
 		}
 		if isObject {
-			key, _ := json.Marshal(keys[index])
+			key, _ := sonic.ConfigStd.Marshal(keys[index])
 			keys[index] = string(key)
 			if !add(len(key)) || !add(1) {
 				return Value{}, false
@@ -84,14 +85,13 @@ func encodeValueContainer(value any) (Value, bool) {
 	return Value{raw: output.String()}, true
 }
 
-// Validated JSON needs only whitespace compaction and encoding/json's HTML /
+// Validated JSON needs only whitespace compaction and the codec's HTML /
 // line separator escapes. The common base64 path returns its immutable string.
 func compactValueString(raw string) string {
 	if !needsSemanticCompaction(raw) {
 		return raw
 	}
-	// Keep the standard marshaler for exceptional spellings, including its
-	// handling of invalid UTF-8 inside Marshaler output.
-	encoded, _ := json.Marshal(Value{raw: raw})
+	// Use the shared codec for exceptional spellings and custom Marshaler output.
+	encoded, _ := sonic.ConfigStd.Marshal(Value{raw: raw})
 	return string(encoded)
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -288,7 +289,7 @@ func TestStoreDecisionTable(t *testing.T) {
 					if raw != "" {
 						input["store"] = json.RawMessage(raw)
 					}
-					body, _ := json.Marshal(input)
+					body, _ := sonic.ConfigStd.Marshal(input)
 					request, err := from.DecodeRequest(t.Context(), body, p.EvaluationContext{})
 					if err != nil {
 						t.Fatal(err)
@@ -318,7 +319,7 @@ func TestStoreDecisionTable(t *testing.T) {
 							t.Fatal(err)
 						}
 						var out map[string]json.RawMessage
-						json.Unmarshal(wire, &out)
+						sonic.ConfigStd.Unmarshal(wire, &out)
 						want := ""
 						if source == target {
 							want = raw

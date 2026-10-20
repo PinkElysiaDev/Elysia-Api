@@ -13,10 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elysia-api/backend/protocol/builtin"
-
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/internal/jsonutil"
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
@@ -197,7 +198,7 @@ func (r *usageRecord) sanitizeBody(data []byte) usageBody {
 		if r.bodyOpts.externalize {
 			r.assets.extractFromValue(value)
 		}
-		if sanitized, err := json.Marshal(value); err == nil {
+		if sanitized, err := sonic.ConfigStd.Marshal(value); err == nil {
 			return truncateUsageBody(string(sanitized), maxBytes)
 		}
 	}
@@ -220,7 +221,7 @@ func (r *usageRecord) finalizeDownstreamBody(body usageBody) (result usageBody) 
 			r.assets.extractFromValue(value)
 		}
 		if isChanged || r.bodyOpts.externalize {
-			if sanitized, err := json.Marshal(value); err == nil {
+			if sanitized, err := sonic.ConfigStd.Marshal(value); err == nil {
 				return truncateUsageBody(string(sanitized), maxBytes)
 			}
 		}
@@ -250,7 +251,7 @@ func truncateUsageBody(content string, maxBytes int) usageBody {
 // 序列化推迟到 recordUsage 一次性物化：旧实现每事件重编组整个数组并完整
 // 清洗，CPU 随事件数平方增长。
 func (r *usageRecord) appendStreamEvent(payload string) {
-	if r.bodyOpts.maxBytes == 0 || !json.Valid([]byte(payload)) {
+	if r.bodyOpts.maxBytes == 0 || !jsonutil.Valid([]byte(payload)) {
 		return
 	}
 	if len(r.pendingStreamEvents) >= StreamEventsCacheMax {
@@ -266,7 +267,7 @@ func (r *usageRecord) materializeStreamEvents() {
 	if r.ProviderResponse.Content != "" || len(r.pendingStreamEvents) == 0 {
 		return
 	}
-	if eventBytes, err := json.Marshal(r.pendingStreamEvents); err == nil {
+	if eventBytes, err := sonic.ConfigStd.Marshal(r.pendingStreamEvents); err == nil {
 		r.ProviderResponse = r.sanitizeBody(eventBytes)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 )
 
@@ -43,7 +44,7 @@ func parseAskQuestion(call agent.FunctionCall) (agent.AskQuestion, bool) {
 		Options     []agent.AskOption `json:"options"`
 		AllowCustom bool              `json:"allow_custom"`
 	}
-	if err := json.Unmarshal(call.Arguments, &payload); err != nil || payload.Question == "" {
+	if err := sonic.ConfigStd.Unmarshal(call.Arguments, &payload); err != nil || payload.Question == "" {
 		return agent.AskQuestion{}, false
 	}
 	return agent.AskQuestion{CallID: call.ID, Question: payload.Question, Options: payload.Options, AllowCustom: payload.AllowCustom}, true

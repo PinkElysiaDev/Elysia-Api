@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 )
 
@@ -361,7 +362,7 @@ func TestAgentSessionStatsAggregation(t *testing.T) {
 		if role == agent.RoleToolResult {
 			content = map[string]any{"callId": "c", "name": "t", "ok": true}
 		}
-		encoded, _ := json.Marshal(content)
+		encoded, _ := sonic.ConfigStd.Marshal(content)
 		var usageJSON json.RawMessage
 		if usage != "" {
 			usageJSON = json.RawMessage(usage)

@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
@@ -115,7 +115,7 @@ func (gateway *liveGateway) stored(t *testing.T) *usageRecord {
 				t.Fatal("persisted request missing", err)
 			}
 			var saved usageRecord
-			if err := json.Unmarshal(raw, &saved); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(raw, &saved); err != nil {
 				t.Fatal(err)
 			}
 			return &saved

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/storage"
 )
@@ -41,7 +42,7 @@ func TestAPIKeyToolsLifecycle(t *testing.T) {
 	if !listed.OK {
 		t.Fatalf("list: %s", listed.Summary)
 	}
-	encoded, _ := json.Marshal(listed.Data)
+	encoded, _ := sonic.ConfigStd.Marshal(listed.Data)
 	if strings.Contains(string(encoded), secret) {
 		t.Fatalf("list leaked plaintext: %s", encoded)
 	}
@@ -162,7 +163,7 @@ func TestDeleteSourceCascadeAndModelTools(t *testing.T) {
 	if !listed.OK {
 		t.Fatalf("list models: %s", listed.Summary)
 	}
-	encoded, _ := json.Marshal(listed.Data)
+	encoded, _ := sonic.ConfigStd.Marshal(listed.Data)
 	if strings.Contains(string(encoded), "apiKey") || strings.Contains(string(encoded), "baseUrl") {
 		t.Fatalf("model view leaked sensitive snapshot: %s", encoded)
 	}

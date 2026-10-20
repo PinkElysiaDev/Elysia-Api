@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/elysia-api/backend/internal/jsonutil"
 )
 
 type cliInvocation struct {
@@ -105,7 +107,7 @@ func (inv *cliInvocation) setList(params map[string]any, flag, key string) {
 // setJSONText 把 flag/位置参数里的 JSON 文本原样放入参数 map。
 func (inv *cliInvocation) setJSONText(params map[string]any, key, text string) error {
 	trimmed := strings.TrimSpace(text)
-	if !json.Valid([]byte(trimmed)) {
+	if !jsonutil.Valid([]byte(trimmed)) {
 		return fmt.Errorf("%s 需要合法 JSON 文本", key)
 	}
 	params[key] = json.RawMessage(trimmed)

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
 )
@@ -21,7 +22,7 @@ func auditOctober14Fixture(t *testing.T, name string) []byte {
 		t.Fatal(err)
 	}
 	var fixtures map[string]json.RawMessage
-	if err := json.Unmarshal(body, &fixtures); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(body, &fixtures); err != nil {
 		t.Fatal(err)
 	}
 	if fixtures[name] == nil {
@@ -100,7 +101,7 @@ func TestCollectedChatModelRepairAndPreview(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			previewBody, err := json.Marshal(map[string]any{"policy": policy, "phase": "response", "context": route, "input": response})
+			previewBody, err := sonic.ConfigStd.Marshal(map[string]any{"policy": policy, "phase": "response", "context": route, "input": response})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -122,7 +123,7 @@ func TestCollectedChatModelRepairAndPreview(t *testing.T) {
 					PersistentWrites bool
 				}
 			}
-			if err := json.Unmarshal(preview.Body.Bytes(), &resultBody); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(preview.Body.Bytes(), &resultBody); err != nil {
 				t.Fatal(err)
 			}
 			if resultBody.Data.PersistentWrites || resultBody.Data.Output.Model != result.Model {
@@ -150,7 +151,7 @@ func TestGatewayChatMissingResponseModel(t *testing.T) {
 		var request struct {
 			Model string `json:"model"`
 		}
-		if err := json.Unmarshal(body, &request); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(body, &request); err != nil {
 			t.Error(err)
 		}
 		outgoingModel = request.Model
@@ -170,7 +171,7 @@ func TestGatewayChatMissingResponseModel(t *testing.T) {
 		t.Fatal("wrong outbound model or duplicate generation", calls, outgoingModel)
 	}
 	var reply map[string]json.RawMessage
-	if err := json.Unmarshal(rec.Body.Bytes(), &reply); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &reply); err != nil {
 		t.Fatal(err)
 	}
 	if string(reply["model"]) != `"group"` || string(reply["vendor_integer"]) != "9007199254740993" {
@@ -188,7 +189,7 @@ func TestGatewayChatMissingResponseModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	var record usageRecord
-	if err := json.Unmarshal(persisted, &record); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(persisted, &record); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(fmt.Sprint(record.ProviderResponse), `"model"`) {

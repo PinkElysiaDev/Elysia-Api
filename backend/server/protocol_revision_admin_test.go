@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/gin-gonic/gin"
 )
@@ -49,7 +50,7 @@ func TestProtocolRevisionAdminDraftVerifyActivateAndPreview(t *testing.T) {
 	if stale.Code != http.StatusConflict {
 		t.Fatalf("unconditional overwrite: %d %s", stale.Code, stale.Body)
 	}
-	verifyBody, _ := json.Marshal(map[string]string{"draftHash": draftHash})
+	verifyBody, _ := sonic.ConfigStd.Marshal(map[string]string{"draftHash": draftHash})
 	verified := revisionAdminRequest(t, server.engine, http.MethodPost, "/api/admin/protocols/text-alpha/verify", verifyBody, "")
 	if verified.Code != http.StatusOK {
 		t.Fatalf("verify: %d %s", verified.Code, verified.Body)
@@ -59,7 +60,7 @@ func TestProtocolRevisionAdminDraftVerifyActivateAndPreview(t *testing.T) {
 		t.Fatalf("verification failed: %s", verified.Body)
 	}
 	revisionHash := evidence["revision"].(map[string]any)["hash"].(string)
-	activationBody, _ := json.Marshal(map[string]string{"revisionHash": revisionHash, "expectedActive": ""})
+	activationBody, _ := sonic.ConfigStd.Marshal(map[string]string{"revisionHash": revisionHash, "expectedActive": ""})
 	activated := revisionAdminRequest(t, server.engine, http.MethodPost, "/api/admin/protocols/text-alpha/activate", activationBody, "")
 	if activated.Code != http.StatusOK {
 		t.Fatalf("activate: %d %s", activated.Code, activated.Body)
@@ -68,7 +69,7 @@ func TestProtocolRevisionAdminDraftVerifyActivateAndPreview(t *testing.T) {
 	if !exists || pinned.Hash() != revisionHash {
 		t.Fatal("activation did not publish selected revision")
 	}
-	previewBody, _ := json.Marshal(map[string]any{"definition": json.RawMessage(raw), "direction": "decode_request", "input": map[string]any{"deployment": "m", "turns": []any{map[string]any{"actor": "user", "segments": []any{map[string]any{"text": "preview"}}}}}})
+	previewBody, _ := sonic.ConfigStd.Marshal(map[string]any{"definition": json.RawMessage(raw), "direction": "decode_request", "input": map[string]any{"deployment": "m", "turns": []any{map[string]any{"actor": "user", "segments": []any{map[string]any{"text": "preview"}}}}}})
 	preview := revisionAdminRequest(t, server.engine, http.MethodPost, "/api/admin/protocols/preview", previewBody, "")
 	if preview.Code != http.StatusOK {
 		t.Fatalf("preview: %d %s", preview.Code, preview.Body)
@@ -112,7 +113,7 @@ func TestProtocolAdminRejectsForgedReportAndActivationWithoutEvidence(t *testing
 	if err := server.store.SaveProtocolRevision(t.Context(), protocol.Revision{ProtocolID: "text-alpha", Hash: compiled.Hash(), Definition: value}); err != nil {
 		t.Fatal(err)
 	}
-	body, _ := json.Marshal(map[string]string{"revisionHash": compiled.Hash(), "expectedActive": ""})
+	body, _ := sonic.ConfigStd.Marshal(map[string]string{"revisionHash": compiled.Hash(), "expectedActive": ""})
 	response = revisionAdminRequest(t, server.engine, http.MethodPost, "/api/admin/protocols/text-alpha/activate", body, "")
 	if response.Code == http.StatusOK {
 		t.Fatal("revision without verification activated")

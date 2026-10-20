@@ -1,13 +1,13 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -33,7 +33,7 @@ func cumulativeWireDefinition(t *testing.T) protocol.Definition {
    ]}}
  ]}`
 	var mapping protocol.Mapping
-	if err := json.Unmarshal([]byte(raw), &mapping); err != nil {
+	if err := sonic.ConfigStd.Unmarshal([]byte(raw), &mapping); err != nil {
 		t.Fatal(err)
 	}
 	definition.Directions[protocol.DecodeEvent] = mapping

@@ -2,9 +2,9 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -56,7 +56,7 @@ func (store *Store) RefreshProtocolRuntime(ctx context.Context, plan ProtocolUpg
 	if snapshot != nil {
 		mode, path = "current_snapshot", snapshot.Path
 	}
-	receipt, err := json.Marshal(map[string]any{"baseline": plan.Baseline, "backup": path, "backupMode": mode, "snapshot": snapshot, "compilerVersion": protocol.CompilerVersion})
+	receipt, err := sonic.ConfigStd.Marshal(map[string]any{"baseline": plan.Baseline, "backup": path, "backupMode": mode, "snapshot": snapshot, "compilerVersion": protocol.CompilerVersion})
 	if err != nil {
 		return err
 	}

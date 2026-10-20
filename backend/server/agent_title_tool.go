@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/bytedance/sonic"
 )
 
 // update_title：模型在理解任务后把会话标题改成对目标的简短概括。总览卡片
@@ -19,7 +21,7 @@ func (t *updateTitleTool) Execute(ctx context.Context, tctx CLIContext, args jso
 	var params struct {
 		Title string `json:"title"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(args, &params); err != nil {
 		return CLIError("参数解析失败", "invalid_args")
 	}
 	title := strings.TrimSpace(params.Title)

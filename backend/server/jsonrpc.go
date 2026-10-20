@@ -1,6 +1,10 @@
 package server
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/bytedance/sonic"
+)
 
 // JSON-RPC 2.0 信封（MCP 与 A2A 共用）。两个协议都是「单条消息一个
 // POST、响应可为纯 JSON 或 SSE（每帧一条完整消息）」，信封与标准错误码
@@ -54,7 +58,7 @@ func jsonrpcFail(id json.RawMessage, code int, message string) jsonrpcResponse {
 
 // jsonrpcFailData 构造带 data 载荷的错误响应。
 func jsonrpcFailData(id json.RawMessage, code int, message string, data any) jsonrpcResponse {
-	encoded, err := json.Marshal(data)
+	encoded, err := sonic.ConfigStd.Marshal(data)
 	if err != nil {
 		return jsonrpcFail(id, code, message)
 	}

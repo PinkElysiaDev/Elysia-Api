@@ -2,11 +2,11 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
@@ -53,7 +53,7 @@ func (s *Server) refreshProtocolRuntimeScope(ctx context.Context, service *proto
 		}
 		scope := conversionBindingScope{keys: selected, isolate: true}
 		for i, b := range bindings {
-			raw, err := json.Marshal(b)
+			raw, err := sonic.ConfigStd.Marshal(b)
 			if err != nil {
 				return err
 			}
@@ -70,7 +70,7 @@ func (s *Server) refreshProtocolRuntimeScope(ctx context.Context, service *proto
 		}
 		plan.Bindings = nil
 		for _, b := range verified {
-			raw, err := json.Marshal(b)
+			raw, err := sonic.ConfigStd.Marshal(b)
 			if err != nil {
 				return err
 			}

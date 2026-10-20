@@ -1,13 +1,14 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
 )
 
 func TestStreamUsageTailZeroReachesClientAndStorage(t *testing.T) {
@@ -43,7 +44,7 @@ func TestStreamUsageTailZeroReachesClientAndStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	var record usageRecord
-	if err := json.Unmarshal(payload, &record); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(payload, &record); err != nil {
 		t.Fatal(err)
 	}
 	for name, count := range map[string]*int{"cache": record.Usage.CacheHitTokens, "creation": record.UsageDetail.CacheCreationInputTokens, "output": record.Usage.OutputTokens} {

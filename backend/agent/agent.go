@@ -13,10 +13,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"golang.org/x/sync/errgroup"
-
+	"github.com/bytedance/sonic"
 	log "github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/protocol"
+	"golang.org/x/sync/errgroup"
 )
 
 // Engine 是领域无关的 Agent 执行引擎：模型流式调用 → 工具分发 → 门控暂停/
@@ -403,7 +403,7 @@ func (e *Engine) appendUserMessage(ctx context.Context, sessionID string, sessio
 		e.failTurn(ctx, sessionID, events, fmt.Sprintf("写入用户消息失败: %v", err))
 		return true
 	}
-	if encoded, err := json.Marshal(*input); err == nil {
+	if encoded, err := sonic.ConfigStd.Marshal(*input); err == nil {
 		emitEvent(events, Event{Type: EventMessage, Message: &Message{Seq: seq, Role: RoleUser, Content: encoded, CreatedAt: time.Now()}})
 	}
 	if strings.TrimSpace(session.Title) == "" && strings.TrimSpace(input.Text) != "" {
@@ -461,7 +461,7 @@ func (e *Engine) resumeQuestion(ctx context.Context, sessionID string, resume *P
 	}
 	// resumablePending 已保证 question 型待批必带 Question。
 	callID := resume.Question.CallID
-	encoded, _ := json.Marshal(map[string]string{"answer": answer})
+	encoded, _ := sonic.ConfigStd.Marshal(map[string]string{"answer": answer})
 	info := ToolResultInfo{CallID: callID, Name: ToolNameAskUser, OK: true, Summary: "用户回答：" + truncateRunes(answer, answerSummaryRunes), Data: encoded}
 	for _, call := range resume.Calls {
 		if call.ID == callID && call.Name == ToolNameAskUser {
@@ -1121,7 +1121,7 @@ func (e *Engine) notePlanReady(session *Session, call FunctionCall, result ToolR
 	var payload struct {
 		Ready bool `json:"ready_for_approval"`
 	}
-	if json.Unmarshal(call.Arguments, &payload) == nil && payload.Ready {
+	if sonic.ConfigStd.Unmarshal(call.Arguments, &payload) == nil && payload.Ready {
 		session.PlanReady = true
 	}
 }
@@ -1177,7 +1177,7 @@ func (e *Engine) persistToolResult(ctx context.Context, sessionID string, info T
 		emitEvent(events, Event{Type: EventStatus, Text: fmt.Sprintf("工具结果落库失败: %v", err)})
 		return stored
 	}
-	encoded, _ := json.Marshal(stored)
+	encoded, _ := sonic.ConfigStd.Marshal(stored)
 	emitEvent(events, Event{Type: EventToolResult, CallID: info.CallID, Name: info.Name, Result: &live, Message: &Message{Seq: seq, Role: RoleToolResult, Content: encoded, CreatedAt: time.Now()}})
 	return stored
 }
@@ -1185,7 +1185,7 @@ func (e *Engine) persistToolResult(ctx context.Context, sessionID string, info T
 func (e *Engine) persistAssistant(ctx context.Context, sessionID string, session *Session, content AssistantContent, usage *protocol.Usage, events chan Event) {
 	var usageJSON json.RawMessage
 	if usage != nil {
-		if encoded, err := json.Marshal(usage); err == nil {
+		if encoded, err := sonic.ConfigStd.Marshal(usage); err == nil {
 			usageJSON = encoded
 		}
 	}
@@ -1194,7 +1194,7 @@ func (e *Engine) persistAssistant(ctx context.Context, sessionID string, session
 		emitEvent(events, Event{Type: EventStatus, Text: fmt.Sprintf("助手消息落库失败: %v", err)})
 		return
 	}
-	encoded, _ := json.Marshal(content)
+	encoded, _ := sonic.ConfigStd.Marshal(content)
 	emitEvent(events, Event{Type: EventMessage, Message: &Message{Seq: seq, Role: RoleAssistant, Content: encoded, Model: session.Settings.ModelName, Usage: usageJSON, CreatedAt: time.Now()}})
 }
 
@@ -1302,7 +1302,7 @@ func denialSuffix(note string) string {
 
 func deniedToolResult(call FunctionCall, message string) ToolResultInfo {
 	// 拒绝理由随 Data 一起回传给模型（ToolOutput 只含 Data），模型才能据此调整行为。
-	encoded, _ := json.Marshal(map[string]string{"error": "denied", "message": message})
+	encoded, _ := sonic.ConfigStd.Marshal(map[string]string{"error": "denied", "message": message})
 	return ToolResultInfo{
 		CallID:  call.ID,
 		Name:    call.Name,
@@ -1334,7 +1334,7 @@ func (e *Engine) loadConversation(ctx context.Context, session *Session) ([]conv
 		switch message.Role {
 		case RoleUser:
 			var content UserContent
-			if err := json.Unmarshal(message.Content, &content); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(message.Content, &content); err != nil {
 				return nil, nil, fmt.Errorf("用户消息 #%d 解析失败: %w", message.Seq, err)
 			}
 			meta := metaFromSession(session)
@@ -1347,7 +1347,7 @@ func (e *Engine) loadConversation(ctx context.Context, session *Session) ([]conv
 			}
 		case RoleAssistant:
 			var content AssistantContent
-			if err := json.Unmarshal(message.Content, &content); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(message.Content, &content); err != nil {
 				return nil, nil, fmt.Errorf("助手消息 #%d 解析失败: %w", message.Seq, err)
 			}
 			// Interrupted provider output remains visible in the transcript, but
@@ -1361,7 +1361,7 @@ func (e *Engine) loadConversation(ctx context.Context, session *Session) ([]conv
 			add(message.Seq, assistantTurn(content))
 		case RoleToolResult:
 			var info ToolResultInfo
-			if err := json.Unmarshal(message.Content, &info); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(message.Content, &info); err != nil {
 				return nil, nil, fmt.Errorf("工具结果 #%d 解析失败: %w", message.Seq, err)
 			}
 			// 历史回放统一用默认上限而非 per-tool 预算：落库内容本已过
@@ -1406,7 +1406,7 @@ func clampJSON(raw json.RawMessage, limit int, direction clampDirection) json.Ra
 		"direction": direction,
 		"preview":   preview,
 	}
-	encoded, _ := json.Marshal(envelope)
+	encoded, _ := sonic.ConfigStd.Marshal(envelope)
 	return encoded
 }
 

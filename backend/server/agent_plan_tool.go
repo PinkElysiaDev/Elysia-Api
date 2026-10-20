@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 )
 
@@ -56,7 +57,7 @@ func (t *updatePlanTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 		Plan             []agent.PlanStep `json:"plan"`
 		ReadyForApproval bool             `json:"ready_for_approval"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(args, &params); err != nil {
 		return agent.ToolError("参数解析失败", err.Error())
 	}
 	if len(params.Plan) == 0 {

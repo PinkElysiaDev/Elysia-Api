@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -73,8 +73,8 @@ func TestAgentToolProbeOnlyCommitsValidatedCapability(t *testing.T) {
 						t.Error(err)
 					}
 				}
-				args, _ := json.Marshal(map[string]string{"nonce": nonce})
-				argsString, _ := json.Marshal(string(args))
+				args, _ := sonic.ConfigStd.Marshal(map[string]string{"nonce": nonce})
+				argsString, _ := sonic.ConfigStd.Marshal(string(args))
 				fmt.Fprintf(w, `{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"test-call","type":"function","function":{"name":"elysia_capability_probe","arguments":%s}}]},"finish_reason":"tool_calls"}]}`, argsString)
 			}))
 			defer provider.Close()
@@ -143,7 +143,7 @@ func TestAgentToolProbeStreamsRelayExtensions(t *testing.T) {
 			w.WriteHeader(400)
 			return
 		}
-		args, _ := json.Marshal(map[string]string{"nonce": string(match[1])})
+		args, _ := sonic.ConfigStd.Marshal(map[string]string{"nonce": string(match[1])})
 		w.Header().Set("Content-Type", "text/event-stream")
 		chunk := func(payload string) { fmt.Fprintf(w, "data: %s\n\n", payload) }
 		chunk(`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"fake-model","system_fingerprint":"fp_123","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"elysia_capability_probe","arguments":""}}]},"finish_reason":null}]}`)

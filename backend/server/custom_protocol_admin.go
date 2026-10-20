@@ -2,13 +2,13 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
@@ -40,7 +40,7 @@ func bindAdminJSON(c *gin.Context, target any) error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(body, target)
+	return sonic.ConfigStd.Unmarshal(body, target)
 }
 
 // probeTimeout 计算探活类请求(真实测试/试拉/助手)的超时:自定义基础值,

@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	p "github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
@@ -114,7 +114,7 @@ func TestTransportFailureAttribution(t *testing.T) {
 				if scenario == "provider_failure" && !strings.Contains(observed.Error, "synthetic provider failure") {
 					t.Fatal("lost provider cause", observed.Error)
 				}
-				encoded, encodeErr := json.Marshal(observed)
+				encoded, encodeErr := sonic.ConfigStd.Marshal(observed)
 				if encodeErr != nil || !strings.Contains(string(encoded), `"transportFailure":{"kind":"upstream_idle_timeout","phase":"`+string(wantPhase)+`"}`) {
 					t.Fatal(string(encoded), encodeErr)
 				}

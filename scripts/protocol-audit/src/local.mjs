@@ -48,7 +48,7 @@ export async function localInstance(root, command, signal, timeoutMs = defaults.
   const close = async () => { if (stopped) return; stopped = true; await stop(); await rm(directory, { recursive: true, force: true }) }
   try {
     await writeFile(path, JSON.stringify(config), { mode: 0o600 })
-    await command('backend-build', ['go', 'build', '-o', binary, '.'], join(root, 'backend'))
+    await command('backend-build', ['go', 'build', '-tags=sonic', '-o', binary, '.'], join(root, 'backend'))
     await start()
   } catch (error) { await close(); error.backendLog = log(); throw error }
   return { baseUrl, panel, token, startups, restart: async () => { await stop(); await start() }, close, log }

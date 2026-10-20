@@ -1,11 +1,11 @@
 package builtin
 
 import (
-	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -44,7 +44,7 @@ func testCompiledWithLimits(t testing.TB, name string, limits p.Limits) *p.Compi
 		directions[direction] = p.Mapping{Module: name, FrameBatch: direction == p.EncodeEvent}
 	}
 	definition := p.Definition{SchemaVersion: 2, ID: "arbitrary-" + name, Name: name, Version: "1", Family: adapter.family, WireVersion: WireVersion, Capabilities: capabilities, Directions: directions, Native: p.NativePolicy{Preserve: true}, Operations: map[string]p.Operation{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: p.HTTPJSON, Auth: p.Credential{Location: "none"}}}}
-	raw, err := json.Marshal(definition)
+	raw, err := sonic.ConfigStd.Marshal(definition)
 	if err != nil {
 		t.Fatal(err)
 	}

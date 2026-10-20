@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	p "github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
@@ -42,7 +42,7 @@ func TestCollectorAppliesStartupConversion(t *testing.T) {
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		for _, f := range active.Load().([]p.Value) {
-			raw, _ := json.Marshal(f)
+			raw, _ := sonic.ConfigStd.Marshal(f)
 			fmt.Fprintf(w, "data: %s\n\n", raw)
 		}
 		fmt.Fprint(w, "data: [DONE]\n\n")

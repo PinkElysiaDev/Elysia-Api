@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 )
 
@@ -94,7 +95,7 @@ func (s *Server) runCLIWithOptions(ctx context.Context, tctx CLIContext, script 
 	if failed > 0 || ctx.Err() != nil {
 		exitCode = 1
 	}
-	redactedData, _ := json.Marshal(map[string]any{"output": clampCLIOutput(redacted.String()), "exitCode": exitCode})
+	redactedData, _ := sonic.ConfigStd.Marshal(map[string]any{"output": clampCLIOutput(redacted.String()), "exitCode": exitCode})
 	return CLIResult{OK: exitCode == 0, Summary: summary,
 		Data:         map[string]any{"output": clampCLIOutput(live.String()), "exitCode": exitCode},
 		RedactedData: redactedData,
@@ -124,7 +125,7 @@ func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw st
 		return output
 	}
 	if allowInternal && len(statement.args) >= 3 && statement.args[0] == "session" && statement.args[1] == "title" && len(statement.pipes) == 0 {
-		encoded, _ := json.Marshal(map[string]any{"title": strings.Join(statement.args[2:], " ")})
+		encoded, _ := sonic.ConfigStd.Marshal(map[string]any{"title": strings.Join(statement.args[2:], " ")})
 		result := normalizeCLIResult((&updateTitleTool{}).Execute(ctx, tctx, encoded))
 		output.result, output.isOK = &result, result.OK
 		return output
@@ -139,7 +140,7 @@ func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw st
 		output.text = "错误: " + err.Error()
 		return output
 	}
-	encoded, err := json.Marshal(args)
+	encoded, err := sonic.ConfigStd.Marshal(args)
 	if err != nil {
 		output.text = "错误: 参数序列化失败: " + err.Error()
 		return output

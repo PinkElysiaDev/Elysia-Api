@@ -1,9 +1,10 @@
 package protocol
 
 import (
-	"encoding/json"
-	"io"
 	"strings"
+
+	"github.com/bytedance/sonic"
+	"github.com/bytedance/sonic/ast"
 )
 
 // JSONToolSnapshotSuffix handles a complete JSON tool snapshot after streamed
@@ -23,20 +24,57 @@ func JSONToolSnapshotSuffix(previous, snapshot string) (string, error) {
 	return "", streamIssue(UpstreamContractViolation, "snapshot", "JSON tool snapshot changed already forwarded arguments")
 }
 
-// Compare tokens rather than maps: duplicate properties and their order cannot
-// disappear under a last-key-wins object decoder. Numbers use exact arithmetic.
+// Sonic AST iterators retain duplicate properties and their order. Converting
+// objects into maps here would discard information already sent downstream.
 func sameJSONToolTokens(a, b Value) bool {
-	x, y := json.NewDecoder(strings.NewReader(a.raw)), json.NewDecoder(strings.NewReader(b.raw))
-	x.UseNumber()
-	y.UseNumber()
-	for {
-		left, le := x.Token()
-		right, re := y.Token()
-		if le == io.EOF && re == io.EOF {
-			return true
-		}
-		if le != nil || re != nil || !equalJSON(left, right) {
+	return sameJSONToolNodes(ast.NewRaw(a.raw), ast.NewRaw(b.raw))
+}
+
+func sameJSONToolNodes(a, b ast.Node) bool {
+	if a.TypeSafe() != b.TypeSafe() {
+		return false
+	}
+	switch a.TypeSafe() {
+	case ast.V_OBJECT:
+		x, xe := a.Properties()
+		y, ye := b.Properties()
+		if xe != nil || ye != nil {
 			return false
 		}
+		var left, right ast.Pair
+		for {
+			lx, ry := x.Next(&left), y.Next(&right)
+			if !lx || !ry {
+				return lx == ry && a.Check() == nil && b.Check() == nil
+			}
+			if left.Key != right.Key || !sameJSONToolNodes(left.Value, right.Value) {
+				return false
+			}
+		}
+	case ast.V_ARRAY:
+		x, xe := a.Values()
+		y, ye := b.Values()
+		if xe != nil || ye != nil {
+			return false
+		}
+		var left, right ast.Node
+		for {
+			lx, ry := x.Next(&left), y.Next(&right)
+			if !lx || !ry {
+				return lx == ry && a.Check() == nil && b.Check() == nil
+			}
+			if !sameJSONToolNodes(left, right) {
+				return false
+			}
+		}
+	case ast.V_STRING:
+		left, le := a.Raw()
+		right, re := b.Raw()
+		var x, y string
+		return le == nil && re == nil && sonic.ConfigStd.UnmarshalFromString(left, &x) == nil && sonic.ConfigStd.UnmarshalFromString(right, &y) == nil && x == y
+	default:
+		left, le := a.InterfaceUseNumber()
+		right, re := b.InterfaceUseNumber()
+		return le == nil && re == nil && equalJSON(left, right)
 	}
 }

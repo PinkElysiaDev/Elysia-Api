@@ -1,12 +1,12 @@
 package builtin
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -36,7 +36,7 @@ func TestChatThinkingControlsReachGemini(t *testing.T) {
 					ThinkingConfig map[string]any `json:"thinkingConfig"`
 				} `json:"generationConfig"`
 			}
-			if err := json.Unmarshal(wire, &body); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(wire, &body); err != nil {
 				t.Fatal(err)
 			}
 			thinking := body.GenerationConfig.ThinkingConfig
@@ -91,7 +91,7 @@ func TestThinkingFourByFour(t *testing.T) {
 					t.Fatal(err)
 				}
 				var body map[string]any
-				if err := json.Unmarshal(wire, &body); err != nil {
+				if err := sonic.ConfigStd.Unmarshal(wire, &body); err != nil {
 					t.Fatal(err)
 				}
 				var effort any
@@ -270,7 +270,7 @@ func TestThinkingOutputLimitOriginAndBounds(t *testing.T) {
 					Budget int `json:"budget_tokens"`
 				} `json:"thinking"`
 			}
-			json.Unmarshal(wire, &body)
+			sonic.ConfigStd.Unmarshal(wire, &body)
 			if body.Max != tc.wantLimit || body.Thinking.Budget != tc.wantBudget || len(issues) == 0 || req.OutputLimitDefault != (tc.limit == 0) {
 				t.Fatalf("%s %+v", wire, issues)
 			}
@@ -327,8 +327,8 @@ func TestThinkingNativeReplayUsesSourceContext(t *testing.T) {
 			}
 			// Reusing the caller's options and serializing the request must not change its replay context.
 			options.Values["model"] = p.StringValue(tc.targetModel)
-			encoded, _ := json.Marshal(request)
-			if err := json.Unmarshal(encoded, &request); err != nil {
+			encoded, _ := sonic.ConfigStd.Marshal(request)
+			if err := sonic.ConfigStd.Unmarshal(encoded, &request); err != nil {
 				t.Fatal(err)
 			}
 			conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(compiled, compiled))

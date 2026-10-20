@@ -1,10 +1,10 @@
 package server
 
 import (
-	"encoding/json"
 	"regexp"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -28,7 +28,7 @@ func redactTurnStateText(text string, depth int) string {
 	if len(trimmed) > 0 && strings.ContainsRune("{[\"", rune(trimmed[0])) {
 		if value, ok := decodeUsageJSON(strings.NewReader(text)); ok {
 			if redactTurnStateValue(&value, depth+1) {
-				encoded, _ := json.Marshal(value)
+				encoded, _ := sonic.ConfigStd.Marshal(value)
 				return string(encoded)
 			}
 			return text

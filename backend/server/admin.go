@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	crand "crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -16,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
@@ -1037,7 +1037,7 @@ func (s *Server) adminUsageLogDetail(c *gin.Context) {
 		return
 	}
 	var value any
-	if err := json.Unmarshal(payload, &value); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(payload, &value); err != nil {
 		respondFail(c, 500, "usage_detail_decode_failed", err.Error())
 		return
 	}

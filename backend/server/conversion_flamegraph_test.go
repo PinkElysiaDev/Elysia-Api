@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -27,7 +28,7 @@ func validFlameHistory(messages []json.RawMessage, workload string) bool {
 		Role    string
 		Content []struct{ Type, Text string }
 	}
-	if json.Unmarshal(messages[0], &message) != nil || message.Role != "user" {
+	if sonic.ConfigStd.Unmarshal(messages[0], &message) != nil || message.Role != "user" {
 		return false
 	}
 	count, width := 1, 1024
@@ -70,7 +71,7 @@ func flameRequestBody(size int, stream bool, workload string) string {
 	for index := range blocks {
 		blocks[index] = map[string]string{"type": "text", "text": strings.Repeat("x", width)}
 	}
-	body, _ := json.Marshal(map[string]any{"model": "grp", "stream": stream, "max_tokens": 2048, "messages": []any{map[string]any{"role": "user", "content": blocks}}})
+	body, _ := sonic.ConfigStd.Marshal(map[string]any{"model": "grp", "stream": stream, "max_tokens": 2048, "messages": []any{map[string]any{"role": "user", "content": blocks}}})
 	return string(body)
 }
 
@@ -116,7 +117,7 @@ func TestConversionFlamegraph(t *testing.T) {
 		}
 		defer response.Body.Close()
 		var result conversionHTTPMetrics
-		if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		if err := sonic.ConfigStd.NewDecoder(response.Body).Decode(&result); err != nil {
 			t.Fatal(err)
 		}
 		return result
@@ -291,7 +292,7 @@ func TestConversionFlamegraph(t *testing.T) {
 			t.Logf("mode=%s stream=%t repeat=%d requests=%d elapsed_ms=%.3f heap_peak_MiB=%.3f", mode, stream, repeat, requests, float64(elapsed)/float64(time.Millisecond), float64(sample.PeakHeap)/(1<<20))
 		}
 	}
-	raw, _ := json.MarshalIndent(measurements, "", "  ")
+	raw, _ := sonic.ConfigStd.MarshalIndent(measurements, "", "  ")
 	if err := os.WriteFile(filepath.Join(directory, "measurements.json"), raw, 0600); err != nil {
 		t.Fatal(err)
 	}

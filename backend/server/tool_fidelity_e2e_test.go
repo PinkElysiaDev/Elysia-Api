@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 )
 
@@ -54,7 +54,7 @@ func TestResponsesToolFidelityHTTPPaths(t *testing.T) {
 				select {
 				case body := <-captured:
 					var wire map[string]any
-					if err := json.Unmarshal(body, &wire); err != nil {
+					if err := sonic.ConfigStd.Unmarshal(body, &wire); err != nil {
 						t.Fatal(err)
 					}
 					tools := wire["tools"].([]any)

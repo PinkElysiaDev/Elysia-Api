@@ -1,9 +1,9 @@
 package builtin
 
 import (
-	"encoding/json"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -21,9 +21,9 @@ func assertVisibleThinkingProfiles(t *testing.T, upstream *p.Compiled, reports [
 		if !report.IsRestricted {
 			t.Fatal("limited proof claims full contract")
 		}
-		data, _ := json.Marshal(report)
+		data, _ := sonic.ConfigStd.Marshal(report)
 		var restored p.CombinationReport
-		if err := json.Unmarshal(data, &restored); err != nil || !restored.VisibleReasoningOnly {
+		if err := sonic.ConfigStd.Unmarshal(data, &restored); err != nil || !restored.VisibleReasoningOnly {
 			t.Fatal("persisted restriction lost", err)
 		}
 		plain := &p.Request{Content: []p.Node{{Kind: p.ReasoningNode, Payload: p.StringValue("visible")}}}

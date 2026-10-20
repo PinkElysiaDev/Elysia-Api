@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -10,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -91,7 +91,7 @@ func TestDiscoveryRegressionSaveUsesDiscoveredModels(t *testing.T) {
 	s := newKeyPermissionTestServer(t)
 	src := seedDiscoverySource(t, s, upstream.URL, []storage.SourceAPIKey{{Value: "a", FetchedModels: []string{"alpha", "beta"}, AllowedModels: []string{"alpha"}}, {Value: "b", AllowedModels: []string{}}}, "alpha", "beta")
 	s.engine.PUT("/discovery/source/:id", s.adminUpsertSource)
-	payload, err := json.Marshal(src)
+	payload, err := sonic.ConfigStd.Marshal(src)
 	if err != nil {
 		t.Fatal(err)
 	}

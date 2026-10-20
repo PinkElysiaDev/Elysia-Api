@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +11,8 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+
+	"github.com/bytedance/sonic/encoder"
 )
 
 // DefaultStreamIdleMillis allows long reasoning pauses without limiting total stream duration.
@@ -211,12 +212,12 @@ func ReadFrames(ctx context.Context, reader io.Reader, operation Operation, limi
 // WriteFrame emits one body using the declared downstream framing.
 func WriteFrame(writer io.Writer, operation Operation, value Value) error {
 	// Both SSE and NDJSON require physical line boundaries owned by framing.
-	var compact bytes.Buffer
-	if err := json.Compact(&compact, value.Bytes()); err != nil {
+	compact, err := encoder.Encode(value, encoder.CompactMarshaler)
+	if err != nil {
 		return err
 	}
 	if operation.Transport == NDJSON {
-		_, err := fmt.Fprintf(writer, "%s\n", compact.Bytes())
+		_, err := fmt.Fprintf(writer, "%s\n", compact)
 		return err
 	}
 	if operation.Transport != SSE {
@@ -247,6 +248,6 @@ func WriteFrame(writer io.Writer, operation Operation, value Value) error {
 			}
 		}
 	}
-	_, err := fmt.Fprintf(writer, "data: %s\n\n", compact.Bytes())
+	_, err = fmt.Fprintf(writer, "data: %s\n\n", compact)
 	return err
 }

@@ -2,13 +2,13 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
@@ -323,7 +323,7 @@ func TestShapeAnthropicToolChoice(t *testing.T) {
 			Name string `json:"name"`
 		} `json:"tools"`
 	}
-	if err := json.Unmarshal(body, &wire); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(body, &wire); err != nil {
 		t.Fatal(err)
 	}
 	if wire.ToolChoice.Type != "any" || len(wire.Tools) != 1 || wire.Tools[0].Name != "f" {

@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/storage"
@@ -84,7 +84,7 @@ func TestRequestLoggerCorrelatesAndRecovers(t *testing.T) {
 	}
 	for _, line := range bytes.Split(bytes.TrimSpace(output.Bytes()), []byte("\n")) {
 		var event map[string]any
-		if err := json.Unmarshal(line, &event); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(line, &event); err != nil {
 			t.Fatal(err)
 		}
 		if event["request_id"] != id {

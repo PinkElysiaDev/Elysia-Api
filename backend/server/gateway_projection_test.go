@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -103,7 +103,7 @@ func TestGatewayGeminiIncludeAndReasoningProjection(t *testing.T) {
 					t.Fatal(err)
 				}
 				var record usageRecord
-				if err = json.Unmarshal(data, &record); err != nil {
+				if err = sonic.ConfigStd.Unmarshal(data, &record); err != nil {
 					t.Fatal(err)
 				}
 				if record.ProtocolUsage == nil || record.ProtocolUsage.Output.Count != 5 || record.ProtocolUsage.Details["output.reasoning_tokens"].Count != 3 || record.ProtocolUsage.Details["toolUsePromptTokenCount"].Count != 1 {
@@ -229,7 +229,7 @@ func TestGatewayIncludeCarrierDeliveryModes(t *testing.T) {
 						t.Fatal(err)
 					}
 					var record usageRecord
-					_ = json.Unmarshal(data, &record)
+					_ = sonic.ConfigStd.Unmarshal(data, &record)
 					found, normalized := false, false
 					for _, issue := range record.ConversionIssues {
 						if issue.RuleID == "responses-include" && issue.Code == protocol.ConversionNormalized {

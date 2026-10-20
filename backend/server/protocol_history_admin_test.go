@@ -1,12 +1,12 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -33,7 +33,7 @@ func TestProtocolHistoryAdminArchiveRestoreAndDelete(t *testing.T) {
 		t.Fatal("references missing")
 	}
 	archive := func(mode, target, baseline string) int {
-		body, _ := json.Marshal(map[string]string{"mode": mode, "targetProtocolId": target, "baseline": baseline})
+		body, _ := sonic.ConfigStd.Marshal(map[string]string{"mode": mode, "targetProtocolId": target, "baseline": baseline})
 		return revisionAdminRequest(t, s.engine, "POST", "/api/admin/protocols/text-alpha/archive", body, "").Code
 	}
 	if archive("block", "", baseline) != http.StatusConflict {
@@ -147,7 +147,7 @@ func TestProtocolHistoryReplacementFailureRollsBackAllReferences(t *testing.T) {
 		}
 	}
 	before, _ := s.store.ProtocolUpgradeBaseline(t.Context())
-	body, _ := json.Marshal(map[string]string{"mode": "replace", "targetProtocolId": next.Identity().DefinitionID, "baseline": before})
+	body, _ := sonic.ConfigStd.Marshal(map[string]string{"mode": "replace", "targetProtocolId": next.Identity().DefinitionID, "baseline": before})
 	response := revisionAdminRequest(t, s.engine, "POST", "/api/admin/protocols/tools-custom/archive", body, "")
 	if response.Code != 400 {
 		t.Fatal(response.Code, response.Body)
@@ -176,7 +176,7 @@ func TestProtocolHistoryReplacementPreservesReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	baseline, _ := s.store.ProtocolUpgradeBaseline(t.Context())
-	body, _ := json.Marshal(map[string]string{"mode": "replace", "targetProtocolId": next.Identity().DefinitionID, "baseline": baseline})
+	body, _ := sonic.ConfigStd.Marshal(map[string]string{"mode": "replace", "targetProtocolId": next.Identity().DefinitionID, "baseline": baseline})
 	response := revisionAdminRequest(t, s.engine, "POST", "/api/admin/protocols/text-alpha/archive", body, "")
 	if response.Code != 200 {
 		t.Fatal(response.Code, response.Body)
@@ -207,7 +207,7 @@ func TestProtocolHistoryModelUnbindAndExplicitRebind(t *testing.T) {
 	}
 	save := func(entry storage.ProtocolBinding) {
 		t.Helper()
-		body, _ := json.Marshal(entry)
+		body, _ := sonic.ConfigStd.Marshal(entry)
 		response := revisionAdminRequest(t, s.engine, "PUT", "/api/admin/protocols/bindings", body, "")
 		if response.Code != 200 {
 			t.Fatal(response.Code, response.Body)

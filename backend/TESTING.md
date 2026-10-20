@@ -1,20 +1,22 @@
 # Go 后端测试
 
-在 `backend/` 下使用 Go 1.25 或更新版本运行：
+在 `backend/` 下使用 Go 1.27.2 或更新版本运行：
 
 ```sh
 # 日常回归：Go 默认并行运行各包，包内隔离用例通过 t.Parallel 并行。
-go test ./...
+go test -tags=sonic ./...
 
 # 实际耗时（禁用测试结果缓存，但保留编译缓存）。
-go test -count=1 -timeout=30m ./...
+go test -tags=sonic -count=1 -timeout=30m ./...
 
 # 检查共享状态、执行顺序依赖和数据竞争。
-go test -race -shuffle=on -count=1 -timeout=30m ./...
+go test -tags=sonic -race -shuffle=on -count=1 -timeout=30m ./...
 
 # 对照包内串行执行；与默认并行命令使用相同机器、环境和编译缓存。
-go test -parallel=1 -count=1 -timeout=30m ./...
+go test -tags=sonic -parallel=1 -count=1 -timeout=30m ./...
 ```
+
+`-tags=sonic` 启用 Gin 的 Sonic 编解码，使测试与构建脚本、Docker 和 CI 使用相同实现。
 
 `-parallel` 限制每个测试进程内的并行用例数，默认使用 `GOMAXPROCS`。
 资源受限的 CI 可以设置 `-parallel=4 -p=2`；`-p` 控制包级并发。

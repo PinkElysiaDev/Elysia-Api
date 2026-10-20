@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -19,7 +19,7 @@ func TestAnthropicCopySystemCacheGateway(t *testing.T) {
 				t.Run(fmt.Sprintf("stream=%v/synthesis=%v/blocks=%v", stream, synthesis, strings.HasPrefix(system, "[")), func(t *testing.T) {
 					var captured map[string]any
 					provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						decoder := json.NewDecoder(r.Body)
+						decoder := sonic.ConfigStd.NewDecoder(r.Body)
 						decoder.UseNumber()
 						if err := decoder.Decode(&captured); err != nil {
 							t.Error(err)
@@ -53,7 +53,7 @@ func TestAnthropicCopySystemCacheGateway(t *testing.T) {
 					if rec.Code != 200 {
 						t.Fatal(rec.Code, rec.Body)
 					}
-					wire, _ := json.Marshal(captured)
+					wire, _ := sonic.ConfigStd.Marshal(captured)
 					if !strings.Contains(string(wire), "private system") {
 						t.Fatal("system dropped", string(wire))
 					}
@@ -72,13 +72,13 @@ func TestAnthropicCopySystemCacheGateway(t *testing.T) {
 						t.Fatal(err)
 					}
 					var record usageRecord
-					if err := json.Unmarshal(raw, &record); err != nil {
+					if err := sonic.ConfigStd.Unmarshal(raw, &record); err != nil {
 						t.Fatal(err)
 					}
 					if record.TargetFormat != "anthropic-messages-copy" || record.UpstreamRevision == "" || record.CacheSynthesis != synthesis {
 						t.Fatal("candidate diagnostics missing")
 					}
-					diagnostic, _ := json.Marshal(record.SystemStructure)
+					diagnostic, _ := sonic.ConfigStd.Marshal(record.SystemStructure)
 					if strings.Contains(string(diagnostic), "private system") || strings.Contains(string(diagnostic), "prefix") {
 						t.Fatal("prompt leaked into structural diagnostic")
 					}
@@ -106,7 +106,7 @@ func TestEncodingFailureKeepsCandidateAndExactField(t *testing.T) {
 	if record.ModelName != "candidate" || record.SourceID != "source" || record.UpstreamRevision == "" {
 		t.Fatal("failure lost candidate")
 	}
-	data, _ := json.Marshal(record.SystemStructure)
+	data, _ := sonic.ConfigStd.Marshal(record.SystemStructure)
 	if strings.Contains(string(data), "secret") || strings.Contains(string(data), "sensitive") {
 		t.Fatal("diagnostics exposed values")
 	}

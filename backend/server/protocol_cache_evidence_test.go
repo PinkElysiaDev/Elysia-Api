@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -27,7 +28,7 @@ func readLiveTargetProfiles(raw string) (map[string]liveTargetProfile, error) {
 		return nil, nil
 	}
 	profiles := map[string]liveTargetProfile{}
-	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder := sonic.ConfigStd.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&profiles); err != nil {
 		return nil, err
@@ -155,7 +156,7 @@ type cacheCheckpointTask struct {
 }
 
 func saveCacheCheckpoint(path string, checkpoint *cacheCheckpoint) error {
-	raw, err := json.MarshalIndent(checkpoint, "", "  ")
+	raw, err := sonic.ConfigStd.MarshalIndent(checkpoint, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -176,7 +177,7 @@ func TestCacheValidationBudgetReservesCleanupAndPersistsAcrossTargets(t *testing
 	}
 	raw, _ := os.ReadFile(path)
 	restored := &liveBudget{path: path}
-	if err := json.Unmarshal(raw, restored); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, restored); err != nil {
 		t.Fatal(err)
 	}
 	for range cacheCleanupReserve {

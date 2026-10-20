@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -40,7 +41,7 @@ func (run *cacheLiveRun) resourceOperation(t *testing.T, id, method, path string
 
 func decodeResourceReceipt(raw []byte, model string) (cacheResourceReceipt, error) {
 	var receipt cacheResourceReceipt
-	if err := json.Unmarshal(raw, &receipt); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &receipt); err != nil {
 		return receipt, err
 	}
 	if !cacheResourceName.MatchString(receipt.Name) || receipt.Model != "models/"+model || receipt.ExpireTime.IsZero() {
@@ -55,7 +56,7 @@ func (run *cacheLiveRun) prepareResources(t *testing.T) {
 		if run.hasTask(id) {
 			continue
 		}
-		body, err := json.Marshal(map[string]any{"model": "models/" + run.suite.Targets["google-generate-content"].Model, "displayName": fmt.Sprintf("elysia-verification-%d-%s", run.checkpoint.StartedAt.Unix(), route), "ttl": fmt.Sprintf("%ds", int(cacheResourceTTL.Seconds())), "contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": run.prefix(id)}}}}})
+		body, err := sonic.ConfigStd.Marshal(map[string]any{"model": "models/" + run.suite.Targets["google-generate-content"].Model, "displayName": fmt.Sprintf("elysia-verification-%d-%s", run.checkpoint.StartedAt.Unix(), route), "ttl": fmt.Sprintf("%ds", int(cacheResourceTTL.Seconds())), "contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": run.prefix(id)}}}}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -89,7 +90,7 @@ func (run *cacheLiveRun) prepareResources(t *testing.T) {
 				break
 			}
 			var request map[string]any
-			if err := json.Unmarshal(result.Wire.request, &request); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(result.Wire.request, &request); err != nil {
 				t.Fatal(err)
 			}
 			if request["cachedContent"] != receipt.Name || request["systemInstruction"] != nil || request["tools"] != nil {

@@ -5,7 +5,6 @@ package logging
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	stdlog "log"
 	"log/slog"
@@ -14,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/mattn/go-isatty"
 	"github.com/rs/zerolog"
 )
@@ -100,7 +100,7 @@ func (l *Logger) WriteLevel(level zerolog.Level, p []byte) (int, error) {
 				Kind string `json:"event_kind"`
 			}
 			// Decode the top-level marker, never match arbitrary message contents.
-			_ = json.Unmarshal(p, &event)
+			_ = sonic.ConfigStd.Unmarshal(p, &event)
 			important = event.Kind == "operation"
 		}
 		if important || level >= zerolog.Level(l.persistLevel.Load()) {
@@ -129,6 +129,13 @@ func (l *Logger) Stats() Stats {
 var defaultLogger atomic.Pointer[Logger]
 
 func init() {
+	// Route arbitrary structured log values through Sonic as well, preserving
+	// zerolog's unescaped HTML and newline-free field representation.
+	zerolog.InterfaceMarshalFunc = sonic.Config{
+		SortMapKeys:      true,
+		CompactMarshaler: true,
+		ValidateString:   true,
+	}.Froze().Marshal
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 	zerolog.TimestampFunc = func() time.Time { return time.Now().UTC() }
 	SetDefault(New(Options{Level: "info", PersistLevel: "info", Format: "auto"}, nil))

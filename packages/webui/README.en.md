@@ -20,7 +20,7 @@ Use Node.js 22, npm and Go 1.27.2. Run the following commands from the repositor
 
    ```sh
    cd backend
-   go run . --config ./config.json
+   go run -tags=sonic . --config ./config.json
    ```
 
 2. Start the frontend from the repository root in another terminal:

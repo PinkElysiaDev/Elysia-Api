@@ -2,11 +2,12 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 func TestOpenEnablesWALAndInitializesCurrentSchema(t *testing.T) {
@@ -356,7 +357,7 @@ func TestListGroupsNeverSerializesNullModels(t *testing.T) {
 	if target.Models == nil {
 		t.Fatal("ListGroups returned nil Models; must return empty slice")
 	}
-	encoded, err := json.Marshal(target)
+	encoded, err := sonic.ConfigStd.Marshal(target)
 	if err != nil {
 		t.Fatalf("marshal group: %v", err)
 	}

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -220,7 +220,7 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) 
 								if e := os.MkdirAll(dir, 0700); e != nil {
 									t.Fatal(e)
 								}
-								fixture, _ := json.Marshal(map[string]any{"upstream": upstreamID, "ingress": id, "stream": stream, "tool": !second, "body": rec.Body.String()})
+								fixture, _ := sonic.ConfigStd.Marshal(map[string]any{"upstream": upstreamID, "ingress": id, "stream": stream, "tool": !second, "body": rec.Body.String()})
 								name := fmt.Sprintf("tool-%s-%s-%v-%v.json", upstreamID, id, stream, second)
 								if parallel {
 									name = "parallel-" + name
@@ -335,7 +335,7 @@ func auditParallelToolFixture(t *testing.T, id string, stream bool) string {
 	t.Helper()
 	type obj = map[string]any
 	encode := func(v any) string {
-		b, e := json.Marshal(v)
+		b, e := sonic.ConfigStd.Marshal(v)
 		if e != nil {
 			t.Fatal(e)
 		}

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	log "github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
@@ -253,7 +254,7 @@ func Load(path string) (*Config, error) {
 	}
 
 	var cfg *Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
 	if cfg == nil {
@@ -342,7 +343,7 @@ func (c *Config) saveLocked() error {
 		return err
 	}
 	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 	if raw == nil {
@@ -355,14 +356,14 @@ func (c *Config) saveLocked() error {
 		"enablePprof": c.EnablePprof, "httpTimeout": c.HTTPTimeout,
 	}
 	for key, value := range fields {
-		encoded, err := json.Marshal(value)
+		encoded, err := sonic.ConfigStd.Marshal(value)
 		if err != nil {
 			return err
 		}
 		raw[key] = encoded
 	}
 	if c.OpenBrowserOnStart != nil {
-		raw["openBrowserOnStart"], _ = json.Marshal(*c.OpenBrowserOnStart)
+		raw["openBrowserOnStart"], _ = sonic.ConfigStd.Marshal(*c.OpenBrowserOnStart)
 	} else {
 		delete(raw, "openBrowserOnStart")
 	}
@@ -380,7 +381,7 @@ func (c *Config) saveLocked() error {
 			raw[key] = encoded
 		}
 	}
-	out, err := json.MarshalIndent(raw, "", "  ")
+	out, err := sonic.ConfigStd.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -398,7 +399,7 @@ func (c *Config) saveLocked() error {
 func mergeConfigSection(original json.RawMessage, section any) ([]byte, error) {
 	fields := make(map[string]json.RawMessage)
 	if len(original) > 0 {
-		if err := json.Unmarshal(original, &fields); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(original, &fields); err != nil {
 			return nil, err
 		}
 		if fields == nil {
@@ -409,25 +410,25 @@ func mergeConfigSection(original json.RawMessage, section any) ([]byte, error) {
 	for index := range sectionType.NumField() {
 		name, _, _ := strings.Cut(sectionType.Field(index).Tag.Get("json"), ",")
 		for key := range fields {
-			// encoding/json accepts case-insensitive names for these fields.
+			// The JSON codec accepts case-insensitive names for these fields.
 			if strings.EqualFold(key, name) {
 				delete(fields, key)
 			}
 		}
 	}
-	encoded, err := json.Marshal(section)
+	encoded, err := sonic.ConfigStd.Marshal(section)
 	if err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(encoded, &fields); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(encoded, &fields); err != nil {
 		return nil, err
 	}
 	// An explicit empty denylist allows all addresses; omitting it restores the
 	// default denylist. Keep this distinction when the struct's omitempty applies.
 	if outbound, isOutbound := section.(OutboundConfig); isOutbound && outbound.DeniedIPRanges != nil {
-		fields["deniedIpRanges"], _ = json.Marshal(outbound.DeniedIPRanges)
+		fields["deniedIpRanges"], _ = sonic.ConfigStd.Marshal(outbound.DeniedIPRanges)
 	}
-	return json.Marshal(fields)
+	return sonic.ConfigStd.Marshal(fields)
 }
 
 // WriteFileAtomic 以"写临时文件 + fsync + 原子重命名"落盘：进程在写入中途
@@ -556,7 +557,7 @@ func (c *Config) Reload() error {
 	}
 
 	var newCfg *Config
-	if err := json.Unmarshal(data, &newCfg); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(data, &newCfg); err != nil {
 		return err
 	}
 	if newCfg == nil {

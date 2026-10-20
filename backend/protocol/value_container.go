@@ -1,10 +1,11 @@
 package protocol
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/bytedance/sonic"
 )
 
 // readObject uses spans of the already validated, immutable JSON string. Child
@@ -24,7 +25,7 @@ func (value Value) readObjectWithin(reader *valueReader) (Object, error) {
 		end := jsonStringEnd(raw, offset)
 		key := raw[offset+1 : end-1]
 		if strings.Contains(key, `\`) || !utf8.ValidString(key) {
-			if err := json.Unmarshal([]byte(raw[offset:end]), &key); err != nil {
+			if err := sonic.ConfigStd.Unmarshal([]byte(raw[offset:end]), &key); err != nil {
 				return nil, err
 			}
 		} else {

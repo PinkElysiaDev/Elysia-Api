@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 // CLIContext 是 Elysia CLI 在一次执行中的最小状态接口。它不包含 Agent
@@ -39,7 +41,7 @@ func (r CLIResult) MarshalData() (json.RawMessage, error) {
 	if r.Data == nil {
 		return json.RawMessage(`{}`), nil
 	}
-	return json.Marshal(r.Data)
+	return sonic.ConfigStd.Marshal(r.Data)
 }
 
 func normalizeCLIResult(result CLIResult) CLIResult {

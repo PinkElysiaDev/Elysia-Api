@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/gin-gonic/gin"
@@ -85,7 +86,7 @@ func TestGatewayResponsesNativeFailureSequence(t *testing.T) {
 				Message  string
 				Error    struct{ Message string }
 			}
-			if err := json.Unmarshal(frames[len(prefix)], &failure); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(frames[len(prefix)], &failure); err != nil {
 				t.Fatal(err)
 			}
 			if failure.Error.Message == "" {
@@ -105,7 +106,7 @@ func TestGatewayResponsesNativeFailureSequence(t *testing.T) {
 				if err := os.MkdirAll(dir, 0700); err != nil {
 					t.Fatal(err)
 				}
-				record, _ := json.Marshal(map[string]any{"body": string(body), "status": response.StatusCode, "trailer": response.Trailer, "cause": failure.Error.Message})
+				record, _ := sonic.ConfigStd.Marshal(map[string]any{"body": string(body), "status": response.StatusCode, "trailer": response.Trailer, "cause": failure.Error.Message})
 				if err := os.WriteFile(filepath.Join(dir, "responses-native-error-"+scenario.name+".json"), record, 0600); err != nil {
 					t.Fatal(err)
 				}

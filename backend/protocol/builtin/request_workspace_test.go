@@ -2,12 +2,12 @@ package builtin
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -77,9 +77,9 @@ func TestRequestWorkspaceIsolationAndInvalidation(t *testing.T) {
 	}
 	// The JSON boundary intentionally drops private workspaces. Its output
 	// must remain byte-identical, including the callback's semantic edits.
-	raw, _ := json.Marshal(request)
+	raw, _ := sonic.ConfigStd.Marshal(request)
 	var uncached p.Request
-	if err := json.Unmarshal(raw, &uncached); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &uncached); err != nil {
 		t.Fatal(err)
 	}
 	before, beforeErr := compiled.EncodeRequest(t.Context(), &uncached, options)
@@ -88,7 +88,7 @@ func TestRequestWorkspaceIsolationAndInvalidation(t *testing.T) {
 		t.Fatalf("workspace changed replay: %s / %s; %v / %v", before, after, beforeErr, afterErr)
 	}
 	count := decodes.Load()
-	definition, _ := json.Marshal(compiled.Definition())
+	definition, _ := sonic.ConfigStd.Marshal(compiled.Definition())
 	independent, issues := compiler.Compile(definition)
 	if independent == nil {
 		t.Fatal(issues)

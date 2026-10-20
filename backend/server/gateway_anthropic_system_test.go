@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -23,7 +23,7 @@ func TestGatewayAnthropicSystemMessageClientHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	var request protocol.Object
-	if err := json.Unmarshal(raw, &request); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &request); err != nil {
 		t.Fatal(err)
 	}
 	request["model"] = protocol.StringValue("group")
@@ -140,7 +140,7 @@ func TestGatewayAnthropicSystemMessageClientHistory(t *testing.T) {
 					t.Fatal(err)
 				}
 				var record usageRecord
-				if err := json.Unmarshal(stored, &record); err != nil {
+				if err := sonic.ConfigStd.Unmarshal(stored, &record); err != nil {
 					t.Fatal(err)
 				}
 				for _, issue := range record.ConversionIssues {
@@ -190,7 +190,7 @@ func TestGatewaySystemHoistFailureRetainsRequestEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	var record usageRecord
-	if err := json.Unmarshal(stored, &record); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(stored, &record); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(record.ConversionIssues, preview.Issues) {
@@ -200,7 +200,7 @@ func TestGatewaySystemHoistFailureRetainsRequestEvidence(t *testing.T) {
 	if issue.Stage != "conversion.request" || issue.Direction != protocol.EncodeRequest || issue.Protocol != upstream.Identity() || issue.RuleID != "system-instruction-hoist" || issue.PolicyHash == "" || issue.PolicyRevision == "" {
 		t.Fatal("request evidence incomplete", issue)
 	}
-	diagnostics, _ := json.Marshal(record.ConversionIssues)
+	diagnostics, _ := sonic.ConfigStd.Marshal(record.ConversionIssues)
 	if strings.Contains(string(diagnostics), "private") {
 		t.Fatal("diagnostics included request text")
 	}
@@ -234,7 +234,7 @@ func TestGatewayInvalidThinkingDisplayRequestEvidence(t *testing.T) {
 			t.Fatal("missing persisted request evidence", found, err)
 		}
 		var record usageRecord
-		if err := json.Unmarshal(stored, &record); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(stored, &record); err != nil {
 			t.Fatal(err)
 		}
 		if len(record.ConversionIssues) != 1 {

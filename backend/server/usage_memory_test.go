@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -41,7 +41,7 @@ func TestUsageBodyMemoryDifferential(t *testing.T) {
 			}
 		}
 	}
-	actual, _ := json.MarshalIndent(results, "", "  ")
+	actual, _ := sonic.ConfigStd.MarshalIndent(results, "", "  ")
 	if path := os.Getenv("ELYSIA_LOG_MEMORY_BASELINE"); path != "" {
 		if err := os.WriteFile(path, actual, 0600); err != nil {
 			t.Fatal(err)

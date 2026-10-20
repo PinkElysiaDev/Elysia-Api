@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 )
 
@@ -185,7 +186,7 @@ func (s *Store) assembleAgentSession(session agent.Session, mode, seed, draft, r
 	}
 	if plan != "" {
 		var steps []agent.PlanStep
-		if err := json.Unmarshal([]byte(plan), &steps); err == nil && len(steps) > 0 {
+		if err := sonic.ConfigStd.Unmarshal([]byte(plan), &steps); err == nil && len(steps) > 0 {
 			session.Plan = steps
 		}
 	}
@@ -206,7 +207,7 @@ func (s *Store) assembleAgentSession(session agent.Session, mode, seed, draft, r
 		var action agent.PendingAction
 		// 方案/提问型待批可以没有 Calls（plan 只带步骤清单），不能在读回
 		// 时静默丢弃，否则确认按钮永远 409。
-		if err := json.Unmarshal([]byte(pending), &action); err == nil && (len(action.Calls) > 0 || action.Kind != "") {
+		if err := sonic.ConfigStd.Unmarshal([]byte(pending), &action); err == nil && (len(action.Calls) > 0 || action.Kind != "") {
 			session.PendingAction = &action
 		}
 	}
@@ -312,7 +313,7 @@ func (s *Store) UpdateSessionState(ctx context.Context, id string, update agent.
 	if update.ClearPending {
 		sets = append(sets, "pending_action = NULL")
 	} else if update.PendingAction != nil {
-		encoded, err := json.Marshal(update.PendingAction)
+		encoded, err := sonic.ConfigStd.Marshal(update.PendingAction)
 		if err != nil {
 			return err
 		}
@@ -328,7 +329,7 @@ func (s *Store) UpdateSessionState(ctx context.Context, id string, update agent.
 		args = append(args, string(update.DraftRestore))
 	}
 	if update.Plan != nil {
-		encoded, err := json.Marshal(update.Plan)
+		encoded, err := sonic.ConfigStd.Marshal(update.Plan)
 		if err != nil {
 			return err
 		}
@@ -373,7 +374,7 @@ func (s *Store) UpdateSessionState(ctx context.Context, id string, update agent.
 // AppendMessage 实现 agent.Store：追加消息（seq 单调递增）。
 func (s *Store) AppendMessage(ctx context.Context, sessionID string, role string, content any, model string, usage json.RawMessage) (int, error) {
 	sessionID = strings.TrimSpace(sessionID)
-	encoded, err := json.Marshal(content)
+	encoded, err := sonic.ConfigStd.Marshal(content)
 	if err != nil {
 		return 0, err
 	}

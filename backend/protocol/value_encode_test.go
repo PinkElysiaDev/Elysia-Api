@@ -1,10 +1,11 @@
 package protocol
 
 import (
-	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
 )
 
 func TestValueContainerEncodingMatchesJSON(t *testing.T) {
@@ -18,7 +19,7 @@ func TestValueContainerEncodingMatchesJSON(t *testing.T) {
 		items = append(items, value)
 	}
 	for _, input := range []any{Object(nil), []Value(nil), Object{}, []Value{}, items, Object{"z": items[4], "a": items[5], "\xff": items[7], "<": items[9]}, Object{"missing": {}}, []Value{{}}} {
-		expected, expectedErr := json.Marshal(input)
+		expected, expectedErr := sonic.ConfigStd.Marshal(input)
 		actual, actualErr := EncodeValue(input)
 		if !reflect.DeepEqual(expectedErr, actualErr) || string(expected) != string(actual.Bytes()) {
 			t.Fatalf("%T mismatch: expected=%q error=%v actual=%q error=%v", input, expected, expectedErr, actual.Bytes(), actualErr)

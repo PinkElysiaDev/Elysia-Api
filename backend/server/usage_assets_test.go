@@ -2,12 +2,13 @@ package server
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/elysia-api/backend/internal/jsonutil"
 )
 
 // newExternalizeRecord 构造一个显式启用正文与外置的记录（1MiB 上限）。
@@ -50,7 +51,7 @@ func TestAssetSinkExtractsOpenAIDataURI(t *testing.T) {
 		t.Fatal("decoded data must be registered")
 	}
 	// JSON 结构必须保持合法（占位符是普通字符串值）。
-	if !json.Valid([]byte(got.Content)) {
+	if !jsonutil.Valid([]byte(got.Content)) {
 		t.Fatalf("body must remain valid JSON, got: %s", got.Content)
 	}
 }
@@ -204,7 +205,7 @@ func TestAssetSinkExtractFromSSEWithCRLF(t *testing.T) {
 	if mediaLine == "" {
 		t.Fatalf("placeholder line missing: %q", out)
 	}
-	if !json.Valid([]byte(strings.TrimPrefix(mediaLine, "data: "))) {
+	if !jsonutil.Valid([]byte(strings.TrimPrefix(mediaLine, "data: "))) {
 		t.Fatalf("replaced media line must be a single valid JSON value: %q", mediaLine)
 	}
 	if !strings.Contains(out, "data: [DONE]") {

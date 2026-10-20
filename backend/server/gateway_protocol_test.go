@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -26,7 +26,7 @@ func loadGatewayDefinition(t *testing.T, name string) protocol.Definition {
 		t.Fatal(err)
 	}
 	var definition protocol.Definition
-	if err := json.Unmarshal(raw, &definition); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &definition); err != nil {
 		t.Fatal(err)
 	}
 	return definition
@@ -44,7 +44,7 @@ func seedGatewayDefinition(t *testing.T, server *Server, definition protocol.Def
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := json.Marshal(definition)
+	raw, err := sonic.ConfigStd.Marshal(definition)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,11 +1,11 @@
 package relay
 
 import (
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -22,7 +22,7 @@ func compileBuiltinModule(t *testing.T, name string) *protocol.Compiled {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err := json.Marshal(definition)
+	body, err := sonic.ConfigStd.Marshal(definition)
 	if err != nil {
 		t.Fatal(err)
 	}

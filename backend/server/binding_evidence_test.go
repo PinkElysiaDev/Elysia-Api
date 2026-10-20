@@ -1,10 +1,10 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
@@ -30,7 +30,7 @@ func TestSourceBindingUpdatePersistsInheritedEvidence(t *testing.T) {
 	child.Kind, child.ModelID = "model", "upstream-model"
 	save := func(binding storage.ProtocolBinding) {
 		t.Helper()
-		raw, err := json.Marshal(binding)
+		raw, err := sonic.ConfigStd.Marshal(binding)
 		if err != nil {
 			t.Fatal(err)
 		}

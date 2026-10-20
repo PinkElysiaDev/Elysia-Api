@@ -3,11 +3,11 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -35,7 +35,7 @@ func (store *Store) createGenerationJobTables(ctx context.Context) error {
 func (store *Store) encodeGenerationJob(job protocol.GenerationJob) (string, string, error) {
 	result := ""
 	if job.Task.Result != nil {
-		payload, err := json.Marshal(job.Task.Result)
+		payload, err := sonic.ConfigStd.Marshal(job.Task.Result)
 		if err != nil {
 			return "", "", err
 		}
@@ -45,7 +45,7 @@ func (store *Store) encodeGenerationJob(job protocol.GenerationJob) (string, str
 		}
 	}
 	job.Task.Result = nil
-	payload, err := json.Marshal(job)
+	payload, err := sonic.ConfigStd.Marshal(job)
 	if err != nil {
 		return "", "", err
 	}
@@ -66,7 +66,7 @@ func (store *Store) scanGenerationJob(row interface{ Scan(...any) error }) (prot
 	if err != nil {
 		return job, err
 	}
-	if err := json.Unmarshal([]byte(plainJob), &job); err != nil {
+	if err := sonic.ConfigStd.Unmarshal([]byte(plainJob), &job); err != nil {
 		return job, err
 	}
 	if result != "" {
@@ -74,7 +74,7 @@ func (store *Store) scanGenerationJob(row interface{ Scan(...any) error }) (prot
 		if err != nil {
 			return job, fmt.Errorf("cannot decrypt generation result: %w", err)
 		}
-		if err := json.Unmarshal([]byte(plain), &job.Task.Result); err != nil {
+		if err := sonic.ConfigStd.Unmarshal([]byte(plain), &job.Task.Result); err != nil {
 			return job, err
 		}
 	}

@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/coder/websocket"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
@@ -176,7 +176,7 @@ func TestGatewayWebSocketIndependentProtocolsAndUsage(t *testing.T) {
 			t.Fatal(err)
 		}
 		var record usageRecord
-		if err := json.Unmarshal(body, &record); err != nil {
+		if err := sonic.ConfigStd.Unmarshal(body, &record); err != nil {
 			t.Fatal(err)
 		}
 		if record.IngressRevision != ingress.Hash() || record.UpstreamRevision != upstream.Hash() || record.StatusCode != 200 {

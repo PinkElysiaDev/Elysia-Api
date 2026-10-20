@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/gin-gonic/gin"
 )
@@ -251,7 +251,7 @@ func TestStreamCancellationUsage(t *testing.T) {
 					t.Fatalf("want %d: %+v", want, logs)
 				}
 				var record usageRecord
-				if err := json.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record); err != nil {
+				if err := sonic.ConfigStd.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record); err != nil {
 					t.Fatal(err)
 				}
 				if record.ErrorKind != ErrorKindClientCanceled {

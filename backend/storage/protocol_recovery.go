@@ -5,10 +5,10 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
 )
@@ -26,7 +26,7 @@ func (s *Store) ProtocolRefreshEvidenceBaseline(ctx context.Context) (string, er
 
 func readProtocolRefreshEvidenceBaseline(ctx context.Context, reader protocolUpgradeReader) (string, error) {
 	digest := sha256.New()
-	encoder := json.NewEncoder(digest)
+	encoder := sonic.ConfigStd.NewEncoder(digest)
 	for _, query := range []string{
 		`SELECT * FROM protocol_verification_reports ORDER BY id`,
 		`SELECT * FROM conversion_generation ORDER BY id`,

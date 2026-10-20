@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
@@ -55,7 +56,7 @@ func toolStore(server *Server) (*storage.Store, CLIResult) {
 // decodeCLIArgs 解析命令的 JSON 参数;失败时返回统一的「参数解析失败」
 // CLIResult(ok=false),调用方直接透传。
 func decodeCLIArgs(args json.RawMessage, target any) (CLIResult, bool) {
-	if err := json.Unmarshal(args, target); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(args, target); err != nil {
 		return CLIError("参数解析失败", err.Error()), false
 	}
 	return CLIResult{}, true
@@ -114,7 +115,7 @@ type usageQueryParams struct {
 func decodeUsageQueryArgs(args json.RawMessage) usageQueryParams {
 	var params usageQueryParams
 	if len(args) > 0 {
-		_ = json.Unmarshal(args, &params)
+		_ = sonic.ConfigStd.Unmarshal(args, &params)
 	}
 	return params
 }
@@ -492,7 +493,7 @@ func (t *usageLogDetailTool) Execute(ctx context.Context, tctx CLIContext, args 
 		return CLIError("记录不存在", "not_found")
 	}
 	var record map[string]any
-	if err := json.Unmarshal(raw, &record); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(raw, &record); err != nil {
 		record = map[string]any{"raw": string(raw)}
 	}
 	return CLIResult{OK: true, Summary: "已读取 " + params.RequestID, Data: record}
@@ -519,7 +520,7 @@ func (t *systemLogsTool) Execute(ctx context.Context, tctx CLIContext, args json
 		Limit int    `json:"limit"`
 	}
 	if len(args) > 0 {
-		_ = json.Unmarshal(args, &params)
+		_ = sonic.ConfigStd.Unmarshal(args, &params)
 	}
 	switch strings.ToLower(strings.TrimSpace(params.Level)) {
 	case "info", "warn", "error":

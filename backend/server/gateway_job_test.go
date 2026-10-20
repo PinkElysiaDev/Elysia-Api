@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -208,7 +208,7 @@ func TestGatewayJobsIndependentMappingsPinnedRevisionAndUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	var record usageRecord
-	if err := json.Unmarshal(payload, &record); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(payload, &record); err != nil {
 		t.Fatal(err)
 	}
 	if record.IngressRevision != ingress.Hash() || record.UpstreamRevision != upstream.Hash() || record.ProtocolUsage.CacheCreation == nil || record.ProtocolUsage.CacheCreation.Count != 0 {

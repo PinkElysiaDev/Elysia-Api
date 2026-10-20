@@ -1,13 +1,13 @@
 package server
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/gin-gonic/gin"
 )
@@ -65,7 +65,7 @@ func TestDeclaredChatCacheExtensionReachesAnthropic(t *testing.T) {
 			} `json:"cache_control"`
 		} `json:"system"`
 	}
-	if err := json.Unmarshal(captured[0], &body); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(captured[0], &body); err != nil {
 		t.Fatal(err)
 	}
 	if len(body.System) != 1 || body.System[0].Text != "stable system" || body.System[0].CacheControl.Type != "ephemeral" || body.System[0].CacheControl.TTL != "1h" {
@@ -147,8 +147,8 @@ func TestCacheNewCustomProtocolNestedHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	actualCache, _ := json.Marshal(actual.Cache)
-	wantCache, _ := json.Marshal(want.Cache)
+	actualCache, _ := sonic.ConfigStd.Marshal(actual.Cache)
+	wantCache, _ := sonic.ConfigStd.Marshal(want.Cache)
 	if string(actualCache) != string(wantCache) || len(actual.Tools) != 1 || len(actual.Tools[0].Cache) != 1 {
 		t.Fatal("preview and HTTP cache differ", string(captured))
 	}
@@ -167,7 +167,7 @@ func TestCacheNewCustomProtocolNestedHTTP(t *testing.T) {
 	delete(payload.Fields, "cache")
 	mapping.Transform.Fields["payload"] = payload
 	definition.Directions[protocol.EncodeRequest] = mapping
-	raw, _ := json.Marshal(definition)
+	raw, _ := sonic.ConfigStd.Marshal(definition)
 	compiled, issues := service.Validate(raw)
 	if compiled == nil {
 		t.Fatal(issues)

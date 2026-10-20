@@ -3,9 +3,9 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -41,7 +41,7 @@ func (s *Store) ConversionSnapshot(ctx context.Context) ([]ConversionPolicyRecor
 		var raw string
 		var b ProtocolBinding
 		if err = rows.Scan(&raw); err == nil {
-			err = json.Unmarshal([]byte(raw), &b)
+			err = sonic.ConfigStd.Unmarshal([]byte(raw), &b)
 		}
 		if err != nil {
 			rows.Close()
@@ -64,10 +64,10 @@ func (s *Store) ConversionSnapshot(ctx context.Context) ([]ConversionPolicyRecor
 		var r ConversionPolicyRecord
 		var raw, selector string
 		if err = rows.Scan(&r.ID, &r.Hash, &raw, &r.ActiveHash, &selector); err == nil {
-			err = json.Unmarshal([]byte(raw), &r.Policy)
+			err = sonic.ConfigStd.Unmarshal([]byte(raw), &r.Policy)
 		}
 		if err == nil {
-			err = json.Unmarshal([]byte(selector), &r.Selector)
+			err = sonic.ConfigStd.Unmarshal([]byte(selector), &r.Selector)
 		}
 		if err != nil {
 			rows.Close()
@@ -97,7 +97,7 @@ func (s *Store) ConversionSnapshot(ctx context.Context) ([]ConversionPolicyRecor
 		if err = tx.QueryRowContext(ctx, "SELECT document,compiler_version FROM conversion_policy_revisions WHERE id=? AND hash=?", r.ID, r.Hash).Scan(&raw, &r.CompilerVersion); err != nil {
 			return nil, nil, 0, fmt.Errorf("conversion revision %s unavailable: %w", r.ID, err)
 		}
-		if err = json.Unmarshal([]byte(raw), &r.Policy); err != nil {
+		if err = sonic.ConfigStd.Unmarshal([]byte(raw), &r.Policy); err != nil {
 			return nil, nil, 0, err
 		}
 		policies = append(policies, r)

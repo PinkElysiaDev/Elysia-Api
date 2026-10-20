@@ -1,8 +1,7 @@
 package agent
 
 import (
-	"encoding/json"
-
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -37,7 +36,7 @@ func toolResultTurn(info ToolResultInfo, limit int) conversationTurn {
 	if len(info.Data) > 0 {
 		fields["data"] = clampJSON(info.Data, limit, ClampHead)
 	}
-	encoded, _ := json.Marshal(fields) // Data has been validated at tool/persistence boundaries.
+	encoded, _ := sonic.ConfigStd.Marshal(fields) // Data has been validated at tool/persistence boundaries.
 	payload, _ := protocol.ParseValue(encoded)
 	return conversationTurn{Role: "tool", Content: []protocol.Node{{Kind: protocol.ToolResultNode, CallID: protocol.StringValue(info.CallID), Name: protocol.StringValue(info.Name), Payload: payload,
 		Source: &protocol.Provenance{Protocol: protocol.AgentIdentity(), Direction: protocol.EncodeRequest}}}}

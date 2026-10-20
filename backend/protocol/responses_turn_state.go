@@ -1,10 +1,11 @@
 package protocol
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"unicode"
+
+	"github.com/bytedance/sonic/ast"
 )
 
 // ResponsesTurnStatePath identifies opaque control state without exposing it.
@@ -59,15 +60,15 @@ func readTurnStateFields(value Value, path string) (Object, error) {
 	if !value.IsObject() {
 		return nil, streamIssue(InvalidInput, path, "control fields require an object")
 	}
-	decoder := json.NewDecoder(strings.NewReader(string(value.Bytes())))
-	_, _ = decoder.Token()
+	node := ast.NewRaw(value.raw)
+	properties, err := node.Properties()
+	if err != nil {
+		return nil, streamIssue(InvalidInput, path, "invalid control object")
+	}
 	fields, seen := Object{}, map[string]bool{}
-	for decoder.More() {
-		key, err := decoder.Token()
-		if err != nil {
-			return nil, streamIssue(InvalidInput, path, "invalid control object")
-		}
-		name := key.(string)
+	var property ast.Pair
+	for properties.Next(&property) {
+		name := property.Key
 		canonical := name
 		if path == "/headers" {
 			canonical = strings.ToLower(name)
@@ -76,11 +77,14 @@ func readTurnStateFields(value Value, path string) (Object, error) {
 			return nil, streamIssue(InvalidInput, path, "duplicate control field")
 		}
 		seen[canonical] = true
-		var child Value
-		if err := decoder.Decode(&child); err != nil {
+		raw, err := property.Value.Raw()
+		if err != nil {
 			return nil, streamIssue(InvalidInput, path, "invalid control value")
 		}
-		fields[name] = child
+		fields[name] = Value{raw: strings.Clone(raw)}
+	}
+	if node.Check() != nil {
+		return nil, streamIssue(InvalidInput, path, "invalid control object")
 	}
 	return fields, nil
 }

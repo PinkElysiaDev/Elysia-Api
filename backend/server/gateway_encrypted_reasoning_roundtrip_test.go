@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
@@ -89,7 +90,7 @@ func TestGatewayResponsesEncryptedReasoningContinuation(t *testing.T) {
 			var content json.RawMessage
 			if !stream {
 				var body struct{ Content json.RawMessage }
-				if err := json.Unmarshal(first.Body.Bytes(), &body); err != nil {
+				if err := sonic.ConfigStd.Unmarshal(first.Body.Bytes(), &body); err != nil {
 					t.Fatal(err)
 				}
 				content = body.Content
@@ -105,7 +106,7 @@ func TestGatewayResponsesEncryptedReasoningContinuation(t *testing.T) {
 						ContentBlock map[string]any `json:"content_block"`
 						Delta        map[string]any
 					}
-					if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event); err != nil {
+					if err := sonic.ConfigStd.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event); err != nil {
 						t.Fatal(err)
 					}
 					if event.Type == "content_block_start" {
@@ -124,7 +125,7 @@ func TestGatewayResponsesEncryptedReasoningContinuation(t *testing.T) {
 				for i := range ordered {
 					ordered[i] = blocks[i]
 				}
-				content, _ = json.Marshal(ordered)
+				content, _ = sonic.ConfigStd.Marshal(ordered)
 			}
 			history := []byte(`{"messages":[{"role":"assistant","content":` + string(content) + `}]}`)
 			_, tokens, err := builtin.ExtractContinuationCarriers(history, "claude", 1<<20)
@@ -148,7 +149,7 @@ func TestGatewayResponsesEncryptedReasoningContinuation(t *testing.T) {
 				t.Fatal(err)
 			}
 			var record usageRecord
-			if err := json.Unmarshal(data, &record); err != nil {
+			if err := sonic.ConfigStd.Unmarshal(data, &record); err != nil {
 				t.Fatal(err)
 			}
 			found := false
