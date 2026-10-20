@@ -144,12 +144,8 @@ func (s *Server) doShutdown() {
 			}
 			stopHTTP()
 		}
-		// Wait for any task that passed cancellation to register its ownership.
-		s.sourceRefreshMu.Lock()
-		//lint:ignore SA2001 Synchronize task registration before Wait, not shared data access.
-		s.sourceRefreshMu.Unlock()
 		requestsDone := make(chan struct{})
-		go func() { s.requestWG.Wait(); s.sourceRefreshWG.Wait(); close(requestsDone) }()
+		go func() { s.requestWG.Wait(); s.sourceRefreshJobs().wait(); close(requestsDone) }()
 		select {
 		case <-requestsDone:
 		case <-ctx.Done():

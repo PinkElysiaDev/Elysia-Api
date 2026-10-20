@@ -2,15 +2,13 @@ package server
 
 import (
 	"context"
-	"errors"
-	"net/http"
 	"sync"
 	"time"
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/internal/routing"
-	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
+	"github.com/rs/zerolog"
 )
 
 // healthChecker 是可选的后台模型健康检测器（默认关闭，由 config.HealthCheck.Enabled 控制）。
@@ -20,7 +18,11 @@ import (
 //
 // 状态变更后失效路由缓存，使转发热路径立即感知。所有探测都经过 SSRF 出站校验。
 type healthChecker struct {
-	server *Server
+	store      healthRepository
+	settings   func() config.HealthCheckConfig
+	logEvent   func(string) *zerolog.Event
+	probe      func(context.Context, storage.Model, int) healthProbeResult
+	invalidate func()
 
 	mu       sync.Mutex
 	failures map[string]int // key: modelID\x00sourceID → 连续失败次数
@@ -31,15 +33,10 @@ type healthChecker struct {
 	startOnce sync.Once
 }
 
-func newHealthChecker(s *Server) *healthChecker {
-	ctx, cancel := context.WithCancel(context.Background())
-	return &healthChecker{
-		server:   s,
-		failures: make(map[string]int),
-		ctx:      ctx,
-		cancel:   cancel,
-		done:     make(chan struct{}),
-	}
+type healthRepository interface {
+	ListAllModelsForProbe(context.Context) ([]storage.Model, error)
+	ListSources(context.Context) ([]storage.ModelSource, error)
+	SetModelAvailability(context.Context, string, string, bool) (int64, error)
 }
 
 // pruneStaleFailureKeys 清理已不存在的模型的连续失败计数：map 只增不删
@@ -66,20 +63,20 @@ func probeKey(modelID, sourceID string) string { return modelID + nulSeparator +
 // 代价可忽略），重新启用无需重启进程。
 func (h *healthChecker) start() {
 	h.startOnce.Do(func() {
-		if h.server.store == nil || h.ctx.Err() != nil {
+		if h.ctx.Err() != nil {
 			close(h.done)
 			return
 		}
-		if cfg := h.server.config.GetHealthCheckConfig(); cfg.Enabled {
+		if cfg := h.settings(); cfg.Enabled {
 			interval := h.probeInterval()
-			h.server.logEvent("info").Str("event", "health_checker_enabled").Dur("interval_ms", interval).Int("timeout_seconds", cfg.TimeoutSeconds).Int("failure_threshold", cfg.FailureThreshold).Msg("health checker enabled")
+			h.logEvent("info").Str("event", "health_checker_enabled").Dur("interval_ms", interval).Int("timeout_seconds", cfg.TimeoutSeconds).Int("failure_threshold", cfg.FailureThreshold).Msg("health checker enabled")
 		}
 		go func() {
 			defer close(h.done)
 			interval := h.probeInterval()
 			timer := time.NewTimer(interval)
 			defer timer.Stop()
-			if h.server.config.GetHealthCheckConfig().Enabled {
+			if h.settings().Enabled {
 				// 启动后先跑一轮，不必等第一个 interval。
 				h.runOnce()
 			}
@@ -88,7 +85,7 @@ func (h *healthChecker) start() {
 				case <-h.ctx.Done():
 					return
 				case <-timer.C:
-					if h.server.config.GetHealthCheckConfig().Enabled {
+					if h.settings().Enabled {
 						h.runOnce()
 					}
 					// 周期热更新：interval 变化从下一轮生效。
@@ -101,7 +98,7 @@ func (h *healthChecker) start() {
 
 // probeInterval 读取当前生效的探测周期（config 层已保证 >0）。
 func (h *healthChecker) probeInterval() time.Duration {
-	return time.Duration(h.server.config.GetHealthCheckConfig().IntervalSeconds) * time.Second
+	return time.Duration(h.settings().IntervalSeconds) * time.Second
 }
 
 func (h *healthChecker) shutdown() {
@@ -112,20 +109,20 @@ func (h *healthChecker) shutdown() {
 
 // runOnce 探测一轮所有模型。
 func (h *healthChecker) runOnce() {
-	cfg := h.server.config.GetHealthCheckConfig()
+	cfg := h.settings()
 	ctx, cancel := context.WithTimeout(h.ctx, time.Duration(cfg.TimeoutSeconds)*time.Second)
 	defer cancel()
 
-	models, err := h.server.store.ListAllModelsForProbe(ctx)
+	models, err := h.store.ListAllModelsForProbe(ctx)
 	if err != nil {
 		if h.ctx.Err() == nil {
-			h.server.logEvent("warn").Err(err).Msg("health check: failed to list models")
+			h.logEvent("warn").Err(err).Msg("health check: failed to list models")
 		}
 		return
 	}
-	sources, err := h.server.store.ListSources(ctx)
+	sources, err := h.store.ListSources(ctx)
 	if err != nil {
-		h.server.logEvent("warn").Err(err).Msg("health check: failed to load current source credentials")
+		h.logEvent("warn").Err(err).Msg("health check: failed to load current source credentials")
 		return
 	}
 	keyMeta := routing.IndexSources(sources)
@@ -154,7 +151,7 @@ func (h *healthChecker) runOnce() {
 		if h.recordProbeResult(model, result == probeHealthy, cfg.FailureThreshold) {
 			// 状态翻转立即失效路由缓存:整轮探测(串行,每模型独立超时)可达
 			// 分钟级,推迟失效会让轮首被禁用的模型继续接流量。
-			h.server.invalidateRouteCache()
+			h.invalidate()
 		}
 	}
 }
@@ -179,19 +176,19 @@ func (h *healthChecker) recordProbeResult(model storage.Model, ok bool, threshol
 	switch {
 	case ok && !model.Available:
 		// 恢复：探测成功且当前被禁用 → 重新启用
-		if _, err := h.server.store.SetModelAvailability(ctx, model.ID, model.SourceID, true); err != nil {
-			h.server.logEvent("warn").Str("model_id", model.ID).Str("source_id", model.SourceID).Err(err).Msg("health check: failed to re-enable model")
+		if _, err := h.store.SetModelAvailability(ctx, model.ID, model.SourceID, true); err != nil {
+			h.logEvent("warn").Str("model_id", model.ID).Str("source_id", model.SourceID).Err(err).Msg("health check: failed to re-enable model")
 			return false
 		}
-		h.server.logEvent("info").Str("model_name", model.Name).Str("source_id", model.SourceID).Msg("health check: model recovered and re-enabled")
+		h.logEvent("info").Str("model_name", model.Name).Str("source_id", model.SourceID).Msg("health check: model recovered and re-enabled")
 		return true
 	case !ok && model.Available && failCount >= threshold:
 		// 禁用：连续失败达到阈值且当前可用 → 禁用
-		if _, err := h.server.store.SetModelAvailability(ctx, model.ID, model.SourceID, false); err != nil {
-			h.server.logEvent("warn").Str("model_id", model.ID).Str("source_id", model.SourceID).Err(err).Msg("health check: failed to disable model")
+		if _, err := h.store.SetModelAvailability(ctx, model.ID, model.SourceID, false); err != nil {
+			h.logEvent("warn").Str("model_id", model.ID).Str("source_id", model.SourceID).Err(err).Msg("health check: failed to disable model")
 			return false
 		}
-		h.server.logEvent("warn").Str("model_name", model.Name).Str("source_id", model.SourceID).Int("consecutive_failures", failCount).Msg("health check: model auto-disabled")
+		h.logEvent("warn").Str("model_name", model.Name).Str("source_id", model.SourceID).Int("consecutive_failures", failCount).Msg("health check: model auto-disabled")
 		return true
 	}
 	return false
@@ -204,74 +201,3 @@ const (
 	probeHealthy
 	probeUnhealthy
 )
-
-// probe uses the verified generation binding without retries. Unavailable
-// probe contracts and rate limits provide no evidence to change availability.
-func (h *healthChecker) probe(ctx context.Context, model storage.Model, timeoutSeconds int) healthProbeResult {
-	probeCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
-	defer cancel()
-	candidate, request, err := h.server.prepareHealthProbe(probeCtx, model)
-	if err != nil {
-		h.server.logEvent("warn").Str("model_name", model.Name).Err(err).Msg("health check: model has no usable probe contract")
-		return probeUnavailable
-	}
-	_, err = h.server.collectProtocolGenerationAttempt(probeCtx, candidate, request, nil, nil)
-	var failure *gatewayFailure
-	if errors.As(err, &failure) && failure.status == http.StatusTooManyRequests {
-		return probeUnavailable
-	}
-	if err != nil {
-		return probeUnhealthy
-	}
-	return probeHealthy
-}
-
-func (s *Server) prepareHealthProbe(ctx context.Context, model storage.Model) (gatewayCandidate, *protocol.Request, error) {
-	service, err := s.protocolService()
-	if err != nil {
-		return gatewayCandidate{}, nil, err
-	}
-	bindings, err := s.store.ListProtocolBindings(ctx)
-	if err != nil {
-		return gatewayCandidate{}, nil, err
-	}
-	ref := config.ModelRef{ID: model.ID, Name: model.Name, SourceID: model.SourceID, BaseURL: model.BaseURL, APIKey: model.APIKey}
-	view := service.View()
-	var candidate gatewayCandidate
-	var failure *protocol.ConversionError
-	for _, transport := range []protocol.Transport{protocol.HTTPJSON, protocol.SSE, protocol.NDJSON} {
-		candidate, failure = makeGatewayCandidate(view, bindings, ref, transport, "generate")
-		if failure == nil {
-			break
-		}
-	}
-	if failure != nil {
-		return candidate, nil, failure
-	}
-	if candidate.operation.Kind != "generate" {
-		return candidate, nil, gatewayIssue(candidate.compiled.Identity(), protocol.UnsupportedCapability, "/operations", "background health probes require synchronous generation")
-	}
-	budget, err := protocol.EncodeValue(HealthProbeMaxTokens)
-	if err != nil {
-		return candidate, nil, err
-	}
-	stream, err := protocol.EncodeValue(candidate.operation.Transport != protocol.HTTPJSON)
-	if err != nil {
-		return candidate, nil, err
-	}
-	request := &protocol.Request{
-		SchemaVersion: protocol.SemanticSchemaVersion,
-		Source:        protocol.Identity{Family: "elysia-health", WireVersion: "1"},
-		Model:         protocol.StringValue(model.Name),
-		Content:       []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("ping")}}}},
-		Parameters:    protocol.Object{"max_output_tokens": budget, "stream": stream},
-	}
-	if err := protocol.IssuesError(protocol.CheckRoute(request, candidate.compiled, candidate.binding, candidate.scope, candidate.operation.Transport)); err != nil {
-		return candidate, nil, err
-	}
-	body, err := candidate.compiled.EncodeRequest(ctx, request, protocol.EvaluationContext{Scope: candidate.scope})
-	if err != nil {
-		return candidate, nil, err
-	}
-	return candidate, request, candidate.compiled.CheckOperationInput(ctx, candidate.operationName, body)
-}

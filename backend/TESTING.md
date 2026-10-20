@@ -38,6 +38,17 @@ go vet -tags=sonic ./...
 现有 server 集成测试继续覆盖真实存储、凭据撤销、故障转移、鉴权与关停。
 配置导入本身不创建文件；启动仍通过 `go run -tags=sonic . --config <path>` 显式执行。
 
+后台组件定向回归：
+
+```sh
+go test -tags=sonic -race -shuffle=on -count=1 -timeout=5m ./server \
+  -run '^Test(Health|SourceRefresh|Retention|UsageWriter|UsageQueue)'
+```
+
+健康调度的阈值、无证据、恢复与路由失效共用一条轻量 SQLite 行为测试；
+禁用后热启用使用 `testing/synctest`，不再用无数据库提前返回冒充默认禁用测试。
+协议线格式、鉴权与关停取消仍保留真实 HTTP 回归；通用非 2xx 错误不枚举重复状态码。
+
 ## 并行与隔离
 
 `-parallel` 限制每个测试进程内的并行用例数，默认使用 `GOMAXPROCS`。

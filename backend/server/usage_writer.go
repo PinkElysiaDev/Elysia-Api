@@ -45,39 +45,42 @@ func (s *Server) startUsageWriter() {
 	s.usageStats.Closed = false
 	s.usageStatsMu.Unlock()
 	writer.wg.Add(1)
-	go func() {
-		defer writer.wg.Done()
-		var batchStorage [64]*usageRecord
-		timer := time.NewTimer(0)
-		timer.Stop()
-		defer timer.Stop()
-		for record := range writer.queue {
-			batch := append(batchStorage[:0], record)
-			timer.Reset(50 * time.Millisecond)
-		collect:
-			for len(batch) < len(batchStorage) {
-				select {
-				case next, ok := <-writer.queue:
-					if !ok {
-						break collect
-					}
-					batch = append(batch, next)
-				case <-timer.C:
+	go writer.run(s.persistUsageBatch)
+}
+
+// The queue owns batching and payload lifetime; persistence is an application
+// callback shared with synchronous writes and job settlement.
+func (writer *usageWriterState) run(persist func([]*usageRecord)) {
+	defer writer.wg.Done()
+	var batchStorage [64]*usageRecord
+	timer := time.NewTimer(0)
+	timer.Stop()
+	defer timer.Stop()
+	for record := range writer.queue {
+		batch := append(batchStorage[:0], record)
+		timer.Reset(50 * time.Millisecond)
+	collect:
+		for len(batch) < len(batchStorage) {
+			select {
+			case next, ok := <-writer.queue:
+				if !ok {
 					break collect
 				}
+				batch = append(batch, next)
+			case <-timer.C:
+				break collect
 			}
-			timer.Stop()
-			s.persistUsageBatch(batch)
-			writer.mu.Lock()
-			for _, item := range batch {
-				writer.retainedBytes -= item.queuedPayloadBytes
-			}
-			writer.mu.Unlock()
-			// The writer outlives every batch. Release payload references before
-			// waiting for another record, including after persistence failures.
-			clear(batch)
 		}
-	}()
+		timer.Stop()
+		persist(batch)
+		writer.mu.Lock()
+		for _, item := range batch {
+			writer.retainedBytes -= item.queuedPayloadBytes
+		}
+		writer.mu.Unlock()
+		// Release references before waiting, including after persistence failures.
+		clear(batch)
+	}
 }
 
 func (s *Server) usageWriterSnapshot() *usageWriterState {

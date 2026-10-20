@@ -21,9 +21,6 @@ func New(cfg *config.Config) *Server {
 		config: cfg, engine: engine,
 		protocolTransport: relay.NewProtocolTransport(time.Duration(cfg.GetHTTPTimeout()) * time.Second),
 		affinity:          newAffinityCache(),
-		sourceRefreshing:  make(map[string]bool),
-		sourceLastFetch:   make(map[string]sourceRefreshState),
-		refreshSem:        make(chan struct{}, sourceRefreshConcurrency),
 		catalog: newModelCatalog(cfg.GetModelCatalog, func() string {
 			dbPath := cfg.GetDatabasePath()
 			if strings.TrimSpace(dbPath) == "" {
@@ -60,4 +57,44 @@ func New(cfg *config.Config) *Server {
 		"version": AppVersion, "host": listen.Host, "port": listen.Port,
 	})
 	return server
+}
+
+func newHealthChecker(s *Server) *healthChecker {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &healthChecker{
+		store: s.store, settings: s.config.GetHealthCheckConfig,
+		logEvent: s.logEvent, probe: s.probeModelHealth, invalidate: s.invalidateRouteCache,
+		failures: make(map[string]int), ctx: ctx, cancel: cancel, done: make(chan struct{}),
+	}
+}
+
+func newUsageRetention(s *Server) *usageRetention {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &usageRetention{
+		store: s.store, usageLogConfig: s.usageLogConfig,
+		systemLogConfig: func() config.LogRetentionResolved {
+			if s.config == nil {
+				return config.LogRetentionResolved{}
+			}
+			return s.config.GetSystemLogConfig()
+		},
+		usageAssetsRoot: s.usageAssetsRoot, persistMu: &s.usagePersistMu,
+		changed: func() { s.usageCache.flush(); s.usageSeq.Add(1) },
+		ctx:     ctx, cancel: cancel, wake: make(chan struct{}, 1), done: make(chan struct{}),
+		stats: retentionStats{State: "idle", Phase: "idle"},
+	}
+}
+
+func (s *Server) sourceRefreshJobs() *sourceRefreshJobs {
+	s.initLifecycle()
+	j := &s.refreshJobs
+	j.once.Do(func() {
+		j.ctx, j.refresh = s.lifecycleCtx, s.refreshSourceByID
+		j.exists = func(ctx context.Context, id string) (bool, error) {
+			_, found, err := s.findSourceByID(ctx, id)
+			return found, err
+		}
+		j.invalidate, j.log = s.invalidateRouteCache, s.logSystemEvent
+	})
+	return j
 }

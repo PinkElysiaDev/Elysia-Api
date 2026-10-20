@@ -34,15 +34,9 @@ type Server struct {
 	affinity        *affinityCache
 	conversionPlans gatewayConversionPlans
 
-	// Background model refresh registration is synchronized with shutdown.
-	sourceRefreshMu      sync.Mutex
-	sourceRefreshing     map[string]bool
-	sourceRefreshPending map[string]bool
-	sourceLastFetch      map[string]sourceRefreshState
-	sourceRefreshWG      sync.WaitGroup
-	refreshSem           chan struct{}
-	catalog              *modelCatalog
-	healthChecker        *healthChecker
+	refreshJobs   sourceRefreshJobs
+	catalog       *modelCatalog
+	healthChecker *healthChecker
 
 	// Request producers stop before usage persistence is canceled and drained.
 	usageWriterMu    sync.Mutex

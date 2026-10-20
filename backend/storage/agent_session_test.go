@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -106,6 +107,12 @@ func TestAgentSessionCRUDAndMessages(t *testing.T) {
 	}
 	if sessions[0].Settings.TestAPIKeySet {
 		t.Fatalf("no key configured; must not report set")
+	}
+	if _, err := store.DeleteAgentSession(ctx, created.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetSession(ctx, created.ID); !errors.Is(err, agent.ErrSessionNotFound) {
+		t.Fatalf("deleted session must return the domain error, got %v", err)
 	}
 }
 

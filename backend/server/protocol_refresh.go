@@ -99,13 +99,19 @@ func recoverableProtocolRead(err error) bool {
 }
 
 type protocolRefreshPlan struct {
-	server      *Server
+	store       protocolRefreshRepository
 	context     context.Context
 	service     *protocol.Service
 	upgrade     storage.ProtocolUpgrade
 	definitions map[string]*protocol.Compiled
 	activations map[string]protocol.Activation
 	hasChanges  bool
+}
+
+type protocolRefreshRepository interface {
+	ReadProtocolRevision(context.Context, string, string) (protocol.Revision, error)
+	ReadProtocolReport(context.Context, string, string) (protocol.VerificationReport, error)
+	ReadProtocolDraft(context.Context, string) (protocol.Draft, error)
 }
 
 func (plan *protocolRefreshPlan) ensureProtocol(id string, value protocol.Value, isPreset bool) error {
@@ -121,7 +127,7 @@ func (plan *protocolRefreshPlan) ensureProtocol(id string, value protocol.Value,
 		return fmt.Errorf("%w: protocol %s stored hash mismatch", storage.ErrCorruptProtocolRecord, id)
 	}
 	writes := &storage.ProtocolRefreshWrite{}
-	revision, err := plan.server.store.ReadProtocolRevision(plan.context, id, compiled.Hash())
+	revision, err := plan.store.ReadProtocolRevision(plan.context, id, compiled.Hash())
 	if err != nil && !recoverableProtocolRead(err) {
 		return err
 	}
@@ -137,7 +143,7 @@ func (plan *protocolRefreshPlan) ensureProtocol(id string, value protocol.Value,
 		revision = protocol.Revision{ProtocolID: id, Hash: compiled.Hash(), Definition: value, CreatedAt: time.Now().UTC()}
 	}
 	writes.Activation = !isActive || a.RevisionHash != compiled.Hash() || a.Generation < 1 || a.ActivatedAt.IsZero()
-	report, err := plan.server.store.ReadProtocolReport(plan.context, id, compiled.Hash())
+	report, err := plan.store.ReadProtocolReport(plan.context, id, compiled.Hash())
 	if err != nil && !recoverableProtocolRead(err) {
 		return err
 	}
@@ -158,7 +164,7 @@ func (plan *protocolRefreshPlan) ensureProtocol(id string, value protocol.Value,
 		}
 		writes.Report = true
 	}
-	draft, err := plan.server.store.ReadProtocolDraft(plan.context, id)
+	draft, err := plan.store.ReadProtocolDraft(plan.context, id)
 	if err != nil && !recoverableProtocolRead(err) {
 		return err
 	}
@@ -185,7 +191,7 @@ func (plan *protocolRefreshPlan) ensureProtocol(id string, value protocol.Value,
 }
 
 func (s *Server) prepareProtocolRefresh(ctx context.Context, service *protocol.Service, presetsOnly bool) (storage.ProtocolUpgrade, map[string]*protocol.Compiled, bool, error) {
-	plan := &protocolRefreshPlan{server: s, context: ctx, service: service, definitions: map[string]*protocol.Compiled{}}
+	plan := &protocolRefreshPlan{store: s.store, context: ctx, service: service, definitions: map[string]*protocol.Compiled{}}
 	fail := func(err error) (storage.ProtocolUpgrade, map[string]*protocol.Compiled, bool, error) {
 		return plan.upgrade, plan.definitions, false, err
 	}

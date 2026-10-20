@@ -82,8 +82,6 @@ func TestHealthProbeRequiresSuccessfulContract(t *testing.T) {
 		{"empty", 200, "", probeUnhealthy},
 		{"business-error", 200, `{"error":{"message":"quota exhausted"}}`, probeUnhealthy},
 		{"server-error", 500, `{"error":"failed"}`, probeUnhealthy},
-		{"wrong-path", 404, "", probeUnhealthy},
-		{"wrong-method", 405, "", probeUnhealthy},
 		{"rate-limit", 429, "", probeUnavailable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -116,71 +114,6 @@ func TestSlowProbeDoesNotStarveSubsequentModels(t *testing.T) {
 	if result := checker.probe(t.Context(), bindHealthModel(t, server, "openai", fast.URL), 1); result != probeHealthy {
 		t.Fatal("fast probe must have its own timeout")
 	}
-}
-
-func TestHealthProbeUnavailablePreservesFailureEvidence(t *testing.T) {
-	server := newHealthTestServer(t)
-	checker := newHealthChecker(server)
-	model := storage.Model{ID: "missing", SourceID: "missing"}
-	checker.failures[probeKey(model.ID, model.SourceID)] = 1
-	if checker.probe(t.Context(), model, 1) != probeUnavailable {
-		t.Fatal("missing contract must be neutral")
-	}
-	if checker.failures[probeKey(model.ID, model.SourceID)] != 1 {
-		t.Fatal("unobserved health must not reset failures")
-	}
-	checker.pruneStaleFailureKeys(nil)
-	if len(checker.failures) != 0 {
-		t.Fatal("removed models must not accumulate failure keys")
-	}
-}
-
-func TestHealthCheckerAutoDisableAndRecover(t *testing.T) {
-	s := newHealthTestServer(t)
-	ctx := context.Background()
-
-	// 先放一个可用模型进库。
-	src := storage.ModelSource{ID: "s1", Name: "S1", BaseURL: "https://x", Platform: "custom:openai-chat-completions", Enabled: true}
-	if err := s.store.UpsertSource(ctx, src); err != nil {
-		t.Fatalf("upsert source: %v", err)
-	}
-	if err := s.store.ReplaceSourceModels(ctx, src, []storage.Model{{ID: "m1", Name: "m1"}}); err != nil {
-		t.Fatalf("replace models: %v", err)
-	}
-
-	hc := newHealthChecker(s)
-	model := storage.Model{ID: "m1", SourceID: "s1", Name: "m1", Available: true}
-
-	// 第 1 次失败：未达阈值(2)，不禁用。
-	if changed := hc.recordProbeResult(model, false, 2); changed {
-		t.Fatalf("should not disable before threshold")
-	}
-	// 第 2 次失败：达到阈值，禁用。
-	if changed := hc.recordProbeResult(model, false, 2); !changed {
-		t.Fatalf("should disable at threshold")
-	}
-	models, _ := s.store.ListModels(ctx)
-	if len(models) != 1 || models[0].Available {
-		t.Fatalf("model should be disabled, got %+v", models)
-	}
-
-	// 探测恢复：传入 Available=false 的模型，成功一次 → 重新启用。
-	disabled := storage.Model{ID: "m1", SourceID: "s1", Name: "m1", Available: false}
-	if changed := hc.recordProbeResult(disabled, true, 2); !changed {
-		t.Fatalf("should re-enable on recovery")
-	}
-	models, _ = s.store.ListModels(ctx)
-	if !models[0].Available {
-		t.Fatalf("model should be re-enabled, got %+v", models[0])
-	}
-}
-
-func TestHealthCheckerDisabledByDefault(t *testing.T) {
-	cfg := &config.Config{} // HealthCheck.Enabled = false
-	s := &Server{config: cfg}
-	hc := newHealthChecker(s)
-	hc.start()
-	<-hc.done // 应立即返回，不阻塞
 }
 
 func TestProbeCredentialSelectionHonorsModelPermissions(t *testing.T) {

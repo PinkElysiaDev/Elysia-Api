@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -215,7 +214,7 @@ func (s *Server) adminGetAgentSession(c *gin.Context) {
 // respondAgentSessionReadError distinguishes missing rows from failed reads;
 // a cancelled or unavailable store does not prove that a session was deleted.
 func respondAgentSessionReadError(c *gin.Context, id string, err error) {
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, agent.ErrSessionNotFound) {
 		respondFail(c, http.StatusNotFound, "not_found", fmt.Sprintf("会话 %q 不存在", id))
 		return
 	}

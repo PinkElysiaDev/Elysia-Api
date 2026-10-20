@@ -16,6 +16,7 @@ import (
 // symbol names. A new dependency must be reviewed together with this contract.
 func TestPackageBoundaries(t *testing.T) {
 	allowed := map[string][]string{
+		"server":            {"agent", "config", "internal/atomicfile", "internal/clishell", "internal/eventstream", "internal/jsonutil", "internal/outbound", "internal/routing", "logging", "protocol", "protocol/builtin", "relay", "storage", "webui"},
 		"config":            {"internal/atomicfile", "internal/dbpath", "internal/outbound", "logging", "protocol"},
 		"agent":             {"internal/clishell", "internal/jsonutil", "logging", "protocol"},
 		"protocol":          {"internal/eventstream", "internal/jsonutil"},
@@ -28,6 +29,9 @@ func TestPackageBoundaries(t *testing.T) {
 		"internal/eventstream": {}, "internal/jsonutil": {}, "internal/storagequery": {},
 		"logging": {}, "webui": {},
 	}
+	// Background components have narrower boundaries than the application
+	// adapters in the same package. Keep assembly and wire adapters separate.
+	workers := map[string]bool{"health_checker.go": true, "usage_retention.go": true, "refresh_jobs.go": true}
 	root := filepath.Join("..", "..")
 	fset := token.NewFileSet()
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
@@ -48,7 +52,7 @@ func TestPackageBoundaries(t *testing.T) {
 			return err
 		}
 		pkg = filepath.ToSlash(pkg)
-		if _, constrained := allowed[pkg]; !constrained && pkg != "." && pkg != "server" {
+		if _, constrained := allowed[pkg]; !constrained && pkg != "." {
 			t.Errorf("%s: declare dependency boundaries for package %s", path, pkg)
 		}
 		file, err := parser.ParseFile(fset, path, nil, 0)
@@ -56,6 +60,7 @@ func TestPackageBoundaries(t *testing.T) {
 			return err
 		}
 		imports := make(map[string]string)
+		worker := pkg == "server" && workers[filepath.Base(path)]
 		for _, spec := range file.Imports {
 			dependency, err := strconv.Unquote(spec.Path.Value)
 			if err != nil {
@@ -74,11 +79,17 @@ func TestPackageBoundaries(t *testing.T) {
 			if pkg != "." && dependency == "flag" {
 				t.Errorf("%s: command-line parsing belongs to main", path)
 			}
-			if pkg != "server" && strings.HasPrefix(dependency, "github.com/gin-gonic/") {
+			if (pkg != "server" || worker) && strings.HasPrefix(dependency, "github.com/gin-gonic/") {
 				t.Errorf("%s: Gin belongs to the HTTP adapter", path)
+			}
+			if pkg == "server" && dependency == "database/sql" {
+				t.Errorf("%s: SQL belongs to storage", path)
 			}
 		}
 		ast.Inspect(file, func(node ast.Node) bool {
+			if name, ok := node.(*ast.Ident); ok && worker && name.Name == "Server" {
+				t.Errorf("%s: background components receive explicit dependencies, not Server", path)
+			}
 			if fn, ok := node.(*ast.FuncDecl); ok && pkg == "config" && fn.Recv == nil && fn.Name.Name == "init" {
 				t.Errorf("%s: configuration must be loaded explicitly", path)
 			}
