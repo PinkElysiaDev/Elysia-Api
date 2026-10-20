@@ -1,0 +1,6781 @@
+[
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "Phase": "first-request",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 0,
+    "Requests": 1,
+    "Stream": true,
+    "ElapsedMS": 32.487546,
+    "Metrics": {
+      "Allocated": 14717024,
+      "Heap": 13551064,
+      "PeakHeap": 13551064,
+      "WorkingSet": 68259840,
+      "PeakWorkingSet": 68259840,
+      "Calls": 0,
+      "Allocations": 84412,
+      "GCPauseNS": 98940,
+      "GCCycles": 3,
+      "CPUTimeNS": 41884000,
+      "GCCPUSeconds": 0.008305893999999925,
+      "Goroutines": 15,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "DroppedSamples": 0
+    },
+    "Before": {
+      "Allocated": 0,
+      "Heap": 9881408,
+      "PeakHeap": 9881408,
+      "WorkingSet": 63217664,
+      "PeakWorkingSet": 63217664,
+      "Calls": 0,
+      "Allocations": 0,
+      "GCPauseNS": 0,
+      "GCCycles": 0,
+      "CPUTimeNS": 0,
+      "GCCPUSeconds": 0,
+      "Goroutines": 12,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "DroppedSamples": 0
+    },
+    "LatencyP50P95P99NS": [
+      0,
+      0,
+      0
+    ],
+    "FirstByteP50P95P99NS": [
+      0,
+      0,
+      0
+    ],
+    "FirstFrameP50P95P99NS": [
+      0,
+      0,
+      0
+    ],
+    "Observations": [
+      {
+        "LatencyNS": 18347276,
+        "FirstByteNS": 16499781,
+        "FirstFrameNS": 16501544
+      }
+    ]
+  },
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "Phase": "steady",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 0,
+    "Requests": 64,
+    "Stream": true,
+    "ElapsedMS": 853.602885,
+    "Metrics": {
+      "Allocated": 51989272,
+      "Heap": 10195520,
+      "PeakHeap": 15202840,
+      "WorkingSet": 65499136,
+      "PeakWorkingSet": 71155712,
+      "Calls": 0,
+      "Allocations": 705353,
+      "GCPauseNS": 1317449,
+      "GCCycles": 10,
+      "CPUTimeNS": 1004641000,
+      "GCCPUSeconds": 0.10770983600000006,
+      "Goroutines": 15,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "Timeline": [
+        {
+          "ElapsedMS": 18.967288,
+          "Heap": 10133032,
+          "HeapInuse": 13312000,
+          "HeapIdle": 23650304,
+          "HeapReleased": 17113088,
+          "RSS": 70971392,
+          "Goroutines": 16,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 39.021781,
+          "Heap": 11334184,
+          "HeapInuse": 14131200,
+          "HeapIdle": 22798336,
+          "HeapReleased": 17031168,
+          "RSS": 71036928,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 59.917592,
+          "Heap": 12421936,
+          "HeapInuse": 14950400,
+          "HeapIdle": 21979136,
+          "HeapReleased": 16924672,
+          "RSS": 71139328,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 79.998805,
+          "Heap": 13458912,
+          "HeapInuse": 15745024,
+          "HeapIdle": 21184512,
+          "HeapReleased": 16924672,
+          "RSS": 71151616,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 99.615088,
+          "Heap": 14325736,
+          "HeapInuse": 16531456,
+          "HeapIdle": 20398080,
+          "HeapReleased": 16924672,
+          "RSS": 71155712,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 120.887336,
+          "Heap": 15202840,
+          "HeapInuse": 17227776,
+          "HeapIdle": 19668992,
+          "HeapReleased": 16924672,
+          "RSS": 71155712,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 139.182747,
+          "Heap": 6262832,
+          "HeapInuse": 9797632,
+          "HeapIdle": 27099136,
+          "HeapReleased": 17842176,
+          "RSS": 70270976,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 159.094279,
+          "Heap": 7248544,
+          "HeapInuse": 10289152,
+          "HeapIdle": 26607616,
+          "HeapReleased": 17842176,
+          "RSS": 70279168,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 179.057546,
+          "Heap": 8116616,
+          "HeapInuse": 10829824,
+          "HeapIdle": 26066944,
+          "HeapReleased": 17842176,
+          "RSS": 70279168,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 200.005131,
+          "Heap": 9173232,
+          "HeapInuse": 11616256,
+          "HeapIdle": 25247744,
+          "HeapReleased": 18825216,
+          "RSS": 69541888,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 219.037448,
+          "Heap": 6011392,
+          "HeapInuse": 9453568,
+          "HeapIdle": 27475968,
+          "HeapReleased": 19808256,
+          "RSS": 68796416,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 239.292568,
+          "Heap": 6889544,
+          "HeapInuse": 9797632,
+          "HeapIdle": 27131904,
+          "HeapReleased": 19808256,
+          "RSS": 68796416,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 259.122832,
+          "Heap": 7846448,
+          "HeapInuse": 10469376,
+          "HeapIdle": 26394624,
+          "HeapReleased": 19808256,
+          "RSS": 68796416,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 279.511657,
+          "Heap": 8834144,
+          "HeapInuse": 11190272,
+          "HeapIdle": 25673728,
+          "HeapReleased": 19808256,
+          "RSS": 68800512,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 299.119354,
+          "Heap": 5958480,
+          "HeapInuse": 9715712,
+          "HeapIdle": 27049984,
+          "HeapReleased": 20594688,
+          "RSS": 68087808,
+          "Goroutines": 17,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 319.272989,
+          "Heap": 7970456,
+          "HeapInuse": 10641408,
+          "HeapIdle": 26157056,
+          "HeapReleased": 22691840,
+          "RSS": 65990656,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 338.927102,
+          "Heap": 6018656,
+          "HeapInuse": 9789440,
+          "HeapIdle": 27041792,
+          "HeapReleased": 23609344,
+          "RSS": 65077248,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 359.279008,
+          "Heap": 7913928,
+          "HeapInuse": 10649600,
+          "HeapIdle": 26116096,
+          "HeapReleased": 23609344,
+          "RSS": 65134592,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 379.465143,
+          "Heap": 9713424,
+          "HeapInuse": 11878400,
+          "HeapIdle": 24887296,
+          "HeapReleased": 23609344,
+          "RSS": 65134592,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 399.54872,
+          "Heap": 6339248,
+          "HeapInuse": 9904128,
+          "HeapIdle": 26894336,
+          "HeapReleased": 23412736,
+          "RSS": 65298432,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 419.720668,
+          "Heap": 7350920,
+          "HeapInuse": 10305536,
+          "HeapIdle": 26460160,
+          "HeapReleased": 23117824,
+          "RSS": 65601536,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 439.17764,
+          "Heap": 8181584,
+          "HeapInuse": 10878976,
+          "HeapIdle": 25886720,
+          "HeapReleased": 23093248,
+          "RSS": 65634304,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 459.525891,
+          "Heap": 9203544,
+          "HeapInuse": 11558912,
+          "HeapIdle": 25174016,
+          "HeapReleased": 22978560,
+          "RSS": 65740800,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 479.458432,
+          "Heap": 10232976,
+          "HeapInuse": 12288000,
+          "HeapIdle": 24444928,
+          "HeapReleased": 22839296,
+          "RSS": 65900544,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 499.3674,
+          "Heap": 6010864,
+          "HeapInuse": 9519104,
+          "HeapIdle": 27246592,
+          "HeapReleased": 23429120,
+          "RSS": 65323008,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 519.284432,
+          "Heap": 7236096,
+          "HeapInuse": 10215424,
+          "HeapIdle": 26550272,
+          "HeapReleased": 23429120,
+          "RSS": 65323008,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 539.016467,
+          "Heap": 8001288,
+          "HeapInuse": 10690560,
+          "HeapIdle": 26042368,
+          "HeapReleased": 23429120,
+          "RSS": 65372160,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 559.831921,
+          "Heap": 8810400,
+          "HeapInuse": 11239424,
+          "HeapIdle": 25493504,
+          "HeapReleased": 23429120,
+          "RSS": 65372160,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 580.029195,
+          "Heap": 9532576,
+          "HeapInuse": 11722752,
+          "HeapIdle": 25010176,
+          "HeapReleased": 23429120,
+          "RSS": 65372160,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 598.920144,
+          "Heap": 9223752,
+          "HeapInuse": 11911168,
+          "HeapIdle": 24788992,
+          "HeapReleased": 23429120,
+          "RSS": 65372160,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 619.686488,
+          "Heap": 6651896,
+          "HeapInuse": 9805824,
+          "HeapIdle": 26927104,
+          "HeapReleased": 23429120,
+          "RSS": 65372160,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 639.202247,
+          "Heap": 7433608,
+          "HeapInuse": 10231808,
+          "HeapIdle": 26501120,
+          "HeapReleased": 23429120,
+          "RSS": 65372160,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 659.351584,
+          "Heap": 8367968,
+          "HeapInuse": 10780672,
+          "HeapIdle": 25952256,
+          "HeapReleased": 23429120,
+          "RSS": 65376256,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 679.005406,
+          "Heap": 9170256,
+          "HeapInuse": 11321344,
+          "HeapIdle": 25411584,
+          "HeapReleased": 23429120,
+          "RSS": 65376256,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 700.295868,
+          "Heap": 10291168,
+          "HeapInuse": 12255232,
+          "HeapIdle": 24444928,
+          "HeapReleased": 23429120,
+          "RSS": 65380352,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 719.814262,
+          "Heap": 5904640,
+          "HeapInuse": 9527296,
+          "HeapIdle": 27238400,
+          "HeapReleased": 23560192,
+          "RSS": 65368064,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 739.921192,
+          "Heap": 7158904,
+          "HeapInuse": 10067968,
+          "HeapIdle": 26664960,
+          "HeapReleased": 23560192,
+          "RSS": 65368064,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 759.907952,
+          "Heap": 8023504,
+          "HeapInuse": 10633216,
+          "HeapIdle": 26099712,
+          "HeapReleased": 23560192,
+          "RSS": 65368064,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 778.982375,
+          "Heap": 9107480,
+          "HeapInuse": 11427840,
+          "HeapIdle": 25305088,
+          "HeapReleased": 23453696,
+          "RSS": 65433600,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 799.296233,
+          "Heap": 6682080,
+          "HeapInuse": 9805824,
+          "HeapIdle": 26959872,
+          "HeapReleased": 23453696,
+          "RSS": 65437696,
+          "Goroutines": 14,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 819.45657,
+          "Heap": 9723256,
+          "HeapInuse": 11943936,
+          "HeapIdle": 24821760,
+          "HeapReleased": 23347200,
+          "RSS": 65454080,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 838.976627,
+          "Heap": 7934560,
+          "HeapInuse": 10780672,
+          "HeapIdle": 25985024,
+          "HeapReleased": 23347200,
+          "RSS": 65462272,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 859.381972,
+          "Heap": 10159480,
+          "HeapInuse": 12312576,
+          "HeapIdle": 24453120,
+          "HeapReleased": 23347200,
+          "RSS": 65470464,
+          "Goroutines": 15,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 879.09921,
+          "Heap": 10161384,
+          "HeapInuse": 12312576,
+          "HeapIdle": 24453120,
+          "HeapReleased": 23347200,
+          "RSS": 65470464,
+          "Goroutines": 15,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 899.201992,
+          "Heap": 10204096,
+          "HeapInuse": 12337152,
+          "HeapIdle": 24428544,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 919.979837,
+          "Heap": 10206000,
+          "HeapInuse": 12337152,
+          "HeapIdle": 24428544,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 939.669524,
+          "Heap": 10207904,
+          "HeapInuse": 12337152,
+          "HeapIdle": 24428544,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 959.21083,
+          "Heap": 10209808,
+          "HeapInuse": 12337152,
+          "HeapIdle": 24428544,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 979.802946,
+          "Heap": 10211712,
+          "HeapInuse": 12337152,
+          "HeapIdle": 24428544,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 999.930433,
+          "Heap": 10218704,
+          "HeapInuse": 12345344,
+          "HeapIdle": 24420352,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1019.655465,
+          "Heap": 10220608,
+          "HeapInuse": 12345344,
+          "HeapIdle": 24420352,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1039.986835,
+          "Heap": 10222512,
+          "HeapInuse": 12353536,
+          "HeapIdle": 24412160,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1059.48936,
+          "Heap": 10224416,
+          "HeapInuse": 12353536,
+          "HeapIdle": 24412160,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1079.809059,
+          "Heap": 10226320,
+          "HeapInuse": 12353536,
+          "HeapIdle": 24412160,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1099.254921,
+          "Heap": 10228224,
+          "HeapInuse": 12353536,
+          "HeapIdle": 24412160,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1119.714294,
+          "Heap": 10230128,
+          "HeapInuse": 12353536,
+          "HeapIdle": 24412160,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1139.015221,
+          "Heap": 10232032,
+          "HeapInuse": 12353536,
+          "HeapIdle": 24412160,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1159.402282,
+          "Heap": 10233936,
+          "HeapInuse": 12361728,
+          "HeapIdle": 24403968,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1179.862597,
+          "Heap": 10235840,
+          "HeapInuse": 12361728,
+          "HeapIdle": 24403968,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1199.523682,
+          "Heap": 10237744,
+          "HeapInuse": 12361728,
+          "HeapIdle": 24403968,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1220.083099,
+          "Heap": 10239648,
+          "HeapInuse": 12361728,
+          "HeapIdle": 24403968,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1239.618664,
+          "Heap": 10241552,
+          "HeapInuse": 12361728,
+          "HeapIdle": 24403968,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1260.103474,
+          "Heap": 10243456,
+          "HeapInuse": 12361728,
+          "HeapIdle": 24403968,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1279.738241,
+          "Heap": 10245360,
+          "HeapInuse": 12361728,
+          "HeapIdle": 24403968,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1299.14937,
+          "Heap": 10247264,
+          "HeapInuse": 12361728,
+          "HeapIdle": 24403968,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1319.611448,
+          "Heap": 10257360,
+          "HeapInuse": 12369920,
+          "HeapIdle": 24395776,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1340.34899,
+          "Heap": 10259264,
+          "HeapInuse": 12386304,
+          "HeapIdle": 24379392,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1360.180065,
+          "Heap": 10261168,
+          "HeapInuse": 12386304,
+          "HeapIdle": 24379392,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1379.981928,
+          "Heap": 10263072,
+          "HeapInuse": 12386304,
+          "HeapIdle": 24379392,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1399.906133,
+          "Heap": 10270064,
+          "HeapInuse": 12386304,
+          "HeapIdle": 24379392,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1420.14858,
+          "Heap": 10271968,
+          "HeapInuse": 12386304,
+          "HeapIdle": 24379392,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1439.655885,
+          "Heap": 10273872,
+          "HeapInuse": 12386304,
+          "HeapIdle": 24379392,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1459.928196,
+          "Heap": 10275776,
+          "HeapInuse": 12386304,
+          "HeapIdle": 24379392,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1479.437574,
+          "Heap": 10277680,
+          "HeapInuse": 12386304,
+          "HeapIdle": 24379392,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1499.967336,
+          "Heap": 10279584,
+          "HeapInuse": 12394496,
+          "HeapIdle": 24371200,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1519.568813,
+          "Heap": 10281488,
+          "HeapInuse": 12394496,
+          "HeapIdle": 24371200,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1540.133979,
+          "Heap": 10283392,
+          "HeapInuse": 12394496,
+          "HeapIdle": 24371200,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1559.857658,
+          "Heap": 10285296,
+          "HeapInuse": 12394496,
+          "HeapIdle": 24371200,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1579.299062,
+          "Heap": 10287200,
+          "HeapInuse": 12394496,
+          "HeapIdle": 24371200,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1600.120106,
+          "Heap": 10289104,
+          "HeapInuse": 12394496,
+          "HeapIdle": 24371200,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1619.755033,
+          "Heap": 10291008,
+          "HeapInuse": 12402688,
+          "HeapIdle": 24363008,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1638.866535,
+          "Heap": 10292912,
+          "HeapInuse": 12402688,
+          "HeapIdle": 24363008,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1659.28874,
+          "Heap": 10294816,
+          "HeapInuse": 12402688,
+          "HeapIdle": 24363008,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1679.708221,
+          "Heap": 10296720,
+          "HeapInuse": 12410880,
+          "HeapIdle": 24354816,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1699.058418,
+          "Heap": 10298624,
+          "HeapInuse": 12410880,
+          "HeapIdle": 24354816,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1719.623054,
+          "Heap": 10300528,
+          "HeapInuse": 12410880,
+          "HeapIdle": 24354816,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1740.268066,
+          "Heap": 10302432,
+          "HeapInuse": 12410880,
+          "HeapIdle": 24354816,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1759.926276,
+          "Heap": 10304336,
+          "HeapInuse": 12410880,
+          "HeapIdle": 24354816,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1779.392525,
+          "Heap": 10306240,
+          "HeapInuse": 12410880,
+          "HeapIdle": 24354816,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1799.931524,
+          "Heap": 10308144,
+          "HeapInuse": 12410880,
+          "HeapIdle": 24354816,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1819.092385,
+          "Heap": 10310048,
+          "HeapInuse": 12410880,
+          "HeapIdle": 24354816,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1839.222467,
+          "Heap": 10311952,
+          "HeapInuse": 12410880,
+          "HeapIdle": 24354816,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1859.526517,
+          "Heap": 10313856,
+          "HeapInuse": 12419072,
+          "HeapIdle": 24346624,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1879.795492,
+          "Heap": 10315760,
+          "HeapInuse": 12419072,
+          "HeapIdle": 24346624,
+          "HeapReleased": 23347200,
+          "RSS": 65499136,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        }
+      ],
+      "DroppedSamples": 0
+    },
+    "Before": {
+      "Allocated": 0,
+      "Heap": 9219224,
+      "PeakHeap": 9219224,
+      "WorkingSet": 70946816,
+      "PeakWorkingSet": 70946816,
+      "Calls": 0,
+      "Allocations": 0,
+      "GCPauseNS": 0,
+      "GCCycles": 0,
+      "CPUTimeNS": 0,
+      "GCCPUSeconds": 0,
+      "Goroutines": 15,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "DroppedSamples": 0
+    },
+    "LatencyP50P95P99NS": [
+      12645019,
+      18055933,
+      20298460
+    ],
+    "FirstByteP50P95P99NS": [
+      5439306,
+      6578376,
+      9018454
+    ],
+    "FirstFrameP50P95P99NS": [
+      5442943,
+      6583486,
+      9023644
+    ],
+    "Observations": [
+      {
+        "LatencyNS": 13988372,
+        "FirstByteNS": 4443857,
+        "FirstFrameNS": 4448305
+      },
+      {
+        "LatencyNS": 13714192,
+        "FirstByteNS": 5803311,
+        "FirstFrameNS": 5807509
+      },
+      {
+        "LatencyNS": 14320219,
+        "FirstByteNS": 5176516,
+        "FirstFrameNS": 5180974
+      },
+      {
+        "LatencyNS": 14558935,
+        "FirstByteNS": 5648037,
+        "FirstFrameNS": 5652856
+      },
+      {
+        "LatencyNS": 14925585,
+        "FirstByteNS": 6440144,
+        "FirstFrameNS": 6445133
+      },
+      {
+        "LatencyNS": 15978588,
+        "FirstByteNS": 6435315,
+        "FirstFrameNS": 6442268
+      },
+      {
+        "LatencyNS": 12309546,
+        "FirstByteNS": 5452039,
+        "FirstFrameNS": 5459212
+      },
+      {
+        "LatencyNS": 18014097,
+        "FirstByteNS": 9018454,
+        "FirstFrameNS": 9023644
+      },
+      {
+        "LatencyNS": 13660223,
+        "FirstByteNS": 6291964,
+        "FirstFrameNS": 6296873
+      },
+      {
+        "LatencyNS": 14138256,
+        "FirstByteNS": 5629283,
+        "FirstFrameNS": 5634322
+      },
+      {
+        "LatencyNS": 14592417,
+        "FirstByteNS": 5541944,
+        "FirstFrameNS": 5546192
+      },
+      {
+        "LatencyNS": 19055930,
+        "FirstByteNS": 5686137,
+        "FirstFrameNS": 5690796
+      },
+      {
+        "LatencyNS": 15012554,
+        "FirstByteNS": 6233737,
+        "FirstFrameNS": 6239578
+      },
+      {
+        "LatencyNS": 16325893,
+        "FirstByteNS": 6071702,
+        "FirstFrameNS": 6077302
+      },
+      {
+        "LatencyNS": 15432080,
+        "FirstByteNS": 5550149,
+        "FirstFrameNS": 5554807
+      },
+      {
+        "LatencyNS": 14839366,
+        "FirstByteNS": 5698749,
+        "FirstFrameNS": 5703548
+      },
+      {
+        "LatencyNS": 18055933,
+        "FirstByteNS": 5848805,
+        "FirstFrameNS": 5854224
+      },
+      {
+        "LatencyNS": 4513275,
+        "FirstByteNS": 1686661,
+        "FirstFrameNS": 1688925
+      },
+      {
+        "LatencyNS": 5384636,
+        "FirstByteNS": 2460234,
+        "FirstFrameNS": 2462578
+      },
+      {
+        "LatencyNS": 6103459,
+        "FirstByteNS": 2129179,
+        "FirstFrameNS": 2130992
+      },
+      {
+        "LatencyNS": 4655434,
+        "FirstByteNS": 1556393,
+        "FirstFrameNS": 1557715
+      },
+      {
+        "LatencyNS": 3579659,
+        "FirstByteNS": 1898838,
+        "FirstFrameNS": 1900882
+      },
+      {
+        "LatencyNS": 5345504,
+        "FirstByteNS": 1318769,
+        "FirstFrameNS": 1320853
+      },
+      {
+        "LatencyNS": 7081646,
+        "FirstByteNS": 3014587,
+        "FirstFrameNS": 3017763
+      },
+      {
+        "LatencyNS": 6139595,
+        "FirstByteNS": 2614846,
+        "FirstFrameNS": 2617411
+      },
+      {
+        "LatencyNS": 7995716,
+        "FirstByteNS": 2840929,
+        "FirstFrameNS": 2843304
+      },
+      {
+        "LatencyNS": 8571628,
+        "FirstByteNS": 3077492,
+        "FirstFrameNS": 3080738
+      },
+      {
+        "LatencyNS": 7401700,
+        "FirstByteNS": 2184110,
+        "FirstFrameNS": 2186504
+      },
+      {
+        "LatencyNS": 7882619,
+        "FirstByteNS": 2856427,
+        "FirstFrameNS": 2859313
+      },
+      {
+        "LatencyNS": 8155818,
+        "FirstByteNS": 3256068,
+        "FirstFrameNS": 3258583
+      },
+      {
+        "LatencyNS": 14399103,
+        "FirstByteNS": 4953920,
+        "FirstFrameNS": 4957937
+      },
+      {
+        "LatencyNS": 15399009,
+        "FirstByteNS": 6166995,
+        "FirstFrameNS": 6171223
+      },
+      {
+        "LatencyNS": 13509187,
+        "FirstByteNS": 5760102,
+        "FirstFrameNS": 5764560
+      },
+      {
+        "LatencyNS": 12645019,
+        "FirstByteNS": 5439306,
+        "FirstFrameNS": 5442943
+      },
+      {
+        "LatencyNS": 15012363,
+        "FirstByteNS": 5897944,
+        "FirstFrameNS": 5902352
+      },
+      {
+        "LatencyNS": 15327419,
+        "FirstByteNS": 6362693,
+        "FirstFrameNS": 6366911
+      },
+      {
+        "LatencyNS": 14130162,
+        "FirstByteNS": 5528759,
+        "FirstFrameNS": 5534400
+      },
+      {
+        "LatencyNS": 16400559,
+        "FirstByteNS": 6578376,
+        "FirstFrameNS": 6583486
+      },
+      {
+        "LatencyNS": 17326320,
+        "FirstByteNS": 6886900,
+        "FirstFrameNS": 6892831
+      },
+      {
+        "LatencyNS": 17847712,
+        "FirstByteNS": 7281871,
+        "FirstFrameNS": 7286560
+      },
+      {
+        "LatencyNS": 18718484,
+        "FirstByteNS": 5979713,
+        "FirstFrameNS": 5984893
+      },
+      {
+        "LatencyNS": 14251653,
+        "FirstByteNS": 5533177,
+        "FirstFrameNS": 5538337
+      },
+      {
+        "LatencyNS": 11708408,
+        "FirstByteNS": 4747532,
+        "FirstFrameNS": 4751700
+      },
+      {
+        "LatencyNS": 12579649,
+        "FirstByteNS": 5517880,
+        "FirstFrameNS": 5522468
+      },
+      {
+        "LatencyNS": 16897376,
+        "FirstByteNS": 6261458,
+        "FirstFrameNS": 6266136
+      },
+      {
+        "LatencyNS": 13516310,
+        "FirstByteNS": 6111644,
+        "FirstFrameNS": 6116332
+      },
+      {
+        "LatencyNS": 20298460,
+        "FirstByteNS": 5632019,
+        "FirstFrameNS": 5637048
+      },
+      {
+        "LatencyNS": 14876005,
+        "FirstByteNS": 6550035,
+        "FirstFrameNS": 6555586
+      },
+      {
+        "LatencyNS": 11601953,
+        "FirstByteNS": 5259067,
+        "FirstFrameNS": 5263275
+      },
+      {
+        "LatencyNS": 16658169,
+        "FirstByteNS": 6101866,
+        "FirstFrameNS": 6106374
+      },
+      {
+        "LatencyNS": 10742584,
+        "FirstByteNS": 5625567,
+        "FirstFrameNS": 5630546
+      },
+      {
+        "LatencyNS": 5828807,
+        "FirstByteNS": 2422705,
+        "FirstFrameNS": 2424979
+      },
+      {
+        "LatencyNS": 7970440,
+        "FirstByteNS": 2644831,
+        "FirstFrameNS": 2647096
+      },
+      {
+        "LatencyNS": 5332350,
+        "FirstByteNS": 2313566,
+        "FirstFrameNS": 2316601
+      },
+      {
+        "LatencyNS": 5184851,
+        "FirstByteNS": 1920228,
+        "FirstFrameNS": 1921460
+      },
+      {
+        "LatencyNS": 5225024,
+        "FirstByteNS": 2067647,
+        "FirstFrameNS": 2068478
+      },
+      {
+        "LatencyNS": 4831927,
+        "FirstByteNS": 1842135,
+        "FirstFrameNS": 1844089
+      },
+      {
+        "LatencyNS": 4525607,
+        "FirstByteNS": 1898779,
+        "FirstFrameNS": 1899641
+      },
+      {
+        "LatencyNS": 4694595,
+        "FirstByteNS": 1687552,
+        "FirstFrameNS": 1688313
+      },
+      {
+        "LatencyNS": 4676463,
+        "FirstByteNS": 1930357,
+        "FirstFrameNS": 1931950
+      },
+      {
+        "LatencyNS": 4407842,
+        "FirstByteNS": 1764473,
+        "FirstFrameNS": 1766076
+      },
+      {
+        "LatencyNS": 4818562,
+        "FirstByteNS": 2153253,
+        "FirstFrameNS": 2155036
+      },
+      {
+        "LatencyNS": 4577702,
+        "FirstByteNS": 1988803,
+        "FirstFrameNS": 1990586
+      },
+      {
+        "LatencyNS": 5283150,
+        "FirstByteNS": 1818431,
+        "FirstFrameNS": 1820255
+      }
+    ],
+    "Recovery": [
+      {
+        "IdleMS": 0.976123,
+        "Metrics": {
+          "Allocated": 51994568,
+          "Heap": 10200816,
+          "PeakHeap": 15202840,
+          "WorkingSet": 65499136,
+          "PeakWorkingSet": 71155712,
+          "Calls": 0,
+          "Allocations": 705391,
+          "GCPauseNS": 1317449,
+          "GCCycles": 10,
+          "CPUTimeNS": 1005689000,
+          "GCCPUSeconds": 0.10770983600000006,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      },
+      {
+        "IdleMS": 101.440452,
+        "Metrics": {
+          "Allocated": 52009176,
+          "Heap": 10215424,
+          "PeakHeap": 15202840,
+          "WorkingSet": 65499136,
+          "PeakWorkingSet": 71155712,
+          "Calls": 0,
+          "Allocations": 705466,
+          "GCPauseNS": 1317449,
+          "GCCycles": 10,
+          "CPUTimeNS": 1010985000,
+          "GCCPUSeconds": 0.10770983600000006,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      },
+      {
+        "IdleMS": 502.656808,
+        "Metrics": {
+          "Allocated": 52060536,
+          "Heap": 10266784,
+          "PeakHeap": 15202840,
+          "WorkingSet": 65499136,
+          "PeakWorkingSet": 71155712,
+          "Calls": 0,
+          "Allocations": 705662,
+          "GCPauseNS": 1317449,
+          "GCCycles": 10,
+          "CPUTimeNS": 1031621000,
+          "GCCPUSeconds": 0.10770983600000006,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      },
+      {
+        "IdleMS": 1000.742807,
+        "Metrics": {
+          "Allocated": 52113224,
+          "Heap": 10319472,
+          "PeakHeap": 15202840,
+          "WorkingSet": 65499136,
+          "PeakWorkingSet": 71155712,
+          "Calls": 0,
+          "Allocations": 705897,
+          "GCPauseNS": 1317449,
+          "GCCycles": 10,
+          "CPUTimeNS": 1053362000,
+          "GCCPUSeconds": 0.10770983600000006,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      }
+    ]
+  },
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "Phase": "steady",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 1,
+    "Requests": 64,
+    "Stream": true,
+    "ElapsedMS": 374.420297,
+    "Metrics": {
+      "Allocated": 52457208,
+      "Heap": 8580992,
+      "PeakHeap": 10770360,
+      "WorkingSet": 66793472,
+      "PeakWorkingSet": 66793472,
+      "Calls": 0,
+      "Allocations": 705014,
+      "GCPauseNS": 649594,
+      "GCCycles": 12,
+      "CPUTimeNS": 427504000,
+      "GCCPUSeconds": 0.055805465000000054,
+      "Goroutines": 15,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "Timeline": [
+        {
+          "ElapsedMS": 4.522071,
+          "Heap": 6023800,
+          "HeapInuse": 9461760,
+          "HeapIdle": 27303936,
+          "HeapReleased": 24002560,
+          "RSS": 64860160,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 24.746575,
+          "Heap": 5776376,
+          "HeapInuse": 9428992,
+          "HeapIdle": 27369472,
+          "HeapReleased": 24002560,
+          "RSS": 64864256,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 44.597958,
+          "Heap": 9466240,
+          "HeapInuse": 11763712,
+          "HeapIdle": 25001984,
+          "HeapReleased": 24002560,
+          "RSS": 64868352,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 64.811442,
+          "Heap": 9187896,
+          "HeapInuse": 11681792,
+          "HeapIdle": 25018368,
+          "HeapReleased": 24002560,
+          "RSS": 64901120,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 84.708518,
+          "Heap": 8726640,
+          "HeapInuse": 11321344,
+          "HeapIdle": 25411584,
+          "HeapReleased": 23642112,
+          "RSS": 65257472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 104.985639,
+          "Heap": 8667144,
+          "HeapInuse": 11280384,
+          "HeapIdle": 25452544,
+          "HeapReleased": 24158208,
+          "RSS": 65372160,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 125.062854,
+          "Heap": 9025704,
+          "HeapInuse": 11403264,
+          "HeapIdle": 25296896,
+          "HeapReleased": 24158208,
+          "RSS": 65425408,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 144.661535,
+          "Heap": 8171944,
+          "HeapInuse": 10756096,
+          "HeapIdle": 25976832,
+          "HeapReleased": 24068096,
+          "RSS": 65519616,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 164.734523,
+          "Heap": 7931464,
+          "HeapInuse": 10797056,
+          "HeapIdle": 25903104,
+          "HeapReleased": 23502848,
+          "RSS": 66048000,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 184.897975,
+          "Heap": 7430104,
+          "HeapInuse": 10387456,
+          "HeapIdle": 26345472,
+          "HeapReleased": 23502848,
+          "RSS": 66121728,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 204.508288,
+          "Heap": 6248776,
+          "HeapInuse": 9789440,
+          "HeapIdle": 26943488,
+          "HeapReleased": 23445504,
+          "RSS": 66191360,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 224.623703,
+          "Heap": 8493072,
+          "HeapInuse": 11132928,
+          "HeapIdle": 25534464,
+          "HeapReleased": 23109632,
+          "RSS": 66592768,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 246.008908,
+          "Heap": 10637672,
+          "HeapInuse": 12664832,
+          "HeapIdle": 23937024,
+          "HeapReleased": 23109632,
+          "RSS": 66727936,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 264.750483,
+          "Heap": 7471064,
+          "HeapInuse": 10338304,
+          "HeapIdle": 26329088,
+          "HeapReleased": 23109632,
+          "RSS": 66727936,
+          "Goroutines": 16,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 285.026932,
+          "Heap": 9252072,
+          "HeapInuse": 11558912,
+          "HeapIdle": 25075712,
+          "HeapReleased": 23003136,
+          "RSS": 66736128,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 304.784874,
+          "Heap": 10770360,
+          "HeapInuse": 12804096,
+          "HeapIdle": 23797760,
+          "HeapReleased": 23003136,
+          "RSS": 66740224,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 324.784688,
+          "Heap": 6344040,
+          "HeapInuse": 9650176,
+          "HeapIdle": 26984448,
+          "HeapReleased": 23003136,
+          "RSS": 66740224,
+          "Goroutines": 17,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 345.198238,
+          "Heap": 7289704,
+          "HeapInuse": 10149888,
+          "HeapIdle": 26484736,
+          "HeapReleased": 23003136,
+          "RSS": 66752512,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 365.269272,
+          "Heap": 8012696,
+          "HeapInuse": 10608640,
+          "HeapIdle": 26025984,
+          "HeapReleased": 23003136,
+          "RSS": 66752512,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 384.719522,
+          "Heap": 8554664,
+          "HeapInuse": 11010048,
+          "HeapIdle": 25624576,
+          "HeapReleased": 23003136,
+          "RSS": 66752512,
+          "Goroutines": 15,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 405.695268,
+          "Heap": 8589344,
+          "HeapInuse": 11010048,
+          "HeapIdle": 25624576,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 425.220745,
+          "Heap": 8591472,
+          "HeapInuse": 11010048,
+          "HeapIdle": 25624576,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 445.666594,
+          "Heap": 8593376,
+          "HeapInuse": 11010048,
+          "HeapIdle": 25624576,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 465.063567,
+          "Heap": 8595280,
+          "HeapInuse": 11018240,
+          "HeapIdle": 25616384,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 485.560038,
+          "Heap": 8597184,
+          "HeapInuse": 11018240,
+          "HeapIdle": 25616384,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 505.529076,
+          "Heap": 8604288,
+          "HeapInuse": 11018240,
+          "HeapIdle": 25616384,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 525.554246,
+          "Heap": 8606192,
+          "HeapInuse": 11018240,
+          "HeapIdle": 25616384,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 545.069975,
+          "Heap": 8608096,
+          "HeapInuse": 11018240,
+          "HeapIdle": 25616384,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 565.492972,
+          "Heap": 8610000,
+          "HeapInuse": 11018240,
+          "HeapIdle": 25616384,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 584.98053,
+          "Heap": 8611904,
+          "HeapInuse": 11018240,
+          "HeapIdle": 25616384,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 605.256408,
+          "Heap": 8613808,
+          "HeapInuse": 11018240,
+          "HeapIdle": 25616384,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 625.800457,
+          "Heap": 8615712,
+          "HeapInuse": 11026432,
+          "HeapIdle": 25608192,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 645.382908,
+          "Heap": 8617616,
+          "HeapInuse": 11026432,
+          "HeapIdle": 25608192,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 665.854804,
+          "Heap": 8623616,
+          "HeapInuse": 11034624,
+          "HeapIdle": 25600000,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 685.30807,
+          "Heap": 8625520,
+          "HeapInuse": 11034624,
+          "HeapIdle": 25600000,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 705.772402,
+          "Heap": 8627424,
+          "HeapInuse": 11034624,
+          "HeapIdle": 25600000,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 725.323647,
+          "Heap": 8629328,
+          "HeapInuse": 11034624,
+          "HeapIdle": 25600000,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 745.683097,
+          "Heap": 8631232,
+          "HeapInuse": 11034624,
+          "HeapIdle": 25600000,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 765.185002,
+          "Heap": 8633136,
+          "HeapInuse": 11034624,
+          "HeapIdle": 25600000,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 785.370735,
+          "Heap": 8635040,
+          "HeapInuse": 11034624,
+          "HeapIdle": 25600000,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 805.569663,
+          "Heap": 8636944,
+          "HeapInuse": 11042816,
+          "HeapIdle": 25591808,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 824.71172,
+          "Heap": 8638848,
+          "HeapInuse": 11051008,
+          "HeapIdle": 25583616,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 844.891392,
+          "Heap": 8640752,
+          "HeapInuse": 11051008,
+          "HeapIdle": 25583616,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 864.996719,
+          "Heap": 8642656,
+          "HeapInuse": 11051008,
+          "HeapIdle": 25583616,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 885.145545,
+          "Heap": 8644560,
+          "HeapInuse": 11051008,
+          "HeapIdle": 25583616,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 905.312043,
+          "Heap": 8651552,
+          "HeapInuse": 11051008,
+          "HeapIdle": 25583616,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 925.480585,
+          "Heap": 8653456,
+          "HeapInuse": 11051008,
+          "HeapIdle": 25583616,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 944.629214,
+          "Heap": 8655360,
+          "HeapInuse": 11051008,
+          "HeapIdle": 25583616,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 964.857586,
+          "Heap": 8657264,
+          "HeapInuse": 11059200,
+          "HeapIdle": 25575424,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 984.999479,
+          "Heap": 8659168,
+          "HeapInuse": 11059200,
+          "HeapIdle": 25575424,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1005.314018,
+          "Heap": 8661072,
+          "HeapInuse": 11059200,
+          "HeapIdle": 25575424,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1025.65744,
+          "Heap": 8662976,
+          "HeapInuse": 11059200,
+          "HeapIdle": 25575424,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1044.887197,
+          "Heap": 8664880,
+          "HeapInuse": 11059200,
+          "HeapIdle": 25575424,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1065.14959,
+          "Heap": 8666784,
+          "HeapInuse": 11059200,
+          "HeapIdle": 25575424,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1085.378001,
+          "Heap": 8668688,
+          "HeapInuse": 11059200,
+          "HeapIdle": 25575424,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1104.826578,
+          "Heap": 8670592,
+          "HeapInuse": 11067392,
+          "HeapIdle": 25567232,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1125.49319,
+          "Heap": 8672496,
+          "HeapInuse": 11067392,
+          "HeapIdle": 25567232,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1144.947648,
+          "Heap": 8674400,
+          "HeapInuse": 11075584,
+          "HeapIdle": 25559040,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1165.374853,
+          "Heap": 8676304,
+          "HeapInuse": 11075584,
+          "HeapIdle": 25559040,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1185.66122,
+          "Heap": 8678208,
+          "HeapInuse": 11075584,
+          "HeapIdle": 25559040,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1205.274037,
+          "Heap": 8680112,
+          "HeapInuse": 11075584,
+          "HeapIdle": 25559040,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1225.637385,
+          "Heap": 8682016,
+          "HeapInuse": 11075584,
+          "HeapIdle": 25559040,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1245.345907,
+          "Heap": 8683920,
+          "HeapInuse": 11075584,
+          "HeapIdle": 25559040,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1265.696852,
+          "Heap": 8685824,
+          "HeapInuse": 11075584,
+          "HeapIdle": 25559040,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1285.20072,
+          "Heap": 8687728,
+          "HeapInuse": 11075584,
+          "HeapIdle": 25559040,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1305.650816,
+          "Heap": 8697824,
+          "HeapInuse": 11083776,
+          "HeapIdle": 25550848,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1325.190349,
+          "Heap": 8699728,
+          "HeapInuse": 11091968,
+          "HeapIdle": 25542656,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1345.422477,
+          "Heap": 8701632,
+          "HeapInuse": 11091968,
+          "HeapIdle": 25542656,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1364.771973,
+          "Heap": 8703536,
+          "HeapInuse": 11091968,
+          "HeapIdle": 25542656,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1385.218553,
+          "Heap": 8705440,
+          "HeapInuse": 11091968,
+          "HeapIdle": 25542656,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        }
+      ],
+      "DroppedSamples": 0
+    },
+    "Before": {
+      "Allocated": 0,
+      "Heap": 10430608,
+      "PeakHeap": 10430608,
+      "WorkingSet": 65503232,
+      "PeakWorkingSet": 65503232,
+      "Calls": 0,
+      "Allocations": 0,
+      "GCPauseNS": 0,
+      "GCCycles": 0,
+      "CPUTimeNS": 0,
+      "GCCPUSeconds": 0,
+      "Goroutines": 15,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "DroppedSamples": 0
+    },
+    "LatencyP50P95P99NS": [
+      3746184,
+      13832989,
+      15962599
+    ],
+    "FirstByteP50P95P99NS": [
+      1528222,
+      5418869,
+      6389862
+    ],
+    "FirstFrameP50P95P99NS": [
+      1529474,
+      5423517,
+      6400111
+    ],
+    "Observations": [
+      {
+        "LatencyNS": 4827578,
+        "FirstByteNS": 1678025,
+        "FirstFrameNS": 1679618
+      },
+      {
+        "LatencyNS": 3296191,
+        "FirstByteNS": 1438057,
+        "FirstFrameNS": 1439440
+      },
+      {
+        "LatencyNS": 3311609,
+        "FirstByteNS": 1462742,
+        "FirstFrameNS": 1463974
+      },
+      {
+        "LatencyNS": 3575842,
+        "FirstByteNS": 1528222,
+        "FirstFrameNS": 1529474
+      },
+      {
+        "LatencyNS": 4799497,
+        "FirstByteNS": 1453656,
+        "FirstFrameNS": 1455048
+      },
+      {
+        "LatencyNS": 4326303,
+        "FirstByteNS": 1794287,
+        "FirstFrameNS": 1795810
+      },
+      {
+        "LatencyNS": 3506345,
+        "FirstByteNS": 1550082,
+        "FirstFrameNS": 1552025
+      },
+      {
+        "LatencyNS": 3538885,
+        "FirstByteNS": 1479353,
+        "FirstFrameNS": 1480765
+      },
+      {
+        "LatencyNS": 3855703,
+        "FirstByteNS": 1640136,
+        "FirstFrameNS": 1641689
+      },
+      {
+        "LatencyNS": 4609821,
+        "FirstByteNS": 1533301,
+        "FirstFrameNS": 1534723
+      },
+      {
+        "LatencyNS": 3710919,
+        "FirstByteNS": 1475195,
+        "FirstFrameNS": 1476658
+      },
+      {
+        "LatencyNS": 3615274,
+        "FirstByteNS": 1532690,
+        "FirstFrameNS": 1534032
+      },
+      {
+        "LatencyNS": 3683810,
+        "FirstByteNS": 1564328,
+        "FirstFrameNS": 1565871
+      },
+      {
+        "LatencyNS": 3454360,
+        "FirstByteNS": 1482478,
+        "FirstFrameNS": 1484271
+      },
+      {
+        "LatencyNS": 4154228,
+        "FirstByteNS": 1599922,
+        "FirstFrameNS": 1601125
+      },
+      {
+        "LatencyNS": 4553388,
+        "FirstByteNS": 2480261,
+        "FirstFrameNS": 2481403
+      },
+      {
+        "LatencyNS": 3589988,
+        "FirstByteNS": 1464676,
+        "FirstFrameNS": 1465948
+      },
+      {
+        "LatencyNS": 3331025,
+        "FirstByteNS": 1398434,
+        "FirstFrameNS": 1400107
+      },
+      {
+        "LatencyNS": 3014416,
+        "FirstByteNS": 1031924,
+        "FirstFrameNS": 1032726
+      },
+      {
+        "LatencyNS": 3839423,
+        "FirstByteNS": 1392293,
+        "FirstFrameNS": 1393205
+      },
+      {
+        "LatencyNS": 3861674,
+        "FirstByteNS": 2071374,
+        "FirstFrameNS": 2072325
+      },
+      {
+        "LatencyNS": 2603496,
+        "FirstByteNS": 1368219,
+        "FirstFrameNS": 1369351
+      },
+      {
+        "LatencyNS": 4027226,
+        "FirstByteNS": 1673918,
+        "FirstFrameNS": 1675350
+      },
+      {
+        "LatencyNS": 4008283,
+        "FirstByteNS": 1684878,
+        "FirstFrameNS": 1685850
+      },
+      {
+        "LatencyNS": 3615514,
+        "FirstByteNS": 1779661,
+        "FirstFrameNS": 1780582
+      },
+      {
+        "LatencyNS": 3416060,
+        "FirstByteNS": 1408062,
+        "FirstFrameNS": 1409284
+      },
+      {
+        "LatencyNS": 2544318,
+        "FirstByteNS": 1339257,
+        "FirstFrameNS": 1340840
+      },
+      {
+        "LatencyNS": 3746184,
+        "FirstByteNS": 1404617,
+        "FirstFrameNS": 1405879
+      },
+      {
+        "LatencyNS": 3631654,
+        "FirstByteNS": 1576279,
+        "FirstFrameNS": 1577231
+      },
+      {
+        "LatencyNS": 4388887,
+        "FirstByteNS": 1472430,
+        "FirstFrameNS": 1473622
+      },
+      {
+        "LatencyNS": 2345775,
+        "FirstByteNS": 1244784,
+        "FirstFrameNS": 1246267
+      },
+      {
+        "LatencyNS": 3907007,
+        "FirstByteNS": 1566131,
+        "FirstFrameNS": 1567023
+      },
+      {
+        "LatencyNS": 3461453,
+        "FirstByteNS": 1446893,
+        "FirstFrameNS": 1448336
+      },
+      {
+        "LatencyNS": 3325986,
+        "FirstByteNS": 1150121,
+        "FirstFrameNS": 1151373
+      },
+      {
+        "LatencyNS": 2409240,
+        "FirstByteNS": 1394437,
+        "FirstFrameNS": 1395679
+      },
+      {
+        "LatencyNS": 4169657,
+        "FirstByteNS": 1493619,
+        "FirstFrameNS": 1494631
+      },
+      {
+        "LatencyNS": 2780519,
+        "FirstByteNS": 1111971,
+        "FirstFrameNS": 1113213
+      },
+      {
+        "LatencyNS": 3200175,
+        "FirstByteNS": 1080734,
+        "FirstFrameNS": 1081936
+      },
+      {
+        "LatencyNS": 2560428,
+        "FirstByteNS": 1196666,
+        "FirstFrameNS": 1198259
+      },
+      {
+        "LatencyNS": 3646771,
+        "FirstByteNS": 1528452,
+        "FirstFrameNS": 1529925
+      },
+      {
+        "LatencyNS": 2674366,
+        "FirstByteNS": 1506412,
+        "FirstFrameNS": 1507784
+      },
+      {
+        "LatencyNS": 3671937,
+        "FirstByteNS": 1414083,
+        "FirstFrameNS": 1415475
+      },
+      {
+        "LatencyNS": 3726638,
+        "FirstByteNS": 1516460,
+        "FirstFrameNS": 1518113
+      },
+      {
+        "LatencyNS": 2817777,
+        "FirstByteNS": 1532038,
+        "FirstFrameNS": 1533230
+      },
+      {
+        "LatencyNS": 2422666,
+        "FirstByteNS": 1336061,
+        "FirstFrameNS": 1337563
+      },
+      {
+        "LatencyNS": 3894605,
+        "FirstByteNS": 1484171,
+        "FirstFrameNS": 1485644
+      },
+      {
+        "LatencyNS": 2524021,
+        "FirstByteNS": 1503767,
+        "FirstFrameNS": 1505510
+      },
+      {
+        "LatencyNS": 4880335,
+        "FirstByteNS": 1485113,
+        "FirstFrameNS": 1486786
+      },
+      {
+        "LatencyNS": 4134993,
+        "FirstByteNS": 1635437,
+        "FirstFrameNS": 1636970
+      },
+      {
+        "LatencyNS": 5685696,
+        "FirstByteNS": 2072626,
+        "FirstFrameNS": 2074500
+      },
+      {
+        "LatencyNS": 6509090,
+        "FirstByteNS": 1460227,
+        "FirstFrameNS": 1462401
+      },
+      {
+        "LatencyNS": 5381321,
+        "FirstByteNS": 2548726,
+        "FirstFrameNS": 2551371
+      },
+      {
+        "LatencyNS": 7961874,
+        "FirstByteNS": 3112716,
+        "FirstFrameNS": 3115361
+      },
+      {
+        "LatencyNS": 8266160,
+        "FirstByteNS": 3426359,
+        "FirstFrameNS": 3428032
+      },
+      {
+        "LatencyNS": 5762126,
+        "FirstByteNS": 3193774,
+        "FirstFrameNS": 3197030
+      },
+      {
+        "LatencyNS": 6727349,
+        "FirstByteNS": 3399100,
+        "FirstFrameNS": 3401935
+      },
+      {
+        "LatencyNS": 6884827,
+        "FirstByteNS": 3217568,
+        "FirstFrameNS": 3220653
+      },
+      {
+        "LatencyNS": 9693487,
+        "FirstByteNS": 3238716,
+        "FirstFrameNS": 3241662
+      },
+      {
+        "LatencyNS": 8735657,
+        "FirstByteNS": 3444542,
+        "FirstFrameNS": 3448018
+      },
+      {
+        "LatencyNS": 9465961,
+        "FirstByteNS": 3614182,
+        "FirstFrameNS": 3619001
+      },
+      {
+        "LatencyNS": 15371088,
+        "FirstByteNS": 6389862,
+        "FirstFrameNS": 6400111
+      },
+      {
+        "LatencyNS": 13832989,
+        "FirstByteNS": 5418869,
+        "FirstFrameNS": 5423517
+      },
+      {
+        "LatencyNS": 15962599,
+        "FirstByteNS": 6250027,
+        "FirstFrameNS": 6254225
+      },
+      {
+        "LatencyNS": 14341718,
+        "FirstByteNS": 6065891,
+        "FirstFrameNS": 6070970
+      }
+    ],
+    "Recovery": [
+      {
+        "IdleMS": 1.002771,
+        "Metrics": {
+          "Allocated": 52462280,
+          "Heap": 8586064,
+          "PeakHeap": 10770360,
+          "WorkingSet": 66793472,
+          "PeakWorkingSet": 66793472,
+          "Calls": 0,
+          "Allocations": 705049,
+          "GCPauseNS": 649594,
+          "GCCycles": 12,
+          "CPUTimeNS": 428830000,
+          "GCCPUSeconds": 0.055805465000000054,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      },
+      {
+        "IdleMS": 101.863966,
+        "Metrics": {
+          "Allocated": 52477112,
+          "Heap": 8600896,
+          "PeakHeap": 10770360,
+          "WorkingSet": 66793472,
+          "PeakWorkingSet": 66793472,
+          "Calls": 0,
+          "Allocations": 705126,
+          "GCPauseNS": 649594,
+          "GCCycles": 12,
+          "CPUTimeNS": 434996000,
+          "GCCPUSeconds": 0.055805465000000054,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      },
+      {
+        "IdleMS": 500.662064,
+        "Metrics": {
+          "Allocated": 52524488,
+          "Heap": 8648272,
+          "PeakHeap": 10770360,
+          "WorkingSet": 66793472,
+          "PeakWorkingSet": 66793472,
+          "Calls": 0,
+          "Allocations": 705323,
+          "GCPauseNS": 649594,
+          "GCCycles": 12,
+          "CPUTimeNS": 450738000,
+          "GCCPUSeconds": 0.055805465000000054,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      },
+      {
+        "IdleMS": 1001.35792,
+        "Metrics": {
+          "Allocated": 52585368,
+          "Heap": 8709152,
+          "PeakHeap": 10770360,
+          "WorkingSet": 66793472,
+          "PeakWorkingSet": 66793472,
+          "Calls": 0,
+          "Allocations": 705559,
+          "GCPauseNS": 649594,
+          "GCCycles": 12,
+          "CPUTimeNS": 468879000,
+          "GCCPUSeconds": 0.055805465000000054,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      }
+    ]
+  },
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "Phase": "steady",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 2,
+    "Requests": 64,
+    "Stream": true,
+    "ElapsedMS": 974.669588,
+    "Metrics": {
+      "Allocated": 52052400,
+      "Heap": 8705288,
+      "PeakHeap": 10277592,
+      "WorkingSet": 66756608,
+      "PeakWorkingSet": 66797568,
+      "Calls": 0,
+      "Allocations": 705443,
+      "GCPauseNS": 1806621,
+      "GCCycles": 11,
+      "CPUTimeNS": 1188874000,
+      "GCCPUSeconds": 0.12782590100000002,
+      "Goroutines": 15,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "Timeline": [
+        {
+          "ElapsedMS": 8.573501,
+          "Heap": 8990120,
+          "HeapInuse": 11370496,
+          "HeapIdle": 25264128,
+          "HeapReleased": 23003136,
+          "RSS": 66793472,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 28.33541,
+          "Heap": 9985016,
+          "HeapInuse": 12189696,
+          "HeapIdle": 24444928,
+          "HeapReleased": 23003136,
+          "RSS": 66797568,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 48.388101,
+          "Heap": 5463632,
+          "HeapInuse": 9109504,
+          "HeapIdle": 27557888,
+          "HeapReleased": 23592960,
+          "RSS": 66342912,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 68.239844,
+          "Heap": 6692776,
+          "HeapInuse": 9748480,
+          "HeapIdle": 26918912,
+          "HeapReleased": 23592960,
+          "RSS": 66342912,
+          "Goroutines": 17,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 88.730234,
+          "Heap": 7725056,
+          "HeapInuse": 10510336,
+          "HeapIdle": 26124288,
+          "HeapReleased": 23592960,
+          "RSS": 66342912,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 108.236487,
+          "Heap": 8542408,
+          "HeapInuse": 11018240,
+          "HeapIdle": 25616384,
+          "HeapReleased": 23592960,
+          "RSS": 66347008,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 128.33468,
+          "Heap": 8269016,
+          "HeapInuse": 10788864,
+          "HeapIdle": 25845760,
+          "HeapReleased": 23592960,
+          "RSS": 66347008,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 148.582707,
+          "Heap": 6388608,
+          "HeapInuse": 9658368,
+          "HeapIdle": 27009024,
+          "HeapReleased": 23592960,
+          "RSS": 66347008,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 168.411339,
+          "Heap": 8607704,
+          "HeapInuse": 11124736,
+          "HeapIdle": 25542656,
+          "HeapReleased": 23592960,
+          "RSS": 66347008,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 188.046356,
+          "Heap": 10277592,
+          "HeapInuse": 12427264,
+          "HeapIdle": 24141824,
+          "HeapReleased": 23478272,
+          "RSS": 66519040,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 209.017464,
+          "Heap": 6695024,
+          "HeapInuse": 9830400,
+          "HeapIdle": 26804224,
+          "HeapReleased": 23478272,
+          "RSS": 66519040,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 228.388429,
+          "Heap": 7765728,
+          "HeapInuse": 10444800,
+          "HeapIdle": 26189824,
+          "HeapReleased": 23478272,
+          "RSS": 66519040,
+          "Goroutines": 16,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 248.615057,
+          "Heap": 9134936,
+          "HeapInuse": 11436032,
+          "HeapIdle": 25198592,
+          "HeapReleased": 23478272,
+          "RSS": 66519040,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 269.00305,
+          "Heap": 10100744,
+          "HeapInuse": 12165120,
+          "HeapIdle": 24469504,
+          "HeapReleased": 23478272,
+          "RSS": 66519040,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 288.100957,
+          "Heap": 5821720,
+          "HeapInuse": 9732096,
+          "HeapIdle": 26902528,
+          "HeapReleased": 23355392,
+          "RSS": 66560000,
+          "Goroutines": 17,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 308.845822,
+          "Heap": 7168632,
+          "HeapInuse": 10338304,
+          "HeapIdle": 26296320,
+          "HeapReleased": 23347200,
+          "RSS": 66641920,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 328.626585,
+          "Heap": 8000544,
+          "HeapInuse": 10846208,
+          "HeapIdle": 25788416,
+          "HeapReleased": 23347200,
+          "RSS": 66641920,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 348.120194,
+          "Heap": 8921160,
+          "HeapInuse": 11378688,
+          "HeapIdle": 25255936,
+          "HeapReleased": 23306240,
+          "RSS": 66707456,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 368.713503,
+          "Heap": 10095392,
+          "HeapInuse": 12214272,
+          "HeapIdle": 24420352,
+          "HeapReleased": 23248896,
+          "RSS": 66768896,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 388.183438,
+          "Heap": 5860872,
+          "HeapInuse": 9502720,
+          "HeapIdle": 27164672,
+          "HeapReleased": 23552000,
+          "RSS": 66478080,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 408.139653,
+          "Heap": 6941304,
+          "HeapInuse": 9961472,
+          "HeapIdle": 26673152,
+          "HeapReleased": 23576576,
+          "RSS": 66445312,
+          "Goroutines": 17,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 428.434665,
+          "Heap": 7807752,
+          "HeapInuse": 10526720,
+          "HeapIdle": 26107904,
+          "HeapReleased": 23576576,
+          "RSS": 66445312,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 448.475915,
+          "Heap": 8706640,
+          "HeapInuse": 11100160,
+          "HeapIdle": 25534464,
+          "HeapReleased": 23576576,
+          "RSS": 66445312,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 468.65666,
+          "Heap": 9550360,
+          "HeapInuse": 11722752,
+          "HeapIdle": 24911872,
+          "HeapReleased": 23576576,
+          "RSS": 66445312,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 488.79675,
+          "Heap": 5898464,
+          "HeapInuse": 9527296,
+          "HeapIdle": 27140096,
+          "HeapReleased": 23576576,
+          "RSS": 66445312,
+          "Goroutines": 16,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 508.267327,
+          "Heap": 6760880,
+          "HeapInuse": 9854976,
+          "HeapIdle": 26812416,
+          "HeapReleased": 23576576,
+          "RSS": 66445312,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 528.074529,
+          "Heap": 7692472,
+          "HeapInuse": 10444800,
+          "HeapIdle": 26189824,
+          "HeapReleased": 23576576,
+          "RSS": 66457600,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 548.1275,
+          "Heap": 8496792,
+          "HeapInuse": 10952704,
+          "HeapIdle": 25681920,
+          "HeapReleased": 23576576,
+          "RSS": 66457600,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 568.276676,
+          "Heap": 9306688,
+          "HeapInuse": 11509760,
+          "HeapIdle": 25124864,
+          "HeapReleased": 23576576,
+          "RSS": 66457600,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 588.805647,
+          "Heap": 5603064,
+          "HeapInuse": 9609216,
+          "HeapIdle": 27025408,
+          "HeapReleased": 23576576,
+          "RSS": 66498560,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 608.525589,
+          "Heap": 6442248,
+          "HeapInuse": 9797632,
+          "HeapIdle": 26836992,
+          "HeapReleased": 23576576,
+          "RSS": 66506752,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 628.769239,
+          "Heap": 7438968,
+          "HeapInuse": 10264576,
+          "HeapIdle": 26370048,
+          "HeapReleased": 23576576,
+          "RSS": 66506752,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 648.431426,
+          "Heap": 8116032,
+          "HeapInuse": 10739712,
+          "HeapIdle": 25894912,
+          "HeapReleased": 23576576,
+          "RSS": 66506752,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 669.167805,
+          "Heap": 9209928,
+          "HeapInuse": 11509760,
+          "HeapIdle": 25124864,
+          "HeapReleased": 23576576,
+          "RSS": 66506752,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 688.663378,
+          "Heap": 9996032,
+          "HeapInuse": 12083200,
+          "HeapIdle": 24518656,
+          "HeapReleased": 23576576,
+          "RSS": 66506752,
+          "Goroutines": 16,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 708.681185,
+          "Heap": 6073336,
+          "HeapInuse": 9682944,
+          "HeapIdle": 26951680,
+          "HeapReleased": 23576576,
+          "RSS": 66506752,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 729.143313,
+          "Heap": 7098296,
+          "HeapInuse": 9986048,
+          "HeapIdle": 26648576,
+          "HeapReleased": 23576576,
+          "RSS": 66506752,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 748.78902,
+          "Heap": 8043168,
+          "HeapInuse": 10625024,
+          "HeapIdle": 26009600,
+          "HeapReleased": 23576576,
+          "RSS": 66506752,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 769.085225,
+          "Heap": 9030376,
+          "HeapInuse": 11345920,
+          "HeapIdle": 25288704,
+          "HeapReleased": 23396352,
+          "RSS": 66600960,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 788.388808,
+          "Heap": 9806952,
+          "HeapInuse": 11862016,
+          "HeapIdle": 24772608,
+          "HeapReleased": 23396352,
+          "RSS": 66600960,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 808.57935,
+          "Heap": 6069808,
+          "HeapInuse": 9879552,
+          "HeapIdle": 26755072,
+          "HeapReleased": 23363584,
+          "RSS": 66674688,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 828.545692,
+          "Heap": 6847296,
+          "HeapInuse": 10084352,
+          "HeapIdle": 26550272,
+          "HeapReleased": 23363584,
+          "RSS": 66674688,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 848.297564,
+          "Heap": 7688248,
+          "HeapInuse": 10502144,
+          "HeapIdle": 26132480,
+          "HeapReleased": 23363584,
+          "RSS": 66674688,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 868.093956,
+          "Heap": 8622968,
+          "HeapInuse": 11075584,
+          "HeapIdle": 25559040,
+          "HeapReleased": 23363584,
+          "RSS": 66674688,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 888.60857,
+          "Heap": 9585144,
+          "HeapInuse": 11780096,
+          "HeapIdle": 24854528,
+          "HeapReleased": 23363584,
+          "RSS": 66678784,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 908.679263,
+          "Heap": 5822096,
+          "HeapInuse": 9543680,
+          "HeapIdle": 27123712,
+          "HeapReleased": 23363584,
+          "RSS": 66682880,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 928.534764,
+          "Heap": 6725616,
+          "HeapInuse": 9846784,
+          "HeapIdle": 26787840,
+          "HeapReleased": 23363584,
+          "RSS": 66682880,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 948.32253,
+          "Heap": 7669488,
+          "HeapInuse": 10469376,
+          "HeapIdle": 26165248,
+          "HeapReleased": 23363584,
+          "RSS": 66682880,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 968.358109,
+          "Heap": 8317424,
+          "HeapInuse": 10846208,
+          "HeapIdle": 25788416,
+          "HeapReleased": 23363584,
+          "RSS": 66686976,
+          "Goroutines": 16,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 989.077427,
+          "Heap": 8692512,
+          "HeapInuse": 11116544,
+          "HeapIdle": 25518080,
+          "HeapReleased": 23363584,
+          "RSS": 66686976,
+          "Goroutines": 15,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1008.649319,
+          "Heap": 8694416,
+          "HeapInuse": 11116544,
+          "HeapIdle": 25518080,
+          "HeapReleased": 23363584,
+          "RSS": 66686976,
+          "Goroutines": 15,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1028.530056,
+          "Heap": 8708568,
+          "HeapInuse": 11116544,
+          "HeapIdle": 25518080,
+          "HeapReleased": 23363584,
+          "RSS": 66756608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1049.111873,
+          "Heap": 8715560,
+          "HeapInuse": 11116544,
+          "HeapIdle": 25518080,
+          "HeapReleased": 23363584,
+          "RSS": 66756608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1068.510899,
+          "Heap": 8717464,
+          "HeapInuse": 11124736,
+          "HeapIdle": 25509888,
+          "HeapReleased": 23363584,
+          "RSS": 66756608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1088.928887,
+          "Heap": 8719368,
+          "HeapInuse": 11124736,
+          "HeapIdle": 25509888,
+          "HeapReleased": 23363584,
+          "RSS": 66756608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1108.27683,
+          "Heap": 8721272,
+          "HeapInuse": 11124736,
+          "HeapIdle": 25509888,
+          "HeapReleased": 23363584,
+          "RSS": 66756608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1128.087137,
+          "Heap": 8723176,
+          "HeapInuse": 11124736,
+          "HeapIdle": 25509888,
+          "HeapReleased": 23363584,
+          "RSS": 66756608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1148.808419,
+          "Heap": 8730168,
+          "HeapInuse": 11132928,
+          "HeapIdle": 25501696,
+          "HeapReleased": 23363584,
+          "RSS": 66756608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1168.115458,
+          "Heap": 8732072,
+          "HeapInuse": 11132928,
+          "HeapIdle": 25501696,
+          "HeapReleased": 23363584,
+          "RSS": 66756608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1188.65613,
+          "Heap": 8733976,
+          "HeapInuse": 11132928,
+          "HeapIdle": 25501696,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1209.039003,
+          "Heap": 8735880,
+          "HeapInuse": 11132928,
+          "HeapIdle": 25501696,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1228.615654,
+          "Heap": 8737784,
+          "HeapInuse": 11141120,
+          "HeapIdle": 25493504,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1249.050783,
+          "Heap": 8739688,
+          "HeapInuse": 11141120,
+          "HeapIdle": 25493504,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1268.715124,
+          "Heap": 8741592,
+          "HeapInuse": 11141120,
+          "HeapIdle": 25493504,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1289.261977,
+          "Heap": 8743496,
+          "HeapInuse": 11141120,
+          "HeapIdle": 25493504,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1308.892486,
+          "Heap": 8753592,
+          "HeapInuse": 11149312,
+          "HeapIdle": 25485312,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1329.066629,
+          "Heap": 8755496,
+          "HeapInuse": 11149312,
+          "HeapIdle": 25485312,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1348.482186,
+          "Heap": 8757400,
+          "HeapInuse": 11149312,
+          "HeapIdle": 25485312,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1368.898009,
+          "Heap": 8759304,
+          "HeapInuse": 11149312,
+          "HeapIdle": 25485312,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1388.543325,
+          "Heap": 8761208,
+          "HeapInuse": 11149312,
+          "HeapIdle": 25485312,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1408.994554,
+          "Heap": 8763112,
+          "HeapInuse": 11157504,
+          "HeapIdle": 25477120,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1428.604165,
+          "Heap": 8765016,
+          "HeapInuse": 11157504,
+          "HeapIdle": 25477120,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1448.903556,
+          "Heap": 8766920,
+          "HeapInuse": 11165696,
+          "HeapIdle": 25468928,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1468.359116,
+          "Heap": 8768824,
+          "HeapInuse": 11165696,
+          "HeapIdle": 25468928,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1488.808832,
+          "Heap": 8770728,
+          "HeapInuse": 11165696,
+          "HeapIdle": 25468928,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1508.072781,
+          "Heap": 8772632,
+          "HeapInuse": 11165696,
+          "HeapIdle": 25468928,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1528.54607,
+          "Heap": 8774536,
+          "HeapInuse": 11165696,
+          "HeapIdle": 25468928,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1548.649383,
+          "Heap": 8781528,
+          "HeapInuse": 11165696,
+          "HeapIdle": 25468928,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1568.322089,
+          "Heap": 8783432,
+          "HeapInuse": 11173888,
+          "HeapIdle": 25460736,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1588.853153,
+          "Heap": 8785336,
+          "HeapInuse": 11173888,
+          "HeapIdle": 25460736,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1608.255436,
+          "Heap": 8787240,
+          "HeapInuse": 11173888,
+          "HeapIdle": 25460736,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1628.834708,
+          "Heap": 8789144,
+          "HeapInuse": 11173888,
+          "HeapIdle": 25460736,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1648.197879,
+          "Heap": 8791048,
+          "HeapInuse": 11173888,
+          "HeapIdle": 25460736,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1668.781329,
+          "Heap": 8792952,
+          "HeapInuse": 11173888,
+          "HeapIdle": 25460736,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1688.152324,
+          "Heap": 8794856,
+          "HeapInuse": 11173888,
+          "HeapIdle": 25460736,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1708.538684,
+          "Heap": 8796760,
+          "HeapInuse": 11173888,
+          "HeapIdle": 25460736,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1729.035275,
+          "Heap": 8798664,
+          "HeapInuse": 11182080,
+          "HeapIdle": 25452544,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1748.757302,
+          "Heap": 8800568,
+          "HeapInuse": 11190272,
+          "HeapIdle": 25444352,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1768.393481,
+          "Heap": 8802472,
+          "HeapInuse": 11190272,
+          "HeapIdle": 25444352,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1789.234792,
+          "Heap": 8804376,
+          "HeapInuse": 11190272,
+          "HeapIdle": 25444352,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1809.103597,
+          "Heap": 8806280,
+          "HeapInuse": 11190272,
+          "HeapIdle": 25444352,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1828.739095,
+          "Heap": 8808184,
+          "HeapInuse": 11190272,
+          "HeapIdle": 25444352,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1848.053878,
+          "Heap": 8810088,
+          "HeapInuse": 11190272,
+          "HeapIdle": 25444352,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1868.666401,
+          "Heap": 8811992,
+          "HeapInuse": 11190272,
+          "HeapIdle": 25444352,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1889.012377,
+          "Heap": 8813896,
+          "HeapInuse": 11190272,
+          "HeapIdle": 25444352,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1908.564813,
+          "Heap": 8815800,
+          "HeapInuse": 11190272,
+          "HeapIdle": 25444352,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1929.046628,
+          "Heap": 8817704,
+          "HeapInuse": 11198464,
+          "HeapIdle": 25436160,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1948.501386,
+          "Heap": 8819608,
+          "HeapInuse": 11198464,
+          "HeapIdle": 25436160,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1969.0322,
+          "Heap": 8821512,
+          "HeapInuse": 11198464,
+          "HeapIdle": 25436160,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1988.54289,
+          "Heap": 8823416,
+          "HeapInuse": 11198464,
+          "HeapIdle": 25436160,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 2009.063035,
+          "Heap": 8825320,
+          "HeapInuse": 11198464,
+          "HeapIdle": 25436160,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 2028.601947,
+          "Heap": 8827224,
+          "HeapInuse": 11206656,
+          "HeapIdle": 25427968,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        }
+      ],
+      "DroppedSamples": 0
+    },
+    "Before": {
+      "Allocated": 0,
+      "Heap": 8795384,
+      "PeakHeap": 8795384,
+      "WorkingSet": 66793472,
+      "PeakWorkingSet": 66793472,
+      "Calls": 0,
+      "Allocations": 0,
+      "GCPauseNS": 0,
+      "GCCycles": 0,
+      "CPUTimeNS": 0,
+      "GCCPUSeconds": 0,
+      "Goroutines": 15,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "DroppedSamples": 0
+    },
+    "LatencyP50P95P99NS": [
+      14526225,
+      18675715,
+      22251777
+    ],
+    "FirstByteP50P95P99NS": [
+      5770962,
+      7552085,
+      9152359
+    ],
+    "FirstFrameP50P95P99NS": [
+      5775671,
+      7558267,
+      9157378
+    ],
+    "Observations": [
+      {
+        "LatencyNS": 15292215,
+        "FirstByteNS": 6314695,
+        "FirstFrameNS": 6320145
+      },
+      {
+        "LatencyNS": 14565216,
+        "FirstByteNS": 5770962,
+        "FirstFrameNS": 5775671
+      },
+      {
+        "LatencyNS": 18190078,
+        "FirstByteNS": 9152359,
+        "FirstFrameNS": 9157378
+      },
+      {
+        "LatencyNS": 13891636,
+        "FirstByteNS": 5582617,
+        "FirstFrameNS": 5587456
+      },
+      {
+        "LatencyNS": 13524255,
+        "FirstByteNS": 5621518,
+        "FirstFrameNS": 5626277
+      },
+      {
+        "LatencyNS": 14294872,
+        "FirstByteNS": 6252261,
+        "FirstFrameNS": 6256979
+      },
+      {
+        "LatencyNS": 4541616,
+        "FirstByteNS": 2942535,
+        "FirstFrameNS": 2944889
+      },
+      {
+        "LatencyNS": 4637371,
+        "FirstByteNS": 1564227,
+        "FirstFrameNS": 1565099
+      },
+      {
+        "LatencyNS": 2412026,
+        "FirstByteNS": 1408844,
+        "FirstFrameNS": 1410106
+      },
+      {
+        "LatencyNS": 2218813,
+        "FirstByteNS": 1090593,
+        "FirstFrameNS": 1091645
+      },
+      {
+        "LatencyNS": 2900618,
+        "FirstByteNS": 1269168,
+        "FirstFrameNS": 1270460
+      },
+      {
+        "LatencyNS": 5350453,
+        "FirstByteNS": 2170274,
+        "FirstFrameNS": 2172598
+      },
+      {
+        "LatencyNS": 4375543,
+        "FirstByteNS": 1942989,
+        "FirstFrameNS": 1944692
+      },
+      {
+        "LatencyNS": 3083242,
+        "FirstByteNS": 1350096,
+        "FirstFrameNS": 1351990
+      },
+      {
+        "LatencyNS": 4155271,
+        "FirstByteNS": 2601482,
+        "FirstFrameNS": 2603856
+      },
+      {
+        "LatencyNS": 6110712,
+        "FirstByteNS": 2475682,
+        "FirstFrameNS": 2478007
+      },
+      {
+        "LatencyNS": 6105042,
+        "FirstByteNS": 1518714,
+        "FirstFrameNS": 1520798
+      },
+      {
+        "LatencyNS": 7411729,
+        "FirstByteNS": 2871506,
+        "FirstFrameNS": 2873760
+      },
+      {
+        "LatencyNS": 7512082,
+        "FirstByteNS": 3056604,
+        "FirstFrameNS": 3059198
+      },
+      {
+        "LatencyNS": 11097872,
+        "FirstByteNS": 2756044,
+        "FirstFrameNS": 2759911
+      },
+      {
+        "LatencyNS": 11579843,
+        "FirstByteNS": 4207686,
+        "FirstFrameNS": 4211874
+      },
+      {
+        "LatencyNS": 13887679,
+        "FirstByteNS": 4963717,
+        "FirstFrameNS": 4966743
+      },
+      {
+        "LatencyNS": 10505571,
+        "FirstByteNS": 5201963,
+        "FirstFrameNS": 5205539
+      },
+      {
+        "LatencyNS": 7424633,
+        "FirstByteNS": 3022932,
+        "FirstFrameNS": 3027390
+      },
+      {
+        "LatencyNS": 12384443,
+        "FirstByteNS": 4404075,
+        "FirstFrameNS": 4408393
+      },
+      {
+        "LatencyNS": 15105003,
+        "FirstByteNS": 6322009,
+        "FirstFrameNS": 6327128
+      },
+      {
+        "LatencyNS": 17026913,
+        "FirstByteNS": 7552085,
+        "FirstFrameNS": 7558267
+      },
+      {
+        "LatencyNS": 12202010,
+        "FirstByteNS": 4920198,
+        "FirstFrameNS": 4924747
+      },
+      {
+        "LatencyNS": 13263929,
+        "FirstByteNS": 4641869,
+        "FirstFrameNS": 4646417
+      },
+      {
+        "LatencyNS": 15233507,
+        "FirstByteNS": 5597405,
+        "FirstFrameNS": 5601893
+      },
+      {
+        "LatencyNS": 10901614,
+        "FirstByteNS": 4038757,
+        "FirstFrameNS": 4044127
+      },
+      {
+        "LatencyNS": 14161540,
+        "FirstByteNS": 5752980,
+        "FirstFrameNS": 5757398
+      },
+      {
+        "LatencyNS": 18675715,
+        "FirstByteNS": 8042772,
+        "FirstFrameNS": 8048873
+      },
+      {
+        "LatencyNS": 14818920,
+        "FirstByteNS": 5969935,
+        "FirstFrameNS": 5974413
+      },
+      {
+        "LatencyNS": 17701135,
+        "FirstByteNS": 6342416,
+        "FirstFrameNS": 6347154
+      },
+      {
+        "LatencyNS": 15770629,
+        "FirstByteNS": 6203222,
+        "FirstFrameNS": 6208241
+      },
+      {
+        "LatencyNS": 14540612,
+        "FirstByteNS": 5644241,
+        "FirstFrameNS": 5648889
+      },
+      {
+        "LatencyNS": 19244204,
+        "FirstByteNS": 5872227,
+        "FirstFrameNS": 5876955
+      },
+      {
+        "LatencyNS": 17169964,
+        "FirstByteNS": 6915903,
+        "FirstFrameNS": 6922395
+      },
+      {
+        "LatencyNS": 15258923,
+        "FirstByteNS": 6768534,
+        "FirstFrameNS": 6773272
+      },
+      {
+        "LatencyNS": 14283251,
+        "FirstByteNS": 6031267,
+        "FirstFrameNS": 6035635
+      },
+      {
+        "LatencyNS": 16957636,
+        "FirstByteNS": 6654355,
+        "FirstFrameNS": 6658653
+      },
+      {
+        "LatencyNS": 17604177,
+        "FirstByteNS": 6074887,
+        "FirstFrameNS": 6079145
+      },
+      {
+        "LatencyNS": 14373336,
+        "FirstByteNS": 6164461,
+        "FirstFrameNS": 6169430
+      },
+      {
+        "LatencyNS": 14526225,
+        "FirstByteNS": 6259454,
+        "FirstFrameNS": 6264183
+      },
+      {
+        "LatencyNS": 14701666,
+        "FirstByteNS": 6292766,
+        "FirstFrameNS": 6297604
+      },
+      {
+        "LatencyNS": 15004249,
+        "FirstByteNS": 6186812,
+        "FirstFrameNS": 6191721
+      },
+      {
+        "LatencyNS": 13674830,
+        "FirstByteNS": 5407137,
+        "FirstFrameNS": 5412256
+      },
+      {
+        "LatencyNS": 22251777,
+        "FirstByteNS": 5930814,
+        "FirstFrameNS": 5935362
+      },
+      {
+        "LatencyNS": 15775086,
+        "FirstByteNS": 6057235,
+        "FirstFrameNS": 6062013
+      },
+      {
+        "LatencyNS": 14608816,
+        "FirstByteNS": 6129798,
+        "FirstFrameNS": 6134446
+      },
+      {
+        "LatencyNS": 15252682,
+        "FirstByteNS": 6009498,
+        "FirstFrameNS": 6015278
+      },
+      {
+        "LatencyNS": 16260493,
+        "FirstByteNS": 6127613,
+        "FirstFrameNS": 6132262
+      },
+      {
+        "LatencyNS": 14991906,
+        "FirstByteNS": 5448874,
+        "FirstFrameNS": 5453182
+      },
+      {
+        "LatencyNS": 18679021,
+        "FirstByteNS": 5987758,
+        "FirstFrameNS": 5992296
+      },
+      {
+        "LatencyNS": 15375055,
+        "FirstByteNS": 6804429,
+        "FirstFrameNS": 6810120
+      },
+      {
+        "LatencyNS": 14254308,
+        "FirstByteNS": 5356454,
+        "FirstFrameNS": 5361553
+      },
+      {
+        "LatencyNS": 13509948,
+        "FirstByteNS": 5664337,
+        "FirstFrameNS": 5670197
+      },
+      {
+        "LatencyNS": 14983310,
+        "FirstByteNS": 5771824,
+        "FirstFrameNS": 5776121
+      },
+      {
+        "LatencyNS": 16568226,
+        "FirstByteNS": 6247943,
+        "FirstFrameNS": 6252922
+      },
+      {
+        "LatencyNS": 17818179,
+        "FirstByteNS": 8111919,
+        "FirstFrameNS": 8118010
+      },
+      {
+        "LatencyNS": 15432091,
+        "FirstByteNS": 6351763,
+        "FirstFrameNS": 6356282
+      },
+      {
+        "LatencyNS": 15447077,
+        "FirstByteNS": 6209643,
+        "FirstFrameNS": 6213931
+      },
+      {
+        "LatencyNS": 17442703,
+        "FirstByteNS": 6735263,
+        "FirstFrameNS": 6740232
+      }
+    ],
+    "Recovery": [
+      {
+        "IdleMS": 1.135044,
+        "Metrics": {
+          "Allocated": 52059392,
+          "Heap": 8712280,
+          "PeakHeap": 10277592,
+          "WorkingSet": 66756608,
+          "PeakWorkingSet": 66797568,
+          "Calls": 0,
+          "Allocations": 705486,
+          "GCPauseNS": 1806621,
+          "GCCycles": 11,
+          "CPUTimeNS": 1190448000,
+          "GCCPUSeconds": 0.12782590100000002,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      },
+      {
+        "IdleMS": 101.87124,
+        "Metrics": {
+          "Allocated": 52074000,
+          "Heap": 8726888,
+          "PeakHeap": 10277592,
+          "WorkingSet": 66756608,
+          "PeakWorkingSet": 66797568,
+          "Calls": 0,
+          "Allocations": 705561,
+          "GCPauseNS": 1806621,
+          "GCCycles": 11,
+          "CPUTimeNS": 1194566000,
+          "GCCPUSeconds": 0.12782590100000002,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      },
+      {
+        "IdleMS": 501.757165,
+        "Metrics": {
+          "Allocated": 52125360,
+          "Heap": 8778248,
+          "PeakHeap": 10277592,
+          "WorkingSet": 66760704,
+          "PeakWorkingSet": 66797568,
+          "Calls": 0,
+          "Allocations": 705757,
+          "GCPauseNS": 1806621,
+          "GCCycles": 11,
+          "CPUTimeNS": 1209776000,
+          "GCCPUSeconds": 0.12782590100000002,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      },
+      {
+        "IdleMS": 1001.820145,
+        "Metrics": {
+          "Allocated": 52178048,
+          "Heap": 8830936,
+          "PeakHeap": 10277592,
+          "WorkingSet": 66760704,
+          "PeakWorkingSet": 66797568,
+          "Calls": 0,
+          "Allocations": 705992,
+          "GCPauseNS": 1806621,
+          "GCCycles": 11,
+          "CPUTimeNS": 1227311000,
+          "GCCPUSeconds": 0.12782590100000002,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      }
+    ]
+  },
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "Phase": "steady",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 3,
+    "Requests": 64,
+    "Stream": true,
+    "ElapsedMS": 553.342516,
+    "Metrics": {
+      "Allocated": 53241056,
+      "Heap": 7346920,
+      "PeakHeap": 10554656,
+      "WorkingSet": 67543040,
+      "PeakWorkingSet": 67792896,
+      "Calls": 0,
+      "Allocations": 705209,
+      "GCPauseNS": 1146096,
+      "GCCycles": 12,
+      "CPUTimeNS": 633584000,
+      "GCCPUSeconds": 0.07736594799999996,
+      "Goroutines": 15,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "Timeline": [
+        {
+          "ElapsedMS": 14.373767,
+          "Heap": 9488520,
+          "HeapInuse": 11788288,
+          "HeapIdle": 24846336,
+          "HeapReleased": 23363584,
+          "RSS": 66760704,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 34.234487,
+          "Heap": 6667224,
+          "HeapInuse": 9789440,
+          "HeapIdle": 26877952,
+          "HeapReleased": 23224320,
+          "RSS": 66818048,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 53.635196,
+          "Heap": 7627232,
+          "HeapInuse": 10412032,
+          "HeapIdle": 26255360,
+          "HeapReleased": 23748608,
+          "RSS": 66400256,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 73.414247,
+          "Heap": 8731616,
+          "HeapInuse": 11124736,
+          "HeapIdle": 25509888,
+          "HeapReleased": 23748608,
+          "RSS": 66449408,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 93.538909,
+          "Heap": 5780704,
+          "HeapInuse": 9240576,
+          "HeapIdle": 27426816,
+          "HeapReleased": 23748608,
+          "RSS": 66449408,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 113.754607,
+          "Heap": 8062056,
+          "HeapInuse": 10690560,
+          "HeapIdle": 25944064,
+          "HeapReleased": 24100864,
+          "RSS": 66097152,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 133.591944,
+          "Heap": 6553424,
+          "HeapInuse": 9682944,
+          "HeapIdle": 26918912,
+          "HeapReleased": 24100864,
+          "RSS": 66121728,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 153.397784,
+          "Heap": 9523144,
+          "HeapInuse": 11665408,
+          "HeapIdle": 24969216,
+          "HeapReleased": 24100864,
+          "RSS": 66121728,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 173.496869,
+          "Heap": 8076256,
+          "HeapInuse": 10780672,
+          "HeapIdle": 25886720,
+          "HeapReleased": 23822336,
+          "RSS": 66387968,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 193.581227,
+          "Heap": 7486008,
+          "HeapInuse": 10297344,
+          "HeapIdle": 26337280,
+          "HeapReleased": 23822336,
+          "RSS": 66437120,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 213.486919,
+          "Heap": 6491736,
+          "HeapInuse": 9781248,
+          "HeapIdle": 26886144,
+          "HeapReleased": 23920640,
+          "RSS": 66469888,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 233.202594,
+          "Heap": 5543408,
+          "HeapInuse": 9322496,
+          "HeapIdle": 27344896,
+          "HeapReleased": 23732224,
+          "RSS": 66752512,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 253.380583,
+          "Heap": 5339456,
+          "HeapInuse": 8994816,
+          "HeapIdle": 27639808,
+          "HeapReleased": 23453696,
+          "RSS": 66985984,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 273.491911,
+          "Heap": 8572296,
+          "HeapInuse": 10969088,
+          "HeapIdle": 25665536,
+          "HeapReleased": 23453696,
+          "RSS": 66985984,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 294.015271,
+          "Heap": 6658736,
+          "HeapInuse": 9895936,
+          "HeapIdle": 26738688,
+          "HeapReleased": 23453696,
+          "RSS": 67198976,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 313.787659,
+          "Heap": 8958016,
+          "HeapInuse": 11460608,
+          "HeapIdle": 25174016,
+          "HeapReleased": 23347200,
+          "RSS": 67211264,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 334.346735,
+          "Heap": 10554656,
+          "HeapInuse": 12648448,
+          "HeapIdle": 23986176,
+          "HeapReleased": 23347200,
+          "RSS": 67219456,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 353.365176,
+          "Heap": 6420704,
+          "HeapInuse": 9863168,
+          "HeapIdle": 26771456,
+          "HeapReleased": 23027712,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 373.729365,
+          "Heap": 7721736,
+          "HeapInuse": 10534912,
+          "HeapIdle": 26099712,
+          "HeapReleased": 22847488,
+          "RSS": 67723264,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 394.710792,
+          "Heap": 8748656,
+          "HeapInuse": 11247616,
+          "HeapIdle": 25387008,
+          "HeapReleased": 22781952,
+          "RSS": 67788800,
+          "Goroutines": 15,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 413.48647,
+          "Heap": 9705312,
+          "HeapInuse": 11878400,
+          "HeapIdle": 24756224,
+          "HeapReleased": 22781952,
+          "RSS": 67792896,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 434.396206,
+          "Heap": 6195280,
+          "HeapInuse": 9691136,
+          "HeapIdle": 26976256,
+          "HeapReleased": 23175168,
+          "RSS": 67489792,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 453.504842,
+          "Heap": 7226592,
+          "HeapInuse": 10190848,
+          "HeapIdle": 26476544,
+          "HeapReleased": 23175168,
+          "RSS": 67489792,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 473.630225,
+          "Heap": 8222784,
+          "HeapInuse": 10936320,
+          "HeapIdle": 25698304,
+          "HeapReleased": 23175168,
+          "RSS": 67538944,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 494.365843,
+          "Heap": 9273280,
+          "HeapInuse": 11616256,
+          "HeapIdle": 25018368,
+          "HeapReleased": 23175168,
+          "RSS": 67538944,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 515.765745,
+          "Heap": 10214408,
+          "HeapInuse": 12304384,
+          "HeapIdle": 24297472,
+          "HeapReleased": 23175168,
+          "RSS": 67538944,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 533.531527,
+          "Heap": 6057840,
+          "HeapInuse": 9691136,
+          "HeapIdle": 26943488,
+          "HeapReleased": 23175168,
+          "RSS": 67538944,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 553.688398,
+          "Heap": 7314760,
+          "HeapInuse": 10223616,
+          "HeapIdle": 26411008,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 573.519704,
+          "Heap": 7344968,
+          "HeapInuse": 10223616,
+          "HeapIdle": 26411008,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 15,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 593.98582,
+          "Heap": 7355464,
+          "HeapInuse": 10223616,
+          "HeapIdle": 26411008,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 614.369906,
+          "Heap": 7357368,
+          "HeapInuse": 10223616,
+          "HeapIdle": 26411008,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 633.856863,
+          "Heap": 7359272,
+          "HeapInuse": 10223616,
+          "HeapIdle": 26411008,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 654.339438,
+          "Heap": 7361176,
+          "HeapInuse": 10223616,
+          "HeapIdle": 26411008,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 673.723638,
+          "Heap": 7367176,
+          "HeapInuse": 10240000,
+          "HeapIdle": 26394624,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 694.379049,
+          "Heap": 7374168,
+          "HeapInuse": 10240000,
+          "HeapIdle": 26394624,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 714.264945,
+          "Heap": 7376072,
+          "HeapInuse": 10240000,
+          "HeapIdle": 26394624,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 733.707952,
+          "Heap": 7377976,
+          "HeapInuse": 10240000,
+          "HeapIdle": 26394624,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 754.091116,
+          "Heap": 7379880,
+          "HeapInuse": 10240000,
+          "HeapIdle": 26394624,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 774.531915,
+          "Heap": 7381784,
+          "HeapInuse": 10248192,
+          "HeapIdle": 26386432,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 794.148689,
+          "Heap": 7383688,
+          "HeapInuse": 10248192,
+          "HeapIdle": 26386432,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 814.503301,
+          "Heap": 7385592,
+          "HeapInuse": 10248192,
+          "HeapIdle": 26386432,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 833.872493,
+          "Heap": 7387496,
+          "HeapInuse": 10256384,
+          "HeapIdle": 26378240,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 854.400091,
+          "Heap": 7389400,
+          "HeapInuse": 10256384,
+          "HeapIdle": 26378240,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 873.9921,
+          "Heap": 7391304,
+          "HeapInuse": 10256384,
+          "HeapIdle": 26378240,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 894.669992,
+          "Heap": 7393208,
+          "HeapInuse": 10256384,
+          "HeapIdle": 26378240,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 914.281707,
+          "Heap": 7395112,
+          "HeapInuse": 10256384,
+          "HeapIdle": 26378240,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 933.784283,
+          "Heap": 7397016,
+          "HeapInuse": 10256384,
+          "HeapIdle": 26378240,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 954.335634,
+          "Heap": 7398920,
+          "HeapInuse": 10256384,
+          "HeapIdle": 26378240,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 973.796083,
+          "Heap": 7400824,
+          "HeapInuse": 10256384,
+          "HeapIdle": 26378240,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 994.24694,
+          "Heap": 7402728,
+          "HeapInuse": 10256384,
+          "HeapIdle": 26378240,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1013.601946,
+          "Heap": 7404632,
+          "HeapInuse": 10264576,
+          "HeapIdle": 26370048,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1034.026767,
+          "Heap": 7406536,
+          "HeapInuse": 10264576,
+          "HeapIdle": 26370048,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1054.511967,
+          "Heap": 7408440,
+          "HeapInuse": 10264576,
+          "HeapIdle": 26370048,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1073.928405,
+          "Heap": 7410344,
+          "HeapInuse": 10272768,
+          "HeapIdle": 26361856,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1094.441427,
+          "Heap": 7419448,
+          "HeapInuse": 10272768,
+          "HeapIdle": 26361856,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1113.891627,
+          "Heap": 7421352,
+          "HeapInuse": 10272768,
+          "HeapIdle": 26361856,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1134.382938,
+          "Heap": 7423256,
+          "HeapInuse": 10272768,
+          "HeapIdle": 26361856,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1154.045536,
+          "Heap": 7425160,
+          "HeapInuse": 10272768,
+          "HeapIdle": 26361856,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1174.626401,
+          "Heap": 7427064,
+          "HeapInuse": 10280960,
+          "HeapIdle": 26353664,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1194.385936,
+          "Heap": 7428968,
+          "HeapInuse": 10280960,
+          "HeapIdle": 26353664,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1213.941368,
+          "Heap": 7430872,
+          "HeapInuse": 10280960,
+          "HeapIdle": 26353664,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1234.418504,
+          "Heap": 7432776,
+          "HeapInuse": 10280960,
+          "HeapIdle": 26353664,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1254.213043,
+          "Heap": 7434680,
+          "HeapInuse": 10280960,
+          "HeapIdle": 26353664,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1274.372098,
+          "Heap": 7436584,
+          "HeapInuse": 10280960,
+          "HeapIdle": 26353664,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1293.901933,
+          "Heap": 7438488,
+          "HeapInuse": 10280960,
+          "HeapIdle": 26353664,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1314.267996,
+          "Heap": 7448584,
+          "HeapInuse": 10289152,
+          "HeapIdle": 26345472,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1333.663496,
+          "Heap": 7450488,
+          "HeapInuse": 10289152,
+          "HeapIdle": 26345472,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1354.15072,
+          "Heap": 7452392,
+          "HeapInuse": 10305536,
+          "HeapIdle": 26329088,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1373.585361,
+          "Heap": 7454296,
+          "HeapInuse": 10305536,
+          "HeapIdle": 26329088,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1394.281467,
+          "Heap": 7456200,
+          "HeapInuse": 10305536,
+          "HeapIdle": 26329088,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1413.581072,
+          "Heap": 7458104,
+          "HeapInuse": 10305536,
+          "HeapIdle": 26329088,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1434.222899,
+          "Heap": 7460008,
+          "HeapInuse": 10305536,
+          "HeapIdle": 26329088,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1453.623458,
+          "Heap": 7461912,
+          "HeapInuse": 10305536,
+          "HeapIdle": 26329088,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1473.979021,
+          "Heap": 7463816,
+          "HeapInuse": 10305536,
+          "HeapIdle": 26329088,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1494.474601,
+          "Heap": 7465720,
+          "HeapInuse": 10305536,
+          "HeapIdle": 26329088,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1513.924821,
+          "Heap": 7467624,
+          "HeapInuse": 10305536,
+          "HeapIdle": 26329088,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1534.317091,
+          "Heap": 7469528,
+          "HeapInuse": 10313728,
+          "HeapIdle": 26320896,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1553.687736,
+          "Heap": 7471432,
+          "HeapInuse": 10313728,
+          "HeapIdle": 26320896,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1574.241442,
+          "Heap": 7473336,
+          "HeapInuse": 10313728,
+          "HeapIdle": 26320896,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        }
+      ],
+      "DroppedSamples": 0
+    },
+    "Before": {
+      "Allocated": 0,
+      "Heap": 8939264,
+      "PeakHeap": 8939264,
+      "WorkingSet": 66760704,
+      "PeakWorkingSet": 66760704,
+      "Calls": 0,
+      "Allocations": 0,
+      "GCPauseNS": 0,
+      "GCCycles": 0,
+      "CPUTimeNS": 0,
+      "GCCPUSeconds": 0,
+      "Goroutines": 15,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "DroppedSamples": 0
+    },
+    "LatencyP50P95P99NS": [
+      5642296,
+      15414778,
+      18871202
+    ],
+    "FirstByteP50P95P99NS": [
+      2434086,
+      6271757,
+      6875490
+    ],
+    "FirstFrameP50P95P99NS": [
+      2436230,
+      6275985,
+      6880940
+    ],
+    "Observations": [
+      {
+        "LatencyNS": 17850308,
+        "FirstByteNS": 6875490,
+        "FirstFrameNS": 6880940
+      },
+      {
+        "LatencyNS": 4819925,
+        "FirstByteNS": 2551271,
+        "FirstFrameNS": 2552834
+      },
+      {
+        "LatencyNS": 11827546,
+        "FirstByteNS": 1456511,
+        "FirstFrameNS": 1461129
+      },
+      {
+        "LatencyNS": 13097545,
+        "FirstByteNS": 5844436,
+        "FirstFrameNS": 5849986
+      },
+      {
+        "LatencyNS": 10527220,
+        "FirstByteNS": 4298341,
+        "FirstFrameNS": 4302429
+      },
+      {
+        "LatencyNS": 9293727,
+        "FirstByteNS": 4281220,
+        "FirstFrameNS": 4284737
+      },
+      {
+        "LatencyNS": 10795911,
+        "FirstByteNS": 3877824,
+        "FirstFrameNS": 3882002
+      },
+      {
+        "LatencyNS": 7439700,
+        "FirstByteNS": 3121942,
+        "FirstFrameNS": 3125399
+      },
+      {
+        "LatencyNS": 6348307,
+        "FirstByteNS": 2789326,
+        "FirstFrameNS": 2791540
+      },
+      {
+        "LatencyNS": 6223718,
+        "FirstByteNS": 2620587,
+        "FirstFrameNS": 2622851
+      },
+      {
+        "LatencyNS": 6932574,
+        "FirstByteNS": 2434086,
+        "FirstFrameNS": 2436230
+      },
+      {
+        "LatencyNS": 5795597,
+        "FirstByteNS": 2551481,
+        "FirstFrameNS": 2553525
+      },
+      {
+        "LatencyNS": 5282970,
+        "FirstByteNS": 2231286,
+        "FirstFrameNS": 2233520
+      },
+      {
+        "LatencyNS": 4893349,
+        "FirstByteNS": 1961693,
+        "FirstFrameNS": 1963567
+      },
+      {
+        "LatencyNS": 4196646,
+        "FirstByteNS": 1842276,
+        "FirstFrameNS": 1844470
+      },
+      {
+        "LatencyNS": 4278956,
+        "FirstByteNS": 1697290,
+        "FirstFrameNS": 1701718
+      },
+      {
+        "LatencyNS": 5314458,
+        "FirstByteNS": 1788067,
+        "FirstFrameNS": 1789429
+      },
+      {
+        "LatencyNS": 4181739,
+        "FirstByteNS": 1765916,
+        "FirstFrameNS": 1767459
+      },
+      {
+        "LatencyNS": 3867254,
+        "FirstByteNS": 1724570,
+        "FirstFrameNS": 1726233
+      },
+      {
+        "LatencyNS": 3922856,
+        "FirstByteNS": 1656396,
+        "FirstFrameNS": 1658199
+      },
+      {
+        "LatencyNS": 3432150,
+        "FirstByteNS": 1477489,
+        "FirstFrameNS": 1479082
+      },
+      {
+        "LatencyNS": 4331172,
+        "FirstByteNS": 1460168,
+        "FirstFrameNS": 1461510
+      },
+      {
+        "LatencyNS": 3443872,
+        "FirstByteNS": 1463875,
+        "FirstFrameNS": 1465367
+      },
+      {
+        "LatencyNS": 3730124,
+        "FirstByteNS": 1550763,
+        "FirstFrameNS": 1552386
+      },
+      {
+        "LatencyNS": 3606018,
+        "FirstByteNS": 1428149,
+        "FirstFrameNS": 1429492
+      },
+      {
+        "LatencyNS": 3735734,
+        "FirstByteNS": 1535064,
+        "FirstFrameNS": 1536516
+      },
+      {
+        "LatencyNS": 3514340,
+        "FirstByteNS": 1439880,
+        "FirstFrameNS": 1441173
+      },
+      {
+        "LatencyNS": 4549070,
+        "FirstByteNS": 1452995,
+        "FirstFrameNS": 1454327
+      },
+      {
+        "LatencyNS": 2963043,
+        "FirstByteNS": 1424122,
+        "FirstFrameNS": 1425464
+      },
+      {
+        "LatencyNS": 3675433,
+        "FirstByteNS": 1497365,
+        "FirstFrameNS": 1498838
+      },
+      {
+        "LatencyNS": 3368824,
+        "FirstByteNS": 1390500,
+        "FirstFrameNS": 1391842
+      },
+      {
+        "LatencyNS": 2992306,
+        "FirstByteNS": 1095681,
+        "FirstFrameNS": 1097194
+      },
+      {
+        "LatencyNS": 3422552,
+        "FirstByteNS": 1372818,
+        "FirstFrameNS": 1374471
+      },
+      {
+        "LatencyNS": 4379340,
+        "FirstByteNS": 2393663,
+        "FirstFrameNS": 2395005
+      },
+      {
+        "LatencyNS": 4122310,
+        "FirstByteNS": 1617855,
+        "FirstFrameNS": 1619468
+      },
+      {
+        "LatencyNS": 4523172,
+        "FirstByteNS": 1837115,
+        "FirstFrameNS": 1838738
+      },
+      {
+        "LatencyNS": 1867481,
+        "FirstByteNS": 942301,
+        "FirstFrameNS": 944044
+      },
+      {
+        "LatencyNS": 2342889,
+        "FirstByteNS": 1191867,
+        "FirstFrameNS": 1193319
+      },
+      {
+        "LatencyNS": 2364670,
+        "FirstByteNS": 1411579,
+        "FirstFrameNS": 1412400
+      },
+      {
+        "LatencyNS": 4447754,
+        "FirstByteNS": 1766456,
+        "FirstFrameNS": 1768270
+      },
+      {
+        "LatencyNS": 4002832,
+        "FirstByteNS": 1611514,
+        "FirstFrameNS": 1613217
+      },
+      {
+        "LatencyNS": 6058898,
+        "FirstByteNS": 3022431,
+        "FirstFrameNS": 3024936
+      },
+      {
+        "LatencyNS": 5642296,
+        "FirstByteNS": 2559595,
+        "FirstFrameNS": 2561799
+      },
+      {
+        "LatencyNS": 7638112,
+        "FirstByteNS": 2179962,
+        "FirstFrameNS": 2182156
+      },
+      {
+        "LatencyNS": 6054590,
+        "FirstByteNS": 2892604,
+        "FirstFrameNS": 2894708
+      },
+      {
+        "LatencyNS": 6297583,
+        "FirstByteNS": 2550779,
+        "FirstFrameNS": 2553224
+      },
+      {
+        "LatencyNS": 5211921,
+        "FirstByteNS": 2585763,
+        "FirstFrameNS": 2588348
+      },
+      {
+        "LatencyNS": 7720323,
+        "FirstByteNS": 2819691,
+        "FirstFrameNS": 2822687
+      },
+      {
+        "LatencyNS": 7578815,
+        "FirstByteNS": 3473616,
+        "FirstFrameNS": 3477042
+      },
+      {
+        "LatencyNS": 11696175,
+        "FirstByteNS": 4304673,
+        "FirstFrameNS": 4307178
+      },
+      {
+        "LatencyNS": 10334297,
+        "FirstByteNS": 3366349,
+        "FirstFrameNS": 3370096
+      },
+      {
+        "LatencyNS": 8862609,
+        "FirstByteNS": 4600834,
+        "FirstFrameNS": 4604711
+      },
+      {
+        "LatencyNS": 10991879,
+        "FirstByteNS": 4379349,
+        "FirstFrameNS": 4383707
+      },
+      {
+        "LatencyNS": 14836392,
+        "FirstByteNS": 5356695,
+        "FirstFrameNS": 5362305
+      },
+      {
+        "LatencyNS": 12714115,
+        "FirstByteNS": 5525363,
+        "FirstFrameNS": 5530582
+      },
+      {
+        "LatencyNS": 9753978,
+        "FirstByteNS": 5000144,
+        "FirstFrameNS": 5004192
+      },
+      {
+        "LatencyNS": 11475112,
+        "FirstByteNS": 6271757,
+        "FirstFrameNS": 6275985
+      },
+      {
+        "LatencyNS": 10191086,
+        "FirstByteNS": 5526285,
+        "FirstFrameNS": 5531555
+      },
+      {
+        "LatencyNS": 16100250,
+        "FirstByteNS": 6280863,
+        "FirstFrameNS": 6284931
+      },
+      {
+        "LatencyNS": 15082200,
+        "FirstByteNS": 5836822,
+        "FirstFrameNS": 5841190
+      },
+      {
+        "LatencyNS": 14293981,
+        "FirstByteNS": 5947344,
+        "FirstFrameNS": 5952193
+      },
+      {
+        "LatencyNS": 18871202,
+        "FirstByteNS": 6277056,
+        "FirstFrameNS": 6283037
+      },
+      {
+        "LatencyNS": 15414778,
+        "FirstByteNS": 6065930,
+        "FirstFrameNS": 6071040
+      },
+      {
+        "LatencyNS": 11883268,
+        "FirstByteNS": 6025868,
+        "FirstFrameNS": 6030616
+      }
+    ],
+    "Recovery": [
+      {
+        "IdleMS": 1.197448,
+        "Metrics": {
+          "Allocated": 53246320,
+          "Heap": 7352184,
+          "PeakHeap": 10554656,
+          "WorkingSet": 67543040,
+          "PeakWorkingSet": 67792896,
+          "Calls": 0,
+          "Allocations": 705246,
+          "GCPauseNS": 1146096,
+          "GCCycles": 12,
+          "CPUTimeNS": 634700000,
+          "GCCPUSeconds": 0.07736594799999996,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      },
+      {
+        "IdleMS": 101.914058,
+        "Metrics": {
+          "Allocated": 53265024,
+          "Heap": 7370888,
+          "PeakHeap": 10554656,
+          "WorkingSet": 67543040,
+          "PeakWorkingSet": 67792896,
+          "Calls": 0,
+          "Allocations": 705322,
+          "GCPauseNS": 1146096,
+          "GCCycles": 12,
+          "CPUTimeNS": 639230000,
+          "GCCPUSeconds": 0.07736594799999996,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      },
+      {
+        "IdleMS": 501.719897,
+        "Metrics": {
+          "Allocated": 53310304,
+          "Heap": 7416168,
+          "PeakHeap": 10554656,
+          "WorkingSet": 67543040,
+          "PeakWorkingSet": 67792896,
+          "Calls": 0,
+          "Allocations": 705519,
+          "GCPauseNS": 1146096,
+          "GCCycles": 12,
+          "CPUTimeNS": 653850000,
+          "GCCPUSeconds": 0.07736594799999996,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      },
+      {
+        "IdleMS": 1002.025389,
+        "Metrics": {
+          "Allocated": 53371232,
+          "Heap": 7477096,
+          "PeakHeap": 10554656,
+          "WorkingSet": 67543040,
+          "PeakWorkingSet": 67792896,
+          "Calls": 0,
+          "Allocations": 705756,
+          "GCPauseNS": 1146096,
+          "GCCycles": 12,
+          "CPUTimeNS": 672056000,
+          "GCCPUSeconds": 0.07736594799999996,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      }
+    ]
+  },
+  {
+    "Mode": "measure",
+    "Workload": "small",
+    "Phase": "steady",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 4,
+    "Requests": 64,
+    "Stream": true,
+    "ElapsedMS": 744.412816,
+    "Metrics": {
+      "Allocated": 51800368,
+      "Heap": 6697992,
+      "PeakHeap": 10089760,
+      "WorkingSet": 67780608,
+      "PeakWorkingSet": 67780608,
+      "Calls": 0,
+      "Allocations": 705226,
+      "GCPauseNS": 1105561,
+      "GCCycles": 11,
+      "CPUTimeNS": 878163000,
+      "GCCPUSeconds": 0.09247587800000001,
+      "Goroutines": 15,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "Timeline": [
+        {
+          "ElapsedMS": 10.631962,
+          "Heap": 8020760,
+          "HeapInuse": 10780672,
+          "HeapIdle": 25853952,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 31.399538,
+          "Heap": 9118120,
+          "HeapInuse": 11550720,
+          "HeapIdle": 25083904,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 51.036209,
+          "Heap": 9940992,
+          "HeapInuse": 12148736,
+          "HeapIdle": 24485888,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 71.084461,
+          "Heap": 6077096,
+          "HeapInuse": 9560064,
+          "HeapIdle": 27041792,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 90.430531,
+          "Heap": 6853912,
+          "HeapInuse": 9846784,
+          "HeapIdle": 26722304,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 110.758794,
+          "Heap": 7757040,
+          "HeapInuse": 10379264,
+          "HeapIdle": 26189824,
+          "HeapReleased": 23035904,
+          "RSS": 67543040,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 130.281036,
+          "Heap": 9502264,
+          "HeapInuse": 11657216,
+          "HeapIdle": 24879104,
+          "HeapReleased": 23035904,
+          "RSS": 67579904,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 150.518293,
+          "Heap": 7557632,
+          "HeapInuse": 10469376,
+          "HeapIdle": 26099712,
+          "HeapReleased": 23363584,
+          "RSS": 67252224,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 171.091675,
+          "Heap": 9234440,
+          "HeapInuse": 11608064,
+          "HeapIdle": 24961024,
+          "HeapReleased": 23363584,
+          "RSS": 67252224,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 190.834289,
+          "Heap": 8944672,
+          "HeapInuse": 12132352,
+          "HeapIdle": 24403968,
+          "HeapReleased": 23363584,
+          "RSS": 67280896,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 210.433832,
+          "Heap": 6577944,
+          "HeapInuse": 9838592,
+          "HeapIdle": 26730496,
+          "HeapReleased": 23363584,
+          "RSS": 67284992,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 230.533938,
+          "Heap": 7484400,
+          "HeapInuse": 10387456,
+          "HeapIdle": 26181632,
+          "HeapReleased": 23363584,
+          "RSS": 67284992,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 250.598731,
+          "Heap": 8364872,
+          "HeapInuse": 10977280,
+          "HeapIdle": 25559040,
+          "HeapReleased": 23363584,
+          "RSS": 67284992,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 270.373213,
+          "Heap": 9615504,
+          "HeapInuse": 11804672,
+          "HeapIdle": 24731648,
+          "HeapReleased": 23363584,
+          "RSS": 67284992,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 290.558286,
+          "Heap": 6335072,
+          "HeapInuse": 9674752,
+          "HeapIdle": 26861568,
+          "HeapReleased": 23117824,
+          "RSS": 67584000,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 310.920441,
+          "Heap": 7265712,
+          "HeapInuse": 10215424,
+          "HeapIdle": 26320896,
+          "HeapReleased": 23117824,
+          "RSS": 67584000,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 331.155235,
+          "Heap": 8280136,
+          "HeapInuse": 10911744,
+          "HeapIdle": 25624576,
+          "HeapReleased": 23117824,
+          "RSS": 67584000,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 350.390582,
+          "Heap": 9095744,
+          "HeapInuse": 11452416,
+          "HeapIdle": 25083904,
+          "HeapReleased": 23117824,
+          "RSS": 67584000,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 370.578409,
+          "Heap": 10078736,
+          "HeapInuse": 12230656,
+          "HeapIdle": 24305664,
+          "HeapReleased": 23117824,
+          "RSS": 67584000,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 390.764193,
+          "Heap": 5828776,
+          "HeapInuse": 9740288,
+          "HeapIdle": 26828800,
+          "HeapReleased": 23003136,
+          "RSS": 67698688,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 410.2784,
+          "Heap": 6815384,
+          "HeapInuse": 10018816,
+          "HeapIdle": 26517504,
+          "HeapReleased": 22986752,
+          "RSS": 67715072,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 431.021481,
+          "Heap": 7590360,
+          "HeapInuse": 10436608,
+          "HeapIdle": 26099712,
+          "HeapReleased": 22986752,
+          "RSS": 67715072,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 450.408035,
+          "Heap": 8394856,
+          "HeapInuse": 10960896,
+          "HeapIdle": 25575424,
+          "HeapReleased": 22970368,
+          "RSS": 67731456,
+          "Goroutines": 16,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 470.483256,
+          "Heap": 9270872,
+          "HeapInuse": 11550720,
+          "HeapIdle": 24985600,
+          "HeapReleased": 22970368,
+          "RSS": 67743744,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 490.348134,
+          "Heap": 10089760,
+          "HeapInuse": 12132352,
+          "HeapIdle": 24403968,
+          "HeapReleased": 22970368,
+          "RSS": 67743744,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 510.395003,
+          "Heap": 5629184,
+          "HeapInuse": 9609216,
+          "HeapIdle": 26959872,
+          "HeapReleased": 23232512,
+          "RSS": 67579904,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 530.6703,
+          "Heap": 6810344,
+          "HeapInuse": 10100736,
+          "HeapIdle": 26435584,
+          "HeapReleased": 23232512,
+          "RSS": 67620864,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 550.7609,
+          "Heap": 7768544,
+          "HeapInuse": 10649600,
+          "HeapIdle": 25886720,
+          "HeapReleased": 23232512,
+          "RSS": 67620864,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 570.449205,
+          "Heap": 8739192,
+          "HeapInuse": 11280384,
+          "HeapIdle": 25255936,
+          "HeapReleased": 23232512,
+          "RSS": 67620864,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 590.726436,
+          "Heap": 9535112,
+          "HeapInuse": 11812864,
+          "HeapIdle": 24723456,
+          "HeapReleased": 23232512,
+          "RSS": 67620864,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 610.765491,
+          "Heap": 5912984,
+          "HeapInuse": 9510912,
+          "HeapIdle": 27058176,
+          "HeapReleased": 23232512,
+          "RSS": 67624960,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 630.333115,
+          "Heap": 7088696,
+          "HeapInuse": 10108928,
+          "HeapIdle": 26427392,
+          "HeapReleased": 23232512,
+          "RSS": 67624960,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 650.319024,
+          "Heap": 9767736,
+          "HeapInuse": 11927552,
+          "HeapIdle": 24608768,
+          "HeapReleased": 23232512,
+          "RSS": 67624960,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 670.346368,
+          "Heap": 7745424,
+          "HeapInuse": 10543104,
+          "HeapIdle": 26025984,
+          "HeapReleased": 23232512,
+          "RSS": 67624960,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 690.576272,
+          "Heap": 6509752,
+          "HeapInuse": 9895936,
+          "HeapIdle": 26640384,
+          "HeapReleased": 23166976,
+          "RSS": 67706880,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 710.710862,
+          "Heap": 9172664,
+          "HeapInuse": 11534336,
+          "HeapIdle": 25001984,
+          "HeapReleased": 23166976,
+          "RSS": 67710976,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 730.359835,
+          "Heap": 7862608,
+          "HeapInuse": 10633216,
+          "HeapIdle": 25870336,
+          "HeapReleased": 23166976,
+          "RSS": 67719168,
+          "Goroutines": 15,
+          "ActiveRequests": 1
+        },
+        {
+          "ElapsedMS": 750.233859,
+          "Heap": 6669760,
+          "HeapInuse": 9846784,
+          "HeapIdle": 26624000,
+          "HeapReleased": 23166976,
+          "RSS": 67776512,
+          "Goroutines": 15,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 770.665662,
+          "Heap": 6671664,
+          "HeapInuse": 9854976,
+          "HeapIdle": 26615808,
+          "HeapReleased": 23166976,
+          "RSS": 67776512,
+          "Goroutines": 15,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 790.42168,
+          "Heap": 6706344,
+          "HeapInuse": 9854976,
+          "HeapIdle": 26648576,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 810.679485,
+          "Heap": 6708248,
+          "HeapInuse": 9854976,
+          "HeapIdle": 26648576,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 830.879245,
+          "Heap": 6710152,
+          "HeapInuse": 9854976,
+          "HeapIdle": 26648576,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 851.101956,
+          "Heap": 6712056,
+          "HeapInuse": 9854976,
+          "HeapIdle": 26648576,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 870.316585,
+          "Heap": 6713960,
+          "HeapInuse": 9854976,
+          "HeapIdle": 26648576,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 890.072804,
+          "Heap": 6717696,
+          "HeapInuse": 9854976,
+          "HeapIdle": 26648576,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 15,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 910.292299,
+          "Heap": 6723032,
+          "HeapInuse": 9871360,
+          "HeapIdle": 26632192,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 930.666677,
+          "Heap": 6724936,
+          "HeapInuse": 9871360,
+          "HeapIdle": 26632192,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 951.113027,
+          "Heap": 6726840,
+          "HeapInuse": 9871360,
+          "HeapIdle": 26632192,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 970.469335,
+          "Heap": 6728744,
+          "HeapInuse": 9871360,
+          "HeapIdle": 26632192,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 991.178896,
+          "Heap": 6730648,
+          "HeapInuse": 9871360,
+          "HeapIdle": 26632192,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1010.771836,
+          "Heap": 6732552,
+          "HeapInuse": 9871360,
+          "HeapIdle": 26632192,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1030.823004,
+          "Heap": 6734456,
+          "HeapInuse": 9879552,
+          "HeapIdle": 26624000,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1051.156467,
+          "Heap": 6736360,
+          "HeapInuse": 9879552,
+          "HeapIdle": 26624000,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1070.636622,
+          "Heap": 6738264,
+          "HeapInuse": 9879552,
+          "HeapIdle": 26624000,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1091.305658,
+          "Heap": 6740168,
+          "HeapInuse": 9879552,
+          "HeapIdle": 26624000,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1110.85544,
+          "Heap": 6742072,
+          "HeapInuse": 9879552,
+          "HeapIdle": 26624000,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1131.454719,
+          "Heap": 6743976,
+          "HeapInuse": 9879552,
+          "HeapIdle": 26624000,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1151.155256,
+          "Heap": 6745880,
+          "HeapInuse": 9879552,
+          "HeapIdle": 26624000,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1170.585419,
+          "Heap": 6747784,
+          "HeapInuse": 9879552,
+          "HeapIdle": 26624000,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1191.247973,
+          "Heap": 6749688,
+          "HeapInuse": 9879552,
+          "HeapIdle": 26624000,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1210.71825,
+          "Heap": 6751592,
+          "HeapInuse": 9879552,
+          "HeapIdle": 26624000,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1231.07744,
+          "Heap": 6753496,
+          "HeapInuse": 9879552,
+          "HeapIdle": 26624000,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1250.949571,
+          "Heap": 6755400,
+          "HeapInuse": 9887744,
+          "HeapIdle": 26615808,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1270.462225,
+          "Heap": 6757304,
+          "HeapInuse": 9887744,
+          "HeapIdle": 26615808,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1290.841311,
+          "Heap": 6761040,
+          "HeapInuse": 9887744,
+          "HeapIdle": 26615808,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 15,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1310.370125,
+          "Heap": 6774392,
+          "HeapInuse": 9912320,
+          "HeapIdle": 26591232,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1331.098259,
+          "Heap": 6776296,
+          "HeapInuse": 9912320,
+          "HeapIdle": 26591232,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1350.283946,
+          "Heap": 6778200,
+          "HeapInuse": 9912320,
+          "HeapIdle": 26591232,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1370.777642,
+          "Heap": 6780104,
+          "HeapInuse": 9912320,
+          "HeapIdle": 26591232,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1391.194808,
+          "Heap": 6782008,
+          "HeapInuse": 9912320,
+          "HeapIdle": 26591232,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1410.578216,
+          "Heap": 6783912,
+          "HeapInuse": 9912320,
+          "HeapIdle": 26591232,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1431.09305,
+          "Heap": 6785816,
+          "HeapInuse": 9912320,
+          "HeapIdle": 26591232,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1450.92637,
+          "Heap": 6787720,
+          "HeapInuse": 9912320,
+          "HeapIdle": 26591232,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1471.259613,
+          "Heap": 6789624,
+          "HeapInuse": 9912320,
+          "HeapIdle": 26591232,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1491.081261,
+          "Heap": 6791528,
+          "HeapInuse": 9912320,
+          "HeapIdle": 26591232,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1510.936521,
+          "Heap": 6793432,
+          "HeapInuse": 9912320,
+          "HeapIdle": 26591232,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1530.579143,
+          "Heap": 6795336,
+          "HeapInuse": 9912320,
+          "HeapIdle": 26591232,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1551.379048,
+          "Heap": 6797240,
+          "HeapInuse": 9912320,
+          "HeapIdle": 26591232,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1571.008295,
+          "Heap": 6799144,
+          "HeapInuse": 9912320,
+          "HeapIdle": 26591232,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1590.422388,
+          "Heap": 6801048,
+          "HeapInuse": 9920512,
+          "HeapIdle": 26583040,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1611.080465,
+          "Heap": 6802952,
+          "HeapInuse": 9928704,
+          "HeapIdle": 26574848,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1630.472148,
+          "Heap": 6804856,
+          "HeapInuse": 9928704,
+          "HeapIdle": 26574848,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1651.196866,
+          "Heap": 6806760,
+          "HeapInuse": 9928704,
+          "HeapIdle": 26574848,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1670.702757,
+          "Heap": 6808664,
+          "HeapInuse": 9928704,
+          "HeapIdle": 26574848,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1690.410017,
+          "Heap": 6810568,
+          "HeapInuse": 9928704,
+          "HeapIdle": 26574848,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1711.001181,
+          "Heap": 6812472,
+          "HeapInuse": 9928704,
+          "HeapIdle": 26574848,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1730.289725,
+          "Heap": 6814376,
+          "HeapInuse": 9928704,
+          "HeapIdle": 26574848,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1750.750391,
+          "Heap": 6816280,
+          "HeapInuse": 9928704,
+          "HeapIdle": 26574848,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1771.133736,
+          "Heap": 6818184,
+          "HeapInuse": 9936896,
+          "HeapIdle": 26566656,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 14,
+          "ActiveRequests": 0
+        },
+        {
+          "ElapsedMS": 1790.733459,
+          "Heap": 6822024,
+          "HeapInuse": 9936896,
+          "HeapIdle": 26566656,
+          "HeapReleased": 23166976,
+          "RSS": 67780608,
+          "Goroutines": 15,
+          "ActiveRequests": 0
+        }
+      ],
+      "DroppedSamples": 0
+    },
+    "Before": {
+      "Allocated": 0,
+      "Heap": 7578768,
+      "PeakHeap": 7578768,
+      "WorkingSet": 67543040,
+      "PeakWorkingSet": 67543040,
+      "Calls": 0,
+      "Allocations": 0,
+      "GCPauseNS": 0,
+      "GCCycles": 0,
+      "CPUTimeNS": 0,
+      "GCCPUSeconds": 0,
+      "Goroutines": 15,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "DroppedSamples": 0
+    },
+    "LatencyP50P95P99NS": [
+      8520435,
+      17578281,
+      18899253
+    ],
+    "FirstByteP50P95P99NS": [
+      3114459,
+      6638356,
+      7442375
+    ],
+    "FirstFrameP50P95P99NS": [
+      3117084,
+      6644658,
+      7446302
+    ],
+    "Observations": [
+      {
+        "LatencyNS": 14372534,
+        "FirstByteNS": 5883858,
+        "FirstFrameNS": 5888887
+      },
+      {
+        "LatencyNS": 13500932,
+        "FirstByteNS": 5657034,
+        "FirstFrameNS": 5662564
+      },
+      {
+        "LatencyNS": 14026622,
+        "FirstByteNS": 5718325,
+        "FirstFrameNS": 5722834
+      },
+      {
+        "LatencyNS": 18899253,
+        "FirstByteNS": 6713814,
+        "FirstFrameNS": 6718783
+      },
+      {
+        "LatencyNS": 14310200,
+        "FirstByteNS": 5667443,
+        "FirstFrameNS": 5672622
+      },
+      {
+        "LatencyNS": 13595365,
+        "FirstByteNS": 5884019,
+        "FirstFrameNS": 5889369
+      },
+      {
+        "LatencyNS": 14030870,
+        "FirstByteNS": 6476320,
+        "FirstFrameNS": 6482221
+      },
+      {
+        "LatencyNS": 3132493,
+        "FirstByteNS": 1952106,
+        "FirstFrameNS": 1954300
+      },
+      {
+        "LatencyNS": 5856458,
+        "FirstByteNS": 2128488,
+        "FirstFrameNS": 2130652
+      },
+      {
+        "LatencyNS": 6697595,
+        "FirstByteNS": 2067487,
+        "FirstFrameNS": 2070112
+      },
+      {
+        "LatencyNS": 3095274,
+        "FirstByteNS": 1913716,
+        "FirstFrameNS": 1916110
+      },
+      {
+        "LatencyNS": 4852654,
+        "FirstByteNS": 1665342,
+        "FirstFrameNS": 1667275
+      },
+      {
+        "LatencyNS": 5025330,
+        "FirstByteNS": 2056967,
+        "FirstFrameNS": 2060975
+      },
+      {
+        "LatencyNS": 8520435,
+        "FirstByteNS": 2119131,
+        "FirstFrameNS": 2120995
+      },
+      {
+        "LatencyNS": 14266040,
+        "FirstByteNS": 6006341,
+        "FirstFrameNS": 6010699
+      },
+      {
+        "LatencyNS": 16708030,
+        "FirstByteNS": 6638356,
+        "FirstFrameNS": 6644658
+      },
+      {
+        "LatencyNS": 16268638,
+        "FirstByteNS": 5754562,
+        "FirstFrameNS": 5760232
+      },
+      {
+        "LatencyNS": 15035045,
+        "FirstByteNS": 6201288,
+        "FirstFrameNS": 6206197
+      },
+      {
+        "LatencyNS": 16320112,
+        "FirstByteNS": 6064809,
+        "FirstFrameNS": 6099111
+      },
+      {
+        "LatencyNS": 9858358,
+        "FirstByteNS": 5495037,
+        "FirstFrameNS": 5499155
+      },
+      {
+        "LatencyNS": 7217534,
+        "FirstByteNS": 3114459,
+        "FirstFrameNS": 3117084
+      },
+      {
+        "LatencyNS": 7640055,
+        "FirstByteNS": 3028822,
+        "FirstFrameNS": 3030164
+      },
+      {
+        "LatencyNS": 14954829,
+        "FirstByteNS": 4355577,
+        "FirstFrameNS": 4359995
+      },
+      {
+        "LatencyNS": 17421975,
+        "FirstByteNS": 6927354,
+        "FirstFrameNS": 6932344
+      },
+      {
+        "LatencyNS": 15720457,
+        "FirstByteNS": 5972310,
+        "FirstFrameNS": 5977389
+      },
+      {
+        "LatencyNS": 16087848,
+        "FirstByteNS": 5891963,
+        "FirstFrameNS": 5896832
+      },
+      {
+        "LatencyNS": 15212689,
+        "FirstByteNS": 5591845,
+        "FirstFrameNS": 5595932
+      },
+      {
+        "LatencyNS": 17750415,
+        "FirstByteNS": 5464432,
+        "FirstFrameNS": 5469020
+      },
+      {
+        "LatencyNS": 13483962,
+        "FirstByteNS": 5416605,
+        "FirstFrameNS": 5421404
+      },
+      {
+        "LatencyNS": 15198924,
+        "FirstByteNS": 6054459,
+        "FirstFrameNS": 6059468
+      },
+      {
+        "LatencyNS": 15247803,
+        "FirstByteNS": 5809141,
+        "FirstFrameNS": 5813710
+      },
+      {
+        "LatencyNS": 15794532,
+        "FirstByteNS": 6576093,
+        "FirstFrameNS": 6583376
+      },
+      {
+        "LatencyNS": 14677882,
+        "FirstByteNS": 5939860,
+        "FirstFrameNS": 5944619
+      },
+      {
+        "LatencyNS": 17974143,
+        "FirstByteNS": 6427030,
+        "FirstFrameNS": 6431749
+      },
+      {
+        "LatencyNS": 16130536,
+        "FirstByteNS": 6618871,
+        "FirstFrameNS": 6624972
+      },
+      {
+        "LatencyNS": 15178307,
+        "FirstByteNS": 5687500,
+        "FirstFrameNS": 5692218
+      },
+      {
+        "LatencyNS": 15726307,
+        "FirstByteNS": 6122183,
+        "FirstFrameNS": 6126431
+      },
+      {
+        "LatencyNS": 15700451,
+        "FirstByteNS": 5564876,
+        "FirstFrameNS": 5570166
+      },
+      {
+        "LatencyNS": 16245726,
+        "FirstByteNS": 6349128,
+        "FirstFrameNS": 6353746
+      },
+      {
+        "LatencyNS": 17578281,
+        "FirstByteNS": 7442375,
+        "FirstFrameNS": 7446302
+      },
+      {
+        "LatencyNS": 9044862,
+        "FirstByteNS": 4846733,
+        "FirstFrameNS": 4850931
+      },
+      {
+        "LatencyNS": 5337340,
+        "FirstByteNS": 2009571,
+        "FirstFrameNS": 2011845
+      },
+      {
+        "LatencyNS": 5076253,
+        "FirstByteNS": 2021363,
+        "FirstFrameNS": 2023617
+      },
+      {
+        "LatencyNS": 5048202,
+        "FirstByteNS": 2025720,
+        "FirstFrameNS": 2026712
+      },
+      {
+        "LatencyNS": 5108511,
+        "FirstByteNS": 1959038,
+        "FirstFrameNS": 1960902
+      },
+      {
+        "LatencyNS": 5833466,
+        "FirstByteNS": 3095935,
+        "FirstFrameNS": 3097819
+      },
+      {
+        "LatencyNS": 3296802,
+        "FirstByteNS": 1277042,
+        "FirstFrameNS": 1278916
+      },
+      {
+        "LatencyNS": 5160857,
+        "FirstByteNS": 1905291,
+        "FirstFrameNS": 1907094
+      },
+      {
+        "LatencyNS": 5643499,
+        "FirstByteNS": 2091540,
+        "FirstFrameNS": 2138556
+      },
+      {
+        "LatencyNS": 4738455,
+        "FirstByteNS": 1912653,
+        "FirstFrameNS": 1914827
+      },
+      {
+        "LatencyNS": 3818395,
+        "FirstByteNS": 1951405,
+        "FirstFrameNS": 1953338
+      },
+      {
+        "LatencyNS": 3958821,
+        "FirstByteNS": 2315289,
+        "FirstFrameNS": 2317603
+      },
+      {
+        "LatencyNS": 4882349,
+        "FirstByteNS": 2023396,
+        "FirstFrameNS": 2025059
+      },
+      {
+        "LatencyNS": 5507721,
+        "FirstByteNS": 2205078,
+        "FirstFrameNS": 2206761
+      },
+      {
+        "LatencyNS": 3053027,
+        "FirstByteNS": 1714172,
+        "FirstFrameNS": 1716095
+      },
+      {
+        "LatencyNS": 4798205,
+        "FirstByteNS": 1914888,
+        "FirstFrameNS": 1916581
+      },
+      {
+        "LatencyNS": 4489641,
+        "FirstByteNS": 1733065,
+        "FirstFrameNS": 1734087
+      },
+      {
+        "LatencyNS": 3242974,
+        "FirstByteNS": 2085219,
+        "FirstFrameNS": 2086662
+      },
+      {
+        "LatencyNS": 2689623,
+        "FirstByteNS": 1236859,
+        "FirstFrameNS": 1238121
+      },
+      {
+        "LatencyNS": 2999239,
+        "FirstByteNS": 1362358,
+        "FirstFrameNS": 1363891
+      },
+      {
+        "LatencyNS": 2393883,
+        "FirstByteNS": 1110528,
+        "FirstFrameNS": 1112111
+      },
+      {
+        "LatencyNS": 3939877,
+        "FirstByteNS": 1321344,
+        "FirstFrameNS": 1322856
+      },
+      {
+        "LatencyNS": 3926663,
+        "FirstByteNS": 1343484,
+        "FirstFrameNS": 1345237
+      },
+      {
+        "LatencyNS": 3109530,
+        "FirstByteNS": 1122771,
+        "FirstFrameNS": 1124344
+      }
+    ],
+    "Recovery": [
+      {
+        "IdleMS": 0.314144,
+        "Metrics": {
+          "Allocated": 51805440,
+          "Heap": 6703064,
+          "PeakHeap": 10089760,
+          "WorkingSet": 67780608,
+          "PeakWorkingSet": 67780608,
+          "Calls": 0,
+          "Allocations": 705261,
+          "GCPauseNS": 1105561,
+          "GCCycles": 11,
+          "CPUTimeNS": 878420000,
+          "GCCPUSeconds": 0.09247587800000001,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      },
+      {
+        "IdleMS": 100.994097,
+        "Metrics": {
+          "Allocated": 51820048,
+          "Heap": 6717672,
+          "PeakHeap": 10089760,
+          "WorkingSet": 67780608,
+          "PeakWorkingSet": 67780608,
+          "Calls": 0,
+          "Allocations": 705336,
+          "GCPauseNS": 1105561,
+          "GCCycles": 11,
+          "CPUTimeNS": 879837000,
+          "GCCPUSeconds": 0.09247587800000001,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      },
+      {
+        "IdleMS": 502.188342,
+        "Metrics": {
+          "Allocated": 51863392,
+          "Heap": 6761016,
+          "PeakHeap": 10089760,
+          "WorkingSet": 67780608,
+          "PeakWorkingSet": 67780608,
+          "Calls": 0,
+          "Allocations": 705533,
+          "GCPauseNS": 1105561,
+          "GCCycles": 11,
+          "CPUTimeNS": 899326000,
+          "GCCPUSeconds": 0.09247587800000001,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      },
+      {
+        "IdleMS": 1002.039705,
+        "Metrics": {
+          "Allocated": 51924272,
+          "Heap": 6821896,
+          "PeakHeap": 10089760,
+          "WorkingSet": 67780608,
+          "PeakWorkingSet": 67780608,
+          "Calls": 0,
+          "Allocations": 705769,
+          "GCPauseNS": 1105561,
+          "GCCycles": 11,
+          "CPUTimeNS": 924742000,
+          "GCCPUSeconds": 0.09247587800000001,
+          "Goroutines": 15,
+          "ActiveRequests": 0,
+          "QueueDepth": 0,
+          "QueuedPayloadBytes": 0,
+          "DroppedSamples": 0
+        }
+      }
+    ]
+  }
+]

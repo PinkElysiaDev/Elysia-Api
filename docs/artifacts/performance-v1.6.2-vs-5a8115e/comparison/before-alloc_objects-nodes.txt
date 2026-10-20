@@ -1,0 +1,38 @@
+File: server.test
+Build ID: b01f01515d67092dc4dab434270becb0d9b81338
+Type: alloc_objects
+Time: 2026-10-20 21:45:23 CST
+Showing nodes accounting for 2973799, 97.06% of 3063824 total
+Dropped 100 nodes (cum <= 15319)
+Showing top 30 nodes out of 104
+      flat  flat%   sum%        cum   cum%
+   1687609 55.08% 55.08%    1687609 55.08%  reflect.unsafe_New
+    273072  8.91% 63.99%     360453 11.76%  github.com/elysia-api/backend/protocol.requestCaches.func1
+    240297  7.84% 71.84%     240297  7.84%  fmt.Sprintf
+    158382  5.17% 77.01%     202073  6.60%  github.com/elysia-api/backend/protocol.validateToolResultErrors
+    131074  4.28% 81.29%     262148  8.56%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+     98338  3.21% 84.49%     194650  6.35%  github.com/elysia-api/backend/protocol.encodeValueContainer
+     70998  2.32% 86.81%     158378  5.17%  github.com/elysia-api/backend/protocol.(*capabilityCheck).content
+     65830  2.15% 88.96%      65830  2.15%  bytes.Clone (inline)
+     65537  2.14% 91.10%      65537  2.14%  github.com/elysia-api/backend/protocol/builtin.stringValue
+     32771  1.07% 92.17%      47562  1.55%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+     32769  1.07% 93.24%      32769  1.07%  github.com/elysia-api/backend/protocol/builtin.copyFields (inline)
+     26763  0.87% 94.11%      26763  0.87%  runtime/pprof.allFrames
+     25055  0.82% 94.93%      25055  0.82%  internal/stringslite.Clone (inline)
+     16389  0.53% 95.47%     210970  6.89%  github.com/elysia-api/backend/protocol/builtin.module.encodeBlock
+     16385  0.53% 96.00%      16385  0.53%  github.com/elysia-api/backend/protocol.sortedKeys[go.shape.string,go.shape.struct { github.com/elysia-api/backend/protocol.raw string }]
+     16385  0.53% 96.53%     174062  5.68%  github.com/elysia-api/backend/protocol/builtin.module.decodeBlock
+     15995  0.52% 97.06%      15995  0.52%  encoding/json/v2.makeString
+       108 0.0035% 97.06%      16103  0.53%  encoding/json/v2.makeStringArshaler.func2
+        26 0.00085% 97.06%     211053  6.89%  github.com/elysia-api/backend/protocol/builtin.module.encodeMessages
+        10 0.00033% 97.06%     206183  6.73%  github.com/elysia-api/backend/protocol/builtin.module.decodeContent
+         6 0.0002% 97.06%      26862  0.88%  runtime/pprof.writeHeapInternal
+         0     0% 97.06%      65830  2.15%  encoding/json.Marshal (inline)
+         0     0% 97.06%      17531  0.57%  encoding/json.Unmarshal
+         0     0% 97.06%      65830  2.15%  encoding/json/v2.Marshal
+         0     0% 97.06%      26479  0.86%  encoding/json/v2.Unmarshal
+         0     0% 97.06%      26479  0.86%  encoding/json/v2.unmarshalDecode
+         0     0% 97.06%     562496 18.36%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeRequest
+         0     0% 97.06%    1212722 39.58%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest
+         0     0% 97.06%      60633  1.98%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2
+         0     0% 97.06%     117843  3.85%  github.com/elysia-api/backend/protocol.(*Compiled).ValidateWireOutput

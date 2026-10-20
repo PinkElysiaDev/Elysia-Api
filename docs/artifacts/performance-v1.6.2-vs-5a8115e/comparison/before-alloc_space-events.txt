@@ -1,0 +1,38 @@
+File: server.test
+Build ID: b01f01515d67092dc4dab434270becb0d9b81338
+Type: alloc_space
+Time: 2026-10-20 21:46:42 CST
+Showing nodes accounting for 211.49MB, 90.08% of 234.77MB total
+Dropped 93 nodes (cum <= 1.17MB)
+Showing top 30 nodes out of 149
+      flat  flat%   sum%        cum   cum%
+   37.01MB 15.76% 15.76%    42.51MB 18.11%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+   17.50MB  7.46% 23.22%       21MB  8.95%  github.com/elysia-api/backend/protocol.MergeUsage
+      15MB  6.39% 29.61%       15MB  6.39%  github.com/elysia-api/backend/protocol/builtin.copyFields (inline)
+   14.50MB  6.18% 35.79%    14.50MB  6.18%  reflect.unsafe_New
+      14MB  5.96% 41.75%       14MB  5.96%  github.com/elysia-api/backend/protocol.Value.Bytes (inline)
+   13.50MB  5.75% 47.50%    39.01MB 16.62%  github.com/elysia-api/backend/protocol.EncodeValue
+      12MB  5.11% 52.62%       12MB  5.11%  bytes.Clone (inline)
+   11.02MB  4.69% 57.31%    11.02MB  4.69%  reflect.growslice
+       7MB  2.98% 60.29%        7MB  2.98%  github.com/elysia-api/backend/protocol.CheckEvent
+       6MB  2.56% 62.85%    15.50MB  6.60%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).decodeAnthropicFrame
+       6MB  2.56% 65.40%        6MB  2.56%  encoding/json/v2.JoinOptions (inline)
+    5.61MB  2.39% 67.79%    16.95MB  7.22%  github.com/elysia-api/backend/storage.(*Store).ConversionSnapshot
+    5.50MB  2.34% 70.14%     5.50MB  2.34%  encoding/json/jsontext.(*decoderState).fetch
+    5.50MB  2.34% 72.48%     5.50MB  2.34%  internal/stringslite.Clone (inline)
+       4MB  1.70% 74.18%        4MB  1.70%  encoding/json/jsontext.NewDecoder (inline)
+       4MB  1.70% 75.89%     5.50MB  2.34%  github.com/elysia-api/backend/protocol.(*CompiledConversion).projectUsage
+    3.50MB  1.49% 77.38%     3.50MB  1.49%  runtime/pprof.allFrames
+    3.50MB  1.49% 78.87%   200.53MB 85.42%  github.com/elysia-api/backend/protocol.ReadFrames.func1
+    3.50MB  1.49% 80.36%     3.50MB  1.49%  github.com/elysia-api/backend/protocol.mergeCounter (inline)
+    2.83MB  1.20% 81.56%     2.83MB  1.20%  modernc.org/sqlite.(*conn).columnText
+    2.50MB  1.07% 82.63%     2.50MB  1.07%  github.com/elysia-api/backend/protocol.(*ConversionEventState).Push
+    2.50MB  1.07% 83.69%       14MB  5.96%  github.com/elysia-api/backend/protocol.(*conversionState).load
+    2.50MB  1.07% 84.76%     2.50MB  1.07%  github.com/elysia-api/backend/protocol.(*Compiled).Capabilities (inline)
+    2.50MB  1.07% 85.82%    35.51MB 15.12%  github.com/elysia-api/backend/protocol.(*Compiled).decodeFrame
+       2MB  0.85% 86.68%   140.52MB 59.86%  github.com/elysia-api/backend/server.(*gatewayStream).consumeSourceFrame
+       2MB  0.85% 87.53%     3.50MB  1.49%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+       2MB  0.85% 88.38%     2.50MB  1.06%  github.com/elysia-api/backend/protocol.readString
+    1.50MB  0.64% 89.02%     5.50MB  2.34%  encoding/json.NewDecoder
+    1.50MB  0.64% 89.66%     1.50MB  0.64%  github.com/elysia-api/backend/protocol.CheckResponse
+       1MB  0.43% 90.08%    43.01MB 18.32%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Event

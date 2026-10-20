@@ -1,0 +1,37 @@
+File: server.test
+Build ID: edee8132cefc91147fcafeede7abc34945437d57
+Type: inuse_space
+Time: 2026-10-20 21:53:14 CST
+Showing nodes accounting for 4710.88kB, 100% of 4710.88kB total
+Showing top 30 nodes out of 64
+      flat  flat%   sum%        cum   cum%
+ 2050.48kB 43.53% 43.53%  2050.48kB 43.53%  runtime.mallocgc
+ 1024.75kB 21.75% 65.28%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.newSchema (inline)
+  574.34kB 12.19% 77.47%   574.34kB 12.19%  reflect.compiledTypelinks
+  544.67kB 11.56% 89.03%   544.67kB 11.56%  github.com/elysia-api/backend/protocol.ParseValue
+  516.64kB 10.97%   100%   516.64kB 10.97%  google.golang.org/protobuf/reflect/protoregistry.(*Files).RegisterFile.func2
+         0     0%   100%   574.34kB 12.19%  encoding/gob.buildTypeInfo
+         0     0%   100%   574.34kB 12.19%  encoding/gob.getBaseType
+         0     0%   100%   574.34kB 12.19%  encoding/gob.getType
+         0     0%   100%   574.34kB 12.19%  encoding/gob.getTypeInfo
+         0     0%   100%   574.34kB 12.19%  encoding/gob.implementsInterface
+         0     0%   100%   574.34kB 12.19%  encoding/gob.init
+         0     0%   100%   574.34kB 12.19%  encoding/gob.mustGetTypeInfo
+         0     0%   100%   574.34kB 12.19%  encoding/gob.newTypeObject
+         0     0%   100%   574.34kB 12.19%  encoding/gob.userType
+         0     0%   100%   574.34kB 12.19%  encoding/gob.validUserType
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/protocol.(*Compiler).Compile
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/protocol.(*Service).ReloadAvailable (inline)
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/protocol.(*Service).loadVerifiedRevision
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/protocol.(*Service).reload
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/server.(*Server).initializeProtocolRuntime
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/server.(*Server).reloadProtocolRuntime
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/server.TestConversionHTTPProcess
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/server.newTestServerWithStore
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).Compile
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).MustCompile
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).compileObject
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).compileValue
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).doCompile
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).enqueue
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*objCompiler).compile

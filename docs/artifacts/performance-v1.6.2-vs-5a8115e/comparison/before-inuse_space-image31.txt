@@ -1,0 +1,37 @@
+File: server.test
+Build ID: b01f01515d67092dc4dab434270becb0d9b81338
+Type: inuse_space
+Time: 2026-10-20 21:50:31 CST
+Showing nodes accounting for 4642.92kB, 100% of 4642.92kB total
+Showing top 30 nodes out of 90
+      flat  flat%   sum%        cum   cum%
+ 1025.25kB 22.08% 22.08%  1025.25kB 22.08%  runtime.mallocgc
+  525.43kB 11.32% 33.40%   525.43kB 11.32%  github.com/go-playground/validator/v10.map.init.7
+  525.43kB 11.32% 44.72%   525.43kB 11.32%  golang.org/x/net/html.map.init.1
+  515.19kB 11.10% 55.81%   515.19kB 11.10%  regexp.makeOnePass.func1
+     514kB 11.07% 66.88%      514kB 11.07%  bufio.NewReaderSize (inline)
+  513.12kB 11.05% 77.93%   513.12kB 11.05%  modernc.org/memory.(*Allocator).mmap
+  512.44kB 11.04% 88.97%   512.44kB 11.04%  encoding/json/v2.makeStructFields
+  512.05kB 11.03%   100%   512.05kB 11.03%  regexp/syntax.(*parser).newRegexp
+         0     0%   100%      514kB 11.07%  bufio.NewReader
+         0     0%   100%   513.12kB 11.05%  database/sql.(*DB).execDC
+         0     0%   100%   513.12kB 11.05%  database/sql.(*DB).execDC.func2
+         0     0%   100%   513.12kB 11.05%  database/sql.(*Tx).ExecContext
+         0     0%   100%   513.12kB 11.05%  database/sql.ctxDriverExec
+         0     0%   100%   513.12kB 11.05%  database/sql.withLock
+         0     0%   100%   512.44kB 11.04%  encoding/json.Marshal (inline)
+         0     0%   100%   512.44kB 11.04%  encoding/json/v2.Marshal
+         0     0%   100%   512.44kB 11.04%  encoding/json/v2.makeSliceArshaler.func2
+         0     0%   100%   512.44kB 11.04%  encoding/json/v2.makeStructArshaler.func1
+         0     0%   100%   512.44kB 11.04%  encoding/json/v2.makeStructArshaler.func2
+         0     0%   100%   512.44kB 11.04%  encoding/json/v2.marshalEncode
+         0     0%   100%   512.44kB 11.04%  github.com/elysia-api/backend/protocol.EncodeValue
+         0     0%   100%   512.44kB 11.04%  github.com/elysia-api/backend/protocol.Verify
+         0     0%   100%   512.44kB 11.04%  github.com/elysia-api/backend/protocol.comparableSemantic
+         0     0%   100%   512.44kB 11.04%  github.com/elysia-api/backend/protocol.executeVerificationSample
+         0     0%   100%  1025.56kB 22.09%  github.com/elysia-api/backend/server.(*Server).initializeProtocolRuntime
+         0     0%   100%   512.44kB 11.04%  github.com/elysia-api/backend/server.(*Server).prepareProtocolRefresh
+         0     0%   100%  1025.56kB 22.09%  github.com/elysia-api/backend/server.(*Server).recoverRequiredPresets
+         0     0%   100%  1025.56kB 22.09%  github.com/elysia-api/backend/server.(*Server).refreshProtocolRuntimeScope
+         0     0%   100%   512.44kB 11.04%  github.com/elysia-api/backend/server.(*protocolRefreshPlan).ensureProtocol
+         0     0%   100%  1025.56kB 22.09%  github.com/elysia-api/backend/server.TestConversionHTTPProcess

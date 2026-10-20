@@ -1,0 +1,37 @@
+File: server.test
+Build ID: edee8132cefc91147fcafeede7abc34945437d57
+Type: alloc_space
+Time: 2026-10-20 21:42:11 CST
+Showing nodes accounting for 23726.37kB, 100% of 23726.37kB total
+Showing top 30 nodes out of 129
+      flat  flat%   sum%        cum   cum%
+ 3072.45kB 12.95% 12.95%  3072.45kB 12.95%  runtime/pprof.allFrames
+ 2153.54kB  9.08% 22.03%  4367.29kB 18.41%  runtime/pprof.(*profileBuilder).emitLocation
+ 1697.28kB  7.15% 29.18%  1697.28kB  7.15%  github.com/bytedance/sonic/internal/decoder/jitdec.newStack (inline)
+ 1558.46kB  6.57% 35.75%  1558.46kB  6.57%  runtime/pprof.(*profileBuilder).stringIndex (inline)
+ 1026.69kB  4.33% 40.08%  1026.69kB  4.33%  github.com/elysia-api/backend/server.(*Server).saveUsageBatchToStore
+ 1024.31kB  4.32% 44.39%  4257.91kB 17.95%  decode_
+ 1024.31kB  4.32% 48.71%  1024.31kB  4.32%  net/http.(*Request).WithContext
+ 1024.22kB  4.32% 53.03%  3745.77kB 15.79%  github.com/elysia-api/backend/protocol.(*Expression).UnmarshalJSON
+ 1024.15kB  4.32% 57.34%  1024.15kB  4.32%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+  688.56kB  2.90% 60.25%   688.56kB  2.90%  compress/flate.(*fastGen).addBlock
+  655.29kB  2.76% 63.01%   655.29kB  2.76%  compress/flate.NewWriter (inline)
+  583.01kB  2.46% 65.46%   583.01kB  2.46%  github.com/bytedance/sonic/internal/encoder/vars.init.func1
+  512.56kB  2.16% 67.62%   512.56kB  2.16%  github.com/elysia-api/backend/server.(*Server).initUsageRecord
+  512.17kB  2.16% 69.78%   512.17kB  2.16%  net/textproto.readMIMEHeader
+  512.16kB  2.16% 71.94%   512.16kB  2.16%  net/http.send.func1
+  512.14kB  2.16% 74.10%  1536.29kB  6.48%  github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative
+  512.14kB  2.16% 76.26%   512.14kB  2.16%  github.com/elysia-api/backend/protocol.cloneNodes
+  512.14kB  2.16% 78.42%  1024.28kB  4.32%  github.com/elysia-api/backend/protocol/builtin.module.encodeResponse
+  512.14kB  2.16% 80.58%   512.14kB  2.16%  github.com/elysia-api/backend/protocol/builtin.module.encodeUsage
+  512.14kB  2.16% 82.73%   512.14kB  2.16%  maps.clone
+  512.12kB  2.16% 84.89%   512.12kB  2.16%  github.com/elysia-api/backend/protocol.ParseValue
+  512.10kB  2.16% 87.05%  1024.27kB  4.32%  github.com/bytedance/sonic.frozenConfig.Unmarshal
+  512.10kB  2.16% 89.21%  4769.93kB 20.10%  github.com/elysia-api/backend/protocol.(*Compiled).Operations
+  512.09kB  2.16% 91.37%   512.09kB  2.16%  github.com/elysia-api/backend/protocol.sortedKeys[go.shape.string,go.shape.bool]
+  512.06kB  2.16% 93.53%  4257.83kB 17.95%  github.com/elysia-api/backend/protocol.(*Compiled).Operation
+  512.02kB  2.16% 95.68%  1024.04kB  4.32%  github.com/elysia-api/backend/protocol.requestCaches.func1
+  512.01kB  2.16% 97.84%   512.01kB  2.16%  fmt.Sprintf
+  512.01kB  2.16%   100%   512.01kB  2.16%  reflect.unsafe_New
+         0     0%   100%   688.56kB  2.90%  compress/flate.(*Writer).Write
+         0     0%   100%   688.56kB  2.90%  compress/flate.(*compressor).deflateFast

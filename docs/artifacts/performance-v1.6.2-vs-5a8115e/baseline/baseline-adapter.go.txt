@@ -1,0 +1,26 @@
+package server
+
+// Test-only adapter for the current profiling collector. v1.6.2 increments
+// usageSeq only after a successful commit, including the synchronous fallback.
+// Reading queue state does not stop/restart the writer or force collection.
+func (s *Server) usageWriterStats() struct {
+	Written uint64
+	Queued int
+	RetainedBytes int64
+	Failures uint64
+	LastError string
+} {
+	st := struct {
+		Written uint64
+		Queued int
+		RetainedBytes int64
+		Failures uint64
+		LastError string
+	}{Written: s.usageSeq.Load()}
+	if w := s.usageWriterSnapshot(); w != nil {
+		w.mu.Lock()
+		st.Queued, st.RetainedBytes = len(w.queue), w.retainedBytes
+		w.mu.Unlock()
+	}
+	return st
+}

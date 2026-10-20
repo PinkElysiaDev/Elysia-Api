@@ -1,0 +1,70 @@
+File: server.test
+Build ID: edee8132cefc91147fcafeede7abc34945437d57
+Type: inuse_space
+Time: 2026-10-20 21:53:14 CST
+Showing nodes accounting for 4710.88kB, 100% of 4710.88kB total
+      flat  flat%   sum%        cum   cum%
+ 2050.48kB 43.53% 43.53%  2050.48kB 43.53%  runtime.mallocgc
+ 1024.75kB 21.75% 65.28%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.newSchema (inline)
+  574.34kB 12.19% 77.47%   574.34kB 12.19%  reflect.compiledTypelinks
+  544.67kB 11.56% 89.03%   544.67kB 11.56%  github.com/elysia-api/backend/protocol.ParseValue
+  516.64kB 10.97%   100%   516.64kB 10.97%  google.golang.org/protobuf/reflect/protoregistry.(*Files).RegisterFile.func2
+         0     0%   100%   574.34kB 12.19%  encoding/gob.buildTypeInfo
+         0     0%   100%   574.34kB 12.19%  encoding/gob.getBaseType
+         0     0%   100%   574.34kB 12.19%  encoding/gob.getType
+         0     0%   100%   574.34kB 12.19%  encoding/gob.getTypeInfo
+         0     0%   100%   574.34kB 12.19%  encoding/gob.implementsInterface
+         0     0%   100%   574.34kB 12.19%  encoding/gob.init
+         0     0%   100%   574.34kB 12.19%  encoding/gob.mustGetTypeInfo
+         0     0%   100%   574.34kB 12.19%  encoding/gob.newTypeObject
+         0     0%   100%   574.34kB 12.19%  encoding/gob.userType
+         0     0%   100%   574.34kB 12.19%  encoding/gob.validUserType
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/protocol.(*Compiler).Compile
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/protocol.(*Service).ReloadAvailable (inline)
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/protocol.(*Service).loadVerifiedRevision
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/protocol.(*Service).reload
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/server.(*Server).initializeProtocolRuntime
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/server.(*Server).reloadProtocolRuntime
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/server.TestConversionHTTPProcess
+         0     0%   100%   544.67kB 11.56%  github.com/elysia-api/backend/server.newTestServerWithStore
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).Compile
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).MustCompile
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).compileObject
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).compileValue
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).doCompile
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).enqueue
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*objCompiler).compile
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*objCompiler).compileDraft4
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*objCompiler).enqueueMap
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*objCompiler).enqueuePtr (inline)
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.init.0
+         0     0%   100%   516.64kB 10.97%  google.golang.org/genproto/googleapis/api/annotations.file_google_api_field_info_proto_init
+         0     0%   100%   516.64kB 10.97%  google.golang.org/genproto/googleapis/api/annotations.init.3
+         0     0%   100%   516.64kB 10.97%  google.golang.org/protobuf/internal/filedesc.Builder.Build
+         0     0%   100%   516.64kB 10.97%  google.golang.org/protobuf/internal/filetype.Builder.Build
+         0     0%   100%   516.64kB 10.97%  google.golang.org/protobuf/reflect/protoregistry.(*Files).RegisterFile
+         0     0%   100%   516.64kB 10.97%  google.golang.org/protobuf/reflect/protoregistry.rangeTopLevelDescriptors
+         0     0%   100%   574.34kB 12.19%  reflect.(*rtype).ptrTo
+         0     0%   100%   574.34kB 12.19%  reflect.PointerTo (inline)
+         0     0%   100%   574.34kB 12.19%  reflect.typesByString
+         0     0%   100%     1026kB 21.78%  runtime.allocm
+         0     0%   100%  2115.73kB 44.91%  runtime.doInit (inline)
+         0     0%   100%  2115.73kB 44.91%  runtime.doInit1
+         0     0%   100%   512.25kB 10.87%  runtime.gcBgMarkWorker
+         0     0%   100%  2115.73kB 44.91%  runtime.main
+         0     0%   100%   512.23kB 10.87%  runtime.malg
+         0     0%   100%      513kB 10.89%  runtime.mcall
+         0     0%   100%      513kB 10.89%  runtime.mstart
+         0     0%   100%      513kB 10.89%  runtime.mstart0
+         0     0%   100%      513kB 10.89%  runtime.mstart1
+         0     0%   100%     1026kB 21.78%  runtime.newm
+         0     0%   100%  2050.48kB 43.53%  runtime.newobject
+         0     0%   100%   512.23kB 10.87%  runtime.newproc.func1
+         0     0%   100%   512.23kB 10.87%  runtime.newproc1
+         0     0%   100%      513kB 10.89%  runtime.park_m
+         0     0%   100%     1026kB 21.78%  runtime.resetspinning
+         0     0%   100%     1026kB 21.78%  runtime.schedule
+         0     0%   100%     1026kB 21.78%  runtime.startm
+         0     0%   100%   512.23kB 10.87%  runtime.systemstack
+         0     0%   100%     1026kB 21.78%  runtime.wakep
+         0     0%   100%   544.67kB 11.56%  testing.tRunner

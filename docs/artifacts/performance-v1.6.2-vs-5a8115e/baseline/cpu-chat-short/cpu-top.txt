@@ -1,0 +1,39 @@
+File: server.test
+Build ID: b01f01515d67092dc4dab434270becb0d9b81338
+Type: cpu
+Time: 2026-10-20 21:29:58 CST
+Duration: 30s, Total samples = 39.50s (131.66%)
+Showing nodes accounting for 19.10s, 48.35% of 39.50s total
+Dropped 1341 nodes (cum <= 0.20s)
+Showing top 30 nodes out of 359
+      flat  flat%   sum%        cum   cum%
+     3.31s  8.38%  8.38%      3.31s  8.38%  internal/runtime/syscall/linux.Syscall6
+     2.21s  5.59% 13.97%      2.21s  5.59%  encoding/json/internal/jsonwire.ConsumeSimpleString (inline)
+     1.13s  2.86% 16.84%      1.78s  4.51%  runtime.tryDeferToSpanScan
+     1.11s  2.81% 19.65%      1.11s  2.81%  runtime.futex
+     0.81s  2.05% 21.70%      0.81s  2.05%  encoding/json/internal/jsonwire.ConsumeWhitespace (inline)
+     0.67s  1.70% 23.39%      2.89s  7.32%  encoding/json/jsontext.(*decoderState).ReadValue
+     0.60s  1.52% 24.91%      0.60s  1.52%  runtime.memmove
+     0.59s  1.49% 26.41%      2.79s  7.06%  encoding/json/jsontext.(*decoderState).consumeObject
+     0.59s  1.49% 27.90%      2.68s  6.78%  runtime.scanObject
+     0.57s  1.44% 29.34%      0.57s  1.44%  internal/runtime/maps.memHashAES
+     0.55s  1.39% 30.73%      4.06s 10.28%  encoding/json/jsontext.(*decoderState).consumeValue
+     0.55s  1.39% 32.13%      0.69s  1.75%  runtime.typePointers.next
+     0.49s  1.24% 33.37%      0.49s  1.24%  crypto/internal/fips140/sha256.blockSHANI
+     0.48s  1.22% 34.58%     10.50s 26.58%  encoding/json/v2.makeStructArshaler.func3
+     0.46s  1.16% 35.75%      0.46s  1.16%  memeqbody
+     0.46s  1.16% 36.91%      0.74s  1.87%  reflect.Value.Field
+     0.45s  1.14% 38.05%      1.08s  2.73%  encoding/json/v2.makeString
+     0.40s  1.01% 39.06%      1.48s  3.75%  runtime.mapaccess2_faststr
+     0.39s  0.99% 40.05%      0.44s  1.11%  github.com/elysia-api/backend/protocol.jsonStringBytes
+     0.38s  0.96% 41.01%      0.57s  1.44%  runtime.mallocgcSmallScanNoHeaderSC2
+     0.38s  0.96% 41.97%      0.38s  0.96%  runtime.usleep
+     0.37s  0.94% 42.91%      3.05s  7.72%  encoding/json/v2.makeStringArshaler.func2
+     0.30s  0.76% 43.67%      3.32s  8.41%  runtime.mallocgc
+     0.30s  0.76% 44.43%      0.30s  0.76%  runtime.typePointers.nextFast (inline)
+     0.29s  0.73% 45.16%      1.31s  3.32%  encoding/json/v2.makeStructArshaler.func2
+     0.27s  0.68% 45.85%      0.56s  1.42%  runtime.scanObjectsSmall
+     0.25s  0.63% 46.48%      0.59s  1.49%  encoding/json/jsontext.(*decoderState).PeekKind
+     0.25s  0.63% 47.11%      0.25s  0.63%  github.com/elysia-api/backend/protocol.jsonStringEnd
+     0.25s  0.63% 47.75%      0.25s  0.63%  internal/abi.Name.IsExported (inline)
+     0.24s  0.61% 48.35%      0.32s  0.81%  runtime.heapArenaOf (inline)

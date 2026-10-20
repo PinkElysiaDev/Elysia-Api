@@ -1,0 +1,8 @@
+# Profiles are gzip-compressed protobufs, not LF-normalized text.
+*.pprof -text -diff
+
+# Immutable per-request/timeline dumps are readable JSON, but not useful diffs.
+**/measurements.json -diff
+
+# A saved unified diff necessarily contains space-prefixed tab/blank context.
+source.patch -whitespace

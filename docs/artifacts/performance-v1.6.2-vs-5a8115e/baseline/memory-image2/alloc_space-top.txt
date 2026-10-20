@@ -1,0 +1,38 @@
+File: server.test
+Build ID: b01f01515d67092dc4dab434270becb0d9b81338
+Type: alloc_space
+Time: 2026-10-20 21:31:40 CST
+Showing nodes accounting for 487.35MB, 97.35% of 500.62MB total
+Dropped 84 nodes (cum <= 2.50MB)
+Showing top 30 nodes out of 102
+      flat  flat%   sum%        cum   cum%
+  153.35MB 30.63% 30.63%   153.35MB 30.63%  internal/bytealg.MakeNoZero
+  149.26MB 29.82% 60.45%   149.26MB 29.82%  internal/stringslite.Clone (inline)
+   65.02MB 12.99% 73.44%    65.02MB 12.99%  encoding/json/jsontext.(*decoderState).fetch
+   57.25MB 11.44% 84.87%    57.25MB 11.44%  github.com/elysia-api/backend/protocol.ParseValue
+   17.38MB  3.47% 88.34%    17.38MB  3.47%  io.ReadAll
+   16.36MB  3.27% 91.61%    16.36MB  3.27%  bytes.NewBufferString (inline)
+   16.30MB  3.26% 94.87%    16.30MB  3.26%  encoding/json/v2.makeString
+    8.18MB  1.63% 96.50%     8.18MB  1.63%  github.com/elysia-api/backend/protocol.Value.Bytes (inline)
+    3.21MB  0.64% 97.14%     3.85MB  0.77%  runtime/pprof.(*profileBuilder).emitLocation
+    0.54MB  0.11% 97.25%     9.81MB  1.96%  runtime/pprof.writeHeapInternal
+    0.50MB   0.1% 97.35%     9.26MB  1.85%  runtime/pprof.writeHeapProto
+         0     0% 97.35%     2.52MB   0.5%  compress/gzip.(*Writer).Write
+         0     0% 97.35%    82.81MB 16.54%  encoding/json.(*Decoder).Decode
+         0     0% 97.35%    65.02MB 12.99%  encoding/json/jsontext.(*Decoder).ReadValue (inline)
+         0     0% 97.35%    65.02MB 12.99%  encoding/json/jsontext.(*decoderState).ReadValue
+         0     0% 97.35%    65.02MB 12.99%  encoding/json/jsontext.(*decoderState).consumeArray
+         0     0% 97.35%    65.02MB 12.99%  encoding/json/jsontext.(*decoderState).consumeObject
+         0     0% 97.35%    65.02MB 12.99%  encoding/json/jsontext.(*decoderState).consumeString
+         0     0% 97.35%    65.02MB 12.99%  encoding/json/jsontext.(*decoderState).consumeValue
+         0     0% 97.35%    18.80MB  3.76%  encoding/json/v2.Unmarshal
+         0     0% 97.35%    16.30MB  3.26%  encoding/json/v2.makeInterfaceArshaler.func2
+         0     0% 97.35%    18.30MB  3.66%  encoding/json/v2.makeMapArshaler.func3
+         0     0% 97.35%    16.80MB  3.36%  encoding/json/v2.makeSliceArshaler.func3
+         0     0% 97.35%    16.30MB  3.26%  encoding/json/v2.makeStringArshaler.func2
+         0     0% 97.35%    18.30MB  3.66%  encoding/json/v2.unmarshalDecode
+         0     0% 97.35%    24.54MB  4.90%  github.com/elysia-api/backend/protocol.(*Compiled).CheckOperationInput
+         0     0% 97.35%    17.36MB  3.47%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeRequest
+         0     0% 97.35%   249.98MB 49.93%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest
+         0     0% 97.35%    71.56MB 14.30%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2
+         0     0% 97.35%   114.50MB 22.87%  github.com/elysia-api/backend/protocol.(*Compiled).ValidateWireOutput

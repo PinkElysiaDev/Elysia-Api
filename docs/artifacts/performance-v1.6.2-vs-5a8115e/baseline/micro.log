@@ -1,0 +1,127 @@
+goos: linux
+goarch: amd64
+pkg: github.com/elysia-api/backend/protocol
+cpu: AMD Ryzen 7 8845H w/ Radeon 780M Graphics
+BenchmarkTypedResourceCheck/encoding-4         	     968	   1250015 ns/op	  354661 B/op	      14 allocs/op
+BenchmarkTypedResourceCheck/encoding-4         	     187	   1981912 ns/op	  352584 B/op	      13 allocs/op
+BenchmarkTypedResourceCheck/encoding-4         	     180	   2026533 ns/op	  352904 B/op	      13 allocs/op
+BenchmarkTypedResourceCheck/encoding-4         	     172	   1867486 ns/op	  352301 B/op	      13 allocs/op
+BenchmarkTypedResourceCheck/encoding-4         	     534	    746167 ns/op	  353975 B/op	      13 allocs/op
+BenchmarkTypedResourceCheck/structural-4       	    2060	    158801 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTypedResourceCheck/structural-4       	    2919	    123853 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTypedResourceCheck/structural-4       	    2037	    150151 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTypedResourceCheck/structural-4       	    2258	    151827 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTypedResourceCheck/structural-4       	    2283	    151205 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/elysia-api/backend/protocol	4.364s
+goos: linux
+goarch: amd64
+pkg: github.com/elysia-api/backend/protocol/builtin
+cpu: AMD Ryzen 7 8845H w/ Radeon 780M Graphics
+BenchmarkStreamTextDecode-4        	      56	   9919209 ns/op	   6.61 MB/s	 2165486 B/op	   20926 allocs/op
+BenchmarkStreamTextDecode-4        	      67	   5424380 ns/op	  12.08 MB/s	 2165098 B/op	   20917 allocs/op
+BenchmarkStreamTextDecode-4        	      31	  14645277 ns/op	   4.47 MB/s	 2165449 B/op	   20918 allocs/op
+BenchmarkStreamTextDecode-4        	      24	  14720999 ns/op	   4.45 MB/s	 2164816 B/op	   20916 allocs/op
+BenchmarkStreamTextDecode-4        	      20	  16690308 ns/op	   3.93 MB/s	 2165468 B/op	   20917 allocs/op
+BenchmarkRequestMemoryPipeline/openai-chat-4         	     535	    606375 ns/op	   36899 B/op	     874 allocs/op
+BenchmarkRequestMemoryPipeline/openai-chat-4         	     639	    502166 ns/op	   36897 B/op	     874 allocs/op
+BenchmarkRequestMemoryPipeline/openai-chat-4         	     763	    478427 ns/op	   36918 B/op	     874 allocs/op
+BenchmarkRequestMemoryPipeline/openai-chat-4         	    2307	    316087 ns/op	   36887 B/op	     874 allocs/op
+BenchmarkRequestMemoryPipeline/openai-chat-4         	    1267	    447053 ns/op	   36895 B/op	     874 allocs/op
+BenchmarkRequestMemoryPipeline/responses-4           	    1300	    239406 ns/op	   30527 B/op	     736 allocs/op
+BenchmarkRequestMemoryPipeline/responses-4           	    1876	    180466 ns/op	   30528 B/op	     736 allocs/op
+BenchmarkRequestMemoryPipeline/responses-4           	    1653	    240233 ns/op	   30535 B/op	     736 allocs/op
+BenchmarkRequestMemoryPipeline/responses-4           	    2244	    320691 ns/op	   30529 B/op	     736 allocs/op
+BenchmarkRequestMemoryPipeline/responses-4           	     853	    379047 ns/op	   30514 B/op	     736 allocs/op
+BenchmarkRequestMemoryPipeline/anthropic-4           	     354	    912539 ns/op	   42332 B/op	    1042 allocs/op
+BenchmarkRequestMemoryPipeline/anthropic-4           	     597	    543771 ns/op	   42357 B/op	    1042 allocs/op
+BenchmarkRequestMemoryPipeline/anthropic-4           	     747	    462767 ns/op	   42337 B/op	    1042 allocs/op
+BenchmarkRequestMemoryPipeline/anthropic-4           	     804	    663991 ns/op	   42386 B/op	    1042 allocs/op
+BenchmarkRequestMemoryPipeline/anthropic-4           	     559	    555955 ns/op	   42354 B/op	    1042 allocs/op
+BenchmarkRequestMemoryPipeline/gemini-4              	    1736	    310148 ns/op	   42790 B/op	    1000 allocs/op
+BenchmarkRequestMemoryPipeline/gemini-4              	    1346	    423277 ns/op	   42786 B/op	    1000 allocs/op
+BenchmarkRequestMemoryPipeline/gemini-4              	     939	    433165 ns/op	   42788 B/op	    1000 allocs/op
+BenchmarkRequestMemoryPipeline/gemini-4              	     745	    566333 ns/op	   42763 B/op	    1000 allocs/op
+BenchmarkRequestMemoryPipeline/gemini-4              	     526	    621379 ns/op	   42770 B/op	    1000 allocs/op
+BenchmarkRequestWorkloads/same/short-4               	    1418	    239293 ns/op	   0.25 MB/s	   30119 B/op	     557 allocs/op
+BenchmarkRequestWorkloads/same/short-4               	    2986	    232569 ns/op	   0.26 MB/s	   30129 B/op	     557 allocs/op
+BenchmarkRequestWorkloads/same/short-4               	     970	    345487 ns/op	   0.17 MB/s	   30134 B/op	     557 allocs/op
+BenchmarkRequestWorkloads/same/short-4               	    1021	    350296 ns/op	   0.17 MB/s	   30120 B/op	     557 allocs/op
+BenchmarkRequestWorkloads/same/short-4               	    1054	    337231 ns/op	   0.18 MB/s	   30119 B/op	     557 allocs/op
+BenchmarkRequestWorkloads/same/prefix32k-4           	      26	  14747129 ns/op	   2.23 MB/s	 1162236 B/op	     569 allocs/op
+BenchmarkRequestWorkloads/same/prefix32k-4           	      62	   6099162 ns/op	   5.38 MB/s	 1162210 B/op	     569 allocs/op
+BenchmarkRequestWorkloads/same/prefix32k-4           	      30	  11604436 ns/op	   2.83 MB/s	 1162094 B/op	     569 allocs/op
+BenchmarkRequestWorkloads/same/prefix32k-4           	      31	  12794803 ns/op	   2.57 MB/s	 1161663 B/op	     570 allocs/op
+BenchmarkRequestWorkloads/same/prefix32k-4           	      43	   8057950 ns/op	   4.07 MB/s	 1162559 B/op	     569 allocs/op
+BenchmarkRequestWorkloads/same/history256k-4         	       3	 101875758 ns/op	   2.59 MB/s	 8277149 B/op	   23947 allocs/op
+BenchmarkRequestWorkloads/same/history256k-4         	       4	  93653707 ns/op	   2.82 MB/s	 8274464 B/op	   23948 allocs/op
+BenchmarkRequestWorkloads/same/history256k-4         	       4	  82935450 ns/op	   3.19 MB/s	 8271878 B/op	   23948 allocs/op
+BenchmarkRequestWorkloads/same/history256k-4         	       6	  84538303 ns/op	   3.13 MB/s	 8271509 B/op	   23950 allocs/op
+BenchmarkRequestWorkloads/same/history256k-4         	       3	 119455006 ns/op	   2.21 MB/s	 8285434 B/op	   23958 allocs/op
+BenchmarkRequestWorkloads/same/tools32-4             	      61	   5471807 ns/op	   0.86 MB/s	  501401 B/op	    7859 allocs/op
+BenchmarkRequestWorkloads/same/tools32-4             	      72	   5025322 ns/op	   0.94 MB/s	  501115 B/op	    7859 allocs/op
+BenchmarkRequestWorkloads/same/tools32-4             	      55	   6182131 ns/op	   0.76 MB/s	  501132 B/op	    7858 allocs/op
+BenchmarkRequestWorkloads/same/tools32-4             	     157	   2079463 ns/op	   2.26 MB/s	  501150 B/op	    7859 allocs/op
+BenchmarkRequestWorkloads/same/tools32-4             	     260	   1533281 ns/op	   3.07 MB/s	  501371 B/op	    7859 allocs/op
+BenchmarkRequestWorkloads/anthropic/short-4          	    5653	     89012 ns/op	   0.67 MB/s	   12896 B/op	     239 allocs/op
+BenchmarkRequestWorkloads/anthropic/short-4          	    3229	    113147 ns/op	   0.53 MB/s	   12894 B/op	     239 allocs/op
+BenchmarkRequestWorkloads/anthropic/short-4          	    4261	     72426 ns/op	   0.83 MB/s	   12898 B/op	     239 allocs/op
+BenchmarkRequestWorkloads/anthropic/short-4          	   10000	     74839 ns/op	   0.80 MB/s	   12899 B/op	     239 allocs/op
+BenchmarkRequestWorkloads/anthropic/short-4          	    3282	    112943 ns/op	   0.53 MB/s	   12902 B/op	     239 allocs/op
+BenchmarkRequestWorkloads/anthropic/prefix32k-4      	      56	   6624386 ns/op	   4.95 MB/s	  619117 B/op	     243 allocs/op
+BenchmarkRequestWorkloads/anthropic/prefix32k-4      	      94	   6556374 ns/op	   5.01 MB/s	  619492 B/op	     244 allocs/op
+BenchmarkRequestWorkloads/anthropic/prefix32k-4      	      50	   7250961 ns/op	   4.53 MB/s	  619695 B/op	     244 allocs/op
+BenchmarkRequestWorkloads/anthropic/prefix32k-4      	      75	   4193476 ns/op	   7.83 MB/s	  619682 B/op	     244 allocs/op
+BenchmarkRequestWorkloads/anthropic/prefix32k-4      	     100	   3425340 ns/op	   9.58 MB/s	  619661 B/op	     244 allocs/op
+BenchmarkRequestWorkloads/anthropic/history256k-4    	       7	  48857576 ns/op	   5.41 MB/s	 4369018 B/op	   10986 allocs/op
+BenchmarkRequestWorkloads/anthropic/history256k-4    	       5	  61193661 ns/op	   4.32 MB/s	 4368907 B/op	   10987 allocs/op
+BenchmarkRequestWorkloads/anthropic/history256k-4    	       5	  61967969 ns/op	   4.26 MB/s	 4365566 B/op	   10983 allocs/op
+BenchmarkRequestWorkloads/anthropic/history256k-4    	       9	  45650794 ns/op	   5.79 MB/s	 4368985 B/op	   10987 allocs/op
+BenchmarkRequestWorkloads/anthropic/history256k-4    	       9	  38573423 ns/op	   6.85 MB/s	 4368983 B/op	   10987 allocs/op
+BenchmarkRequestWorkloads/anthropic/tools32-4        	     154	   2424332 ns/op	   1.94 MB/s	  205586 B/op	    3056 allocs/op
+BenchmarkRequestWorkloads/anthropic/tools32-4        	     145	   2360149 ns/op	   1.99 MB/s	  205485 B/op	    3055 allocs/op
+BenchmarkRequestWorkloads/anthropic/tools32-4        	     224	   1573343 ns/op	   2.99 MB/s	  205602 B/op	    3056 allocs/op
+BenchmarkRequestWorkloads/anthropic/tools32-4        	     169	   2132184 ns/op	   2.20 MB/s	  205525 B/op	    3055 allocs/op
+BenchmarkRequestWorkloads/anthropic/tools32-4        	     210	   1556473 ns/op	   3.02 MB/s	  205510 B/op	    3055 allocs/op
+BenchmarkRequestWorkloads/responses/short-4          	    2118	    166602 ns/op	   0.36 MB/s	   13557 B/op	     249 allocs/op
+BenchmarkRequestWorkloads/responses/short-4          	    1928	    170469 ns/op	   0.35 MB/s	   13552 B/op	     249 allocs/op
+BenchmarkRequestWorkloads/responses/short-4          	    2372	    149200 ns/op	   0.40 MB/s	   13559 B/op	     249 allocs/op
+BenchmarkRequestWorkloads/responses/short-4          	    1795	    179668 ns/op	   0.33 MB/s	   13547 B/op	     249 allocs/op
+BenchmarkRequestWorkloads/responses/short-4          	    1845	    163156 ns/op	   0.37 MB/s	   13555 B/op	     249 allocs/op
+BenchmarkRequestWorkloads/responses/prefix32k-4      	     134	   2476709 ns/op	  13.25 MB/s	  620354 B/op	     254 allocs/op
+BenchmarkRequestWorkloads/responses/prefix32k-4      	     100	   3746680 ns/op	   8.76 MB/s	  620395 B/op	     254 allocs/op
+BenchmarkRequestWorkloads/responses/prefix32k-4      	      81	   5030484 ns/op	   6.52 MB/s	  620052 B/op	     254 allocs/op
+BenchmarkRequestWorkloads/responses/prefix32k-4      	     100	   5209616 ns/op	   6.30 MB/s	  620191 B/op	     254 allocs/op
+BenchmarkRequestWorkloads/responses/prefix32k-4      	      55	   6227154 ns/op	   5.27 MB/s	  619401 B/op	     254 allocs/op
+BenchmarkRequestWorkloads/responses/history256k-4    	      13	  45200068 ns/op	   5.84 MB/s	 4408567 B/op	   11882 allocs/op
+BenchmarkRequestWorkloads/responses/history256k-4    	      15	  22408923 ns/op	  11.79 MB/s	 4411649 B/op	   11885 allocs/op
+BenchmarkRequestWorkloads/responses/history256k-4    	      10	  43411966 ns/op	   6.09 MB/s	 4408832 B/op	   11882 allocs/op
+BenchmarkRequestWorkloads/responses/history256k-4    	       6	  61444110 ns/op	   4.30 MB/s	 4408606 B/op	   11881 allocs/op
+BenchmarkRequestWorkloads/responses/history256k-4    	       6	  55635063 ns/op	   4.75 MB/s	 4413944 B/op	   11886 allocs/op
+BenchmarkRequestWorkloads/responses/tools32-4        	     189	   1749263 ns/op	   2.69 MB/s	  216225 B/op	    3386 allocs/op
+BenchmarkRequestWorkloads/responses/tools32-4        	     534	   1617518 ns/op	   2.91 MB/s	  216164 B/op	    3385 allocs/op
+BenchmarkRequestWorkloads/responses/tools32-4        	     165	   2562771 ns/op	   1.83 MB/s	  216111 B/op	    3385 allocs/op
+BenchmarkRequestWorkloads/responses/tools32-4        	     126	   2750192 ns/op	   1.71 MB/s	  216182 B/op	    3386 allocs/op
+BenchmarkRequestWorkloads/responses/tools32-4        	     308	   1344065 ns/op	   3.50 MB/s	  216179 B/op	    3385 allocs/op
+BenchmarkRequestWorkloads/declarative/short-4        	   13328	     26493 ns/op	   5.06 MB/s	    6076 B/op	     141 allocs/op
+BenchmarkRequestWorkloads/declarative/short-4        	   10000	     37576 ns/op	   3.57 MB/s	    6076 B/op	     141 allocs/op
+BenchmarkRequestWorkloads/declarative/short-4        	    7488	     47467 ns/op	   2.82 MB/s	    6074 B/op	     141 allocs/op
+BenchmarkRequestWorkloads/declarative/short-4        	   18794	     31025 ns/op	   4.32 MB/s	    6078 B/op	     141 allocs/op
+BenchmarkRequestWorkloads/declarative/short-4        	    8362	     45040 ns/op	   2.98 MB/s	    6074 B/op	     141 allocs/op
+BenchmarkRequestWorkloads/declarative/prefix32k-4    	     100	   3113949 ns/op	  10.56 MB/s	  505585 B/op	     152 allocs/op
+BenchmarkRequestWorkloads/declarative/prefix32k-4    	      98	   3737648 ns/op	   8.80 MB/s	  505737 B/op	     153 allocs/op
+BenchmarkRequestWorkloads/declarative/prefix32k-4    	     261	   1332580 ns/op	  24.69 MB/s	  505818 B/op	     153 allocs/op
+BenchmarkRequestWorkloads/declarative/prefix32k-4    	     321	   1363888 ns/op	  24.12 MB/s	  505765 B/op	     153 allocs/op
+BenchmarkRequestWorkloads/declarative/prefix32k-4    	     100	   3075238 ns/op	  10.70 MB/s	  505872 B/op	     153 allocs/op
+BenchmarkRequestWorkloads/declarative/history256k-4  	      14	  21726204 ns/op	  12.30 MB/s	 3837773 B/op	    6303 allocs/op
+BenchmarkRequestWorkloads/declarative/history256k-4  	      27	  27999285 ns/op	   9.54 MB/s	 3839183 B/op	    6305 allocs/op
+BenchmarkRequestWorkloads/declarative/history256k-4  	      12	  32194922 ns/op	   8.30 MB/s	 3837912 B/op	    6304 allocs/op
+BenchmarkRequestWorkloads/declarative/history256k-4  	      10	  31027474 ns/op	   8.61 MB/s	 3838767 B/op	    6304 allocs/op
+BenchmarkRequestWorkloads/declarative/history256k-4  	       9	  36817001 ns/op	   7.26 MB/s	 3839434 B/op	    6306 allocs/op
+BenchmarkRequestWorkloads/declarative/tools32-4      	     396	    910742 ns/op	   4.82 MB/s	  115061 B/op	    1641 allocs/op
+BenchmarkRequestWorkloads/declarative/tools32-4      	     266	   1603517 ns/op	   2.74 MB/s	  115097 B/op	    1641 allocs/op
+BenchmarkRequestWorkloads/declarative/tools32-4      	     327	   1163563 ns/op	   3.77 MB/s	  115088 B/op	    1641 allocs/op
+BenchmarkRequestWorkloads/declarative/tools32-4      	     294	   1320174 ns/op	   3.33 MB/s	  115042 B/op	    1641 allocs/op
+BenchmarkRequestWorkloads/declarative/tools32-4      	     352	    926568 ns/op	   4.74 MB/s	  115107 B/op	    1641 allocs/op
+PASS
+ok  	github.com/elysia-api/backend/protocol/builtin	42.512s
