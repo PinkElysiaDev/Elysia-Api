@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -80,6 +81,10 @@ func TestOperationInputRequestBudget(t *testing.T) {
 			// Unknown descendants still count toward the complete wire budget.
 			body := []byte(`{"engine":"m","payload":"` + strings.Repeat("a", tc.bodyBytes-len(`{"engine":"m","payload":""}`)) + `"}`)
 			err := compiled.CheckOperationInput(ctx, name, body)
+			value, parseErr := ParseValue(body)
+			if parseErr != nil || fmt.Sprint(compiled.CheckOperationValueInput(ctx, name, value)) != fmt.Sprint(err) {
+				t.Fatalf("immutable operation validation changed budget/schema behavior: %v", parseErr)
+			}
 			if tc.wantLimit == 0 {
 				if err != nil {
 					t.Fatal(err)
@@ -98,6 +103,9 @@ func TestOperationInputRequestBudget(t *testing.T) {
 			cancel()
 			if err := compiled.CheckOperationInput(canceled, name, body); !errors.Is(err, context.Canceled) {
 				t.Fatalf("cancellation lost: %v", err)
+			}
+			if err := compiled.CheckOperationValueInput(canceled, name, value); !errors.Is(err, context.Canceled) {
+				t.Fatalf("immutable validation lost cancellation: %v", err)
 			}
 		})
 	}

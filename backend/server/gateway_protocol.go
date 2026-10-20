@@ -177,20 +177,20 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	}
 	s.estimateGatewayAttempt(record, request)
 	record.SystemStructure.After = systemStructure(request)
-	body, isPrepared := candidate.takeRequestEncoding(c.Request.Context(), request, options)
+	wireValue, isPrepared := candidate.takeRequestValue(c.Request.Context(), request, options)
 	var err error
 	if !isPrepared {
-		body, err = candidate.compiled.EncodeRequest(c.Request.Context(), request, options)
+		wireValue, err = candidate.compiled.EncodeRequestValue(c.Request.Context(), request, options)
 		if err != nil {
 			return &gatewayFailure{http.StatusBadRequest, err}
 		}
 	}
 	if candidate.conversion.HasPhase(protocol.ConversionWire) {
-		body, err = candidate.conversion.Wire(c.Request.Context(), body, candidate.conversionContext(plan.ingress, false), options.Diagnostics)
+		wireValue, err = candidate.conversion.ApplyValue(c.Request.Context(), protocol.ConversionWire, wireValue, candidate.conversionContext(plan.ingress, false), options.Diagnostics)
 		if err != nil {
 			return &gatewayFailure{http.StatusBadRequest, err}
 		}
-		decoded, e := candidate.compiled.DecodeRequest(c.Request.Context(), body, options)
+		decoded, e := candidate.compiled.DecodeRequestValue(c.Request.Context(), wireValue, options)
 		if e != nil {
 			return &gatewayFailure{http.StatusBadRequest, e}
 		}
@@ -198,17 +198,16 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 			return &gatewayFailure{http.StatusBadRequest, e}
 		}
 	}
-	if v, e := protocol.ParseValue(body); e != nil {
-		return e
-	} else if e = candidate.compiled.CheckRequestBody(c.Request.Context(), v); e != nil {
+	if e := candidate.compiled.CheckRequestBody(c.Request.Context(), wireValue); e != nil {
 		return &gatewayFailure{http.StatusBadRequest, e}
-	} else if e = candidate.compiled.ValidateWireOutput(protocol.EncodeRequest, v); e != nil {
+	} else if e = candidate.compiled.ValidateWireOutput(protocol.EncodeRequest, wireValue); e != nil {
 		return e
 	}
-	if err := candidate.compiled.CheckOperationInput(c.Request.Context(), candidate.operationName, body); err != nil {
+	if err := candidate.compiled.CheckOperationValueInput(c.Request.Context(), candidate.operationName, wireValue); err != nil {
 		return &gatewayFailure{http.StatusBadRequest, err}
 	}
 	setRecordModel(record, candidate.model, builtin.Platform("custom:"+candidate.binding.ProtocolID))
+	body := wireValue.Bytes() // Materialize mutable transport bytes once, after final checks.
 	record.UpstreamRevision, record.TargetEndpoint, record.TargetFormat = candidate.compiled.Hash(), candidate.operation.Path, candidate.binding.ProtocolID
 	record.OutgoingBody = record.sanitizeBody(body)
 	outboundBody := body

@@ -100,7 +100,7 @@ func (adapter module) planAnthropicBlock(ctx context.Context, node p.Node, optio
 		}
 		return plannedObject(p.Object{"type": p.StringValue("tool_result"), "tool_use_id": node.CallID}, map[string]p.JSONOutput{"content": payload}), nil
 	case p.ImageNode, p.DocumentNode:
-		media, err := node.Payload.ReadObject()
+		media, err := options.WithValueReader(node.Payload).ReadObject(node.Payload)
 		if err != nil {
 			return p.JSONOutput{}, err
 		}

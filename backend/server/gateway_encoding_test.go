@@ -26,7 +26,7 @@ func TestGatewayPreparedEncodingBoundaries(t *testing.T) {
 				t.Fatal(err)
 			}
 			warning := protocol.ConversionIssue{Severity: protocol.SeverityWarning, Reason: "preflight diagnostic"}
-			candidate := gatewayCandidate{compiled: compiled, encoding: &gatewayRequestEncoding{body: []byte("prepared"), request: request, identity: compiled.Identity(), limits: compiled.RequestLimits(t.Context()), issues: []protocol.ConversionIssue{warning}}}
+			candidate := gatewayCandidate{compiled: compiled, encoding: &gatewayRequestEncoding{value: protocol.StringValue("prepared"), request: request, identity: compiled.Identity(), limits: compiled.RequestLimits(t.Context()), issues: []protocol.ConversionIssue{warning}}}
 			actual := request.Clone()
 			options := protocol.EvaluationContext{Diagnostics: &protocol.DiagnosticSink{}}
 			ctx := t.Context()
@@ -48,17 +48,17 @@ func TestGatewayPreparedEncodingBoundaries(t *testing.T) {
 			case "content":
 				actual.Content[0].Children[0].Payload = protocol.StringValue("edited")
 			}
-			body, ok := candidate.takeRequestEncoding(ctx, actual, options)
+			body, ok := candidate.takeRequestValue(ctx, actual, options)
 			if ok != (variant == "same") {
 				t.Fatalf("incorrect reuse: %t", ok)
 			}
-			if ok && (string(body) != "prepared" || len(options.Diagnostics.Issues()) != 1) || !ok && len(options.Diagnostics.Issues()) != 0 {
+			if ok && (!body.IsString("prepared") || len(options.Diagnostics.Issues()) != 1) || !ok && len(options.Diagnostics.Issues()) != 0 {
 				t.Fatal("diagnostics published at the wrong boundary")
 			}
-			if candidate.encoding.body != nil || candidate.encoding.request != nil {
+			if !candidate.encoding.value.IsZero() || candidate.encoding.request != nil {
 				t.Fatal("consumed or invalidated encoding retained payload")
 			}
-			if _, reused := candidate.takeRequestEncoding(ctx, actual, options); reused {
+			if _, reused := candidate.takeRequestValue(ctx, actual, options); reused {
 				t.Fatal("encoding consumed twice")
 			}
 		})

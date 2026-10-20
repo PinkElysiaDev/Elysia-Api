@@ -14,10 +14,24 @@ func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, option
 }
 
 func (compiled *Compiled) decodeRequest(ctx context.Context, body []byte, options EvaluationContext, boundScope *Scope) (result *Request, err error) {
-	defer func() { err = compiled.runtimeError(DecodeRequest, err) }()
 	input, err := ParseValue(body)
 	if err != nil {
-		return nil, err
+		return nil, compiled.runtimeError(DecodeRequest, err)
+	}
+	return compiled.decodeRequestValue(ctx, input, options, boundScope)
+}
+
+// DecodeRequestValue accepts an already validated immutable wire document.
+// Only syntax validation/copying is reused; scopes, semantic/mapping budgets,
+// schemas, capability checks and candidate-owned containers are still evaluated.
+func (compiled *Compiled) DecodeRequestValue(ctx context.Context, input Value, options EvaluationContext) (*Request, error) {
+	return compiled.decodeRequestValue(ctx, input, options, nil)
+}
+
+func (compiled *Compiled) decodeRequestValue(ctx context.Context, input Value, options EvaluationContext, boundScope *Scope) (result *Request, err error) {
+	defer func() { err = compiled.runtimeError(DecodeRequest, err) }()
+	if input.IsZero() {
+		return nil, fmt.Errorf("invalid JSON value")
 	}
 	if compiled.native.Preserve {
 		options.valueReader = requestValueReader(input)
@@ -98,32 +112,42 @@ func (compiled *Compiled) finishDecodedRequest(ctx context.Context, input Value,
 // mapping. Native replay and explicit edits are handled by the preservation
 // layer; unknown fields are never copied to a foreign protocol by this method.
 func (compiled *Compiled) EncodeRequest(ctx context.Context, request *Request, options EvaluationContext) (result []byte, err error) {
+	output, err := compiled.EncodeRequestValue(ctx, request, options)
+	if err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
+}
+
+// EncodeRequestValue retains the owned immutable result through internal
+// validation boundaries. Public byte encoding still returns an independent copy.
+func (compiled *Compiled) EncodeRequestValue(ctx context.Context, request *Request, options EvaluationContext) (result Value, err error) {
 	defer func() { err = compiled.runtimeError(EncodeRequest, err) }()
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return Value{}, err
 	}
 	inputLimits, _, _ := compiled.mappingLimits(ctx, EncodeRequest)
 	if err := checkSemanticValue(request, inputLimits); err != nil {
-		return nil, err
+		return Value{}, err
 	}
 	if err := validateRequestContext(request); err != nil {
-		return nil, err
+		return Value{}, err
 	}
 	target := compiled.target(EncodeRequest, options)
 	if err := IssuesError(CheckRequest(request, target, semanticLimits(compiled.nativeLimits(ctx, EncodeRequest)))); err != nil {
-		return nil, err
+		return Value{}, err
 	}
 	output, err := encodeTyped(ctx, compiled, EncodeRequest, request, options, func(module TypedModule, input *Request, options EvaluationContext) (Value, error) {
 		return module.EncodeRequest(ctx, input, options)
 	})
 	if err != nil {
-		return nil, err
+		return Value{}, err
 	}
 	output, err = compiled.preserveMappedNative(ctx, EncodeRequest, request.Native, output, options)
 	if err != nil {
-		return nil, err
+		return Value{}, err
 	}
-	return output.Bytes(), nil
+	return output, nil
 }
 
 // DecodeResponse executes the independent upstream response mapping.
@@ -450,7 +474,7 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 			options.Scope, options.Values, options.InterleavedThinking = source.Scope, maps.Clone(source.Values), source.InterleavedThinking
 		}
 		if request == nil {
-			request, err = replay.decodeRequest(ctx, original.Bytes(), options, &native.Source.Scope)
+			request, err = replay.decodeRequestValue(ctx, original, options, &native.Source.Scope)
 		} else {
 			if err = ctx.Err(); err == nil {
 				request, err = replay.finishDecodedRequest(ctx, original, cloneRequestSemantic(request), options, &native.Source.Scope)

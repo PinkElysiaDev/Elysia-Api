@@ -52,8 +52,12 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		return nil, err
 	}
 	bindings := conversions.bindings
-	plan := &gatewayPlan{ingress: ingress, session: continuationSession(c, body)}
-	body, plan.carriers, err = builtin.ExtractContinuationCarriers(body, ingress.Identity().Family, ingress.RequestLimits(c.Request.Context()).BufferBytes)
+	input, err := protocol.ParseValue(body)
+	if err != nil {
+		return nil, err
+	}
+	plan := &gatewayPlan{ingress: ingress, session: continuationSession(c, input)}
+	input, plan.carriers, err = builtin.ExtractContinuationCarriersValue(input, ingress.Identity().Family, ingress.RequestLimits(c.Request.Context()).BufferBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -68,12 +72,12 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 	options.ResolveRequestScope = func(request *protocol.Request) (protocol.Scope, error) {
 		return s.bindGatewayRequest(c, view, bindings, plan, path, request, record)
 	}
-	request, err := ingress.DecodeRequest(c.Request.Context(), body, options)
+	request, err := ingress.DecodeRequestValue(c.Request.Context(), input, options)
 	if err != nil {
 		return nil, err
 	}
 	plan.request = request
-	if err := ingress.CheckOperationInput(c.Request.Context(), plan.operationName, body); err != nil {
+	if err := ingress.CheckOperationValueInput(c.Request.Context(), plan.operationName, input); err != nil {
 		return nil, err
 	}
 	if plan.operation.Transport != protocol.WebSocket {
@@ -148,9 +152,9 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		if canRetainEncoding {
 			probeOptions.Diagnostics = &protocol.DiagnosticSink{}
 		}
-		body, encodeErr := candidate.compiled.EncodeRequest(c.Request.Context(), probe, probeOptions)
+		encoded, encodeErr := candidate.compiled.EncodeRequestValue(c.Request.Context(), probe, probeOptions)
 		if encodeErr == nil {
-			encodeErr = candidate.compiled.CheckOperationInput(c.Request.Context(), candidate.operationName, body)
+			encodeErr = candidate.compiled.CheckOperationValueInput(c.Request.Context(), candidate.operationName, encoded)
 		}
 		if encodeErr != nil {
 			if c.Request.Context().Err() != nil {
@@ -167,7 +171,7 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		candidate.binding = constrained
 		candidate.routeBinding = matched
 		if canRetainEncoding {
-			candidate.encoding = &gatewayRequestEncoding{body: body, request: probe, identity: candidate.compiled.Identity(), scope: probeOptions.Scope, limits: candidate.compiled.RequestLimits(c.Request.Context()), interleaved: probeOptions.InterleavedThinking, issues: probeOptions.Diagnostics.Issues()}
+			candidate.encoding = &gatewayRequestEncoding{value: encoded, request: probe, identity: candidate.compiled.Identity(), scope: probeOptions.Scope, limits: candidate.compiled.RequestLimits(c.Request.Context()), interleaved: probeOptions.InterleavedThinking, issues: probeOptions.Diagnostics.Issues()}
 		}
 		eligible = append(eligible, candidate)
 	}

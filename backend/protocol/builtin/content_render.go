@@ -255,7 +255,7 @@ func checkResourceProtocol(node p.Node, options p.EvaluationContext) error {
 }
 
 func (adapter module) encodeMedia(node p.Node, fields p.Object) error {
-	media, err := node.Payload.ReadObject()
+	media, err := (p.EvaluationContext{}).WithValueReader(node.Payload).ReadObject(node.Payload)
 	if err != nil {
 		return err
 	}

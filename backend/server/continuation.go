@@ -29,15 +29,11 @@ type gatewayContinuation struct {
 	sink                             *protocol.DiagnosticSink
 }
 
-func continuationSession(c *gin.Context, body []byte) string {
+func continuationSession(c *gin.Context, v protocol.Value) string {
 	for _, name := range []string{"x-elysia-session-id", "x-claude-code-session-id", "claude-code-session-id", "x-session-id", "session_id"} {
 		if value := strings.TrimSpace(c.GetHeader(name)); value != "" && len(value) <= 512 {
 			return value
 		}
-	}
-	v, err := protocol.ParseValue(body)
-	if err != nil {
-		return ""
 	}
 	reader := (protocol.EvaluationContext{}).WithValueReader(v)
 	fields, _ := reader.ReadObject(v)
