@@ -10,7 +10,7 @@ import (
 // gatewayRequestEncoding is single-consumer, shared only by copies of the same
 // private candidate. A plan keeps at most its first eligible candidate's body.
 type gatewayRequestEncoding struct {
-	body        []byte
+	value       protocol.Value
 	request     *protocol.Request
 	identity    protocol.Identity
 	scope       protocol.Scope
@@ -19,25 +19,25 @@ type gatewayRequestEncoding struct {
 	issues      []protocol.ConversionIssue
 }
 
-func (candidate gatewayCandidate) takeRequestEncoding(ctx context.Context, request *protocol.Request, options protocol.EvaluationContext) ([]byte, bool) {
+func (candidate gatewayCandidate) takeRequestValue(ctx context.Context, request *protocol.Request, options protocol.EvaluationContext) (protocol.Value, bool) {
 	encoding := candidate.encoding
-	if encoding == nil || encoding.body == nil {
-		return nil, false
+	if encoding == nil || encoding.value.IsZero() {
+		return protocol.Value{}, false
 	}
-	body := encoding.body
+	value := encoding.value
 	defer candidate.releaseRequestEncoding()
 	if ctx.Err() != nil || candidate.model.CacheSynthesis || candidate.compiled.Identity() != encoding.identity || options.Scope != encoding.scope || options.InterleavedThinking != encoding.interleaved || candidate.compiled.RequestLimits(ctx) != encoding.limits || !reflect.DeepEqual(request, encoding.request) {
-		return nil, false
+		return protocol.Value{}, false
 	}
 	for _, issue := range encoding.issues {
 		options.Diagnostics.Add(issue)
 	}
-	return body, true
+	return value, true
 }
 
 func (candidate gatewayCandidate) releaseRequestEncoding() {
 	if candidate.encoding != nil {
-		candidate.encoding.body = nil
+		candidate.encoding.value = protocol.Value{}
 		candidate.encoding.request = nil
 		candidate.encoding.issues = nil
 	}

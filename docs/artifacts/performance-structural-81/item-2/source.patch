@@ -1,0 +1,603 @@
+diff --git a/backend/protocol/builtin/content_render.go b/backend/protocol/builtin/content_render.go
+index 84ecf57..5d7a881 100644
+--- a/backend/protocol/builtin/content_render.go
++++ b/backend/protocol/builtin/content_render.go
+@@ -255,7 +255,7 @@ func checkResourceProtocol(node p.Node, options p.EvaluationContext) error {
+ }
+ 
+ func (adapter module) encodeMedia(node p.Node, fields p.Object) error {
+-	media, err := node.Payload.ReadObject()
++	media, err := (p.EvaluationContext{}).WithValueReader(node.Payload).ReadObject(node.Payload)
+ 	if err != nil {
+ 		return err
+ 	}
+diff --git a/backend/protocol/builtin/continuation.go b/backend/protocol/builtin/continuation.go
+index 2031a9a..ef2c3d9 100644
+--- a/backend/protocol/builtin/continuation.go
++++ b/backend/protocol/builtin/continuation.go
+@@ -15,10 +15,24 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
+ 	if err != nil {
+ 		return nil, nil, err
+ 	}
++	value, tokens, err := ExtractContinuationCarriersValue(root, family, limit)
++	if err != nil {
++		return nil, nil, err
++	}
++	if len(tokens) == 0 {
++		return body, nil, nil
++	}
++	return value.Bytes(), tokens, nil
++}
++
++// ExtractContinuationCarriersValue shares the already validated document with
++// subsequent request decoding. Tokens are decoded into independent strings;
++// unchanged input remains immutable and no parsed mutable container escapes.
++func ExtractContinuationCarriersValue(root p.Value, family string, limit int) (p.Value, []string, error) {
+ 	reader := (p.EvaluationContext{}).WithValueReader(root)
+ 	fields, err := reader.ReadObject(root)
+ 	if err != nil {
+-		return nil, nil, err
++		return p.Value{}, nil, err
+ 	}
+ 	var tokens []string
+ 	bytes := 0
+@@ -71,7 +85,7 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
+ 	}
+ 	messages, err := reader.ReadArray(fields[history])
+ 	if err != nil {
+-		return body, nil, nil
++		return root, nil, nil
+ 	}
+ 	var out []p.Value
+ 	for _, message := range messages {
+@@ -89,11 +103,11 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
+ 				var carriers []p.Value
+ 				if v := m["elysia_continuation"]; !v.IsZero() {
+ 					if err := v.Decode(&carriers); err != nil {
+-						return nil, nil, fmt.Errorf("invalid elysia_continuation carrier")
++						return p.Value{}, nil, fmt.Errorf("invalid elysia_continuation carrier")
+ 					}
+ 					for _, v := range carriers {
+ 						if !add(v) {
+-							return nil, nil, fmt.Errorf("invalid elysia continuation prefix")
++							return p.Value{}, nil, fmt.Errorf("invalid elysia continuation prefix")
+ 						}
+ 					}
+ 					delete(m, "elysia_continuation")
+@@ -104,7 +118,7 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
+ 				original := m["content"]
+ 				m["content"], err = stripBlocks(original)
+ 				if err != nil {
+-					return nil, nil, err
++					return p.Value{}, nil, err
+ 				}
+ 				changed = m["content"] != original
+ 			}
+@@ -113,23 +127,23 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
+ 		if changed {
+ 			value, err = p.EncodeValue(m)
+ 			if err != nil {
+-				return nil, nil, err
++				return p.Value{}, nil, err
+ 			}
+ 		}
+ 		out = append(out, value)
+ 	}
+ 	if bytes > limit || len(tokens) > p.DefaultLimits().StateItems {
+-		return nil, nil, fmt.Errorf("continuation carriers exceed limit")
++		return p.Value{}, nil, fmt.Errorf("continuation carriers exceed limit")
+ 	}
+ 	if len(tokens) == 0 {
+-		return body, nil, nil
++		return root, nil, nil
+ 	}
+ 	fields[history], err = p.EncodeValue(out)
+ 	if err != nil {
+-		return nil, nil, err
++		return p.Value{}, nil, err
+ 	}
+ 	encoded, err := p.EncodeValue(fields)
+-	return encoded.Bytes(), tokens, err
++	return encoded, tokens, err
+ }
+ 
+ func carrierBlocks(tokens []string, family string) []p.Value {
+diff --git a/backend/protocol/builtin/continuation_value_test.go b/backend/protocol/builtin/continuation_value_test.go
+new file mode 100644
+index 0000000..cac9322
+--- /dev/null
++++ b/backend/protocol/builtin/continuation_value_test.go
+@@ -0,0 +1,30 @@
++package builtin
++
++import (
++	"fmt"
++	"strings"
++	"testing"
++
++	p "github.com/elysia-api/backend/protocol"
++)
++
++func TestContinuationValueParityAndOwnership(t *testing.T) {
++	for _, body := range []string{
++		`{"messages":[{"role":"user","content":"` + strings.Repeat("A", 128<<10) + `"}],"metadata":{"session_id":"owned"}}`,
++		`{"messages":[{"role":"assistant","content":"hello","elysia_continuation":["` + p.ContinuationPrefix + `token"]}]}`,
++		`{"messages":[{"role":"assistant","elysia_continuation":["invalid"]}]}`,
++	} {
++		input := testValue(t, body)
++		before, a, beforeErr := ExtractContinuationCarriers([]byte(body), "openai_chat", len(body))
++		after, b, afterErr := ExtractContinuationCarriersValue(input, "openai_chat", len(body))
++		if fmt.Sprint(beforeErr) != fmt.Sprint(afterErr) || strings.Join(a, "|") != strings.Join(b, "|") || string(before) != after.JSONString() {
++			t.Fatalf("carrier value parity: %v / %v", beforeErr, afterErr)
++		}
++		if afterErr == nil && len(b) == 0 && input != after {
++			t.Fatal("unchanged document was rebuilt")
++		}
++		if input.JSONString() != body {
++			t.Fatal("carrier extraction mutated immutable input")
++		}
++	}
++}
+diff --git a/backend/protocol/builtin/request_output.go b/backend/protocol/builtin/request_output.go
+index 8d5a42f..cf9fc16 100644
+--- a/backend/protocol/builtin/request_output.go
++++ b/backend/protocol/builtin/request_output.go
+@@ -100,7 +100,7 @@ func (adapter module) planAnthropicBlock(ctx context.Context, node p.Node, optio
+ 		}
+ 		return plannedObject(p.Object{"type": p.StringValue("tool_result"), "tool_use_id": node.CallID}, map[string]p.JSONOutput{"content": payload}), nil
+ 	case p.ImageNode, p.DocumentNode:
+-		media, err := node.Payload.ReadObject()
++		media, err := options.WithValueReader(node.Payload).ReadObject(node.Payload)
+ 		if err != nil {
+ 			return p.JSONOutput{}, err
+ 		}
+diff --git a/backend/protocol/operation_input.go b/backend/protocol/operation_input.go
+index 16b2587..72b49c2 100644
+--- a/backend/protocol/operation_input.go
++++ b/backend/protocol/operation_input.go
+@@ -10,19 +10,36 @@ import (
+ // Wire validation uses the same pinned request budget as decoding and encoding,
+ // including any tighter limit explicitly authored by the protocol.
+ func (compiled *Compiled) CheckOperationInput(ctx context.Context, name string, body []byte) error {
+-	if err := ctx.Err(); err != nil {
++	validator, err := compiled.operationInputSchema(ctx, name)
++	if err != nil || validator == nil {
+ 		return err
+ 	}
+-	if _, exists := compiled.operations[name]; !exists {
+-		return compiled.runtimeError(DecodeRequest, fmt.Errorf("unknown operation %q", name))
+-	}
+-	validator := compiled.operationSchemas[name]
+-	if validator == nil {
+-		return nil
+-	}
+ 	value, err := ParseValue(body)
+ 	if err == nil {
+ 		err = validator.validate(value, "/operation/input", compiled.RequestLimits(ctx))
+ 	}
+ 	return compiled.runtimeError(DecodeRequest, err)
+ }
++
++// CheckOperationValueInput reuses syntax validation/ownership only. The pinned
++// operation schema and the current request budget are evaluated on every call.
++func (compiled *Compiled) CheckOperationValueInput(ctx context.Context, name string, value Value) error {
++	validator, err := compiled.operationInputSchema(ctx, name)
++	if err != nil || validator == nil {
++		return err
++	}
++	if value.IsZero() {
++		return compiled.runtimeError(DecodeRequest, fmt.Errorf("invalid JSON value"))
++	}
++	return compiled.runtimeError(DecodeRequest, validator.validate(value, "/operation/input", compiled.RequestLimits(ctx)))
++}
++
++func (compiled *Compiled) operationInputSchema(ctx context.Context, name string) (*runtimeValueSchema, error) {
++	if err := ctx.Err(); err != nil {
++		return nil, err
++	}
++	if _, exists := compiled.operations[name]; !exists {
++		return nil, compiled.runtimeError(DecodeRequest, fmt.Errorf("unknown operation %q", name))
++	}
++	return compiled.operationSchemas[name], nil
++}
+diff --git a/backend/protocol/operation_input_test.go b/backend/protocol/operation_input_test.go
+index 36f45f4..ad079d9 100644
+--- a/backend/protocol/operation_input_test.go
++++ b/backend/protocol/operation_input_test.go
+@@ -3,6 +3,7 @@ package protocol
+ import (
+ 	"context"
+ 	"errors"
++	"fmt"
+ 	"strings"
+ 	"testing"
+ )
+@@ -80,6 +81,10 @@ func TestOperationInputRequestBudget(t *testing.T) {
+ 			// Unknown descendants still count toward the complete wire budget.
+ 			body := []byte(`{"engine":"m","payload":"` + strings.Repeat("a", tc.bodyBytes-len(`{"engine":"m","payload":""}`)) + `"}`)
+ 			err := compiled.CheckOperationInput(ctx, name, body)
++			value, parseErr := ParseValue(body)
++			if parseErr != nil || fmt.Sprint(compiled.CheckOperationValueInput(ctx, name, value)) != fmt.Sprint(err) {
++				t.Fatalf("immutable operation validation changed budget/schema behavior: %v", parseErr)
++			}
+ 			if tc.wantLimit == 0 {
+ 				if err != nil {
+ 					t.Fatal(err)
+@@ -99,6 +104,9 @@ func TestOperationInputRequestBudget(t *testing.T) {
+ 			if err := compiled.CheckOperationInput(canceled, name, body); !errors.Is(err, context.Canceled) {
+ 				t.Fatalf("cancellation lost: %v", err)
+ 			}
++			if err := compiled.CheckOperationValueInput(canceled, name, value); !errors.Is(err, context.Canceled) {
++				t.Fatalf("immutable validation lost cancellation: %v", err)
++			}
+ 		})
+ 	}
+ }
+diff --git a/backend/protocol/request_value_test.go b/backend/protocol/request_value_test.go
+new file mode 100644
+index 0000000..4863919
+--- /dev/null
++++ b/backend/protocol/request_value_test.go
+@@ -0,0 +1,63 @@
++package protocol
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"reflect"
++	"strings"
++	"testing"
++)
++
++func TestRequestValueBoundariesPreserveValidationAndIsolation(t *testing.T) {
++	compiled := compileTestDefinition(t, testDefinition("values", "model", "history", "tools", "answer"))
++	body := []byte(`{"model":"m","history":[{"kind":"message","speaker":"user","parts":[{"kind":"text","payload":"hello"}]}]}`)
++	value, _ := ParseValue(body)
++	fromBytes, err := compiled.DecodeRequest(t.Context(), body, EvaluationContext{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	fromValue, err := compiled.DecodeRequestValue(t.Context(), value, EvaluationContext{})
++	if err != nil || !reflect.DeepEqual(fromBytes, fromValue) {
++		t.Fatalf("decode parity: %v", err)
++	}
++	fromValue.Content[0].Children[0].Payload = StringValue("changed")
++	if fromBytes.Content[0].Children[0].Payload.IsString("changed") || strings.Contains(value.JSONString(), "changed") {
++		t.Fatal("value decoding shared mutable candidate containers")
++	}
++	wireBytes, err := compiled.EncodeRequest(t.Context(), fromBytes, EvaluationContext{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	wireValue, err := compiled.EncodeRequestValue(t.Context(), fromBytes, EvaluationContext{})
++	if err != nil || string(wireBytes) != wireValue.JSONString() {
++		t.Fatalf("encode parity: %v", err)
++	}
++	wireBytes[0] = '['
++	if !wireValue.IsObject() {
++		t.Fatal("public byte encoding exposed immutable result storage")
++	}
++	for _, ctx := range []context.Context{t.Context(), func() context.Context { ctx, cancel := context.WithCancel(t.Context()); cancel(); return ctx }()} {
++		for _, name := range []string{"generate", "missing"} {
++			before := compiled.CheckOperationInput(ctx, name, value.Bytes())
++			after := compiled.CheckOperationValueInput(ctx, name, value)
++			if fmt.Sprint(before) != fmt.Sprint(after) {
++				t.Fatalf("operation parity (%s): %v / %v", name, before, after)
++			}
++		}
++	}
++	if _, err := compiled.DecodeRequestValue(t.Context(), Value{}, EvaluationContext{}); err == nil {
++		t.Fatal("absent document accepted")
++	}
++	limited, _ := WithRequestBodyLimit(t.Context(), 16)
++	_, before := compiled.DecodeRequest(limited, body, EvaluationContext{})
++	_, after := compiled.DecodeRequestValue(limited, value, EvaluationContext{})
++	if before == nil || fmt.Sprint(before) != fmt.Sprint(after) {
++		t.Fatalf("immutable input bypassed decode budget: %v / %v", before, after)
++	}
++	denied := errors.New("denied by scope resolver")
++	_, err = compiled.DecodeRequestValue(t.Context(), value, EvaluationContext{ResolveRequestScope: func(*Request) (Scope, error) { return Scope{}, denied }})
++	if !errors.Is(err, denied) {
++		t.Fatal("immutable input bypassed scope resolution", err)
++	}
++}
+diff --git a/backend/protocol/runtime.go b/backend/protocol/runtime.go
+index a36a11a..8909d82 100644
+--- a/backend/protocol/runtime.go
++++ b/backend/protocol/runtime.go
+@@ -14,10 +14,24 @@ func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, option
+ }
+ 
+ func (compiled *Compiled) decodeRequest(ctx context.Context, body []byte, options EvaluationContext, boundScope *Scope) (result *Request, err error) {
+-	defer func() { err = compiled.runtimeError(DecodeRequest, err) }()
+ 	input, err := ParseValue(body)
+ 	if err != nil {
+-		return nil, err
++		return nil, compiled.runtimeError(DecodeRequest, err)
++	}
++	return compiled.decodeRequestValue(ctx, input, options, boundScope)
++}
++
++// DecodeRequestValue accepts an already validated immutable wire document.
++// Only syntax validation/copying is reused; scopes, semantic/mapping budgets,
++// schemas, capability checks and candidate-owned containers are still evaluated.
++func (compiled *Compiled) DecodeRequestValue(ctx context.Context, input Value, options EvaluationContext) (*Request, error) {
++	return compiled.decodeRequestValue(ctx, input, options, nil)
++}
++
++func (compiled *Compiled) decodeRequestValue(ctx context.Context, input Value, options EvaluationContext, boundScope *Scope) (result *Request, err error) {
++	defer func() { err = compiled.runtimeError(DecodeRequest, err) }()
++	if input.IsZero() {
++		return nil, fmt.Errorf("invalid JSON value")
+ 	}
+ 	if compiled.native.Preserve {
+ 		options.valueReader = requestValueReader(input)
+@@ -98,32 +112,42 @@ func (compiled *Compiled) finishDecodedRequest(ctx context.Context, input Value,
+ // mapping. Native replay and explicit edits are handled by the preservation
+ // layer; unknown fields are never copied to a foreign protocol by this method.
+ func (compiled *Compiled) EncodeRequest(ctx context.Context, request *Request, options EvaluationContext) (result []byte, err error) {
++	output, err := compiled.EncodeRequestValue(ctx, request, options)
++	if err != nil {
++		return nil, err
++	}
++	return output.Bytes(), nil
++}
++
++// EncodeRequestValue retains the owned immutable result through internal
++// validation boundaries. Public byte encoding still returns an independent copy.
++func (compiled *Compiled) EncodeRequestValue(ctx context.Context, request *Request, options EvaluationContext) (result Value, err error) {
+ 	defer func() { err = compiled.runtimeError(EncodeRequest, err) }()
+ 	if err := ctx.Err(); err != nil {
+-		return nil, err
++		return Value{}, err
+ 	}
+ 	inputLimits, _, _ := compiled.mappingLimits(ctx, EncodeRequest)
+ 	if err := checkSemanticValue(request, inputLimits); err != nil {
+-		return nil, err
++		return Value{}, err
+ 	}
+ 	if err := validateRequestContext(request); err != nil {
+-		return nil, err
++		return Value{}, err
+ 	}
+ 	target := compiled.target(EncodeRequest, options)
+ 	if err := IssuesError(CheckRequest(request, target, semanticLimits(compiled.nativeLimits(ctx, EncodeRequest)))); err != nil {
+-		return nil, err
++		return Value{}, err
+ 	}
+ 	output, err := encodeTyped(ctx, compiled, EncodeRequest, request, options, func(module TypedModule, input *Request, options EvaluationContext) (Value, error) {
+ 		return module.EncodeRequest(ctx, input, options)
+ 	})
+ 	if err != nil {
+-		return nil, err
++		return Value{}, err
+ 	}
+ 	output, err = compiled.preserveMappedNative(ctx, EncodeRequest, request.Native, output, options)
+ 	if err != nil {
+-		return nil, err
++		return Value{}, err
+ 	}
+-	return output.Bytes(), nil
++	return output, nil
+ }
+ 
+ // DecodeResponse executes the independent upstream response mapping.
+@@ -450,7 +474,7 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
+ 			options.Scope, options.Values, options.InterleavedThinking = source.Scope, maps.Clone(source.Values), source.InterleavedThinking
+ 		}
+ 		if request == nil {
+-			request, err = replay.decodeRequest(ctx, original.Bytes(), options, &native.Source.Scope)
++			request, err = replay.decodeRequestValue(ctx, original, options, &native.Source.Scope)
+ 		} else {
+ 			if err = ctx.Err(); err == nil {
+ 				request, err = replay.finishDecodedRequest(ctx, original, cloneRequestSemantic(request), options, &native.Source.Scope)
+diff --git a/backend/server/continuation.go b/backend/server/continuation.go
+index 8ee0ed4..e194373 100644
+--- a/backend/server/continuation.go
++++ b/backend/server/continuation.go
+@@ -29,16 +29,12 @@ type gatewayContinuation struct {
+ 	sink                             *protocol.DiagnosticSink
+ }
+ 
+-func continuationSession(c *gin.Context, body []byte) string {
++func continuationSession(c *gin.Context, v protocol.Value) string {
+ 	for _, name := range []string{"x-elysia-session-id", "x-claude-code-session-id", "claude-code-session-id", "x-session-id", "session_id"} {
+ 		if value := strings.TrimSpace(c.GetHeader(name)); value != "" && len(value) <= 512 {
+ 			return value
+ 		}
+ 	}
+-	v, err := protocol.ParseValue(body)
+-	if err != nil {
+-		return ""
+-	}
+ 	reader := (protocol.EvaluationContext{}).WithValueReader(v)
+ 	fields, _ := reader.ReadObject(v)
+ 	metadata, _ := reader.ReadObject(fields["metadata"])
+diff --git a/backend/server/gateway_encoding.go b/backend/server/gateway_encoding.go
+index 6964502..f842aa0 100644
+--- a/backend/server/gateway_encoding.go
++++ b/backend/server/gateway_encoding.go
+@@ -10,7 +10,7 @@ import (
+ // gatewayRequestEncoding is single-consumer, shared only by copies of the same
+ // private candidate. A plan keeps at most its first eligible candidate's body.
+ type gatewayRequestEncoding struct {
+-	body        []byte
++	value       protocol.Value
+ 	request     *protocol.Request
+ 	identity    protocol.Identity
+ 	scope       protocol.Scope
+@@ -19,25 +19,25 @@ type gatewayRequestEncoding struct {
+ 	issues      []protocol.ConversionIssue
+ }
+ 
+-func (candidate gatewayCandidate) takeRequestEncoding(ctx context.Context, request *protocol.Request, options protocol.EvaluationContext) ([]byte, bool) {
++func (candidate gatewayCandidate) takeRequestValue(ctx context.Context, request *protocol.Request, options protocol.EvaluationContext) (protocol.Value, bool) {
+ 	encoding := candidate.encoding
+-	if encoding == nil || encoding.body == nil {
+-		return nil, false
++	if encoding == nil || encoding.value.IsZero() {
++		return protocol.Value{}, false
+ 	}
+-	body := encoding.body
++	value := encoding.value
+ 	defer candidate.releaseRequestEncoding()
+ 	if ctx.Err() != nil || candidate.model.CacheSynthesis || candidate.compiled.Identity() != encoding.identity || options.Scope != encoding.scope || options.InterleavedThinking != encoding.interleaved || candidate.compiled.RequestLimits(ctx) != encoding.limits || !reflect.DeepEqual(request, encoding.request) {
+-		return nil, false
++		return protocol.Value{}, false
+ 	}
+ 	for _, issue := range encoding.issues {
+ 		options.Diagnostics.Add(issue)
+ 	}
+-	return body, true
++	return value, true
+ }
+ 
+ func (candidate gatewayCandidate) releaseRequestEncoding() {
+ 	if candidate.encoding != nil {
+-		candidate.encoding.body = nil
++		candidate.encoding.value = protocol.Value{}
+ 		candidate.encoding.request = nil
+ 		candidate.encoding.issues = nil
+ 	}
+diff --git a/backend/server/gateway_encoding_test.go b/backend/server/gateway_encoding_test.go
+index 4532e41..d63cbb0 100644
+--- a/backend/server/gateway_encoding_test.go
++++ b/backend/server/gateway_encoding_test.go
+@@ -26,7 +26,7 @@ func TestGatewayPreparedEncodingBoundaries(t *testing.T) {
+ 				t.Fatal(err)
+ 			}
+ 			warning := protocol.ConversionIssue{Severity: protocol.SeverityWarning, Reason: "preflight diagnostic"}
+-			candidate := gatewayCandidate{compiled: compiled, encoding: &gatewayRequestEncoding{body: []byte("prepared"), request: request, identity: compiled.Identity(), limits: compiled.RequestLimits(t.Context()), issues: []protocol.ConversionIssue{warning}}}
++			candidate := gatewayCandidate{compiled: compiled, encoding: &gatewayRequestEncoding{value: protocol.StringValue("prepared"), request: request, identity: compiled.Identity(), limits: compiled.RequestLimits(t.Context()), issues: []protocol.ConversionIssue{warning}}}
+ 			actual := request.Clone()
+ 			options := protocol.EvaluationContext{Diagnostics: &protocol.DiagnosticSink{}}
+ 			ctx := t.Context()
+@@ -48,17 +48,17 @@ func TestGatewayPreparedEncodingBoundaries(t *testing.T) {
+ 			case "content":
+ 				actual.Content[0].Children[0].Payload = protocol.StringValue("edited")
+ 			}
+-			body, ok := candidate.takeRequestEncoding(ctx, actual, options)
++			body, ok := candidate.takeRequestValue(ctx, actual, options)
+ 			if ok != (variant == "same") {
+ 				t.Fatalf("incorrect reuse: %t", ok)
+ 			}
+-			if ok && (string(body) != "prepared" || len(options.Diagnostics.Issues()) != 1) || !ok && len(options.Diagnostics.Issues()) != 0 {
++			if ok && (!body.IsString("prepared") || len(options.Diagnostics.Issues()) != 1) || !ok && len(options.Diagnostics.Issues()) != 0 {
+ 				t.Fatal("diagnostics published at the wrong boundary")
+ 			}
+-			if candidate.encoding.body != nil || candidate.encoding.request != nil {
++			if !candidate.encoding.value.IsZero() || candidate.encoding.request != nil {
+ 				t.Fatal("consumed or invalidated encoding retained payload")
+ 			}
+-			if _, reused := candidate.takeRequestEncoding(ctx, actual, options); reused {
++			if _, reused := candidate.takeRequestValue(ctx, actual, options); reused {
+ 				t.Fatal("encoding consumed twice")
+ 			}
+ 		})
+diff --git a/backend/server/gateway_protocol.go b/backend/server/gateway_protocol.go
+index 239e1ba..f47f075 100644
+--- a/backend/server/gateway_protocol.go
++++ b/backend/server/gateway_protocol.go
+@@ -177,20 +177,20 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
+ 	}
+ 	s.estimateGatewayAttempt(record, request)
+ 	record.SystemStructure.After = systemStructure(request)
+-	body, isPrepared := candidate.takeRequestEncoding(c.Request.Context(), request, options)
++	wireValue, isPrepared := candidate.takeRequestValue(c.Request.Context(), request, options)
+ 	var err error
+ 	if !isPrepared {
+-		body, err = candidate.compiled.EncodeRequest(c.Request.Context(), request, options)
++		wireValue, err = candidate.compiled.EncodeRequestValue(c.Request.Context(), request, options)
+ 		if err != nil {
+ 			return &gatewayFailure{http.StatusBadRequest, err}
+ 		}
+ 	}
+ 	if candidate.conversion.HasPhase(protocol.ConversionWire) {
+-		body, err = candidate.conversion.Wire(c.Request.Context(), body, candidate.conversionContext(plan.ingress, false), options.Diagnostics)
++		wireValue, err = candidate.conversion.ApplyValue(c.Request.Context(), protocol.ConversionWire, wireValue, candidate.conversionContext(plan.ingress, false), options.Diagnostics)
+ 		if err != nil {
+ 			return &gatewayFailure{http.StatusBadRequest, err}
+ 		}
+-		decoded, e := candidate.compiled.DecodeRequest(c.Request.Context(), body, options)
++		decoded, e := candidate.compiled.DecodeRequestValue(c.Request.Context(), wireValue, options)
+ 		if e != nil {
+ 			return &gatewayFailure{http.StatusBadRequest, e}
+ 		}
+@@ -198,17 +198,16 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
+ 			return &gatewayFailure{http.StatusBadRequest, e}
+ 		}
+ 	}
+-	if v, e := protocol.ParseValue(body); e != nil {
+-		return e
+-	} else if e = candidate.compiled.CheckRequestBody(c.Request.Context(), v); e != nil {
++	if e := candidate.compiled.CheckRequestBody(c.Request.Context(), wireValue); e != nil {
+ 		return &gatewayFailure{http.StatusBadRequest, e}
+-	} else if e = candidate.compiled.ValidateWireOutput(protocol.EncodeRequest, v); e != nil {
++	} else if e = candidate.compiled.ValidateWireOutput(protocol.EncodeRequest, wireValue); e != nil {
+ 		return e
+ 	}
+-	if err := candidate.compiled.CheckOperationInput(c.Request.Context(), candidate.operationName, body); err != nil {
++	if err := candidate.compiled.CheckOperationValueInput(c.Request.Context(), candidate.operationName, wireValue); err != nil {
+ 		return &gatewayFailure{http.StatusBadRequest, err}
+ 	}
+ 	setRecordModel(record, candidate.model, builtin.Platform("custom:"+candidate.binding.ProtocolID))
++	body := wireValue.Bytes() // Materialize mutable transport bytes once, after final checks.
+ 	record.UpstreamRevision, record.TargetEndpoint, record.TargetFormat = candidate.compiled.Hash(), candidate.operation.Path, candidate.binding.ProtocolID
+ 	record.OutgoingBody = record.sanitizeBody(body)
+ 	outboundBody := body
+diff --git a/backend/server/gateway_route.go b/backend/server/gateway_route.go
+index cfd8dbf..a9472f2 100644
+--- a/backend/server/gateway_route.go
++++ b/backend/server/gateway_route.go
+@@ -52,8 +52,12 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView,
+ 		return nil, err
+ 	}
+ 	bindings := conversions.bindings
+-	plan := &gatewayPlan{ingress: ingress, session: continuationSession(c, body)}
+-	body, plan.carriers, err = builtin.ExtractContinuationCarriers(body, ingress.Identity().Family, ingress.RequestLimits(c.Request.Context()).BufferBytes)
++	input, err := protocol.ParseValue(body)
++	if err != nil {
++		return nil, err
++	}
++	plan := &gatewayPlan{ingress: ingress, session: continuationSession(c, input)}
++	input, plan.carriers, err = builtin.ExtractContinuationCarriersValue(input, ingress.Identity().Family, ingress.RequestLimits(c.Request.Context()).BufferBytes)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -68,12 +72,12 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView,
+ 	options.ResolveRequestScope = func(request *protocol.Request) (protocol.Scope, error) {
+ 		return s.bindGatewayRequest(c, view, bindings, plan, path, request, record)
+ 	}
+-	request, err := ingress.DecodeRequest(c.Request.Context(), body, options)
++	request, err := ingress.DecodeRequestValue(c.Request.Context(), input, options)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+ 	plan.request = request
+-	if err := ingress.CheckOperationInput(c.Request.Context(), plan.operationName, body); err != nil {
++	if err := ingress.CheckOperationValueInput(c.Request.Context(), plan.operationName, input); err != nil {
+ 		return nil, err
+ 	}
+ 	if plan.operation.Transport != protocol.WebSocket {
+@@ -148,9 +152,9 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView,
+ 		if canRetainEncoding {
+ 			probeOptions.Diagnostics = &protocol.DiagnosticSink{}
+ 		}
+-		body, encodeErr := candidate.compiled.EncodeRequest(c.Request.Context(), probe, probeOptions)
++		encoded, encodeErr := candidate.compiled.EncodeRequestValue(c.Request.Context(), probe, probeOptions)
+ 		if encodeErr == nil {
+-			encodeErr = candidate.compiled.CheckOperationInput(c.Request.Context(), candidate.operationName, body)
++			encodeErr = candidate.compiled.CheckOperationValueInput(c.Request.Context(), candidate.operationName, encoded)
+ 		}
+ 		if encodeErr != nil {
+ 			if c.Request.Context().Err() != nil {
+@@ -167,7 +171,7 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView,
+ 		candidate.binding = constrained
+ 		candidate.routeBinding = matched
+ 		if canRetainEncoding {
+-			candidate.encoding = &gatewayRequestEncoding{body: body, request: probe, identity: candidate.compiled.Identity(), scope: probeOptions.Scope, limits: candidate.compiled.RequestLimits(c.Request.Context()), interleaved: probeOptions.InterleavedThinking, issues: probeOptions.Diagnostics.Issues()}
++			candidate.encoding = &gatewayRequestEncoding{value: encoded, request: probe, identity: candidate.compiled.Identity(), scope: probeOptions.Scope, limits: candidate.compiled.RequestLimits(c.Request.Context()), interleaved: probeOptions.InterleavedThinking, issues: probeOptions.Diagnostics.Issues()}
+ 		}
+ 		eligible = append(eligible, candidate)
+ 	}

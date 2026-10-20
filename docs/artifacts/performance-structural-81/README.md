@@ -3,6 +3,8 @@
 Tracking: [issue #81](https://github.com/PinkElysiaDev/Elysia-Api/issues/81), following merged #78–#80. Baseline: upstream `deploy` at `1ddf7af`.
 
 - [Item 1: nested output construction](../../backend-performance-structural-81-item-1.md)
+- [Item 2: immutable request reuse](../../backend-performance-structural-81-item-2.md)
+- `item-2/`: incremental accepted HTTP results after item 1.
 - `baseline/`, `item-1-final/`: selected HTTP acceptance, original reports/commands/source patches and binary hashes.
 - `item-1-confirmed/`: initial prototype timing investigation, explicitly not the accepted implementation.
 - `item-1-final-confirmed/`: accepted implementation ABBA confirmation and raw command logs.

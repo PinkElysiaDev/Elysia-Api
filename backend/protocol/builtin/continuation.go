@@ -15,10 +15,24 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
 	if err != nil {
 		return nil, nil, err
 	}
+	value, tokens, err := ExtractContinuationCarriersValue(root, family, limit)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(tokens) == 0 {
+		return body, nil, nil
+	}
+	return value.Bytes(), tokens, nil
+}
+
+// ExtractContinuationCarriersValue shares the already validated document with
+// subsequent request decoding. Tokens are decoded into independent strings;
+// unchanged input remains immutable and no parsed mutable container escapes.
+func ExtractContinuationCarriersValue(root p.Value, family string, limit int) (p.Value, []string, error) {
 	reader := (p.EvaluationContext{}).WithValueReader(root)
 	fields, err := reader.ReadObject(root)
 	if err != nil {
-		return nil, nil, err
+		return p.Value{}, nil, err
 	}
 	var tokens []string
 	bytes := 0
@@ -71,7 +85,7 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
 	}
 	messages, err := reader.ReadArray(fields[history])
 	if err != nil {
-		return body, nil, nil
+		return root, nil, nil
 	}
 	var out []p.Value
 	for _, message := range messages {
@@ -89,11 +103,11 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
 				var carriers []p.Value
 				if v := m["elysia_continuation"]; !v.IsZero() {
 					if err := v.Decode(&carriers); err != nil {
-						return nil, nil, fmt.Errorf("invalid elysia_continuation carrier")
+						return p.Value{}, nil, fmt.Errorf("invalid elysia_continuation carrier")
 					}
 					for _, v := range carriers {
 						if !add(v) {
-							return nil, nil, fmt.Errorf("invalid elysia continuation prefix")
+							return p.Value{}, nil, fmt.Errorf("invalid elysia continuation prefix")
 						}
 					}
 					delete(m, "elysia_continuation")
@@ -104,7 +118,7 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
 				original := m["content"]
 				m["content"], err = stripBlocks(original)
 				if err != nil {
-					return nil, nil, err
+					return p.Value{}, nil, err
 				}
 				changed = m["content"] != original
 			}
@@ -113,23 +127,23 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
 		if changed {
 			value, err = p.EncodeValue(m)
 			if err != nil {
-				return nil, nil, err
+				return p.Value{}, nil, err
 			}
 		}
 		out = append(out, value)
 	}
 	if bytes > limit || len(tokens) > p.DefaultLimits().StateItems {
-		return nil, nil, fmt.Errorf("continuation carriers exceed limit")
+		return p.Value{}, nil, fmt.Errorf("continuation carriers exceed limit")
 	}
 	if len(tokens) == 0 {
-		return body, nil, nil
+		return root, nil, nil
 	}
 	fields[history], err = p.EncodeValue(out)
 	if err != nil {
-		return nil, nil, err
+		return p.Value{}, nil, err
 	}
 	encoded, err := p.EncodeValue(fields)
-	return encoded.Bytes(), tokens, err
+	return encoded, tokens, err
 }
 
 func carrierBlocks(tokens []string, family string) []p.Value {
