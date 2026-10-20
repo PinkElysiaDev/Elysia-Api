@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/elysia-api/backend/internal/clishell"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 type cliPipeKind int
@@ -13,166 +16,125 @@ const (
 	pipeHead
 )
 
-// cliPipe 一条尾管道：grep 记子串，head 记行数。
 type cliPipe struct {
 	kind cliPipeKind
 	text string
 	n    int
 }
-
-// cliStatement 是一条待执行语句（命令 + 尾管道）。
 type cliStatement struct {
 	raw   string
 	args  []string
 	pipes []cliPipe
 }
-
-// cliQuotes 是三个扫描器（tokenizer / 批切分 / 管道切分）共享的引号状态
-// 机：' 与 " 互斥，双引号内 \" 与 \\ 是转义序列、不改变引号态。转义规则
-// 集中在此——修引号相关的 bug 只需改这一处。
-type cliQuotes struct {
-	inSingle, inDouble bool
-}
-
-// toggle 消费一个字符并维护引号态，返回它是否为引号开闭字符。
-func (q *cliQuotes) toggle(ch byte) bool {
-	switch {
-	case ch == '\'' && !q.inDouble:
-		q.inSingle = !q.inSingle
-		return true
-	case ch == '"' && !q.inSingle:
-		q.inDouble = !q.inDouble
-		return true
-	}
-	return false
-}
-
-// inside 报告当前是否处于引号内（顶层扫描器据此跳过分隔符）。
-func (q *cliQuotes) inside() bool { return q.inSingle || q.inDouble }
-
-// escaped 报告 s[i] 是否为双引号内转义序列（\" 或 \\）的开头；调用方应
-// 保留 s[i] 与 s[i+1] 并跳过两字节（tokenizer 只保留转义后的字符）。
-func (q *cliQuotes) escaped(s string, i int) bool {
-	return q.inDouble && s[i] == '\\' && i+1 < len(s) && (s[i+1] == '"' || s[i+1] == '\\')
-}
-
-// cliTokenize 把单条命令切成参数（处理引号与转义）。空引号（” / ""）
-// 产出空 token——`--secret ”` 依赖它表达空值。
-func cliTokenize(line string) ([]string, error) {
-	var tokens []string
-	var current strings.Builder
-	var quotes cliQuotes
-	quoted := false // 当前 token 是否含过引号（空引号也要产出 token）
-	flush := func() {
-		if current.Len() > 0 || quoted {
-			tokens = append(tokens, current.String())
-			current.Reset()
-			quoted = false
-		}
-	}
-	for i := 0; i < len(line); i++ {
-		ch := line[i]
-		if quotes.escaped(line, i) {
-			current.WriteByte(line[i+1])
-			i++
-			continue
-		}
-		if quotes.toggle(ch) {
-			quoted = true
-			continue
-		}
-		if (ch == ' ' || ch == '\t') && !quotes.inside() {
-			flush()
-			continue
-		}
-		current.WriteByte(ch)
-	}
-	flush()
-	if quotes.inside() {
-		return nil, fmt.Errorf("引号未闭合")
-	}
-	return tokens, nil
-}
-
-// cliSegment 是一条语句及其分隔语义：mustSucceed=true（`&&` 分隔）时
-// 本条失败即跳过其 && 链；fromAnd=true 表示本条由 `&&` 连接（是链的
-// 后续成员，前驱失败时会被跳过）。
 type cliSegment struct {
-	raw         string
-	mustSucceed bool
-	fromAnd     bool
+	raw                  string
+	mustSucceed, fromAnd bool
 }
 
-// cliSplitStatements 按顶层 `&&` / `;` / 换行切分脚本（引号内不切分，
-// 双引号内 \" 与 \\ 不改变引号态——与 tokenizer 同一规则）。`&&` 后的换行
-// 视为续行（空段不清除链标记），`a &&\nb` 与 `a && b` 同义。
+func cliPlainStatement(stmt *syntax.Stmt) error {
+	if stmt.Background || stmt.Negated || stmt.Coprocess || len(stmt.Redirs) != 0 {
+		return fmt.Errorf("不支持后台执行、否定或重定向")
+	}
+	return nil
+}
+
+// The parser owns quoting, operator precedence, comments, and source positions.
+// Adapt only && lists to the executor's existing short-circuit representation.
 func cliSplitStatements(script string) ([]cliSegment, error) {
-	var parts []cliSegment
-	var current strings.Builder
-	var quotes cliQuotes
-	pendingFromAnd := false // 下一段是否由 && 引入
-	flush := func(mustSucceed bool) {
-		if trimmed := strings.TrimSpace(current.String()); trimmed != "" {
-			parts = append(parts, cliSegment{raw: trimmed, mustSucceed: mustSucceed, fromAnd: pendingFromAnd})
-			// 仅实际产出语句段时清链标记：`&&` 右侧的空段（换行/分号前）
-			// 表示链还在等右操作数，跨换行保持 fromAnd。
-			pendingFromAnd = false
-		}
-		current.Reset()
+	file, err := clishell.Parse(script)
+	if err != nil {
+		return nil, err
 	}
-	for i := 0; i < len(script); i++ {
-		ch := script[i]
-		if quotes.escaped(script, i) {
-			current.WriteByte(ch)
-			current.WriteByte(script[i+1])
-			i++
-			continue
+	var segments []cliSegment
+	var visit func(*syntax.Stmt) error
+	visit = func(stmt *syntax.Stmt) error {
+		if err := cliPlainStatement(stmt); err != nil {
+			return err
 		}
-		quotes.toggle(ch)
-		if quotes.inside() {
-			current.WriteByte(ch)
-			continue
-		}
-		if ch == ';' || ch == '\n' {
-			flush(false)
-			continue
-		}
-		if ch == '&' {
-			if i+1 >= len(script) || script[i+1] != '&' {
-				return nil, fmt.Errorf("不支持单个 &（批处理请用 && 连接）")
+		if binary, ok := stmt.Cmd.(*syntax.BinaryCmd); ok && binary.Op == syntax.AndStmt {
+			if err := visit(binary.X); err != nil {
+				return err
 			}
-			// `&&`：本条失败即跳过所在链；右侧段标记 fromAnd。
-			flush(true)
-			pendingFromAnd = true
-			i++
-			continue
+			segments[len(segments)-1].mustSucceed = true
+			next := len(segments)
+			if err := visit(binary.Y); err != nil {
+				return err
+			}
+			segments[next].fromAnd = true
+			return nil
 		}
-		current.WriteByte(ch)
+		// Use command spans, excluding the statement's trailing semicolon.
+		raw := script[stmt.Cmd.Pos().Offset():stmt.Cmd.End().Offset()]
+		segments = append(segments, cliSegment{raw: raw})
+		return nil
 	}
-	flush(false)
-	if quotes.inside() {
-		return nil, fmt.Errorf("引号未闭合")
+	for _, stmt := range file.Stmts {
+		if err := visit(stmt); err != nil {
+			return nil, err
+		}
 	}
-	if len(parts) == 0 {
+	if len(segments) == 0 {
 		return nil, fmt.Errorf("空命令")
 	}
-	return parts, nil
+	return segments, nil
 }
 
-// cliParseStatement 解析单条语句：切管道（仅支持 grep/head）、切参数。
+func cliCallArgs(stmt *syntax.Stmt) ([]string, error) {
+	if err := cliPlainStatement(stmt); err != nil {
+		return nil, err
+	}
+	call, ok := stmt.Cmd.(*syntax.CallExpr)
+	if !ok || len(call.Assigns) != 0 || len(call.Args) == 0 {
+		return nil, fmt.Errorf("只支持简单 CLI 命令，不支持赋值或 shell 控制结构")
+	}
+	args := make([]string, 0, len(call.Args))
+	for _, word := range call.Args {
+		value, err := clishell.Literal(word)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, value)
+	}
+	return args, nil
+}
+
 func cliParseStatement(raw string) (cliStatement, error) {
 	statement := cliStatement{raw: raw}
-	segments := splitPipe(raw)
-	tokens, err := cliTokenize(segments[0])
+	file, err := clishell.Parse(raw)
 	if err != nil {
 		return statement, err
 	}
-	if len(tokens) == 0 || tokens[0] != cliName {
-		return statement, fmt.Errorf("命令必须以 %s 开头（当前 %q）", cliName, firstWord(segments[0]))
+	if len(file.Stmts) != 1 {
+		return statement, fmt.Errorf("需要一条 CLI 语句")
 	}
-	statement.args = tokens[1:]
-	for _, segment := range segments[1:] {
-		pipe, err := parseCLIPipe(segment)
+	var calls [][]string
+	var visit func(*syntax.Stmt) error
+	visit = func(stmt *syntax.Stmt) error {
+		if err := cliPlainStatement(stmt); err != nil {
+			return err
+		}
+		if binary, ok := stmt.Cmd.(*syntax.BinaryCmd); ok && binary.Op == syntax.Pipe {
+			if err := visit(binary.X); err != nil {
+				return err
+			}
+			return visit(binary.Y)
+		}
+		args, err := cliCallArgs(stmt)
+		if err != nil {
+			return err
+		}
+		calls = append(calls, args)
+		return nil
+	}
+	if err := visit(file.Stmts[0]); err != nil {
+		return statement, err
+	}
+	if calls[0][0] != cliName {
+		return statement, fmt.Errorf("命令必须以 %s 开头", cliName)
+	}
+	statement.args = calls[0][1:]
+	for _, args := range calls[1:] {
+		pipe, err := parseCLIPipe(args)
 		if err != nil {
 			return statement, err
 		}
@@ -181,16 +143,8 @@ func cliParseStatement(raw string) (cliStatement, error) {
 	return statement, nil
 }
 
-// parseCLIPipe 解析一条尾管道段（已切掉 | 的文本）：grep <子串> 或
-// head <n>（head 也接受 -n N / -N 习惯写法）。
-func parseCLIPipe(segment string) (cliPipe, error) {
-	tokens, err := cliTokenize(segment)
-	if err != nil {
-		return cliPipe{}, err
-	}
-	if len(tokens) == 0 {
-		return cliPipe{}, fmt.Errorf("空管道段")
-	}
+// These are in-memory output filters, not external shell commands.
+func parseCLIPipe(tokens []string) (cliPipe, error) {
 	switch tokens[0] {
 	case "grep":
 		if len(tokens) != 2 {
@@ -204,47 +158,12 @@ func parseCLIPipe(segment string) (cliPipe, error) {
 		} else if len(tokens) == 3 && tokens[1] == "-n" {
 			arg = tokens[2]
 		}
-		n, convErr := strconv.Atoi(arg)
-		if arg == "" || convErr != nil || n <= 0 {
+		n, err := strconv.Atoi(arg)
+		if err != nil || n <= 0 {
 			return cliPipe{}, fmt.Errorf("head 行数必须是正整数（| head <n> 或 | head -n <n>）")
 		}
 		return cliPipe{kind: pipeHead, n: n}, nil
 	default:
-		return cliPipe{}, fmt.Errorf("只支持 | grep <子串> 与 | head <n> 管道（不支持 %q）", tokens[0])
+		return cliPipe{}, fmt.Errorf("只支持 | grep <子串> 与 | head <n> 管道")
 	}
 }
-
-// splitPipe 按顶层 | 切分（引号内不切分，双引号内 \" 与 \\ 不改变引号态）。
-func splitPipe(raw string) []string {
-	var segments []string
-	var current strings.Builder
-	var quotes cliQuotes
-	for i := 0; i < len(raw); i++ {
-		ch := raw[i]
-		if quotes.escaped(raw, i) {
-			current.WriteByte(ch)
-			current.WriteByte(raw[i+1])
-			i++
-			continue
-		}
-		quotes.toggle(ch)
-		if ch == '|' && !quotes.inside() {
-			segments = append(segments, current.String())
-			current.Reset()
-			continue
-		}
-		current.WriteByte(ch)
-	}
-	return append(segments, current.String())
-}
-
-func firstWord(text string) string {
-	fields := strings.Fields(text)
-	if len(fields) == 0 {
-		return ""
-	}
-	return fields[0]
-}
-
-// cliInvocation 是一条命令解析后的调用形状。flag 是否出现由 flags 的键
-// 存在性表达（值可为空串——`--secret ”` 是合法的空值）。

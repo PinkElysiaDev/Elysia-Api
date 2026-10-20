@@ -2,7 +2,7 @@
 
 [Documentation](README.en.md) · [简体中文](agent-cli.md) · **English**
 
-This page translates the tool definition, command table and runtime help. `elysia` is command syntax inside `elysia_cli`, not a standalone terminal program. Angle brackets and ellipses in `text` blocks are placeholders, not scripts to paste into a shell.
+This page translates the tool definition, command table and runtime help. `elysia` is command syntax inside `elysia_cli`, not a standalone terminal program. Angle brackets and ellipses in `text` blocks are placeholders, not scripts to paste into a shell. The command reference below describes the same arguments and business behavior as runtime help; its translated layout is independent of Cobra's generated presentation.
 
 The built-in assistant also exposes `ask_user` and `update_plan`; see the [tool catalog](agent-tools-catalog.en.md) for responsibilities and permissions. REST/A2A follow session approvals. MCP executes directly with an `agent`-scoped key, outside that approval chain. Each MCP call is stateless; reuse drafts and test targets within one `command` batch. See [remote access](remote-agent-api.en.md).
 
@@ -15,6 +15,23 @@ Execute Elysia API gateway operations. Every command starts with `elysia`. Read 
 ```json
 {"command":"elysia source ls"}
 ```
+
+## Parser and command-framework migration
+
+Scripts use `mvdan.cc/sh/v3` **v3.14.1** (POSIX syntax) and **Cobra v1.10.2 / pflag v1.0.10**. The parser supplies the syntax tree; a restricted adapter invokes existing gateway handlers. No system shell, subprocess, environment expansion, or filesystem globbing is involved.
+
+Supported syntax includes literal words, concatenated single/double quotes, empty quoted values, shell backslash escaping, backslash-newline continuation, comments, `;`, newlines, `&&`, and the existing in-memory `grep` / `head` filters. Glob patterns, braces inside words, and `~` remain literal. Single-quote JSON, credentials, or other values containing `$`, backticks, or shell operators.
+
+### Compatibility changes
+
+- POSIX lexical rules replace the custom tokenizer: an unquoted backslash escapes the following character; `#` at the start of a word starts a comment. A trailing `&&` or `|`, repeated semicolons, and unmatched quotes are syntax errors. Syntax errors and forbidden top-level execution modifiers reject the whole script before execution. Other unsupported statements and invalid commands fail at their statement boundary, preserving `&&` / `;` behavior.
+- Variable, arithmetic, command and process substitutions, assignments, redirections (including here-documents), background execution, `||`, negation, subshells, and shell control structures are not supported. Quote such text when it is a literal argument. The parser never evaluates it.
+- Command lookup, unknown-command/flag diagnostics, and help layout follow Cobra/pflag. There is no fixed command-path depth. `elysia help <group>` lists subcommands; use `elysia help <group> <command>` for flags, examples, positional arguments, and full business semantics. Nested groups such as `elysia help group member` are supported.
+- Commands accept `--help` and `-h`, in addition to `elysia help ...`. Help is side-effect free and does not require write approval. `--help=false` does not suppress execution or approval. Use `--` to stop flag parsing for positional values starting with `-`; a required flag value may itself start with `-` under pflag rules.
+- Existing flag semantics are retained: omitted versus explicit empty values, bare boolean flags, `true/false`, `1/0`, `yes/no` (case-insensitive), repeated comma-separated lists, and last-value-wins scalar flags. Boolean values must use `=` when supplied explicitly. List values are comma-delimited, not CSV.
+- Credential redaction uses parsed word spans in both CLI output/progress and Agent events. Escaped or concatenated quoted values are masked as a whole. Malformed or expansion-bearing scripts are replaced with a diagnostic placeholder when displayed.
+
+Handler response envelopes, output budgets, cancellation, per-handler timeouts, `&&` short-circuiting, and Agent-versus-MCP permission policies remain unchanged. Application-owned JSON calls in this migration use Sonic.
 
 ## Overview
 
@@ -32,7 +49,7 @@ Command groups:
   syslog     System logs
   outbound   Denied outbound IP ranges (SSRF protection) (get, reset, set)
 
-Help levels: elysia help <group> (all flags) / elysia help <group> <command> (full semantics and examples).
+Help levels: elysia help <group> (subcommands) / elysia help <group> <command> (flags, full semantics and examples); --help / -h also work.
 
 Syntax: 'quotes' ('' means empty), --flag value or --flag=value, batches (&& skips the rest of its chain on failure; semicolons or newlines continue),
 and trailing pipelines (| grep <substring> filters case-insensitively; | head <n> keeps the first n text lines, not records; head also accepts -n N / -N).

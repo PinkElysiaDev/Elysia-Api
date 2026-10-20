@@ -114,19 +114,19 @@ func probeAgentCLI(script string) ([]agent.GateNote, error) {
 			}
 			continue
 		}
-		if isCLIHelpArgs(statement.args) {
-			continue
-		}
 		if len(statement.args) >= 2 && statement.args[0] == "session" && statement.args[1] == "title" {
 			continue
 		}
-		inv, err := cliResolve(statement.args)
+		inv, _, err := cliResolveRequest(statement.args)
 		if err != nil {
 			if parseErr == nil {
 				parseErr = err
 			}
 			continue
 		}
+		if inv == nil {
+			continue
+		} // Cobra help has no business effect.
 		handler := inv.command.handler(nil)
 		permissionKey := ""
 		switch cliEffectOf(handler) {

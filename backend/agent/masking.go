@@ -3,11 +3,11 @@ package agent
 import (
 	"bytes"
 	"encoding/json"
-	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/clishell"
 	"github.com/elysia-api/backend/internal/jsonutil"
 )
 
@@ -86,17 +86,11 @@ func isSecretInputKey(key string) bool {
 	return false
 }
 
-// cliSecretFlagPattern 匹配命令行中的敏感 flag 及其值（--api-key、
-// --secret、--new-secret、--token；--key 是用量过滤的 Key 名，非密钥，
-// 刻意不在列）。值支持引号包裹或裸串。
-var cliSecretFlagPattern = regexp.MustCompile(
-	`(?i)(--(?:api-key|secret|new-secret|token)(?:=|\s+))("[^"]*"|'[^']*'|[^\s&;|]+)`)
-
 // RedactCommandLine 把命令行中敏感 flag 的值替换为 ***。审批卡说明、
 // CLI 回显等一切会把命令行文本带出执行路径的出口共用此函数——密钥值
 // 只允许留在落库原文里（批准后按原文执行）。
 func RedactCommandLine(command string) string {
-	return cliSecretFlagPattern.ReplaceAllString(command, "${1}***")
+	return clishell.Redact(command)
 }
 
 // secretValueMask 是按值精确打码的替换文本。

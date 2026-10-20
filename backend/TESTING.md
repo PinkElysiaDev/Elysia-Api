@@ -44,6 +44,21 @@ go test -tags=sonic -race ./server -run '^Test(A2A|AgentRemote|Remote|MCP)' -cou
 `agent_remote_test.go` 保留审批恢复、显式裁决、取消终态和旧任务取代的集成回归。
 版本与响应差异见[远程 Agent 接入](../docs/remote-agent-api.md#sdk-线协议迁移)。
 
+## CLI 语法与命令框架定向验证
+
+```sh
+go test -tags=sonic -race ./server ./agent ./internal/clishell \
+  -run '^Test(CLI|MCPCLI|MaskSecret|RedactCommand|MaskedPending)' -count=1 -timeout=3m
+```
+
+`cli_framework_test.go` 覆盖 mvdan/sh 支持子集、拒绝 shell 求值、Cobra help 与审批一致性、
+请求间 flag 状态隔离及转义/拼接引号密钥的脱敏；现有 CLI 测试保留业务映射、批处理与真实执行回归。
+中文 CLI 参考由运行时 Cobra help 生成：
+
+```sh
+UPDATE_AGENT_CLI_DOCS=1 go test -tags=sonic ./server -run '^TestCLIReferenceUpToDate$' -count=1
+```
+
 ## 测试组织与去重
 
 缓存的定向 benchmark、Otter 替换前后结果及容量语义差异见

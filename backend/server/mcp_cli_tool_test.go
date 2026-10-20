@@ -164,7 +164,7 @@ func TestMCPCLIPartialFailureAndMasking(t *testing.T) {
 	result, raw := callMCPCLI(t, s, map[string]any{"command": "elysia source create --name test --base-url https://example.com --manual-models eval --api-key sk-private-test; elysia missing; elysia source ls"})
 	data := cliMCPData(t, result, true)
 	output := data["output"].(string)
-	if data["exitCode"] != float64(1) || !strings.Contains(output, "未知命令") || !strings.Contains(output, "模型源") {
+	if data["exitCode"] != float64(1) || !strings.Contains(output, "unknown command") || !strings.Contains(output, "模型源") {
 		t.Fatalf("partial results were lost: %v", data)
 	}
 	if strings.Contains(raw, "sk-private-test") {
@@ -172,7 +172,7 @@ func TestMCPCLIPartialFailureAndMasking(t *testing.T) {
 	}
 	// 文本结果同样包含完整的 CLI 结果，老客户端无需 structuredContent 支持。
 	content := result["content"].([]any)[0].(map[string]any)["text"].(string)
-	if !strings.Contains(content, "未知命令") || !strings.Contains(content, "exitCode") {
+	if !strings.Contains(content, "unknown command") || !strings.Contains(content, "exitCode") {
 		t.Fatalf("text result omitted error context: %s", content)
 	}
 }
