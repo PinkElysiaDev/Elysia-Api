@@ -6,7 +6,7 @@ import (
 )
 
 type responsesStorageOptions struct {
-	SourceCodec   string `json:"sourceCodec,omitempty"`
+	SourceCodec   string `json:"sourceCodec"`
 	TargetCodec   string `json:"targetCodec"`
 	OnUnsupported string `json:"onUnsupported"`
 }
@@ -28,9 +28,6 @@ func (c *CompiledConversion) responsesStorage(req *Request, route ConversionCont
 	if err := optionErr; err != nil {
 		return err
 	}
-	if settings.SourceCodec == "" {
-		settings.SourceCodec = "responses"
-	} // Existing authored rules use Responses defaults.
 	raw := req.Parameters["store"]
 	intent := &ResponsesStorageIntent{Raw: raw, SourceCodec: settings.SourceCodec}
 	if req.ClientOutput != nil && req.ClientOutput.ResponsesStorage != nil {

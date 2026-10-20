@@ -1164,35 +1164,19 @@ func usageQueryFromRequest(c *gin.Context) storage.UsageQuery {
 	if status != "success" && status != "failed" {
 		status = ""
 	}
-	// 多选筛选：QueryArray 收集重复出现的同名参数（?keyName=a&keyName=b）；
-	// 为空时下沉到单值字段，保持与旧调用方（含遗留 /__usage 面板）的兼容。
+	// Repeated canonical parameters also represent a single selection.
 	return storage.UsageQuery{
 		From:       from,
 		To:         to,
 		Limit:      parsePositiveInt(c.Query("limit"), UsageLogsDefaultPageSize),
 		Offset:     parsePositiveInt(c.Query("offset"), 0),
-		KeyName:    c.Query("keyName"),
-		KeyHash:    c.Query("keyHash"),
-		GroupName:  firstNonEmpty(c.Query("groupName"), c.Query("modelGroup")),
-		ModelName:  c.Query("modelName"),
 		Status:     status,
 		StatusCode: parsePositiveInt(c.Query("statusCode"), 0),
 		KeyNames:   compactQueryArray(c.QueryArray("keyName")),
-		GroupNames: compactQueryArray(firstNonEmptyArray(c.QueryArray("groupName"), c.QueryArray("modelGroup"))),
+		GroupNames: compactQueryArray(c.QueryArray("groupName")),
 		ModelNames: compactQueryArray(c.QueryArray("modelName")),
-		SourceID:   c.Query("sourceId"),
 		SourceIDs:  compactQueryArray(c.QueryArray("sourceId")),
 	}
-}
-
-// firstNonEmptyArray 返回第一个非空切片，用于 groupName/modelGroup 两个别名取其一。
-func firstNonEmptyArray(values ...[]string) []string {
-	for _, v := range values {
-		if len(v) > 0 {
-			return v
-		}
-	}
-	return nil
 }
 
 func slugID(value string) string {

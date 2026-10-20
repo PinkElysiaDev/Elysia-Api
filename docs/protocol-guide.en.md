@@ -102,25 +102,23 @@ counters remain distinct from zero. Select aliases with `exists`, so an explicit
 zero overrides earlier counters. `cache_custom_v2_test.go` exercises actual
 local HTTP forwarding; `usage_alias_test.go` demonstrates precedence. Requests without cache intent acquire no policy by default. Explicit source-level `cacheSynthesis` can add structural markers for targets declaring `cache.breakpoints`; see [cache contracts](cache-usage-contracts.en.md#cache-intent-and-breakpoint-synthesis).
 
-## Migration and recovery
+## Initialization and recovery
 
-Retain the old executable plus matching configuration, database and master key.
-Preview the graph through `/protocols/migration/preview`, repair issues and
-apply the same intent with `/migration/apply`. The server recomputes reports;
-client-supplied success evidence cannot authorize migration. Startup first
-recovers the four embedded presets without depending on historical backups.
-Pure additions commit directly; overwrites require a current consistent snapshot
-and a transaction. Failure leaves management available for repair. Check the
+This release does not support old database schemas, configuration aliases or
+historical module semantics. Back up the old environment independently, then
+initialize current-format databases and recreate required records using current
+management APIs. There are no `/protocols/migration/*` endpoints. Check the
 protocol listing's `runtimeReady` and loaded revisions to confirm readiness.
 
-The four shipped presets are read-only and follow the program version; copy to a new ID for customization. Compiler upgrades reverify custom revisions and bindings while preserving custom content, drafts and explicit unbound states. Custom
-semantic fixtures with `value.ttl` must move it to the sibling `ttl` before
-verification. See [migration](protocol-migration-v2.md) and
-[cutover](protocol-cutover-v2.md).
+The four shipped presets are read-only and follow the program version; copy to a
+new ID for customization. Current-database custom revisions and bindings must
+pass current compiler verification. See [deployment](deployment.en.md),
+[preset recovery (Chinese)](protocol-preset-recovery.md) and
+[runtime contract](protocol-cutover-v2.md).
 
 Revision rollback differs from executable/database rollback. Restore a matching
 old program/database/configuration/key set for the latter; `git revert` alone
-does not undo persisted migrations.
+does not restore persisted data.
 
 ## Validation and release
 

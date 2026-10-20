@@ -459,7 +459,7 @@ func (s *LogStore) UsageTotals(ctx context.Context, q UsageQuery) (map[string]an
 		return nil, err
 	}
 	// avg_first_byte 仅对 first_byte_ms > 0 的记录求平均（未记录首字的请求为 0）。
-	// firstUsedAt / lastUsedAt 仍返回，给旧 /__usage 面板算跨度（毫秒精度）。
+	// First and last observed request timestamps use millisecond precision.
 	// durationSum 是成功口径（见 usageTotalsRawInto），分母用 acc.success。
 	var avgDuration, avgFirstByte float64
 	if acc.success > 0 {

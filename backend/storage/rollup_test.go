@@ -308,30 +308,6 @@ func TestRollupClearUsage(t *testing.T) {
 	}
 }
 
-// TestRollupKeyHashFallsBackToRaw：keyHash 筛选（遗留面板维度）必须回退 raw。
-func TestRollupKeyHashFallsBackToRaw(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "rollup-keyhash.sqlite3"))
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	defer store.Close()
-	ctx := context.Background()
-
-	now := time.Now()
-	seedRollupRecords(t, store, now, 60)
-	if err := store.RunRollupBackfill(ctx); err != nil {
-		t.Fatalf("backfill: %v", err)
-	}
-	q := UsageQuery{From: now.Add(-72 * time.Hour), To: now, KeyHash: "nope"}
-	totals, err := store.UsageTotals(ctx, q)
-	if err != nil {
-		t.Fatalf("totals: %v", err)
-	}
-	if totals["requests"] != 0 {
-		t.Fatalf("keyHash filter should match nothing, got %v", totals["requests"])
-	}
-}
-
 // BenchmarkUsageAggregation 对比 raw 与 rollup 路径在 5 万条 / 30 天数据上的
 // 聚合耗时（go test -bench BenchmarkUsageAggregation -benchtime=20x）。
 // 仅衡量聚合计算本身；raw 路径在大 record_json 真实库上还会额外承受回表放大。

@@ -1,78 +1,36 @@
 package server
 
 import (
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/bytedance/sonic"
 )
 
-func TestCLIRenamedToolPermissions(t *testing.T) {
+func TestCLIApprovalAndResume(t *testing.T) {
 	t.Parallel()
-	// Permission semantics live in agent tests; this integration checks the CLI
-	// name's approval/resume wiring and rejection of its retired alias.
-	for _, mode := range []string{"ask", "legacy"} {
-		t.Run(mode, func(t *testing.T) {
-			s := newAgentIntegrationServer(t)
-			name := "elysia_cli"
-			if mode == "legacy" {
-				name = "bash"
-			}
-			fake := newFakeAgentModelServer(t, [][]string{
-				{openAIChunk("c1", toolCallDelta(0, "call_1", name, `{"command":"elysia group create --name regression-group"}`), "", nil), openAIChunk("c1", map[string]any{}, "tool_calls", nil), openAIDone()},
-				{openAIChunk("c2", map[string]any{"role": "assistant", "content": "结果已收到。"}, "", nil), openAIChunk("c2", map[string]any{}, "stop", nil), openAIDone()},
-			})
-			seedAgentModel(t, s, fake.URL)
-			permission := mode
-			if mode == "legacy" {
-				permission = "always"
-			}
-			c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", fmt.Sprintf(`{"mode":"create","settings":{"modelSourceId":"s1","modelName":"fake-model","allowSave":%q}}`, permission))
-			s.adminCreateAgentSession(c)
-			id := decodeAdminData(t, rec)["id"].(string)
-			c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+id+"/messages", id, `{"content":"创建 regression-group"}`)
-			s.adminSendAgentMessage(c)
-			var request struct {
-				Tools []struct {
-					Function struct {
-						Name string `json:"name"`
-					} `json:"function"`
-				} `json:"tools"`
-			}
-			if err := sonic.ConfigStd.Unmarshal([]byte(fake.bodies[0]), &request); err != nil {
-				t.Fatal(err)
-			}
-			names := map[string]bool{}
-			for _, entry := range request.Tools {
-				names[entry.Function.Name] = true
-			}
-			if !names["elysia_cli"] || names["bash"] {
-				t.Fatalf("published tools = %v", names)
-			}
-			groups, _ := s.store.ListGroups(t.Context())
-			if len(groups) != 0 {
-				t.Fatalf("unexpected write before approval in %s", mode)
-			}
-			events := parseSSEEvents(t, rec.Body.String())
-			if hasAgentEvent(events, "approval_required") != (mode == "ask") {
-				t.Fatalf("wrong approval state in %s: %s", mode, rec.Body.String())
-			}
-			if mode == "legacy" && !strings.Contains(rec.Body.String(), "unknown_tool") {
-				t.Fatal("legacy name did not take unknown-tool path")
-			}
-			if mode == "ask" {
-				c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+id+"/approve", id, `{"approved":true}`)
-				s.adminApproveAgentAction(c)
-				groups, _ = s.store.ListGroups(t.Context())
-				if rec.Code != http.StatusOK || len(groups) != 1 {
-					t.Fatalf("renamed tool did not resume: %s", rec.Body.String())
-				}
-			}
-		})
+	// Permission semantics live in agent tests; this checks CLI approval/resume.
+	s := newAgentIntegrationServer(t)
+	fake := newFakeAgentModelServer(t, [][]string{
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia group create --name regression-group"}`), "", nil), openAIChunk("c1", map[string]any{}, "tool_calls", nil), openAIDone()},
+		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "结果已收到。"}, "", nil), openAIChunk("c2", map[string]any{}, "stop", nil), openAIDone()},
+	})
+	seedAgentModel(t, s, fake.URL)
+	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create","settings":{"modelSourceId":"s1","modelName":"fake-model","allowSave":"ask"}}`)
+	s.adminCreateAgentSession(c)
+	id := decodeAdminData(t, rec)["id"].(string)
+	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+id+"/messages", id, `{"content":"创建 regression-group"}`)
+	s.adminSendAgentMessage(c)
+	groups, _ := s.store.ListGroups(t.Context())
+	if len(groups) != 0 || !hasAgentEvent(parseSSEEvents(t, rec.Body.String()), "approval_required") {
+		t.Fatalf("write must wait for approval: %s", rec.Body.String())
+	}
+	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+id+"/approve", id, `{"approved":true}`)
+	s.adminApproveAgentAction(c)
+	groups, _ = s.store.ListGroups(t.Context())
+	if rec.Code != http.StatusOK || len(groups) != 1 {
+		t.Fatalf("CLI did not resume: %s", rec.Body.String())
 	}
 }
 

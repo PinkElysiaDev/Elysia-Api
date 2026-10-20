@@ -190,7 +190,7 @@ func TestAdminUsageAssetServesFileAndRejectsTraversal(t *testing.T) {
 	router := gin.New()
 	s.setupAdminRoutes(router.Group("/api/admin"))
 
-	// 正常获取：占位符里的文件名可下发（扁平布局，requestId 段仅兼容），Content-Type 按 ext。
+	// 正常获取：请求拥有资产引用时可下发，Content-Type 按 ext。
 	fileName := record.assets.items[0].Hash + "." + record.assets.items[0].Ext
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/usage/assets/req_asset/"+fileName, nil)
 	w := httptest.NewRecorder()

@@ -223,7 +223,7 @@ func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, parameter
 		if err := compiled.normalizeAgentReasoning(request); err != nil {
 			return err
 		}
-		if slices.Contains(compiled.Definition().Requires, ReasoningControlsFeature) {
+		if knownConversionCodec(compiled.Codec(EncodeRequest)) {
 			conversion, err := ResolveConversion(DefaultConversionPolicy(compiled, compiled))
 			if err != nil {
 				return err
@@ -305,9 +305,6 @@ func (compiled *Compiled) normalizeAgentReasoning(request *Request) error {
 	value := request.Parameters["reasoning"]
 	if value.IsZero() {
 		return nil
-	}
-	if !slices.Contains(compiled.Definition().Requires, ReasoningControlsFeature) {
-		return streamIssue(InvalidInput, "/agent/parameters/reasoning", "canonical Agent reasoning requires conversion.reasoning.v1")
 	}
 	var reasoning ReasoningIntent
 	if err := decodeContract(value.Bytes(), &reasoning); err != nil {

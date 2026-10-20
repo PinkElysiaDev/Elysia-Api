@@ -41,7 +41,7 @@ Responses 的 include 接受缺失、null 和字符串数组，错误类型返�
 
 诊断按协议身份、阶段、规则、策略、严重程度及保真分类等完整内容去重，流式重复记录折叠，不合并同路径不同阶段的结果。调用日志页面区分信息、警告和错误。编译器语义变化会使旧证据失效，重验不改写用户定义或草稿。
 
-`responses_storage` 使用实际来源与目标模块解释保存意图。`onUnsupported:reject` 可配置为全局拒绝；严格模式拒绝有损转换。旧规则未声明 `sourceCodec` 时保留 Responses 解释。该规则不实现供应商对象检索、删除或会话 API；签名副本不是响应对象数据库，`store:false` 也不关闭网关日志。详见[存储决策](protocol-reasoning.md#store-决策)。
+`responses_storage` 必须显式声明 `sourceCodec`、`targetCodec` 和 `onUnsupported`，使用实际来源与目标模块解释保存意图，不推断缺失来源。`onUnsupported:reject` 可配置为全局拒绝；严格模式拒绝有损转换。该规则不实现供应商对象检索、删除或会话 API；签名副本不是响应对象数据库，`store:false` 也不关闭网关日志。详见[存储决策](protocol-reasoning.md#store-决策)。
 
 Anthropic 客户端输出必须有合法的消息外壳及用量。先取得同一上游帧、同一响应的已知用量，再渲染首帧；不等待下一帧，不默认缓冲整轮。缺失必填计数的零占位只存在于客户端副本（`origin:placeholder`），不进入 `ProtocolUsage`、计费或数据库；真实零值仍是 `observed`。已知缓存拆分照常保留，可选缓存字段不自动补零。尾部真实计数替换占位，快照不累加；终止消息在用量尾帧消费完后生成。缺少身份时使用本次响应稳定 ID 和已选模型。一轮结束、取消或错误均不重新提交上游生成。
 

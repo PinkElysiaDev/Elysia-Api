@@ -96,9 +96,8 @@ func (s *LogStore) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []Usa
 }
 
 // usageFilterClauses 构造维度筛选链（key/group/model 多选 IN、状态/状态码），
-// raw 与 rollup 两张表共享：includeTime/includeKeyHash 控制时间与 key_hash
-// 两个仅 raw 表适用的谓词。
-func usageFilterClauses(q UsageQuery, includeTime, includeKeyHash bool) (string, []any) {
+// Raw and rollup queries share filters; only raw queries include time bounds.
+func usageFilterClauses(q UsageQuery, includeTime bool) (string, []any) {
 	parts := []string{"1=1"}
 	args := []any{}
 	if includeTime {
@@ -117,24 +116,17 @@ func usageFilterClauses(q UsageQuery, includeTime, includeKeyHash bool) (string,
 			}
 		}
 	}
-	if includeKeyHash && q.KeyHash != "" {
-		parts = append(parts, "key_hash = ?")
-		args = append(args, q.KeyHash)
-	}
-	appendInClause := func(column string, values []string, fallback string) {
+	appendInClause := func(column string, values []string) {
 		if len(values) > 0 {
 			parts = append(parts, usageInClause(column, len(values)))
 			for _, v := range values {
 				args = append(args, v)
 			}
-		} else if fallback != "" {
-			parts = append(parts, column+" = ?")
-			args = append(args, fallback)
 		}
 	}
-	appendInClause("key_name", q.KeyNames, q.KeyName)
-	appendInClause("group_name", q.GroupNames, q.GroupName)
-	appendInClause("model_name", q.ModelNames, q.ModelName)
+	appendInClause("key_name", q.KeyNames)
+	appendInClause("group_name", q.GroupNames)
+	appendInClause("model_name", q.ModelNames)
 	if q.StatusCode > 0 {
 		parts = append(parts, "status_code = ?")
 		args = append(args, q.StatusCode)
@@ -150,15 +142,12 @@ func usageFilterClauses(q UsageQuery, includeTime, includeKeyHash bool) (string,
 // source_id 只加在 raw 路径：usage_rollup_hour 没有该列，带 source 过滤时
 // rollupSplit 必须返回 ok=false，避免 rollup SQL 引用不存在的列。
 func usageWhere(q UsageQuery) (string, []any) {
-	clauses, args := usageFilterClauses(q, true, true)
+	clauses, args := usageFilterClauses(q, true)
 	if len(q.SourceIDs) > 0 {
 		clauses += " AND " + usageInClause("source_id", len(q.SourceIDs))
 		for _, v := range q.SourceIDs {
 			args = append(args, v)
 		}
-	} else if q.SourceID != "" {
-		clauses += " AND source_id = ?"
-		args = append(args, q.SourceID)
 	}
 	return "WHERE " + clauses, args
 }

@@ -118,11 +118,6 @@ func TestProxyErrorsRetainCancellationWithoutSecrets(t *testing.T) {
 func TestProxyCatalogOverrideTakesPrecedence(t *testing.T) {
 	SetOutboundProxyURL("http://127.0.0.1:1")
 	t.Cleanup(func() { SetOutboundProxyURL("") })
-	for _, scheme := range []string{"https", "socks5", "socks5h"} {
-		if _, err := parseProxyURL(scheme+"://localhost:7890", true); err != nil {
-			t.Fatal("legacy catalog proxy rejected", err)
-		}
-	}
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("catalog")) }))
 	defer proxy.Close()
 	client := &http.Client{Transport: NewSecureTransport(proxy.URL), Timeout: time.Second}

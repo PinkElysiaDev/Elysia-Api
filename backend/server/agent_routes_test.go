@@ -219,7 +219,7 @@ func TestAgentFullTurnWithDraftTool(t *testing.T) {
 		}
 	}
 	// 用量入账：两次模型调用各一条，key_name = AI 助手
-	_, logs, err := s.store.QueryUsageLogs(t.Context(), storage.UsageQuery{KeyName: AgentUsageKeyName, Limit: 10})
+	_, logs, err := s.store.QueryUsageLogs(t.Context(), storage.UsageQuery{KeyNames: []string{AgentUsageKeyName}, Limit: 10})
 	if err != nil {
 		t.Fatalf("query usage: %v", err)
 	}

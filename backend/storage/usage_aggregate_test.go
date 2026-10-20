@@ -48,7 +48,7 @@ func TestUsageDailyUsesFixedUTCOffset(t *testing.T) {
 		t.Fatalf("UsageDaily(-07:00) = %#v", west)
 	}
 
-	empty, err := store.UsageDaily(ctx, UsageQuery{ModelName: "missing"}, 0)
+	empty, err := store.UsageDaily(ctx, UsageQuery{ModelNames: []string{"missing"}}, 0)
 	if err != nil {
 		t.Fatalf("UsageDaily(empty) error = %v", err)
 	}
@@ -120,7 +120,7 @@ func TestUsageByModelAndStatusFilters(t *testing.T) {
 		t.Fatalf("exact status must take precedence, total=%d logs=%#v", exactTotal, exactLogs)
 	}
 
-	empty, err := store.UsageByModel(ctx, UsageQuery{ModelName: "missing"})
+	empty, err := store.UsageByModel(ctx, UsageQuery{ModelNames: []string{"missing"}})
 	if err != nil {
 		t.Fatalf("UsageByModel(empty) error = %v", err)
 	}
@@ -208,7 +208,7 @@ func TestUsagePulseBucketsAndP95(t *testing.T) {
 		t.Fatalf("window = %#v, want 4 requests / p95 100", result.Window)
 	}
 
-	empty, err := store.UsagePulse(ctx, UsageQuery{From: t0, To: t0.Add(2 * time.Minute), ModelName: "missing"}, 0, 1)
+	empty, err := store.UsagePulse(ctx, UsageQuery{From: t0, To: t0.Add(2 * time.Minute), ModelNames: []string{"missing"}}, 0, 1)
 	if err != nil {
 		t.Fatalf("UsagePulse(empty) error = %v", err)
 	}

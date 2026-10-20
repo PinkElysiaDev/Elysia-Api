@@ -57,7 +57,7 @@ func TestRouteCacheConcurrentReloadFailsClosed(t *testing.T) {
 
 // 候选的源身份(地址/密钥)以源表为准:源保存后即便合并未跑(手动源、自动
 // 拉取失败),models 行的旧快照不得再被热路径消费(回归:改源 url/key 后
-// 既有模型仍按旧配置请求)。legacy 源(地址为空)例外,回落行内值。
+// 既有模型仍按旧配置请求)。源缺少地址时不可路由，不回落到模型行的快照。
 func TestAssemblyPrefersSourceIdentityOverStaleSnapshots(t *testing.T) {
 	s := newKeyPermissionTestServer(t)
 	ctx := context.Background()

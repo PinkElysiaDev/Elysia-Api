@@ -151,9 +151,9 @@ func (p usageQueryParams) usageQuery() (storage.UsageQuery, error) {
 	}
 	return storage.UsageQuery{
 		From: from, To: to,
-		ModelName:  strings.TrimSpace(p.ModelName),
-		KeyName:    strings.TrimSpace(p.KeyName),
-		GroupName:  strings.TrimSpace(p.GroupName),
+		ModelNames: compactQueryArray([]string{p.ModelName}),
+		KeyNames:   compactQueryArray([]string{p.KeyName}),
+		GroupNames: compactQueryArray([]string{p.GroupName}),
 		Status:     status,
 		StatusCode: p.StatusCode,
 	}, nil

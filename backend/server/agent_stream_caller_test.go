@@ -219,7 +219,7 @@ func TestAgentCallerOpenAIChatViaAdapter(t *testing.T) {
 	}
 
 	// 调用日志：成功调用一条，② 后端转发的请求体可查。
-	_, logs, err := s.store.QueryUsageLogs(t.Context(), storage.UsageQuery{KeyName: AgentUsageKeyName, Limit: 5})
+	_, logs, err := s.store.QueryUsageLogs(t.Context(), storage.UsageQuery{KeyNames: []string{AgentUsageKeyName}, Limit: 5})
 	if err != nil {
 		t.Fatalf("query usage: %v", err)
 	}
@@ -366,7 +366,7 @@ func TestAgentCallerUpstream400NotRetried(t *testing.T) {
 	}
 
 	// 失败调用同样入账：statusCode=400、error 非空，③ 上游回传带错误体。
-	_, logs, qErr := s.store.QueryUsageLogs(t.Context(), storage.UsageQuery{KeyName: AgentUsageKeyName, Limit: 5})
+	_, logs, qErr := s.store.QueryUsageLogs(t.Context(), storage.UsageQuery{KeyNames: []string{AgentUsageKeyName}, Limit: 5})
 	if qErr != nil {
 		t.Fatalf("query usage: %v", qErr)
 	}
@@ -420,7 +420,7 @@ func TestAgentCallerCustomProtocolPlatform(t *testing.T) {
 	}
 
 	// 调用日志 ② 后端转发：custom 协议分支记录渲染产物的请求体。
-	_, logs, lErr := s.store.QueryUsageLogs(t.Context(), storage.UsageQuery{KeyName: AgentUsageKeyName, Limit: 5})
+	_, logs, lErr := s.store.QueryUsageLogs(t.Context(), storage.UsageQuery{KeyNames: []string{AgentUsageKeyName}, Limit: 5})
 	if lErr != nil || len(logs) != 1 {
 		t.Fatalf("usage records = %d (err %v), want 1", len(logs), lErr)
 	}

@@ -28,7 +28,6 @@ type EvaluationContext struct {
 	// It is gateway-owned; mappings can report through it but cannot read it.
 	Diagnostics      *DiagnosticSink
 	identity         Identity
-	requires         []string
 	compoundFrame    bool
 	transportControl *bool
 	wireLimits       Limits
@@ -58,14 +57,8 @@ func (options EvaluationContext) ConsumeTransportControl() {
 	}
 }
 
-// DefinitionRequires selects explicitly versioned module semantics. Older
-// definitions retain their authored contract without rewriting their fixtures.
-func (options EvaluationContext) DefinitionRequires(feature string) bool {
-	return slices.Contains(options.requires, feature)
-}
-
 func (options EvaluationContext) forDefinition(compiled *Compiled) EvaluationContext {
-	options.identity, options.requires = compiled.identity, compiled.requires
+	options.identity = compiled.identity
 	return options
 }
 
@@ -146,7 +139,6 @@ type compiledEventRule struct{ when, emit *compiledExpression }
 // request/session, never to this registry object.
 type Compiled struct {
 	identity           Identity
-	requires           []string
 	definition         Value
 	hash               string
 	samplesHash        string
@@ -194,7 +186,6 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 		limits = *definition.Limits
 	}
 	compiled := &Compiled{explicitLimits: definition.Limits != nil || compiler.limits.BufferBytes != DefaultLimits().BufferBytes, identity: identity, definition: value, limits: limits, native: definition.Native, capabilities: make(CapabilitySet), mappings: make(map[Direction]compiledMapping), operations: definition.Operations}
-	compiled.requires = slices.Clone(definition.Requires)
 	compiled.operationSchemas = make(map[string]*runtimeValueSchema)
 	for _, name := range sortedKeys(definition.Operations) {
 		input := definition.Operations[name].Input

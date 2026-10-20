@@ -91,6 +91,5 @@ usage 的 `input/output/total/cacheRead/cacheCreation` 是带 `count` 和 `origi
 | `GET /:id/diff` | 比较两个修订 |
 | `POST /combinations`，`GET` / `PUT /bindings` | 组合验证与源/模型组能力绑定 |
 | `POST /reload` | 编译成功后原子重载 |
-| `GET /migration`，`POST /migration/preview` / `/migration/apply` | 升级预演与事务切换 |
 
 预览支持 `mapping/session/task/models/agent`。接口正文以 [处理器](../backend/server/protocol_revision_admin.go) 与 [PreviewInput](../backend/protocol/authoring.go) 为准。样例覆盖不充分、哈希或编译器过期均阻止启用；上传 `passed:true` 不能绕过验证。

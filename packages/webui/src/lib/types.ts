@@ -517,12 +517,11 @@ export interface UsageQueryParams {
   limit?: number
   offset?: number
   keyName?: string
-  keyHash?: string
   groupName?: string
   modelName?: string
   status?: 'success' | 'failed'
   statusCode?: number
-  // 多选筛选：非空时后端按 IN (...) 匹配，优先于对应单值字段。
+  // Arrays are sent as repeated canonical query parameters.
   keyNames?: string[]
   groupNames?: string[]
   modelNames?: string[]

@@ -208,20 +208,12 @@ type ModelGroupConfig struct {
 	ToolsCapable          *bool      `json:"toolsCapable,omitempty"`
 }
 
-type EndpointCapabilities struct {
-	ChatCompletions       *bool `json:"chatCompletions,omitempty"`
-	Responses             *bool `json:"responses,omitempty"`
-	ClaudeMessages        *bool `json:"claudeMessages,omitempty"`
-	GeminiGenerateContent *bool `json:"geminiGenerateContent,omitempty"`
-}
-
 type ModelRef struct {
-	ID        string                `json:"id"`
-	Name      string                `json:"name"`
-	BaseURL   string                `json:"baseUrl"`
-	APIKey    string                `json:"apiKey,omitempty"`
-	Platform  string                `json:"platform"`
-	Endpoints *EndpointCapabilities `json:"endpoints,omitempty"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	BaseURL  string `json:"baseUrl"`
+	APIKey   string `json:"apiKey,omitempty"`
+	Platform string `json:"platform"`
 	// 模型级能力（来自模型表，目录回填/用户编辑）：用于组内候选软过滤——
 	// 请求携带多模态输入或工具时优先选择声明支持的候选，不参与硬拒绝。
 	VisionCapable bool `json:"visionCapable,omitempty"`
@@ -243,6 +235,16 @@ func (r ModelRef) Identifier() string {
 	return r.ID
 }
 
+// Global and catalog-specific proxies share the same current URL contract.
+func (c *Config) validateProxySettings() error {
+	for _, raw := range []string{c.Outbound.ProxyURL, c.ModelCatalog.Proxy} {
+		if _, err := outbound.ParseProxyURL(raw); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -260,7 +262,7 @@ func Load(path string) (*Config, error) {
 	cfg.path = path
 	cfg.applyBootstrapDefaults(path)
 	cfg.applyEnvironmentOverrides()
-	if _, err := outbound.ParseProxyURL(cfg.Outbound.ProxyURL); err != nil {
+	if err := cfg.validateProxySettings(); err != nil {
 		return nil, err
 	}
 	if err := protocol.ValidateRequestBodyLimit(cfg.MaxBodyBytes); err != nil {
@@ -538,7 +540,7 @@ func (c *Config) Reload() error {
 	// 与 Load 同序：环境变量覆盖最后应用。否则热重载会让 ELYSIA_API_HOST
 	// 部署静默失效，且随后的 Save 会把文件值固化覆盖部署配置。
 	newCfg.applyEnvironmentOverrides()
-	if _, err := outbound.ParseProxyURL(newCfg.Outbound.ProxyURL); err != nil {
+	if err := newCfg.validateProxySettings(); err != nil {
 		return err
 	}
 	if err := protocol.ValidateRequestBodyLimit(newCfg.MaxBodyBytes); err != nil {

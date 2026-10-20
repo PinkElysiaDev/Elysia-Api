@@ -200,22 +200,17 @@ func (t APIToken) HasScope(scope string) bool {
 }
 
 type UsageQuery struct {
-	From      time.Time
-	To        time.Time
-	Limit     int
-	Offset    int
-	KeyName   string
-	KeyHash   string
-	GroupName string
-	ModelName string
+	From   time.Time
+	To     time.Time
+	Limit  int
+	Offset int
 	// Status 可选 success / failed；StatusCode 非零时精确状态码优先。
 	Status     string
 	StatusCode int
-	// 多选筛选：非空时优先于对应的单值字段，生成 IN (...) 条件。
+	// Canonical filters use IN clauses for both single and multiple selections.
 	KeyNames   []string
 	GroupNames []string
 	ModelNames []string
-	SourceID   string
 	SourceIDs  []string
 	// orphanTimestamps：只查 started_ms<=0 的坏时间戳行（内部使用，不对外暴露）。
 	orphanTimestamps bool

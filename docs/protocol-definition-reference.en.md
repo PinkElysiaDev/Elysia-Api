@@ -91,7 +91,6 @@ All paths below use the `/api/admin/protocols` namespace and existing management
 | `GET /:id/diff` | Compare two revisions |
 | `POST /combinations`, `GET` / `PUT /bindings` | Composition evidence and model/source/group contracts |
 | `POST /reload` | Atomic replacement after successful compilation |
-| `GET /migration`, `POST /migration/preview`, `/migration/apply` | Upgrade preview and transactional cutover |
 
 Preview modes: mapping/session/task/models/agent. Exact payloads are defined by the [handlers](../backend/server/protocol_revision_admin.go) and [PreviewInput](../backend/protocol/authoring.go). Missing coverage or stale hash/compiler evidence blocks activation; uploading `passed:true` cannot authorize it.
 

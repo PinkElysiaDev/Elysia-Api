@@ -146,7 +146,7 @@ Creation requires a nonempty token. On update, an empty token preserves the secr
 
 ## Usage
 
-Use RFC3339 timestamps and the range `[from, to)`. Repeat `keyName`, `groupName`, `modelName`, or `sourceId` for multi-select; do not join them with commas. Other filters include `keyHash`, `statusCode`, `status=success|failed`, and the legacy group-name alias `modelGroup`.
+Use RFC3339 timestamps and the range `[from, to)`. Use canonical `keyName`, `groupName`, `modelName`, or `sourceId` parameters for both single and repeated selections; do not join them with commas. Other filters include `statusCode` and `status=success|failed`. The old `keyHash` filter and `modelGroup` alias have been removed.
 
 | GET path (prefix `/api/admin/usage`) | Contents |
 | --- | --- |
@@ -180,8 +180,6 @@ Use RFC3339 timestamps and the range `[from, to)`. Repeat `keyName`, `groupName`
 | POST | `/api/admin/protocols/combinations` | Verify ingress/upstream capability composition |
 | GET / PUT | `/api/admin/protocols/bindings` | Read / save source/group protocol constraints |
 | POST | `/api/admin/protocols/reload` | Atomically replace the registry after compilation succeeds |
-| GET | `/api/admin/protocols/migration` | Migration status |
-| POST | `/api/admin/protocols/migration/preview`, `/api/admin/protocols/migration/apply` | Preview the full graph / apply transactional cutover |
 
 The old `/custom-protocols` execution endpoints are removed. Saving does not activate. Offline reports must match the definition hash and current compiler; real-target evidence is separate. See the [definition reference](protocol-definition-reference.en.md), [handlers](../backend/server/protocol_revision_admin.go) and [frontend v2 contract](../packages/webui/src/lib/protocol-v2.ts) for complete paths, payloads and concurrency requirements.
 
