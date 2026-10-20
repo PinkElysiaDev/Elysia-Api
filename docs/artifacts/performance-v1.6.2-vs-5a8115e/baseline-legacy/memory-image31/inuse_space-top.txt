@@ -1,0 +1,96 @@
+File: server.test
+Build ID: b01f01515d67092dc4dab434270becb0d9b81338
+Type: inuse_space
+Time: 2026-10-20 21:50:31 CST
+Showing nodes accounting for 4642.92kB, 100% of 4642.92kB total
+      flat  flat%   sum%        cum   cum%
+ 1025.25kB 22.08% 22.08%  1025.25kB 22.08%  runtime.mallocgc
+  525.43kB 11.32% 33.40%   525.43kB 11.32%  github.com/go-playground/validator/v10.map.init.7
+  525.43kB 11.32% 44.72%   525.43kB 11.32%  golang.org/x/net/html.map.init.1
+  515.19kB 11.10% 55.81%   515.19kB 11.10%  regexp.makeOnePass.func1
+     514kB 11.07% 66.88%      514kB 11.07%  bufio.NewReaderSize (inline)
+  513.12kB 11.05% 77.93%   513.12kB 11.05%  modernc.org/memory.(*Allocator).mmap
+  512.44kB 11.04% 88.97%   512.44kB 11.04%  encoding/json/v2.makeStructFields
+  512.05kB 11.03%   100%   512.05kB 11.03%  regexp/syntax.(*parser).newRegexp (inline)
+         0     0%   100%      514kB 11.07%  bufio.NewReader (inline)
+         0     0%   100%   513.12kB 11.05%  database/sql.(*DB).execDC
+         0     0%   100%   513.12kB 11.05%  database/sql.(*DB).execDC.func2
+         0     0%   100%   513.12kB 11.05%  database/sql.(*Tx).ExecContext
+         0     0%   100%   513.12kB 11.05%  database/sql.ctxDriverExec
+         0     0%   100%   513.12kB 11.05%  database/sql.withLock
+         0     0%   100%   512.44kB 11.04%  encoding/json.Marshal (inline)
+         0     0%   100%   512.44kB 11.04%  encoding/json/v2.Marshal
+         0     0%   100%   512.44kB 11.04%  encoding/json/v2.makeSliceArshaler.func2
+         0     0%   100%   512.44kB 11.04%  encoding/json/v2.makeStructArshaler.func1
+         0     0%   100%   512.44kB 11.04%  encoding/json/v2.makeStructArshaler.func2
+         0     0%   100%   512.44kB 11.04%  encoding/json/v2.marshalEncode
+         0     0%   100%   512.44kB 11.04%  github.com/elysia-api/backend/protocol.EncodeValue
+         0     0%   100%   512.44kB 11.04%  github.com/elysia-api/backend/protocol.Verify
+         0     0%   100%   512.44kB 11.04%  github.com/elysia-api/backend/protocol.comparableSemantic
+         0     0%   100%   512.44kB 11.04%  github.com/elysia-api/backend/protocol.executeVerificationSample
+         0     0%   100%  1025.56kB 22.09%  github.com/elysia-api/backend/server.(*Server).initializeProtocolRuntime
+         0     0%   100%   512.44kB 11.04%  github.com/elysia-api/backend/server.(*Server).prepareProtocolRefresh
+         0     0%   100%  1025.56kB 22.09%  github.com/elysia-api/backend/server.(*Server).recoverRequiredPresets
+         0     0%   100%  1025.56kB 22.09%  github.com/elysia-api/backend/server.(*Server).refreshProtocolRuntimeScope
+         0     0%   100%   512.44kB 11.04%  github.com/elysia-api/backend/server.(*protocolRefreshPlan).ensureProtocol
+         0     0%   100%  1025.56kB 22.09%  github.com/elysia-api/backend/server.TestConversionHTTPProcess
+         0     0%   100%  1025.56kB 22.09%  github.com/elysia-api/backend/server.newTestServerWithStore
+         0     0%   100%   513.12kB 11.05%  github.com/elysia-api/backend/storage.(*Store).RefreshProtocolRuntime
+         0     0%   100%   513.12kB 11.05%  github.com/elysia-api/backend/storage.writeProtocolCommit
+         0     0%   100%   513.12kB 11.05%  github.com/elysia-api/backend/storage.writeProtocolUpgradeRevision
+         0     0%   100%  1040.62kB 22.41%  github.com/go-playground/validator/v10.init
+         0     0%   100%   512.05kB 11.03%  github.com/go-playground/validator/v10.init.0
+         0     0%   100%   525.43kB 11.32%  golang.org/x/net/html.init
+         0     0%   100%   513.12kB 11.05%  modernc.org/libc.Xmalloc
+         0     0%   100%   513.12kB 11.05%  modernc.org/memory.(*Allocator).UintptrMalloc
+         0     0%   100%   513.12kB 11.05%  modernc.org/memory.(*Allocator).newSharedPage
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite.(*conn).ExecContext
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite.(*conn).exec
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite.(*conn).step
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite.(*stmt).exec
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite.(*stmt).exec.func2
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib.Xsqlite3_step
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._allocateBtreePage
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._btreeGetPage
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._btreeGetUnusedPage
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._fillInCell
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._getPageNormal
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._pcache1Alloc
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._pcache1AllocPage
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._pcache1Fetch
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._pcache1FetchNoMutex
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._pcache1FetchStage2
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._pcache1FetchWithMutex
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._sqlite3BtreeInsert
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._sqlite3Malloc
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._sqlite3MemMalloc
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._sqlite3PagerGet (inline)
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._sqlite3PcacheFetch
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._sqlite3Step
+         0     0%   100%   513.12kB 11.05%  modernc.org/sqlite/lib._sqlite3VdbeExec
+         0     0%   100%      514kB 11.07%  net/http.(*conn).serve
+         0     0%   100%      514kB 11.07%  net/http.newBufioReader
+         0     0%   100%  1027.25kB 22.13%  regexp.Compile (inline)
+         0     0%   100%  1027.25kB 22.13%  regexp.MustCompile
+         0     0%   100%  1027.25kB 22.13%  regexp.compile
+         0     0%   100%   515.19kB 11.10%  regexp.compileOnePass
+         0     0%   100%   515.19kB 11.10%  regexp.makeOnePass
+         0     0%   100%   512.05kB 11.03%  regexp/syntax.Parse (inline)
+         0     0%   100%   512.05kB 11.03%  regexp/syntax.parse
+         0     0%   100%      513kB 11.05%  runtime.allocm
+         0     0%   100%  2078.10kB 44.76%  runtime.doInit (inline)
+         0     0%   100%  2078.10kB 44.76%  runtime.doInit1
+         0     0%   100%   512.25kB 11.03%  runtime.gcBgMarkWorker
+         0     0%   100%  2078.10kB 44.76%  runtime.main
+         0     0%   100%      513kB 11.05%  runtime.mstart
+         0     0%   100%      513kB 11.05%  runtime.mstart0
+         0     0%   100%      513kB 11.05%  runtime.mstart1
+         0     0%   100%      513kB 11.05%  runtime.newm
+         0     0%   100%  1025.25kB 22.08%  runtime.newobject
+         0     0%   100%      513kB 11.05%  runtime.resetspinning
+         0     0%   100%      513kB 11.05%  runtime.schedule
+         0     0%   100%      513kB 11.05%  runtime.startm
+         0     0%   100%      513kB 11.05%  runtime.wakep
+         0     0%   100%   512.44kB 11.04%  sync.(*Once).Do
+         0     0%   100%   512.44kB 11.04%  sync.(*Once).doSlow
+         0     0%   100%  1025.56kB 22.09%  testing.tRunner

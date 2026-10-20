@@ -23,6 +23,10 @@ type UsageRecordInput struct {
 func (s *LogStore) SaveUsageBatch(ctx context.Context, records []UsageRecordInput) error {
 	// Raw records, attachment references and rollup increments commit together.
 	return withTx(ctx, s.db, func(tx *sql.Tx) error {
+		insert := tx.StmtContext(ctx, s.usageInsert)
+		defer insert.Close()
+		rollup := tx.StmtContext(ctx, s.usageRollup)
+		defer rollup.Close()
 		for _, record := range records {
 			if record.EndedAt.IsZero() {
 				record.EndedAt = time.Now()
@@ -30,7 +34,7 @@ func (s *LogStore) SaveUsageBatch(ctx context.Context, records []UsageRecordInpu
 			if record.Summary.StartedAt.IsZero() {
 				record.Summary.StartedAt = record.EndedAt
 			}
-			if err := saveUsageRecordTx(ctx, tx, record.Payload, record.Summary, record.EndedAt, record.Assets); err != nil {
+			if err := saveUsageRecordTx(ctx, tx, insert, rollup, record.Payload, record.Summary, record.EndedAt, record.Assets); err != nil {
 				return err
 			}
 		}
@@ -38,8 +42,10 @@ func (s *LogStore) SaveUsageBatch(ctx context.Context, records []UsageRecordInpu
 	})
 }
 
-func saveUsageRecordTx(ctx context.Context, tx *sql.Tx, payload []byte, summary UsageLogItem, endedAt time.Time, assets []UsageAsset) error {
-	res, err := tx.ExecContext(ctx, `INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, key_name, key_hash, requested_model_group, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, cache_creation_tokens, usage_report_mask, request_truncated, response_truncated, record_json, content_bytes) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(request_id) DO NOTHING`, summary.RequestID, summary.StartedAt.UTC().Format(time.RFC3339Nano), summary.StartedAt.UnixMilli(), endedAt.UTC().Format(time.RFC3339Nano), summary.KeyName, summary.KeyHash, summary.RequestedModelGroup, summary.GroupName, summary.ModelName, summary.SourceID, summary.Platform, summary.SourceFormat, summary.TargetFormat, summary.RelayMode, summary.ResponsesMode, summary.UsageSource, sqlBoolToInt(summary.Stream), summary.StatusCode, summary.Error, summary.FirstByteMs, summary.DurationMs, summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, summary.CacheCreationTokens, summary.UsageReportMask, sqlBoolToInt(summary.RequestTruncated), sqlBoolToInt(summary.ResponseTruncated), string(payload), len(payload))
+const insertUsageRecordSQL = `INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, key_name, key_hash, requested_model_group, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, cache_creation_tokens, usage_report_mask, request_truncated, response_truncated, record_json, content_bytes) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(request_id) DO NOTHING`
+
+func saveUsageRecordTx(ctx context.Context, tx *sql.Tx, insert, rollup *sql.Stmt, payload []byte, summary UsageLogItem, endedAt time.Time, assets []UsageAsset) error {
+	res, err := insert.ExecContext(ctx, summary.RequestID, summary.StartedAt.UTC().Format(time.RFC3339Nano), summary.StartedAt.UnixMilli(), endedAt.UTC().Format(time.RFC3339Nano), summary.KeyName, summary.KeyHash, summary.RequestedModelGroup, summary.GroupName, summary.ModelName, summary.SourceID, summary.Platform, summary.SourceFormat, summary.TargetFormat, summary.RelayMode, summary.ResponsesMode, summary.UsageSource, sqlBoolToInt(summary.Stream), summary.StatusCode, summary.Error, summary.FirstByteMs, summary.DurationMs, summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, summary.CacheCreationTokens, summary.UsageReportMask, sqlBoolToInt(summary.RequestTruncated), sqlBoolToInt(summary.ResponseTruncated), string(payload), len(payload))
 	if err != nil {
 		return err
 	}
@@ -56,7 +62,7 @@ func saveUsageRecordTx(ctx context.Context, tx *sql.Tx, payload []byte, summary 
 			return err
 		}
 	}
-	return upsertUsageRollupTx(ctx, tx, summary)
+	return upsertUsageRollup(ctx, rollup, summary)
 }
 
 func (s *LogStore) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageLogItem, error) {

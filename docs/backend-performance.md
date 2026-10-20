@@ -4,6 +4,8 @@
 
 本工具用于性能优化 issue [#65](https://github.com/PinkElysiaDev/Elysia-Api/issues/65) 的基线采集与后续对照。第一阶段记录分配次数、累计分配量、内存峰值和空闲恢复行为，并定位热点；之后分别推进局部优化、执行计划与 typed 流水线、所有权与池化。
 
+实测版本对照：[v1.6.2 与 `5a8115e` 的 profiling 对比](backend-performance-comparison-v1.6.2.md)（同机重测、原始证据、内存回退及热点分析）。
+
 ## 运行
 
 在仓库根目录执行，需要 Node.js、项目要求的 Go 工具链以及本地回环网络。所有 provider、凭据和数据库都是测试夹具，无需真实供应商账户。

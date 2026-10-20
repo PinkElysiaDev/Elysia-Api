@@ -1,0 +1,8 @@
+=== RUN   TestConversionFlamegraph
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=0 requests=64 elapsed_ms=1374.233 heap_peak_MiB=14.704
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=1 requests=64 elapsed_ms=1705.396 heap_peak_MiB=9.955
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=2 requests=64 elapsed_ms=1239.619 heap_peak_MiB=9.778
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=3 requests=64 elapsed_ms=855.526 heap_peak_MiB=9.709
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=4 requests=64 elapsed_ms=1662.098 heap_peak_MiB=10.064
+--- PASS: TestConversionFlamegraph (14.56s)
+PASS

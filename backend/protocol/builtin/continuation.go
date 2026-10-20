@@ -36,6 +36,7 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
 			return raw, nil
 		}
 		out := make([]p.Value, 0, len(blocks))
+		changed := false
 		for _, block := range blocks {
 			b, e := block.ReadObject()
 			if e != nil {
@@ -44,6 +45,7 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
 			}
 			typ, _ := stringValue(b["type"])
 			if typ == "thinking" && add(b["signature"]) {
+				changed = true
 				if b["thinking"].IsZero() || b["thinking"].IsString("") {
 					continue
 				}
@@ -52,9 +54,13 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
 				continue
 			}
 			if typ == "reasoning" && add(b["encrypted_content"]) {
+				changed = true
 				continue
 			}
 			out = append(out, block)
+		}
+		if !changed {
+			return raw, nil
 		}
 		return p.EncodeValue(out)
 	}
@@ -76,6 +82,7 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
 		if family == "openai_responses" && m["type"].IsString("reasoning") && add(m["encrypted_content"]) {
 			continue
 		}
+		changed := false
 		if m["role"].IsString("assistant") {
 			if family == "openai_chat" {
 				var carriers []p.Value
@@ -89,18 +96,24 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
 						}
 					}
 					delete(m, "elysia_continuation")
+					changed = true
 				}
 			}
 			if family == "claude" {
-				m["content"], err = stripBlocks(m["content"])
+				original := m["content"]
+				m["content"], err = stripBlocks(original)
 				if err != nil {
 					return nil, nil, err
 				}
+				changed = m["content"] != original
 			}
 		}
-		value, err := p.EncodeValue(m)
-		if err != nil {
-			return nil, nil, err
+		value := message
+		if changed {
+			value, err = p.EncodeValue(m)
+			if err != nil {
+				return nil, nil, err
+			}
 		}
 		out = append(out, value)
 	}

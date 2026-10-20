@@ -1,0 +1,248 @@
+File: server.test
+Build ID: b01f01515d67092dc4dab434270becb0d9b81338
+Type: alloc_space
+Time: 2026-10-20 21:46:42 CST
+Showing nodes accounting for 234.77MB, 100% of 234.77MB total
+      flat  flat%   sum%        cum   cum%
+   37.01MB 15.76% 15.76%    42.51MB 18.11%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+   17.50MB  7.46% 23.22%       21MB  8.95%  github.com/elysia-api/backend/protocol.MergeUsage
+      15MB  6.39% 29.61%       15MB  6.39%  github.com/elysia-api/backend/protocol/builtin.copyFields (inline)
+   14.50MB  6.18% 35.79%    14.50MB  6.18%  reflect.unsafe_New
+      14MB  5.96% 41.75%       14MB  5.96%  github.com/elysia-api/backend/protocol.Value.Bytes (inline)
+   13.50MB  5.75% 47.50%    39.01MB 16.62%  github.com/elysia-api/backend/protocol.EncodeValue
+      12MB  5.11% 52.62%       12MB  5.11%  bytes.Clone (inline)
+   11.02MB  4.69% 57.31%    11.02MB  4.69%  reflect.growslice
+       7MB  2.98% 60.29%        7MB  2.98%  github.com/elysia-api/backend/protocol.CheckEvent
+       6MB  2.56% 62.85%    15.50MB  6.60%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).decodeAnthropicFrame
+       6MB  2.56% 65.40%        6MB  2.56%  encoding/json/v2.JoinOptions (inline)
+    5.61MB  2.39% 67.79%    16.95MB  7.22%  github.com/elysia-api/backend/storage.(*Store).ConversionSnapshot
+    5.50MB  2.34% 70.14%     5.50MB  2.34%  encoding/json/jsontext.(*decoderState).fetch
+    5.50MB  2.34% 72.48%     5.50MB  2.34%  internal/stringslite.Clone (inline)
+       4MB  1.70% 74.18%        4MB  1.70%  encoding/json/jsontext.NewDecoder (inline)
+       4MB  1.70% 75.89%     5.50MB  2.34%  github.com/elysia-api/backend/protocol.(*CompiledConversion).projectUsage
+    3.50MB  1.49% 77.38%     3.50MB  1.49%  runtime/pprof.allFrames
+    3.50MB  1.49% 78.87%   200.53MB 85.42%  github.com/elysia-api/backend/protocol.ReadFrames.func1
+    3.50MB  1.49% 80.36%     3.50MB  1.49%  github.com/elysia-api/backend/protocol.mergeCounter (inline)
+    2.83MB  1.20% 81.56%     2.83MB  1.20%  modernc.org/sqlite.(*conn).columnText
+    2.50MB  1.07% 82.63%     2.50MB  1.07%  github.com/elysia-api/backend/protocol.(*ConversionEventState).Push
+    2.50MB  1.07% 83.69%       14MB  5.96%  github.com/elysia-api/backend/protocol.(*conversionState).load
+    2.50MB  1.07% 84.76%     2.50MB  1.07%  github.com/elysia-api/backend/protocol.(*Compiled).Capabilities (inline)
+    2.50MB  1.07% 85.82%    35.51MB 15.12%  github.com/elysia-api/backend/protocol.(*Compiled).decodeFrame
+       2MB  0.85% 86.68%   140.52MB 59.86%  github.com/elysia-api/backend/server.(*gatewayStream).consumeSourceFrame
+       2MB  0.85% 87.53%     3.50MB  1.49%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+       2MB  0.85% 88.38%     2.50MB  1.06%  github.com/elysia-api/backend/protocol.readString
+    1.50MB  0.64% 89.02%     5.50MB  2.34%  encoding/json.NewDecoder
+    1.50MB  0.64% 89.66%     1.50MB  0.64%  github.com/elysia-api/backend/protocol.CheckResponse
+    1.02MB  0.44% 90.09%     1.02MB  0.44%  runtime/pprof.(*protobuf).string (inline)
+       1MB  0.43% 90.52%        1MB  0.43%  internal/bytealg.MakeNoZero
+       1MB  0.43% 90.95%    43.01MB 18.32%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Event
+       1MB  0.43% 91.37%        1MB  0.43%  github.com/elysia-api/backend/protocol.conversionPhases (inline)
+       1MB  0.43% 91.80%       24MB 10.22%  github.com/elysia-api/backend/protocol.(*conversionState).apply
+       1MB  0.43% 92.22%        1MB  0.43%  bytes.NewReader (inline)
+       1MB  0.43% 92.65%    26.01MB 11.08%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).captureFrameExtensions
+       1MB  0.43% 93.08%        1MB  0.43%  github.com/elysia-api/backend/protocol.(*SourceEventState).Push
+       1MB  0.43% 93.50%     1.50MB  0.64%  github.com/elysia-api/backend/protocol.StringValue
+       1MB  0.43% 93.93%     1.50MB  0.64%  github.com/elysia-api/backend/protocol.Value.IsString
+       1MB  0.43% 94.35%        1MB  0.43%  github.com/elysia-api/backend/protocol/builtin.frameIndex
+       1MB  0.43% 94.78%        2MB  0.85%  github.com/elysia-api/backend/protocol/builtin.requireWireString
+    0.67MB  0.29% 95.07%     0.67MB  0.29%  compress/flate.(*fastGen).addBlock
+    0.57MB  0.24% 95.31%     0.57MB  0.24%  compress/flate.newFastEnc (inline)
+    0.51MB  0.22% 95.53%     1.58MB  0.67%  runtime/pprof.(*profileBuilder).emitLocation
+    0.50MB  0.21% 95.74%   201.04MB 85.63%  github.com/elysia-api/backend/protocol.ReadFrames
+    0.50MB  0.21% 95.95%     0.50MB  0.21%  encoding/json/jsontext.(*encoderState).reformatObject
+    0.50MB  0.21% 96.17%        1MB  0.43%  github.com/elysia-api/backend/protocol.CompileConversion
+    0.50MB  0.21% 96.38%     0.50MB  0.21%  compress/flate.newHuffmanEncoder (inline)
+    0.50MB  0.21% 96.59%     0.50MB  0.21%  io.ReadAll
+    0.50MB  0.21% 96.81%     0.50MB  0.21%  reflect.mapassign_faststr0
+    0.50MB  0.21% 97.02%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.conversionActionCatalog
+    0.50MB  0.21% 97.23%     0.50MB  0.21%  reflect.mapassign0
+    0.50MB  0.21% 97.44%        4MB  1.70%  github.com/elysia-api/backend/protocol.(*Compiled).Operations
+    0.50MB  0.21% 97.66%     2.50MB  1.07%  github.com/elysia-api/backend/protocol.(*Expression).UnmarshalJSON
+    0.50MB  0.21% 97.87%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.ParseValue
+    0.50MB  0.21% 98.08%   196.03MB 83.50%  github.com/elysia-api/backend/server.(*protocolSourceStream).Push
+    0.50MB  0.21% 98.30%     0.50MB  0.21%  container/list.(*List).insertValue (inline)
+    0.50MB  0.21% 98.51%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.createStreamState (inline)
+    0.50MB  0.21% 98.72%     0.50MB  0.21%  github.com/elysia-api/backend/server.gatewayCandidate.conversionContext
+    0.50MB  0.21% 98.94%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.validateToolResultErrors
+    0.50MB  0.21% 99.15%     0.50MB  0.21%  encoding/json/v2.makeString
+    0.50MB  0.21% 99.36%    26.01MB 11.08%  github.com/elysia-api/backend/protocol.(*Compiled).decodeEventValues
+    0.50MB  0.21% 99.57%    32.01MB 13.63%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).Convert
+    0.50MB  0.21% 99.79%     1.50MB  0.64%  github.com/elysia-api/backend/protocol/builtin.stringValue
+    0.50MB  0.21%   100%     0.50MB  0.21%  github.com/elysia-api/backend/server.updateRecordProtocolUsage.func1 (inline)
+         0     0%   100%     0.67MB  0.29%  compress/flate.(*Writer).Write (inline)
+         0     0%   100%     0.67MB  0.29%  compress/flate.(*compressor).deflateFast
+         0     0%   100%     1.07MB  0.46%  compress/flate.(*compressor).init
+         0     0%   100%     0.67MB  0.29%  compress/flate.(*compressor).write
+         0     0%   100%     0.67MB  0.29%  compress/flate.(*fastEncL1).encode
+         0     0%   100%     1.07MB  0.46%  compress/flate.NewWriter (inline)
+         0     0%   100%     0.50MB  0.21%  compress/flate.newHuffmanBitWriter
+         0     0%   100%     1.74MB  0.74%  compress/gzip.(*Writer).Write
+         0     0%   100%     0.50MB  0.21%  container/list.(*List).PushFront (inline)
+         0     0%   100%     2.83MB  1.20%  database/sql.(*Rows).Next
+         0     0%   100%     2.83MB  1.20%  database/sql.(*Rows).Next.func1
+         0     0%   100%     2.83MB  1.20%  database/sql.(*Rows).nextLocked
+         0     0%   100%     7.50MB  3.20%  encoding/json.(*Decoder).Decode
+         0     0%   100%        3MB  1.28%  encoding/json.(*Decoder).DisallowUnknownFields
+         0     0%   100%        3MB  1.28%  encoding/json.(*Decoder).UseNumber
+         0     0%   100%       25MB 10.65%  encoding/json.Marshal (inline)
+         0     0%   100%    13.02MB  5.54%  encoding/json.Unmarshal (inline)
+         0     0%   100%     5.50MB  2.34%  encoding/json/jsontext.(*Decoder).ReadValue (inline)
+         0     0%   100%     0.50MB  0.21%  encoding/json/jsontext.(*Encoder).WriteValue (inline)
+         0     0%   100%     5.50MB  2.34%  encoding/json/jsontext.(*decoderState).ReadValue
+         0     0%   100%        5MB  2.13%  encoding/json/jsontext.(*decoderState).consumeObject
+         0     0%   100%     2.50MB  1.07%  encoding/json/jsontext.(*decoderState).consumeString
+         0     0%   100%        5MB  2.13%  encoding/json/jsontext.(*decoderState).consumeValue
+         0     0%   100%        3MB  1.28%  encoding/json/jsontext.(*decoderState).consumeWhitespace
+         0     0%   100%     0.50MB  0.21%  encoding/json/jsontext.(*encoderState).WriteValue
+         0     0%   100%     0.50MB  0.21%  encoding/json/jsontext.(*encoderState).reformatValue
+         0     0%   100%       25MB 10.65%  encoding/json/v2.Marshal
+         0     0%   100%    15.52MB  6.61%  encoding/json/v2.Unmarshal
+         0     0%   100%     0.50MB  0.21%  encoding/json/v2.makeMapArshaler.func2
+         0     0%   100%     2.50MB  1.07%  encoding/json/v2.makeMapArshaler.func3
+         0     0%   100%     1.50MB  0.64%  encoding/json/v2.makeMethodArshaler.func3
+         0     0%   100%     2.50MB  1.07%  encoding/json/v2.makeMethodArshaler.func6
+         0     0%   100%     3.50MB  1.49%  encoding/json/v2.makePointerArshaler.func3
+         0     0%   100%        8MB  3.41%  encoding/json/v2.makeSliceArshaler.func2
+         0     0%   100%    13.02MB  5.54%  encoding/json/v2.makeSliceArshaler.func3
+         0     0%   100%     0.50MB  0.21%  encoding/json/v2.makeStringArshaler.func2
+         0     0%   100%       12MB  5.11%  encoding/json/v2.makeStructArshaler.func2
+         0     0%   100%    12.02MB  5.12%  encoding/json/v2.makeStructArshaler.func3
+         0     0%   100%       10MB  4.26%  encoding/json/v2.makeStructFields.func3.3
+         0     0%   100%       13MB  5.54%  encoding/json/v2.marshalEncode
+         0     0%   100%     0.50MB  0.21%  encoding/json/v2.newAddressableValue
+         0     0%   100%    15.52MB  6.61%  encoding/json/v2.unmarshalDecode
+         0     0%   100%    35.51MB 15.12%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeFrame (inline)
+         0     0%   100%        4MB  1.70%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeRequest (inline)
+         0     0%   100%        9MB  3.83%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeFrame (inline)
+         0     0%   100%        1MB  0.43%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2
+         0     0%   100%    14.50MB  6.18%  github.com/elysia-api/backend/protocol.(*Compiled).ValidateWireOutput
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.(*Compiled).checkDecodedResponsesContext
+         0     0%   100%    28.01MB 11.93%  github.com/elysia-api/backend/protocol.(*Compiled).decodeEvents
+         0     0%   100%        4MB  1.70%  github.com/elysia-api/backend/protocol.(*Compiled).decodeRequest
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.(*Compiled).decodeRequest.func2
+         0     0%   100%        9MB  3.83%  github.com/elysia-api/backend/protocol.(*Compiled).encodeFrame
+         0     0%   100%     3.50MB  1.49%  github.com/elysia-api/backend/protocol.(*Compiled).finishDecodedRequest
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1
+         0     0%   100%       30MB 12.78%  github.com/elysia-api/backend/protocol.(*CompiledConversion).ApplyValue (inline)
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Request
+         0     0%   100%       30MB 12.78%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyConversionState
+         0     0%   100%     5.50MB  2.34%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyResponseObject
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.(*CompiledConversion).convertOwnedRequest
+         0     0%   100%     5.50MB  2.34%  github.com/elysia-api/backend/protocol.(*CompiledConversion).projectUsageObject
+         0     0%   100%       20MB  8.52%  github.com/elysia-api/backend/protocol.(*EventReplay).Consume
+         0     0%   100%     3.50MB  1.49%  github.com/elysia-api/backend/protocol.(*EventReplay).Usage (inline)
+         0     0%   100%     2.50MB  1.06%  github.com/elysia-api/backend/protocol.(*EventReplay).consumeItem
+         0     0%   100%     1.50MB  0.64%  github.com/elysia-api/backend/protocol.(*EventReplay).itemKey (inline)
+         0     0%   100%     1.50MB  0.64%  github.com/elysia-api/backend/protocol.(*ItemIdentities).Resolve
+         0     0%   100%    66.51MB 28.33%  github.com/elysia-api/backend/protocol.(*WireStreamValidation).Consume
+         0     0%   100%        5MB  2.13%  github.com/elysia-api/backend/protocol.(*conversionState).flush
+         0     0%   100%     5.50MB  2.34%  github.com/elysia-api/backend/protocol.(*valueReader).fragment (inline)
+         0     0%   100%        1MB  0.43%  github.com/elysia-api/backend/protocol.CheckBinding (inline)
+         0     0%   100%     3.50MB  1.49%  github.com/elysia-api/backend/protocol.CheckModelEvent
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.CheckRoute
+         0     0%   100%       11MB  4.69%  github.com/elysia-api/backend/protocol.EncodeSemantic
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.EvaluationContext.ReadObject (inline)
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.NewEventReplay
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.NewStreamState
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.ReadBoundedBody
+         0     0%   100%        2MB  0.85%  github.com/elysia-api/backend/protocol.ResolveConversion
+         0     0%   100%    13.50MB  5.75%  github.com/elysia-api/backend/protocol.Value.Decode
+         0     0%   100%        1MB  0.43%  github.com/elysia-api/backend/protocol.Value.MarshalJSON
+         0     0%   100%    42.01MB 17.89%  github.com/elysia-api/backend/protocol.Value.ReadObject
+         0     0%   100%    42.01MB 17.89%  github.com/elysia-api/backend/protocol.Value.readObject (inline)
+         0     0%   100%     3.50MB  1.49%  github.com/elysia-api/backend/protocol.WriteFrame
+         0     0%   100%     2.50MB  1.07%  github.com/elysia-api/backend/protocol.bindingTarget
+         0     0%   100%        1MB  0.43%  github.com/elysia-api/backend/protocol.checkBinding
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.cloneSemantic
+         0     0%   100%    18.50MB  7.88%  github.com/elysia-api/backend/protocol.decodeContract
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.decodeTyped[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0%   100%        1MB  0.43%  github.com/elysia-api/backend/protocol.encodeRequestMapping[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0%   100%        5MB  2.13%  github.com/elysia-api/backend/protocol.encodeSemanticWithin
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.encodeTyped[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0%   100%        1MB  0.43%  github.com/elysia-api/backend/protocol.encodeValueContainer
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.hashValue
+         0     0%   100%     3.50MB  1.49%  github.com/elysia-api/backend/protocol.readValuePointer
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol.validateRequestContext
+         0     0%   100%    49.51MB 21.09%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).DecodeEvents
+         0     0%   100%        4MB  1.70%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).ValidateWireEvent
+         0     0%   100%    14.50MB  6.18%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).captureFrameExtensions.func1 (inline)
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).decodeUsageUpdate
+         0     0%   100%        1MB  0.43%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).itemEvent
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).usageEvent
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol/builtin.array (inline)
+         0     0%   100%       15MB  6.39%  github.com/elysia-api/backend/protocol/builtin.collectUnknown
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol/builtin.module.DecodeRequest
+         0     0%   100%        1MB  0.43%  github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest
+         0     0%   100%    14.50MB  6.18%  github.com/elysia-api/backend/protocol/builtin.module.ValidateWireOutput
+         0     0%   100%        1MB  0.43%  github.com/elysia-api/backend/protocol/builtin.module.decodeBlock
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol/builtin.module.decodeContent
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol/builtin.module.decodeMessages
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol/builtin.module.decodeRequest
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol/builtin.module.decodeUsage
+         0     0%   100%        1MB  0.43%  github.com/elysia-api/backend/protocol/builtin.module.encodeMessages
+         0     0%   100%        1MB  0.43%  github.com/elysia-api/backend/protocol/builtin.module.encodeRequest
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol/builtin.module.extensions
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol/builtin.module.nestedExtensions
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol/builtin.module.usageExtensions
+         0     0%   100%     3.50MB  1.49%  github.com/elysia-api/backend/protocol/builtin.module.validateWireContract
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/protocol/builtin.object
+         0     0%   100%    10.50MB  4.47%  github.com/elysia-api/backend/protocol/builtin.readWireObject
+         0     0%   100%   227.49MB 96.90%  github.com/elysia-api/backend/server.(*Server).authMiddleware.func1
+         0     0%   100%        3MB  1.28%  github.com/elysia-api/backend/server.(*Server).bindGatewayRequest
+         0     0%   100%   227.49MB 96.90%  github.com/elysia-api/backend/server.(*Server).chatCompletions
+         0     0%   100%        2MB  0.85%  github.com/elysia-api/backend/server.(*Server).collectGatewayCandidates
+         0     0%   100%     6.77MB  2.89%  github.com/elysia-api/backend/server.(*Server).dashboardAuthMiddleware.func1
+         0     0%   100%   201.54MB 85.85%  github.com/elysia-api/backend/server.(*Server).forwardGateway
+         0     0%   100%   201.54MB 85.85%  github.com/elysia-api/backend/server.(*Server).forwardGatewayStream
+         0     0%   100%    25.46MB 10.84%  github.com/elysia-api/backend/server.(*Server).prepareGatewayPlan
+         0     0%   100%        3MB  1.28%  github.com/elysia-api/backend/server.(*Server).prepareGatewayPlan.func1
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/server.(*Server).readGatewayRequest
+         0     0%   100%   226.99MB 96.69%  github.com/elysia-api/backend/server.(*Server).serveProtocolRequest
+         0     0%   100%   227.49MB 96.90%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress
+         0     0%   100%    70.01MB 29.82%  github.com/elysia-api/backend/server.(*gatewayStream).emit
+         0     0%   100%   194.53MB 82.86%  github.com/elysia-api/backend/server.(*protocolSourceStream).decode
+         0     0%   100%   234.27MB 99.79%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func7
+         0     0%   100%        2MB  0.85%  github.com/elysia-api/backend/server.makeGatewayCandidate
+         0     0%   100%     0.50MB  0.21%  github.com/elysia-api/backend/server.matchGatewayCombination
+         0     0%   100%        2MB  0.85%  github.com/elysia-api/backend/server.resolveGatewayConversion
+         0     0%   100%        1MB  0.43%  github.com/elysia-api/backend/server.selectGatewayIngressOperation
+         0     0%   100%        4MB  1.70%  github.com/elysia-api/backend/server.updateRecordProtocolUsage
+         0     0%   100%   234.27MB 99.79%  github.com/gin-gonic/gin.(*Context).Next (partial-inline)
+         0     0%   100%   234.27MB 99.79%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0%   100%   234.27MB 99.79%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0%   100%     6.77MB  2.89%  github.com/gin-gonic/gin.WrapH.func1
+         0     0%   100%     2.83MB  1.20%  modernc.org/sqlite.(*rows).Next
+         0     0%   100%     0.50MB  0.21%  net/http.(*Transport).tryPutIdleConn
+         0     0%   100%   234.27MB 99.79%  net/http.(*conn).serve
+         0     0%   100%     0.50MB  0.21%  net/http.(*connLRU).add
+         0     0%   100%     0.50MB  0.21%  net/http.(*persistConn).readLoop
+         0     0%   100%     0.50MB  0.21%  net/http.(*persistConn).readLoop.func2
+         0     0%   100%     0.50MB  0.21%  net/http.(*persistConn).readLoop.func5 (inline)
+         0     0%   100%   234.27MB 99.79%  net/http.HandlerFunc.ServeHTTP
+         0     0%   100%   234.27MB 99.79%  net/http.serverHandler.ServeHTTP
+         0     0%   100%     6.77MB  2.89%  net/http/pprof.handler.ServeHTTP
+         0     0%   100%        3MB  1.28%  reflect.New
+         0     0%   100%    11.02MB  4.69%  reflect.Value.Grow
+         0     0%   100%    11.50MB  4.90%  reflect.Value.Interface (inline)
+         0     0%   100%        1MB  0.43%  reflect.Value.SetMapIndex
+         0     0%   100%    11.02MB  4.69%  reflect.Value.grow
+         0     0%   100%     0.50MB  0.21%  reflect.mapassign
+         0     0%   100%     0.50MB  0.21%  reflect.mapassign_faststr
+         0     0%   100%    11.50MB  4.90%  reflect.packEface (inline)
+         0     0%   100%    11.50MB  4.90%  reflect.packEfaceData
+         0     0%   100%    11.50MB  4.90%  reflect.valueInterface
+         0     0%   100%     6.77MB  2.89%  runtime/pprof.(*Profile).WriteTo
+         0     0%   100%     5.08MB  2.16%  runtime/pprof.(*profileBuilder).appendLocsForStack
+         0     0%   100%     1.02MB  0.44%  runtime/pprof.(*profileBuilder).build
+         0     0%   100%     1.74MB  0.74%  runtime/pprof.(*profileBuilder).flush
+         0     0%   100%     0.67MB  0.29%  runtime/pprof.(*profileBuilder).pbSample
+         0     0%   100%     1.02MB  0.44%  runtime/pprof.(*protobuf).strings
+         0     0%   100%     1.17MB   0.5%  runtime/pprof.writeAlloc
+         0     0%   100%     5.60MB  2.39%  runtime/pprof.writeHeap
+         0     0%   100%     6.77MB  2.89%  runtime/pprof.writeHeapInternal
+         0     0%   100%     6.77MB  2.89%  runtime/pprof.writeHeapProto
+         0     0%   100%        1MB  0.43%  strings.(*Builder).Grow
+         0     0%   100%        1MB  0.43%  strings.(*Builder).grow
+         0     0%   100%     5.50MB  2.34%  strings.Clone (inline)

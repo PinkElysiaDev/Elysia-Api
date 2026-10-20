@@ -72,7 +72,9 @@ func checkBinding(binding Binding, compiled *Compiled, requestDirection, respons
 			issues = append(issues, entry)
 		}
 	}
-	operations := compiled.Operations()
+	// This package owns the immutable revision. Binding checks only inspect
+	// metadata; copying schemas and task expressions adds no isolation here.
+	operations := compiled.operations
 	if binding.Wait != nil {
 		operation := operations[binding.Operation]
 		wait := binding.Wait

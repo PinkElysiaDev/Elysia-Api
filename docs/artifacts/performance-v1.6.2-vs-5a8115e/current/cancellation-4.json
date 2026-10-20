@@ -1,0 +1,40 @@
+{
+  "Workers": 4,
+  "SizeMiB": 2,
+  "Settled": {
+    "Allocated": 430926696,
+    "Heap": 52156880,
+    "PeakHeap": 112457440,
+    "WorkingSet": 203227136,
+    "PeakWorkingSet": 208556032,
+    "Calls": 0,
+    "Allocations": 24816,
+    "GCPauseNS": 5339805,
+    "GCCycles": 13,
+    "CPUTimeNS": 302662000,
+    "GCCPUSeconds": 0.047242746999999974,
+    "Goroutines": 12,
+    "ActiveRequests": 0,
+    "QueueDepth": 0,
+    "QueuedPayloadBytes": 0,
+    "DroppedSamples": 0
+  },
+  "Reclaimed": {
+    "Allocated": 430942968,
+    "Heap": 3804296,
+    "PeakHeap": 112457440,
+    "WorkingSet": 193781760,
+    "PeakWorkingSet": 208556032,
+    "Calls": 0,
+    "Allocations": 24864,
+    "GCPauseNS": 5396729,
+    "GCCycles": 15,
+    "CPUTimeNS": 310959000,
+    "GCCPUSeconds": 0.05257410799999995,
+    "Goroutines": 12,
+    "ActiveRequests": 0,
+    "QueueDepth": 0,
+    "QueuedPayloadBytes": 0,
+    "DroppedSamples": 0
+  }
+}

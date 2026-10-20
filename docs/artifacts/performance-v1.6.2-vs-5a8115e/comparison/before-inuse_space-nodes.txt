@@ -1,0 +1,37 @@
+File: server.test
+Build ID: b01f01515d67092dc4dab434270becb0d9b81338
+Type: inuse_space
+Time: 2026-10-20 21:45:26 CST
+Showing nodes accounting for 5224.05kB, 100% of 5224.05kB total
+Showing top 30 nodes out of 58
+      flat  flat%   sum%        cum   cum%
+ 1027.35kB 19.67% 19.67%  1027.35kB 19.67%  regexp/syntax.(*compiler).inst (inline)
+    1026kB 19.64% 39.31%     1026kB 19.64%  runtime.mallocgc
+  583.01kB 11.16% 50.47%   583.01kB 11.16%  github.com/elysia-api/backend/protocol.ParseValue
+  536.37kB 10.27% 60.73%   536.37kB 10.27%  reflect.compiledTypelinks
+  515.19kB  9.86% 70.60%  1539.59kB 29.47%  github.com/go-playground/validator/v10.init.0
+  512.05kB  9.80% 80.40%   512.05kB  9.80%  context.(*cancelCtx).Done
+  512.05kB  9.80% 90.20%   512.05kB  9.80%  regexp/syntax.(*parser).newRegexp (inline)
+  512.02kB  9.80%   100%   512.02kB  9.80%  golang.org/x/net/html.map.init.1
+         0     0%   100%   512.05kB  9.80%  database/sql.(*DB).connectionOpener
+         0     0%   100%   536.37kB 10.27%  encoding/gob.buildTypeInfo
+         0     0%   100%   536.37kB 10.27%  encoding/gob.getBaseType
+         0     0%   100%   536.37kB 10.27%  encoding/gob.getType
+         0     0%   100%   536.37kB 10.27%  encoding/gob.getTypeInfo
+         0     0%   100%   536.37kB 10.27%  encoding/gob.implementsInterface
+         0     0%   100%   536.37kB 10.27%  encoding/gob.init
+         0     0%   100%   536.37kB 10.27%  encoding/gob.mustGetTypeInfo
+         0     0%   100%   536.37kB 10.27%  encoding/gob.newTypeObject
+         0     0%   100%   536.37kB 10.27%  encoding/gob.userType
+         0     0%   100%   536.37kB 10.27%  encoding/gob.validUserType
+         0     0%   100%   583.01kB 11.16%  github.com/elysia-api/backend/protocol.(*Compiler).Compile
+         0     0%   100%   583.01kB 11.16%  github.com/elysia-api/backend/protocol.(*Service).ReloadAvailable (inline)
+         0     0%   100%   583.01kB 11.16%  github.com/elysia-api/backend/protocol.(*Service).loadVerifiedRevision
+         0     0%   100%   583.01kB 11.16%  github.com/elysia-api/backend/protocol.(*Service).reload
+         0     0%   100%   583.01kB 11.16%  github.com/elysia-api/backend/server.(*Server).completeProtocolRuntimeInitialization
+         0     0%   100%   583.01kB 11.16%  github.com/elysia-api/backend/server.(*Server).initializeProtocolRuntime
+         0     0%   100%   583.01kB 11.16%  github.com/elysia-api/backend/server.(*Server).reloadProtocolRuntime
+         0     0%   100%   583.01kB 11.16%  github.com/elysia-api/backend/server.TestConversionHTTPProcess
+         0     0%   100%   583.01kB 11.16%  github.com/elysia-api/backend/server.newTestServerWithStore
+         0     0%   100%      515kB  9.86%  github.com/go-playground/validator/v10.init
+         0     0%   100%   512.02kB  9.80%  golang.org/x/net/html.init

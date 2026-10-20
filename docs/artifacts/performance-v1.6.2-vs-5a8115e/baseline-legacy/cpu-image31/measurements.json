@@ -1,0 +1,91 @@
+[
+  {
+    "Mode": "cpu",
+    "Workload": "image",
+    "Phase": "steady",
+    "SizeMiB": 31,
+    "Workers": 1,
+    "Repeat": 0,
+    "Requests": 5,
+    "Stream": false,
+    "ElapsedMS": 31988.608314,
+    "Metrics": {
+      "Allocated": 9195972600,
+      "Heap": 523565992,
+      "PeakHeap": 797350416,
+      "WorkingSet": 590987264,
+      "PeakWorkingSet": 842170368,
+      "Calls": 0,
+      "Allocations": 80700,
+      "GCPauseNS": 2930172,
+      "GCCycles": 57,
+      "CPUTimeNS": 32690685000,
+      "GCCPUSeconds": 0.48786360000000006,
+      "Goroutines": 13,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "DroppedSamples": 0
+    },
+    "Before": {
+      "Allocated": 0,
+      "Heap": 2886440,
+      "PeakHeap": 2886440,
+      "WorkingSet": 583593984,
+      "PeakWorkingSet": 583593984,
+      "Calls": 0,
+      "Allocations": 0,
+      "GCPauseNS": 0,
+      "GCCycles": 0,
+      "CPUTimeNS": 0,
+      "GCCPUSeconds": 0,
+      "Goroutines": 12,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "DroppedSamples": 0
+    },
+    "LatencyP50P95P99NS": [
+      6305393777,
+      6781980234,
+      6781980234
+    ],
+    "FirstByteP50P95P99NS": [
+      6305389108,
+      6781975796,
+      6781975796
+    ],
+    "FirstFrameP50P95P99NS": [
+      6305393346,
+      6781979843,
+      6781979843
+    ],
+    "Observations": [
+      {
+        "LatencyNS": 6242292396,
+        "FirstByteNS": 6242289431,
+        "FirstFrameNS": 6242292196
+      },
+      {
+        "LatencyNS": 6227541000,
+        "FirstByteNS": 6227537072,
+        "FirstFrameNS": 6227540699
+      },
+      {
+        "LatencyNS": 6781980234,
+        "FirstByteNS": 6781975796,
+        "FirstFrameNS": 6781979843
+      },
+      {
+        "LatencyNS": 6430334361,
+        "FirstByteNS": 6430329482,
+        "FirstFrameNS": 6430334030
+      },
+      {
+        "LatencyNS": 6305393777,
+        "FirstByteNS": 6305389108,
+        "FirstFrameNS": 6305393346
+      }
+    ]
+  }
+]

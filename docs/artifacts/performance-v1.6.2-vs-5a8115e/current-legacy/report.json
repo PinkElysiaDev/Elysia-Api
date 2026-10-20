@@ -1,0 +1,271 @@
+{
+  "status": "passed",
+  "created": "2026-10-20T13:51:35.908Z",
+  "commit": "5a8115e7008e1c9f6035629bbeb58ad119bc2a43",
+  "binarySHA256": "1beb263653debb770f9eee8794eeae5cd39d7b3651923ef738f45f0d49a15226",
+  "mainEvidence": "/home/zed/workspace/elysia-api/.tmp-dev/profiling-current-5a8115e",
+  "steps": [
+    {
+      "name": "nodes",
+      "mode": "measure",
+      "argv": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=20m"
+      ],
+      "settings": {
+        "ELYSIA_FLAME_WORKLOAD": "nodes",
+        "ELYSIA_FLAME_MODE": "measure",
+        "ELYSIA_FLAME_OUTPUT": "/home/zed/workspace/elysia-api/.tmp-dev/profiling-current-legacy/measure-nodes",
+        "ELYSIA_CONVERSION_HTTP_MIB": "2",
+        "ELYSIA_CONVERSION_HTTP_WORKERS": "1",
+        "ELYSIA_CONVERSION_HTTP_CANDIDATES": "1",
+        "ELYSIA_CONVERSION_HTTP_LOG": "off",
+        "ELYSIA_FLAME_REQUESTS": "4",
+        "ELYSIA_FLAME_REPEATS": "5",
+        "ELYSIA_FLAME_WARMUP": "4",
+        "ELYSIA_FLAME_COLD": "1",
+        "ELYSIA_FLAME_VERIFY_EXACT": "1",
+        "ELYSIA_FLAME_SECONDS": "30",
+        "ELYSIA_FLAME_STREAM": "",
+        "ELYSIA_FLAME_RECOVERY_MS": "1000",
+        "ELYSIA_FLAME_TIMELINE": "1"
+      },
+      "code": 0,
+      "elapsedMS": 30829
+    },
+    {
+      "name": "nodes",
+      "mode": "memory",
+      "argv": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=20m"
+      ],
+      "settings": {
+        "ELYSIA_FLAME_WORKLOAD": "nodes",
+        "ELYSIA_FLAME_MODE": "memory",
+        "ELYSIA_FLAME_OUTPUT": "/home/zed/workspace/elysia-api/.tmp-dev/profiling-current-legacy/memory-nodes",
+        "ELYSIA_CONVERSION_HTTP_MIB": "2",
+        "ELYSIA_CONVERSION_HTTP_WORKERS": "1",
+        "ELYSIA_CONVERSION_HTTP_CANDIDATES": "1",
+        "ELYSIA_CONVERSION_HTTP_LOG": "off",
+        "ELYSIA_FLAME_REQUESTS": "4",
+        "ELYSIA_FLAME_REPEATS": "5",
+        "ELYSIA_FLAME_WARMUP": "4",
+        "ELYSIA_FLAME_COLD": "1",
+        "ELYSIA_FLAME_VERIFY_EXACT": "1",
+        "ELYSIA_FLAME_SECONDS": "30",
+        "ELYSIA_FLAME_STREAM": "",
+        "ELYSIA_FLAME_RECOVERY_MS": "",
+        "ELYSIA_FLAME_TIMELINE": ""
+      },
+      "code": 0,
+      "elapsedMS": 5384
+    },
+    {
+      "name": "nodes",
+      "mode": "cpu",
+      "argv": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=20m"
+      ],
+      "settings": {
+        "ELYSIA_FLAME_WORKLOAD": "nodes",
+        "ELYSIA_FLAME_MODE": "cpu",
+        "ELYSIA_FLAME_OUTPUT": "/home/zed/workspace/elysia-api/.tmp-dev/profiling-current-legacy/cpu-nodes",
+        "ELYSIA_CONVERSION_HTTP_MIB": "2",
+        "ELYSIA_CONVERSION_HTTP_WORKERS": "1",
+        "ELYSIA_CONVERSION_HTTP_CANDIDATES": "1",
+        "ELYSIA_CONVERSION_HTTP_LOG": "off",
+        "ELYSIA_FLAME_REQUESTS": "4",
+        "ELYSIA_FLAME_REPEATS": "5",
+        "ELYSIA_FLAME_WARMUP": "4",
+        "ELYSIA_FLAME_COLD": "1",
+        "ELYSIA_FLAME_VERIFY_EXACT": "1",
+        "ELYSIA_FLAME_SECONDS": "30",
+        "ELYSIA_FLAME_STREAM": "",
+        "ELYSIA_FLAME_RECOVERY_MS": "",
+        "ELYSIA_FLAME_TIMELINE": ""
+      },
+      "code": 0,
+      "elapsedMS": 35636
+    },
+    {
+      "name": "events",
+      "mode": "measure",
+      "argv": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=20m"
+      ],
+      "settings": {
+        "ELYSIA_FLAME_WORKLOAD": "events",
+        "ELYSIA_FLAME_MODE": "measure",
+        "ELYSIA_FLAME_OUTPUT": "/home/zed/workspace/elysia-api/.tmp-dev/profiling-current-legacy/measure-events",
+        "ELYSIA_CONVERSION_HTTP_MIB": "2",
+        "ELYSIA_CONVERSION_HTTP_WORKERS": "1",
+        "ELYSIA_CONVERSION_HTTP_CANDIDATES": "1",
+        "ELYSIA_CONVERSION_HTTP_LOG": "off",
+        "ELYSIA_FLAME_REQUESTS": "16",
+        "ELYSIA_FLAME_REPEATS": "5",
+        "ELYSIA_FLAME_WARMUP": "4",
+        "ELYSIA_FLAME_COLD": "1",
+        "ELYSIA_FLAME_VERIFY_EXACT": "1",
+        "ELYSIA_FLAME_SECONDS": "30",
+        "ELYSIA_FLAME_STREAM": "sse",
+        "ELYSIA_FLAME_RECOVERY_MS": "1000",
+        "ELYSIA_FLAME_TIMELINE": "1"
+      },
+      "code": 0,
+      "elapsedMS": 20673
+    },
+    {
+      "name": "events",
+      "mode": "memory",
+      "argv": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=20m"
+      ],
+      "settings": {
+        "ELYSIA_FLAME_WORKLOAD": "events",
+        "ELYSIA_FLAME_MODE": "memory",
+        "ELYSIA_FLAME_OUTPUT": "/home/zed/workspace/elysia-api/.tmp-dev/profiling-current-legacy/memory-events",
+        "ELYSIA_CONVERSION_HTTP_MIB": "2",
+        "ELYSIA_CONVERSION_HTTP_WORKERS": "1",
+        "ELYSIA_CONVERSION_HTTP_CANDIDATES": "1",
+        "ELYSIA_CONVERSION_HTTP_LOG": "off",
+        "ELYSIA_FLAME_REQUESTS": "16",
+        "ELYSIA_FLAME_REPEATS": "5",
+        "ELYSIA_FLAME_WARMUP": "4",
+        "ELYSIA_FLAME_COLD": "1",
+        "ELYSIA_FLAME_VERIFY_EXACT": "1",
+        "ELYSIA_FLAME_SECONDS": "30",
+        "ELYSIA_FLAME_STREAM": "sse",
+        "ELYSIA_FLAME_RECOVERY_MS": "",
+        "ELYSIA_FLAME_TIMELINE": ""
+      },
+      "code": 0,
+      "elapsedMS": 5561
+    },
+    {
+      "name": "events",
+      "mode": "cpu",
+      "argv": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=20m"
+      ],
+      "settings": {
+        "ELYSIA_FLAME_WORKLOAD": "events",
+        "ELYSIA_FLAME_MODE": "cpu",
+        "ELYSIA_FLAME_OUTPUT": "/home/zed/workspace/elysia-api/.tmp-dev/profiling-current-legacy/cpu-events",
+        "ELYSIA_CONVERSION_HTTP_MIB": "2",
+        "ELYSIA_CONVERSION_HTTP_WORKERS": "1",
+        "ELYSIA_CONVERSION_HTTP_CANDIDATES": "1",
+        "ELYSIA_CONVERSION_HTTP_LOG": "off",
+        "ELYSIA_FLAME_REQUESTS": "16",
+        "ELYSIA_FLAME_REPEATS": "5",
+        "ELYSIA_FLAME_WARMUP": "4",
+        "ELYSIA_FLAME_COLD": "1",
+        "ELYSIA_FLAME_VERIFY_EXACT": "1",
+        "ELYSIA_FLAME_SECONDS": "30",
+        "ELYSIA_FLAME_STREAM": "sse",
+        "ELYSIA_FLAME_RECOVERY_MS": "",
+        "ELYSIA_FLAME_TIMELINE": ""
+      },
+      "code": 0,
+      "elapsedMS": 33916
+    },
+    {
+      "name": "image31",
+      "mode": "measure",
+      "argv": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=20m"
+      ],
+      "settings": {
+        "ELYSIA_FLAME_WORKLOAD": "image",
+        "ELYSIA_FLAME_MODE": "measure",
+        "ELYSIA_FLAME_OUTPUT": "/home/zed/workspace/elysia-api/.tmp-dev/profiling-current-legacy/measure-image31",
+        "ELYSIA_CONVERSION_HTTP_MIB": "31",
+        "ELYSIA_CONVERSION_HTTP_WORKERS": "1",
+        "ELYSIA_CONVERSION_HTTP_CANDIDATES": "1",
+        "ELYSIA_CONVERSION_HTTP_LOG": "off",
+        "ELYSIA_FLAME_REQUESTS": "1",
+        "ELYSIA_FLAME_REPEATS": "5",
+        "ELYSIA_FLAME_WARMUP": "4",
+        "ELYSIA_FLAME_COLD": "1",
+        "ELYSIA_FLAME_VERIFY_EXACT": "1",
+        "ELYSIA_FLAME_SECONDS": "30",
+        "ELYSIA_FLAME_STREAM": "",
+        "ELYSIA_FLAME_RECOVERY_MS": "1000",
+        "ELYSIA_FLAME_TIMELINE": "1"
+      },
+      "code": 0,
+      "elapsedMS": 37141
+    },
+    {
+      "name": "image31",
+      "mode": "memory",
+      "argv": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=20m"
+      ],
+      "settings": {
+        "ELYSIA_FLAME_WORKLOAD": "image",
+        "ELYSIA_FLAME_MODE": "memory",
+        "ELYSIA_FLAME_OUTPUT": "/home/zed/workspace/elysia-api/.tmp-dev/profiling-current-legacy/memory-image31",
+        "ELYSIA_CONVERSION_HTTP_MIB": "31",
+        "ELYSIA_CONVERSION_HTTP_WORKERS": "1",
+        "ELYSIA_CONVERSION_HTTP_CANDIDATES": "1",
+        "ELYSIA_CONVERSION_HTTP_LOG": "off",
+        "ELYSIA_FLAME_REQUESTS": "1",
+        "ELYSIA_FLAME_REPEATS": "5",
+        "ELYSIA_FLAME_WARMUP": "4",
+        "ELYSIA_FLAME_COLD": "1",
+        "ELYSIA_FLAME_VERIFY_EXACT": "1",
+        "ELYSIA_FLAME_SECONDS": "30",
+        "ELYSIA_FLAME_STREAM": "",
+        "ELYSIA_FLAME_RECOVERY_MS": "",
+        "ELYSIA_FLAME_TIMELINE": ""
+      },
+      "code": 0,
+      "elapsedMS": 8572
+    },
+    {
+      "name": "image31",
+      "mode": "cpu",
+      "argv": [
+        "-test.run=^TestConversionFlamegraph$",
+        "-test.v",
+        "-test.timeout=20m"
+      ],
+      "settings": {
+        "ELYSIA_FLAME_WORKLOAD": "image",
+        "ELYSIA_FLAME_MODE": "cpu",
+        "ELYSIA_FLAME_OUTPUT": "/home/zed/workspace/elysia-api/.tmp-dev/profiling-current-legacy/cpu-image31",
+        "ELYSIA_CONVERSION_HTTP_MIB": "31",
+        "ELYSIA_CONVERSION_HTTP_WORKERS": "1",
+        "ELYSIA_CONVERSION_HTTP_CANDIDATES": "1",
+        "ELYSIA_CONVERSION_HTTP_LOG": "off",
+        "ELYSIA_FLAME_REQUESTS": "1",
+        "ELYSIA_FLAME_REPEATS": "5",
+        "ELYSIA_FLAME_WARMUP": "4",
+        "ELYSIA_FLAME_COLD": "1",
+        "ELYSIA_FLAME_VERIFY_EXACT": "1",
+        "ELYSIA_FLAME_SECONDS": "30",
+        "ELYSIA_FLAME_STREAM": "",
+        "ELYSIA_FLAME_RECOVERY_MS": "",
+        "ELYSIA_FLAME_TIMELINE": ""
+      },
+      "code": 0,
+      "elapsedMS": 40284
+    }
+  ],
+  "finished": "2026-10-20T13:55:14.664Z"
+}

@@ -1,0 +1,37 @@
+File: server.test
+Build ID: edee8132cefc91147fcafeede7abc34945437d57
+Type: inuse_space
+Time: 2026-10-20 21:42:54 CST
+Showing nodes accounting for 2568.29kB, 100% of 2568.29kB total
+Showing top 30 nodes out of 50
+      flat  flat%   sum%        cum   cum%
+ 1025.25kB 39.92% 39.92%  1025.25kB 39.92%  runtime.mallocgc
+  516.64kB 20.12% 60.04%   516.64kB 20.12%  google.golang.org/protobuf/reflect/protoregistry.(*Types).register
+  514.38kB 20.03% 80.06%   514.38kB 20.03%  github.com/bytedance/sonic/internal/decoder/jitdec.freezeFields
+  512.02kB 19.94%   100%   512.02kB 19.94%  mime/multipart.init
+         0     0%   100%   514.38kB 20.03%  decode_
+         0     0%   100%   514.38kB 20.03%  github.com/bytedance/sonic/internal/caching.(*ProgramCache).Compute
+         0     0%   100%   514.38kB 20.03%  github.com/bytedance/sonic/internal/decoder/api.(*Decoder).Decode
+         0     0%   100%   514.38kB 20.03%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Assembler).Load (inline)
+         0     0%   100%   514.38kB 20.03%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Assembler)._asm_OP_struct_field
+         0     0%   100%   514.38kB 20.03%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Assembler).compile
+         0     0%   100%   514.38kB 20.03%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Assembler).instr
+         0     0%   100%   514.38kB 20.03%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Assembler).instrs
+         0     0%   100%   514.38kB 20.03%  github.com/bytedance/sonic/internal/decoder/jitdec.Decode
+         0     0%   100%   514.38kB 20.03%  github.com/bytedance/sonic/internal/decoder/jitdec.decodeTypedPointer
+         0     0%   100%   514.38kB 20.03%  github.com/bytedance/sonic/internal/decoder/jitdec.findOrCompile
+         0     0%   100%   514.38kB 20.03%  github.com/bytedance/sonic/internal/decoder/jitdec.makeDecoder
+         0     0%   100%   514.38kB 20.03%  github.com/bytedance/sonic/internal/jit.(*BaseAssembler).Load
+         0     0%   100%   514.38kB 20.03%  github.com/bytedance/sonic/internal/jit.(*BaseAssembler).build
+         0     0%   100%   514.38kB 20.03%  github.com/bytedance/sonic/internal/jit.(*BaseAssembler).build.func1
+         0     0%   100%   514.38kB 20.03%  github.com/elysia-api/backend/protocol.Verify
+         0     0%   100%   514.38kB 20.03%  github.com/elysia-api/backend/protocol.comparableExpected
+         0     0%   100%   514.38kB 20.03%  github.com/elysia-api/backend/protocol.decodeContract
+         0     0%   100%   514.38kB 20.03%  github.com/elysia-api/backend/server.TestConversionHTTPProcess
+         0     0%   100%   514.38kB 20.03%  github.com/elysia-api/backend/server.activateDiscoveryPresets
+         0     0%   100%   514.38kB 20.03%  github.com/elysia-api/backend/server.newTestServerWithStore
+         0     0%   100%   514.38kB 20.03%  github.com/elysia-api/backend/server.seedGatewayDefinition
+         0     0%   100%   514.38kB 20.03%  github.com/elysia-api/backend/server.seedGatewayDefinition.func1
+         0     0%   100%   516.64kB 20.12%  google.golang.org/grpc/binarylog/grpc_binarylog_v1.file_grpc_binlog_v1_binarylog_proto_init
+         0     0%   100%   516.64kB 20.12%  google.golang.org/grpc/binarylog/grpc_binarylog_v1.init.0
+         0     0%   100%   516.64kB 20.12%  google.golang.org/protobuf/internal/filetype.Builder.Build

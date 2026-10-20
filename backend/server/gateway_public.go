@@ -56,7 +56,7 @@ func (s *Server) serveVersionedPublicIngress(c *gin.Context) {
 	// Existing base URLs can include /v1 or /v1beta; operation paths remain
 	// relative to that configured base. Try only these documented API prefixes.
 	for _, candidate := range []string{path, strings.TrimPrefix(path, "/v1"), strings.TrimPrefix(path, "/v1beta")} {
-		for _, operation := range ingress.Operations() {
+		for _, operation := range ingress.OperationRoutes() {
 			if _, matches := protocol.MatchOperationPath(operation.Path, candidate); matches {
 				s.serveProtocolRequest(c, view, ingress, candidate, body)
 				return

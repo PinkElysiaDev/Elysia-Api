@@ -1,0 +1,1151 @@
+File: server.test
+Build ID: b01f01515d67092dc4dab434270becb0d9b81338
+Type: cpu
+Time: 2026-10-20 21:30:57 CST
+Duration: 30s, Total samples = 23.78s (79.26%)
+Showing nodes accounting for 23.78s, 100% of 23.78s total
+      flat  flat%   sum%        cum   cum%
+     2.60s 10.93% 10.93%      2.60s 10.93%  internal/runtime/syscall/linux.Syscall6
+     1.48s  6.22% 17.16%      1.50s  6.31%  github.com/elysia-api/backend/protocol.jsonStringEnd (inline)
+     1.03s  4.33% 21.49%      1.03s  4.33%  encoding/json/internal/jsonwire.ConsumeSimpleString (inline)
+     0.79s  3.32% 24.81%      1.18s  4.96%  runtime.tryDeferToSpanScan
+     0.39s  1.64% 26.45%      1.92s  8.07%  encoding/json/v2.makeStructArshaler.func2
+     0.38s  1.60% 28.05%      0.49s  2.06%  runtime.typePointers.next
+     0.37s  1.56% 29.60%      0.65s  2.73%  github.com/elysia-api/backend/protocol.(*typedMeter).scanRaw
+     0.34s  1.43% 31.03%      0.34s  1.43%  runtime.futex
+     0.34s  1.43% 32.46%      0.34s  1.43%  runtime.memmove
+     0.30s  1.26% 33.73%      0.42s  1.77%  runtime.mallocgcSmallScanNoHeaderSC2
+     0.29s  1.22% 34.95%      0.29s  1.22%  internal/runtime/maps.memHashAES
+     0.29s  1.22% 36.16%      1.46s  6.14%  runtime.scanObject
+     0.25s  1.05% 37.22%      0.25s  1.05%  crypto/internal/fips140/sha256.blockSHANI
+     0.22s  0.93% 38.14%      0.25s  1.05%  github.com/elysia-api/backend/protocol.jsonStringBytes
+     0.22s  0.93% 39.07%      0.35s  1.47%  runtime.mallocgcTinySC2
+     0.21s  0.88% 39.95%      1.47s  6.18%  github.com/elysia-api/backend/protocol.(*typedMeter).visit
+     0.21s  0.88% 40.83%      0.47s  1.98%  internal/runtime/maps.(*Map).getWithoutKeySmallFastStr
+     0.21s  0.88% 41.72%      2.33s  9.80%  runtime.mallocgc
+     0.21s  0.88% 42.60%      0.21s  0.88%  runtime.nextFreeFast (inline)
+     0.20s  0.84% 43.44%      0.20s  0.84%  indexbytebody
+     0.20s  0.84% 44.28%      0.20s  0.84%  internal/abi.Name.IsExported (inline)
+     0.17s  0.71% 45.00%      0.74s  3.11%  runtime.mapaccess2_faststr
+     0.17s  0.71% 45.71%      0.17s  0.71%  runtime.memclrNoHeapPointers
+     0.16s  0.67% 46.38%      0.37s  1.56%  reflect.Value.Field
+     0.15s  0.63% 47.01%      0.15s  0.63%  encoding/json/internal/jsonwire.ConsumeWhitespace (inline)
+     0.15s  0.63% 47.65%      1.21s  5.09%  encoding/json/jsontext.(*decoderState).ReadValue
+     0.15s  0.63% 48.28%      1.73s  7.28%  encoding/json/v2.makeStructArshaler.func3
+     0.14s  0.59% 48.86%      0.26s  1.09%  encoding/json/jsontext.(*decoderState).reset
+     0.14s  0.59% 49.45%      0.22s  0.93%  runtime.findObject
+     0.14s  0.59% 50.04%      0.17s  0.71%  runtime.heapArenaOf (inline)
+     0.14s  0.59% 50.63%      0.14s  0.59%  runtime.spanClass.sizeclass (inline)
+     0.14s  0.59% 51.22%      0.14s  0.59%  runtime.typePointers.nextFast (inline)
+     0.13s  0.55% 51.77%      0.21s  0.88%  internal/sync.(*HashTrieMap[go.shape.interface {},go.shape.interface {}]).Load
+     0.13s  0.55% 52.31%      0.13s  0.55%  memeqbody
+     0.13s  0.55% 52.86%      0.13s  0.55%  runtime.getMCache (inline)
+     0.12s   0.5% 53.36%      0.12s   0.5%  internal/runtime/gc/scan.scanSpanPackedAVX512
+     0.12s   0.5% 53.87%      0.15s  0.63%  runtime.step
+     0.11s  0.46% 54.33%      0.35s  1.47%  runtime.scanblock
+     0.10s  0.42% 54.75%      0.72s  3.03%  encoding/json/jsontext.(*decoderState).consumeObject
+     0.10s  0.42% 55.17%      0.21s  0.88%  encoding/json/v2.makeString
+     0.10s  0.42% 55.59%      0.64s  2.69%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+     0.10s  0.42% 56.01%      0.18s  0.76%  github.com/elysia-api/backend/protocol.checkValueLimits
+     0.10s  0.42% 56.43%      0.21s  0.88%  runtime.mallocgcSmallScanNoHeaderSC5
+     0.10s  0.42% 56.85%      0.71s  2.99%  runtime.mapassign_faststr
+     0.10s  0.42% 57.28%      0.37s  1.56%  runtime.scanObjectsSmall
+     0.09s  0.38% 57.65%      1.36s  5.72%  encoding/json/jsontext.(*decoderState).consumeValue
+     0.09s  0.38% 58.03%      0.20s  0.84%  encoding/json/jsontext.(*decoderState).fetch
+     0.09s  0.38% 58.41%     12.75s 53.62%  github.com/elysia-api/backend/server.(*gatewayStream).consumeSourceFrame
+     0.09s  0.38% 58.79%      0.09s  0.38%  runtime.acquirem (inline)
+     0.09s  0.38% 59.17%      0.62s  2.61%  runtime.mallocgcSmallNoscan
+     0.09s  0.38% 59.55%      0.09s  0.38%  unicode/utf8.ValidString
+     0.08s  0.34% 59.88%      0.23s  0.97%  github.com/elysia-api/backend/protocol.skipJSONSpace
+     0.08s  0.34% 60.22%      0.08s  0.34%  internal/runtime/maps.ctrlGroup.matchH2 (inline)
+     0.08s  0.34% 60.56%      0.08s  0.34%  modernc.org/libc.Xmemcpy
+     0.08s  0.34% 60.89%      0.10s  0.42%  runtime.(*spanSet).push
+     0.08s  0.34% 61.23%      3.06s 12.87%  runtime.gcDrain
+     0.08s  0.34% 61.56%      0.35s  1.47%  runtime.growslice
+     0.08s  0.34% 61.90%      0.08s  0.34%  runtime.procyieldAsm
+     0.08s  0.34% 62.24%      0.08s  0.34%  runtime.spanOf (inline)
+     0.07s  0.29% 62.53%      0.11s  0.46%  fmt.(*pp).printArg
+     0.07s  0.29% 62.83%      1.23s  5.17%  github.com/elysia-api/backend/protocol.jsonValueEnd
+     0.07s  0.29% 63.12%      0.09s  0.38%  reflect.Value.Elem
+     0.07s  0.29% 63.41%      0.07s  0.29%  runtime.(*bucket).mp
+     0.07s  0.29% 63.71%      0.08s  0.34%  runtime.(*mspan).writeHeapBitsSmall
+     0.07s  0.29% 64.00%      0.25s  1.05%  runtime.(*sweepLocked).sweep
+     0.07s  0.29% 64.30%      0.07s  0.29%  runtime.madvise
+     0.07s  0.29% 64.59%      0.52s  2.19%  runtime.mallocgcSmallScanNoHeader
+     0.07s  0.29% 64.89%      0.07s  0.29%  runtime.osyield
+     0.07s  0.29% 65.18%      0.07s  0.29%  runtime.tgkill
+     0.07s  0.29% 65.48%      0.07s  0.29%  strings.TrimSpace
+     0.06s  0.25% 65.73%      0.10s  0.42%  encoding/json/jsontext.(*encoderState).reset
+     0.06s  0.25% 65.98%      2.11s  8.87%  github.com/elysia-api/backend/protocol.(*conversionState).apply
+     0.06s  0.25% 66.23%      1.35s  5.68%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).decodeChatFrame
+     0.06s  0.25% 66.48%      0.10s  0.42%  internal/runtime/maps.(*Map).putSlotSmallFastStr
+     0.06s  0.25% 66.74%      0.06s  0.25%  reflect.Value.IsNil (inline)
+     0.05s  0.21% 66.95%      0.07s  0.29%  encoding/json/internal/jsonwire.AppendQuote
+     0.05s  0.21% 67.16%      0.05s  0.21%  encoding/json/internal/jsonwire.ConsumeStringResumable.func1 (inline)
+     0.05s  0.21% 67.37%      0.07s  0.29%  encoding/json/jsontext.(*decoderState).PeekKind
+     0.05s  0.21% 67.58%      0.33s  1.39%  encoding/json/jsontext.getBufferedDecoder
+     0.05s  0.21% 67.79%      0.41s  1.72%  encoding/json/v2.makeStructFields.func3.3
+     0.05s  0.21% 68.00%      2.85s 11.98%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyConversionState
+     0.05s  0.21% 68.21%      0.27s  1.14%  github.com/elysia-api/backend/protocol.(*ItemIdentities).Resolve
+     0.05s  0.21% 68.42%      0.05s  0.21%  github.com/elysia-api/backend/protocol.(*typedMeter).fits (inline)
+     0.05s  0.21% 68.63%      2.03s  8.54%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+     0.05s  0.21% 68.84%      0.05s  0.21%  internal/runtime/maps.(*groupReference).key
+     0.05s  0.21% 69.05%      0.05s  0.21%  reflect.Value.SetZero
+     0.05s  0.21% 69.26%      0.36s  1.51%  reflect.packEfaceData
+     0.05s  0.21% 69.47%      0.05s  0.21%  runtime.(*mspan).base
+     0.05s  0.21% 69.68%      0.05s  0.21%  runtime.(*mspan).moveInlineMarks
+     0.05s  0.21% 69.89%      1.11s  4.67%  runtime.findRunnable
+     0.05s  0.21% 70.10%      0.05s  0.21%  runtime.findfunc
+     0.05s  0.21% 70.31%      0.05s  0.21%  runtime.ifaceeq
+     0.05s  0.21% 70.52%      0.07s  0.29%  runtime.mallocgcSmallScanNoHeaderSC1
+     0.05s  0.21% 70.73%      0.20s  0.84%  runtime.pcvalue
+     0.05s  0.21% 70.94%      0.94s  3.95%  runtime.scanSpan
+     0.05s  0.21% 71.15%      0.17s  0.71%  runtime.wbBufFlush1
+     0.05s  0.21% 71.36%      0.05s  0.21%  strings.(*asciiSet).contains (inline)
+     0.04s  0.17% 71.53%      0.08s  0.34%  encoding/json/internal/jsonopts.(*Struct).Join
+     0.04s  0.17% 71.70%      0.04s  0.17%  encoding/json/internal/jsonwire.ConsumeNumberResumable
+     0.04s  0.17% 71.87%      0.09s  0.38%  encoding/json/internal/jsonwire.ConsumeStringResumable
+     0.04s  0.17% 72.04%      0.32s  1.35%  encoding/json/jsontext.(*encoderState).reformatValue
+     0.04s  0.17% 72.20%      3.10s 13.04%  encoding/json/v2.Unmarshal
+     0.04s  0.17% 72.37%      0.61s  2.57%  encoding/json/v2.makeMethodArshaler.func3
+     0.04s  0.17% 72.54%      2.06s  8.66%  github.com/elysia-api/backend/protocol.(*Compiled).decodeEvents
+     0.04s  0.17% 72.71%      0.04s  0.17%  github.com/elysia-api/backend/protocol.(*CompiledConversion).HasAnthropicEnvelope
+     0.04s  0.17% 72.88%      0.18s  0.76%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyResponseObject
+     0.04s  0.17% 73.04%      0.14s  0.59%  github.com/elysia-api/backend/protocol.CheckEvent
+     0.04s  0.17% 73.21%      0.30s  1.26%  github.com/elysia-api/backend/protocol/builtin.(*wireStreamContract).bind
+     0.04s  0.17% 73.38%      0.04s  0.17%  internal/bytealg.IndexByteString
+     0.04s  0.17% 73.55%      0.04s  0.17%  internal/runtime/atomic.(*Uint64).Add
+     0.04s  0.17% 73.72%      0.04s  0.17%  internal/runtime/atomic.(*UnsafePointer).Load
+     0.04s  0.17% 73.89%      0.05s  0.21%  internal/runtime/maps.(*Iter).Init
+     0.04s  0.17% 74.05%      0.06s  0.25%  internal/runtime/maps.(*Iter).Next
+     0.04s  0.17% 74.22%      0.08s  0.34%  internal/runtime/maps.(*Map).deleteSmall
+     0.04s  0.17% 74.39%      0.39s  1.64%  internal/runtime/maps.(*Map).growToSmall
+     0.04s  0.17% 74.56%      0.04s  0.17%  reflect.flag.kind
+     0.04s  0.17% 74.73%      0.04s  0.17%  runtime.(*mspan).init
+     0.04s  0.17% 74.89%      0.04s  0.17%  runtime.(*spanInlineMarkBits).init
+     0.04s  0.17% 75.06%      0.04s  0.17%  runtime.(*sweepLocker).tryAcquire
+     0.04s  0.17% 75.23%      0.11s  0.46%  runtime.concatstrings
+     0.04s  0.17% 75.40%      0.04s  0.17%  runtime.extractHeapBitsSmall
+     0.04s  0.17% 75.57%      0.22s  0.93%  runtime.lock2
+     0.04s  0.17% 75.74%      0.06s  0.25%  runtime.mallocgcSmallScanNoHeaderSC3
+     0.04s  0.17% 75.90%      0.04s  0.17%  runtime.nanotime (inline)
+     0.04s  0.17% 76.07%      0.15s  0.63%  runtime.scanObjectSmall
+     0.04s  0.17% 76.24%      0.38s  1.60%  runtime.sweepone
+     0.04s  0.17% 76.41%      0.04s  0.17%  runtime.usleep
+     0.04s  0.17% 76.58%      0.14s  0.59%  sync.(*Pool).Put
+     0.03s  0.13% 76.70%      0.15s  0.63%  bufio.(*Scanner).Scan
+     0.03s  0.13% 76.83%      0.04s  0.17%  encoding/json/jsontext.(*decoderState).ReadToken
+     0.03s  0.13% 76.96%      0.11s  0.46%  encoding/json/jsontext.(*decoderState).checkEOF
+     0.03s  0.13% 77.08%      0.13s  0.55%  encoding/json/jsontext.(*decoderState).consumeWhitespace
+     0.03s  0.13% 77.21%      0.13s  0.55%  encoding/json/jsontext.(*encoderState).WriteToken
+     0.03s  0.13% 77.33%      0.38s  1.60%  encoding/json/jsontext.(*encoderState).WriteValue
+     0.03s  0.13% 77.46%      0.11s  0.46%  encoding/json/jsontext.(*encoderState).reformatObject
+     0.03s  0.13% 77.59%      0.03s  0.13%  encoding/json/jsontext.(*objectNameStack).ReplaceLastQuotedOffset
+     0.03s  0.13% 77.71%      0.03s  0.13%  encoding/json/jsontext.stateEntry.NeedObjectName
+     0.03s  0.13% 77.84%      1.54s  6.48%  encoding/json/v2.makeSliceArshaler.func2
+     0.03s  0.13% 77.96%      0.89s  3.74%  encoding/json/v2.makeSliceArshaler.func3
+     0.03s  0.13% 78.09%      0.58s  2.44%  encoding/json/v2.makeStringArshaler.func2
+     0.03s  0.13% 78.22%      2.25s  9.46%  encoding/json/v2.marshalEncode
+     0.03s  0.13% 78.34%      2.73s 11.48%  encoding/json/v2.unmarshalDecode
+     0.03s  0.13% 78.47%      0.86s  3.62%  github.com/elysia-api/backend/protocol.(*EventReplay).Consume
+     0.03s  0.13% 78.60%        16s 67.28%  github.com/elysia-api/backend/server.(*protocolSourceStream).decode
+     0.03s  0.13% 78.72%      0.03s  0.13%  internal/abi.(*Type).IsDirectIface
+     0.03s  0.13% 78.85%      0.04s  0.17%  internal/chacha8rand.(*State).Refill
+     0.03s  0.13% 78.97%      0.03s  0.13%  internal/runtime/atomic.(*Uint32).Add
+     0.03s  0.13% 79.10%      0.03s  0.13%  internal/runtime/gc/scan.FilterNilAVX512
+     0.03s  0.13% 79.23%      0.03s  0.13%  internal/runtime/maps.h2 (inline)
+     0.03s  0.13% 79.35%      0.03s  0.13%  internal/runtime/maps.memHash64AES
+     0.03s  0.13% 79.48%      0.57s  2.40%  internal/runtime/syscall/linux.EpollWait
+     0.03s  0.13% 79.60%      0.11s  0.46%  internal/stringslite.Index
+     0.03s  0.13% 79.73%      0.04s  0.17%  net/http.(*response).write
+     0.03s  0.13% 79.86%      0.08s  0.34%  reflect.Value.Addr
+     0.03s  0.13% 79.98%      0.05s  0.21%  reflect.Value.IsZero
+     0.03s  0.13% 80.11%      0.06s  0.25%  reflect.Value.Set
+     0.03s  0.13% 80.24%      0.03s  0.13%  reflect.Value.String
+     0.03s  0.13% 80.36%      0.03s  0.13%  reflect.directlyAssignable
+     0.03s  0.13% 80.49%      0.14s  0.59%  runtime.(*mheap).allocSpan
+     0.03s  0.13% 80.61%      0.08s  0.34%  runtime.(*mheap).initSpan
+     0.03s  0.13% 80.74%      0.05s  0.21%  runtime.(*mspan).typePointersOfUnchecked
+     0.03s  0.13% 80.87%      0.04s  0.17%  runtime.(*spanInlineMarkBits).tryAcquire
+     0.03s  0.13% 80.99%      0.03s  0.13%  runtime.arenaIndex (inline)
+     0.03s  0.13% 81.12%      0.03s  0.13%  runtime.asyncPreempt
+     0.03s  0.13% 81.24%      0.77s  3.24%  runtime.mapaccess1_faststr
+     0.03s  0.13% 81.37%      0.03s  0.13%  runtime.memequal
+     0.03s  0.13% 81.50%      0.62s  2.61%  runtime.netpoll
+     0.03s  0.13% 81.62%      0.03s  0.13%  runtime.pageIndexOf (inline)
+     0.03s  0.13% 81.75%      0.03s  0.13%  runtime.readvarint (inline)
+     0.03s  0.13% 81.88%      0.03s  0.13%  runtime.reentersyscall
+     0.03s  0.13% 82.00%      0.11s  0.46%  runtime.typedmemmove
+     0.03s  0.13% 82.13%      0.21s  0.88%  strings.IndexRune
+     0.03s  0.13% 82.25%      0.11s  0.46%  sync.(*Pool).Get
+     0.03s  0.13% 82.38%      0.12s   0.5%  sync.(*Pool).pin
+     0.03s  0.13% 82.51%      0.05s  0.21%  sync.runtime_procPin
+     0.02s 0.084% 82.59%      0.02s 0.084%  bytes.(*Buffer).Bytes
+     0.02s 0.084% 82.67%      0.02s 0.084%  encoding/json/jsontext.(*encoderState).NeedFlush
+     0.02s 0.084% 82.76%      0.02s 0.084%  encoding/json/jsontext.(*objectNameStack).copyQuotedBuffer
+     0.02s 0.084% 82.84%      0.02s 0.084%  encoding/json/jsontext.(*stateMachine).appendString
+     0.02s 0.084% 82.93%      0.03s  0.13%  encoding/json/jsontext.(*stateMachine).popObject
+     0.02s 0.084% 83.01%      0.04s  0.17%  encoding/json/jsontext.putBufferedEncoder
+     0.02s 0.084% 83.10%      2.56s 10.77%  encoding/json/v2.Marshal
+     0.02s 0.084% 83.18%      0.02s 0.084%  fmt.(*fmt).fmtInteger
+     0.02s 0.084% 83.26%      0.14s  0.59%  fmt.(*pp).doPrintf
+     0.02s 0.084% 83.35%      1.98s  8.33%  github.com/elysia-api/backend/protocol.(*Compiled).decodeEventValues
+     0.02s 0.084% 83.43%      0.69s  2.90%  github.com/elysia-api/backend/protocol.(*Compiled).encodeFrame
+     0.02s 0.084% 83.52%      0.06s  0.25%  github.com/elysia-api/backend/protocol.(*Compiled).target
+     0.02s 0.084% 83.60%      0.03s  0.13%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyConversionState.func1
+     0.02s 0.084% 83.68%      0.04s  0.17%  github.com/elysia-api/backend/protocol.(*CompiledConversion).metadataObject
+     0.02s 0.084% 83.77%      0.12s   0.5%  github.com/elysia-api/backend/protocol.(*CompiledConversion).projectUsage
+     0.02s 0.084% 83.85%      0.14s  0.59%  github.com/elysia-api/backend/protocol.(*CompiledConversion).projectUsageObject
+     0.02s 0.084% 83.94%      4.54s 19.09%  github.com/elysia-api/backend/protocol.(*WireStreamValidation).Consume
+     0.02s 0.084% 84.02%      0.26s  1.09%  github.com/elysia-api/backend/protocol.(*semanticCache).normalize
+     0.02s 0.084% 84.10%      0.06s  0.25%  github.com/elysia-api/backend/protocol.(*typedMeter).scalar (inline)
+     0.02s 0.084% 84.19%      0.18s  0.76%  github.com/elysia-api/backend/protocol.CheckModelEvent
+     0.02s 0.084% 84.27%      0.02s 0.084%  github.com/elysia-api/backend/protocol.ConversionMatch.matches
+     0.02s 0.084% 84.36%     16.33s 68.67%  github.com/elysia-api/backend/protocol.ReadFrames.func1
+     0.02s 0.084% 84.44%      0.02s 0.084%  github.com/elysia-api/backend/protocol.Value.IsZero
+     0.02s 0.084% 84.52%      0.17s  0.71%  github.com/elysia-api/backend/protocol.Value.MarshalJSON
+     0.02s 0.084% 84.61%      2.05s  8.62%  github.com/elysia-api/backend/protocol.Value.ReadObject
+     0.02s 0.084% 84.69%      0.51s  2.14%  github.com/elysia-api/backend/protocol.Value.readArrayWithin
+     0.02s 0.084% 84.78%      0.06s  0.25%  github.com/elysia-api/backend/protocol.isEmptyJSONField
+     0.02s 0.084% 84.86%      0.02s 0.084%  github.com/elysia-api/backend/protocol.readConversionOption[go.shape.string]
+     0.02s 0.084% 84.95%      1.01s  4.25%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).captureFrameExtensions
+     0.02s 0.084% 85.03%      0.37s  1.56%  github.com/elysia-api/backend/protocol/builtin.collectUnknown
+     0.02s 0.084% 85.11%      0.04s  0.17%  github.com/elysia-api/backend/protocol/builtin.mergeAttributes (inline)
+     0.02s 0.084% 85.20%      0.78s  3.28%  github.com/elysia-api/backend/protocol/builtin.module.validateChatWireContract
+     0.02s 0.084% 85.28%      6.71s 28.22%  github.com/elysia-api/backend/server.(*gatewayStream).emit
+     0.02s 0.084% 85.37%      0.13s  0.55%  internal/runtime/maps.(*Map).Delete
+     0.02s 0.084% 85.45%      0.03s  0.13%  internal/runtime/maps.(*Map).getWithKeySmall
+     0.02s 0.084% 85.53%      0.02s 0.084%  internal/runtime/maps.longStringQuickEqualityTest
+     0.02s 0.084% 85.62%      0.02s 0.084%  internal/runtime/sys.LeadingZeros64
+     0.02s 0.084% 85.70%      0.02s 0.084%  internal/strconv.AppendUint
+     0.02s 0.084% 85.79%      0.02s 0.084%  internal/sync.(*HashTrieMap[go.shape.interface {},go.shape.interface {}]).init
+     0.02s 0.084% 85.87%      0.02s 0.084%  modernc.org/sqlite/lib._sqlite3StrICmp
+     0.02s 0.084% 85.95%      0.02s 0.084%  modernc.org/sqlite/lib._yy_find_shift_action
+     0.02s 0.084% 86.04%      0.08s  0.34%  net/http.(*chunkWriter).Write
+     0.02s 0.084% 86.12%      0.03s  0.13%  reflect.Value.Len
+     0.02s 0.084% 86.21%      0.27s  1.14%  reflect.unsafe_New
+     0.02s 0.084% 86.29%      0.39s  1.64%  reflect.valueInterface
+     0.02s 0.084% 86.38%      0.02s 0.084%  runtime.(*activeSweep).begin
+     0.02s 0.084% 86.46%      0.02s 0.084%  runtime.(*fixalloc).alloc
+     0.02s 0.084% 86.54%      0.02s 0.084%  runtime.(*itabTableType).find
+     0.02s 0.084% 86.63%      0.02s 0.084%  runtime.(*lfstack).push
+     0.02s 0.084% 86.71%      0.39s  1.64%  runtime.(*mcache).refill
+     0.02s 0.084% 86.80%      0.05s  0.21%  runtime.(*mcache).releaseAll
+     0.02s 0.084% 86.88%      0.05s  0.21%  runtime.(*pageAlloc).free
+     0.02s 0.084% 86.96%      0.02s 0.084%  runtime.(*spanQueue).put
+     0.02s 0.084% 87.05%      0.07s  0.29%  runtime.(*spanSet).pop
+     0.02s 0.084% 87.13%      0.06s  0.25%  runtime.(*stkframe).getStackMap
+     0.02s 0.084% 87.22%      0.08s  0.34%  runtime.(*unwinder).resolveInternal
+     0.02s 0.084% 87.30%      0.10s  0.42%  runtime.(*wbBuf).get2 (inline)
+     0.02s 0.084% 87.38%      0.02s 0.084%  runtime.adjustpointers
+     0.02s 0.084% 87.47%      0.02s 0.084%  runtime.alignDown
+     0.02s 0.084% 87.55%      0.02s 0.084%  runtime.bool2int
+     0.02s 0.084% 87.64%      0.02s 0.084%  runtime.deductSweepCredit
+     0.02s 0.084% 87.72%      0.02s 0.084%  runtime.getGCMask
+     0.02s 0.084% 87.80%      0.04s  0.17%  runtime.getitab
+     0.02s 0.084% 87.89%      0.02s 0.084%  runtime.getpid
+     0.02s 0.084% 87.97%      0.02s 0.084%  runtime.growsliceBuf
+     0.02s 0.084% 88.06%      0.02s 0.084%  runtime.mallocgcSmallNoScanSC2
+     0.02s 0.084% 88.14%      0.03s  0.13%  runtime.mallocgcSmallScanNoHeaderSC6
+     0.02s 0.084% 88.23%      0.07s  0.29%  runtime.mallocgcSmallScanSlowPath
+     0.02s 0.084% 88.31%      0.33s  1.39%  runtime.newarray
+     0.02s 0.084% 88.39%      0.02s 0.084%  runtime.procPin
+     0.02s 0.084% 88.48%      0.02s 0.084%  runtime.procresize
+     0.02s 0.084% 88.56%      0.43s  1.81%  runtime.rawbyteslice
+     0.02s 0.084% 88.65%      0.02s 0.084%  runtime.read
+     0.02s 0.084% 88.73%      0.02s 0.084%  runtime.readUintptr
+     0.02s 0.084% 88.81%      0.03s  0.13%  runtime.resolveTypeOff
+     0.02s 0.084% 88.90%      0.06s  0.25%  runtime.runqgrab
+     0.02s 0.084% 88.98%      0.32s  1.35%  runtime.slicebytetostring
+     0.02s 0.084% 89.07%      0.02s 0.084%  runtime.spanOfUnchecked
+     0.02s 0.084% 89.15%      0.10s  0.42%  runtime.stealWork
+     0.02s 0.084% 89.23%      0.03s  0.13%  runtime.stkbucket
+     0.02s 0.084% 89.32%      0.02s 0.084%  sync.indexLocal
+     0.02s 0.084% 89.40%      0.02s 0.084%  sync/atomic.(*Bool).Load
+     0.01s 0.042% 89.44%      1.87s  7.86%  bufio.(*Writer).Flush
+     0.01s 0.042% 89.49%      0.01s 0.042%  bytes.(*Buffer).Len
+     0.01s 0.042% 89.53%      0.01s 0.042%  bytes.growSlice.func1
+     0.01s 0.042% 89.57%      0.01s 0.042%  context.(*cancelCtx).propagateCancel
+     0.01s 0.042% 89.61%      0.01s 0.042%  context.(*valueCtx).Err
+     0.01s 0.042% 89.66%      0.26s  1.09%  crypto/internal/fips140/sha256.(*Digest).Write
+     0.01s 0.042% 89.70%      0.17s  0.71%  database/sql.(*Tx).QueryContext
+     0.01s 0.042% 89.74%      0.01s 0.042%  database/sql.(*connRequestSet).TakeRandom
+     0.01s 0.042% 89.78%      1.42s  5.97%  encoding/json.(*Decoder).Decode
+     0.01s 0.042% 89.82%      0.06s  0.25%  encoding/json.NewDecoder
+     0.01s 0.042% 89.87%      0.01s 0.042%  encoding/json.unmarshalAnyWithRawNumber
+     0.01s 0.042% 89.91%      0.01s 0.042%  encoding/json/internal/jsonflags.(*Flags).Join
+     0.01s 0.042% 89.95%      0.01s 0.042%  encoding/json/internal/jsonflags.(*Flags).Set
+     0.01s 0.042% 89.99%      0.01s 0.042%  encoding/json/internal/jsonflags.Flags.Get
+     0.01s 0.042% 90.03%      0.02s 0.084%  encoding/json/internal/jsonopts.GetOption[go.shape.bool]
+     0.01s 0.042% 90.08%      0.01s 0.042%  encoding/json/internal/jsonwire.ConsumeSimpleNumber
+     0.01s 0.042% 90.12%      0.01s 0.042%  encoding/json/internal/jsonwire.ValueFlags.IsVerbatim
+     0.01s 0.042% 90.16%      0.07s  0.29%  encoding/json/jsontext.(*Decoder).PeekKind
+     0.01s 0.042% 90.20%      0.76s  3.20%  encoding/json/jsontext.(*Decoder).ReadValue (inline)
+     0.01s 0.042% 90.24%      0.28s  1.18%  encoding/json/jsontext.(*Encoder).WriteValue (inline)
+     0.01s 0.042% 90.29%      0.01s 0.042%  encoding/json/jsontext.(*decodeBuffer).invalidatePreviousRead
+     0.01s 0.042% 90.33%      0.01s 0.042%  encoding/json/jsontext.(*decodeBuffer).previousOffsetStart
+     0.01s 0.042% 90.37%      0.08s  0.34%  encoding/json/jsontext.(*decoderState).CheckEOF (inline)
+     0.01s 0.042% 90.41%      0.51s  2.14%  encoding/json/jsontext.(*decoderState).CheckNextValue
+     0.01s 0.042% 90.45%      0.01s 0.042%  encoding/json/jsontext.(*objectNameStack).reset
+     0.01s 0.042% 90.50%      0.01s 0.042%  encoding/json/jsontext.(*objectNamespaceStack).reset
+     0.01s 0.042% 90.54%      0.03s  0.13%  encoding/json/jsontext.(*state).reset
+     0.01s 0.042% 90.58%      0.04s  0.17%  encoding/json/jsontext.(*stateMachine).pushObject (inline)
+     0.01s 0.042% 90.62%      0.14s  0.59%  encoding/json/jsontext.AppendFormat[go.shape.[]uint8]
+     0.01s 0.042% 90.66%      0.01s 0.042%  encoding/json/jsontext.Kind.normalize
+     0.01s 0.042% 90.71%      0.02s 0.084%  encoding/json/jsontext.Value.Kind
+     0.01s 0.042% 90.75%      0.15s  0.63%  encoding/json/jsontext.getBufferedEncoder
+     0.01s 0.042% 90.79%      0.01s 0.042%  encoding/json/jsontext.stateEntry.isObject
+     0.01s 0.042% 90.83%      0.01s 0.042%  encoding/json/jsontext.stateEntry.needObjectValue
+     0.01s 0.042% 90.87%      0.02s 0.084%  encoding/json/jsontext.stateMachine.MayAppendDelim
+     0.01s 0.042% 90.92%      0.07s  0.29%  encoding/json/v2.isLegacyEmpty
+     0.01s 0.042% 90.96%      0.06s  0.25%  encoding/json/v2.makeIntArshaler.func2
+     0.01s 0.042% 91.00%      0.64s  2.69%  encoding/json/v2.makeMethodArshaler.func6
+     0.01s 0.042% 91.04%      0.10s  0.42%  encoding/json/v2.makePointerArshaler.func2
+     0.01s 0.042% 91.08%      0.26s  1.09%  encoding/json/v2.makePointerArshaler.func3
+     0.01s 0.042% 91.13%      0.12s   0.5%  encoding/json/v2.makeStringArshaler.func1
+     0.01s 0.042% 91.17%      0.01s 0.042%  errors.As
+     0.01s 0.042% 91.21%      0.03s  0.13%  fmt.(*pp).free
+     0.01s 0.042% 91.25%      0.11s  0.46%  fmt.Fprintf
+     0.01s 0.042% 91.30%      0.04s  0.17%  fmt.newPrinter
+     0.01s 0.042% 91.34%      0.10s  0.42%  gcWriteBarrier
+     0.01s 0.042% 91.38%      0.05s  0.21%  github.com/elysia-api/backend/protocol.(*Compiled).Codec (inline)
+     0.01s 0.042% 91.42%      0.24s  1.01%  github.com/elysia-api/backend/protocol.(*Compiled).Operations
+     0.01s 0.042% 91.46%      0.02s 0.084%  github.com/elysia-api/backend/protocol.(*Compiled).mappingLimits
+     0.01s 0.042% 91.51%      0.01s 0.042%  github.com/elysia-api/backend/protocol.(*Compiled).nativeLimits
+     0.01s 0.042% 91.55%      0.01s 0.042%  github.com/elysia-api/backend/protocol.(*Compiled).wireLimits
+     0.01s 0.042% 91.59%      4.25s 17.87%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Event
+     0.01s 0.042% 91.63%      0.01s 0.042%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyRequestObject
+     0.01s 0.042% 91.67%      0.06s  0.25%  github.com/elysia-api/backend/protocol.(*EvaluationState).resolveModule
+     0.01s 0.042% 91.72%      0.74s  3.11%  github.com/elysia-api/backend/protocol.(*EventReplay).consumeItem
+     0.01s 0.042% 91.76%      0.28s  1.18%  github.com/elysia-api/backend/protocol.(*EventReplay).itemKey (inline)
+     0.01s 0.042% 91.80%      0.02s 0.084%  github.com/elysia-api/backend/protocol.(*SourceEventState).Push
+     0.01s 0.042% 91.84%      0.32s  1.35%  github.com/elysia-api/backend/protocol.(*Value).UnmarshalJSON
+     0.01s 0.042% 91.88%      0.02s 0.084%  github.com/elysia-api/backend/protocol.(*conversionState).accepts
+     0.01s 0.042% 91.93%      0.68s  2.86%  github.com/elysia-api/backend/protocol.(*conversionState).load
+     0.01s 0.042% 91.97%      0.46s  1.93%  github.com/elysia-api/backend/protocol.(*semanticCache).check
+     0.01s 0.042% 92.01%      0.05s  0.21%  github.com/elysia-api/backend/protocol.(*semanticCache).store
+     0.01s 0.042% 92.05%      0.02s 0.084%  github.com/elysia-api/backend/protocol.(*typedMeter).close
+     0.01s 0.042% 92.09%      0.72s  3.03%  github.com/elysia-api/backend/protocol.(*typedMeter).raw
+     0.01s 0.042% 92.14%      0.01s 0.042%  github.com/elysia-api/backend/protocol.CanPreserveNative
+     0.01s 0.042% 92.18%      0.03s  0.13%  github.com/elysia-api/backend/protocol.CheckResponse
+     0.01s 0.042% 92.22%      0.01s 0.042%  github.com/elysia-api/backend/protocol.CheckToolAssociations.func1
+     0.01s 0.042% 92.26%      0.10s  0.42%  github.com/elysia-api/backend/protocol.CompileConversion
+     0.01s 0.042% 92.30%      1.33s  5.59%  github.com/elysia-api/backend/protocol.EncodeSemantic
+     0.01s 0.042% 92.35%      2.57s 10.81%  github.com/elysia-api/backend/protocol.EncodeValue
+     0.01s 0.042% 92.39%      0.01s 0.042%  github.com/elysia-api/backend/protocol.IssuesError
+     0.01s 0.042% 92.43%     16.51s 69.43%  github.com/elysia-api/backend/protocol.ReadFrames
+     0.01s 0.042% 92.47%      2.38s 10.01%  github.com/elysia-api/backend/protocol.Value.Decode
+     0.01s 0.042% 92.51%      0.15s  0.63%  github.com/elysia-api/backend/protocol.bindingTarget
+     0.01s 0.042% 92.56%      0.01s 0.042%  github.com/elysia-api/backend/protocol.eventDecoder
+     0.01s 0.042% 92.60%      0.01s 0.042%  github.com/elysia-api/backend/protocol.valueType
+     0.01s 0.042% 92.64%      0.01s 0.042%  github.com/elysia-api/backend/protocol/builtin.(*ToolAccounting).Count
+     0.01s 0.042% 92.68%      2.98s 12.53%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).DecodeEvents
+     0.01s 0.042% 92.72%      0.01s 0.042%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).ObserveNativeFrame
+     0.01s 0.042% 92.77%      0.67s  2.82%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).ValidateWireEvent
+     0.01s 0.042% 92.81%      0.02s 0.084%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).decodeUsageUpdate
+     0.01s 0.042% 92.85%      0.10s  0.42%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).textEvents
+     0.01s 0.042% 92.89%      0.27s  1.14%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).validateSourceIdentity
+     0.01s 0.042% 92.94%      1.01s  4.25%  github.com/elysia-api/backend/protocol/builtin.module.validateWireContract
+     0.01s 0.042% 92.98%      0.15s  0.63%  github.com/elysia-api/backend/protocol/builtin.stringValue
+     0.01s 0.042% 93.02%     16.57s 69.68%  github.com/elysia-api/backend/server.(*Server).forwardGateway
+     0.01s 0.042% 93.06%     17.93s 75.40%  github.com/elysia-api/backend/server.(*Server).serveProtocolRequest
+     0.01s 0.042% 93.10%      0.01s 0.042%  github.com/elysia-api/backend/server.(*downstreamCaptureWriter).Flush
+     0.01s 0.042% 93.15%     16.04s 67.45%  github.com/elysia-api/backend/server.(*protocolSourceStream).Push
+     0.01s 0.042% 93.19%      0.04s  0.17%  github.com/elysia-api/backend/server.observeHostedTools
+     0.01s 0.042% 93.23%      1.85s  7.78%  github.com/gin-gonic/gin.(*responseWriter).Flush
+     0.01s 0.042% 93.27%      0.01s 0.042%  internal/abi.(*Type).Kind
+     0.01s 0.042% 93.31%      0.01s 0.042%  internal/abi.(*Type).Size
+     0.01s 0.042% 93.36%      0.01s 0.042%  internal/abi.TypeFor[go.shape.interface { MarshalJSON  }]
+     0.01s 0.042% 93.40%      0.01s 0.042%  internal/bytealg.IndexString
+     0.01s 0.042% 93.44%      0.01s 0.042%  internal/chacha8rand.block
+     0.01s 0.042% 93.48%      0.01s 0.042%  internal/poll.(*FD).eofError
+     0.01s 0.042% 93.52%      0.01s 0.042%  internal/runtime/atomic.(*Uint32).CompareAndSwap
+     0.01s 0.042% 93.57%      0.01s 0.042%  internal/runtime/atomic.(*Uint64).CompareAndSwap
+     0.01s 0.042% 93.61%      0.16s  0.67%  internal/runtime/gc/scan.ScanSpanPackedAVX512
+     0.01s 0.042% 93.65%      0.01s 0.042%  internal/runtime/maps.(*Map).directoryAt
+     0.01s 0.042% 93.69%      0.01s 0.042%  internal/runtime/maps.(*ctrlGroup).setEmpty
+     0.01s 0.042% 93.73%      0.01s 0.042%  internal/runtime/maps.(*table).grow
+     0.01s 0.042% 93.78%      0.04s  0.17%  internal/runtime/maps.MemHash64
+     0.01s 0.042% 93.82%      0.34s  1.43%  internal/runtime/maps.newarray
+     0.01s 0.042% 93.86%      0.03s  0.13%  internal/strconv.AppendInt
+     0.01s 0.042% 93.90%      0.34s  1.43%  internal/stringslite.Clone (inline)
+     0.01s 0.042% 93.94%      0.24s  1.01%  internal/stringslite.IndexByte (inline)
+     0.01s 0.042% 93.99%      0.01s 0.042%  internal/sync.(*entry[go.shape.interface {},go.shape.interface {}]).lookup
+     0.01s 0.042% 94.03%      0.01s 0.042%  modernc.org/libc.(*TLS).Free
+     0.01s 0.042% 94.07%      0.06s  0.25%  modernc.org/libc.___syscall_cp
+     0.01s 0.042% 94.11%      0.05s  0.21%  modernc.org/memory.(*Allocator).UintptrMalloc
+     0.01s 0.042% 94.15%      0.02s 0.084%  modernc.org/sqlite.(*conn).bind
+     0.01s 0.042% 94.20%      0.12s   0.5%  modernc.org/sqlite/lib._accessPayload
+     0.01s 0.042% 94.24%      0.01s 0.042%  modernc.org/sqlite/lib._countOfViewOptimization
+     0.01s 0.042% 94.28%      0.01s 0.042%  modernc.org/sqlite/lib._exprNodeIsConstant
+     0.01s 0.042% 94.32%      0.01s 0.042%  modernc.org/sqlite/lib._lookupName
+     0.01s 0.042% 94.37%      0.03s  0.13%  modernc.org/sqlite/lib._pcache1AllocPage
+     0.01s 0.042% 94.41%      0.01s 0.042%  modernc.org/sqlite/lib._resolveSelectStep
+     0.01s 0.042% 94.45%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3GetToken
+     0.01s 0.042% 94.49%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3KeyInfoOfIndex
+     0.01s 0.042% 94.53%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3VdbeChangeEncoding
+     0.01s 0.042% 94.58%      0.05s  0.21%  modernc.org/sqlite/lib._sqlite3WhereBegin
+     0.01s 0.042% 94.62%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3WhereCodeOneLoopStart
+     0.01s 0.042% 94.66%      0.01s 0.042%  modernc.org/sqlite/lib._tokenExpr
+     0.01s 0.042% 94.70%      0.04s  0.17%  modernc.org/sqlite/lib._unixRead
+     0.01s 0.042% 94.74%      0.02s 0.084%  modernc.org/sqlite/lib._valueFromExpr
+     0.01s 0.042% 94.79%      0.03s  0.13%  modernc.org/sqlite/lib._vdbeCommit
+     0.01s 0.042% 94.83%      0.01s 0.042%  modernc.org/sqlite/lib._whereLoopInsert
+     0.01s 0.042% 94.87%      0.01s 0.042%  modernc.org/sqlite/lib._whereLoopOutputAdjust
+     0.01s 0.042% 94.91%      0.01s 0.042%  modernc.org/sqlite/lib._wherePathSatisfiesOrderBy
+     0.01s 0.042% 94.95%      0.17s  0.71%  modernc.org/sqlite/lib._yy_reduce
+     0.01s 0.042% 95.00%      0.01s 0.042%  net/http.(*Request).Context
+     0.01s 0.042% 95.04%      0.01s 0.042%  net/http.(*conn).hijacked
+     0.01s 0.042% 95.08%      1.84s  7.74%  net/http.(*response).Flush
+     0.01s 0.042% 95.12%      0.01s 0.042%  net/http.Header.sortedKeyValues
+     0.01s 0.042% 95.16%      0.11s  0.46%  net/http/internal.(*chunkedReader).Read
+     0.01s 0.042% 95.21%      0.03s  0.13%  net/http/internal.readChunkLine
+     0.01s 0.042% 95.25%      0.01s 0.042%  net/textproto.TrimString
+     0.01s 0.042% 95.29%      0.01s 0.042%  net/textproto.validHeaderFieldByte
+     0.01s 0.042% 95.33%      0.01s 0.042%  reflect.(*rtype).Elem
+     0.01s 0.042% 95.37%      0.01s 0.042%  reflect.(*rtype).Key
+     0.01s 0.042% 95.42%      0.06s  0.25%  reflect.(*rtype).ptrTo
+     0.01s 0.042% 95.46%      0.09s  0.38%  reflect.New
+     0.01s 0.042% 95.50%      0.02s 0.084%  reflect.Value.Kind
+     0.01s 0.042% 95.54%      0.01s 0.042%  reflect.Value.Type
+     0.01s 0.042% 95.58%      0.01s 0.042%  reflect.add
+     0.01s 0.042% 95.63%      0.36s  1.51%  reflect.packEface (inline)
+     0.01s 0.042% 95.67%      0.07s  0.29%  reflect.ptrTo (inline)
+     0.01s 0.042% 95.71%      0.04s  0.17%  reflect.resolveTypeOff
+     0.01s 0.042% 95.75%      0.01s 0.042%  runtime.(*_panic).nextDefer
+     0.01s 0.042% 95.79%      0.01s 0.042%  runtime.(*_panic).start
+     0.01s 0.042% 95.84%      0.01s 0.042%  runtime.(*gcBits).bytep
+     0.01s 0.042% 95.88%      0.01s 0.042%  runtime.(*gcControllerState).trigger
+     0.01s 0.042% 95.92%      0.03s  0.13%  runtime.(*gcControllerState).update
+     0.01s 0.042% 95.96%      0.04s  0.17%  runtime.(*gcWork).balance
+     0.01s 0.042% 96.01%      0.01s 0.042%  runtime.(*guintptr).cas
+     0.01s 0.042% 96.05%      0.01s 0.042%  runtime.(*lfstack).pop
+     0.01s 0.042% 96.09%      0.01s 0.042%  runtime.(*m).becomeSpinning
+     0.01s 0.042% 96.13%      0.01s 0.042%  runtime.(*mcentral).partialSwept
+     0.01s 0.042% 96.17%      0.01s 0.042%  runtime.(*memRecordCycle).add
+     0.01s 0.042% 96.22%      0.15s  0.63%  runtime.(*mheap).alloc.func1
+     0.01s 0.042% 96.26%      0.01s 0.042%  runtime.(*mheap).setSpans
+     0.01s 0.042% 96.30%      0.02s 0.084%  runtime.(*mspan).markBitsForIndex
+     0.01s 0.042% 96.34%      0.01s 0.042%  runtime.(*mspan).nextFreeIndex
+     0.01s 0.042% 96.38%      0.01s 0.042%  runtime.(*mspan).refillAllocCache
+     0.01s 0.042% 96.43%      0.01s 0.042%  runtime.(*pageAlloc).chunkOf
+     0.01s 0.042% 96.47%      0.09s  0.38%  runtime.(*scavengerState).init.func2
+     0.01s 0.042% 96.51%      0.01s 0.042%  runtime.(*spanInlineMarkBits).release
+     0.01s 0.042% 96.55%      0.01s 0.042%  runtime.(*spanScanOwnership).or
+     0.01s 0.042% 96.59%      0.01s 0.042%  runtime.(*spanSet).reset
+     0.01s 0.042% 96.64%      0.01s 0.042%  runtime.(*sysMemStat).add
+     0.01s 0.042% 96.68%      0.01s 0.042%  runtime.(*timer).needsAdd
+     0.01s 0.042% 96.72%      0.02s 0.084%  runtime.(*unwinder).initAt
+     0.01s 0.042% 96.76%      0.01s 0.042%  runtime.(*wbBuf).get1
+     0.01s 0.042% 96.80%      0.01s 0.042%  runtime.acquireSudog
+     0.01s 0.042% 96.85%      0.02s 0.084%  runtime.acquirepNoTrace
+     0.01s 0.042% 96.89%      0.01s 0.042%  runtime.add
+     0.01s 0.042% 96.93%      0.01s 0.042%  runtime.addb
+     0.01s 0.042% 96.97%      0.05s  0.21%  runtime.adjustframe
+     0.01s 0.042% 97.01%      0.01s 0.042%  runtime.adjustpointer
+     0.01s 0.042% 97.06%      0.01s 0.042%  runtime.alignUp
+     0.01s 0.042% 97.10%      0.05s  0.21%  runtime.assertE2I2
+     0.01s 0.042% 97.14%      0.39s  1.64%  runtime.bgsweep
+     0.01s 0.042% 97.18%      0.01s 0.042%  runtime.binarySearchTree
+     0.01s 0.042% 97.22%      0.13s  0.55%  runtime.bulkBarrierPreWrite
+     0.01s 0.042% 97.27%      0.01s 0.042%  runtime.bulkBarrierPreWriteSrcOnly
+     0.01s 0.042% 97.31%      0.01s 0.042%  runtime.casgstatus
+     0.01s 0.042% 97.35%      0.01s 0.042%  runtime.chanrecv1
+     0.01s 0.042% 97.39%      0.01s 0.042%  runtime.checkRunqsNoP
+     0.01s 0.042% 97.43%      0.09s  0.38%  runtime.concatstring2
+     0.01s 0.042% 97.48%      0.05s  0.21%  runtime.convTslice
+     0.01s 0.042% 97.52%      0.04s  0.17%  runtime.deductAssistCredit
+     0.01s 0.042% 97.56%      0.01s 0.042%  runtime.eqslice
+     0.01s 0.042% 97.60%      0.01s 0.042%  runtime.execute
+     0.01s 0.042% 97.65%      0.01s 0.042%  runtime.exitsyscall
+     0.01s 0.042% 97.69%      0.01s 0.042%  runtime.full
+     0.01s 0.042% 97.73%      0.01s 0.042%  runtime.funcdata
+     0.01s 0.042% 97.77%      3.31s 13.92%  runtime.gcBgMarkWorker
+     0.01s 0.042% 97.81%      0.01s 0.042%  runtime.gcNextMarkRoot
+     0.01s 0.042% 97.86%      0.05s  0.21%  runtime.gcStart
+     0.01s 0.042% 97.90%      0.06s  0.25%  runtime.gcmarknewobject
+     0.01s 0.042% 97.94%      0.01s 0.042%  runtime.getcallerfp
+     0.01s 0.042% 97.98%      0.01s 0.042%  runtime.gopark
+     0.01s 0.042% 98.02%      0.06s  0.25%  runtime.greyobject
+     0.01s 0.042% 98.07%      0.01s 0.042%  runtime.headTailIndex.head
+     0.01s 0.042% 98.11%      0.09s  0.38%  runtime.mProf_FlushLocked
+     0.01s 0.042% 98.15%      0.03s  0.13%  runtime.makeSpanClass (inline)
+     0.01s 0.042% 98.19%      0.22s  0.93%  runtime.makemap_small
+     0.01s 0.042% 98.23%      0.13s  0.55%  runtime.makeslice
+     0.01s 0.042% 98.28%      0.01s 0.042%  runtime.mallocgcSmallNoScanSC3
+     0.01s 0.042% 98.32%      0.01s 0.042%  runtime.mallocgcSmallNoScanSC6
+     0.01s 0.042% 98.36%      0.04s  0.17%  runtime.mallocgcTinySlowPath
+     0.01s 0.042% 98.40%      0.05s  0.21%  runtime.mapIterNext
+     0.01s 0.042% 98.44%      0.01s 0.042%  runtime.mapaccess2_fast64
+     0.01s 0.042% 98.49%      0.01s 0.042%  runtime.markBits.isMarked
+     0.01s 0.042% 98.53%      0.01s 0.042%  runtime.markrootSpans
+     0.01s 0.042% 98.57%      0.01s 0.042%  runtime.mergeSummaries
+     0.01s 0.042% 98.61%      0.01s 0.042%  runtime.nanotime1
+     0.01s 0.042% 98.65%      0.05s  0.21%  runtime.nilinterhash
+     0.01s 0.042% 98.70%      0.17s  0.71%  runtime.notesleep
+     0.01s 0.042% 98.74%      0.01s 0.042%  runtime.pallocSum.max
+     0.01s 0.042% 98.78%      0.01s 0.042%  runtime.pcdatastart
+     0.01s 0.042% 98.82%      0.01s 0.042%  runtime.pidleget
+     0.01s 0.042% 98.86%      0.01s 0.042%  runtime.publicationBarrier
+     0.01s 0.042% 98.91%      0.05s  0.21%  runtime.rand
+     0.01s 0.042% 98.95%      0.01s 0.042%  runtime.releasem
+     0.01s 0.042% 98.99%      0.01s 0.042%  runtime.releasepNoTrace
+     0.01s 0.042% 99.03%      0.01s 0.042%  runtime.removespecial
+     0.01s 0.042% 99.07%      0.01s 0.042%  runtime.runqget
+     0.01s 0.042% 99.12%      0.14s  0.59%  runtime.scanstack
+     0.01s 0.042% 99.16%      0.01s 0.042%  runtime.spanClass.noscan
+     0.01s 0.042% 99.20%      0.01s 0.042%  runtime.spanSetScans
+     0.01s 0.042% 99.24%      0.01s 0.042%  runtime.startTheWorld
+     0.01s 0.042% 99.29%      0.08s  0.34%  runtime.startm
+     0.01s 0.042% 99.33%      0.08s  0.34%  runtime.stopTheWorldWithSema
+     0.01s 0.042% 99.37%      0.01s 0.042%  runtime.strequal
+     0.01s 0.042% 99.41%      0.04s  0.17%  runtime.strhash
+     0.01s 0.042% 99.45%      0.49s  2.06%  runtime.stringtoslicebyte
+     0.01s 0.042% 99.50%      0.05s  0.21%  runtime.typehash
+     0.01s 0.042% 99.54%      0.02s 0.084%  runtime.unlock
+     0.01s 0.042% 99.58%      0.01s 0.042%  runtime.unlock2
+     0.01s 0.042% 99.62%      0.17s  0.71%  runtime.wbBufFlush
+     0.01s 0.042% 99.66%      0.01s 0.042%  runtime.write1
+     0.01s 0.042% 99.71%      0.01s 0.042%  strings.makeASCIISet
+     0.01s 0.042% 99.75%      0.22s  0.93%  sync.(*Map).Load (inline)
+     0.01s 0.042% 99.79%      0.01s 0.042%  sync.(*poolDequeue).popHead
+     0.01s 0.042% 99.83%      0.01s 0.042%  sync.runtime_procUnpin
+     0.01s 0.042% 99.87%      0.01s 0.042%  syscall.Getpagesize
+     0.01s 0.042% 99.92%      0.01s 0.042%  time.(*Time).sec
+     0.01s 0.042%   100%      0.01s 0.042%  type:.eq.M8S
+     0.01s 0.042%   100%      0.02s 0.084%  type:.hash.M8S
+         0     0%   100%      0.01s 0.042%  bufio.(*Reader).Peek
+         0     0%   100%      0.07s  0.29%  bufio.(*Reader).Read
+         0     0%   100%      0.02s 0.084%  bufio.(*Reader).ReadSlice
+         0     0%   100%      0.03s  0.13%  bufio.(*Reader).fill
+         0     0%   100%      0.01s 0.042%  bufio.(*Scanner).Text
+         0     0%   100%      0.01s 0.042%  bufio.ScanLines
+         0     0%   100%      0.07s  0.29%  bytes.(*Buffer).Grow (inline)
+         0     0%   100%      0.07s  0.29%  bytes.(*Buffer).grow
+         0     0%   100%      0.12s   0.5%  bytes.Clone (inline)
+         0     0%   100%      0.01s 0.042%  bytes.Equal
+         0     0%   100%      0.01s 0.042%  bytes.IndexByte
+         0     0%   100%      0.02s 0.084%  bytes.NewReader
+         0     0%   100%      0.06s  0.25%  bytes.growSlice
+         0     0%   100%      0.01s 0.042%  context.(*cancelCtx).Err
+         0     0%   100%      0.01s 0.042%  context.WithCancelCause
+         0     0%   100%      0.01s 0.042%  context.withCancel
+         0     0%   100%      0.02s 0.084%  crypto/internal/fips140/sha256.(*Digest).Sum
+         0     0%   100%      0.02s 0.084%  crypto/internal/fips140/sha256.(*Digest).checkSum
+         0     0%   100%      0.25s  1.05%  crypto/internal/fips140/sha256.block
+         0     0%   100%      0.17s  0.71%  crypto/sha256.Sum256
+         0     0%   100%      0.19s   0.8%  database/sql.(*DB).execDC
+         0     0%   100%      0.19s   0.8%  database/sql.(*DB).execDC.func2
+         0     0%   100%      0.01s 0.042%  database/sql.(*DB).putConn
+         0     0%   100%      0.01s 0.042%  database/sql.(*DB).putConnDBLocked
+         0     0%   100%      0.16s  0.67%  database/sql.(*DB).queryDC
+         0     0%   100%      0.16s  0.67%  database/sql.(*DB).queryDC.func1
+         0     0%   100%      0.07s  0.29%  database/sql.(*Rows).Next
+         0     0%   100%      0.07s  0.29%  database/sql.(*Rows).Next.func1
+         0     0%   100%      0.07s  0.29%  database/sql.(*Rows).nextLocked
+         0     0%   100%      0.05s  0.21%  database/sql.(*Tx).Commit
+         0     0%   100%      0.04s  0.17%  database/sql.(*Tx).Commit.func1
+         0     0%   100%      0.19s   0.8%  database/sql.(*Tx).ExecContext
+         0     0%   100%      0.02s 0.084%  database/sql.(*Tx).QueryRowContext
+         0     0%   100%      0.01s 0.042%  database/sql.(*Tx).awaitDone
+         0     0%   100%      0.01s 0.042%  database/sql.(*Tx).close
+         0     0%   100%      0.01s 0.042%  database/sql.(*driverConn).releaseConn
+         0     0%   100%      0.19s   0.8%  database/sql.ctxDriverExec
+         0     0%   100%      0.16s  0.67%  database/sql.ctxDriverQuery
+         0     0%   100%      0.39s  1.64%  database/sql.withLock
+         0     0%   100%      0.01s 0.042%  encoding/hex.EncodeToString
+         0     0%   100%      0.06s  0.25%  encoding/json.(*Decoder).DisallowUnknownFields
+         0     0%   100%      0.02s 0.084%  encoding/json.(*Decoder).UseNumber
+         0     0%   100%      0.21s  0.88%  encoding/json.Compact
+         0     0%   100%      2.56s 10.77%  encoding/json.Marshal (inline)
+         0     0%   100%      2.13s  8.96%  encoding/json.Unmarshal (inline)
+         0     0%   100%      0.38s  1.60%  encoding/json.Valid (inline)
+         0     0%   100%      0.38s  1.60%  encoding/json.checkValid
+         0     0%   100%      0.04s  0.17%  encoding/json/jsontext.(*Decoder).ReadToken
+         0     0%   100%      0.02s 0.084%  encoding/json/jsontext.(*Decoder).Reset
+         0     0%   100%      0.13s  0.55%  encoding/json/jsontext.(*Encoder).WriteToken (partial-inline)
+         0     0%   100%      0.01s 0.042%  encoding/json/jsontext.(*Value).UnmarshalJSON
+         0     0%   100%      0.21s  0.88%  encoding/json/jsontext.(*decoderState).consumeArray
+         0     0%   100%      0.04s  0.17%  encoding/json/jsontext.(*decoderState).consumeNumber
+         0     0%   100%      0.21s  0.88%  encoding/json/jsontext.(*decoderState).consumeString
+         0     0%   100%      0.06s  0.25%  encoding/json/jsontext.(*encoderState).reformatArray
+         0     0%   100%      0.01s 0.042%  encoding/json/jsontext.(*objectNameStack).push
+         0     0%   100%      0.04s  0.17%  encoding/json/jsontext.NewDecoder (inline)
+         0     0%   100%      0.02s 0.084%  encoding/json/jsontext.Token.Kind
+         0     0%   100%      0.01s 0.042%  encoding/json/jsontext.Token.appendString
+         0     0%   100%      0.33s  1.39%  encoding/json/jsontext.export.GetBufferedDecoder (inline)
+         0     0%   100%      0.13s  0.55%  encoding/json/jsontext.export.GetBufferedEncoder (inline)
+         0     0%   100%      0.11s  0.46%  encoding/json/jsontext.export.PutBufferedDecoder
+         0     0%   100%      0.04s  0.17%  encoding/json/jsontext.export.PutBufferedEncoder
+         0     0%   100%      0.11s  0.46%  encoding/json/jsontext.putBufferedDecoder (inline)
+         0     0%   100%      0.01s 0.042%  encoding/json/jsontext.stateEntry.needImplicitColon
+         0     0%   100%      0.02s 0.084%  encoding/json/v2.GetOption[go.shape.bool]
+         0     0%   100%      0.05s  0.21%  encoding/json/v2.JoinOptions (inline)
+         0     0%   100%      0.21s  0.88%  encoding/json/v2.lookupArshaler
+         0     0%   100%      0.02s 0.084%  encoding/json/v2.makeIntArshaler.func1
+         0     0%   100%      0.04s  0.17%  encoding/json/v2.makeMapArshaler.func2
+         0     0%   100%      0.20s  0.84%  encoding/json/v2.makeMapArshaler.func3
+         0     0%   100%      0.01s 0.042%  fmt.(*buffer).write
+         0     0%   100%      0.02s 0.084%  fmt.(*buffer).writeString
+         0     0%   100%      0.01s 0.042%  fmt.(*fmt).fmtBs
+         0     0%   100%      0.01s 0.042%  fmt.(*fmt).fmtS
+         0     0%   100%      0.01s 0.042%  fmt.(*fmt).pad
+         0     0%   100%      0.01s 0.042%  fmt.(*fmt).padString
+         0     0%   100%      0.01s 0.042%  fmt.(*pp).fmtBytes
+         0     0%   100%      0.02s 0.084%  fmt.(*pp).fmtInteger
+         0     0%   100%      0.01s 0.042%  fmt.(*pp).fmtString
+         0     0%   100%      0.01s 0.042%  fmt.(*pp).printValue
+         0     0%   100%      0.16s  0.67%  fmt.Sprintf
+         0     0%   100%      0.01s 0.042%  fmt.init.func1
+         0     0%   100%      0.02s 0.084%  github.com/elysia-api/backend/protocol.(*Compiled).Capabilities
+         0     0%   100%      2.66s 11.19%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeFrame (inline)
+         0     0%   100%      0.12s   0.5%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeRequest (inline)
+         0     0%   100%      0.69s  2.90%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeFrame (inline)
+         0     0%   100%      0.02s 0.084%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest
+         0     0%   100%      1.02s  4.29%  github.com/elysia-api/backend/protocol.(*Compiled).ValidateWireOutput
+         0     0%   100%      2.66s 11.19%  github.com/elysia-api/backend/protocol.(*Compiled).decodeFrame
+         0     0%   100%      0.12s   0.5%  github.com/elysia-api/backend/protocol.(*Compiled).decodeRequest
+         0     0%   100%      0.03s  0.13%  github.com/elysia-api/backend/protocol.(*Compiled).decodeRequest.func2
+         0     0%   100%      0.08s  0.34%  github.com/elysia-api/backend/protocol.(*Compiled).finishDecodedRequest
+         0     0%   100%      0.02s 0.084%  github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative
+         0     0%   100%      2.80s 11.77%  github.com/elysia-api/backend/protocol.(*CompiledConversion).ApplyValue (inline)
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.(*CompiledConversion).ContextHash
+         0     0%   100%      0.06s  0.25%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Request
+         0     0%   100%      0.06s  0.25%  github.com/elysia-api/backend/protocol.(*CompiledConversion).convertOwnedRequest
+         0     0%   100%      0.03s  0.13%  github.com/elysia-api/backend/protocol.(*ConversionEventState).Push
+         0     0%   100%      0.07s  0.29%  github.com/elysia-api/backend/protocol.(*EvaluationState).observeNative
+         0     0%   100%      0.18s  0.76%  github.com/elysia-api/backend/protocol.(*Expression).UnmarshalJSON
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.(*ItemIdentities).Parent
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.(*StreamState).Finish
+         0     0%   100%      0.13s  0.55%  github.com/elysia-api/backend/protocol.(*StreamState).TrackText
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.(*StreamState).ValidateComplete
+         0     0%   100%      0.12s   0.5%  github.com/elysia-api/backend/protocol.(*TextTracker).Append
+         0     0%   100%      0.02s 0.084%  github.com/elysia-api/backend/protocol.(*capabilityCheck).content
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.(*capabilityCheck).usage
+         0     0%   100%      0.45s  1.89%  github.com/elysia-api/backend/protocol.(*conversionState).flush
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.(*typedMeter).open
+         0     0%   100%      0.22s  0.93%  github.com/elysia-api/backend/protocol.(*valueReader).fragment (inline)
+         0     0%   100%      0.10s  0.42%  github.com/elysia-api/backend/protocol.CheckBinding (inline)
+         0     0%   100%      0.06s  0.25%  github.com/elysia-api/backend/protocol.CheckRoute
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.CheckScope
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.CheckToolAssociations
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.NewEvaluationState
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.OperationInterleavedThinking
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.ParseClientOutput
+         0     0%   100%      0.47s  1.98%  github.com/elysia-api/backend/protocol.ParseValue
+         0     0%   100%      0.16s  0.67%  github.com/elysia-api/backend/protocol.ResolveConversion
+         0     0%   100%      0.14s  0.59%  github.com/elysia-api/backend/protocol.StringValue
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.ValidateUsageArithmetic
+         0     0%   100%      0.41s  1.72%  github.com/elysia-api/backend/protocol.Value.Bytes (inline)
+         0     0%   100%      0.03s  0.13%  github.com/elysia-api/backend/protocol.Value.IsNull
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.Value.IsObject
+         0     0%   100%      0.23s  0.97%  github.com/elysia-api/backend/protocol.Value.IsString
+         0     0%   100%      0.51s  2.14%  github.com/elysia-api/backend/protocol.Value.readArray (inline)
+         0     0%   100%      2.03s  8.54%  github.com/elysia-api/backend/protocol.Value.readObject (inline)
+         0     0%   100%      0.29s  1.22%  github.com/elysia-api/backend/protocol.WriteFrame
+         0     0%   100%      0.10s  0.42%  github.com/elysia-api/backend/protocol.checkBinding
+         0     0%   100%      0.23s  0.97%  github.com/elysia-api/backend/protocol.checkResourceValue
+         0     0%   100%      1.03s  4.33%  github.com/elysia-api/backend/protocol.checkSemanticValue
+         0     0%   100%      0.02s 0.084%  github.com/elysia-api/backend/protocol.cloneRequestSemantic
+         0     0%   100%      0.03s  0.13%  github.com/elysia-api/backend/protocol.cloneSemantic
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.conversionAction.validate
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.conversionActionCatalog
+         0     0%   100%      0.04s  0.17%  github.com/elysia-api/backend/protocol.conversionPhases (inline)
+         0     0%   100%      1.59s  6.69%  github.com/elysia-api/backend/protocol.decodeContract
+         0     0%   100%      0.03s  0.13%  github.com/elysia-api/backend/protocol.decodeTyped[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.encodeRequestMapping[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0%   100%      0.45s  1.89%  github.com/elysia-api/backend/protocol.encodeSemanticWithin
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.encodeValueContainer
+         0     0%   100%      0.05s  0.21%  github.com/elysia-api/backend/protocol.hashValue
+         0     0%   100%      0.19s   0.8%  github.com/elysia-api/backend/protocol.needsSemanticCompaction
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.normalizeMappingRequest[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.parseConversionOption[go.shape.string]
+         0     0%   100%      0.45s  1.89%  github.com/elysia-api/backend/protocol.readString
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.resourceIssue
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.validateResponsesToolUsageArithmetic
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol.validateResponsesToolUsageArithmetic.func1
+         0     0%   100%      2.11s  8.87%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).Convert
+         0     0%   100%      0.36s  1.51%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).captureFrameExtensions.func1 (inline)
+         0     0%   100%      0.07s  0.29%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).itemEvent
+         0     0%   100%      0.02s 0.084%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).usageEvent
+         0     0%   100%      0.22s  0.93%  github.com/elysia-api/backend/protocol/builtin.copyFields (inline)
+         0     0%   100%      0.09s  0.38%  github.com/elysia-api/backend/protocol/builtin.frameIndex
+         0     0%   100%      0.03s  0.13%  github.com/elysia-api/backend/protocol/builtin.module.DecodeRequest
+         0     0%   100%      1.01s  4.25%  github.com/elysia-api/backend/protocol/builtin.module.ValidateWireOutput
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol/builtin.module.decodeContent
+         0     0%   100%      0.02s 0.084%  github.com/elysia-api/backend/protocol/builtin.module.decodeMessages
+         0     0%   100%      0.04s  0.17%  github.com/elysia-api/backend/protocol/builtin.module.decodeRequest
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol/builtin.module.extensions
+         0     0%   100%      0.02s 0.084%  github.com/elysia-api/backend/protocol/builtin.module.validateRequestWireContract
+         0     0%   100%      0.37s  1.56%  github.com/elysia-api/backend/protocol/builtin.nestedObject
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/protocol/builtin.object
+         0     0%   100%      0.38s  1.60%  github.com/elysia-api/backend/protocol/builtin.readArray
+         0     0%   100%      0.15s  0.63%  github.com/elysia-api/backend/protocol/builtin.readWireArray
+         0     0%   100%      0.48s  2.02%  github.com/elysia-api/backend/protocol/builtin.readWireObject
+         0     0%   100%      0.11s  0.46%  github.com/elysia-api/backend/protocol/builtin.requireWireInteger
+         0     0%   100%      0.12s   0.5%  github.com/elysia-api/backend/protocol/builtin.requireWireString
+         0     0%   100%      0.02s 0.084%  github.com/elysia-api/backend/relay.(*ProtocolTransport).SendProtocolRequest
+         0     0%   100%      0.02s 0.084%  github.com/elysia-api/backend/relay.(*ProtocolTransport).sendStreamRequest
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/relay.(*outboundTransport).RoundTrip
+         0     0%   100%      0.11s  0.46%  github.com/elysia-api/backend/relay.(*streamBody).Read
+         0     0%   100%     18.03s 75.82%  github.com/elysia-api/backend/server.(*Server).authMiddleware.func1
+         0     0%   100%      0.08s  0.34%  github.com/elysia-api/backend/server.(*Server).bindGatewayRequest
+         0     0%   100%     18.02s 75.78%  github.com/elysia-api/backend/server.(*Server).chatCompletions
+         0     0%   100%      0.06s  0.25%  github.com/elysia-api/backend/server.(*Server).collectGatewayCandidates
+         0     0%   100%     16.52s 69.47%  github.com/elysia-api/backend/server.(*Server).forwardGatewayStream
+         0     0%   100%      0.23s  0.97%  github.com/elysia-api/backend/server.(*Server).persistUsageRecord
+         0     0%   100%      1.35s  5.68%  github.com/elysia-api/backend/server.(*Server).prepareGatewayPlan
+         0     0%   100%      0.08s  0.34%  github.com/elysia-api/backend/server.(*Server).prepareGatewayPlan.func1
+         0     0%   100%      0.23s  0.97%  github.com/elysia-api/backend/server.(*Server).saveUsageRecordToStore
+         0     0%   100%     18.02s 75.78%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress
+         0     0%   100%      0.23s  0.97%  github.com/elysia-api/backend/server.(*Server).startUsageWriter.func1
+         0     0%   100%      0.04s  0.17%  github.com/elysia-api/backend/server.(*downstreamCaptureWriter).Write
+         0     0%   100%     18.03s 75.82%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func7
+         0     0%   100%      0.33s  1.39%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func8
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/server.continuationSession
+         0     0%   100%      0.20s  0.84%  github.com/elysia-api/backend/server.conversionWorkingSetBytes
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/server.gatewayCandidate.conversionContext
+         0     0%   100%      0.06s  0.25%  github.com/elysia-api/backend/server.makeGatewayCandidate
+         0     0%   100%      0.07s  0.29%  github.com/elysia-api/backend/server.matchGatewayCombination
+         0     0%   100%      0.16s  0.67%  github.com/elysia-api/backend/server.resolveGatewayConversion
+         0     0%   100%      0.02s 0.084%  github.com/elysia-api/backend/server.selectGatewayIngressOperation
+         0     0%   100%      0.01s 0.042%  github.com/elysia-api/backend/server.shortTokenHash
+         0     0%   100%      0.90s  3.78%  github.com/elysia-api/backend/storage.(*Store).ConversionSnapshot
+         0     0%   100%      0.22s  0.93%  github.com/elysia-api/backend/storage.(*Store).SaveUsageRecordJSON
+         0     0%   100%      0.19s   0.8%  github.com/elysia-api/backend/storage.(*Store).SaveUsageRecordJSON.func1
+         0     0%   100%      0.22s  0.93%  github.com/elysia-api/backend/storage.(*Store).withTx
+         0     0%   100%      0.19s   0.8%  github.com/elysia-api/backend/storage.saveUsageRecordTx
+         0     0%   100%      0.08s  0.34%  github.com/elysia-api/backend/storage.upsertUsageRollupTx
+         0     0%   100%     18.03s 75.82%  github.com/gin-gonic/gin.(*Context).Next (partial-inline)
+         0     0%   100%     18.03s 75.82%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0%   100%     18.03s 75.82%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0%   100%      0.04s  0.17%  github.com/gin-gonic/gin.(*responseWriter).Write
+         0     0%   100%      0.01s 0.042%  golang.org/x/sys/unix.MmapPtr
+         0     0%   100%      0.03s  0.13%  golang.org/x/sys/unix.MunmapPtr (inline)
+         0     0%   100%      0.01s 0.042%  golang.org/x/sys/unix.mmap
+         0     0%   100%      0.03s  0.13%  golang.org/x/sys/unix.munmap
+         0     0%   100%      0.05s  0.21%  internal/poll.(*FD).Close
+         0     0%   100%      0.01s 0.042%  internal/poll.(*FD).Fstat
+         0     0%   100%      0.01s 0.042%  internal/poll.(*FD).Fstat.func1
+         0     0%   100%      0.14s  0.59%  internal/poll.(*FD).Read
+         0     0%   100%      0.01s 0.042%  internal/poll.(*FD).SetReadDeadline
+         0     0%   100%      1.78s  7.49%  internal/poll.(*FD).Write
+         0     0%   100%      0.05s  0.21%  internal/poll.(*FD).decref
+         0     0%   100%      0.05s  0.21%  internal/poll.(*FD).destroy
+         0     0%   100%      0.05s  0.21%  internal/poll.(*SysFile).destroy (inline)
+         0     0%   100%      0.01s 0.042%  internal/poll.(*pollDesc).wait
+         0     0%   100%      0.01s 0.042%  internal/poll.(*pollDesc).waitRead
+         0     0%   100%      0.01s 0.042%  internal/poll.ignoringEINTR
+         0     0%   100%      1.90s  7.99%  internal/poll.ignoringEINTRIO (inline)
+         0     0%   100%      0.01s 0.042%  internal/poll.runtime_pollWait
+         0     0%   100%      0.01s 0.042%  internal/poll.setDeadlineImpl
+         0     0%   100%      0.16s  0.67%  internal/runtime/gc/scan.ScanSpanPacked (inline)
+         0     0%   100%      0.01s 0.042%  internal/runtime/maps.(*Map).putSlotSmall
+         0     0%   100%      0.01s 0.042%  internal/runtime/maps.(*table).rehash
+         0     0%   100%      0.03s  0.13%  internal/runtime/maps.MemHash
+         0     0%   100%      0.21s  0.88%  internal/runtime/maps.NewEmptyMap (inline)
+         0     0%   100%      0.03s  0.13%  internal/runtime/maps.StrHash (inline)
+         0     0%   100%      0.34s  1.43%  internal/runtime/maps.newGroups (inline)
+         0     0%   100%      0.01s 0.042%  internal/runtime/maps.newobject
+         0     0%   100%      0.05s  0.21%  internal/runtime/maps.rand
+         0     0%   100%      0.02s 0.084%  internal/runtime/maps.typedmemclr
+         0     0%   100%      0.01s 0.042%  modernc.org/libc.X__syscall3
+         0     0%   100%      0.01s 0.042%  modernc.org/libc.Xfcntl
+         0     0%   100%      0.05s  0.21%  modernc.org/libc.Xmalloc
+         0     0%   100%      0.03s  0.13%  modernc.org/libc.Xpread
+         0     0%   100%      0.03s  0.13%  modernc.org/libc.Xpwrite
+         0     0%   100%      0.04s  0.17%  modernc.org/memory.(*Allocator).mmap
+         0     0%   100%      0.02s 0.084%  modernc.org/memory.(*Allocator).newPage
+         0     0%   100%      0.02s 0.084%  modernc.org/memory.(*Allocator).newSharedPage
+         0     0%   100%      0.04s  0.17%  modernc.org/memory.mmap
+         0     0%   100%      0.03s  0.13%  modernc.org/memory.unmap (inline)
+         0     0%   100%      0.19s   0.8%  modernc.org/sqlite.(*conn).ExecContext
+         0     0%   100%      0.16s  0.67%  modernc.org/sqlite.(*conn).QueryContext
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite.(*conn).bindText
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite.(*conn).columnText
+         0     0%   100%      0.19s   0.8%  modernc.org/sqlite.(*conn).exec
+         0     0%   100%      0.12s   0.5%  modernc.org/sqlite.(*conn).prepare (inline)
+         0     0%   100%      0.20s  0.84%  modernc.org/sqlite.(*conn).prepareV2
+         0     0%   100%      0.16s  0.67%  modernc.org/sqlite.(*conn).query
+         0     0%   100%      0.19s   0.8%  modernc.org/sqlite.(*conn).step
+         0     0%   100%      0.07s  0.29%  modernc.org/sqlite.(*rows).Next
+         0     0%   100%      0.07s  0.29%  modernc.org/sqlite.(*stmt).exec
+         0     0%   100%      0.07s  0.29%  modernc.org/sqlite.(*stmt).exec.func2
+         0     0%   100%      0.08s  0.34%  modernc.org/sqlite.(*stmt).query
+         0     0%   100%      0.04s  0.17%  modernc.org/sqlite.(*tx).Commit
+         0     0%   100%      0.04s  0.17%  modernc.org/sqlite.(*tx).exec
+         0     0%   100%      0.20s  0.84%  modernc.org/sqlite.newStmt
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib.Xsqlite3_bind_text
+         0     0%   100%      0.04s  0.17%  modernc.org/sqlite/lib.Xsqlite3_exec
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib.Xsqlite3_malloc64
+         0     0%   100%      0.20s  0.84%  modernc.org/sqlite/lib.Xsqlite3_prepare_v2 (inline)
+         0     0%   100%      0.23s  0.97%  modernc.org/sqlite/lib.Xsqlite3_step
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib.Xsqlite3_wal_checkpoint
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib.Xsqlite3_wal_checkpoint_v2
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._allocateBtreePage
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._balance
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._balance_quick
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._bindText
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._btreeBeginTrans
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._btreeGetPage
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._btreeGetUnusedPage
+         0     0%   100%      0.07s  0.29%  modernc.org/sqlite/lib._copyPayload
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._dbMallocRawFinish
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._doWalCallbacks
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._exprIsConst
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._findConstInWhere
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._getPageNormal
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._lockBtree
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._pagerBeginReadTransaction
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._pagerWalFrames
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._pcache1Alloc
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._pcache1Fetch
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._pcache1FetchNoMutex
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._pcache1FetchStage2
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._pcache1FetchWithMutex
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._propagateConstants
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._resolveExprStep
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._seekAndRead
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._seekAndWrite (inline)
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._seekAndWriteFd
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3BtreeBeginTrans
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3BtreeCheckpoint
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._sqlite3BtreeCommitPhaseOne
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._sqlite3BtreeInsert
+         0     0%   100%      0.12s   0.5%  modernc.org/sqlite/lib._sqlite3BtreePayload (inline)
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3Checkpoint
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._sqlite3ColumnDefault
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3ColumnIndex
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3DbMallocRaw
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3DbMallocRawNN
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3DbMallocZero
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._sqlite3ExprCode
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3ExprCodeGetColumn
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._sqlite3ExprCodeGetColumnOfTable
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._sqlite3ExprCodeTarget
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3ExprCodeTemp
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3ExprIsConstant
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3FindFunction
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3FunctionSearch
+         0     0%   100%      0.05s  0.21%  modernc.org/sqlite/lib._sqlite3GenerateConstraintChecks
+         0     0%   100%      0.07s  0.29%  modernc.org/sqlite/lib._sqlite3Insert
+         0     0%   100%      0.20s  0.84%  modernc.org/sqlite/lib._sqlite3LockAndPrepare
+         0     0%   100%      0.05s  0.21%  modernc.org/sqlite/lib._sqlite3Malloc
+         0     0%   100%      0.05s  0.21%  modernc.org/sqlite/lib._sqlite3MemMalloc
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3OpenTableAndIndices
+         0     0%   100%      0.04s  0.17%  modernc.org/sqlite/lib._sqlite3OsRead (inline)
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3OsShmLock
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._sqlite3OsWrite
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3PagerCheckpoint
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._sqlite3PagerCommitPhaseOne
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._sqlite3PagerGet (inline)
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3PagerSharedLock
+         0     0%   100%      0.19s   0.8%  modernc.org/sqlite/lib._sqlite3Parser
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._sqlite3PcacheFetch
+         0     0%   100%      0.20s  0.84%  modernc.org/sqlite/lib._sqlite3Prepare
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._sqlite3RCStrNew
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._sqlite3ResolveExprNames
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3ResolveSelectNames
+         0     0%   100%      0.20s  0.84%  modernc.org/sqlite/lib._sqlite3RunParser
+         0     0%   100%      0.08s  0.34%  modernc.org/sqlite/lib._sqlite3Select
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3SelectPrep
+         0     0%   100%      0.23s  0.97%  modernc.org/sqlite/lib._sqlite3Step
+         0     0%   100%      0.05s  0.21%  modernc.org/sqlite/lib._sqlite3Update
+         0     0%   100%      0.05s  0.21%  modernc.org/sqlite/lib._sqlite3UpsertDoUpdate
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._sqlite3ValueFromExpr
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3ValueNew
+         0     0%   100%      0.22s  0.93%  modernc.org/sqlite/lib._sqlite3VdbeExec
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._sqlite3VdbeHalt
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3VdbeSetP4KeyInfo
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3WalBeginReadTransaction
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3WalCheckpoint
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3WalDefaultHook
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._sqlite3WalFrames
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3WalkExpr
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._sqlite3WalkExprNN
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._sqlite3WalkSelect
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._unixShmLock
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._unixShmSystemLock
+         0     0%   100%      0.03s  0.13%  modernc.org/sqlite/lib._unixWrite
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._valueNew
+         0     0%   100%      0.14s  0.59%  modernc.org/sqlite/lib._vdbeColumnFromOverflow
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._walBeginReadTransaction
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._walCheckpoint
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._walFrames
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._walLockShared
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._walTryBeginRead
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._walWriteOneFrame
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._walWriteToLog
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._whereLoopAddAll
+         0     0%   100%      0.02s 0.084%  modernc.org/sqlite/lib._whereLoopAddBtree
+         0     0%   100%      0.01s 0.042%  modernc.org/sqlite/lib._wherePathSolver
+         0     0%   100%      0.11s  0.46%  net.(*conn).Read
+         0     0%   100%      0.01s 0.042%  net.(*conn).SetReadDeadline
+         0     0%   100%      1.78s  7.49%  net.(*conn).Write
+         0     0%   100%      0.11s  0.46%  net.(*netFD).Read
+         0     0%   100%      0.01s 0.042%  net.(*netFD).SetReadDeadline
+         0     0%   100%      1.78s  7.49%  net.(*netFD).Write
+         0     0%   100%      0.01s 0.042%  net/http.(*Client).Do
+         0     0%   100%      0.01s 0.042%  net/http.(*Client).do
+         0     0%   100%      0.01s 0.042%  net/http.(*Client).send
+         0     0%   100%      0.01s 0.042%  net/http.(*Request).write
+         0     0%   100%      0.01s 0.042%  net/http.(*Transport).RoundTrip
+         0     0%   100%      0.01s 0.042%  net/http.(*Transport).roundTrip
+         0     0%   100%      0.11s  0.46%  net/http.(*body).Read
+         0     0%   100%      0.11s  0.46%  net/http.(*body).readLocked
+         0     0%   100%      0.11s  0.46%  net/http.(*bodyEOFSignal).Read
+         0     0%   100%      1.74s  7.32%  net/http.(*chunkWriter).flush
+         0     0%   100%      0.01s 0.042%  net/http.(*chunkWriter).writeHeader
+         0     0%   100%     18.06s 75.95%  net/http.(*conn).serve
+         0     0%   100%      0.01s 0.042%  net/http.(*connReader).Read
+         0     0%   100%      0.01s 0.042%  net/http.(*connReader).abortPendingRead
+         0     0%   100%      0.01s 0.042%  net/http.(*connReader).backgroundRead
+         0     0%   100%      0.09s  0.38%  net/http.(*persistConn).Read
+         0     0%   100%      0.02s 0.084%  net/http.(*persistConn).readLoop
+         0     0%   100%      0.01s 0.042%  net/http.(*persistConn).readResponse
+         0     0%   100%      0.01s 0.042%  net/http.(*persistConn).roundTrip
+         0     0%   100%      0.04s  0.17%  net/http.(*persistConn).writeLoop
+         0     0%   100%      1.83s  7.70%  net/http.(*response).FlushError
+         0     0%   100%      0.04s  0.17%  net/http.(*response).Write
+         0     0%   100%      0.02s 0.084%  net/http.(*response).finishRequest
+         0     0%   100%     18.03s 75.82%  net/http.HandlerFunc.ServeHTTP
+         0     0%   100%      0.01s 0.042%  net/http.Header.Get
+         0     0%   100%      0.01s 0.042%  net/http.Header.WriteSubset
+         0     0%   100%      0.02s 0.084%  net/http.Header.writeSubset
+         0     0%   100%      0.01s 0.042%  net/http.ReadResponse
+         0     0%   100%      1.75s  7.36%  net/http.checkConnErrorWriter.Write
+         0     0%   100%      0.03s  0.13%  net/http.persistConnWriter.Write
+         0     0%   100%      0.01s 0.042%  net/http.send
+         0     0%   100%     18.03s 75.82%  net/http.serverHandler.ServeHTTP
+         0     0%   100%      0.03s  0.13%  net/http/internal.(*chunkedReader).beginChunk
+         0     0%   100%      0.01s 0.042%  net/textproto.(*Reader).ReadMIMEHeader
+         0     0%   100%      0.01s 0.042%  net/textproto.CanonicalMIMEHeaderKey
+         0     0%   100%      0.01s 0.042%  net/textproto.MIMEHeader.Get
+         0     0%   100%      0.01s 0.042%  net/textproto.readMIMEHeader
+         0     0%   100%      0.06s  0.25%  os.(*File).Close
+         0     0%   100%      0.03s  0.13%  os.(*File).Read
+         0     0%   100%      0.01s 0.042%  os.(*File).Stat
+         0     0%   100%      0.03s  0.13%  os.(*File).read (inline)
+         0     0%   100%      0.06s  0.25%  os.(*file).close
+         0     0%   100%      0.01s 0.042%  os.Getpagesize
+         0     0%   100%      0.08s  0.34%  os.Open (inline)
+         0     0%   100%      0.08s  0.34%  os.OpenFile
+         0     0%   100%      0.19s   0.8%  os.ReadFile
+         0     0%   100%      0.05s  0.21%  os.ignoringEINTR (inline)
+         0     0%   100%      0.03s  0.13%  os.newFile
+         0     0%   100%      0.05s  0.21%  os.open
+         0     0%   100%      0.08s  0.34%  os.openFileNolog
+         0     0%   100%      0.05s  0.21%  os.openFileNolog.func1 (inline)
+         0     0%   100%      0.04s  0.17%  os.readFileContents
+         0     0%   100%      0.01s 0.042%  os.statOrZero
+         0     0%   100%      0.04s  0.17%  reflect.(*rtype).typeOff (inline)
+         0     0%   100%      0.07s  0.29%  reflect.TypeAssert[go.shape.interface { MarshalJSON  }]
+         0     0%   100%      0.02s 0.084%  reflect.TypeAssert[go.shape.interface { UnmarshalJSON error }]
+         0     0%   100%      0.05s  0.21%  reflect.Value.Grow
+         0     0%   100%      0.39s  1.64%  reflect.Value.Interface (inline)
+         0     0%   100%      0.02s 0.084%  reflect.Value.SetMapIndex
+         0     0%   100%      0.03s  0.13%  reflect.Value.assignTo
+         0     0%   100%      0.05s  0.21%  reflect.Value.grow
+         0     0%   100%      0.01s 0.042%  reflect.Value.lenNonSlice
+         0     0%   100%      0.01s 0.042%  reflect.Value.pointer
+         0     0%   100%      0.05s  0.21%  reflect.growslice
+         0     0%   100%      0.01s 0.042%  reflect.mapassign
+         0     0%   100%      0.01s 0.042%  reflect.mapassign0
+         0     0%   100%      0.09s  0.38%  reflect.typedmemmove
+         0     0%   100%      0.01s 0.042%  runtime.(*activeSweep).end
+         0     0%   100%      0.02s 0.084%  runtime.(*atomicHeadTailIndex).incTail
+         0     0%   100%      0.02s 0.084%  runtime.(*atomicMSpanPointer).Load
+         0     0%   100%      0.01s 0.042%  runtime.(*consistentHeapStats).acquire
+         0     0%   100%      0.01s 0.042%  runtime.(*gcControllerState).addIdleMarkWorker
+         0     0%   100%      0.02s 0.084%  runtime.(*gcControllerState).enlistWorker
+         0     0%   100%      0.02s 0.084%  runtime.(*gcWork).tryStealSpan
+         0     0%   100%      0.12s   0.5%  runtime.(*inlineUnwinder).resolveInternal (inline)
+         0     0%   100%      0.02s 0.084%  runtime.(*mcache).allocLarge
+         0     0%   100%      0.40s  1.68%  runtime.(*mcache).nextFree
+         0     0%   100%      0.01s 0.042%  runtime.(*mcache).prepareForSweep
+         0     0%   100%      0.29s  1.22%  runtime.(*mcentral).cacheSpan
+         0     0%   100%      0.20s  0.84%  runtime.(*mcentral).grow
+         0     0%   100%      0.07s  0.29%  runtime.(*mcentral).uncacheSpan
+         0     0%   100%      0.15s  0.63%  runtime.(*mheap).alloc
+         0     0%   100%      0.02s 0.084%  runtime.(*mheap).allocMSpanLocked
+         0     0%   100%      0.08s  0.34%  runtime.(*mheap).freeSpan (inline)
+         0     0%   100%      0.08s  0.34%  runtime.(*mheap).freeSpan.func1
+         0     0%   100%      0.06s  0.25%  runtime.(*mheap).freeSpanLocked
+         0     0%   100%      0.04s  0.17%  runtime.(*mheap).nextSpanForSweep
+         0     0%   100%      0.01s 0.042%  runtime.(*mspan).heapBitsSmallForAddr
+         0     0%   100%      0.07s  0.29%  runtime.(*mspan).initHeapBits
+         0     0%   100%      0.04s  0.17%  runtime.(*mspan).initInlineMarkBits (inline)
+         0     0%   100%      0.01s 0.042%  runtime.(*mspan).typePointersOfType
+         0     0%   100%      0.01s 0.042%  runtime.(*pageAlloc).alloc
+         0     0%   100%      0.08s  0.34%  runtime.(*pageAlloc).scavenge
+         0     0%   100%      0.08s  0.34%  runtime.(*pageAlloc).scavenge.func1
+         0     0%   100%      0.08s  0.34%  runtime.(*pageAlloc).scavengeOne
+         0     0%   100%      0.03s  0.13%  runtime.(*pageAlloc).update
+         0     0%   100%      0.02s 0.084%  runtime.(*pallocBits).summarize
+         0     0%   100%      0.09s  0.38%  runtime.(*scavengerState).run
+         0     0%   100%      0.02s 0.084%  runtime.(*spanQueue).steal
+         0     0%   100%      0.01s 0.042%  runtime.(*stackScanState).buildIndex
+         0     0%   100%      0.01s 0.042%  runtime.(*timer).maybeAdd
+         0     0%   100%      0.02s 0.084%  runtime.(*timer).unlockAndRun
+         0     0%   100%      0.02s 0.084%  runtime.(*timers).check
+         0     0%   100%      0.01s 0.042%  runtime.(*timers).lock
+         0     0%   100%      0.02s 0.084%  runtime.(*timers).run
+         0     0%   100%      0.02s 0.084%  runtime.(*unwinder).init
+         0     0%   100%      0.12s   0.5%  runtime.(*unwinder).next
+         0     0%   100%      0.11s  0.46%  runtime.ReadMemStats
+         0     0%   100%      0.04s  0.17%  runtime.ReadMemStats.func1
+         0     0%   100%      0.01s 0.042%  runtime.SetFinalizer
+         0     0%   100%      0.01s 0.042%  runtime.SetFinalizer.func1
+         0     0%   100%      0.02s 0.084%  runtime.acquirep
+         0     0%   100%      0.01s 0.042%  runtime.atomicwb
+         0     0%   100%      0.09s  0.38%  runtime.bgscavenge
+         0     0%   100%      0.02s 0.084%  runtime.blockTimerChan
+         0     0%   100%      0.21s  0.88%  runtime.callers
+         0     0%   100%      0.21s  0.88%  runtime.callers.func1
+         0     0%   100%      0.01s 0.042%  runtime.chansend
+         0     0%   100%      0.03s  0.13%  runtime.concatstring3
+         0     0%   100%      0.03s  0.13%  runtime.convT
+         0     0%   100%      0.07s  0.29%  runtime.convTstring
+         0     0%   100%      0.06s  0.25%  runtime.copystack
+         0     0%   100%      0.04s  0.17%  runtime.entersyscall
+         0     0%   100%      0.03s  0.13%  runtime.exitsyscallNoP
+         0     0%   100%      0.01s 0.042%  runtime.finishsweep_m
+         0     0%   100%      0.04s  0.17%  runtime.flushallmcaches
+         0     0%   100%      0.04s  0.17%  runtime.flushmcache
+         0     0%   100%      0.09s  0.38%  runtime.forEachP (inline)
+         0     0%   100%      0.09s  0.38%  runtime.forEachP.func1
+         0     0%   100%      0.09s  0.38%  runtime.forEachPInternal
+         0     0%   100%      0.01s 0.042%  runtime.freeStackSpans
+         0     0%   100%      0.06s  0.25%  runtime.funcspdelta (inline)
+         0     0%   100%      0.25s  1.05%  runtime.futexsleep
+         0     0%   100%      0.09s  0.38%  runtime.futexwakeup
+         0     0%   100%      0.03s  0.13%  runtime.gcAssistAlloc
+         0     0%   100%      0.03s  0.13%  runtime.gcAssistAlloc.func2
+         0     0%   100%      0.03s  0.13%  runtime.gcAssistAlloc1
+         0     0%   100%      3.06s 12.87%  runtime.gcBgMarkWorker.func2
+         0     0%   100%      1.20s  5.05%  runtime.gcDrainMarkWorkerDedicated (inline)
+         0     0%   100%      1.86s  7.82%  runtime.gcDrainMarkWorkerIdle (inline)
+         0     0%   100%      0.02s 0.084%  runtime.gcDrainN
+         0     0%   100%      0.21s  0.88%  runtime.gcMarkDone
+         0     0%   100%      0.01s 0.042%  runtime.gcMarkDone.func1
+         0     0%   100%      0.02s 0.084%  runtime.gcMarkDone.func2
+         0     0%   100%      0.14s  0.59%  runtime.gcMarkTermination
+         0     0%   100%      0.01s 0.042%  runtime.gcStart.func3
+         0     0%   100%      0.03s  0.13%  runtime.gcStart.func4
+         0     0%   100%      0.01s 0.042%  runtime.gcTrigger.test
+         0     0%   100%      0.11s  0.46%  runtime.gcstopm
+         0     0%   100%      0.01s 0.042%  runtime.getempty
+         0     0%   100%      0.19s   0.8%  runtime.goexit0
+         0     0%   100%      0.29s  1.22%  runtime.gopreempt_m (inline)
+         0     0%   100%      0.32s  1.35%  runtime.goschedImpl
+         0     0%   100%      0.03s  0.13%  runtime.gosched_m
+         0     0%   100%      0.03s  0.13%  runtime.handoff
+         0     0%   100%      0.01s 0.042%  runtime.headTailIndex.split
+         0     0%   100%      0.08s  0.34%  runtime.heapSetTypeNoHeader (inline)
+         0     0%   100%      0.01s 0.042%  runtime.interhash
+         0     0%   100%      0.22s  0.93%  runtime.lock (inline)
+         0     0%   100%      0.22s  0.93%  runtime.lockWithRank (inline)
+         0     0%   100%      0.17s  0.71%  runtime.mPark (inline)
+         0     0%   100%      0.09s  0.38%  runtime.mProf_Flush
+         0     0%   100%      0.24s  1.01%  runtime.mProf_Malloc
+         0     0%   100%      0.03s  0.13%  runtime.mallocgcLarge
+         0     0%   100%      0.01s 0.042%  runtime.mallocgcSmallNoScanSC5
+         0     0%   100%      0.01s 0.042%  runtime.mallocgcSmallNoScanSC7
+         0     0%   100%      0.03s  0.13%  runtime.mallocgcSmallScanHeader
+         0     0%   100%      0.01s 0.042%  runtime.mallocgcSmallScanNoHeaderSC4
+         0     0%   100%      0.07s  0.29%  runtime.mapIterStart
+         0     0%   100%      0.01s 0.042%  runtime.mapaccess1
+         0     0%   100%      0.01s 0.042%  runtime.mapaccess1_fast64
+         0     0%   100%      0.06s  0.25%  runtime.mapaccess2
+         0     0%   100%      0.01s 0.042%  runtime.mapassign
+         0     0%   100%      0.13s  0.55%  runtime.mapdelete_faststr
+         0     0%   100%      0.48s  2.02%  runtime.markroot
+         0     0%   100%      0.15s  0.63%  runtime.markroot.func1
+         0     0%   100%      0.32s  1.35%  runtime.markrootBlock
+         0     0%   100%      0.99s  4.16%  runtime.mcall
+         0     0%   100%      0.04s  0.17%  runtime.memhash64 (inline)
+         0     0%   100%      0.29s  1.22%  runtime.morestack
+         0     0%   100%      0.03s  0.13%  runtime.moveSlice
+         0     0%   100%      0.01s 0.042%  runtime.netpollBreak
+         0     0%   100%      0.01s 0.042%  runtime.netpollblock
+         0     0%   100%      0.12s   0.5%  runtime.newInlineUnwinder
+         0     0%   100%      0.32s  1.35%  runtime.newobject
+         0     0%   100%      0.35s  1.47%  runtime.newstack
+         0     0%   100%      0.06s  0.25%  runtime.notetsleep
+         0     0%   100%      0.06s  0.25%  runtime.notetsleep_internal
+         0     0%   100%      0.09s  0.38%  runtime.notewakeup
+         0     0%   100%      0.74s  3.11%  runtime.park_m
+         0     0%   100%      0.03s  0.13%  runtime.pcdatavalue
+         0     0%   100%      0.12s   0.5%  runtime.pcdatavalue1
+         0     0%   100%      0.03s  0.13%  runtime.pollWork
+         0     0%   100%      0.09s  0.38%  runtime.preemptM (inline)
+         0     0%   100%      0.09s  0.38%  runtime.preemptall
+         0     0%   100%      0.09s  0.38%  runtime.preemptone
+         0     0%   100%      0.08s  0.34%  runtime.procyield (inline)
+         0     0%   100%      0.24s  1.01%  runtime.profilealloc
+         0     0%   100%      0.02s 0.084%  runtime.putfull
+         0     0%   100%      0.06s  0.25%  runtime.rawstring (inline)
+         0     0%   100%      0.06s  0.25%  runtime.rawstringtmp
+         0     0%   100%      0.04s  0.17%  runtime.readmemstats_m
+         0     0%   100%      0.01s 0.042%  runtime.ready
+         0     0%   100%      0.01s 0.042%  runtime.releasep
+         0     0%   100%      0.01s 0.042%  runtime.removefinalizer
+         0     0%   100%      0.03s  0.13%  runtime.resetspinning
+         0     0%   100%      0.01s 0.042%  runtime.resumeG
+         0     0%   100%      0.03s  0.13%  runtime.rtype.typeOff (inline)
+         0     0%   100%      0.02s 0.084%  runtime.runSafePointFn
+         0     0%   100%      0.01s 0.042%  runtime.runqput
+         0     0%   100%      0.06s  0.25%  runtime.runqsteal
+         0     0%   100%      0.06s  0.25%  runtime.scanframeworker
+         0     0%   100%      1.15s  4.84%  runtime.schedule
+         0     0%   100%      0.03s  0.13%  runtime.selectgo
+         0     0%   100%      0.01s 0.042%  runtime.selectnbsend
+         0     0%   100%      0.03s  0.13%  runtime.semasleep
+         0     0%   100%      0.01s 0.042%  runtime.shrinkstack
+         0     0%   100%      0.09s  0.38%  runtime.signalM
+         0     0%   100%      0.03s  0.13%  runtime.startTheWorldWithSema
+         0     0%   100%      0.06s  0.25%  runtime.stopTheWorld
+         0     0%   100%      0.06s  0.25%  runtime.stopTheWorld.func1
+         0     0%   100%      0.19s   0.8%  runtime.stopm
+         0     0%   100%      0.07s  0.29%  runtime.sysUnused (inline)
+         0     0%   100%      0.07s  0.29%  runtime.sysUnusedOS
+         0     0%   100%      4.04s 16.99%  runtime.systemstack
+         0     0%   100%      0.21s  0.88%  runtime.tracebackPCs
+         0     0%   100%      0.02s 0.084%  runtime.typedmemclr
+         0     0%   100%      0.01s 0.042%  runtime.typedslicecopy
+         0     0%   100%      0.01s 0.042%  runtime.unlockWithRank
+         0     0%   100%      0.01s 0.042%  runtime.wakeNetPoller
+         0     0%   100%      0.08s  0.34%  runtime.wakep
+         0     0%   100%      0.16s  0.67%  runtime.wbBufFlush.func1
+         0     0%   100%      0.06s  0.25%  runtime.wbMove
+         0     0%   100%      0.01s 0.042%  runtime.write
+         0     0%   100%      0.01s 0.042%  slices.Grow[go.shape.[]uint8,go.shape.uint8]
+         0     0%   100%      0.03s  0.13%  strconv.AppendInt
+         0     0%   100%      0.34s  1.43%  strings.Clone (inline)
+         0     0%   100%      0.11s  0.46%  strings.Contains (inline)
+         0     0%   100%      0.10s  0.42%  strings.ContainsAny (inline)
+         0     0%   100%      0.17s  0.71%  strings.ContainsRune (inline)
+         0     0%   100%      0.11s  0.46%  strings.Index (inline)
+         0     0%   100%      0.10s  0.42%  strings.IndexAny
+         0     0%   100%      0.18s  0.76%  strings.IndexByte (inline)
+         0     0%   100%      0.02s 0.084%  sync.(*Once).Do
+         0     0%   100%      0.02s 0.084%  sync.(*Pool).pinSlow
+         0     0%   100%      0.01s 0.042%  sync.(*poolChain).popHead
+         0     0%   100%      0.01s 0.042%  sync/atomic.StorePointer
+         0     0%   100%      0.05s  0.21%  syscall.Close
+         0     0%   100%      0.01s 0.042%  syscall.Fstat
+         0     0%   100%      0.05s  0.21%  syscall.Open (inline)
+         0     0%   100%      2.06s  8.66%  syscall.RawSyscall6
+         0     0%   100%      0.11s  0.46%  syscall.Read (inline)
+         0     0%   100%      0.01s 0.042%  syscall.SetNonblock
+         0     0%   100%         2s  8.41%  syscall.Syscall
+         0     0%   100%      0.11s  0.46%  syscall.Syscall6
+         0     0%   100%      1.78s  7.49%  syscall.Write (inline)
+         0     0%   100%      0.01s 0.042%  syscall.fcntl
+         0     0%   100%      0.05s  0.21%  syscall.openat
+         0     0%   100%      0.11s  0.46%  syscall.read
+         0     0%   100%      1.78s  7.49%  syscall.write
+         0     0%   100%      0.01s 0.042%  time.Time.Equal
+         0     0%   100%      0.01s 0.042%  time.Time.Sub
+         0     0%   100%      0.01s 0.042%  time.Until
+         0     0%   100%      0.01s 0.042%  time.sendTime

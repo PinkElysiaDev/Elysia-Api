@@ -1,0 +1,38 @@
+File: server.test
+Build ID: b01f01515d67092dc4dab434270becb0d9b81338
+Type: alloc_objects
+Time: 2026-10-20 21:30:36 CST
+Showing nodes accounting for 6958672, 90.50% of 7689150 total
+Dropped 142 nodes (cum <= 38445)
+Showing top 30 nodes out of 131
+      flat  flat%   sum%        cum   cum%
+   1692127 22.01% 22.01%    1692127 22.01%  reflect.unsafe_New
+   1083239 14.09% 36.09%    1921084 24.98%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+    934540 12.15% 48.25%     934540 12.15%  internal/stringslite.Clone (inline)
+    694806  9.04% 57.28%     694806  9.04%  github.com/elysia-api/backend/protocol.Value.Bytes (inline)
+    229377  2.98% 60.27%     309813  4.03%  github.com/elysia-api/backend/protocol.readString
+    196611  2.56% 62.82%     425991  5.54%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+    174763  2.27% 65.10%     318967  4.15%  github.com/elysia-api/backend/protocol/builtin.readArray
+    163846  2.13% 67.23%     163846  2.13%  github.com/elysia-api/backend/protocol.CheckEvent
+    147484  1.92% 69.15%     147484  1.92%  encoding/json/jsontext.(*decoderState).fetch
+    132915  1.73% 70.88%     132915  1.73%  github.com/elysia-api/backend/protocol/builtin.copyFields (inline)
+    131072  1.70% 72.58%     131072  1.70%  github.com/elysia-api/backend/protocol/builtin.stringValue
+    125160  1.63% 74.21%     125160  1.63%  bytes.Clone (inline)
+    116302  1.51% 75.72%    1764744 22.95%  github.com/elysia-api/backend/protocol.EncodeValue
+    109705  1.43% 77.15%     111343  1.45%  github.com/elysia-api/backend/protocol.ParseValue
+     98305  1.28% 78.43%     369391  4.80%  github.com/elysia-api/backend/protocol/builtin.module.validateChatWireContract
+     98304  1.28% 79.70%     196608  2.56%  github.com/elysia-api/backend/protocol.StringValue
+     88949  1.16% 80.86%      88949  1.16%  encoding/json/v2.JoinOptions (inline)
+     82051  1.07% 81.93%      82051  1.07%  reflect.growslice
+     79195  1.03% 82.96%    1385833 18.02%  github.com/elysia-api/backend/protocol.(*Compiled).decodeFrame
+     67731  0.88% 83.84%      67731  0.88%  github.com/elysia-api/backend/protocol.(*semanticCache).store
+     65537  0.85% 84.69%     162232  2.11%  github.com/elysia-api/backend/protocol.Value.readArrayWithin
+     65537  0.85% 85.54%     229377  2.98%  github.com/elysia-api/backend/protocol/builtin.(*wireStreamContract).bind
+     59406  0.77% 86.32%      59406  0.77%  github.com/elysia-api/backend/protocol.(*TextTracker).Append
+     54614  0.71% 87.03%     706031  9.18%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).captureFrameExtensions
+     54613  0.71% 87.74%     268725  3.49%  github.com/elysia-api/backend/protocol.(*Compiled).encodeFrame
+     47796  0.62% 88.36%    7361530 95.74%  github.com/elysia-api/backend/protocol.ReadFrames.func1
+     44536  0.58% 88.94%      44536  0.58%  github.com/elysia-api/backend/protocol.(*Compiled).Capabilities (inline)
+     43692  0.57% 89.51%      79745  1.04%  encoding/json.NewDecoder
+     43691  0.57% 90.07%      50520  0.66%  github.com/elysia-api/backend/protocol.WriteFrame
+     32768  0.43% 90.50%     196933  2.56%  github.com/elysia-api/backend/protocol.(*ItemIdentities).Resolve

@@ -1,0 +1,146 @@
+[
+  {
+    "label": "before · 8f50807 · cpu-chat-short · cpu · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/before-cpu-chat-short.png",
+    "profile": "baseline/cpu-chat-short/cpu.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=cpu docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline/cpu-chat-short/cpu.pprof"
+  },
+  {
+    "label": "before · 8f50807 · cpu-image2 · cpu · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/before-cpu-image2.png",
+    "profile": "baseline/cpu-image2/cpu.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=cpu docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline/cpu-image2/cpu.pprof"
+  },
+  {
+    "label": "before · 8f50807 · cpu-stream256 · cpu · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/before-cpu-stream256.png",
+    "profile": "baseline/cpu-stream256/cpu.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=cpu docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline/cpu-stream256/cpu.pprof"
+  },
+  {
+    "label": "before · 8f50807 · memory-chat-short · alloc_space · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/before-memory-chat-short.png",
+    "profile": "baseline/memory-chat-short/alloc-after.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=alloc_space -base docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline/memory-chat-short/alloc-before.pprof docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline/memory-chat-short/alloc-after.pprof"
+  },
+  {
+    "label": "before · 8f50807 · memory-image2 · alloc_space · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/before-memory-image2.png",
+    "profile": "baseline/memory-image2/alloc-after.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=alloc_space -base docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline/memory-image2/alloc-before.pprof docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline/memory-image2/alloc-after.pprof"
+  },
+  {
+    "label": "before · 8f50807 · memory-stream256 · alloc_space · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/before-memory-stream256.png",
+    "profile": "baseline/memory-stream256/alloc-after.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=alloc_space -base docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline/memory-stream256/alloc-before.pprof docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline/memory-stream256/alloc-after.pprof"
+  },
+  {
+    "label": "after · 5a8115e · cpu-chat-short · cpu · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/after-cpu-chat-short.png",
+    "profile": "current/cpu-chat-short/cpu.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=cpu docs/artifacts/performance-v1.6.2-vs-5a8115e/current/cpu-chat-short/cpu.pprof"
+  },
+  {
+    "label": "after · 5a8115e · cpu-image2 · cpu · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/after-cpu-image2.png",
+    "profile": "current/cpu-image2/cpu.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=cpu docs/artifacts/performance-v1.6.2-vs-5a8115e/current/cpu-image2/cpu.pprof"
+  },
+  {
+    "label": "after · 5a8115e · cpu-stream256 · cpu · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/after-cpu-stream256.png",
+    "profile": "current/cpu-stream256/cpu.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=cpu docs/artifacts/performance-v1.6.2-vs-5a8115e/current/cpu-stream256/cpu.pprof"
+  },
+  {
+    "label": "after · 5a8115e · memory-chat-short · alloc_space · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/after-memory-chat-short.png",
+    "profile": "current/memory-chat-short/alloc-after.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=alloc_space -base docs/artifacts/performance-v1.6.2-vs-5a8115e/current/memory-chat-short/alloc-before.pprof docs/artifacts/performance-v1.6.2-vs-5a8115e/current/memory-chat-short/alloc-after.pprof"
+  },
+  {
+    "label": "after · 5a8115e · memory-image2 · alloc_space · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/after-memory-image2.png",
+    "profile": "current/memory-image2/alloc-after.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=alloc_space -base docs/artifacts/performance-v1.6.2-vs-5a8115e/current/memory-image2/alloc-before.pprof docs/artifacts/performance-v1.6.2-vs-5a8115e/current/memory-image2/alloc-after.pprof"
+  },
+  {
+    "label": "after · 5a8115e · memory-stream256 · alloc_space · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/after-memory-stream256.png",
+    "profile": "current/memory-stream256/alloc-after.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=alloc_space -base docs/artifacts/performance-v1.6.2-vs-5a8115e/current/memory-stream256/alloc-before.pprof docs/artifacts/performance-v1.6.2-vs-5a8115e/current/memory-stream256/alloc-after.pprof"
+  },
+  {
+    "label": "before · 8f50807 · cpu-events · cpu · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/before-cpu-events.png",
+    "profile": "baseline-legacy/cpu-events/cpu.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=cpu docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline-legacy/cpu-events/cpu.pprof"
+  },
+  {
+    "label": "before · 8f50807 · cpu-image31 · cpu · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/before-cpu-image31.png",
+    "profile": "baseline-legacy/cpu-image31/cpu.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=cpu docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline-legacy/cpu-image31/cpu.pprof"
+  },
+  {
+    "label": "before · 8f50807 · cpu-nodes · cpu · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/before-cpu-nodes.png",
+    "profile": "baseline-legacy/cpu-nodes/cpu.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=cpu docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline-legacy/cpu-nodes/cpu.pprof"
+  },
+  {
+    "label": "before · 8f50807 · memory-events · alloc_space · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/before-memory-events.png",
+    "profile": "baseline-legacy/memory-events/alloc-after.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=alloc_space -base docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline-legacy/memory-events/alloc-before.pprof docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline-legacy/memory-events/alloc-after.pprof"
+  },
+  {
+    "label": "before · 8f50807 · memory-image31 · alloc_space · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/before-memory-image31.png",
+    "profile": "baseline-legacy/memory-image31/alloc-after.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=alloc_space -base docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline-legacy/memory-image31/alloc-before.pprof docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline-legacy/memory-image31/alloc-after.pprof"
+  },
+  {
+    "label": "before · 8f50807 · memory-nodes · alloc_space · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/before-memory-nodes.png",
+    "profile": "baseline-legacy/memory-nodes/alloc-after.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=alloc_space -base docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline-legacy/memory-nodes/alloc-before.pprof docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline-legacy/memory-nodes/alloc-after.pprof"
+  },
+  {
+    "label": "after · 5a8115e · cpu-events · cpu · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/after-cpu-events.png",
+    "profile": "current-legacy/cpu-events/cpu.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=cpu docs/artifacts/performance-v1.6.2-vs-5a8115e/current-legacy/cpu-events/cpu.pprof"
+  },
+  {
+    "label": "after · 5a8115e · cpu-image31 · cpu · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/after-cpu-image31.png",
+    "profile": "current-legacy/cpu-image31/cpu.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=cpu docs/artifacts/performance-v1.6.2-vs-5a8115e/current-legacy/cpu-image31/cpu.pprof"
+  },
+  {
+    "label": "after · 5a8115e · cpu-nodes · cpu · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/after-cpu-nodes.png",
+    "profile": "current-legacy/cpu-nodes/cpu.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=cpu docs/artifacts/performance-v1.6.2-vs-5a8115e/current-legacy/cpu-nodes/cpu.pprof"
+  },
+  {
+    "label": "after · 5a8115e · memory-events · alloc_space · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/after-memory-events.png",
+    "profile": "current-legacy/memory-events/alloc-after.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=alloc_space -base docs/artifacts/performance-v1.6.2-vs-5a8115e/current-legacy/memory-events/alloc-before.pprof docs/artifacts/performance-v1.6.2-vs-5a8115e/current-legacy/memory-events/alloc-after.pprof"
+  },
+  {
+    "label": "after · 5a8115e · memory-image31 · alloc_space · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/after-memory-image31.png",
+    "profile": "current-legacy/memory-image31/alloc-after.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=alloc_space -base docs/artifacts/performance-v1.6.2-vs-5a8115e/current-legacy/memory-image31/alloc-before.pprof docs/artifacts/performance-v1.6.2-vs-5a8115e/current-legacy/memory-image31/alloc-after.pprof"
+  },
+  {
+    "label": "after · 5a8115e · memory-nodes · alloc_space · whole gateway (unfiltered)",
+    "png": "comparison/flamegraphs/after-memory-nodes.png",
+    "profile": "current-legacy/memory-nodes/alloc-after.pprof",
+    "command": "go tool pprof -http=127.0.0.1:0 -sample_index=alloc_space -base docs/artifacts/performance-v1.6.2-vs-5a8115e/current-legacy/memory-nodes/alloc-before.pprof docs/artifacts/performance-v1.6.2-vs-5a8115e/current-legacy/memory-nodes/alloc-after.pprof"
+  }
+]
