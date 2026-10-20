@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/storagequery"
 )
 
 // modelColumns 是 models 行读取的统一列清单（含 enabled/origin/capability_source）。
@@ -86,31 +87,23 @@ func (s *Store) ListGroups(ctx context.Context) ([]ModelGroup, error) {
 		return nil, err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT id, name, enabled, strategy, max_retries, retry_interval, max_concurrency, daily_limit_max_requests, daily_limit_max_tokens, type, max_tokens, vision_capable, tools_capable FROM model_groups ORDER BY name`)
+	queries := storagequery.New(tx)
+	groupRows, err := queries.ListGroups(ctx)
 	if err != nil {
 		return nil, err
 	}
-	items := []ModelGroup{}
-	for rows.Next() {
-		var item ModelGroup
-		var enabled, vision, tools int
-		if err := rows.Scan(&item.ID, &item.Name, &enabled, &item.Strategy, &item.MaxRetries, &item.RetryInterval, &item.MaxConcurrency, &item.DailyLimitMaxRequests, &item.DailyLimitMaxTokens, &item.Type, &item.MaxTokens, &vision, &tools); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		item.Enabled = sqlIntToBool(enabled)
-		item.VisionCapable = sqlIntToBool(vision)
-		item.ToolsCapable = sqlIntToBool(tools)
+	items := make([]ModelGroup, 0, len(groupRows))
+	for _, row := range groupRows {
 		// Models 必须以空数组而非 nil 序列化：前端 groups 列表直接调用
 		// group.models.slice(...)，nil 会被 JSON 编码为 null 并导致整页崩溃。
-		item.Models = []string{}
-		items = append(items, item)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+		items = append(items, ModelGroup{
+			ID: row.ID, Name: row.Name, Enabled: sqlIntToBool(row.Enabled),
+			Strategy: row.Strategy, MaxRetries: row.MaxRetries, RetryInterval: row.RetryInterval,
+			MaxConcurrency: row.MaxConcurrency, DailyLimitMaxRequests: row.DailyLimitMaxRequests,
+			DailyLimitMaxTokens: row.DailyLimitMaxTokens, Type: row.Type, MaxTokens: row.MaxTokens,
+			VisionCapable: sqlIntToBool(row.VisionCapable), ToolsCapable: sqlIntToBool(row.ToolsCapable),
+			Models: []string{},
+		})
 	}
 
 	byID := make(map[string]int, len(items))
@@ -119,25 +112,14 @@ func (s *Store) ListGroups(ctx context.Context) ([]ModelGroup, error) {
 	}
 	// Keep disabled-source and unresolved members: editing an unchanged group
 	// must not silently delete them. Scheduling filters sources separately.
-	modelRows, err := tx.QueryContext(ctx, `SELECT group_id, model_id, source_id FROM model_group_models ORDER BY group_id, position`)
+	modelRows, err := queries.ListGroupMembers(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for modelRows.Next() {
-		var groupID, id, sourceID string
-		if err := modelRows.Scan(&groupID, &id, &sourceID); err != nil {
-			modelRows.Close()
-			return nil, err
+	for _, row := range modelRows {
+		if i, exists := byID[row.GroupID]; exists {
+			items[i].Models = append(items[i].Models, row.SourceID+":"+row.ModelID)
 		}
-		if i, exists := byID[groupID]; exists {
-			items[i].Models = append(items[i].Models, sourceID+":"+id)
-		}
-	}
-	if err := modelRows.Close(); err != nil {
-		return nil, err
-	}
-	if err := modelRows.Err(); err != nil {
-		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err

@@ -1,0 +1,15 @@
+version: "2"
+sql:
+  - engine: sqlite
+    schema: storage/sql/schema.sql
+    queries: storage/sql/queries.sql
+    gen:
+      go:
+        package: storagequery
+        out: internal/storagequery
+        sql_package: database/sql
+        emit_empty_slices: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: INTEGER
+            go_type: int
