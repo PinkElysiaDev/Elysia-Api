@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -9,7 +10,9 @@ import (
 // encodeValueContainer handles only closed containers of validated values.
 // Arbitrary Go objects use the shared Sonic codec.
 func encodeValueContainer(value any) (Value, bool) {
-	var keys []string
+	var keyStorage, partStorage [16]string
+	keys := keyStorage[:0]
+	var object Object
 	var items []Value
 	var isObject bool
 	switch container := value.(type) {
@@ -18,11 +21,14 @@ func encodeValueContainer(value any) (Value, bool) {
 			return Value{raw: "null"}, true
 		}
 		isObject = true
-		keys = sortedKeys(container)
-		items = make([]Value, len(keys))
-		for index, key := range keys {
-			items[index] = container[key]
+		object = container
+		if len(container) > len(keyStorage) {
+			keys = make([]string, 0, len(container))
 		}
+		for key := range container {
+			keys = append(keys, key)
+		}
+		slices.Sort(keys)
 	case []Value:
 		if container == nil {
 			return Value{raw: "null"}, true
@@ -38,7 +44,19 @@ func encodeValueContainer(value any) (Value, bool) {
 			return Value{}, false
 		}
 	}
-	parts := make([]string, len(items))
+	for _, item := range object {
+		if item.IsZero() {
+			return Value{}, false
+		}
+	}
+	count := len(items)
+	if isObject {
+		count = len(keys)
+	}
+	parts := partStorage[:min(count, len(partStorage))]
+	if count > len(partStorage) {
+		parts = make([]string, count)
+	}
 	length := 2
 	add := func(count int) bool {
 		if count > int(^uint(0)>>1)-length {
@@ -47,15 +65,19 @@ func encodeValueContainer(value any) (Value, bool) {
 		length += count
 		return true
 	}
-	for index, item := range items {
+	for index := range count {
+		var item Value
+		if isObject {
+			item = object[keys[index]]
+		} else {
+			item = items[index]
+		}
 		parts[index] = compactValueString(item.raw)
 		if !add(len(parts[index])) || index > 0 && !add(1) {
 			return Value{}, false
 		}
 		if isObject {
-			key, _ := sonic.ConfigStd.Marshal(keys[index])
-			keys[index] = string(key)
-			if !add(len(key)) || !add(1) {
+			if !add(jsonStringBytes(keys[index])) || !add(1) {
 				return Value{}, false
 			}
 		}
@@ -72,7 +94,15 @@ func encodeValueContainer(value any) (Value, bool) {
 			output.WriteByte(',')
 		}
 		if isObject {
-			output.WriteString(keys[index])
+			key := keys[index]
+			if jsonStringBytes(key) == len(key)+2 {
+				output.WriteByte('"')
+				output.WriteString(key)
+				output.WriteByte('"')
+			} else {
+				encoded, _ := sonic.ConfigStd.MarshalToString(key)
+				output.WriteString(encoded)
+			}
 			output.WriteByte(':')
 		}
 		output.WriteString(part)
@@ -92,6 +122,6 @@ func compactValueString(raw string) string {
 		return raw
 	}
 	// Use the shared codec for exceptional spellings and custom Marshaler output.
-	encoded, _ := sonic.ConfigStd.Marshal(Value{raw: raw})
-	return string(encoded)
+	encoded, _ := sonic.ConfigStd.MarshalToString(Value{raw: raw})
+	return ownEncodedString(encoded)
 }

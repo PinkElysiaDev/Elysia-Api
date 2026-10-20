@@ -49,12 +49,17 @@ func TestMCPOfficialClient(t *testing.T) {
 	})
 	var progressMu sync.Mutex
 	var progress []mcp.ProgressNotificationParams
+	progressReceived := make(chan struct{}, 1)
 	client := mcp.NewClient(&mcp.Implementation{Name: "migration-test", Version: "1"}, &mcp.ClientOptions{
 		Capabilities: &mcp.ClientCapabilities{},
 		ProgressNotificationHandler: func(_ context.Context, req *mcp.ProgressNotificationClientRequest) {
 			progressMu.Lock()
 			defer progressMu.Unlock()
 			progress = append(progress, *req.Params)
+			select {
+			case progressReceived <- struct{}{}:
+			default:
+			}
 		},
 	})
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -85,10 +90,13 @@ func TestMCPOfficialClient(t *testing.T) {
 	if text, ok := result.Content[0].(*mcp.TextContent); !ok || !strings.Contains(text.Text, "sdk-group") {
 		t.Fatalf("partial output missing from text: %+v", result)
 	}
-	progressMu.Lock()
-	if len(progress) == 0 {
-		t.Error("missing progress notifications")
+	// SDK notification handlers may run after the CallTool response arrives.
+	select {
+	case <-progressReceived:
+	case <-ctx.Done():
+		t.Fatal("missing progress notifications:", ctx.Err())
 	}
+	progressMu.Lock()
 	for i, notification := range progress {
 		if notification.ProgressToken != "sdk-progress" || notification.Progress != float64(i+1) || notification.Message == "" {
 			t.Errorf("progress %d: %+v", i, notification)

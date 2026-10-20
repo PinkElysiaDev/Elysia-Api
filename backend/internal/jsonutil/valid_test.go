@@ -1,8 +1,9 @@
 package jsonutil
 
 import (
-	"encoding/json" // Independent validation oracle.
 	"testing"
+
+	"github.com/bytedance/sonic/decoder"
 )
 
 func TestValidRejectsMalformedJSON(t *testing.T) {
@@ -38,7 +39,13 @@ func FuzzValidCompatibility(f *testing.F) {
 			t.Skip()
 		}
 		data := backing[:min(len(backing), int(length))]
-		if got, want := Valid(data), json.Valid(data); got != want {
+		// Retain the former materializing validator as an independent oracle.
+		reader := decoder.NewDecoder(string(data))
+		reader.UseNumber()
+		reader.ValidateString()
+		var decoded any
+		want := reader.Decode(&decoded) == nil && reader.CheckTrailings() == nil
+		if got := Valid(data); got != want {
 			t.Fatalf("Valid(%q) = %v; want %v", data, got, want)
 		}
 	})

@@ -134,3 +134,27 @@ GOMAXPROCS=4 go test -tags=sonic -pgo=off \
 `EncodeConvertedFrame` 用解码时的 native digest 检查转换后事件，随后立即编码，省去单独序列化原始批次及调用内重复比较。比较结果不会缓存到公开可变的事件对象；普通 `EncodeFrame` 每次仍检测外部修改。修改过或经过缓冲的网关批次显式重新编码。
 
 回归覆盖四种内置协议的文本/工具流 typed/JSON 差分、归一化与资源/取消边界、native 修改检测、并发执行实例隔离及 generation/revision 更新。第三阶段性能对照使用第二阶段的干净提交及相同 HTTP 矩阵、环境。
+
+## 独占存储与有界工作区
+
+最后阶段减少大载荷处理，并将复用限制在明确的所有者内：
+
+- JSON 语法校验使用标准库扫描器，不再解码临时对象树。入口仍验证并复制输入，数字保留原拼写，各协议资源预算继续独立强制检查。原有严格 Sonic 解码器保留为差分 fuzz 对照。
+- 通用 Value 与严格语义契约使用单次字符串解码，保留数字精度、字符串复制、字符串校验、未知字段拒绝和尾随文档拒绝。短字符串不会借用并长期保留整个输入。
+- JSON 字符串定位改用批量引号搜索和反斜杠奇偶判断；资源计量直接统计 HTML/行分隔符转义膨胀，保留无效 UTF-8 替换语义。不可变载荷即使共享，每次出现仍完整计入预算。
+- 深克隆直接写入目标结构体与切片元素，只分配目标可变对象图。Reasoning 验证使用局部请求头，因为 normalizer 自己复制参数后才修改；候选恢复只在启用恢复时复制输入，转换结果仍独立拥有可变容器。
+- JSON 容器在 16 个键/元素以内使用栈内临时数组，结果字符串精确预分配；更大的临时数组只属于本次调用。普通键直接写入，需要转义的键继续使用标准配置编码器。4/16 字段辅助基准目标为返回字符串的 **1 次分配**，不是整个 HTTP 编码零分配。
+- 小编码结果直接使用不可变字符串 API；超过 64 KiB 的编码结果分离存储，避免长期保留编码器扩容后的多余容量。
+- 每条网关流复用容量不超过 16 的 accepted-event 切片；包括失败在内的每次返回都会清理载荷引用，更大的 backing array 会丢弃。输出帧不借用该存储。
+
+本阶段不新增应用级跨请求缓冲池：常见容器的临时空间在栈上，事件空间归单条流所有，而返回的不可变 JSON 必须独占字节。池化这些输出需要额外复制或改变生命周期契约。编码库及标准库扫描器继续使用自身的内部复用策略，冷启动和池未命中成本仍纳入测量。
+
+```sh
+cd backend
+GOMAXPROCS=4 GOGC=100 GOMEMLIMIT=2GiB go test -tags=sonic -pgo=off \
+  ./protocol ./internal/jsonutil -run '^$' \
+  -bench '^(BenchmarkValueDecodeLarge|BenchmarkValueContainerEncoding|BenchmarkSemanticClone|BenchmarkStrictJSONValidation|BenchmarkTypedResourceCheck)$' \
+  -benchmem -benchtime=300ms -count=5
+```
+
+回归测试在实际 replay 失败路径检查事件载荷引用清理和超限容量丢弃；克隆隔离遍历嵌套 map、slice、pointer；fuzz 覆盖严格语法、转义引号边界和精确资源计量。最终 HTTP 结果分别与第三阶段、第一阶段对照，并如实记录仍存在的时延及峰值回退。

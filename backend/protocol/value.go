@@ -3,7 +3,6 @@
 package protocol
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -15,6 +14,20 @@ import (
 // Value is immutable JSON. Its zero value means absent; JSON null, false, zero
 // and empty containers are distinct values. Numbers retain their JSON spelling.
 type Value struct{ raw string }
+
+// Match ConfigStd's decoder ownership/validation options while preserving
+// interface numbers. Direct string decoding avoids streaming-buffer growth.
+var numberValueDecoder = sonic.Config{UseNumber: true, CopyString: true, ValidateString: true}.Froze()
+
+// Small codec results already have compact owned storage. Large codec results
+// can expose a grown backing buffer through their immutable string; detach them
+// so long-lived Values cannot retain excess encoder capacity.
+func ownEncodedString(raw string) string {
+	if len(raw) > 64<<10 {
+		return strings.Clone(raw)
+	}
+	return raw
+}
 
 // ParseValue validates and copies one JSON value without converting numbers.
 func ParseValue(raw []byte) (Value, error) {
@@ -29,17 +42,17 @@ func EncodeValue(value any) (Value, error) {
 	if encoded, handled := encodeValueContainer(value); handled {
 		return encoded, nil
 	}
-	raw, err := sonic.ConfigStd.Marshal(value)
+	raw, err := sonic.ConfigStd.MarshalToString(value)
 	if err != nil {
 		return Value{}, err
 	}
-	return Value{raw: string(raw)}, nil
+	return Value{raw: ownEncodedString(raw)}, nil
 }
 
 // StringValue constructs a JSON string; strings cannot fail JSON encoding.
 func StringValue(value string) Value {
-	raw, _ := sonic.ConfigStd.Marshal(value)
-	return Value{raw: string(raw)}
+	raw, _ := sonic.ConfigStd.MarshalToString(value)
+	return Value{raw: ownEncodedString(raw)}
 }
 
 // IsString compares decoded string content without changing the stored wire bytes.
@@ -110,9 +123,7 @@ func (value Value) Decode(target any) error {
 		*Request, *Response, *Event, *[]Event:
 		return sonic.ConfigStd.UnmarshalFromString(value.raw, target)
 	}
-	decoder := sonic.ConfigStd.NewDecoder(bytes.NewBufferString(value.raw))
-	decoder.UseNumber()
-	return decoder.Decode(target)
+	return numberValueDecoder.UnmarshalFromString(value.raw, target)
 }
 
 // MarshalJSON encodes a present value. Use omitzero on optional struct fields;

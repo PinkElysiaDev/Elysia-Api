@@ -279,24 +279,18 @@ func (meter *typedMeter) scanRaw(raw string) bool {
 		case '"':
 			end := jsonStringEnd(raw, offset)
 			length := end - offset
-			for index := offset + 1; index < end-1; index++ {
-				switch raw[index] {
-				case '\\':
-					index++
-				case '<', '>', '&':
-					length += 5
-				default:
-					if raw[index] < utf8.RuneSelf {
-						continue
-					}
-					character, width := utf8.DecodeRuneInString(raw[index : end-1])
-					if width == 1 {
-						// Sonic validates Marshaler strings and emits \ufffd.
+			text := raw[offset+1 : end-1]
+			// Literal HTML and line separators are always unescaped in valid
+			// JSON; their escaped spellings contain no matching literal bytes.
+			length += 5 * (strings.Count(text, "<") + strings.Count(text, ">") + strings.Count(text, "&"))
+			length += 3 * (strings.Count(text, "\u2028") + strings.Count(text, "\u2029"))
+			if !utf8.ValidString(text) {
+				for index := 0; index < len(text); {
+					_, width := utf8.DecodeRuneInString(text[index:])
+					if width == 1 && text[index] >= utf8.RuneSelf {
 						length += 5
-					} else if character == '\u2028' || character == '\u2029' {
-						length += 3
 					}
-					index += width - 1
+					index += width
 				}
 			}
 			if !meter.scalar(length) {
