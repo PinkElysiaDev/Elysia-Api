@@ -42,7 +42,7 @@ func (s *Server) submitGatewayJob(c *gin.Context, record *usageRecord, plan *gat
 		s.failGateway(c, record, 503, err)
 		return false
 	}
-	release, err := s.acquireRateLimit(plan.group, s.estimateProtocolTokens(candidate.prepared))
+	release, err := s.limiter.Acquire(plan.group, s.estimateProtocolTokens(candidate.prepared))
 	if err != nil {
 		s.failGateway(c, record, 429, err)
 		return false

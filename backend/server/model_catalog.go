@@ -19,7 +19,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/internal/atomicfile"
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/internal/outbound"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -215,7 +215,7 @@ func catalogResolveURL(cfg config.ModelCatalogConfig) string {
 
 // catalogHTTPClient uses the catalog override when set, otherwise the global proxy.
 func catalogHTTPClient(proxy string) *http.Client {
-	return &http.Client{Timeout: modelCatalogFetchTimeout, Transport: relay.NewSecureTransport(proxy)}
+	return &http.Client{Timeout: modelCatalogFetchTimeout, Transport: outbound.NewSecureTransport(proxy)}
 }
 
 // ensureLoaded 确保目录数据可用：数据过期时**异步**触发后台拉取，立即返回——

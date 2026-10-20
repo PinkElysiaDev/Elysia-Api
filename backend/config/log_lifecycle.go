@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/elysia-api/backend/internal/dbpath"
 	"github.com/elysia-api/backend/logging"
-	"github.com/elysia-api/backend/storage"
 )
 
 // ErrDatabasePath identifies invalid database paths independently of HTTP errors.
@@ -45,7 +45,7 @@ func (c *Config) GetLogDatabasePath() string {
 	if c.LogDatabasePath != "" {
 		return c.LogDatabasePath
 	}
-	return storage.DefaultLogPath(c.DatabasePath)
+	return dbpath.DefaultLogPath(c.DatabasePath)
 }
 
 func (c *Config) SetLogDatabasePath(path string) {
@@ -98,7 +98,7 @@ func (c *Config) validateLogSettings() error {
 	default:
 		return fmt.Errorf("logFormat must be auto/json/console")
 	}
-	if err := storage.ValidateDatabasePaths(c.DatabasePath, c.GetLogDatabasePath()); err != nil {
+	if err := dbpath.Validate(c.DatabasePath, c.GetLogDatabasePath()); err != nil {
 		return fmt.Errorf("%w: %w", ErrDatabasePath, err)
 	}
 	return nil

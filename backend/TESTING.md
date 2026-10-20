@@ -25,6 +25,19 @@ go test -tags=sonic -parallel=1 -count=1 -timeout=30m ./...
 包含分配次数、累计字节、GC、逐请求延迟、采样峰值和自然空闲恢复曲线。
 场景、参数、测量边界与证据说明见[性能基准](../docs/backend-performance.md)。
 
+## 后端结构与组件边界
+
+```sh
+go test -tags=sonic ./internal/architecture
+go test -tags=sonic -race -shuffle=on ./internal/routing ./internal/outbound ./config ./storage ./relay ./server
+go vet -tags=sonic ./...
+```
+
+架构测试检查包依赖方向、Gin 的 HTTP 边界以及命令行/进程退出归属。
+路由组件测试覆盖加载失效代际、并发合并、失败重试、模型/Key 游标、跨午夜配额与幂等释放；
+现有 server 集成测试继续覆盖真实存储、凭据撤销、故障转移、鉴权与关停。
+配置导入本身不创建文件；启动仍通过 `go run -tags=sonic . --config <path>` 显式执行。
+
 ## 并行与隔离
 
 `-parallel` 限制每个测试进程内的并行用例数，默认使用 `GOMAXPROCS`。

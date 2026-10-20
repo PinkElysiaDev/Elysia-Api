@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
-	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/internal/atomicfile"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -48,7 +48,7 @@ type mediaPayload struct{ content []byte }
 
 func (payload *mediaPayload) size() int { return len(payload.content) }
 func (payload *mediaPayload) writeFile(path string) error {
-	return config.WriteFileAtomic(path, payload.content, 0600)
+	return atomicfile.WriteFile(path, payload.content, 0600)
 }
 
 // assetSink 挂在 usageRecord 上收集外置媒体；按 Hash 去重，同一图片出现在

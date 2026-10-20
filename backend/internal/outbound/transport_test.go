@@ -1,4 +1,4 @@
-package relay
+package outbound
 
 import (
 	"net"
@@ -10,7 +10,7 @@ import (
 // secureControl 在禁止列表生效时应拒绝私网/保留 IP（连接时校验，关掉 rebinding 窗口）。
 func TestSecureControlRejectsPrivateWhenNotAllowed(t *testing.T) {
 	SetAllowPrivateDial(false)
-	defer SetAllowPrivateDial(true) // 还原供其余测试使用（TestMain 默认开）
+	defer SetAllowPrivateDial(false)
 	t.Cleanup(func() { SetDeniedIPRanges(DefaultDeniedIPRanges) })
 
 	rejects := []string{
@@ -33,6 +33,7 @@ func TestSecureControlRejectsPrivateWhenNotAllowed(t *testing.T) {
 // toggle 打开时（测试模式）放行私网，否则 httptest 的 127.0.0.1 上游无法连通。
 func TestSecureControlAllowsPrivateWhenToggled(t *testing.T) {
 	SetAllowPrivateDial(true)
+	t.Cleanup(func() { SetAllowPrivateDial(false) })
 	if err := secureControl("tcp", "127.0.0.1:8080", syscall.RawConn(nil)); err != nil {
 		t.Fatalf("toggle on should allow loopback, got %v", err)
 	}
@@ -40,7 +41,7 @@ func TestSecureControlAllowsPrivateWhenToggled(t *testing.T) {
 
 func TestSecureControlRejectsNonIP(t *testing.T) {
 	SetAllowPrivateDial(false)
-	defer SetAllowPrivateDial(true)
+	defer SetAllowPrivateDial(false)
 	if err := secureControl("tcp", "not-an-ip", syscall.RawConn(nil)); err == nil || !strings.Contains(err.Error(), "non-IP") {
 		t.Fatalf("expected non-IP address to be refused, got %v", err)
 	}

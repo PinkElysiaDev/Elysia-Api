@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/elysia-api/backend/internal/outbound"
 	"github.com/elysia-api/backend/protocol"
 )
 
@@ -20,7 +21,7 @@ type ProtocolTransport struct {
 
 // NewProtocolTransport creates clients with shared outbound address policy.
 func NewProtocolTransport(timeout time.Duration) *ProtocolTransport {
-	return &ProtocolTransport{client: newDynamicTimeoutClient(timeout), streamClient: &http.Client{Transport: newSecureTransport()}}
+	return &ProtocolTransport{client: newDynamicTimeoutClient(timeout), streamClient: &http.Client{Transport: outbound.NewSecureTransport()}}
 }
 
 // SetTimeout replaces the HTTP client atomically; active streams retain their

@@ -20,9 +20,14 @@ Python 与视觉依赖仅用于重做登录素材，常规前端和发行构建�
 ```text
 backend/
   agent/       # Agent engine
-  config/      # Bootstrap and runtime policies
+  config/      # Explicit configuration loading and runtime policies
+  internal/
+    routing/   # Route snapshots, scheduling and quotas
+    outbound/  # Shared proxy and address policy
+    dbpath/    # Database filesystem rules
+    architecture/ # Dependency-boundary tests
   protocol/    # Protocol definitions, semantics, conversion and validation
-  relay/       # Outbound HTTP/WebSocket and legacy definition import
+  relay/       # Protocol HTTP/WebSocket transports and timeouts
   server/      # HTTP routes, auth, CLI, orchestration
   storage/     # SQLite
   webui/       # Embedded frontend assets
@@ -30,6 +35,8 @@ packages/webui/ # React + Vite
 scripts/       # Builds, native app, asset tooling
 docs/          # Documentation
 ```
+
+包依赖、状态所有权及新增代码的放置约定见[项目架构](architecture.md#依赖方向与职责边界)。
 
 ## 本地开发
 

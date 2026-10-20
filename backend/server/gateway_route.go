@@ -471,11 +471,11 @@ func (s *Server) bindGatewayRequest(c *gin.Context, view protocol.RegistryView, 
 }
 
 func (s *Server) collectGatewayCandidates(view protocol.RegistryView, bindings []storage.ProtocolBinding, plan *gatewayPlan, record *usageRecord) error {
-	models := s.buildCandidates(plan.group)
+	models := s.scheduler.Candidates(plan.group)
 	if sticky := s.affinity.get(record.KeyHash, plan.group.ID); sticky != "" {
 		models = applyAffinity(models, sticky)
 	}
-	models = s.expandCandidatesByKeyStrategy(models)
+	models = s.scheduler.ExpandKeys(models)
 	var diagnostics []protocol.ConversionIssue
 	for _, model := range models {
 		candidate, err := makeGatewayCandidate(view, bindings, model, plan.operation.Transport, plan.operation.Kind)

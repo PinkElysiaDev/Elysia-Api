@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -106,7 +107,7 @@ func (s *Server) verifyConversionBindings(ctx context.Context, view conversionRe
 	if err != nil {
 		return nil, err
 	}
-	sourceKeys := collectSourceKeys(sources)
+	sourceKeys := routing.IndexSources(sources)
 	for i := range updated {
 		b := &updated[i]
 		if !scope.includes(b.Key()) {
@@ -180,11 +181,11 @@ func (d conversionDefinitions) Pin(id string) (*protocol.Compiled, bool) {
 	return v, ok
 }
 
-func (s *Server) bindingModelReferences(binding storage.ProtocolBinding, models []storage.Model, sourceKeys map[string]sourceKeyMeta) []config.ModelRef {
+func (s *Server) bindingModelReferences(binding storage.ProtocolBinding, models []storage.Model, sourceKeys routing.Sources) []config.ModelRef {
 	references := []config.ModelRef{}
 	for _, model := range models {
 		if model.SourceID == binding.SourceID && (binding.Kind == "source" || model.ID == binding.ModelID) {
-			if ref, ok := s.resolveModelSource(model, sourceKeys); ok {
+			if ref, ok := sourceKeys.Resolve(model); ok {
 				references = append(references, ref)
 			}
 		}

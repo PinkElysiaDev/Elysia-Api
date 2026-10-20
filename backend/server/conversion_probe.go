@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
@@ -74,11 +75,11 @@ func (s *Server) adminConversionSignatureProbe(c *gin.Context) {
 		respondProtocolError(c, err)
 		return
 	}
-	sourceKeys := collectSourceKeys(sources)
+	sourceKeys := routing.IndexSources(sources)
 	var model config.ModelRef
 	for _, m := range models {
 		if m.ID == input.ModelID && m.SourceID == input.SourceID {
-			model, _ = s.resolveModelSource(m, sourceKeys)
+			model, _ = sourceKeys.Resolve(m)
 			break
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -89,7 +90,7 @@ func verifyFixtureBinding(t *testing.T, s *Server, binding storage.ProtocolBindi
 	if err != nil {
 		t.Fatal(err)
 	}
-	checks, err := s.resolveBindingConversions(t.Context(), view, policies, bindings, binding, s.bindingModelReferences(binding, models, collectSourceKeys(sources)))
+	checks, err := s.resolveBindingConversions(t.Context(), view, policies, bindings, binding, s.bindingModelReferences(binding, models, routing.IndexSources(sources)))
 	if err != nil {
 		t.Fatal(err)
 	}

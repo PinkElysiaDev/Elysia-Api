@@ -137,7 +137,7 @@ func TestExpandCandidatesByKeyStrategy(t *testing.T) {
 		{ID: "m1", APIKeys: []string{"k1", "k2"}, KeyStrategy: string(storage.KeyStrategyPriority), SourceID: "src1"},
 		{ID: "m2", APIKeys: []string{"k3", "k4"}, KeyStrategy: string(storage.KeyStrategyPriority), SourceID: "src1"},
 	}
-	expanded := s.expandCandidatesByKeyStrategy(priority)
+	expanded := s.scheduler.ExpandKeys(priority)
 	want := []struct{ id, key string }{
 		{"m1", "k1"}, {"m1", "k2"}, {"m2", "k3"}, {"m2", "k4"},
 	}
@@ -158,27 +158,27 @@ func TestExpandCandidatesByKeyStrategy(t *testing.T) {
 		{ID: "m1", APIKeys: []string{"k1", "k2"}, KeyStrategy: string(storage.KeyStrategyRoundRobin), SourceID: "src1"},
 		{ID: "m2", APIKeys: []string{"k1", "k2"}, KeyStrategy: string(storage.KeyStrategyRoundRobin), SourceID: "src1"},
 	}
-	first := s.expandCandidatesByKeyStrategy(rr)
+	first := s.scheduler.ExpandKeys(rr)
 	if first[0].APIKey == first[1].APIKey {
 		t.Fatalf("round-robin must advance key per candidate within one request: %s vs %s", first[0].APIKey, first[1].APIKey)
 	}
 	// 两个候选消耗两次游标推进（k1、k2），下一次请求回到 k1（2-key 环绕）。
-	second := s.expandCandidatesByKeyStrategy(rr)
+	second := s.scheduler.ExpandKeys(rr)
 	if second[0].APIKey != "k1" || second[1].APIKey != "k2" {
 		t.Fatalf("round-robin must wrap the key ring: got %s,%s", second[0].APIKey, second[1].APIKey)
 	}
 	// 单候选组：跨请求逐 key 轮转。
 	singleRR := []config.ModelRef{{ID: "m1", APIKeys: []string{"k1", "k2"}, KeyStrategy: string(storage.KeyStrategyRoundRobin), SourceID: "src2"}}
-	r1 := s.expandCandidatesByKeyStrategy(singleRR)
-	r2 := s.expandCandidatesByKeyStrategy(singleRR)
-	r3 := s.expandCandidatesByKeyStrategy(singleRR)
+	r1 := s.scheduler.ExpandKeys(singleRR)
+	r2 := s.scheduler.ExpandKeys(singleRR)
+	r3 := s.scheduler.ExpandKeys(singleRR)
 	if r1[0].APIKey != "k1" || r2[0].APIKey != "k2" || r3[0].APIKey != "k1" {
 		t.Fatalf("single-candidate round-robin must rotate across requests: %s,%s,%s", r1[0].APIKey, r2[0].APIKey, r3[0].APIKey)
 	}
 
 	// 单 key（含未配置策略）原样返回。
 	single := []config.ModelRef{{ID: "m1", APIKey: "k0", APIKeys: []string{"k0"}}}
-	out := s.expandCandidatesByKeyStrategy(single)
+	out := s.scheduler.ExpandKeys(single)
 	if len(out) != 1 || out[0].ID != "m1" || out[0].APIKey != "k0" {
 		t.Fatalf("single-key candidates must pass through, got %+v", out)
 	}

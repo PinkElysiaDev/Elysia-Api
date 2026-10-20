@@ -10,6 +10,18 @@ import (
 	"github.com/rs/zerolog"
 )
 
+func (s *Server) logVerbose(format string, args ...any) {
+	if s.config.IsVerboseLog() {
+		s.logEvent("debug").Msgf(format, args...)
+	}
+}
+
+// Operation events bypass the diagnostic persistence threshold.
+func (s *Server) logSystemEvent(level, message string, fields map[string]any) {
+	l := s.Logger().Component("server")
+	l.WithLevel(logging.ParseLevel(level)).Fields(fields).Str("event_kind", "operation").Msg(message)
+}
+
 func (s *Server) Logger() *logging.Logger {
 	if s.logger != nil {
 		return s.logger

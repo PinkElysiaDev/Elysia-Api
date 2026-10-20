@@ -3,6 +3,7 @@ package server
 import (
 	"unicode/utf8"
 
+	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
 )
@@ -150,7 +151,7 @@ func observeHostedTools(record *usageRecord, compiled *protocol.Compiled, body [
 
 func (s *Server) estimateGatewayReservation(plan *gatewayPlan) int {
 	estimate := 0
-	for _, candidate := range plan.candidates[:maxAttempts(plan.group.MaxRetries, len(plan.candidates))] {
+	for _, candidate := range plan.candidates[:routing.MaxAttempts(plan.group.MaxRetries, len(plan.candidates))] {
 		request := candidate.prepared
 		if request == nil {
 			request = plan.request

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -301,7 +302,7 @@ func TestDiscoveryRegressionDisabledPoolBlocksAllConsumers(t *testing.T) {
 		t.Fatal(err)
 	}
 	model := storage.Model{ID: "alpha", Name: "alpha", SourceID: src.ID, APIKey: "snapshot", Enabled: true, Available: true}
-	if _, ok := s.resolveModelSource(model, collectSourceKeys([]storage.ModelSource{src})); ok {
+	if _, ok := routing.IndexSources([]storage.ModelSource{src}).Resolve(model); ok {
 		t.Fatal("routing/health probe fell back to a disabled credential")
 	}
 	if err := applyAgentPermittedKey(t.Context(), s.store, &model); err == nil {
@@ -312,7 +313,7 @@ func TestDiscoveryRegressionDisabledPoolBlocksAllConsumers(t *testing.T) {
 	if err := s.store.UpsertSource(t.Context(), src); err != nil {
 		t.Fatal(err)
 	}
-	ref, ok := s.resolveModelSource(model, collectSourceKeys([]storage.ModelSource{src}))
+	ref, ok := routing.IndexSources([]storage.ModelSource{src}).Resolve(model)
 	if !ok || ref.APIKey != "" {
 		t.Fatal("anonymous source should stay usable without snapshot credentials")
 	}

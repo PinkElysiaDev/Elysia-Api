@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -127,14 +128,14 @@ func (h *healthChecker) runOnce() {
 		h.server.logEvent("warn").Err(err).Msg("health check: failed to load current source credentials")
 		return
 	}
-	keyMeta := collectSourceKeys(sources)
+	keyMeta := routing.IndexSources(sources)
 	h.pruneStaleFailureKeys(models)
 
 	for _, model := range models {
 		if h.ctx.Err() != nil {
 			return
 		}
-		ref, hasCredential := h.server.resolveModelSource(model, keyMeta)
+		ref, hasCredential := keyMeta.Resolve(model)
 		if !hasCredential {
 			continue
 		}

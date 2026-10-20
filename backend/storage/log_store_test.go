@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/elysia-api/backend/internal/dbpath"
 )
 
 func TestLogDatabaseIsolationAndDurableBatch(t *testing.T) {
@@ -85,7 +87,7 @@ func TestLogDatabaseRejectsPathAliasesAndOldSchema(t *testing.T) {
 	}
 	parentAlias := filepath.Join(dir, "alias-dir")
 	if err := os.Symlink(dir, parentAlias); err == nil {
-		if err := ValidateDatabasePaths(filepath.Join(dir, "new.db"), filepath.Join(parentAlias, "new.db")); err == nil {
+		if err := dbpath.Validate(filepath.Join(dir, "new.db"), filepath.Join(parentAlias, "new.db")); err == nil {
 			t.Fatal("accepted symlinked parent")
 		}
 	}

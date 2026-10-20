@@ -38,8 +38,6 @@ func newProtocolAdminTestServer(t *testing.T) (*Server, string) {
 		config:                 cfg,
 		engine:                 gin.New(),
 		protocolTransport:      relay.NewProtocolTransport(10 * time.Second),
-		roundRobinIndex:        make(map[string]int),
-		rateLimits:             make(map[string]*rateLimitState),
 		affinity:               newAffinityCache(),
 		store:                  store,
 		skipOutboundValidation: true,

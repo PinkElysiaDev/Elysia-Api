@@ -2,7 +2,7 @@ package server
 
 import (
 	"github.com/elysia-api/backend/config"
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/internal/outbound"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,7 +20,7 @@ func TestRuntimeProxyPatchPreservesDenylistAndPersists(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &Server{config: cfg}
-	t.Cleanup(func() { relay.SetOutboundProxyURL(""); relay.SetDeniedIPRanges(relay.DefaultDeniedIPRanges) })
+	t.Cleanup(func() { outbound.SetOutboundProxyURL(""); outbound.SetDeniedIPRanges(outbound.DefaultDeniedIPRanges) })
 	save := func(body string, status int) {
 		t.Helper()
 		c, w := adminProtocolContext(http.MethodPut, "/runtime-config", body)

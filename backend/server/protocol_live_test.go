@@ -70,7 +70,7 @@ func newLiveGateway(t *testing.T, suite *liveSuite, target *protocol.Compiled) *
 	if failure != nil {
 		t.Fatal(failure)
 	}
-	models := server.expandCandidatesByKeyStrategy(server.buildCandidates(group))
+	models := server.scheduler.ExpandKeys(server.scheduler.Candidates(group))
 	if len(models) != 1 {
 		t.Fatal("live verification requires a single persisted model account")
 	}

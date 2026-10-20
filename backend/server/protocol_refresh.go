@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
@@ -256,7 +257,7 @@ func (s *Server) prepareProtocolRefresh(ctx context.Context, service *protocol.S
 	if err != nil {
 		return fail(err)
 	}
-	sourceKeys := collectSourceKeys(sources)
+	sourceKeys := routing.IndexSources(sources)
 	for _, b := range bindings {
 		c := plan.definitions[b.Binding.ProtocolID]
 		if b.Unbound || c == nil {

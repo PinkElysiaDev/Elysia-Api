@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -183,18 +184,18 @@ func TestHealthCheckerDisabledByDefault(t *testing.T) {
 }
 
 func TestProbeCredentialSelectionHonorsModelPermissions(t *testing.T) {
-	server := newHealthTestServer(t)
+	t.Parallel()
 	model := storage.Model{ID: "m", SourceID: "s", APIKey: "stale", BaseURL: "https://stale.invalid", Available: false}
 	sources := []storage.ModelSource{{ID: "s", BaseURL: "https://current.invalid", APIKeys: []storage.SourceAPIKey{
 		{Value: "wrong-model", AllowedModels: []string{"other"}},
 		{Value: "permitted", AllowedModels: []string{"m"}},
 	}}}
-	ref, ok := server.resolveModelSource(model, collectSourceKeys(sources))
+	ref, ok := routing.IndexSources(sources).Resolve(model)
 	if !ok || ref.APIKey != "permitted" || ref.BaseURL != sources[0].BaseURL {
 		t.Fatalf("probe used stale or unauthorized identity: %+v", ref)
 	}
 	sources[0].APIKeys = sources[0].APIKeys[:1]
-	if _, ok := server.resolveModelSource(model, collectSourceKeys(sources)); ok {
+	if _, ok := routing.IndexSources(sources).Resolve(model); ok {
 		t.Fatal("probe bypassed model permissions")
 	}
 }

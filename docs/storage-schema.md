@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
 
 | 字段 | 类型 | 约束 | 含义与读写 |
 | --- | --- | --- | --- |
-| key | TEXT | PK | 设置键；当前全库仅 `legacyConfigImported` 一键（旧 config 单次导入标记，server/store_bridge.go） |
+| key | TEXT | PK | 设置键，例如协议当前快照与运行时刷新回执；读取/写入接口见 `storage/store.go` |
 | value | TEXT | NOT NULL | `json.Marshal` 后的任意 JSON 值；写 `SetSetting`（UPSERT，store.go）/ 读 `GetSetting`（store.go） |
 | updated_at | TEXT | NOT NULL | RFC3339Nano |
 
@@ -79,7 +79,7 @@ ALTER TABLE model_sources ADD COLUMN cache_synthesis INTEGER NOT NULL DEFAULT 0
 | auto_fetch_models | INTEGER | DEFAULT 1 | 自动拉取模型；决定 key 的 FetchedModels（自动发现集）与 AllowedModels（手动分配集）哪个生效，二者互斥清空（sources.go） |
 | manual_models_json | TEXT（JSON） | DEFAULT '[]' | `[]Model` 手动模型权威集（明文 JSON） |
 | fetch_base_url | TEXT | DEFAULT '' | 模型列表拉取专用地址；空 = 与 base_url 一致 |
-| key_strategy | TEXT | DEFAULT 'single' | 枚举：`single`/`round-robin`/`random`/`priority`（types.go）；请求期展开候选（server/relay_retry.go） |
+| key_strategy | TEXT | DEFAULT 'single' | 枚举：`single`/`round-robin`/`random`/`priority`（types.go）；请求期展开候选（internal/routing/scheduler.go） |
 | cache_synthesis | INTEGER | DEFAULT 0 | 为声明 cache.breakpoints 的上游补结构断点的运维开关（migrate.go） |
 | enabled / created_at / updated_at | — | — | 常规 |
 
@@ -126,7 +126,7 @@ CREATE TABLE IF NOT EXISTS model_groups (id TEXT PRIMARY KEY, name TEXT NOT NULL
 | 字段 | 类型 | 约束 | 含义 |
 | --- | --- | --- | --- |
 | name | TEXT | **UNIQUE** | 组名（token 的 allowed_groups 按名引用；同名会令按名查找恒命中首个，故唯一） |
-| strategy | TEXT | DEFAULT 'round-robin' | 枚举：`round-robin`（游标轮询）/ `random`（随机起点环绕）/ `sequential`（失败按序回退）（server/relay_retry.go） |
+| strategy | TEXT | DEFAULT 'round-robin' | 枚举：`round-robin`（游标轮询）/ `random`（随机起点环绕）/ `sequential`（失败按序回退）（internal/routing/scheduler.go） |
 | max_retries / retry_interval | INTEGER | 3 / 1000 | 组内重试次数与间隔（ms） |
 | max_concurrency | INTEGER | DEFAULT 0 | 并发上限；0=不限（执行 server.go） |
 | daily_limit_max_requests / daily_limit_max_tokens | INTEGER | DEFAULT 0 | 每日请求/token 限额；0=不限 |

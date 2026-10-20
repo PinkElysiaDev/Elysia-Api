@@ -15,7 +15,7 @@ Migrated application-owned paths:
 - model-catalog cache publication;
 - validated protocol snapshot publication, using the adapter's `ReplaceFile` for the already-synced SQLite snapshot.
 
-The public `config.WriteFileAtomic` function remains as the compatibility boundary for callers; its implementation now delegates to the shared adapter. Ordinary test fixture writes and SQLite database creation are not converted because they are not application state publication.
+All callers use `internal/atomicfile.WriteFile` directly. The former `config.WriteFileAtomic` forwarding wrapper has been removed, so asset persistence no longer depends on the configuration package. Ordinary test fixture writes and SQLite database creation are not converted because they are not application state publication.
 
 ## Guarantees and boundaries
 

@@ -24,13 +24,17 @@ func TestTokenMutationConflictsAreAtomic(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			s := &Server{store: st, routeCacheLoaded: true}
+			s := &Server{store: st}
+			before := s.routeSnapshot()
+			if before == nil {
+				t.Fatal("initial route snapshot unavailable")
+			}
 			if kind == "admin" {
 				c, r := adminProtocolContext(http.MethodPut, "/tokens/first", `{"name":"first","newName":"second","enabled":false}`)
 				s.adminUpsertToken(c)
 				first, _, err := st.FindAPITokenByName(ctx, "first")
-				if err != nil || r.Code != 409 || !first.Enabled || !s.routeCacheLoaded {
-					t.Fatalf("partial mutation: code=%d enabled=%t cache=%t err=%v", r.Code, first.Enabled, s.routeCacheLoaded, err)
+				if err != nil || r.Code != 409 || !first.Enabled || s.routeSnapshot() != before {
+					t.Fatalf("partial mutation: code=%d enabled=%t err=%v", r.Code, first.Enabled, err)
 				}
 				t.Log("conflicting rename leaves DB and cache unchanged")
 			} else {
@@ -55,7 +59,7 @@ func TestCorruptTokenAuthorizationCannotPopulateRouteCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.invalidateRouteCache()
-	if _, isFound := s.findAccessToken("synthetic-restricted"); isFound || s.routeCacheLoaded {
+	if _, isFound := s.findAccessToken("synthetic-restricted"); isFound || s.routeSnapshot() != nil {
 		t.Fatal("corrupt authorization was accepted into the routing cache")
 	}
 }

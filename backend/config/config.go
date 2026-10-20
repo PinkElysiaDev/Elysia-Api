@@ -5,7 +5,6 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,9 +15,9 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/internal/atomicfile"
+	"github.com/elysia-api/backend/internal/outbound"
 	log "github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/relay"
 )
 
 type Config struct {
@@ -106,7 +105,7 @@ type HealthCheckConfig struct {
 }
 
 // OutboundConfig 是出站网络策略：禁止拨号的 IP 段（CIDR）列表。
-// 默认 = relay.DefaultDeniedIPRanges（私网/环回/保留段全禁，即 SSRF 防护）；
+// 默认 = outbound.DefaultDeniedIPRanges（私网/环回/保留段全禁，即 SSRF 防护）；
 // 列表可整体替换（运行时配置页 / agent 工具）：删掉环回段即可用 127.0.0.1
 // 本机上游，清空 = 全放行。nil（未配置）与空列表语义不同：前者取默认预置，
 // 后者是显式的「不禁止任何段」，落盘为 "deniedIpRanges": []。
@@ -244,10 +243,6 @@ func (r ModelRef) Identifier() string {
 	return r.ID
 }
 
-// GlobalConfig is published once by init for the executable entry point.
-// Loading another configuration must not replace the running process's config.
-var GlobalConfig *Config
-
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -265,7 +260,7 @@ func Load(path string) (*Config, error) {
 	cfg.path = path
 	cfg.applyBootstrapDefaults(path)
 	cfg.applyEnvironmentOverrides()
-	if _, err := relay.ParseProxyURL(cfg.Outbound.ProxyURL); err != nil {
+	if _, err := outbound.ParseProxyURL(cfg.Outbound.ProxyURL); err != nil {
 		return nil, err
 	}
 	if err := protocol.ValidateRequestBodyLimit(cfg.MaxBodyBytes); err != nil {
@@ -319,7 +314,7 @@ func (c *Config) normalizeOutboundLocked() {
 	if c.Outbound.DeniedIPRanges != nil {
 		return
 	}
-	c.Outbound.DeniedIPRanges = append([]string(nil), relay.DefaultDeniedIPRanges...)
+	c.Outbound.DeniedIPRanges = append([]string(nil), outbound.DefaultDeniedIPRanges...)
 }
 
 func (c *Config) applyEnvironmentOverrides() {
@@ -390,7 +385,7 @@ func (c *Config) saveLocked() error {
 	if err != nil {
 		return err
 	}
-	return WriteFileAtomic(c.path, out, info.Mode().Perm())
+	return atomicfile.WriteFile(c.path, out, info.Mode().Perm())
 }
 
 // mergeConfigSection accepts the flat, JSON-tagged settings structs saved above.
@@ -430,12 +425,6 @@ func mergeConfigSection(original json.RawMessage, section any) ([]byte, error) {
 		fields["deniedIpRanges"], _ = sonic.ConfigStd.Marshal(outbound.DeniedIPRanges)
 	}
 	return sonic.ConfigStd.Marshal(fields)
-}
-
-// WriteFileAtomic stages and syncs complete contents before platform-aware
-// replacement. It does not promise parent-directory durability after power loss.
-func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
-	return atomicfile.WriteFile(path, data, perm)
 }
 
 func (c *Config) SetPanelAccessToken(token string) {
@@ -549,7 +538,7 @@ func (c *Config) Reload() error {
 	// 与 Load 同序：环境变量覆盖最后应用。否则热重载会让 ELYSIA_API_HOST
 	// 部署静默失效，且随后的 Save 会把文件值固化覆盖部署配置。
 	newCfg.applyEnvironmentOverrides()
-	if _, err := relay.ParseProxyURL(newCfg.Outbound.ProxyURL); err != nil {
+	if _, err := outbound.ParseProxyURL(newCfg.Outbound.ProxyURL); err != nil {
 		return err
 	}
 	if err := protocol.ValidateRequestBodyLimit(newCfg.MaxBodyBytes); err != nil {
@@ -740,7 +729,7 @@ func (c *Config) GetDBEncryptionKey() []byte {
 	raw := make([]byte, 32)
 	_, _ = rand.Read(raw)
 	key := base64.StdEncoding.EncodeToString(raw)
-	if err := WriteFileAtomic(target, []byte(key), 0o600); err != nil {
+	if err := atomicfile.WriteFile(target, []byte(key), 0o600); err != nil {
 		log.Warn().Str("component", "config").Str("path", target).Err(err).Msg("failed to persist db encryption key (secrets will be at risk if key is lost)")
 		// 仍返回内存中的 key，本次进程内加密可用；但重启后无法解密，
 		// 因此只在能落盘时才真正启用持久加密。
@@ -910,35 +899,6 @@ func (c *Config) SetUsageLogConfig(patch UsageLogConfig) {
 	if patch.CleanupIntervalMinutes != nil {
 		c.UsageLog.CleanupIntervalMinutes = clampIntPtr(patch.CleanupIntervalMinutes)
 	}
-}
-
-func init() {
-	if strings.HasSuffix(os.Args[0], ".test") || strings.HasSuffix(os.Args[0], ".test.exe") {
-		return
-	}
-
-	configFile := flag.String("config", "", "Path to config file")
-	flag.Parse()
-
-	if *configFile == "" {
-		*configFile = "config.json"
-	}
-
-	cfg, created, err := EnsureConfig(*configFile)
-	if err != nil {
-		log.Error().Err(err).Msg("failed to load config")
-		os.Exit(1)
-	}
-
-	if created {
-		log.Info().Str("path", *configFile).Msg("created default config with a generated panelAccessToken")
-		log.Info().Msgf("Generated panelAccessToken: %s", cfg.GetPanelAccessToken())
-		log.Info().Msgf("Please review %s and rotate the token before exposing the service.", *configFile)
-	}
-
-	GlobalConfig = cfg
-	log.Default().Configure(cfg.GetLoggingOptions())
-	log.Info().Str("component", "config").Msg("config loaded successfully")
 }
 
 // publishSettingsLocked replaces persisted settings under the configuration lock.

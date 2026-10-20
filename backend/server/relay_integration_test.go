@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/internal/outbound"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
@@ -40,8 +41,6 @@ func newUnboundTestServer(t *testing.T, groups []config.ModelGroupConfig) *Serve
 		config:                 cfg,
 		engine:                 gin.New(),
 		protocolTransport:      relay.NewProtocolTransport(10 * time.Second),
-		roundRobinIndex:        make(map[string]int),
-		rateLimits:             make(map[string]*rateLimitState),
 		affinity:               newAffinityCache(),
 		skipOutboundValidation: true,
 	}
@@ -294,15 +293,15 @@ func TestAcquireRateLimitConcurrency(t *testing.T) {
 	s := newTestServer(t, nil)
 	group := &config.ModelGroupConfig{ID: "g1", Name: "grp", MaxConcurrency: 1}
 
-	release1, err := s.acquireRateLimit(group, 0)
+	release1, err := s.limiter.Acquire(group, 0)
 	if err != nil {
 		t.Fatalf("first acquire should succeed: %v", err)
 	}
-	if _, err := s.acquireRateLimit(group, 0); err == nil {
+	if _, err := s.limiter.Acquire(group, 0); err == nil {
 		t.Fatalf("second acquire should be rejected by max concurrency")
 	}
 	release1()
-	if _, err := s.acquireRateLimit(group, 0); err != nil {
+	if _, err := s.limiter.Acquire(group, 0); err != nil {
 		t.Fatalf("acquire after release should succeed: %v", err)
 	}
 }
@@ -311,13 +310,13 @@ func TestAcquireRateLimitDailyRequests(t *testing.T) {
 	s := newTestServer(t, nil)
 	group := &config.ModelGroupConfig{ID: "g1", Name: "grp", DailyLimitMaxRequests: 2}
 	for i := 0; i < 2; i++ {
-		release, err := s.acquireRateLimit(group, 0)
+		release, err := s.limiter.Acquire(group, 0)
 		if err != nil {
 			t.Fatalf("acquire %d should succeed: %v", i, err)
 		}
 		release()
 	}
-	if _, err := s.acquireRateLimit(group, 0); err == nil {
+	if _, err := s.limiter.Acquire(group, 0); err == nil {
 		t.Fatalf("daily request limit should reject the 3rd request")
 	}
 }
@@ -329,17 +328,17 @@ func TestAcquireRateLimitRefundsReservationOnRelease(t *testing.T) {
 	group := &config.ModelGroupConfig{ID: "g1", Name: "grp", DailyLimitMaxTokens: 1000}
 
 	// 预留 800，随后 release（模拟请求失败：不调用 adjustTokenUsage）。
-	release, err := s.acquireRateLimit(group, 800)
+	release, err := s.limiter.Acquire(group, 800)
 	if err != nil {
 		t.Fatalf("acquire should succeed: %v", err)
 	}
 	release()
 
 	// 退还后每日 token 计数应回到 0，新的 800 预留仍应被接受。
-	if got := s.rateLimits["g1"].Tokens; got != 0 {
+	if got := s.limiter.Usage("g1").Tokens; got != 0 {
 		t.Fatalf("reservation must be refunded on release, got Tokens=%d", got)
 	}
-	if _, err := s.acquireRateLimit(group, 800); err != nil {
+	if _, err := s.limiter.Acquire(group, 800); err != nil {
 		t.Fatalf("after refund a fresh 800-token reservation should fit under 1000: %v", err)
 	}
 }
@@ -349,14 +348,14 @@ func TestRateLimitSettlesToActualOnSuccess(t *testing.T) {
 	s := newTestServer(t, nil)
 	group := &config.ModelGroupConfig{ID: "g1", Name: "grp", DailyLimitMaxTokens: 10000}
 
-	release, err := s.acquireRateLimit(group, 800) // 预留估算值
+	release, err := s.limiter.Acquire(group, 800) // 预留估算值
 	if err != nil {
 		t.Fatalf("acquire should succeed: %v", err)
 	}
-	s.adjustTokenUsage("g1", 320, "") // 拿到实际值后累加
-	release()                         // 退还预留
+	s.limiter.Adjust("g1", 320, "") // 拿到实际值后累加
+	release()                       // 退还预留
 
-	if got := s.rateLimits["g1"].Tokens; got != 320 {
+	if got := s.limiter.Usage("g1").Tokens; got != 320 {
 		t.Fatalf("daily tokens should net to actual usage 320, got %d", got)
 	}
 }
@@ -409,7 +408,7 @@ func TestValidateOutboundBaseURLRejectsLoopbackAndPrivate(t *testing.T) {
 		"http://user:pass@example.com/v1",
 	}
 	for _, raw := range rejects {
-		if err := validateOutboundBaseURL(raw); err == nil {
+		if err := outbound.ValidateBaseURL(t.Context(), raw); err == nil {
 			t.Fatalf("expected %q to be rejected by SSRF guard", raw)
 		}
 	}
@@ -419,17 +418,17 @@ func TestIsDeniedIP(t *testing.T) {
 	// 含 RFC1918/环回/链路本地/CGNAT/0.0.0.0 以及保留文档与基准测试段
 	// （192.0.2/24、198.18/15、198.51.100/24、203.0.113/24、240/4）——
 	// 这些都不可路由，作为上游应一律拒绝（预置默认禁止列表的语义）。
-	t.Cleanup(func() { relay.SetDeniedIPRanges(relay.DefaultDeniedIPRanges) })
-	relay.SetDeniedIPRanges(relay.DefaultDeniedIPRanges)
+	t.Cleanup(func() { outbound.SetDeniedIPRanges(outbound.DefaultDeniedIPRanges) })
+	outbound.SetDeniedIPRanges(outbound.DefaultDeniedIPRanges)
 	private := []string{"127.0.0.1", "10.1.2.3", "192.168.0.1", "172.16.0.1", "169.254.0.1", "100.64.0.1", "0.0.0.0", "::1", "fc00::1", "fe80::1", "192.0.2.10", "198.18.0.1", "198.51.100.5", "203.0.113.10", "240.0.0.1"}
 	public := []string{"8.8.8.8", "1.1.1.1", "9.9.9.9", "2606:4700:4700::1111"}
 	for _, ip := range private {
-		if !isDeniedIP(parseTestIP(t, ip)) {
+		if !outbound.IsDeniedIP(parseTestIP(t, ip)) {
 			t.Fatalf("%s should be denied under default preset", ip)
 		}
 	}
 	for _, ip := range public {
-		if isDeniedIP(parseTestIP(t, ip)) {
+		if outbound.IsDeniedIP(parseTestIP(t, ip)) {
 			t.Fatalf("%s should be considered public", ip)
 		}
 	}

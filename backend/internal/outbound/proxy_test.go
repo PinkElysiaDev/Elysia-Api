@@ -1,4 +1,4 @@
-package relay
+package outbound
 
 import (
 	"context"
