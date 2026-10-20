@@ -1,0 +1,79 @@
+stream256-cross-0-before
+=== RUN   TestConversionFlamegraph
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=0 requests=64 elapsed_ms=10403.038 heap_peak_MiB=10.643
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=1 requests=64 elapsed_ms=11020.670 heap_peak_MiB=11.079
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=2 requests=64 elapsed_ms=10705.369 heap_peak_MiB=10.400
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=3 requests=64 elapsed_ms=8826.361 heap_peak_MiB=10.428
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=4 requests=64 elapsed_ms=5862.956 heap_peak_MiB=10.230
+--- PASS: TestConversionFlamegraph (55.52s)
+PASS
+
+stream256-cross-1-after
+=== RUN   TestConversionFlamegraph
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=0 requests=64 elapsed_ms=10075.506 heap_peak_MiB=10.584
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=1 requests=64 elapsed_ms=10930.531 heap_peak_MiB=10.688
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=2 requests=64 elapsed_ms=9898.023 heap_peak_MiB=10.491
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=3 requests=64 elapsed_ms=10881.699 heap_peak_MiB=11.570
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=4 requests=64 elapsed_ms=10280.913 heap_peak_MiB=10.571
+--- PASS: TestConversionFlamegraph (60.57s)
+PASS
+
+stream256-cross-2-after
+=== RUN   TestConversionFlamegraph
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=0 requests=64 elapsed_ms=10257.178 heap_peak_MiB=10.401
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=1 requests=64 elapsed_ms=11363.935 heap_peak_MiB=10.590
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=2 requests=64 elapsed_ms=10894.560 heap_peak_MiB=10.584
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=3 requests=64 elapsed_ms=10260.212 heap_peak_MiB=10.638
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=4 requests=64 elapsed_ms=9615.280 heap_peak_MiB=10.633
+--- PASS: TestConversionFlamegraph (61.12s)
+PASS
+
+stream256-cross-3-before
+=== RUN   TestConversionFlamegraph
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=0 requests=64 elapsed_ms=10683.638 heap_peak_MiB=10.696
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=1 requests=64 elapsed_ms=12122.096 heap_peak_MiB=10.856
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=2 requests=64 elapsed_ms=10017.313 heap_peak_MiB=11.219
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=3 requests=64 elapsed_ms=9654.558 heap_peak_MiB=10.686
+    conversion_flamegraph_test.go:413: mode=measure stream=true repeat=4 requests=64 elapsed_ms=11088.797 heap_peak_MiB=10.613
+--- PASS: TestConversionFlamegraph (62.76s)
+PASS
+
+tools32-0-before
+=== RUN   TestConversionFlamegraph
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=0 requests=64 elapsed_ms=697.409 heap_peak_MiB=15.037
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=1 requests=64 elapsed_ms=973.691 heap_peak_MiB=8.804
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=2 requests=64 elapsed_ms=1419.413 heap_peak_MiB=9.004
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=3 requests=64 elapsed_ms=1639.085 heap_peak_MiB=8.873
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=4 requests=64 elapsed_ms=1617.984 heap_peak_MiB=9.114
+--- PASS: TestConversionFlamegraph (14.44s)
+PASS
+
+tools32-1-after
+=== RUN   TestConversionFlamegraph
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=0 requests=64 elapsed_ms=1359.095 heap_peak_MiB=12.988
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=1 requests=64 elapsed_ms=1450.865 heap_peak_MiB=8.573
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=2 requests=64 elapsed_ms=1552.924 heap_peak_MiB=9.107
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=3 requests=64 elapsed_ms=659.619 heap_peak_MiB=9.240
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=4 requests=64 elapsed_ms=1556.430 heap_peak_MiB=9.224
+--- PASS: TestConversionFlamegraph (14.53s)
+PASS
+
+tools32-2-after
+=== RUN   TestConversionFlamegraph
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=0 requests=64 elapsed_ms=1399.922 heap_peak_MiB=14.583
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=1 requests=64 elapsed_ms=936.751 heap_peak_MiB=8.853
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=2 requests=64 elapsed_ms=1380.697 heap_peak_MiB=9.143
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=3 requests=64 elapsed_ms=1144.299 heap_peak_MiB=9.543
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=4 requests=64 elapsed_ms=1050.352 heap_peak_MiB=9.097
+--- PASS: TestConversionFlamegraph (13.76s)
+PASS
+
+tools32-3-before
+=== RUN   TestConversionFlamegraph
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=0 requests=64 elapsed_ms=1275.576 heap_peak_MiB=13.432
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=1 requests=64 elapsed_ms=990.115 heap_peak_MiB=8.781
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=2 requests=64 elapsed_ms=1274.095 heap_peak_MiB=8.892
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=3 requests=64 elapsed_ms=1338.845 heap_peak_MiB=9.160
+    conversion_flamegraph_test.go:413: mode=measure stream=false repeat=4 requests=64 elapsed_ms=1611.146 heap_peak_MiB=9.481
+--- PASS: TestConversionFlamegraph (14.26s)
+PASS

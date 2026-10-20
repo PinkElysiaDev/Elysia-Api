@@ -1,0 +1,39 @@
+File: server.test
+Build ID: edee8132cefc91147fcafeede7abc34945437d57
+Type: cpu
+Time: 2026-10-20 22:48:43 CST
+Duration: 20s, Total samples = 23.49s (117.42%)
+Showing nodes accounting for 10.30s, 43.85% of 23.49s total
+Dropped 1167 nodes (cum <= 0.12s)
+Showing top 30 nodes out of 369
+      flat  flat%   sum%        cum   cum%
+     1.63s  6.94%  6.94%      1.63s  6.94%  internal/runtime/syscall/linux.Syscall6
+     1.14s  4.85% 11.79%      1.14s  4.85%  runtime.futex
+     0.77s  3.28% 15.07%      0.93s  3.96%  github.com/elysia-api/backend/protocol.jsonStringBytes
+     0.56s  2.38% 17.45%      2.04s  8.68%  decode_
+     0.46s  1.96% 19.41%      0.46s  1.96%  unicode/utf8.ValidString
+     0.44s  1.87% 21.29%      0.44s  1.87%  indexbytebody
+     0.42s  1.79% 23.07%      0.42s  1.79%  runtime.memmove
+     0.40s  1.70% 24.78%      0.62s  2.64%  runtime.tryDeferToSpanScan
+     0.38s  1.62% 26.39%      1.46s  6.22%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+     0.35s  1.49% 27.88%      2.70s 11.49%  github.com/elysia-api/backend/protocol.(*typedMeter).visit
+     0.34s  1.45% 29.33%      0.34s  1.45%  _skip_one
+     0.26s  1.11% 30.44%      0.40s  1.70%  reflect.Value.Field
+     0.26s  1.11% 31.55%      0.32s  1.36%  runtime.mallocgcSmallScanNoHeaderSC2
+     0.25s  1.06% 32.61%      0.25s  1.06%  internal/runtime/maps.memHashAES
+     0.23s  0.98% 33.59%      0.28s  1.19%  internal/runtime/maps.(*Iter).Next
+     0.22s  0.94% 34.53%      2.03s  8.64%  runtime.mallocgc
+     0.21s  0.89% 35.42%      0.29s  1.23%  runtime.mallocgcTinySC2
+     0.20s  0.85% 36.27%      0.20s  0.85%  runtime.memclrNoHeapPointers
+     0.19s  0.81% 37.08%      0.79s  3.36%  github.com/elysia-api/backend/protocol.(*typedMeter).scanRaw
+     0.19s  0.81% 37.89%      0.19s  0.81%  runtime.usleep
+     0.17s  0.72% 38.61%      0.31s  1.32%  internal/runtime/maps.(*Map).getWithoutKeySmallFastStr
+     0.16s  0.68% 39.29%      0.40s  1.70%  github.com/elysia-api/backend/protocol.jsonStringEnd
+     0.16s  0.68% 39.97%      0.16s  0.68%  runtime.typePointers.nextFast (inline)
+     0.15s  0.64% 40.61%      0.15s  0.64%  memeqbody
+     0.14s   0.6% 41.21%      0.77s  3.28%  runtime.scanObject
+     0.13s  0.55% 41.76%      0.20s  0.85%  runtime.scanblock
+     0.13s  0.55% 42.32%      0.13s  0.55%  runtime.spanClass.sizeclass (inline)
+     0.12s  0.51% 42.83%      0.12s  0.51%  _validate_utf8_fast
+     0.12s  0.51% 43.34%      0.12s  0.51%  internal/abi.Name.IsExported (inline)
+     0.12s  0.51% 43.85%      0.23s  0.98%  internal/stringslite.Index

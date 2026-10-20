@@ -34,7 +34,7 @@ The first sequential matrix showed large CPU/latency fluctuations, including app
 
 The short ABBA image2 run measured 102825.8 → 67965.2 KiB/request, CPU 286.75 → 277.77 ms, P50 222.02 → 181.89 ms, and maximum sampled RSS 121.43 → 91.52 MiB. The initial large cross-stream and tools timing regressions did not reproduce at their original magnitude with larger samples. The modest tools32 CPU/latency increase is retained as a trade-off; this batch targets allocation and large-payload memory and does not claim a tools32 speedup or statistical significance.
 
-Evidence and reusable runner: [short paired run](artifacts/performance-targeted-77/batch-2-paired/summary.json), [longer confirmation](artifacts/performance-targeted-77/batch-2-confirmed/summary.json). Their full run commands, environments, hashes, logs, per-request observations and timelines are in `report.json.gz`. Reproduction from the repository root, with matching binaries still present at the paths in the two reports:
+Evidence and reusable runner: [short paired run](artifacts/performance-targeted-77/batch-2-paired/summary.json), [longer confirmation](artifacts/performance-targeted-77/batch-2-confirmed/summary.json). Their full run commands, environments, hashes, per-request observations and timelines are in `report.json.gz`; stdout/stderr logs are in the adjacent `run-logs.txt`. Reproduction from the repository root, with matching binaries still present at the paths in the two reports:
 
 ```sh
 node docs/artifacts/performance-targeted-77/batch-2-confirmed/runner.mjs \

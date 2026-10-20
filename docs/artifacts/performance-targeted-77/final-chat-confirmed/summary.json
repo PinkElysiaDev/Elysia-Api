@@ -1,0 +1,35 @@
+{
+  "status": "passed",
+  "order": [
+    "before",
+    "after",
+    "after",
+    "before"
+  ],
+  "cases": [
+    "chat-short"
+  ],
+  "results": [
+    {
+      "name": "chat-short",
+      "before": {
+        "samples": 20,
+        "bytes": 208479.75,
+        "allocations": 3463.7421875,
+        "cpuMS": 8.652390624999999,
+        "latencyP50MS": 6.5344549999999995,
+        "peakHeap": 16615864,
+        "peakRSS": 70684672
+      },
+      "after": {
+        "samples": 20,
+        "bytes": 147770.3125,
+        "allocations": 2852.8828125,
+        "cpuMS": 5.0253984375,
+        "latencyP50MS": 3.6118740000000003,
+        "peakHeap": 16450936,
+        "peakRSS": 70201344
+      }
+    }
+  ]
+}

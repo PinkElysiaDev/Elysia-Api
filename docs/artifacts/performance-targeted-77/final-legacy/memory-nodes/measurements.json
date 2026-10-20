@@ -1,0 +1,86 @@
+[
+  {
+    "Mode": "memory",
+    "Workload": "nodes",
+    "Phase": "steady",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 0,
+    "Requests": 4,
+    "Stream": false,
+    "ElapsedMS": 1683.603247,
+    "Metrics": {
+      "Allocated": 350168832,
+      "Heap": 26023592,
+      "PeakHeap": 37932992,
+      "WorkingSet": 99807232,
+      "PeakWorkingSet": 100298752,
+      "Calls": 0,
+      "Allocations": 2065110,
+      "GCPauseNS": 2998162,
+      "GCCycles": 29,
+      "CPUTimeNS": 2104429000,
+      "GCCPUSeconds": 0.2956940960000001,
+      "Goroutines": 16,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "DroppedSamples": 0
+    },
+    "Before": {
+      "Allocated": 0,
+      "Heap": 3855328,
+      "PeakHeap": 3855328,
+      "WorkingSet": 94490624,
+      "PeakWorkingSet": 94490624,
+      "Calls": 0,
+      "Allocations": 0,
+      "GCPauseNS": 0,
+      "GCCycles": 0,
+      "CPUTimeNS": 0,
+      "GCCPUSeconds": 0,
+      "Goroutines": 15,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "DroppedSamples": 0
+    },
+    "LatencyP50P95P99NS": [
+      404983785,
+      482269201,
+      482269201
+    ],
+    "FirstByteP50P95P99NS": [
+      404971733,
+      482258972,
+      482258972
+    ],
+    "FirstFrameP50P95P99NS": [
+      404983204,
+      482268630,
+      482268630
+    ],
+    "Observations": [
+      {
+        "LatencyNS": 404983785,
+        "FirstByteNS": 404971733,
+        "FirstFrameNS": 404983204
+      },
+      {
+        "LatencyNS": 482269201,
+        "FirstByteNS": 482258972,
+        "FirstFrameNS": 482268630
+      },
+      {
+        "LatencyNS": 413116332,
+        "FirstByteNS": 413110572,
+        "FirstFrameNS": 413115801
+      },
+      {
+        "LatencyNS": 382285817,
+        "FirstByteNS": 382282441,
+        "FirstFrameNS": 382285697
+      }
+    ]
+  }
+]

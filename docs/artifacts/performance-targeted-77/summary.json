@@ -1,0 +1,2742 @@
+{
+  "status": "passed",
+  "baselineCommit": "8e732c7a14d2c6ebaf30e6f2a6f40565883d36c9",
+  "integratedCommit": "fbee14a7b5263ebd51bee3e6dec049867a184d3f",
+  "baselineBackendTree": "33209baa8273991e071ce8ce3e39a5873a2212e9",
+  "integratedBackendTree": "8388ff2a6637840555d8dd6599f94ac0976e6532",
+  "baselineBinarySHA256": "1beb263653debb770f9eee8794eeae5cd39d7b3651923ef738f45f0d49a15226",
+  "integratedBinarySHA256": "b10f2bff5abf69a4cd4ceb83fe93482197004f4948db4ed49e7f80c7fa30a5b0",
+  "runtime": {
+    "GOMAXPROCS": "4",
+    "GOGC": "100",
+    "GOMEMLIMIT": "2GiB",
+    "pgo": "off",
+    "tags": [
+      "sonic"
+    ]
+  },
+  "primary": [
+    {
+      "name": "chat-short",
+      "before": {
+        "name": "chat-short",
+        "fixture": {
+          "source": "chat",
+          "target": "chat",
+          "request": "short",
+          "workers": 1,
+          "candidates": 1,
+          "log": "off",
+          "frames": 16
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 201805,
+        "allocationsPerRequest": 3464.375,
+        "cpuMSPerRequest": 9.602125,
+        "requestsPerSecond": 140.24516309552664,
+        "latencyP50P95P99MS": [
+          6.529045,
+          8.012262,
+          8.012262
+        ],
+        "firstByteP50P95P99MS": [
+          6.522103,
+          8.005199,
+          8.005199
+        ],
+        "firstFrameP50P95P99MS": [
+          6.528144,
+          8.01159,
+          8.01159
+        ],
+        "peakHeapBytes": 15777576,
+        "peakRSSBytes": 70467584,
+        "gcCycles": [
+          0,
+          1,
+          0
+        ],
+        "gcCPUSeconds": [
+          0,
+          0.01536095000000004,
+          0
+        ],
+        "gcPauseNS": [
+          0,
+          189054,
+          0
+        ],
+        "recoveryHeapBytes": [
+          13250912,
+          6508024,
+          9910112
+        ],
+        "recoveryRSSBytes": [
+          70320128,
+          69656576,
+          68616192
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": false,
+          "ElapsedMS": 49.501127,
+          "Metrics": {
+            "Allocated": 13543776,
+            "Heap": 14873800,
+            "PeakHeap": 14873800,
+            "WorkingSet": 69099520,
+            "PeakWorkingSet": 69099520,
+            "Calls": 0,
+            "Allocations": 76566,
+            "GCPauseNS": 133814,
+            "GCCycles": 2,
+            "CPUTimeNS": 83552000,
+            "GCCPUSeconds": 0.010572377999999993,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 9275592,
+            "PeakHeap": 9275592,
+            "WorkingSet": 64061440,
+            "PeakWorkingSet": 64061440,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 48158917,
+              "FirstByteNS": 48128932,
+              "FirstFrameNS": 48158296
+            }
+          ]
+        }
+      },
+      "after": {
+        "name": "chat-short",
+        "fixture": {
+          "source": "chat",
+          "target": "chat",
+          "request": "short",
+          "workers": 1,
+          "candidates": 1,
+          "log": "off",
+          "frames": 16
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 146708,
+        "allocationsPerRequest": 2852.1875,
+        "cpuMSPerRequest": 6.7369375,
+        "requestsPerSecond": 192.691221951384,
+        "latencyP50P95P99MS": [
+          4.363396,
+          7.39978,
+          7.39978
+        ],
+        "firstByteP50P95P99MS": [
+          4.357395,
+          7.392707,
+          7.392707
+        ],
+        "firstFrameP50P95P99MS": [
+          4.362625,
+          7.398938,
+          7.398938
+        ],
+        "peakHeapBytes": 17033192,
+        "peakRSSBytes": 70385664,
+        "gcCycles": [
+          1,
+          0,
+          0
+        ],
+        "gcCPUSeconds": [
+          0.01841896500000001,
+          0,
+          0
+        ],
+        "gcPauseNS": [
+          198373,
+          0,
+          0
+        ],
+        "recoveryHeapBytes": [
+          10262712,
+          12793912,
+          15328992
+        ],
+        "recoveryRSSBytes": [
+          70127616,
+          70258688,
+          70414336
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": false,
+          "ElapsedMS": 33.373622,
+          "Metrics": {
+            "Allocated": 13212824,
+            "Heap": 14468192,
+            "PeakHeap": 14468192,
+            "WorkingSet": 68444160,
+            "PeakWorkingSet": 68444160,
+            "Calls": 0,
+            "Allocations": 75973,
+            "GCPauseNS": 104320,
+            "GCCycles": 2,
+            "CPUTimeNS": 84401000,
+            "GCCPUSeconds": 0.009669823999999994,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 9458408,
+            "PeakHeap": 9458408,
+            "WorkingSet": 63741952,
+            "PeakWorkingSet": 63741952,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 31189634,
+              "FirstByteNS": 31150212,
+              "FirstFrameNS": 31188733
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "responses-short",
+      "before": {
+        "name": "responses-short",
+        "fixture": {
+          "source": "responses",
+          "target": "responses",
+          "request": "short",
+          "workers": 1,
+          "candidates": 1,
+          "log": "off",
+          "frames": 16
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 239638,
+        "allocationsPerRequest": 3883.25,
+        "cpuMSPerRequest": 11.6055,
+        "requestsPerSecond": 118.45109966225297,
+        "latencyP50P95P99MS": [
+          8.012653,
+          9.314789,
+          9.314789
+        ],
+        "firstByteP50P95P99MS": [
+          8.004678,
+          9.308668,
+          9.308668
+        ],
+        "firstFrameP50P95P99MS": [
+          8.01123,
+          9.314118,
+          9.314118
+        ],
+        "peakHeapBytes": 17401384,
+        "peakRSSBytes": 72740864,
+        "gcCycles": [
+          1,
+          0,
+          1
+        ],
+        "gcCPUSeconds": [
+          0.019454474,
+          0,
+          0.015104004000000004
+        ],
+        "gcPauseNS": [
+          64147,
+          0,
+          194706
+        ],
+        "recoveryHeapBytes": [
+          11924856,
+          15878208,
+          9672104
+        ],
+        "recoveryRSSBytes": [
+          72630272,
+          72732672,
+          70135808
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": false,
+          "ElapsedMS": 125.041784,
+          "Metrics": {
+            "Allocated": 14826200,
+            "Heap": 13793232,
+            "PeakHeap": 14565112,
+            "WorkingSet": 70766592,
+            "PeakWorkingSet": 70766592,
+            "Calls": 0,
+            "Allocations": 81460,
+            "GCPauseNS": 279500,
+            "GCCycles": 2,
+            "CPUTimeNS": 226984000,
+            "GCCPUSeconds": 0.03494654399999997,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 6603336,
+            "PeakHeap": 6603336,
+            "WorkingSet": 66363392,
+            "PeakWorkingSet": 66363392,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 122314908,
+              "FirstByteNS": 122292837,
+              "FirstFrameNS": 122313826
+            }
+          ]
+        }
+      },
+      "after": {
+        "name": "responses-short",
+        "fixture": {
+          "source": "responses",
+          "target": "responses",
+          "request": "short",
+          "workers": 1,
+          "candidates": 1,
+          "log": "off",
+          "frames": 16
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 178965,
+        "allocationsPerRequest": 3264.25,
+        "cpuMSPerRequest": 6.9985,
+        "requestsPerSecond": 182.41611489497237,
+        "latencyP50P95P99MS": [
+          5.021718,
+          8.099047,
+          8.099047
+        ],
+        "firstByteP50P95P99MS": [
+          5.015948,
+          8.087466,
+          8.087466
+        ],
+        "firstFrameP50P95P99MS": [
+          5.021127,
+          8.098085,
+          8.098085
+        ],
+        "peakHeapBytes": 17218464,
+        "peakRSSBytes": 72159232,
+        "gcCycles": [
+          0,
+          1,
+          0
+        ],
+        "gcCPUSeconds": [
+          0,
+          0.013208568000000032,
+          0
+        ],
+        "gcPauseNS": [
+          0,
+          87951,
+          0
+        ],
+        "recoveryHeapBytes": [
+          17132256,
+          11699200,
+          14625888
+        ],
+        "recoveryRSSBytes": [
+          71856128,
+          72081408,
+          72159232
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": false,
+          "ElapsedMS": 111.224407,
+          "Metrics": {
+            "Allocated": 13982808,
+            "Heap": 12345840,
+            "PeakHeap": 14519832,
+            "WorkingSet": 70422528,
+            "PeakWorkingSet": 70422528,
+            "Calls": 0,
+            "Allocations": 80859,
+            "GCPauseNS": 346531,
+            "GCCycles": 2,
+            "CPUTimeNS": 204308000,
+            "GCCPUSeconds": 0.03565487199999995,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 7333704,
+            "PeakHeap": 7333704,
+            "WorkingSet": 64610304,
+            "PeakWorkingSet": 64610304,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 108602480,
+              "FirstByteNS": 108585539,
+              "FirstFrameNS": 108601308
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "tools32",
+      "before": {
+        "name": "tools32",
+        "fixture": {
+          "source": "chat",
+          "target": "chat",
+          "request": "tools32",
+          "workers": 1,
+          "candidates": 1,
+          "log": "off",
+          "frames": 16
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 739245.5,
+        "allocationsPerRequest": 11188.375,
+        "cpuMSPerRequest": 21.0463125,
+        "requestsPerSecond": 53.512588195894295,
+        "latencyP50P95P99MS": [
+          22.312339,
+          27.788162,
+          27.788162
+        ],
+        "firstByteP50P95P99MS": [
+          22.309914,
+          27.779346,
+          27.779346
+        ],
+        "firstFrameP50P95P99MS": [
+          22.312048,
+          27.78712,
+          27.78712
+        ],
+        "peakHeapBytes": 16975408,
+        "peakRSSBytes": 70893568,
+        "gcCycles": [
+          3,
+          3,
+          2
+        ],
+        "gcCPUSeconds": [
+          0.026332079000000008,
+          0.010057639000000007,
+          0.027540491999999972
+        ],
+        "gcPauseNS": [
+          221887,
+          167054,
+          319463
+        ],
+        "recoveryHeapBytes": [
+          5645336,
+          5594472,
+          8934272
+        ],
+        "recoveryRSSBytes": [
+          64847872,
+          65118208,
+          64983040
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": false,
+          "ElapsedMS": 52.589353,
+          "Metrics": {
+            "Allocated": 14115088,
+            "Heap": 11611896,
+            "PeakHeap": 13913256,
+            "WorkingSet": 69832704,
+            "PeakWorkingSet": 69832704,
+            "Calls": 0,
+            "Allocations": 84336,
+            "GCPauseNS": 425329,
+            "GCCycles": 3,
+            "CPUTimeNS": 151949000,
+            "GCCPUSeconds": 0.040623242999999976,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 10041200,
+            "PeakHeap": 10041200,
+            "WorkingSet": 63569920,
+            "PeakWorkingSet": 63569920,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 50089520,
+              "FirstByteNS": 50077699,
+              "FirstFrameNS": 50088869
+            }
+          ]
+        }
+      },
+      "after": {
+        "name": "tools32",
+        "fixture": {
+          "source": "chat",
+          "target": "chat",
+          "request": "tools32",
+          "workers": 1,
+          "candidates": 1,
+          "log": "off",
+          "frames": 16
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 625368.5,
+        "allocationsPerRequest": 10259.8125,
+        "cpuMSPerRequest": 26.3954375,
+        "requestsPerSecond": 41.69367722055939,
+        "latencyP50P95P99MS": [
+          24.121921,
+          27.5338,
+          27.5338
+        ],
+        "firstByteP50P95P99MS": [
+          24.114557,
+          27.525094,
+          27.525094
+        ],
+        "firstFrameP50P95P99MS": [
+          24.121169,
+          27.533139,
+          27.533139
+        ],
+        "peakHeapBytes": 16650824,
+        "peakRSSBytes": 70418432,
+        "gcCycles": [
+          2,
+          3,
+          3
+        ],
+        "gcCPUSeconds": [
+          0.03055482300000001,
+          0.02420012599999999,
+          0.029272047000000023
+        ],
+        "gcPauseNS": [
+          302552,
+          271777,
+          312581
+        ],
+        "recoveryHeapBytes": [
+          7920032,
+          6972304,
+          5371752
+        ],
+        "recoveryRSSBytes": [
+          68853760,
+          63815680,
+          63770624
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": false,
+          "ElapsedMS": 34.712716,
+          "Metrics": {
+            "Allocated": 13397096,
+            "Heap": 11949592,
+            "PeakHeap": 13356352,
+            "WorkingSet": 68255744,
+            "PeakWorkingSet": 68255744,
+            "Calls": 0,
+            "Allocations": 83332,
+            "GCPauseNS": 144935,
+            "GCCycles": 2,
+            "CPUTimeNS": 70796000,
+            "GCCPUSeconds": 0.012726828000000023,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 6232136,
+            "PeakHeap": 6232136,
+            "WorkingSet": 62849024,
+            "PeakWorkingSet": 62849024,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 33196598,
+              "FirstByteNS": 33186851,
+              "FirstFrameNS": 33195937
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "candidates4",
+      "before": {
+        "name": "candidates4",
+        "fixture": {
+          "source": "chat",
+          "target": "chat",
+          "request": "short",
+          "workers": 1,
+          "candidates": 4,
+          "log": "off",
+          "frames": 16
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 424845.5,
+        "allocationsPerRequest": 7346.5,
+        "cpuMSPerRequest": 15.3820625,
+        "requestsPerSecond": 85.53437195262082,
+        "latencyP50P95P99MS": [
+          11.844616,
+          13.549327,
+          13.549327
+        ],
+        "firstByteP50P95P99MS": [
+          11.823868,
+          13.542615,
+          13.542615
+        ],
+        "firstFrameP50P95P99MS": [
+          11.843934,
+          13.548455,
+          13.548455
+        ],
+        "peakHeapBytes": 16655464,
+        "peakRSSBytes": 72957952,
+        "gcCycles": [
+          1,
+          1,
+          2
+        ],
+        "gcCPUSeconds": [
+          0.01958951099999995,
+          0.01689709500000003,
+          0.009304984999999988
+        ],
+        "gcPauseNS": [
+          172585,
+          394580,
+          140526
+        ],
+        "recoveryHeapBytes": [
+          14673440,
+          11188104,
+          7579344
+        ],
+        "recoveryRSSBytes": [
+          71327744,
+          72957952,
+          68612096
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": false,
+          "ElapsedMS": 19.582808,
+          "Metrics": {
+            "Allocated": 11083016,
+            "Heap": 10897560,
+            "PeakHeap": 10897560,
+            "WorkingSet": 68157440,
+            "PeakWorkingSet": 68157440,
+            "Calls": 0,
+            "Allocations": 60296,
+            "GCPauseNS": 161415,
+            "GCCycles": 2,
+            "CPUTimeNS": 72284000,
+            "GCCPUSeconds": 0.014226477000000015,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 5809472,
+            "PeakHeap": 5809472,
+            "WorkingSet": 64536576,
+            "PeakWorkingSet": 64536576,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 18177913,
+              "FirstByteNS": 18162165,
+              "FirstFrameNS": 18177332
+            }
+          ]
+        }
+      },
+      "after": {
+        "name": "candidates4",
+        "fixture": {
+          "source": "chat",
+          "target": "chat",
+          "request": "short",
+          "workers": 1,
+          "candidates": 4,
+          "log": "off",
+          "frames": 16
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 262427.5,
+        "allocationsPerRequest": 5682.25,
+        "cpuMSPerRequest": 9.5451875,
+        "requestsPerSecond": 135.24696632812913,
+        "latencyP50P95P99MS": [
+          9.505245,
+          11.123107,
+          11.123107
+        ],
+        "firstByteP50P95P99MS": [
+          9.498923,
+          11.116205,
+          11.116205
+        ],
+        "firstFrameP50P95P99MS": [
+          9.504613,
+          11.122356,
+          11.122356
+        ],
+        "peakHeapBytes": 15190824,
+        "peakRSSBytes": 71483392,
+        "gcCycles": [
+          1,
+          1,
+          1
+        ],
+        "gcCPUSeconds": [
+          0.020201802999999963,
+          0.008874131999999979,
+          0.00416133800000007
+        ],
+        "gcPauseNS": [
+          147539,
+          171643,
+          59458
+        ],
+        "recoveryHeapBytes": [
+          12539144,
+          7058448,
+          7574368
+        ],
+        "recoveryRSSBytes": [
+          68841472,
+          70934528,
+          66625536
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": false,
+          "ElapsedMS": 11.273963,
+          "Metrics": {
+            "Allocated": 10887320,
+            "Heap": 10348816,
+            "PeakHeap": 12124560,
+            "WorkingSet": 67629056,
+            "PeakWorkingSet": 67629056,
+            "Calls": 0,
+            "Allocations": 58560,
+            "GCPauseNS": 136229,
+            "GCCycles": 2,
+            "CPUTimeNS": 62765000,
+            "GCCPUSeconds": 0.013499691000000036,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 7701048,
+            "PeakHeap": 7701048,
+            "WorkingSet": 64360448,
+            "PeakWorkingSet": 64360448,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 10107894,
+              "FirstByteNS": 10089230,
+              "FirstFrameNS": 10107484
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "history256k",
+      "before": {
+        "name": "history256k",
+        "fixture": {
+          "source": "chat",
+          "target": "chat",
+          "request": "history256k",
+          "workers": 1,
+          "candidates": 1,
+          "log": "off",
+          "frames": 16
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 13013598,
+        "allocationsPerRequest": 35364.0625,
+        "cpuMSPerRequest": 69.25525,
+        "requestsPerSecond": 19.910572088563875,
+        "latencyP50P95P99MS": [
+          52.214979,
+          71.6023,
+          71.6023
+        ],
+        "firstByteP50P95P99MS": [
+          52.210201,
+          71.593404,
+          71.593404
+        ],
+        "firstFrameP50P95P99MS": [
+          52.214559,
+          71.601719,
+          71.601719
+        ],
+        "peakHeapBytes": 16491760,
+        "peakRSSBytes": 72568832,
+        "gcCycles": [
+          32,
+          34,
+          32
+        ],
+        "gcCPUSeconds": [
+          0.29409586600000004,
+          0.14796932899999993,
+          0.406372818
+        ],
+        "gcPauseNS": [
+          3643786,
+          2465663,
+          4865831
+        ],
+        "recoveryHeapBytes": [
+          10451784,
+          10301616,
+          8310848
+        ],
+        "recoveryRSSBytes": [
+          69390336,
+          68210688,
+          70549504
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": false,
+          "ElapsedMS": 110.584461,
+          "Metrics": {
+            "Allocated": 25429864,
+            "Heap": 15333640,
+            "PeakHeap": 19033320,
+            "WorkingSet": 74481664,
+            "PeakWorkingSet": 74481664,
+            "Calls": 0,
+            "Allocations": 108411,
+            "GCPauseNS": 505592,
+            "GCCycles": 4,
+            "CPUTimeNS": 200418000,
+            "GCCPUSeconds": 0.04824072500000004,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 9770216,
+            "PeakHeap": 9770216,
+            "WorkingSet": 63152128,
+            "PeakWorkingSet": 63152128,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 109914128,
+              "FirstByteNS": 109906494,
+              "FirstFrameNS": 109913857
+            }
+          ]
+        }
+      },
+      "after": {
+        "name": "history256k",
+        "fixture": {
+          "source": "chat",
+          "target": "chat",
+          "request": "history256k",
+          "workers": 1,
+          "candidates": 1,
+          "log": "off",
+          "frames": 16
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 11487870.5,
+        "allocationsPerRequest": 34431.0625,
+        "cpuMSPerRequest": 68.086375,
+        "requestsPerSecond": 19.545857140136427,
+        "latencyP50P95P99MS": [
+          54.145466,
+          77.848832,
+          77.848832
+        ],
+        "firstByteP50P95P99MS": [
+          54.139445,
+          77.830098,
+          77.830098
+        ],
+        "firstFrameP50P95P99MS": [
+          54.144765,
+          77.848091,
+          77.848091
+        ],
+        "peakHeapBytes": 14533552,
+        "peakRSSBytes": 70942720,
+        "gcCycles": [
+          32,
+          32,
+          32
+        ],
+        "gcCPUSeconds": [
+          0.29096905300000003,
+          0.23055025699999998,
+          0.40294300799999994
+        ],
+        "gcPauseNS": [
+          3837502,
+          2615417,
+          5161779
+        ],
+        "recoveryHeapBytes": [
+          6904776,
+          9332056,
+          6837392
+        ],
+        "recoveryRSSBytes": [
+          67366912,
+          68386816,
+          69820416
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": false,
+          "ElapsedMS": 116.56088,
+          "Metrics": {
+            "Allocated": 27735024,
+            "Heap": 9204208,
+            "PeakHeap": 19474280,
+            "WorkingSet": 71892992,
+            "PeakWorkingSet": 73400320,
+            "Calls": 0,
+            "Allocations": 123011,
+            "GCPauseNS": 432560,
+            "GCCycles": 4,
+            "CPUTimeNS": 194696000,
+            "GCCPUSeconds": 0.036976874999999965,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 6710008,
+            "PeakHeap": 6710008,
+            "WorkingSet": 63467520,
+            "PeakWorkingSet": 63467520,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 114141693,
+              "FirstByteNS": 114078928,
+              "FirstFrameNS": 114140601
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "burst4",
+      "before": {
+        "name": "burst4",
+        "fixture": {
+          "source": "chat",
+          "target": "chat",
+          "request": "short",
+          "workers": 4,
+          "candidates": 1,
+          "log": "off",
+          "frames": 16
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 202123,
+        "allocationsPerRequest": 3466.4375,
+        "cpuMSPerRequest": 9.0446875,
+        "requestsPerSecond": 416.6058248576614,
+        "latencyP50P95P99MS": [
+          7.386971,
+          11.850506,
+          11.850506
+        ],
+        "firstByteP50P95P99MS": [
+          7.383926,
+          11.844425,
+          11.844425
+        ],
+        "firstFrameP50P95P99MS": [
+          7.38652,
+          11.849565,
+          11.849565
+        ],
+        "peakHeapBytes": 18439424,
+        "peakRSSBytes": 72667136,
+        "gcCycles": [
+          1,
+          0,
+          1
+        ],
+        "gcCPUSeconds": [
+          0.01888134800000002,
+          0,
+          0.014963049000000006
+        ],
+        "gcPauseNS": [
+          238485,
+          0,
+          418545
+        ],
+        "recoveryHeapBytes": [
+          13285520,
+          16707992,
+          7976352
+        ],
+        "recoveryRSSBytes": [
+          71786496,
+          71921664,
+          72687616
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": false,
+          "ElapsedMS": 59.375457,
+          "Metrics": {
+            "Allocated": 13738280,
+            "Heap": 14819304,
+            "PeakHeap": 14819304,
+            "WorkingSet": 68767744,
+            "PeakWorkingSet": 68767744,
+            "Calls": 0,
+            "Allocations": 76607,
+            "GCPauseNS": 132812,
+            "GCCycles": 2,
+            "CPUTimeNS": 120389000,
+            "GCCPUSeconds": 0.015964427000000003,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 9680800,
+            "PeakHeap": 9680800,
+            "WorkingSet": 62681088,
+            "PeakWorkingSet": 62681088,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 58227773,
+              "FirstByteNS": 58215991,
+              "FirstFrameNS": 58227312
+            }
+          ]
+        }
+      },
+      "after": {
+        "name": "burst4",
+        "fixture": {
+          "source": "chat",
+          "target": "chat",
+          "request": "short",
+          "workers": 4,
+          "candidates": 1,
+          "log": "off",
+          "frames": 16
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 148461.5,
+        "allocationsPerRequest": 2860.5625,
+        "cpuMSPerRequest": 7.0635,
+        "requestsPerSecond": 492.95569394328135,
+        "latencyP50P95P99MS": [
+          6.829288,
+          10.520208,
+          10.520208
+        ],
+        "firstByteP50P95P99MS": [
+          6.821374,
+          10.511933,
+          10.511933
+        ],
+        "firstFrameP50P95P99MS": [
+          6.828046,
+          10.519556,
+          10.519556
+        ],
+        "peakHeapBytes": 16325312,
+        "peakRSSBytes": 71884800,
+        "gcCycles": [
+          1,
+          0,
+          1
+        ],
+        "gcCPUSeconds": [
+          0.011866874000000027,
+          0,
+          0.015522268999999977
+        ],
+        "gcPauseNS": [
+          320786,
+          0,
+          292323
+        ],
+        "recoveryHeapBytes": [
+          11469768,
+          14021656,
+          5735288
+        ],
+        "recoveryRSSBytes": [
+          71098368,
+          71712768,
+          70045696
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": false,
+          "ElapsedMS": 61.27322,
+          "Metrics": {
+            "Allocated": 13223880,
+            "Heap": 14538944,
+            "PeakHeap": 14538944,
+            "WorkingSet": 68960256,
+            "PeakWorkingSet": 68960256,
+            "Calls": 0,
+            "Allocations": 76010,
+            "GCPauseNS": 177716,
+            "GCCycles": 2,
+            "CPUTimeNS": 139002000,
+            "GCCPUSeconds": 0.014979468999999968,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 8817888,
+            "PeakHeap": 8817888,
+            "WorkingSet": 63725568,
+            "PeakWorkingSet": 63725568,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 59590186,
+              "FirstByteNS": 59554681,
+              "FirstFrameNS": 59589254
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "stream256",
+      "before": {
+        "name": "stream256",
+        "fixture": {
+          "source": "chat",
+          "target": "chat",
+          "request": "short",
+          "workers": 1,
+          "candidates": 1,
+          "log": "off",
+          "frames": 256,
+          "stream": true
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 9868529,
+        "allocationsPerRequest": 113422.9375,
+        "cpuMSPerRequest": 135.429375,
+        "requestsPerSecond": 7.945142627659897,
+        "latencyP50P95P99MS": [
+          99.16466,
+          123.824473,
+          123.824473
+        ],
+        "firstByteP50P95P99MS": [
+          6.335182,
+          9.558624,
+          9.558624
+        ],
+        "firstFrameP50P95P99MS": [
+          6.340231,
+          9.564284,
+          9.564284
+        ],
+        "peakHeapBytes": 10218416,
+        "peakRSSBytes": 66555904,
+        "gcCycles": [
+          38,
+          38,
+          37
+        ],
+        "gcCPUSeconds": [
+          0.399486332,
+          0.16637328299999998,
+          0.4171668690000001
+        ],
+        "gcPauseNS": [
+          4661778,
+          2389625,
+          5704760
+        ],
+        "recoveryHeapBytes": [
+          5562656,
+          7224512,
+          4727960
+        ],
+        "recoveryRSSBytes": [
+          64946176,
+          66215936,
+          64770048
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": true,
+          "ElapsedMS": 114.726069,
+          "Metrics": {
+            "Allocated": 26599472,
+            "Heap": 10305016,
+            "PeakHeap": 11551496,
+            "WorkingSet": 68554752,
+            "PeakWorkingSet": 70496256,
+            "Calls": 0,
+            "Allocations": 202089,
+            "GCPauseNS": 235811,
+            "GCCycles": 4,
+            "CPUTimeNS": 103121000,
+            "GCCPUSeconds": 0.019722497000000005,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 6741456,
+            "PeakHeap": 6741456,
+            "WorkingSet": 63201280,
+            "PeakWorkingSet": 63201280,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 54019663,
+              "FirstByteNS": 37631466,
+              "FirstFrameNS": 37634051
+            }
+          ]
+        }
+      },
+      "after": {
+        "name": "stream256",
+        "fixture": {
+          "source": "chat",
+          "target": "chat",
+          "request": "short",
+          "workers": 1,
+          "candidates": 1,
+          "log": "off",
+          "frames": 256,
+          "stream": true
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 7299950.5,
+        "allocationsPerRequest": 98052.6875,
+        "cpuMSPerRequest": 102.7335625,
+        "requestsPerSecond": 9.332618278231191,
+        "latencyP50P95P99MS": [
+          83.673115,
+          112.796667,
+          112.796667
+        ],
+        "firstByteP50P95P99MS": [
+          5.038629,
+          8.786091,
+          8.786091
+        ],
+        "firstFrameP50P95P99MS": [
+          5.043418,
+          8.791802,
+          8.791802
+        ],
+        "peakHeapBytes": 9527256,
+        "peakRSSBytes": 64925696,
+        "gcCycles": [
+          28,
+          28,
+          30
+        ],
+        "gcCPUSeconds": [
+          0.21994950000000002,
+          0.265206242,
+          0.3664357079999999
+        ],
+        "gcPauseNS": [
+          3034272,
+          3157995,
+          4556291
+        ],
+        "recoveryHeapBytes": [
+          4871376,
+          8307400,
+          6163656
+        ],
+        "recoveryRSSBytes": [
+          63467520,
+          64212992,
+          64262144
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": true,
+          "ElapsedMS": 135.740487,
+          "Metrics": {
+            "Allocated": 23873200,
+            "Heap": 8578232,
+            "PeakHeap": 16751008,
+            "WorkingSet": 70971392,
+            "PeakWorkingSet": 70971392,
+            "Calls": 0,
+            "Allocations": 186697,
+            "GCPauseNS": 253321,
+            "GCCycles": 4,
+            "CPUTimeNS": 121886000,
+            "GCCPUSeconds": 0.023846741000000005,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 6448360,
+            "PeakHeap": 6448360,
+            "WorkingSet": 62521344,
+            "PeakWorkingSet": 62521344,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 69405075,
+              "FirstByteNS": 30576965,
+              "FirstFrameNS": 30580231
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "stream256-cross",
+      "before": {
+        "name": "stream256-cross",
+        "fixture": {
+          "source": "chat",
+          "target": "anthropic",
+          "request": "short",
+          "workers": 1,
+          "candidates": 1,
+          "log": "off",
+          "frames": 256,
+          "stream": true
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 24376167.5,
+        "allocationsPerRequest": 157136,
+        "cpuMSPerRequest": 216.6764375,
+        "requestsPerSecond": 5.561631603321987,
+        "latencyP50P95P99MS": [
+          139.82851,
+          204.729761,
+          204.729761
+        ],
+        "firstByteP50P95P99MS": [
+          6.050001,
+          8.859288,
+          8.859288
+        ],
+        "firstFrameP50P95P99MS": [
+          6.05527,
+          8.864978,
+          8.864978
+        ],
+        "peakHeapBytes": 10941152,
+        "peakRSSBytes": 69513216,
+        "gcCycles": [
+          84,
+          83,
+          83
+        ],
+        "gcCPUSeconds": [
+          0.5187901890000001,
+          0.791657641,
+          0.8239332209999999
+        ],
+        "gcPauseNS": [
+          6770852,
+          10603367,
+          10598267
+        ],
+        "recoveryHeapBytes": [
+          7020408,
+          6908144,
+          7126248
+        ],
+        "recoveryRSSBytes": [
+          66875392,
+          66584576,
+          68653056
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": true,
+          "ElapsedMS": 320.049734,
+          "Metrics": {
+            "Allocated": 40646768,
+            "Heap": 8705728,
+            "PeakHeap": 18605944,
+            "WorkingSet": 70860800,
+            "PeakWorkingSet": 73691136,
+            "Calls": 0,
+            "Allocations": 247189,
+            "GCPauseNS": 823334,
+            "GCCycles": 7,
+            "CPUTimeNS": 354240000,
+            "GCCPUSeconds": 0.08180678799999996,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 9271632,
+            "PeakHeap": 9271632,
+            "WorkingSet": 64794624,
+            "PeakWorkingSet": 64794624,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 209522407,
+              "FirstByteNS": 63317812,
+              "FirstFrameNS": 63327559
+            }
+          ]
+        }
+      },
+      "after": {
+        "name": "stream256-cross",
+        "fixture": {
+          "source": "chat",
+          "target": "anthropic",
+          "request": "short",
+          "workers": 1,
+          "candidates": 1,
+          "log": "off",
+          "frames": 256,
+          "stream": true
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 16,
+        "allocatedBytesPerRequest": 21437834.5,
+        "allocationsPerRequest": 137488,
+        "cpuMSPerRequest": 201.7998125,
+        "requestsPerSecond": 5.864412100471935,
+        "latencyP50P95P99MS": [
+          149.69286,
+          191.673395,
+          191.673395
+        ],
+        "firstByteP50P95P99MS": [
+          6.057279,
+          8.849056,
+          8.849056
+        ],
+        "firstFrameP50P95P99MS": [
+          6.062087,
+          8.854245,
+          8.854245
+        ],
+        "peakHeapBytes": 11260720,
+        "peakRSSBytes": 69402624,
+        "gcCycles": [
+          73,
+          74,
+          72
+        ],
+        "gcCPUSeconds": [
+          0.712941917,
+          0.828266371,
+          0.6201244159999999
+        ],
+        "gcPauseNS": [
+          9352904,
+          10582613,
+          8251470
+        ],
+        "recoveryHeapBytes": [
+          9896464,
+          5926856,
+          9313592
+        ],
+        "recoveryRSSBytes": [
+          67121152,
+          67543040,
+          68120576
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "small",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": true,
+          "ElapsedMS": 145.880009,
+          "Metrics": {
+            "Allocated": 37924104,
+            "Heap": 8543984,
+            "PeakHeap": 11912816,
+            "WorkingSet": 68677632,
+            "PeakWorkingSet": 73715712,
+            "Calls": 0,
+            "Allocations": 227445,
+            "GCPauseNS": 624365,
+            "GCCycles": 7,
+            "CPUTimeNS": 155151000,
+            "GCCPUSeconds": 0.047405213,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 9509856,
+            "PeakHeap": 9509856,
+            "WorkingSet": 64356352,
+            "PeakWorkingSet": 64356352,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 68944465,
+              "FirstByteNS": 32088435,
+              "FirstFrameNS": 32090980
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "image2",
+      "before": {
+        "name": "image2",
+        "fixture": {
+          "source": "chat",
+          "target": "chat",
+          "request": "short",
+          "workers": 1,
+          "candidates": 1,
+          "log": "off",
+          "frames": 16,
+          "image": true,
+          "requests": 4
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 4,
+        "allocatedBytesPerRequest": 108179548,
+        "allocationsPerRequest": 6240,
+        "cpuMSPerRequest": 335.59175,
+        "requestsPerSecond": 4.015593340011152,
+        "latencyP50P95P99MS": [
+          231.303156,
+          319.154862,
+          319.154862
+        ],
+        "firstByteP50P95P99MS": [
+          231.295022,
+          319.14855,
+          319.14855
+        ],
+        "firstFrameP50P95P99MS": [
+          231.302716,
+          319.154311,
+          319.154311
+        ],
+        "peakHeapBytes": 61247832,
+        "peakRSSBytes": 120492032,
+        "gcCycles": [
+          28,
+          29,
+          31
+        ],
+        "gcCPUSeconds": [
+          0.32781777200000006,
+          0.34995477399999997,
+          0.4040290929999999
+        ],
+        "gcPauseNS": [
+          13345968,
+          15206730,
+          5990838
+        ],
+        "recoveryHeapBytes": [
+          38749832,
+          38635584,
+          38894424
+        ],
+        "recoveryRSSBytes": [
+          96796672,
+          98500608,
+          97902592
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "image",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": false,
+          "ElapsedMS": 318.973831,
+          "Metrics": {
+            "Allocated": 126153736,
+            "Heap": 44675472,
+            "PeakHeap": 44675472,
+            "WorkingSet": 104112128,
+            "PeakWorkingSet": 104112128,
+            "Calls": 0,
+            "Allocations": 101723,
+            "GCPauseNS": 1374911,
+            "GCCycles": 10,
+            "CPUTimeNS": 480243000,
+            "GCCPUSeconds": 0.11645727900000002,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 7804072,
+            "PeakHeap": 7804072,
+            "WorkingSet": 64385024,
+            "PeakWorkingSet": 64385024,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 315214260,
+              "FirstByteNS": 315186499,
+              "FirstFrameNS": 315213509
+            }
+          ]
+        }
+      },
+      "after": {
+        "name": "image2",
+        "fixture": {
+          "source": "chat",
+          "target": "chat",
+          "request": "short",
+          "workers": 1,
+          "candidates": 1,
+          "log": "off",
+          "frames": 16,
+          "image": true,
+          "requests": 4
+        },
+        "repeats": 3,
+        "requestsPerRepeat": 4,
+        "allocatedBytesPerRequest": 69492460,
+        "allocationsPerRequest": 5183,
+        "cpuMSPerRequest": 238.3395,
+        "requestsPerSecond": 5.26370929598933,
+        "latencyP50P95P99MS": [
+          177.612354,
+          249.462173,
+          249.462173
+        ],
+        "firstByteP50P95P99MS": [
+          177.606253,
+          249.454459,
+          249.454459
+        ],
+        "firstFrameP50P95P99MS": [
+          177.611963,
+          249.461301,
+          249.461301
+        ],
+        "peakHeapBytes": 39397848,
+        "peakRSSBytes": 97079296,
+        "gcCycles": [
+          22,
+          22,
+          23
+        ],
+        "gcCPUSeconds": [
+          0.27633821700000005,
+          0.191292676,
+          0.11764757400000003
+        ],
+        "gcPauseNS": [
+          11037674,
+          7146331,
+          1883878
+        ],
+        "recoveryHeapBytes": [
+          29976128,
+          30223672,
+          19750536
+        ],
+        "recoveryRSSBytes": [
+          88969216,
+          90394624,
+          89960448
+        ],
+        "reloadMS": [
+          0,
+          0,
+          0
+        ],
+        "firstRequest": {
+          "Mode": "measure",
+          "Workload": "image",
+          "Phase": "first-request",
+          "SizeMiB": 2,
+          "Workers": 1,
+          "Repeat": 0,
+          "Requests": 1,
+          "Stream": false,
+          "ElapsedMS": 491.768771,
+          "Metrics": {
+            "Allocated": 85556600,
+            "Heap": 27844216,
+            "PeakHeap": 31576776,
+            "WorkingSet": 95277056,
+            "PeakWorkingSet": 95277056,
+            "Calls": 0,
+            "Allocations": 94934,
+            "GCPauseNS": 1116458,
+            "GCCycles": 7,
+            "CPUTimeNS": 608199000,
+            "GCCPUSeconds": 0.11564000100000005,
+            "Goroutines": 15,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "Before": {
+            "Allocated": 0,
+            "Heap": 9219408,
+            "PeakHeap": 9219408,
+            "WorkingSet": 64307200,
+            "PeakWorkingSet": 64307200,
+            "Calls": 0,
+            "Allocations": 0,
+            "GCPauseNS": 0,
+            "GCCycles": 0,
+            "CPUTimeNS": 0,
+            "GCCPUSeconds": 0,
+            "Goroutines": 12,
+            "ActiveRequests": 0,
+            "QueueDepth": 0,
+            "QueuedPayloadBytes": 0,
+            "DroppedSamples": 0
+          },
+          "LatencyP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstByteP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "FirstFrameP50P95P99NS": [
+            0,
+            0,
+            0
+          ],
+          "Observations": [
+            {
+              "LatencyNS": 487466437,
+              "FirstByteNS": 487442483,
+              "FirstFrameNS": 487465565
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "paired": [
+    {
+      "name": "chat-short",
+      "before": {
+        "samples": 10,
+        "bytes": 207307.0625,
+        "allocations": 3463.828125,
+        "cpuMS": 5.984328124999999,
+        "latencyP50MS": 3.227577,
+        "peakHeap": 16916880,
+        "peakRSS": 71946240
+      },
+      "after": {
+        "samples": 10,
+        "bytes": 147587.9375,
+        "allocations": 2850.1640625,
+        "cpuMS": 6.3664453125,
+        "latencyP50MS": 4.697461499999999,
+        "peakHeap": 16315104,
+        "peakRSS": 71331840
+      }
+    },
+    {
+      "name": "candidates4",
+      "before": {
+        "samples": 10,
+        "bytes": 420756.625,
+        "allocations": 7344.453125,
+        "cpuMS": 11.0775703125,
+        "latencyP50MS": 7.6366575,
+        "peakHeap": 16661176,
+        "peakRSS": 72925184
+      },
+      "after": {
+        "samples": 10,
+        "bytes": 265449.75,
+        "allocations": 5671.5078125,
+        "cpuMS": 9.161765625000001,
+        "latencyP50MS": 7.1751045,
+        "peakHeap": 16334000,
+        "peakRSS": 72032256
+      }
+    },
+    {
+      "name": "stream256",
+      "before": {
+        "samples": 10,
+        "bytes": 9801566.3125,
+        "allocations": 113404.0546875,
+        "cpuMS": 111.40153125,
+        "latencyP50MS": 82.955626,
+        "peakHeap": 11540872,
+        "peakRSS": 69144576
+      },
+      "after": {
+        "samples": 10,
+        "bytes": 7297382.8125,
+        "allocations": 98048.734375,
+        "cpuMS": 106.67875000000001,
+        "latencyP50MS": 87.790648,
+        "peakHeap": 9957840,
+        "peakRSS": 67510272
+      }
+    },
+    {
+      "name": "stream256-cross",
+      "before": {
+        "samples": 10,
+        "bytes": 24255664.4375,
+        "allocations": 157130.5859375,
+        "cpuMS": 203.6361875,
+        "latencyP50MS": 156.731175,
+        "peakHeap": 11623520,
+        "peakRSS": 72728576
+      },
+      "after": {
+        "samples": 10,
+        "bytes": 21242523.5,
+        "allocations": 137466.609375,
+        "cpuMS": 180.1316171875,
+        "latencyP50MS": 137.285258,
+        "peakHeap": 13005280,
+        "peakRSS": 72433664
+      }
+    },
+    {
+      "name": "image2",
+      "before": {
+        "samples": 10,
+        "bytes": 108029648,
+        "allocations": 6231.125,
+        "cpuMS": 324.33075,
+        "latencyP50MS": 220.6567575,
+        "peakHeap": 64894616,
+        "peakRSS": 124493824
+      },
+      "after": {
+        "samples": 10,
+        "bytes": 69481369,
+        "allocations": 5192.375,
+        "cpuMS": 251.986375,
+        "latencyP50MS": 164.605661,
+        "peakHeap": 39473344,
+        "peakRSS": 98328576
+      }
+    }
+  ],
+  "chatConfirmation": [
+    {
+      "name": "chat-short",
+      "before": {
+        "samples": 20,
+        "bytes": 208479.75,
+        "allocations": 3463.7421875,
+        "cpuMS": 8.652390624999999,
+        "latencyP50MS": 6.5344549999999995,
+        "peakHeap": 16615864,
+        "peakRSS": 70684672
+      },
+      "after": {
+        "samples": 20,
+        "bytes": 147770.3125,
+        "allocations": 2852.8828125,
+        "cpuMS": 5.0253984375,
+        "latencyP50MS": 3.6118740000000003,
+        "peakHeap": 16450936,
+        "peakRSS": 70201344
+      }
+    }
+  ],
+  "legacy": [
+    {
+      "name": "nodes",
+      "stream": false,
+      "before": {
+        "requests": 20,
+        "bytes": 111077160.0,
+        "allocations": 515855.5,
+        "cpuMS": 464.54325,
+        "latencyP50MS": 317.665198,
+        "peakHeap": 46429136,
+        "peakRSS": 111300608
+      },
+      "after": {
+        "requests": 20,
+        "bytes": 86144910.0,
+        "allocations": 511212.75,
+        "cpuMS": 464.884,
+        "latencyP50MS": 308.057633,
+        "peakHeap": 41553528,
+        "peakRSS": 99598336
+      }
+    },
+    {
+      "name": "nodes",
+      "stream": true,
+      "before": {
+        "requests": 20,
+        "bytes": 111377876.0,
+        "allocations": 517379.75,
+        "cpuMS": 559.124,
+        "latencyP50MS": 389.359307,
+        "peakHeap": 48970168,
+        "peakRSS": 105979904
+      },
+      "after": {
+        "requests": 20,
+        "bytes": 86270012.0,
+        "allocations": 512532.5,
+        "cpuMS": 371.36475,
+        "latencyP50MS": 292.969337,
+        "peakHeap": 54285024,
+        "peakRSS": 111472640
+      }
+    },
+    {
+      "name": "events",
+      "stream": true,
+      "before": {
+        "requests": 80,
+        "bytes": 11159003.0,
+        "allocations": 192924.25,
+        "cpuMS": 193.3251875,
+        "latencyP50MS": 155.529724,
+        "peakHeap": 11075440,
+        "peakRSS": 66637824
+      },
+      "after": {
+        "requests": 80,
+        "bytes": 8975260.0,
+        "allocations": 167155.1875,
+        "cpuMS": 112.2905625,
+        "latencyP50MS": 63.322344,
+        "peakHeap": 10592584,
+        "peakRSS": 66580480
+      }
+    },
+    {
+      "name": "image31",
+      "stream": false,
+      "before": {
+        "requests": 5,
+        "bytes": 1640379344.0,
+        "allocations": 6730.0,
+        "cpuMS": 1278.127,
+        "latencyP50MS": 1124.298614,
+        "peakHeap": 764722264,
+        "peakRSS": 862691328
+      },
+      "after": {
+        "requests": 5,
+        "bytes": 1053398848.0,
+        "allocations": 5630.0,
+        "cpuMS": 1203.334,
+        "latencyP50MS": 1125.420821,
+        "peakHeap": 427140952,
+        "peakRSS": 495271936
+      }
+    },
+    {
+      "name": "image31",
+      "stream": true,
+      "before": {
+        "requests": 5,
+        "bytes": 1640402864.0,
+        "allocations": 8267.0,
+        "cpuMS": 1453.779,
+        "latencyP50MS": 1265.410403,
+        "peakHeap": 731943264,
+        "peakRSS": 796868608
+      },
+      "after": {
+        "requests": 5,
+        "bytes": 1053330168.0,
+        "allocations": 6919.0,
+        "cpuMS": 1071.243,
+        "latencyP50MS": 1012.790674,
+        "peakHeap": 427185376,
+        "peakRSS": 509857792
+      }
+    }
+  ],
+  "cancellation": {
+    "before": {
+      "heapRange": [
+        3802056,
+        3811392
+      ],
+      "rssRange": [
+        165781504,
+        198254592
+      ],
+      "goroutines": [
+        12
+      ]
+    },
+    "after": {
+      "heapRange": [
+        3792032,
+        3795696
+      ],
+      "rssRange": [
+        153276416,
+        165150720
+      ],
+      "goroutines": [
+        12
+      ]
+    }
+  },
+  "profiles": {
+    "total": 60,
+    "cpu": 12,
+    "heapAndAllocation": 48
+  }
+}

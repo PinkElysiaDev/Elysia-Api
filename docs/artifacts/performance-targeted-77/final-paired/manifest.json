@@ -1,0 +1,18 @@
+[
+  {
+    "path": "report.json.gz",
+    "sha256": "481041ba3e2247a184362dc9328cedcdcdd8de7620bf65747da70e2d7394e0c3"
+  },
+  {
+    "path": "run-logs.txt",
+    "sha256": "e85a592568e4a4ec72179ab6b99398e562fd1d421ca59adf4ae5cc0e84c8f60f"
+  },
+  {
+    "path": "runner.mjs",
+    "sha256": "2db3de9208332f777b3f2301c4e1aad3d5e31d675b87fdcf8586be14f32c238d"
+  },
+  {
+    "path": "summary.json",
+    "sha256": "2a828c53545da2bc7f22f5e09f4ae6928e663f2662be0b1511c5cc62cf5405fa"
+  }
+]

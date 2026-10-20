@@ -1,0 +1,39 @@
+File: server.test
+Build ID: edee8132cefc91147fcafeede7abc34945437d57
+Type: cpu
+Time: 2026-10-20 22:49:40 CST
+Duration: 20s, Total samples = 26.25s (131.24%)
+Showing nodes accounting for 23.45s, 89.33% of 26.25s total
+Dropped 541 nodes (cum <= 0.13s)
+Showing top 30 nodes out of 227
+      flat  flat%   sum%        cum   cum%
+     4.57s 17.41% 17.41%      4.57s 17.41%  indexbytebody
+     4.46s 16.99% 34.40%      4.46s 16.99%  runtime.memmove
+     2.26s  8.61% 43.01%      2.26s  8.61%  encoding/json/internal/jsonwire.ConsumeSimpleString
+     2.11s  8.04% 51.05%      2.11s  8.04%  countbody
+     1.69s  6.44% 57.49%      1.80s  6.86%  unicode/utf8.ValidString
+     0.95s  3.62% 61.10%      1.52s  5.79%  runtime.tryDeferToSpanScan
+     0.76s  2.90% 64.00%      0.76s  2.90%  runtime.madvise
+     0.74s  2.82% 66.82%      2.66s 10.13%  runtime.scanObject
+     0.65s  2.48% 69.30%      0.65s  2.48%  runtime.memclrNoHeapPointers
+     0.52s  1.98% 71.28%      0.52s  1.98%  runtime.tgkill
+     0.51s  1.94% 73.22%      0.51s  1.94%  internal/runtime/syscall/linux.Syscall6
+     0.51s  1.94% 75.16%      0.61s  2.32%  runtime.typePointers.next
+     0.46s  1.75% 76.91%      0.46s  1.75%  runtime.futex
+     0.38s  1.45% 78.36%      0.38s  1.45%  runtime.typePointers.nextFast (inline)
+     0.37s  1.41% 79.77%      0.37s  1.41%  internal/runtime/maps.memHashAES
+     0.35s  1.33% 81.10%      0.35s  1.33%  runtime.osyield
+     0.30s  1.14% 82.25%      0.32s  1.22%  runtime.heapArenaOf (inline)
+     0.30s  1.14% 83.39%      0.30s  1.14%  runtime.procyieldAsm
+     0.24s  0.91% 84.30%      0.76s  2.90%  runtime.scanblock
+     0.20s  0.76% 85.07%      0.41s  1.56%  runtime.scanObjectsSmall
+     0.16s  0.61% 85.68%      0.16s  0.61%  _value
+     0.16s  0.61% 86.29%      0.16s  0.61%  runtime.nanotime (inline)
+     0.15s  0.57% 86.86%      0.30s  1.14%  runtime.findObject
+     0.15s  0.57% 87.43%      0.15s  0.57%  runtime.spanClass.sizeclass (inline)
+     0.11s  0.42% 87.85%      0.20s  0.76%  runtime.scanObjectSmall
+     0.10s  0.38% 88.23%      1.12s  4.27%  runtime.scanSpan
+     0.10s  0.38% 88.61%      0.14s  0.53%  runtime.spanOf (inline)
+     0.07s  0.27% 88.88%      5.83s 22.21%  runtime.gcDrain
+     0.07s  0.27% 89.14%      0.20s  0.76%  runtime.pcvalue
+     0.05s  0.19% 89.33%      0.47s  1.79%  decode_

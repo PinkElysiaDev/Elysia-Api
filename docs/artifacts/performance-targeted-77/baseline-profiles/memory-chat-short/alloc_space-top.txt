@@ -1,0 +1,37 @@
+File: server.test
+Build ID: edee8132cefc91147fcafeede7abc34945437d57
+Type: alloc_space
+Time: 2026-10-20 22:48:40 CST
+Showing nodes accounting for 11849.64kB, 100% of 11849.64kB total
+Showing top 30 nodes out of 92
+      flat  flat%   sum%        cum   cum%
+ 2089.45kB 17.63% 17.63%  3289.41kB 27.76%  runtime/pprof.(*profileBuilder).emitLocation
+ 1749.02kB 14.76% 32.39%  1749.02kB 14.76%  github.com/bytedance/sonic/internal/encoder/vars.init.func1
+ 1536.28kB 12.96% 45.36%  1536.28kB 12.96%  runtime/pprof.allFrames
+ 1131.52kB  9.55% 54.91%  1131.52kB  9.55%  github.com/bytedance/sonic/internal/decoder/jitdec.newStack (inline)
+ 1034.66kB  8.73% 63.64%  1034.66kB  8.73%  slices.Grow[go.shape.[]uint8,go.shape.uint8] (inline)
+  655.29kB  5.53% 69.17%  1199.96kB 10.13%  compress/flate.NewWriter (inline)
+  544.67kB  4.60% 73.76%   544.67kB  4.60%  compress/flate.(*compressor).init
+  532.26kB  4.49% 78.26%  6392.61kB 53.95%  runtime/pprof.writeHeapInternal
+  528.17kB  4.46% 82.71%   528.17kB  4.46%  net/http.init.func2
+  512.14kB  4.32% 87.04%   512.14kB  4.32%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+  512.12kB  4.32% 91.36%   512.12kB  4.32%  github.com/elysia-api/backend/protocol.Value.Bytes (inline)
+  512.05kB  4.32% 95.68%  1077.81kB  9.10%  github.com/elysia-api/backend/protocol.decodeContract
+  512.02kB  4.32%   100%   512.02kB  4.32%  github.com/elysia-api/backend/protocol.validateResponsesToolUsageArithmetic.func1
+         0     0%   100%  1199.96kB 10.13%  compress/gzip.(*Writer).Write
+         0     0%   100%  1077.81kB  9.10%  decode_
+         0     0%   100%   512.12kB  4.32%  encode_*protocol.Response
+         0     0%   100%   512.12kB  4.32%  encode_protocol.Native
+         0     0%   100%  2261.14kB 19.08%  github.com/bytedance/sonic.frozenConfig.MarshalToString
+         0     0%   100%  1643.56kB 13.87%  github.com/bytedance/sonic.frozenConfig.UnmarshalFromString
+         0     0%   100%  1643.56kB 13.87%  github.com/bytedance/sonic/internal/decoder/api.(*Decoder).Decode
+         0     0%   100%  1643.56kB 13.87%  github.com/bytedance/sonic/internal/decoder/jitdec.Decode
+         0     0%   100%  1077.81kB  9.10%  github.com/bytedance/sonic/internal/decoder/jitdec.decodeJsonUnmarshaler
+         0     0%   100%  1077.81kB  9.10%  github.com/bytedance/sonic/internal/decoder/jitdec.decodeTypedPointer
+         0     0%   100%  2261.14kB 19.08%  github.com/bytedance/sonic/internal/encoder.Encode
+         0     0%   100%  2261.14kB 19.08%  github.com/bytedance/sonic/internal/encoder.encodeInto
+         0     0%   100%  2261.14kB 19.08%  github.com/bytedance/sonic/internal/encoder.encodeIntoCheckRace (inline)
+         0     0%   100%   512.12kB  4.32%  github.com/bytedance/sonic/internal/encoder/prim.EncodeJsonMarshaler
+         0     0%   100%  1749.02kB 14.76%  github.com/bytedance/sonic/internal/encoder/vars.NewStack (inline)
+         0     0%   100%   512.12kB  4.32%  github.com/bytedance/sonic/internal/encoder/x86.EncodeTypedPointer
+         0     0%   100%  1095.05kB  9.24%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeRequest

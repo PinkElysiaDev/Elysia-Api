@@ -1,0 +1,38 @@
+File: server.test
+Build ID: d178d191986e516395912b7c624c5baa8c69f91f
+Type: alloc_space
+Time: 2026-10-20 23:40:28 CST
+Showing nodes accounting for 109.86MB, 92.32% of 119MB total
+Dropped 38 nodes (cum <= 0.59MB)
+Showing top 30 nodes out of 143
+      flat  flat%   sum%        cum   cum%
+   24.01MB 20.17% 20.17%    24.01MB 20.17%  internal/stringslite.Clone (inline)
+      22MB 18.49% 38.67%    39.01MB 32.78%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+       5MB  4.20% 42.87%        5MB  4.20%  github.com/elysia-api/backend/protocol.Value.Bytes (inline)
+    4.50MB  3.78% 46.65%    26.14MB 21.97%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).decodeChatFrame
+    4.50MB  3.78% 50.43%     4.50MB  3.78%  decode_
+       4MB  3.36% 53.80%        4MB  3.36%  github.com/bytedance/gopkg/lang/dirtmake.Bytes
+       4MB  3.36% 57.16%   104.26MB 87.61%  github.com/elysia-api/backend/protocol.ReadFrames.func1
+    3.99MB  3.35% 60.51%     3.99MB  3.35%  github.com/bytedance/sonic/internal/encoder/vars.init.func1
+    3.50MB  2.94% 63.45%     3.50MB  2.94%  runtime/pprof.allFrames
+    3.31MB  2.79% 66.24%     3.31MB  2.79%  github.com/bytedance/sonic/internal/decoder/jitdec.newStack (inline)
+       3MB  2.52% 68.76%        3MB  2.52%  github.com/elysia-api/backend/protocol.(*ConversionEventState).Push
+       3MB  2.52% 71.28%        3MB  2.52%  reflect.unsafe_New
+    2.50MB  2.10% 73.38%     2.50MB  2.10%  github.com/elysia-api/backend/protocol.CheckEvent
+    2.50MB  2.10% 75.48%     2.50MB  2.10%  github.com/bytedance/sonic/internal/decoder/api.NewDecoder
+       2MB  1.68% 77.16%     4.14MB  3.48%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).textEvents
+    1.50MB  1.26% 78.42%     1.50MB  1.26%  bufio.(*Scanner).Text
+    1.50MB  1.26% 79.68%     1.50MB  1.26%  github.com/elysia-api/backend/protocol.ParseValue
+    1.50MB  1.26% 80.95%     1.50MB  1.26%  strings.(*Builder).WriteString
+    1.50MB  1.26% 82.21%        8MB  6.72%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Event
+    1.50MB  1.26% 83.47%     1.50MB  1.26%  github.com/elysia-api/backend/protocol.(*Compiled).Capabilities (inline)
+    1.50MB  1.26% 84.73%        2MB  1.68%  github.com/elysia-api/backend/protocol.(*CompiledConversion).projectUsage
+    1.50MB  1.26% 85.99%        3MB  2.52%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+    1.34MB  1.13% 87.12%     1.34MB  1.13%  compress/flate.(*fastGen).addBlock
+    1.05MB  0.88% 88.00%     2.80MB  2.36%  runtime/pprof.(*profileBuilder).emitLocation
+       1MB  0.84% 88.84%   105.26MB 88.45%  github.com/elysia-api/backend/protocol.ReadFrames.func2
+       1MB  0.84% 89.68%        1MB  0.84%  github.com/elysia-api/backend/protocol.conversionPhases (inline)
+       1MB  0.84% 90.52%        1MB  0.84%  github.com/elysia-api/backend/protocol.(*semanticCache).store
+       1MB  0.84% 91.36%     2.05MB  1.72%  github.com/elysia-api/backend/protocol/builtin.stringValue
+    0.64MB  0.54% 91.90%     1.21MB  1.02%  compress/flate.NewWriter (inline)
+    0.50MB  0.42% 92.32%     2.14MB  1.80%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).itemEvent

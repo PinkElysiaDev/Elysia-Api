@@ -1,0 +1,123 @@
+{
+  "status": "passed",
+  "order": [
+    "before",
+    "after",
+    "after",
+    "before"
+  ],
+  "cases": [
+    "chat-short",
+    "candidates4",
+    "stream256",
+    "stream256-cross",
+    "image2"
+  ],
+  "results": [
+    {
+      "name": "chat-short",
+      "before": {
+        "samples": 10,
+        "bytes": 207307.0625,
+        "allocations": 3463.828125,
+        "cpuMS": 5.984328124999999,
+        "latencyP50MS": 3.227577,
+        "peakHeap": 16916880,
+        "peakRSS": 71946240
+      },
+      "after": {
+        "samples": 10,
+        "bytes": 147587.9375,
+        "allocations": 2850.1640625,
+        "cpuMS": 6.3664453125,
+        "latencyP50MS": 4.697461499999999,
+        "peakHeap": 16315104,
+        "peakRSS": 71331840
+      }
+    },
+    {
+      "name": "candidates4",
+      "before": {
+        "samples": 10,
+        "bytes": 420756.625,
+        "allocations": 7344.453125,
+        "cpuMS": 11.0775703125,
+        "latencyP50MS": 7.6366575,
+        "peakHeap": 16661176,
+        "peakRSS": 72925184
+      },
+      "after": {
+        "samples": 10,
+        "bytes": 265449.75,
+        "allocations": 5671.5078125,
+        "cpuMS": 9.161765625000001,
+        "latencyP50MS": 7.1751045,
+        "peakHeap": 16334000,
+        "peakRSS": 72032256
+      }
+    },
+    {
+      "name": "stream256",
+      "before": {
+        "samples": 10,
+        "bytes": 9801566.3125,
+        "allocations": 113404.0546875,
+        "cpuMS": 111.40153125,
+        "latencyP50MS": 82.955626,
+        "peakHeap": 11540872,
+        "peakRSS": 69144576
+      },
+      "after": {
+        "samples": 10,
+        "bytes": 7297382.8125,
+        "allocations": 98048.734375,
+        "cpuMS": 106.67875000000001,
+        "latencyP50MS": 87.790648,
+        "peakHeap": 9957840,
+        "peakRSS": 67510272
+      }
+    },
+    {
+      "name": "stream256-cross",
+      "before": {
+        "samples": 10,
+        "bytes": 24255664.4375,
+        "allocations": 157130.5859375,
+        "cpuMS": 203.6361875,
+        "latencyP50MS": 156.731175,
+        "peakHeap": 11623520,
+        "peakRSS": 72728576
+      },
+      "after": {
+        "samples": 10,
+        "bytes": 21242523.5,
+        "allocations": 137466.609375,
+        "cpuMS": 180.1316171875,
+        "latencyP50MS": 137.285258,
+        "peakHeap": 13005280,
+        "peakRSS": 72433664
+      }
+    },
+    {
+      "name": "image2",
+      "before": {
+        "samples": 10,
+        "bytes": 108029648,
+        "allocations": 6231.125,
+        "cpuMS": 324.33075,
+        "latencyP50MS": 220.6567575,
+        "peakHeap": 64894616,
+        "peakRSS": 124493824
+      },
+      "after": {
+        "samples": 10,
+        "bytes": 69481369,
+        "allocations": 5192.375,
+        "cpuMS": 251.986375,
+        "latencyP50MS": 164.605661,
+        "peakHeap": 39473344,
+        "peakRSS": 98328576
+      }
+    }
+  ]
+}

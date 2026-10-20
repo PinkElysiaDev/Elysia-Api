@@ -1,0 +1,37 @@
+File: server.test
+Build ID: d178d191986e516395912b7c624c5baa8c69f91f
+Type: alloc_space
+Time: 2026-10-20 23:40:01 CST
+Showing nodes accounting for 12591.74kB, 100% of 12591.74kB total
+Showing top 30 nodes out of 65
+      flat  flat%   sum%        cum   cum%
+ 4608.91kB 36.60% 36.60%  4608.91kB 36.60%  runtime/pprof.allFrames
+ 1578.43kB 12.54% 49.14%  1578.43kB 12.54%  runtime/pprof.(*protobuf).string (inline)
+ 1377.12kB 10.94% 60.07%  1377.12kB 10.94%  compress/flate.(*fastGen).addBlock
+ 1310.59kB 10.41% 70.48%  2399.92kB 19.06%  compress/flate.NewWriter (inline)
+ 1089.33kB  8.65% 79.13%  1089.33kB  8.65%  compress/flate.(*compressor).init
+  565.76kB  4.49% 83.63%   565.76kB  4.49%  github.com/bytedance/sonic/internal/decoder/jitdec.newStack (inline)
+  525.43kB  4.17% 87.80%  3613.90kB 28.70%  runtime/pprof.(*profileBuilder).emitLocation
+  512.14kB  4.07% 91.87%   512.14kB  4.07%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+  512.03kB  4.07% 95.93% 11001.84kB 87.37%  runtime/pprof.writeHeapProto
+  512.01kB  4.07%   100%   512.01kB  4.07%  github.com/elysia-api/backend/protocol.requestCaches.func1
+         0     0%   100%  1377.12kB 10.94%  compress/flate.(*Writer).Write (inline)
+         0     0%   100%  1377.12kB 10.94%  compress/flate.(*compressor).deflateFast
+         0     0%   100%  1377.12kB 10.94%  compress/flate.(*compressor).write
+         0     0%   100%  1377.12kB 10.94%  compress/flate.(*fastEncL1).encode
+         0     0%   100%  3777.04kB 30.00%  compress/gzip.(*Writer).Write
+         0     0%   100%   565.76kB  4.49%  github.com/bytedance/sonic.frozenConfig.UnmarshalFromString
+         0     0%   100%   565.76kB  4.49%  github.com/bytedance/sonic/internal/decoder/api.(*Decoder).Decode
+         0     0%   100%   565.76kB  4.49%  github.com/bytedance/sonic/internal/decoder/jitdec.Decode
+         0     0%   100%  1589.91kB 12.63%  github.com/elysia-api/backend/protocol.(*Compiled).OperationRoutes.func1
+         0     0%   100%   512.14kB  4.07%  github.com/elysia-api/backend/protocol.(*Compiled).ValidateWireOutput (inline)
+         0     0%   100%   512.14kB  4.07%  github.com/elysia-api/backend/protocol.(*Compiled).validateWireOutput
+         0     0%   100%  1077.77kB  8.56%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Request
+         0     0%   100%  1077.77kB  8.56%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyConversionState
+         0     0%   100%   565.76kB  4.49%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyRequestObject
+         0     0%   100%  1077.77kB  8.56%  github.com/elysia-api/backend/protocol.(*CompiledConversion).convertOwnedRequest
+         0     0%   100%   565.76kB  4.49%  github.com/elysia-api/backend/protocol.(*CompiledConversion).reasoningControls
+         0     0%   100%   565.76kB  4.49%  github.com/elysia-api/backend/protocol.(*CompiledConversion).reasoningOutputLimit
+         0     0%   100%   565.76kB  4.49%  github.com/elysia-api/backend/protocol.(*conversionState).apply
+         0     0%   100%   512.01kB  4.07%  github.com/elysia-api/backend/protocol.(*conversionState).validateContext
+         0     0%   100%   512.14kB  4.07%  github.com/elysia-api/backend/protocol.EvaluationContext.ReadObject (inline)

@@ -1,0 +1,37 @@
+File: server.test
+Build ID: d178d191986e516395912b7c624c5baa8c69f91f
+Type: inuse_space
+Time: 2026-10-20 23:40:01 CST
+Showing nodes accounting for 2650.45kB, 100% of 2650.45kB total
+Showing top 30 nodes out of 31
+      flat  flat%   sum%        cum   cum%
+ 1050.86kB 39.65% 39.65%  1050.86kB 39.65%  github.com/go-playground/validator/v10.map.init.7
+ 1025.25kB 38.68% 78.33%  1025.25kB 38.68%  runtime.mallocgc
+  574.34kB 21.67%   100%   574.34kB 21.67%  reflect.compiledTypelinks
+         0     0%   100%   574.34kB 21.67%  encoding/gob.buildTypeInfo
+         0     0%   100%   574.34kB 21.67%  encoding/gob.getBaseType
+         0     0%   100%   574.34kB 21.67%  encoding/gob.getType
+         0     0%   100%   574.34kB 21.67%  encoding/gob.getTypeInfo
+         0     0%   100%   574.34kB 21.67%  encoding/gob.implementsInterface
+         0     0%   100%   574.34kB 21.67%  encoding/gob.init
+         0     0%   100%   574.34kB 21.67%  encoding/gob.mustGetTypeInfo
+         0     0%   100%   574.34kB 21.67%  encoding/gob.newTypeObject
+         0     0%   100%   574.34kB 21.67%  encoding/gob.userType
+         0     0%   100%   574.34kB 21.67%  encoding/gob.validUserType
+         0     0%   100%  1050.86kB 39.65%  github.com/go-playground/validator/v10.init
+         0     0%   100%   574.34kB 21.67%  reflect.(*rtype).ptrTo
+         0     0%   100%   574.34kB 21.67%  reflect.PointerTo (inline)
+         0     0%   100%   574.34kB 21.67%  reflect.typesByString
+         0     0%   100%      513kB 19.36%  runtime.allocm
+         0     0%   100%  1625.20kB 61.32%  runtime.doInit (inline)
+         0     0%   100%  1625.20kB 61.32%  runtime.doInit1
+         0     0%   100%   512.25kB 19.33%  runtime.gcBgMarkWorker
+         0     0%   100%  1625.20kB 61.32%  runtime.main
+         0     0%   100%      513kB 19.36%  runtime.mstart
+         0     0%   100%      513kB 19.36%  runtime.mstart0
+         0     0%   100%      513kB 19.36%  runtime.mstart1
+         0     0%   100%      513kB 19.36%  runtime.newm
+         0     0%   100%  1025.25kB 38.68%  runtime.newobject
+         0     0%   100%      513kB 19.36%  runtime.resetspinning
+         0     0%   100%      513kB 19.36%  runtime.schedule
+         0     0%   100%      513kB 19.36%  runtime.startm

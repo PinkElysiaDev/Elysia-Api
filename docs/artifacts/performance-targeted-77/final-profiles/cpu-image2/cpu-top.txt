@@ -1,0 +1,39 @@
+File: server.test
+Build ID: d178d191986e516395912b7c624c5baa8c69f91f
+Type: cpu
+Time: 2026-10-20 23:41:02 CST
+Duration: 20s, Total samples = 24.90s (124.49%)
+Showing nodes accounting for 22.06s, 88.59% of 24.90s total
+Dropped 531 nodes (cum <= 0.12s)
+Showing top 30 nodes out of 223
+      flat  flat%   sum%        cum   cum%
+     5.26s 21.12% 21.12%      5.26s 21.12%  indexbytebody
+     2.96s 11.89% 33.01%      2.99s 12.01%  encoding/json/internal/jsonwire.ConsumeSimpleString
+     2.69s 10.80% 43.82%      2.69s 10.80%  countbody
+     2.51s 10.08% 53.90%      2.51s 10.08%  runtime.memmove
+     1.91s  7.67% 61.57%      2.04s  8.19%  unicode/utf8.ValidString
+     0.82s  3.29% 64.86%      1.26s  5.06%  runtime.tryDeferToSpanScan
+     0.53s  2.13% 66.99%      0.53s  2.13%  runtime.madvise
+     0.53s  2.13% 69.12%      2.07s  8.31%  runtime.scanObject
+     0.49s  1.97% 71.08%      0.49s  1.97%  runtime.memclrNoHeapPointers
+     0.47s  1.89% 72.97%      0.47s  1.89%  runtime.tgkill
+     0.42s  1.69% 74.66%      0.42s  1.69%  internal/runtime/syscall/linux.Syscall6
+     0.42s  1.69% 76.35%      0.51s  2.05%  runtime.typePointers.next
+     0.33s  1.33% 77.67%      0.64s  2.57%  runtime.scanblock
+     0.31s  1.24% 78.92%      0.31s  1.24%  runtime.osyield
+     0.30s  1.20% 80.12%      0.30s  1.20%  internal/runtime/maps.memHashAES
+     0.30s  1.20% 81.33%      0.30s  1.20%  runtime.typePointers.nextFast (inline)
+     0.27s  1.08% 82.41%      0.27s  1.08%  runtime.futex
+     0.20s   0.8% 83.21%      0.23s  0.92%  runtime.heapArenaOf (inline)
+     0.20s   0.8% 84.02%      0.20s   0.8%  runtime.procyieldAsm
+     0.18s  0.72% 84.74%      0.26s  1.04%  runtime.findObject
+     0.16s  0.64% 85.38%      0.16s  0.64%  _value
+     0.15s   0.6% 85.98%      0.15s   0.6%  runtime.spanClass.sizeclass (inline)
+     0.13s  0.52% 86.51%      0.13s  0.52%  unicode/utf8.word[go.shape.string] (inline)
+     0.11s  0.44% 86.95%      1.05s  4.22%  runtime.scanSpan
+     0.10s   0.4% 87.35%      0.30s  1.20%  runtime.scanObjectsSmall
+     0.09s  0.36% 87.71%      5.13s 20.60%  runtime.gcDrain
+     0.07s  0.28% 87.99%      0.14s  0.56%  runtime.scanObjectSmall
+     0.05s   0.2% 88.19%      0.17s  0.68%  runtime.(*unwinder).resolveInternal
+     0.05s   0.2% 88.39%      0.21s  0.84%  runtime.pcvalue
+     0.05s   0.2% 88.59%      1.08s  4.34%  runtime.suspendG

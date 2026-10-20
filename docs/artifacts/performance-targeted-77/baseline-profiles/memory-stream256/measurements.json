@@ -1,0 +1,146 @@
+[
+  {
+    "Mode": "memory",
+    "Workload": "small",
+    "Phase": "steady",
+    "SizeMiB": 2,
+    "Workers": 1,
+    "Repeat": 0,
+    "Requests": 16,
+    "Stream": true,
+    "ElapsedMS": 610.181243,
+    "Metrics": {
+      "Allocated": 162513848,
+      "Heap": 7094688,
+      "PeakHeap": 10204752,
+      "WorkingSet": 65441792,
+      "PeakWorkingSet": 65945600,
+      "Calls": 0,
+      "Allocations": 1833247,
+      "GCPauseNS": 1915519,
+      "GCCycles": 38,
+      "CPUTimeNS": 661240000,
+      "GCCPUSeconds": 0.13490817099999997,
+      "Goroutines": 16,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "DroppedSamples": 0
+    },
+    "Before": {
+      "Allocated": 0,
+      "Heap": 3779240,
+      "PeakHeap": 3779240,
+      "WorkingSet": 62238720,
+      "PeakWorkingSet": 62238720,
+      "Calls": 0,
+      "Allocations": 0,
+      "GCPauseNS": 0,
+      "GCCycles": 0,
+      "CPUTimeNS": 0,
+      "GCCPUSeconds": 0,
+      "Goroutines": 15,
+      "ActiveRequests": 0,
+      "QueueDepth": 0,
+      "QueuedPayloadBytes": 0,
+      "DroppedSamples": 0
+    },
+    "LatencyP50P95P99NS": [
+      24101183,
+      40635047,
+      40635047
+    ],
+    "FirstByteP50P95P99NS": [
+      1776502,
+      4076138,
+      4076138
+    ],
+    "FirstFrameP50P95P99NS": [
+      1778045,
+      4079645,
+      4079645
+    ],
+    "Observations": [
+      {
+        "LatencyNS": 13579131,
+        "FirstByteNS": 1197174,
+        "FirstFrameNS": 1198226
+      },
+      {
+        "LatencyNS": 23614486,
+        "FirstByteNS": 1467258,
+        "FirstFrameNS": 1468350
+      },
+      {
+        "LatencyNS": 36383268,
+        "FirstByteNS": 4076138,
+        "FirstFrameNS": 4079645
+      },
+      {
+        "LatencyNS": 18225521,
+        "FirstByteNS": 1183811,
+        "FirstFrameNS": 1185544
+      },
+      {
+        "LatencyNS": 15518340,
+        "FirstByteNS": 1912400,
+        "FirstFrameNS": 1913351
+      },
+      {
+        "LatencyNS": 19629764,
+        "FirstByteNS": 1776502,
+        "FirstFrameNS": 1778045
+      },
+      {
+        "LatencyNS": 37601882,
+        "FirstByteNS": 2961234,
+        "FirstFrameNS": 2962827
+      },
+      {
+        "LatencyNS": 27447981,
+        "FirstByteNS": 2167055,
+        "FirstFrameNS": 2169099
+      },
+      {
+        "LatencyNS": 24101183,
+        "FirstByteNS": 2052846,
+        "FirstFrameNS": 2054058
+      },
+      {
+        "LatencyNS": 20673879,
+        "FirstByteNS": 1736910,
+        "FirstFrameNS": 1738222
+      },
+      {
+        "LatencyNS": 28509588,
+        "FirstByteNS": 1361955,
+        "FirstFrameNS": 1363218
+      },
+      {
+        "LatencyNS": 24031316,
+        "FirstByteNS": 1659549,
+        "FirstFrameNS": 1660941
+      },
+      {
+        "LatencyNS": 26476318,
+        "FirstByteNS": 1350865,
+        "FirstFrameNS": 1352068
+      },
+      {
+        "LatencyNS": 39584480,
+        "FirstByteNS": 2499402,
+        "FirstFrameNS": 2500524
+      },
+      {
+        "LatencyNS": 40635047,
+        "FirstByteNS": 3542295,
+        "FirstFrameNS": 3543507
+      },
+      {
+        "LatencyNS": 38511461,
+        "FirstByteNS": 2288486,
+        "FirstFrameNS": 2290650
+      }
+    ]
+  }
+]
