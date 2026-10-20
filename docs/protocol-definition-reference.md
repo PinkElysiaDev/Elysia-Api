@@ -4,6 +4,23 @@
 
 当前格式是 `schemaVersion: 2`，语义文档为版本 1；作者 `version`、内容哈希和编译器版本独立。旧 request/response/shape 模板只可导入迁移，不再执行。实时事实来源为 `GET /api/admin/protocols/schema` 或 `elysia protocol schema`，对应 [Definition](../backend/protocol/definition.go)、[语义模型](../backend/protocol/model.go)、[编译器](../backend/protocol/compiler.go)。
 
+## 生成的 JSON Schema
+
+实时 catalog 使用 **`github.com/invopop/jsonschema` v0.14.0** 将 Go 模型反射为 JSON Schema draft 2020-12，覆盖协议定义、绑定、转换策略及语义模型。结构体拒绝未知属性，JSON 的 `omitempty` 和 `omitzero` 标签决定字段是否必需。协议 `Value` 类型显式映射为不限制类型的 JSON schema，保留任意 JSON 值，包括 null、false、零与大整数。缓存意图字段说明使用依赖的 `jsonschema_description` 标签。
+
+### Schema 表示迁移
+
+直接检查 schema JSON 的客户端需要支持以下标准、校验等价的表示：
+
+- 不限制类型的 schema 可以是布尔值 `true`，不一定是 `{}`。
+- `Object`、`CapabilitySet` 等命名 map 使用本地 `$defs` / `$ref`，不再始终内联。
+- 空 `required` 数组省略；包括 `omitzero` 在内的可选字段仍为可选。
+- 绑定和转换策略根节点也声明 `$schema`；关闭自动生成的包路径 `$id`，保持本地引用解析。
+
+catalog 包装及语义根节点 `request`、`response`、`event`、`task`、`models`、`agent` 继续可用。`semanticSchema` 是共用 `$defs` 的根节点集合；验证某个根时，应组合其 `$ref`、共用 `$defs` 和 dialect。CLI 的 `--section` / `--type` 查询继续返回命名定义，也能查询新增的命名 map。
+
+归一化上述等价表示后，全部现有 catalog 约束与迁移前一致。每次查询返回独立对象；应用层序列化使用 Sonic，依赖自行管理其自定义 schema 序列化。运行时协议检查、资源预算及动作专用约束继续由编译器执行。
+
 ## 完整样例
 
 从零定义的 [text-alpha](../backend/protocol/testdata/text-alpha.json) 与 [text-beta](../backend/protocol/testdata/text-beta.json) 可直接录入编辑器。工具及完整多轮示例见 [编译器回归](../backend/protocol/compiler_test.go)；WebSocket、异步任务使用同目录的 session 和 job 样例。不要将不完整片段当作可启用协议。

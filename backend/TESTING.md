@@ -71,6 +71,19 @@ go test -tags=sonic -race ./internal/eventstream ./protocol ./relay ./server \
 并验证真实 HTTP 桥接、尾部用量入账、Agent 事件和上游错误归属。
 选型与兼容性差异见 [SSE 迁移说明](../docs/backend-sse-migration.md)。
 
+## JSON Schema 反射迁移定向验证
+
+```sh
+go test -tags=sonic -race ./protocol ./server \
+  -run '^Test(Schema|ProtocolSchemaLibrary|ProtocolRevisionAdmin|ProtocolAdminRejects|AgentProtocolV2|CLIReferenceUpToDate|RemoteThinkingEffortWhitelistAndSchema|OperationSchema|CompileChecksNestedOutputSchema)' \
+  -count=1 -timeout=3m
+```
+
+`protocol/schema_test.go` 使用已有的 google/jsonschema-go 依赖独立解析和验证生成结果，
+覆盖全部根节点、递归引用、严格字段、Value 任意 JSON、空值/缺失、命名 map 及并发结果隔离。
+`server/protocol_schema_library_test.go` 验证 HTTP 与 CLI schema 查询；现有 authoring 测试覆盖编辑、验证及启用流程。
+输出表示差异见 [JSON Schema 参考](../docs/protocol-definition-reference.md#schema-表示迁移)。
+
 ## 测试组织与去重
 
 缓存的定向 benchmark、Otter 替换前后结果及容量语义差异见

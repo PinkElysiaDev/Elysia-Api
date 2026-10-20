@@ -136,8 +136,8 @@ type Resource struct {
 type CacheIntent struct {
 	Kind     string    `json:"kind"`
 	Location string    `json:"location"`
-	Value    Value     `json:"value,omitzero" description:"For breakpoints: the cache policy object without ttl, or explicit null. No cache intent means no cache policy is added."`
-	TTL      Value     `json:"ttl,omitzero" description:"Breakpoint TTL has one semantic owner here. Missing removes the wire ttl; explicit null remains null. Never also place ttl inside value."`
+	Value    Value     `json:"value,omitzero" jsonschema_description:"For breakpoints: the cache policy object without ttl, or explicit null. No cache intent means no cache policy is added."`
+	TTL      Value     `json:"ttl,omitzero" jsonschema_description:"Breakpoint TTL has one semantic owner here. Missing removes the wire ttl; explicit null remains null. Never also place ttl inside value."`
 	Resource *Resource `json:"resource,omitempty"`
 }
 

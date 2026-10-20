@@ -2,7 +2,9 @@ package protocol
 
 import (
 	"reflect"
-	"strings"
+
+	"github.com/bytedance/sonic"
+	"github.com/invopop/jsonschema"
 )
 
 // SchemaCatalog is the shared machine-readable contract for editor, Agent and
@@ -45,71 +47,54 @@ func (compiler *Compiler) Schema() SchemaCatalog {
 
 // DescribeSchema returns fresh schema/catalog objects without registry state.
 func DescribeSchema() SchemaCatalog {
+	root := reflectSchema(reflect.TypeFor[Definition]())
+	binding := reflectSchema(reflect.TypeFor[Binding]())
+	// semanticSchema is a catalog of named roots, not a single object schema.
+	// Keep its existing envelope and shared local-reference namespace.
 	definitions := make(map[string]any)
-	root := schemaForType(reflect.TypeFor[Definition](), definitions)
-	root["$schema"] = "https://json-schema.org/draft/2020-12/schema"
-	root["$defs"] = definitions
-	semanticDefinitions := make(map[string]any)
-	bindingDefinitions := make(map[string]any)
-	binding := schemaForType(reflect.TypeFor[Binding](), bindingDefinitions)
-	binding["$defs"] = bindingDefinitions
-	semantic := map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "request": schemaForType(reflect.TypeFor[Request](), semanticDefinitions), "response": schemaForType(reflect.TypeFor[Response](), semanticDefinitions), "event": schemaForType(reflect.TypeFor[Event](), semanticDefinitions), "task": schemaForType(reflect.TypeFor[Task](), semanticDefinitions), "models": schemaForType(reflect.TypeFor[ModelPage](), semanticDefinitions), "agent": schemaForType(reflect.TypeFor[AgentPreferences](), semanticDefinitions), "$defs": semanticDefinitions}
-	conversionDefs := make(map[string]any)
-	conversionSchema := schemaForType(reflect.TypeFor[ConversionPolicy](), conversionDefs)
-	conversionSchema["$defs"] = conversionDefs
+	semantic := map[string]any{"$schema": jsonschema.Version, "$defs": definitions}
+	for name, kind := range map[string]reflect.Type{
+		"request": reflect.TypeFor[Request](), "response": reflect.TypeFor[Response](),
+		"event": reflect.TypeFor[Event](), "task": reflect.TypeFor[Task](),
+		"models": reflect.TypeFor[ModelPage](), "agent": reflect.TypeFor[AgentPreferences](),
+	} {
+		schema := reflectSchema(kind)
+		for name, definition := range schema["$defs"].(map[string]any) {
+			definitions[name] = definition
+		}
+		delete(schema, "$schema")
+		delete(schema, "$defs")
+		semantic[name] = schema
+	}
+	conversionSchema := reflectSchema(reflect.TypeFor[ConversionPolicy]())
 	actionSchemas, actionNames := conversionActionSchemas()
 	return SchemaCatalog{Conversion: map[string]any{"actionSchemas": actionSchemas, "policy": conversionSchema, "phases": conversionPhases(), "actions": actionNames}, SchemaVersion: DefinitionSchemaVersion, CompilerVersion: CompilerVersion, Directions: DirectionCatalog(), Transports: TransportCatalog(), OperationKinds: OperationKindCatalog(), Capabilities: CapabilityCatalog(), Events: EventCatalog(), Diagnostics: DiagnosticCatalog(), Operations: ExpressionCatalog(), Definition: root, Semantic: semantic, Binding: binding, Limits: DefaultLimits()}
 }
 
-func schemaForType(kind reflect.Type, definitions map[string]any) map[string]any {
-	if kind == reflect.TypeFor[Value]() {
-		return map[string]any{}
-	}
-	if kind.Kind() == reflect.Pointer {
-		return schemaForType(kind.Elem(), definitions)
-	}
-	switch kind.Kind() {
-	case reflect.String:
-		return map[string]any{"type": "string"}
-	case reflect.Bool:
-		return map[string]any{"type": "boolean"}
-	case reflect.Int, reflect.Int64:
-		return map[string]any{"type": "integer"}
-	case reflect.Slice:
-		return map[string]any{"type": "array", "items": schemaForType(kind.Elem(), definitions)}
-	case reflect.Map:
-		return map[string]any{"type": "object", "additionalProperties": schemaForType(kind.Elem(), definitions)}
-	case reflect.Struct:
-		name := kind.Name()
-		if _, exists := definitions[name]; !exists {
-			definitions[name] = map[string]any{}
-			properties := make(map[string]any)
-			required := []string{}
-			for index := 0; index < kind.NumField(); index++ {
-				field := kind.Field(index)
-				if !field.IsExported() {
-					continue
-				}
-				tag := strings.Split(field.Tag.Get("json"), ",")
-				if tag[0] == "-" {
-					continue
-				}
-				fieldName := tag[0]
-				if fieldName == "" {
-					fieldName = field.Name
-				}
-				property := schemaForType(field.Type, definitions)
-				if description := field.Tag.Get("description"); description != "" {
-					property["description"] = description
-				}
-				properties[fieldName] = property
-				if len(tag) == 1 {
-					required = append(required, fieldName)
-				}
+func reflectSchema(kind reflect.Type) map[string]any {
+	reflector := jsonschema.Reflector{
+		// Catalog consumers resolve local $defs references; don't introduce an
+		// automatic package-URL $id that would change the resolution base.
+		Anonymous: true,
+		Mapper: func(kind reflect.Type) *jsonschema.Schema {
+			// Value's private representation stores arbitrary exact JSON, including
+			// null, false and large numbers. Reflecting its Go struct would wrongly
+			// describe a closed, empty object instead of the wire value.
+			if kind == reflect.TypeFor[Value]() {
+				return &jsonschema.Schema{}
 			}
-			definitions[name] = map[string]any{"type": "object", "properties": properties, "required": required, "additionalProperties": false}
-		}
-		return map[string]any{"$ref": "#/$defs/" + name}
+			return nil
+		},
 	}
-	return map[string]any{}
+	// Preserve SchemaCatalog's map-shaped API. The library's custom marshalers
+	// own schema serialization; application-owned encoding/decoding uses Sonic.
+	encoded, err := sonic.ConfigStd.Marshal(reflector.ReflectFromType(kind))
+	if err != nil {
+		panic("encode protocol schema: " + err.Error())
+	}
+	var schema map[string]any
+	if err := sonic.ConfigStd.Unmarshal(encoded, &schema); err != nil {
+		panic("decode protocol schema: " + err.Error())
+	}
+	return schema
 }
