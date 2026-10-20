@@ -16,8 +16,8 @@ import (
 // 每条命令委托一个中立 CLI handler（行为与管理端业务实现一致）；权限/风险/
 // 超时均由 handler 元数据描述，CLI 服务本身不执行审批。
 //
-// 支持的脚本语法（轻量 shell 子集）：
-//   - 引号：'...'（原样）与 "..."（支持 \" 转义）；'' / "" 表示空串；
+// 支持的脚本语法（由 mvdan/sh 解析、仅解释字面参数的 POSIX 子集）：
+//   - 单/双引号、反斜杠转义、续行与注释；'' / "" 表示空串；
 //   - flag：--name value / --name=value；布尔 flag 单独出现即 true；
 //     列表型 flag 可重复出现或逗号分隔；
 //   - 批处理：`&&` 失败即跳过其所在链的剩余命令，`;` 或换行 继续执行
@@ -28,12 +28,6 @@ const (
 	cliOutputBudgetBytes = 32 * 1024
 	cliName              = "elysia"
 )
-
-// isCLIHelpArgs reports whether a statement is a help request. Help is handled
-// by the CLI service before command resolution, so it has no handler effect.
-func isCLIHelpArgs(args []string) bool {
-	return len(args) == 0 || args[0] == "help" || args[0] == "--help"
-}
 
 // runCLI 解析并执行一段 elysia 脚本，返回模型可读的结果。
 func (s *Server) runCLI(ctx context.Context, tctx CLIContext, script string) CLIResult {
@@ -115,24 +109,19 @@ func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw st
 		return output
 	}
 	output.statement = statement
-	if isCLIHelpArgs(statement.args) {
-		// help 输出同样支持 grep/head 管道（help 文本可能上百行）。
-		helpArgs := statement.args
-		if len(helpArgs) > 0 {
-			helpArgs = helpArgs[1:]
-		}
-		output.text, output.isOK = renderCLIHelp(helpArgs), true
-		return output
-	}
 	if allowInternal && len(statement.args) >= 3 && statement.args[0] == "session" && statement.args[1] == "title" && len(statement.pipes) == 0 {
 		encoded, _ := sonic.ConfigStd.Marshal(map[string]any{"title": strings.Join(statement.args[2:], " ")})
 		result := normalizeCLIResult((&updateTitleTool{}).Execute(ctx, tctx, encoded))
 		output.result, output.isOK = &result, result.OK
 		return output
 	}
-	inv, err := cliResolve(statement.args)
+	inv, help, err := cliResolveRequest(statement.args)
 	if err != nil {
 		output.text = "错误: " + err.Error()
+		return output
+	}
+	if inv == nil {
+		output.text, output.isOK = help, true
 		return output
 	}
 	args, err := inv.command.mapper(inv)

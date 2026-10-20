@@ -134,7 +134,7 @@ type compiledMapping struct {
 	transform      *compiledExpression
 	after          *compiledExpression
 	initial        *compiledExpression
-	input, output  *ValueSchema
+	input, output  *runtimeValueSchema
 	rules          []compiledEventRule
 	frameBatch     bool
 	definitionHash string
@@ -145,21 +145,23 @@ type compiledEventRule struct{ when, emit *compiledExpression }
 // Compiled is an immutable protocol revision; mutable event state belongs to a
 // request/session, never to this registry object.
 type Compiled struct {
-	identity       Identity
-	requires       []string
-	definition     Value
-	hash           string
-	samplesHash    string
-	limits         Limits
-	explicitLimits bool
-	capabilities   CapabilitySet
-	native         NativePolicy
-	mappings       map[Direction]compiledMapping
-	operations     map[string]Operation
-	taskMappings   map[string]map[string]compiledMapping
-	modelMappings  map[string]compiledMapping
-	agentMapping   *compiledMapping
-	agentEfforts   []string
+	identity           Identity
+	requires           []string
+	definition         Value
+	hash               string
+	samplesHash        string
+	limits             Limits
+	explicitLimits     bool
+	capabilities       CapabilitySet
+	native             NativePolicy
+	mappings           map[Direction]compiledMapping
+	operations         map[string]Operation
+	operationSchemas   map[string]*runtimeValueSchema
+	modelPageValidator *runtimeValueSchema
+	taskMappings       map[string]map[string]compiledMapping
+	modelMappings      map[string]compiledMapping
+	agentMapping       *compiledMapping
+	agentEfforts       []string
 }
 
 // Compile strictly parses one v2 definition and compiles every direction.
@@ -193,6 +195,25 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 	}
 	compiled := &Compiled{explicitLimits: definition.Limits != nil || compiler.limits.BufferBytes != DefaultLimits().BufferBytes, identity: identity, definition: value, limits: limits, native: definition.Native, capabilities: make(CapabilitySet), mappings: make(map[Direction]compiledMapping), operations: definition.Operations}
 	compiled.requires = slices.Clone(definition.Requires)
+	compiled.operationSchemas = make(map[string]*runtimeValueSchema)
+	for _, name := range sortedKeys(definition.Operations) {
+		input := definition.Operations[name].Input
+		if input == nil {
+			continue
+		}
+		key, err := runtimeSchemaKey(input)
+		if err != nil {
+			return fail("/operations/"+name+"/input", err)
+		}
+		if _, exists := compiled.operationSchemas[key]; exists {
+			continue
+		}
+		validator, err := compileValueSchema(input, limits)
+		if err != nil {
+			return fail("/operations/"+name+"/input", err)
+		}
+		compiled.operationSchemas[key] = validator
+	}
 	for capability, supported := range definition.Capabilities {
 		compiled.capabilities[capability] = supported
 	}
@@ -258,7 +279,7 @@ func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction
 	references := map[string]Expression{}
 	expressions.mappingReferences = references
 	defer func() { expressions.mappingReferences = nil }()
-	entry := compiledMapping{input: mapping.Input, output: mapping.Output, frameBatch: mapping.FrameBatch}
+	entry := compiledMapping{frameBatch: mapping.FrameBatch}
 	definition, err := EncodeValue(mapping)
 	if err != nil {
 		return entry, err
@@ -267,11 +288,13 @@ func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction
 	if mapping.FrameBatch && direction != EncodeEvent && direction != EncodeUpstreamEvent {
 		return entry, fmt.Errorf("frameBatch requires an event encoder")
 	}
-	if err := validateSchema(mapping.Input, path+"/input", 1, expressions.limits); err != nil {
-		return entry, err
+	entry.input, err = compileValueSchema(mapping.Input, expressions.limits)
+	if err != nil {
+		return entry, fmt.Errorf("%s/input: %w", path, err)
 	}
-	if err := validateSchema(mapping.Output, path+"/output", 1, expressions.limits); err != nil {
-		return entry, err
+	entry.output, err = compileValueSchema(mapping.Output, expressions.limits)
+	if err != nil {
+		return entry, fmt.Errorf("%s/output: %w", path, err)
 	}
 	choices := 0
 	if mapping.Module != "" {
@@ -724,7 +747,7 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	if err := checkResourceValue(input, inputLimits, "mapping_input"); err != nil {
 		return fail(err)
 	}
-	if err := checkValueSchema(input, mapping.input, "/input", 1, inputLimits); err != nil {
+	if err := mapping.input.validate(input, "/input", inputLimits); err != nil {
 		return fail(err)
 	}
 	contextValue, err := EncodeValue(options.Values)
@@ -770,7 +793,7 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	if err := checkResourceValue(output, outputLimits, "mapping_output"); err != nil {
 		return fail(err)
 	}
-	if err := checkValueSchema(output, mapping.output, "/output", 1, outputLimits); err != nil {
+	if err := mapping.output.validate(output, "/output", outputLimits); err != nil {
 		return fail(err)
 	}
 	if isInitial {

@@ -74,6 +74,8 @@ Each `documents` entry is `{name,mime?,text?,dataUrl?}`. Supply text or a data U
 
 ### SSE and lifecycle
 
+REST/admin Agent events and heartbeat comments are encoded with `go-sse` v0.11.0; JSON payloads use Sonic. Event names, per-event flushing, and detached turn lifetimes retain their existing behavior. See the [backend SSE migration](backend-sse-migration.md) for upstream framing limits and EOF handling.
+
 | Event | Contents |
 | --- | --- |
 | `status` | Model-call or tool-execution phase |
@@ -89,9 +91,21 @@ Streams send a keepalive every 15 seconds. Closing REST HTTP does not stop the t
 
 ## MCP
 
-Only version `2026-07-28` is supported. There is no legacy handshake or implicit version. Each request must include `io.modelcontextprotocol/protocolVersion` in `params._meta`; use `server/discover` for capabilities. Results include `resultType`.
+The transport uses the official `github.com/modelcontextprotocol/go-sdk` v1.8.0. Only version `2026-07-28` is supported, with no legacy handshake or implicit version. Each call must include `io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities` (an empty object is sufficient) in `params._meta`. Use `server/discover` for capabilities. Results include `resultType`.
 
-POST `Accept` must contain both `application/json` and `text/event-stream`, otherwise 406. GET / DELETE return 405; JSON-RPC batches are unsupported. Browser `Origin` must be same-origin or satisfy loopback rules. A version-header mismatch with a Modern body returns `-32020`; supplied `Mcp-Method` / `Mcp-Name` headers must match the request. Modern `tools/list` also returns `ttlMs` / `cacheScope`.
+POST requires `Content-Type: application/json` (otherwise 415) and `Accept` containing both `application/json` and `text/event-stream` (otherwise 400). `MCP-Protocol-Version` and `Mcp-Method` are required; `tools/call` also requires `Mcp-Name`. These headers must mirror the body; missing method/name mirrors or mismatches return `-32020`. GET / DELETE return 405; JSON-RPC batches are unsupported. Browser `Origin` must be same-origin or satisfy loopback rules; the SDK also applies its default localhost Host protection. Responses use the SDK's default SSE transport, including discovery and tool lists. `tools/list` returns `ttlMs: 300000` and `cacheScope: "private"`.
+
+### Breaking migration from the hand-written transport
+
+This migration adopts official SDK behavior directly. It does not retain wire-compatibility adapters for the previous implementation.
+
+- Required headers and client capability metadata are now validated by the SDK. Update manually constructed requests using the example below; current SDK clients populate them automatically.
+- `ping` is no longer supported in this protocol version; use `server/discover` for discovery/connectivity checks.
+- Server identity is returned in `result._meta["io.modelcontextprotocol/serverInfo"]`, rather than a top-level `serverInfo` field. Successful tool results may omit `isError`; absence means false. The former `cacheScope: "user"` is now the standard `"private"` value.
+- Discovery and tool lists now use SSE rather than the old method-specific JSON responses. Use a Streamable HTTP client that handles both advertised response media types.
+- Transport validation follows SDK HTTP statuses and error bodies: incomplete `Accept` changes from 406 to 400; unsupported media types return 415; oversized bodies return 413. Some HTTP rejections use plain text rather than JSON-RPC. Clients must check HTTP status and response content type before decoding.
+- Numeric request IDs and progress tokens follow the SDK's decoding behavior. In v1.8.0, values beyond the exact integer range of `float64` may be rounded; use string identifiers for large values. There is no custom numeric-ID/token preservation layer.
+- Authentication, stateless CLI batches, partial failure output, progress notifications, and cancellation on POST disconnection retain their business behavior. No transport session ID is negotiated.
 
 ### Client configuration
 
@@ -109,14 +123,25 @@ Use “Copy MCP JSON” beside an enabled remote key in runtime configuration. I
 }
 ```
 
-For clients with a different format, transfer the `url` and `headers` and ensure current protocol support. MCP publishes only `elysia_cli`, with a required string `command`. Minimal call:
+For clients with a different format, transfer the `url` and `headers` and ensure current protocol support. MCP publishes only `elysia_cli`, with a required string `command`. A manually constructed call needs these headers:
+
+```http
+Authorization: Bearer <AGENT_KEY>
+Content-Type: application/json
+Accept: application/json, text/event-stream
+MCP-Protocol-Version: 2026-07-28
+Mcp-Method: tools/call
+Mcp-Name: elysia_cli
+```
+
+Request body:
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": 1,
   "method": "tools/call",
-  "params": {"name": "elysia_cli", "arguments": {"command": "elysia source ls"}, "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}}
+  "params": {"name": "elysia_cli", "arguments": {"command": "elysia source ls"}, "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {}}}
 }
 ```
 
@@ -134,16 +159,28 @@ See the [CLI reference](agent-cli.en.md) for complete semantics.
 
 ## A2A
 
-`A2A-Version` defaults to `0.3.0`; `1.0.0` is also supported. Unknown versions return 400. The Agent Card follows the requested version.
+The transport uses official `github.com/a2aproject/a2a-go/v2` v2.6.0: the native JSON-RPC binding serves 1.0 and the SDK's `a2acompat/a2av0` binding serves 0.3. `A2A-Version` defaults to `0.3`; `1.0` selects the current binding. Existing `0.3.0` and `1.0.0` headers remain aliases. Unknown versions return 400 for both requests and Agent Cards. Cards advertise the SDK version strings `0.3` and `1.0`; the 0.3 card uses the official combined compatibility representation.
 
 | v0.3 method | v1.0 method | Behavior |
 | --- | --- | --- |
-| `message/send` | `SendMessage` | Create a turn nonblockingly and return a snapshot |
+| `message/send` | `SendMessage` | Wait for completion/input-required, or return immediately when configured |
 | `message/stream` | `SendStreamingMessage` | Follow over SSE until final state or input required |
 | `tasks/get` | `GetTask` | Read a task |
 | `tasks/cancel` | `CancelTask` | Stop a running turn; deny a pending input action |
 | `tasks/resubscribe` | `SubscribeToTask` | Replay and follow |
-| — | `ListTasks` | Cursor pagination |
+| — | `ListTasks` | `pageToken` / `nextPageToken` pagination, page size 1–100 (default 50) |
+
+### SDK wire-format migration
+
+Both protocol generations remain available, but clients relying on the old hand-written wire format must update:
+
+- Use the method names belonging to the selected protocol version; cross-version method aliases are no longer accepted.
+- For asynchronous send, explicitly set `configuration.blocking: false` on 0.3 or `configuration.returnImmediately: true` on 1.0. By default send waits for completion or input-required, bounded by the HTTP request context. A disconnected request does not cancel the engine's detached task; use the task cancellation method.
+- The 1.0 send result is `{ "task": ... }` (or a message). Stream results are wrapped as `task`, `statusUpdate`, or `artifactUpdate`. `GetTask` and `CancelTask` return the task directly. The SDK supplies 0.3 `kind` discriminators.
+- `ListTasks` replaces the old `cursor` / `nextCursor` fields with `pageToken` / `nextPageToken`, adds `totalSize` / `pageSize`, and supports context, state, and update-time filters. Artifacts are included only with `includeArtifacts: true`.
+- Agent Card security and capability fields, protocol errors, JSON-RPC validation, and SSE encoding follow the official bindings. In particular, unsupported push notification operations use the SDK error code (`-32003` on 0.3), rather than the former custom mapping.
+- New tasks require a nonempty text part and a user-role message with a message ID. Approval data is interpreted by the gateway after SDK decoding; an explicit `approved: false` remains distinct from an absent decision.
+- Application-owned JSON decoding/encoding uses Sonic; SDK-internal wire serialization is managed by the dependency.
 
 `contextId` identifies a session; missing or unknown IDs create a session. Each task is one turn, with `taskId` shaped as `sessionID:userMessageSeq`. Running, waiting, completed, failed, and canceled map to `working`, `input-required`, `completed`, `failed`, and `canceled`; v1.0 uses `TASK_STATE_*` enums. Completed artifacts include final text and `{rounds,model,durationMs}`.
 
@@ -153,7 +190,7 @@ To resume an input-required task, send the same `taskId`. Approval or plan confi
 {"parts":[{"kind":"data","data":{"approved":true}}]}
 ```
 
-v1.0 parts omit `kind`. A missing decision data part returns `-32602`. Omitting `taskId` creates another turn in the session. `messageId` deduplication uses a single-instance in-memory LRU and is not durable across restarts. Push notifications and extended cards are not implemented.
+v1.0 parts omit `kind`. A missing decision data part returns an SDK invalid-parameters error. Omitting `taskId` creates another turn in the session. Concurrent duplicate `messageId` requests share one start/resume operation. Task snapshots and replay events are process-local; the registry holds at most 512 tasks, evicting the oldest terminal task first (or oldest active task if all are active) and removing its deduplication records. This is not durable across restarts. A durable Agent session still awaiting approval can restore its task mapping when resumed. Subscriptions replay stored events and follow future updates, including across input-required/resume boundaries; disconnecting one subscriber does not stop the task or other subscribers. Push notifications and extended cards are not implemented.
 
 ## Troubleshooting and permissions
 
@@ -161,7 +198,7 @@ v1.0 parts omit `kind`. A missing decision data part returns `-32602`. Omitting 
 | --- | --- |
 | 401 / 403 | Enabled key with the `agent` scope |
 | 404 | `agentRemote.enabled` and proxy paths |
-| MCP 406 | Both required `Accept` types |
+| MCP 400 / 415 | Version/method/name mirror headers, `_meta`, both required `Accept` types, and JSON `Content-Type` |
 | Draft missing after a call | MCP is stateless; combine dependent operations in one call |
 | REST continues after disconnect | Turns outlive connections; call `/stop` |
 | Approval remains pending | Permission settings, plan mode, and an explicit resume decision |

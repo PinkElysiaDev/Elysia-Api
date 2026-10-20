@@ -8,21 +8,62 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func mcpCLITool() mcpTool {
-	return mcpTool{
-		name:        agentToolCLI,
-		title:       "执行 Elysia API 网关运维命令",
-		description: cliToolDescription + "每次调用无状态，草稿和测试目标仅在同一次批处理中复用。",
-		schema: objectSchema(map[string]any{
+func mcpCLITool() *mcp.Tool {
+	return &mcp.Tool{
+		Name:        agentToolCLI,
+		Title:       "执行 Elysia API 网关运维命令",
+		Description: cliToolDescription + "每次调用无状态，草稿和测试目标仅在同一次批处理中复用。",
+		InputSchema: objectSchema(map[string]any{
 			"command": map[string]any{"type": "string", "description": "要执行的 elysia 命令（可多行批处理）"},
 		}, "command"),
-		streaming: true,
-		invoke: func(ctx context.Context, s *Server, args json.RawMessage, progress func(string)) (any, error) {
-			return s.runMCPCLI(ctx, args, progress)
-		},
+		Annotations: &mcp.ToolAnnotations{Title: "执行 Elysia API 网关运维命令"},
 	}
+}
+
+func (s *Server) callMCPCLI(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	token := req.Params.GetProgressToken()
+	step := 0
+	progress := func(message string) {
+		if token == nil || message == "" {
+			return
+		}
+		step++
+		if err := req.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
+			ProgressToken: token, Progress: float64(step), Message: message,
+		}); err != nil {
+			cancel()
+		}
+	}
+	result, err := s.runMCPCLI(ctx, req.Params.Arguments, progress)
+	// A business failure must retain completed commands and diagnostics. Returning
+	// an SDK handler error would instead turn it into a protocol-level error.
+	return mcpToolCallResult(result, err), nil
+}
+
+func mcpToolCallResult(result any, err error) *mcp.CallToolResult {
+	payload := &mcp.CallToolResult{}
+	if result != nil {
+		encoded, encodeErr := sonic.ConfigStd.Marshal(result)
+		if encodeErr != nil {
+			err = fmt.Errorf("encode tool result: %w", encodeErr)
+		} else {
+			payload.StructuredContent = result
+			payload.Content = append(payload.Content, &mcp.TextContent{Text: string(encoded)})
+		}
+	}
+	if err != nil {
+		payload.IsError = true
+		payload.Content = append(payload.Content, &mcp.TextContent{Text: err.Error()})
+	}
+	if len(payload.Content) == 0 {
+		payload.Content = []mcp.Content{&mcp.TextContent{Text: "done"}}
+	}
+	return payload
 }
 
 func (s *Server) runMCPCLI(ctx context.Context, args json.RawMessage, progress func(string)) (any, error) {

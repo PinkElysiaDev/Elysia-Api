@@ -1,72 +1,40 @@
 package server
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 )
 
-// elysia help 体系：与命令表同源生成，三级渐进发现——
-//
-//	elysia help               → 组级一览 + 常用组合示例
-//	elysia help <group>       → 组内命令 + flag 全表
-//	elysia help <group> <cmd> → 用法行、flag/位置参数全说明、示例与完整语义
-//	  （完整语义直接复用目标工具的 Description()——比旧工具描述
-//	   更详尽的细节放在这一层，而不是常驻提示词。）
+const cliSyntaxHelp = `elysia —— 网关运维 CLI（全部操作经 elysia_cli 工具执行）
 
-// renderCLIHelp 按 help 参数层级渲染（args 为 help 之后的词）。
+分级帮助：elysia help <组> / elysia help <组> <命令>；命令后也可使用 --help 或 -h。
+语法由 mvdan/sh 解析：单引号、双引号、反斜杠转义、注释；空引号表示空值。
+参数由 Cobra/pflag 解析：--flag value / --flag=value；布尔值可省略；列表支持重复与逗号分隔。
+批处理：&& 失败跳过所在链；分号或换行继续。尾管道：| grep <子串>（大小写不敏感），
+| head <n> / -n N / -N（文本行数，不是记录数）。不执行系统 shell、变量展开、命令替换、重定向或控制结构。
+含 $、反引号或 shell 运算符的字面值请用单引号；通配符和 ~ 保持字面值。
+批处理无整体事务或自动回滚；需要根据中间结果决定后续参数时应分次调用。
+查询优先使用命令过滤参数和 --limit；输出可能截断。修改、真实出站和删除受服务端权限与业务策略控制。
+
+常用组合示例：
+  elysia source ls && elysia model ls --source 主源 --limit 20
+  elysia usage logs --days 1 --status failed --limit 10
+  elysia group create --name 主力 --models s1:gpt-4o`
+
 func renderCLIHelp(args []string) string {
-	table := cliCommandTable()
-	if len(args) == 0 {
-		return helpOverview(table)
+	_, text, err := cliResolveRequest(append([]string{"help"}, args...))
+	if err != nil {
+		return err.Error() + "\n"
 	}
-	// help <group>：组级。
-	if len(args) == 1 {
-		group := args[0]
-		if group == "help" {
-			return "elysia help [group] [command]：分级查看命令参考。"
-		}
-		if !hasGroup(table, group) {
-			return unknownGroupMessage(table, group)
-		}
-		for _, command := range table {
-			if command.group == group && command.name == "" {
-				return helpCommand(command)
-			}
-		}
-		return helpGroup(table, group)
-	}
-	// help <group> <command...>：命令级（二级命令拼空格）。
-	path := strings.Join(args, " ")
-	for _, command := range table {
-		if command.Path() == path {
-			return helpCommand(command)
-		}
-	}
-	group := args[0]
-	if hasGroup(table, group) {
-		return fmt.Sprintf("组 %s 下没有命令 %q（运行 elysia help %s 查看组内命令）", group, strings.Join(args[1:], " "), group)
-	}
-	return unknownGroupMessage(table, group)
+	return text
 }
 
-func hasGroup(table []*cliCommand, group string) bool {
-	for _, command := range table {
-		if command.group == group {
-			return true
-		}
-	}
-	return false
-}
-
-func unknownGroupMessage(table []*cliCommand, group string) string {
-	groups := groupNames(table)
-	return fmt.Sprintf("没有命令组 %q。可用组：%s", group, strings.Join(groups, "、"))
-}
+// Documentation uses the same Cobra help path as live calls.
+func helpCommand(command *cliCommand) string { return renderCLIHelp(strings.Fields(command.Path())) }
 
 func groupNames(table []*cliCommand) []string {
 	seen := map[string]bool{}
-	names := []string{}
+	var names []string
 	for _, command := range table {
 		if !seen[command.group] {
 			seen[command.group] = true
@@ -76,40 +44,17 @@ func groupNames(table []*cliCommand) []string {
 	return names
 }
 
-// helpOverview 组级一览。
-func helpOverview(table []*cliCommand) string {
-	var b strings.Builder
-	b.WriteString("elysia —— 网关运维 CLI（全部操作经 elysia_cli 工具执行）\n\n")
-	b.WriteString("命令组：\n")
-	for _, name := range groupNames(table) {
-		commands := commandsOfGroup(table, name)
-		labels := make([]string, 0, len(commands))
-		for _, command := range commands {
-			if command.name != "" {
-				labels = append(labels, command.name)
-			}
-		}
-		if len(labels) > 0 {
-			b.WriteString(fmt.Sprintf("  %-10s %s（%s）\n", name, groupSummary(name), strings.Join(labels, ", ")))
-		} else {
-			// 组级命令（如 syslog）：命令本身就是组名，不再列括号。
-			b.WriteString(fmt.Sprintf("  %-10s %s\n", name, groupSummary(name)))
+func commandsOfGroup(table []*cliCommand, group string) []*cliCommand {
+	var commands []*cliCommand
+	for _, command := range table {
+		if command.group == group {
+			commands = append(commands, command)
 		}
 	}
-	b.WriteString("\n分级帮助：elysia help <组>（flag 全表）/ elysia help <组> <命令>（完整语义与示例）。\n")
-	b.WriteString("\n语法：支持 '引号'（'' 表示空值）、--flag value 或 --flag=value、批处理（&& 失败即跳过所在链，; 或换行继续）、\n")
-	b.WriteString("尾管道（| grep <子串> 大小写不敏感过滤、| head <n> 截前 n 个文本行，不代表记录数量；head 也支持 -n N / -N 写法）。\n")
-	b.WriteString("批处理无整体事务或自动回滚；仅合并参数已知、无需观察中间结果的操作。需要根据返回结果决定参数或后续操作时，应分次调用。\n")
-	b.WriteString("查询优先使用命令自身的过滤参数和 --limit；输出可能被截断，应依据实际返回结果判断操作状态。\n")
-	b.WriteString("修改、真实出站和删除受服务端权限与业务策略控制。\n")
-	b.WriteString("\n常用组合示例：\n")
-	b.WriteString("  elysia source ls && elysia model ls --source 主源 --limit 20\n")
-	b.WriteString("  elysia usage logs --days 1 --status failed --limit 10\n")
-	b.WriteString("  elysia group create --name 主力 --models s1:gpt-4o\n")
-	return b.String()
+	sort.Slice(commands, func(i, j int) bool { return commands[i].name < commands[j].name })
+	return commands
 }
 
-// groupSummary 各命令组的一句话定位（help 总览用）。
 func groupSummary(group string) string {
 	switch group {
 	case "source":
@@ -133,64 +78,4 @@ func groupSummary(group string) string {
 	default:
 		return group
 	}
-}
-
-func commandsOfGroup(table []*cliCommand, group string) []*cliCommand {
-	commands := []*cliCommand{}
-	for _, command := range table {
-		if command.group == group {
-			commands = append(commands, command)
-		}
-	}
-	sort.Slice(commands, func(i, j int) bool { return commands[i].name < commands[j].name })
-	return commands
-}
-
-// helpGroup 组级帮助：命令清单 + flag 全表。
-func helpGroup(table []*cliCommand, group string) string {
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf("elysia %s — %s\n\n", group, groupSummary(group)))
-	for _, command := range commandsOfGroup(table, group) {
-		b.WriteString(fmt.Sprintf("  %s\n    %s\n", command.usage, command.summary))
-		writeFlagSpecs(&b, command.flags, "      ")
-		for _, positional := range command.positionals {
-			b.WriteString(fmt.Sprintf("      %-24s %s\n", "<"+positional.name+">", positional.usage))
-		}
-		b.WriteString("\n")
-	}
-	b.WriteString(fmt.Sprintf("完整语义与示例：elysia help %s <命令>。\n", group))
-	return b.String()
-}
-
-// writeFlagSpecs 输出 flag 规格（组级与命令级帮助共用的渲染块）。
-func writeFlagSpecs(b *strings.Builder, flags []cliFlagSpec, indent string) {
-	for _, flag := range flags {
-		b.WriteString(fmt.Sprintf("%s--%-22s %s\n", indent, flag.name, flag.usage))
-	}
-}
-
-// helpCommand 命令级帮助：用法 + flag + 位置参数 + 示例 + handler 说明。
-func helpCommand(command *cliCommand) string {
-	var b strings.Builder
-	b.WriteString(command.usage + "\n" + command.summary + "\n\n")
-	if len(command.flags) > 0 {
-		b.WriteString("参数：\n")
-		writeFlagSpecs(&b, command.flags, "  ")
-	}
-	for _, positional := range command.positionals {
-		b.WriteString(fmt.Sprintf("  %-24s %s\n", "<"+positional.name+">", positional.usage))
-	}
-	if command.example != "" {
-		b.WriteString("\n示例：" + command.example + "\n")
-	}
-	detail := ""
-	if command.detail != nil {
-		detail = command.detail()
-	} else {
-		detail = cliDescriptionOf(command.handler(nil))
-	}
-	if detail != "" {
-		b.WriteString("\n详细说明：" + detail + "\n")
-	}
-	return b.String()
 }

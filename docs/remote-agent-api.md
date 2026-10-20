@@ -74,6 +74,8 @@ curl -N "http://127.0.0.1:8765/api/agent/sessions/<SESSION_ID>/messages" \
 
 ### SSE 与生命周期
 
+REST/admin Agent 事件及心跳注释使用 `go-sse` v0.11.0 编码，JSON 载荷使用 Sonic。事件名、逐事件 flush 及独立轮次生命周期保持原有行为。上游帧大小限制与 EOF 处理差异见 [SSE 迁移说明](backend-sse-migration.md)。
+
 | 事件 | 内容 |
 | --- | --- |
 | `status` | 调用模型、执行工具等阶段 |
@@ -89,9 +91,21 @@ curl -N "http://127.0.0.1:8765/api/agent/sessions/<SESSION_ID>/messages" \
 
 ## MCP
 
-只支持版本 `2026-07-28`，不支持旧版握手或缺省版本。每个请求必须在 `params._meta` 中传 `io.modelcontextprotocol/protocolVersion`；使用 `server/discover` 获取能力，结果包含 `resultType`。
+传输层使用官方 `github.com/modelcontextprotocol/go-sdk` v1.8.0。只支持版本 `2026-07-28`，不支持旧版握手或缺省版本。每次调用必须在 `params._meta` 中传 `io.modelcontextprotocol/protocolVersion` 和 `io.modelcontextprotocol/clientCapabilities`（可为空对象）；使用 `server/discover` 获取能力，结果包含 `resultType`。
 
-POST 的 `Accept` 必须包含 `application/json` 和 `text/event-stream`，否则 406。GET / DELETE 返回 405；不支持 JSON-RPC batch。浏览器 `Origin` 需同源或符合回环规则。版本头与 Modern body 不一致返回 `-32020`；提供 `Mcp-Method` / `Mcp-Name` 镜像头时必须与请求一致。Modern `tools/list` 还返回 `ttlMs` / `cacheScope`。
+POST 必须使用 `Content-Type: application/json`（否则 415），且 `Accept` 包含 `application/json` 和 `text/event-stream`（否则 400）。`MCP-Protocol-Version`、`Mcp-Method` 为必填头，`tools/call` 还必须携带 `Mcp-Name`，值须与 body 一致；缺少方法/名称镜像头或镜像不一致返回 `-32020`。GET / DELETE 返回 405；不支持 JSON-RPC batch。浏览器 `Origin` 需同源或符合回环规则，SDK 还启用其默认的本机 Host 校验。响应使用 SDK 默认的 SSE 传输，包括发现和工具列表。`tools/list` 返回 `ttlMs: 300000` 和 `cacheScope: "private"`。
+
+### 取代手写传输层的破坏性迁移
+
+此次迁移直接采用官方 SDK 行为，不保留旧实现的线协议兼容适配。
+
+- SDK 校验必填镜像头和客户端能力元数据。手动构造请求时按下方示例补齐；支持当前协议的 SDK 客户端会自动填充。
+- 当前协议版本已移除 `ping`；发现与连通性检查使用 `server/discover`。
+- 服务端身份位于 `result._meta["io.modelcontextprotocol/serverInfo"]`，不再使用顶层 `serverInfo`。成功的工具结果可能省略 `isError`，缺省即 false。原 `cacheScope: "user"` 改为规范值 `"private"`。
+- 发现和工具列表由原来的单独 JSON 响应改为 SSE。客户端应使用能处理两种声明响应类型的 Streamable HTTP 实现。
+- 传输校验采用 SDK 的 HTTP 状态及错误体：`Accept` 不全由 406 改为 400，媒体类型错误返回 415，body 超限返回 413。部分 HTTP 拒绝使用纯文本而非 JSON-RPC；客户端应先检查状态码和响应类型再解码。
+- 数值型请求 ID 和进度 token 直接采用 SDK 的解码行为。v1.8.0 中超出 `float64` 精确整数范围的值可能被舍入，大数值标识请使用字符串；不提供自定义的数值 ID/token 原值保留层。
+- 鉴权、无状态 CLI 批处理、部分失败结果、进度通知和 POST 断开后的取消保留其业务行为，不协商传输层会话 ID。
 
 ### 客户端配置
 
@@ -109,14 +123,25 @@ POST 的 `Accept` 必须包含 `application/json` 和 `text/event-stream`，否�
 }
 ```
 
-客户端格式不同时，迁移其中的 `url` 和 `headers`，并确认客户端支持当前协议。MCP 只公布一个工具 `elysia_cli`，参数为必填字符串 `command`。最小调用：
+客户端格式不同时，迁移其中的 `url` 和 `headers`，并确认客户端支持当前协议。MCP 只公布一个工具 `elysia_cli`，参数为必填字符串 `command`。手动调用须携带以下请求头：
+
+```http
+Authorization: Bearer <AGENT_KEY>
+Content-Type: application/json
+Accept: application/json, text/event-stream
+MCP-Protocol-Version: 2026-07-28
+Mcp-Method: tools/call
+Mcp-Name: elysia_cli
+```
+
+请求体：
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": 1,
   "method": "tools/call",
-  "params": {"name": "elysia_cli", "arguments": {"command": "elysia source ls"}, "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}}
+  "params": {"name": "elysia_cli", "arguments": {"command": "elysia source ls"}, "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {}}}
 }
 ```
 
@@ -134,16 +159,28 @@ POST 的 `Accept` 必须包含 `application/json` 和 `text/event-stream`，否�
 
 ## A2A
 
-`A2A-Version` 缺省 `0.3.0`，还支持 `1.0.0`；未知版本返回 400。Agent Card 随版本头返回对应结构。
+传输层使用官方 `github.com/a2aproject/a2a-go/v2` v2.6.0：原生 JSON-RPC binding 服务 1.0，SDK 的 `a2acompat/a2av0` 模块服务 0.3。`A2A-Version` 缺省 `0.3`，`1.0` 选择当前 binding；原 `0.3.0`、`1.0.0` 请求头仍作为别名接受。请求及 Agent Card 的未知版本均返回 400。卡片公布 SDK 版本字符串 `0.3`、`1.0`，0.3 卡使用官方的合并兼容表示。
 
 | v0.3 方法 | v1.0 方法 | 行为 |
 | --- | --- | --- |
-| `message/send` | `SendMessage` | 非阻塞创建轮次并返回快照 |
+| `message/send` | `SendMessage` | 默认等到完成或等待输入；可配置为立即返回 |
 | `message/stream` | `SendStreamingMessage` | SSE 跟踪任务至终态或等待输入 |
 | `tasks/get` | `GetTask` | 读取任务 |
 | `tasks/cancel` | `CancelTask` | 停止运行轮次；等待输入时以拒绝结束 |
 | `tasks/resubscribe` | `SubscribeToTask` | 回放并跟随 |
-| — | `ListTasks` | 游标分页 |
+| — | `ListTasks` | `pageToken` / `nextPageToken` 分页，页大小 1–100，默认 50 |
+
+### SDK 线协议迁移
+
+两代协议继续可用，但依赖原手写格式的客户端需要调整：
+
+- 方法名必须匹配所选协议版本，不再接受跨版本的方法别名。
+- 异步发送须显式配置：0.3 使用 `configuration.blocking: false`，1.0 使用 `configuration.returnImmediately: true`。默认等待完成或等待输入，等待受 HTTP 请求上下文约束。断开请求不会取消引擎中的独立任务，终止任务需调用取消方法。
+- 1.0 的 send 结果包装为 `{ "task": ... }`（或 message），流式结果按 `task`、`statusUpdate`、`artifactUpdate` 包装；`GetTask` 和 `CancelTask` 直接返回 task。0.3 的 `kind` 判别字段由 SDK 生成。
+- `ListTasks` 将旧 `cursor` / `nextCursor` 改为 `pageToken` / `nextPageToken`，增加 `totalSize` / `pageSize`，支持按会话、状态和更新时间过滤。只有 `includeArtifacts: true` 时包含产物。
+- Agent Card 安全与能力字段、协议错误、JSON-RPC 校验及 SSE 编码均采用官方 binding。Push 不支持错误使用 SDK 错误码（0.3 为 `-32003`），替代原自定义映射。
+- 新任务要求非空文本、用户角色及消息 ID。审批 data 由 SDK 解码后交给网关解释，显式 `approved: false` 与缺少决策仍有区别。
+- 应用层 JSON 编解码使用 Sonic，SDK 内部线协议序列化由依赖管理。
 
 `contextId` 对应会话；缺省或未知时新建。一个任务对应一轮，`taskId` 为 `会话ID:用户消息seq`。运行、等待输入、完成、失败、取消分别映射至 `working`、`input-required`、`completed`、`failed`、`canceled`；v1.0 使用 `TASK_STATE_*` 枚举。完成产物包含最终文本及 `{rounds,model,durationMs}`。
 
@@ -153,7 +190,7 @@ POST 的 `Accept` 必须包含 `application/json` 和 `text/event-stream`，否�
 {"parts":[{"kind":"data","data":{"approved":true}}]}
 ```
 
-v1.0 的 part 不使用 `kind`。审批缺少 data part 返回 `-32602`。不带 `taskId` 则在该会话创建新一轮。消息按 `messageId` 在单实例内存 LRU 中去重，不提供跨重启的持久幂等保证。Push notifications 与扩展卡未实现。
+v1.0 的 part 不使用 `kind`。审批缺少 data part 返回 SDK 参数错误。不带 `taskId` 则在该会话创建新一轮；并发重复 `messageId` 共享一次启动或恢复。任务快照与回放事件保存在进程内，登记表最多 512 个任务，优先淘汰最旧终态任务（全在运行则淘汰最旧活动任务），并移除其去重记录，不提供跨重启的持久幂等保证。持久化 Agent 会话仍等待审批时，恢复请求可重建任务映射。订阅回放已有事件并跟随更新，可跨越等待输入和恢复；一个订阅断开不停止任务或其他订阅。Push notifications 与扩展卡未实现。
 
 ## 排障与权限
 
@@ -161,7 +198,7 @@ v1.0 的 part 不使用 `kind`。审批缺少 data part 返回 `-32602`。不带
 | --- | --- |
 | 401 / 403 | Key 是否启用，是否含 `agent` 作用域 |
 | 404 | `agentRemote.enabled` 及代理路径 |
-| MCP 406 | `Accept` 是否同时包含两种类型 |
+| MCP 400 / 415 | 版本、方法、名称镜像头，`_meta`，两种 `Accept` 类型及 JSON `Content-Type` |
 | 调用结束后找不到草稿 | MCP 无状态，合并依赖操作到同一调用 |
 | REST 断开后仍在执行 | 轮次独立于连接，调用 `/stop` |
 | 等待审批不继续 | 权限档、计划模式及明确的恢复决策 |

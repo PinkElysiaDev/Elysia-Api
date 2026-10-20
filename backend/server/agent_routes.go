@@ -15,6 +15,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
+	"github.com/elysia-api/backend/internal/eventstream"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
@@ -499,7 +500,7 @@ func (s *Server) streamAgentEvents(c *gin.Context, sessionID string, events <-ch
 		if err != nil {
 			return true
 		}
-		if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event.Type, encoded); err != nil {
+		if err := eventstream.Write(c.Writer, event.Type, string(encoded)); err != nil {
 			return false
 		}
 		if canFlush {
@@ -517,7 +518,7 @@ func (s *Server) streamAgentEvents(c *gin.Context, sessionID string, events <-ch
 		case <-ctx.Done():
 			return
 		case <-keepalive.C:
-			if _, err := fmt.Fprint(c.Writer, ": keepalive\n\n"); err != nil {
+			if err := eventstream.Comment(c.Writer, "keepalive"); err != nil {
 				return
 			}
 			if canFlush {

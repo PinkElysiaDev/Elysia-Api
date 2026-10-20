@@ -22,6 +22,100 @@ go test -tags=sonic -parallel=1 -count=1 -timeout=30m ./...
 资源受限的 CI 可以设置 `-parallel=4 -p=2`；`-p` 控制包级并发。
 测量耗时时不要同时运行其他测试或构建，也不要把 `(cached)` 结果当作执行耗时。
 
+## MCP 定向验证
+
+```sh
+go test -tags=sonic -race ./server -run '^Test(MCP|AgentRemote|A2A|RemoteThinkingEffortWhitelistAndSchema)' -count=1 -timeout=3m
+```
+
+`mcp_sdk_test.go` 使用官方 Go SDK 客户端经过真实 HTTP/Gin 鉴权层验证发现、
+工具调用、进度和 Key 撤销；`mcp_cli_tool_test.go` 保留无状态批处理、部分失败、
+脱敏及实际 SSE 断开取消的回归。传输层兼容性变化见
+[远程 Agent 接入](../docs/remote-agent-api.md#取代手写传输层的破坏性迁移)。
+
+## A2A 定向验证
+
+```sh
+go test -tags=sonic -race ./server -run '^Test(A2A|AgentRemote|Remote|MCP)' -count=1 -timeout=3m
+```
+
+`a2a_sdk_test.go` 使用官方 0.3 / 1.0 客户端验证真实 HTTP/SSE、鉴权撤销、
+断开后继续执行、并发重复消息、任务重放、订阅广播及分页淘汰。
+`agent_remote_test.go` 保留审批恢复、显式裁决、取消终态和旧任务取代的集成回归。
+版本与响应差异见[远程 Agent 接入](../docs/remote-agent-api.md#sdk-线协议迁移)。
+
+## CLI 语法与命令框架定向验证
+
+```sh
+go test -tags=sonic -race ./server ./agent ./internal/clishell \
+  -run '^Test(CLI|MCPCLI|MaskSecret|RedactCommand|MaskedPending)' -count=1 -timeout=3m
+```
+
+`cli_framework_test.go` 覆盖 mvdan/sh 支持子集、拒绝 shell 求值、Cobra help 与审批一致性、
+请求间 flag 状态隔离及转义/拼接引号密钥的脱敏；现有 CLI 测试保留业务映射、批处理与真实执行回归。
+中文 CLI 参考由运行时 Cobra help 生成：
+
+```sh
+UPDATE_AGENT_CLI_DOCS=1 go test -tags=sonic ./server -run '^TestCLIReferenceUpToDate$' -count=1
+```
+
+## SSE 库迁移定向验证
+
+```sh
+go test -tags=sonic -race ./internal/eventstream ./protocol ./relay ./server \
+  -run '^Test(SSE|HTTP|StreamIdle|OpenAIStreamNotCut|GatewaySSEAndNDJSON|GatewayBrokenStream|GatewayResponsesNativeFailure|GatewayFailureEncoding|ProviderFailureRetains|CustomProtocolStream|TransportFailure|FailureEvidence|AgentCaller|AgentFullTurn|AgentGatedToolApproval|AgentStopTurn|AgentKeyCreateSecret|OpenAIChatPassthroughStream|ResponsesPassthroughStream|StreamCancellationUsage|ToolOnlyStreamWithoutUsage|CanceledConnection)' \
+  -count=1 -timeout=4m
+```
+
+覆盖库适配的完整帧 EOF、LF/CRLF/CR 分隔、BOM、事件 ID、控制帧、整帧预算、写失败及取消，
+并验证真实 HTTP 桥接、尾部用量入账、Agent 事件和上游错误归属。
+选型与兼容性差异见 [SSE 迁移说明](../docs/backend-sse-migration.md)。
+
+## JSON Schema 反射迁移定向验证
+
+```sh
+go test -tags=sonic -race ./protocol ./server \
+  -run '^Test(Schema|ProtocolSchemaLibrary|ProtocolRevisionAdmin|ProtocolAdminRejects|AgentProtocolV2|CLIReferenceUpToDate|RemoteThinkingEffortWhitelistAndSchema|OperationSchema|CompileChecksNestedOutputSchema)' \
+  -count=1 -timeout=3m
+```
+
+`protocol/schema_test.go` 使用已有的 google/jsonschema-go 依赖独立解析和验证生成结果，
+覆盖全部根节点、递归引用、严格字段、Value 任意 JSON、空值/缺失、命名 map 及并发结果隔离。
+`server/protocol_schema_library_test.go` 验证 HTTP 与 CLI schema 查询；现有 authoring 测试覆盖编辑、验证及启用流程。
+输出表示差异见 [JSON Schema 参考](../docs/protocol-definition-reference.md#schema-表示迁移)。
+
+## Sonic JSON Pointer 定向验证
+
+```sh
+go test -tags=sonic -race ./protocol ./protocol/builtin ./server \
+  -run '^(Test(JSONPointer|RequestViews|RequestResources|Value|Expression|CompileChecksNestedOutputSchema|Native|MutationTransaction|TypedMeter|RequestWireSchemaTypedParity|JSONModuleFallbackMatchesShippedSamples|HTTP|GatewaySSEAndNDJSON|GatewayBrokenStream|AgentProtocolV2)|FuzzJSONPointerObjectLookup)' \
+  -count=1 -timeout=3m
+go test -tags=sonic ./protocol -run '^$' \
+  -fuzz '^FuzzJSONPointerObjectLookup$' -fuzztime=10s -parallel=2
+GOMAXPROCS=1 go test -tags=sonic ./protocol -run '^$' \
+  -bench '^BenchmarkJSONTraversal/pointer' -benchmem -benchtime=500ms -count=5
+```
+
+覆盖重复键、转义/Unicode 键、精确数值、缺失与 null、索引校验、深层输入回退及内存所有权。
+选型与前后基准见 [JSON 遍历评估](../docs/backend-json-traversal-benchmarks.md)。
+本次采用 Sonic Pointer 定点读取；全量 AST 容器替换因小对象、宽对象和数组场景回退而未采用。
+
+## 运行时 Schema 校验迁移
+
+```sh
+go test -tags=sonic -race ./protocol ./protocol/builtin ./server \
+  -run '^Test(RuntimeSchema|Expression|Compile|Operation|Model|Request|JSONModule|Native|Mutation|Typed|Verification|Schema|AgentProtocolV2|ProtocolRevision|ProtocolAdmin|CLIReference)' \
+  -count=1 -timeout=3m
+go test -tags=sonic -race ./protocol/builtin \
+  -run '^Test(ShippedDefinitionsVerify|BuiltinVerifiedProfilesKeepTextRoutesAndFullDiagnostics)$' \
+  -count=1 -timeout=3m
+GOMAXPROCS=1 go test -tags=sonic ./protocol -run '^$' \
+  -bench '^BenchmarkRuntimeSchema' -benchmem -benchtime=200ms -count=3
+```
+
+覆盖精确数字、nullable/enum、缺失、对象与数组约束、资源边界、并发复用和操作元数据隔离。
+运行时与编译成本分别测量，含回退结果；见[迁移报告](../docs/backend-runtime-schema-migration.md)。
+
 ## 测试组织与去重
 
 缓存的定向 benchmark、Otter 替换前后结果及容量语义差异见

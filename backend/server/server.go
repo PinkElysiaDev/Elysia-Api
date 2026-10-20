@@ -61,11 +61,12 @@ type Server struct {
 	rateLimitMu sync.Mutex
 	rateLimits  map[string]*rateLimitState
 
-	// A2A 任务登记（a2a_server.go）：taskId -> 轮次条目（帧回放/快照），
-	// messageId -> taskId 幂等去重。单实例内存态，容量有界。
-	a2aMu         sync.Mutex
-	a2aTasks      map[string]*a2aTaskEntry
-	a2aMessageIDs map[string]string
+	// A2A official SDK transports and gateway turn/task adapter.
+	a2aOnce    sync.Once
+	a2aRuntime *a2aService
+
+	mcpOnce    sync.Once
+	mcpHandler http.Handler
 
 	store       *storage.Store
 	logger      *logging.Logger

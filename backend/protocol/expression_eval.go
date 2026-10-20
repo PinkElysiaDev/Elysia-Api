@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -393,38 +392,6 @@ func (expression *compiledExpression) evaluateKeyedArray(source Value) (Value, e
 		result[index] = items[sourceIndex]
 	}
 	return EncodeValue(result)
-}
-
-func readValuePointer(value Value, pointer []string) (Value, error) {
-	for _, key := range pointer {
-		if value.IsZero() {
-			return Value{}, nil
-		}
-		if value.IsObject() {
-			object, err := value.ReadObject()
-			if err != nil {
-				return Value{}, err
-			}
-			value = object[key]
-			continue
-		}
-		if valueType(value) != ArrayType {
-			return Value{}, fmt.Errorf("JSON pointer traverses a scalar")
-		}
-		items, err := readArray(value)
-		if err != nil {
-			return Value{}, err
-		}
-		index, err := strconv.Atoi(key)
-		if err != nil || index < 0 || strconv.Itoa(index) != key {
-			return Value{}, fmt.Errorf("invalid array index in JSON pointer")
-		}
-		if index >= len(items) {
-			return Value{}, nil
-		}
-		value = items[index]
-	}
-	return value, nil
 }
 
 func readArray(value Value) ([]Value, error) {

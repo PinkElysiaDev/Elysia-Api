@@ -11,13 +11,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/a2aproject/a2a-go/v2/a2a"
+	"github.com/a2aproject/a2a-go/v2/a2acompat/a2av0"
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// 远程面测试：API Key 作用域鉴权、MCP（legacy/modern 双世代）、A2A
+// 远程面测试：API Key 作用域鉴权、MCP（2026-07-28）、A2A
 //（v0.3/v1.0 双线、审批恢复）、REST 列表过滤分页。
 
 // ---- 上下文构造辅助 ----
@@ -34,8 +37,23 @@ func remoteContext(method, target, body string, headers map[string]string) (*gin
 	return c, rec
 }
 
-func mcpHeaders(extra map[string]string) map[string]string {
-	headers := map[string]string{"Accept": "application/json, text/event-stream"}
+func mcpHeaders(body string, extra map[string]string) map[string]string {
+	var request struct {
+		Method string `json:"method"`
+		Params struct {
+			Name string `json:"name"`
+		} `json:"params"`
+	}
+	_ = sonic.ConfigStd.Unmarshal([]byte(body), &request)
+	headers := map[string]string{
+		"Accept":               "application/json, text/event-stream",
+		"Content-Type":         "application/json",
+		"MCP-Protocol-Version": mcpModernProtocolVersion,
+		"Mcp-Method":           request.Method,
+	}
+	if request.Params.Name != "" {
+		headers["Mcp-Name"] = request.Params.Name
+	}
 	for key, value := range extra {
 		headers[key] = value
 	}
@@ -44,10 +62,18 @@ func mcpHeaders(extra map[string]string) map[string]string {
 
 func mcpCall(t *testing.T, s *Server, body string, extraHeaders map[string]string) (int, map[string]any, string) {
 	t.Helper()
-	c, rec := remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(extraHeaders))
+	c, rec := remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(body, extraHeaders))
 	s.handleMCP(c)
 	var decoded map[string]any
-	_ = sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &decoded)
+	if strings.HasPrefix(rec.Header().Get("Content-Type"), "text/event-stream") {
+		for _, frame := range parseA2AFrames(t, rec.Body.String()) {
+			if frame["id"] != nil {
+				decoded = frame
+			}
+		}
+	} else {
+		_ = sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &decoded)
+	}
 	return rec.Code, decoded, rec.Body.String()
 }
 
@@ -61,9 +87,10 @@ func mcpRequest(id any, method string, params any) string {
 		if meta == nil {
 			meta = map[string]any{}
 		}
-		if _, exists := meta[mcpMetaProtocolVersion]; !exists {
-			meta[mcpMetaProtocolVersion] = mcpModernProtocolVersion
+		if _, exists := meta[mcp.MetaKeyProtocolVersion]; !exists {
+			meta[mcp.MetaKeyProtocolVersion] = mcpModernProtocolVersion
 		}
+		meta[mcp.MetaKeyClientCapabilities] = map[string]any{}
 		object["_meta"] = meta
 		params = object
 	}
@@ -186,15 +213,17 @@ func TestMCPMethodsAndToolsList(t *testing.T) {
 	headers := map[string]string{"MCP-Protocol-Version": mcpModernProtocolVersion}
 
 	// 通知 → 202 无 body。
-	c, rec := remoteContext(http.MethodPost, "/mcp", mcpRequest(nil, "notifications/initialized", nil), mcpHeaders(headers))
+	body := mcpRequest(nil, "notifications/progress", map[string]any{"progressToken": "unused", "progress": 1})
+	c, rec := remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(body, headers))
 	s.handleMCP(c)
+	c.Writer.WriteHeaderNow() // Gin normally commits an empty response after routing.
 	if rec.Code != http.StatusAccepted || rec.Body.Len() != 0 {
-		t.Fatalf("initialized notification: %d %q", rec.Code, rec.Body.String())
+		t.Fatalf("progress notification: %d %q", rec.Code, rec.Body.String())
 	}
 
 	_, ping, _ := mcpCall(t, s, mcpRequest(2, "ping", nil), headers)
-	if ping["result"] == nil {
-		t.Fatalf("ping: %v", ping)
+	if ping["error"] == nil {
+		t.Fatalf("removed ping must fail on 2026-07-28: %v", ping)
 	}
 
 	_, listed, _ := mcpCall(t, s, mcpRequest(3, "tools/list", nil), headers)
@@ -209,7 +238,7 @@ func TestMCPMethodsAndToolsList(t *testing.T) {
 	}
 
 	// 未知方法/未知工具。
-	_, missing, _ := mcpCall(t, s, mcpRequest(4, "resources/list", nil), headers)
+	_, missing, _ := mcpCall(t, s, mcpRequest(4, "tools/unknown", nil), headers)
 	if missing["error"] == nil {
 		t.Fatalf("unknown method must error: %v", missing)
 	}
@@ -218,14 +247,15 @@ func TestMCPMethodsAndToolsList(t *testing.T) {
 		t.Fatalf("unknown tool must error: %v", unknownTool)
 	}
 
-	// Accept 不全 → 406。
-	c, rec = remoteContext(http.MethodPost, "/mcp", mcpRequest(6, "ping", nil), map[string]string{"Accept": "application/json"})
+	// SDK rejects incomplete Accept with HTTP 400.
+	body = mcpRequest(6, "tools/list", nil)
+	c, rec = remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(body, map[string]string{"Accept": "application/json"}))
 	s.handleMCP(c)
-	if rec.Code != http.StatusNotAcceptable {
+	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("partial accept = %d", rec.Code)
 	}
 	// GET → 405。
-	c, rec = remoteContext(http.MethodGet, "/mcp", "", mcpHeaders(headers))
+	c, rec = remoteContext(http.MethodGet, "/mcp", "", mcpHeaders("", headers))
 	s.handleMCP(c)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("GET = %d", rec.Code)
@@ -253,15 +283,15 @@ func TestMCPModernEra(t *testing.T) {
 	}
 
 	// 头与 body 版本不一致 → -32020。
-	_, mismatch, _ := mcpCall(t, s, mcpRequest(2, "ping", modernParams(mcpModernProtocolVersion)), map[string]string{"MCP-Protocol-Version": "mismatched"})
-	if errObj := mismatch["error"].(map[string]any); errObj == nil || errObj["code"] != float64(mcpErrHeaderMismatch) {
+	_, mismatch, _ := mcpCall(t, s, mcpRequest(2, "tools/list", modernParams(mcpModernProtocolVersion)), map[string]string{"MCP-Protocol-Version": "2099-01-01"})
+	if errObj := mismatch["error"].(map[string]any); errObj == nil || errObj["code"] != float64(mcp.CodeHeaderMismatch) {
 		t.Fatalf("header mismatch: %v", mismatch)
 	}
 
 	// 不支持的版本 → -32022 + supported。
-	_, unsupported, _ := mcpCall(t, s, mcpRequest(3, "ping", modernParams("1999-01-01")), map[string]string{"MCP-Protocol-Version": "1999-01-01"})
+	_, unsupported, _ := mcpCall(t, s, mcpRequest(3, "tools/list", modernParams("2099-01-01")), map[string]string{"MCP-Protocol-Version": "2099-01-01"})
 	errObj := unsupported["error"].(map[string]any)
-	if errObj["code"] != float64(mcpErrUnsupportedVersion) {
+	if errObj["code"] != float64(mcp.CodeUnsupportedProtocolVersion) {
 		t.Fatalf("unsupported version: %v", unsupported)
 	}
 
@@ -275,6 +305,11 @@ func TestMCPModernEra(t *testing.T) {
 }
 
 // ---- A2A ----
+
+const (
+	a2aVersionV03 = string(a2av0.Version)
+	a2aVersionV10 = string(a2a.Version)
+)
 
 func TestA2AAgentCard(t *testing.T) {
 	t.Parallel()
@@ -319,7 +354,7 @@ func a2aMessageParams(contextID, taskID, text string, data any) map[string]any {
 	if taskID != "" {
 		message["taskId"] = taskID
 	}
-	return map[string]any{"message": message}
+	return map[string]any{"message": message, "configuration": map[string]any{"blocking": false}}
 }
 
 func TestA2AStreamApprovalResumeFlow(t *testing.T) {
@@ -366,7 +401,7 @@ func TestA2AStreamApprovalResumeFlow(t *testing.T) {
 		t.Fatalf("taskId = %q", taskID)
 	}
 	states := a2aFrameStates(frames)
-	if !containsString(states, a2aStateInputRequired) {
+	if !containsString(states, "input-required") {
 		t.Fatalf("missing input-required: %v %s", states, rec.Body.String())
 	}
 
@@ -374,7 +409,7 @@ func TestA2AStreamApprovalResumeFlow(t *testing.T) {
 	_, got, _ := a2aCall(t, s, "tasks/get", map[string]any{"id": taskID}, "")
 	snapshot := got["result"].(map[string]any)
 	status := snapshot["status"].(map[string]any)
-	if status["state"] != a2aStateInputRequired {
+	if status["state"] != "input-required" {
 		t.Fatalf("snapshot state = %v", status)
 	}
 
@@ -389,7 +424,7 @@ func TestA2AStreamApprovalResumeFlow(t *testing.T) {
 	s.handleA2A(c)
 	frames = parseA2AFrames(t, rec.Body.String())
 	states = a2aFrameStates(frames)
-	if !containsString(states, a2aStateCompleted) {
+	if !containsString(states, "completed") {
 		t.Fatalf("missing completed: %v %s", states, rec.Body.String())
 	}
 	foundReply := false
@@ -397,7 +432,7 @@ func TestA2AStreamApprovalResumeFlow(t *testing.T) {
 		if result, ok := frame["result"].(map[string]any); ok {
 			if artifact, ok := result["artifact"].(map[string]any); ok {
 				for _, part := range artifact["parts"].([]any) {
-					if text := part.(map[string]any)["text"].(string); strings.Contains(text, "测试通过") {
+					if text, _ := part.(map[string]any)["text"].(string); strings.Contains(text, "测试通过") {
 						foundReply = true
 					}
 				}
@@ -437,7 +472,7 @@ func TestA2ASendNonBlockingAndV1Wire(t *testing.T) {
 	_, sent, _ := a2aCall(t, s, "message/send", a2aMessageParams(session.ID, "", "你好", nil), "")
 	result := sent["result"].(map[string]any)
 	state := result["status"].(map[string]any)["state"].(string)
-	if state != a2aStateWorking && state != a2aStateCompleted {
+	if state != "working" && state != "completed" {
 		t.Fatalf("send state = %q", state)
 	}
 	taskID := result["id"].(string)
@@ -446,29 +481,30 @@ func TestA2ASendNonBlockingAndV1Wire(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		_, got, _ := a2aCall(t, s, "tasks/get", map[string]any{"id": taskID}, "")
 		state = got["result"].(map[string]any)["status"].(map[string]any)["state"].(string)
-		if state == a2aStateCompleted {
+		if state == "completed" {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if state != a2aStateCompleted {
+	if state != "completed" {
 		t.Fatalf("task did not complete: %q", state)
 	}
 
 	// v1.0 线格式：SendMessage（PascalCase）+ ROLE_* 枚举 + 无 kind Part。
 	_, v1Sent, _ := a2aCall(t, s, "SendMessage",
 		map[string]any{"message": map[string]any{"messageId": "m-v1", "role": "ROLE_USER",
-			"contextId": session.ID, "parts": []map[string]any{{"text": "v1 你好"}}}},
+			"contextId": session.ID, "parts": []map[string]any{{"text": "v1 你好"}}}, "configuration": map[string]any{"returnImmediately": true}},
 		a2aVersionV10)
 	v1Result, ok := v1Sent["result"].(map[string]any)
 	if !ok {
 		t.Fatalf("v1 send failed: %v", v1Sent)
 	}
-	v1State := v1Result["status"].(map[string]any)["state"].(string)
+	v1Task := v1Result["task"].(map[string]any)
+	v1State := v1Task["status"].(map[string]any)["state"].(string)
 	if !strings.HasPrefix(v1State, "TASK_STATE_") {
 		t.Fatalf("v1 state = %q", v1State)
 	}
-	v1TaskID := v1Result["id"].(string)
+	v1TaskID := v1Task["id"].(string)
 	for i := 0; i < 50; i++ {
 		_, got, _ := a2aCall(t, s, "GetTask", map[string]any{"id": v1TaskID}, a2aVersionV10)
 		if got["result"] == nil {
@@ -504,7 +540,7 @@ func TestA2APushConfigUnsupported(t *testing.T) {
 	s := newOpsTestServer(t)
 	_, push, _ := a2aCall(t, s, "tasks/pushNotificationConfig/set", map[string]any{}, "")
 	errObj := push["error"].(map[string]any)
-	if errObj == nil || errObj["code"] != float64(a2aErrPushUnsupported) {
+	if errObj == nil || errObj["code"] != float64(-32003) {
 		t.Fatalf("push config: %v", push)
 	}
 }
@@ -653,19 +689,19 @@ func TestA2ACancelFinalStateNotOverwritten(t *testing.T) {
 	_, sent, _ := a2aCall(t, s, "message/send", a2aMessageParams(session.ID, "", "慢一点", nil), "")
 	taskID := sent["result"].(map[string]any)["id"].(string)
 	time.Sleep(80 * time.Millisecond) // 让轮次进入模型调用中
-	if state := taskState(t, s, taskID); state != a2aStateWorking {
+	if state := taskState(t, s, taskID); state != "working" {
 		t.Fatalf("pre-cancel state = %q, want working", state)
 	}
 
 	_, canceled, _ := a2aCall(t, s, "tasks/cancel", map[string]any{"id": taskID}, "")
-	if state := canceled["result"].(map[string]any)["status"].(map[string]any)["state"].(string); state != a2aStateCanceled {
+	if state := canceled["result"].(map[string]any)["status"].(map[string]any)["state"].(string); state != "canceled" {
 		t.Fatalf("cancel state = %q", state)
 	}
 	// 轮次被引擎停止后 watcher 会拿到失败事件并尝试 append——终态必须保持
 	// canceled 不被改写。等轮次收尾后再断言若干次。
-	waitForTaskState(t, s, taskID, a2aStateCanceled)
+	waitForTaskState(t, s, taskID, "canceled")
 	time.Sleep(300 * time.Millisecond)
-	if state := taskState(t, s, taskID); state != a2aStateCanceled {
+	if state := taskState(t, s, taskID); state != "canceled" {
 		t.Fatalf("terminal state overwritten: %q", state)
 	}
 	// 再次取消 → 不可取消错误。
@@ -694,13 +730,13 @@ func TestA2ASupersedeStaleTask(t *testing.T) {
 
 	_, first, _ := a2aCall(t, s, "message/send", a2aMessageParams(sessionID, "", "请测试", nil), "")
 	oldTask := first["result"].(map[string]any)["id"].(string)
-	waitForTaskState(t, s, oldTask, a2aStateInputRequired)
+	waitForTaskState(t, s, oldTask, "input-required")
 
 	// 直接发新消息（不带 taskId）：引擎清待批开新轮次。
 	_, second, _ := a2aCall(t, s, "message/send", a2aMessageParams(sessionID, "", "换个任务", nil), "")
 	newTask := second["result"].(map[string]any)["id"].(string)
-	waitForTaskState(t, s, newTask, a2aStateCompleted)
-	waitForTaskState(t, s, oldTask, a2aStateFailed)
+	waitForTaskState(t, s, newTask, "completed")
+	waitForTaskState(t, s, oldTask, "failed")
 	if newTask == oldTask {
 		t.Fatalf("new task must differ: %s", newTask)
 	}

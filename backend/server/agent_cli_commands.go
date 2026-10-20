@@ -151,15 +151,6 @@ type cliCommand struct {
 // Path 返回完整命令路径（如 "source create"；组级命令如 "syslog"）。
 func (c *cliCommand) Path() string { return strings.TrimSpace(c.group + " " + c.name) }
 
-func (c *cliCommand) flagByName(name string) *cliFlagSpec {
-	for i := range c.flags {
-		if c.flags[i].name == name {
-			return &c.flags[i]
-		}
-	}
-	return nil
-}
-
 // cliCommandTable 是命令表（顺序即 help 顺序）；条目按域分函数维护，
 // 新命令加进对应域函数即可。
 func cliCommandTable() []*cliCommand {
@@ -734,87 +725,3 @@ func cliWindowMapper(inv *cliInvocation) (map[string]any, error) {
 func cliMissing(flag string) error {
 	return fmt.Errorf("缺少必填参数 --%s", flag)
 }
-
-// cliMaxCommandWords 是命令路径的最大词数（当前最深是 "group member add"）。
-// 新增更深路径须同步调整，否则会静默解析为未知命令。
-const cliMaxCommandWords = 3
-
-// cliResolve 在命令表里解析调用（flag 规格驱动解析）。
-func cliResolve(args []string) (*cliInvocation, error) {
-	matched, rest := lookupCLICommand(args)
-	if matched == nil {
-		return nil, fmt.Errorf("未知命令 %q（运行 elysia help 查看全部命令）", strings.Join(args, " "))
-	}
-	inv := &cliInvocation{command: matched, flags: map[string]string{}}
-	for i := 0; i < len(rest); i++ {
-		token := rest[i]
-		if token == "--" {
-			inv.args = append(inv.args, rest[i+1:]...)
-			break
-		}
-		if !strings.HasPrefix(token, "--") {
-			if token == "" {
-				return nil, fmt.Errorf("位置参数不能为空（检查引号内容）")
-			}
-			inv.args = append(inv.args, token)
-			continue
-		}
-		name := strings.TrimPrefix(token, "--")
-		value := ""
-		hasInline := false
-		if at := strings.Index(name, "="); at >= 0 {
-			value = name[at+1:]
-			name = name[:at]
-			hasInline = true
-		}
-		spec := matched.flagByName(name)
-		if spec == nil {
-			return nil, fmt.Errorf("命令 %s 没有参数 --%s（运行 elysia help %s 查看）", matched.Path(), name, matched.Path())
-		}
-		if !hasInline {
-			if spec.boolean {
-				value = "true"
-			} else if i+1 < len(rest) && (rest[i+1] == "" || !strings.HasPrefix(rest[i+1], "--")) {
-				value = rest[i+1]
-				i++
-			} else {
-				return nil, fmt.Errorf("--%s 需要一个值（--%s <值> 或 --%s=，空值用引号 ''）", name, name, name)
-			}
-		} else if spec.boolean {
-			if _, ok := cliBoolValue(value); !ok {
-				return nil, fmt.Errorf("--%s 需要布尔值（当前 %q）", name, value)
-			}
-		}
-		if spec.list {
-			if existing, ok := inv.flags[name]; ok {
-				value = existing + "," + value
-			}
-		}
-		inv.flags[name] = value
-	}
-	if extra := len(inv.args) - len(matched.positionals); extra > 0 {
-		return nil, fmt.Errorf("命令 %s 最多接受 %d 个位置参数", matched.Path(), len(matched.positionals))
-	}
-	return inv, nil
-}
-
-// lookupCLICommand 按最长前缀在命令表里匹配路径（组 [命令 [二级]]），
-// 返回命中的命令与余下的 flag/位置参数词。命令表只构建一次——表内含闭包
-// 与惰性 detail 函数,放进 depth 循环会每条语句最多重建 3 次。
-func lookupCLICommand(args []string) (*cliCommand, []string) {
-	table := cliCommandTable()
-	for depth := cliMaxCommandWords; depth >= 1; depth-- {
-		if len(args) < depth {
-			continue
-		}
-		path := strings.Join(args[:depth], " ")
-		for _, command := range table {
-			if command.Path() == path {
-				return command, args[depth:]
-			}
-		}
-	}
-	return nil, nil
-}
-
-// ---- 执行 ----

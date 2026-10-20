@@ -18,7 +18,8 @@ import (
 func TestCLIParser(t *testing.T) {
 	t.Parallel()
 	// 引号与 flag=value。
-	tokens, err := cliTokenize(`protocol draft '{"id":"x"}' --example='{"a":1}'`)
+	parsed, err := cliParseStatement(`elysia protocol draft '{"id":"x"}' --example='{"a":1}'`)
+	tokens := parsed.args
 	if err != nil {
 		t.Fatalf("tokenize: %v", err)
 	}
@@ -77,7 +78,8 @@ func TestCLIParser(t *testing.T) {
 		t.Fatalf("unsupported pipe must fail")
 	}
 	// 空引号 token 与空位置参数报错。
-	tokens, err = cliTokenize(`--secret '' keep`)
+	parsed, err = cliParseStatement(`elysia --secret '' keep`)
+	tokens = parsed.args
 	if err != nil || len(tokens) != 3 || tokens[1] != "" {
 		t.Fatalf("empty-quoted token: %v err=%v", tokens, err)
 	}
@@ -215,12 +217,6 @@ func mustArgs(t *testing.T, line string) []string {
 // 达回归），带最小合法参数时 mapper 必须成功（防 flag 键名拼写回归）。
 func TestCLIAllCommandsResolve(t *testing.T) {
 	t.Parallel()
-	// 路径词数不得超出 lookupCLICommand 的搜索深度，否则静默不可达。
-	for _, command := range cliCommandTable() {
-		if words := len(strings.Fields(command.Path())); words > cliMaxCommandWords {
-			t.Fatalf("path %q has %d words, exceeds cliMaxCommandWords=%d", command.Path(), words, cliMaxCommandWords)
-		}
-	}
 	for _, command := range cliCommandTable() {
 		path := command.Path()
 		statement, err := cliParseStatement("elysia " + path)
@@ -366,14 +362,14 @@ func TestCLIHelp(t *testing.T) {
 		}
 	}
 	group := renderCLIHelp([]string{"source"})
-	if !strings.Contains(group, "--base-url") || !strings.Contains(group, "refresh") {
+	if !strings.Contains(group, "create") || !strings.Contains(group, "refresh") {
 		t.Fatalf("group help incomplete: %s", group)
 	}
 	command := renderCLIHelp([]string{"protocol", "test"})
 	if !strings.Contains(command, "--api-key") || !strings.Contains(command, "服务端权限与业务策略") || !strings.Contains(command, "示例") {
 		t.Fatalf("command help incomplete: %s", command)
 	}
-	if !strings.Contains(renderCLIHelp([]string{"bogus"}), "没有命令组") {
+	if !strings.Contains(renderCLIHelp([]string{"bogus"}), "Unknown help topic") {
 		t.Fatalf("unknown group hint missing")
 	}
 }
@@ -532,10 +528,10 @@ func cliOutputText(t *testing.T, result agent.ToolResult) string {
 // 有快照时预置原文可读,占位时返回打包提示而非报错堆栈。
 func TestCLICodeSnapshotCommands(t *testing.T) {
 	t.Parallel()
-	if command, rest := lookupCLICommand([]string{"code", "read"}); command == nil || len(rest) != 0 {
+	if command, err := cliResolve([]string{"code", "read"}); command == nil || err != nil {
 		t.Fatalf("code read must resolve: %+v", command)
 	}
-	if command, _ := lookupCLICommand([]string{"code", "ls"}); command == nil {
+	if command, _ := cliResolve([]string{"code", "ls"}); command == nil {
 		t.Fatal("code ls must resolve")
 	}
 	read := &codeReadTool{}
