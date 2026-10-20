@@ -1,0 +1,37 @@
+[
+  {
+    "path": "measure-burst4/measurements.json.gz",
+    "originalPath": "measure-burst4/measurements.json",
+    "sha256": "8d2929aa1c5854f186ef1be7391e5f3986a11c5a7a9bd9b1376d1d54f686b45a"
+  },
+  {
+    "path": "measure-candidates4/measurements.json.gz",
+    "originalPath": "measure-candidates4/measurements.json",
+    "sha256": "53349910fc9b2eac28b60eda74f2cc493c7e35b9e3d330c78a4c876a6c53d426"
+  },
+  {
+    "path": "measure-chat-short/measurements.json.gz",
+    "originalPath": "measure-chat-short/measurements.json",
+    "sha256": "46e8d3a5dcf8d149dee8c276e8efcda45e5238ca37d93871526acb95f1164976"
+  },
+  {
+    "path": "measure-history256k/measurements.json.gz",
+    "originalPath": "measure-history256k/measurements.json",
+    "sha256": "593b3ba47e2f5f3ad5b08001ce91e9bda787fdf5e7c6e4cf0378de35db10f373"
+  },
+  {
+    "path": "measure-image2/measurements.json.gz",
+    "originalPath": "measure-image2/measurements.json",
+    "sha256": "1f8c4ab41b0342cb74c0ff151fdc0a7920920ff93e9740026c94b213fed0b8dd"
+  },
+  {
+    "path": "measure-image2-media/measurements.json.gz",
+    "originalPath": "measure-image2-media/measurements.json",
+    "sha256": "40331e8d7858857bc1971347a467aeaa183289d88b3bdd62366d1bfc6bdcf506"
+  },
+  {
+    "path": "measure-stream256-cross/measurements.json.gz",
+    "originalPath": "measure-stream256-cross/measurements.json",
+    "sha256": "e4add629023bcbd323863b3ef0f595c98cfa537bfa29b87d8b1821a0fa438357"
+  }
+]
