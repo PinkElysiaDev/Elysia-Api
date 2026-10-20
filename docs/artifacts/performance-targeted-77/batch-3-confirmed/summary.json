@@ -1,0 +1,79 @@
+{
+  "status": "passed",
+  "order": [
+    "before",
+    "after",
+    "after",
+    "before"
+  ],
+  "cases": [
+    "chat-short",
+    "history256k",
+    "burst4"
+  ],
+  "results": [
+    {
+      "name": "chat-short",
+      "before": {
+        "samples": 10,
+        "bytes": 149996.875,
+        "allocations": 2858.203125,
+        "cpuMS": 7.243429687500001,
+        "latencyP50MS": 5.8841375,
+        "peakHeap": 17582304,
+        "peakRSS": 71897088
+      },
+      "after": {
+        "samples": 10,
+        "bytes": 151651.375,
+        "allocations": 2854.1171875,
+        "cpuMS": 4.5881484375,
+        "latencyP50MS": 3.3107295,
+        "peakHeap": 16342200,
+        "peakRSS": 70017024
+      }
+    },
+    {
+      "name": "history256k",
+      "before": {
+        "samples": 10,
+        "bytes": 11483387.9375,
+        "allocations": 34427.625,
+        "cpuMS": 67.41318749999999,
+        "latencyP50MS": 56.963350000000005,
+        "peakHeap": 15456920,
+        "peakRSS": 73945088
+      },
+      "after": {
+        "samples": 10,
+        "bytes": 11487675.6875,
+        "allocations": 34429.6328125,
+        "cpuMS": 69.68237500000001,
+        "latencyP50MS": 56.906144999999995,
+        "peakHeap": 15270656,
+        "peakRSS": 73273344
+      }
+    },
+    {
+      "name": "burst4",
+      "before": {
+        "samples": 10,
+        "bytes": 147437.8125,
+        "allocations": 2845.6875,
+        "cpuMS": 4.1997734375,
+        "latencyP50MS": 4.3590485,
+        "peakHeap": 15956968,
+        "peakRSS": 72110080
+      },
+      "after": {
+        "samples": 10,
+        "bytes": 150674.4375,
+        "allocations": 2851.5546875,
+        "cpuMS": 2.9291484375,
+        "latencyP50MS": 2.5657495,
+        "peakHeap": 16266912,
+        "peakRSS": 72867840
+      }
+    }
+  ]
+}

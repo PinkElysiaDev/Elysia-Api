@@ -1,0 +1,28 @@
+File: server.test
+Build ID: edee8132cefc91147fcafeede7abc34945437d57
+Type: alloc_objects
+Time: 2026-10-20 22:49:36 CST
+Showing nodes accounting for 49221, 98.99% of 49725 total
+Dropped 126 nodes (cum <= 248)
+      flat  flat%   sum%        cum   cum%
+     38274 76.97% 76.97%      38274 76.97%  runtime/pprof.(*profileBuilder).emitLocation
+     10925 21.97% 98.94%      10925 21.97%  runtime/pprof.allFrames
+        22 0.044% 98.99%      49298 99.14%  runtime/pprof.writeHeapInternal
+         0     0% 98.99%        427  0.86%  github.com/elysia-api/backend/server.(*Server).authMiddleware.func1
+         0     0% 98.99%        427  0.86%  github.com/elysia-api/backend/server.(*Server).chatCompletions
+         0     0% 98.99%      49298 99.14%  github.com/elysia-api/backend/server.(*Server).dashboardAuthMiddleware.func1
+         0     0% 98.99%        263  0.53%  github.com/elysia-api/backend/server.(*Server).serveProtocolRequest
+         0     0% 98.99%        427  0.86%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress
+         0     0% 98.99%      49725   100%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func7
+         0     0% 98.99%      49725   100%  github.com/gin-gonic/gin.(*Context).Next
+         0     0% 98.99%      49725   100%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0% 98.99%      49725   100%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0% 98.99%      49298 99.14%  github.com/gin-gonic/gin.WrapH.func1
+         0     0% 98.99%      49725   100%  net/http.(*conn).serve
+         0     0% 98.99%      49725   100%  net/http.HandlerFunc.ServeHTTP
+         0     0% 98.99%      49725   100%  net/http.serverHandler.ServeHTTP
+         0     0% 98.99%      49298 99.14%  net/http/pprof.handler.ServeHTTP
+         0     0% 98.99%      49298 99.14%  runtime/pprof.(*Profile).WriteTo
+         0     0% 98.99%      49199 98.94%  runtime/pprof.(*profileBuilder).appendLocsForStack
+         0     0% 98.99%      49221 98.99%  runtime/pprof.writeHeap
+         0     0% 98.99%      49276 99.10%  runtime/pprof.writeHeapProto

@@ -1,0 +1,178 @@
+[
+  {
+    "path": "build.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "cpu-chat-short/cpu-top.txt",
+    "sha256": "7d78ba5ea41675282294f441803832188a948ee35e3a563064e898bab4452019"
+  },
+  {
+    "path": "cpu-chat-short/cpu.pprof",
+    "sha256": "961778475758eee8a055c27479168dffc4bd9904899ddefa4f06345a6b238d48"
+  },
+  {
+    "path": "cpu-chat-short/measurements.json",
+    "sha256": "80c8ca674dbac877d36007b9acac307f65a0416ef22ac6459853167cafa004c8"
+  },
+  {
+    "path": "cpu-chat-short.log",
+    "sha256": "ae18aaed11a0ef1ebc2a80da1bde9c7301e434fa3e3969a79fd7960d11806b9d"
+  },
+  {
+    "path": "cpu-image2/cpu-top.txt",
+    "sha256": "b22ef43cf8049cf34e5f6fa58388801f04edff8ec442ed2d805bc6ae4878c955"
+  },
+  {
+    "path": "cpu-image2/cpu.pprof",
+    "sha256": "83a079136895339d203d20dc84fb4508c6cdfedf81ca4f95c9a6446ad1ac97e7"
+  },
+  {
+    "path": "cpu-image2/measurements.json",
+    "sha256": "23266ed30f558a8f3952f56ebbf5b73c36adb54cc594b2df85efc7cfb649ee8a"
+  },
+  {
+    "path": "cpu-image2.log",
+    "sha256": "a2dd369ea7ae086f7f766908010c64772050ca40b0df4f30bcf27f7607334104"
+  },
+  {
+    "path": "cpu-stream256/cpu-top.txt",
+    "sha256": "730671d11fddbb5c92bcdd4af8c669cb00e45ae09e5c02fe97cb248802db463c"
+  },
+  {
+    "path": "cpu-stream256/cpu.pprof",
+    "sha256": "9d086332c269887c6cf25f14f1e881625187872c62290f744f921f03aca375ce"
+  },
+  {
+    "path": "cpu-stream256/measurements.json",
+    "sha256": "5c3b4e63d2e74876ea822274226f39dc9431357404290d7a23496ebcfa2900ee"
+  },
+  {
+    "path": "cpu-stream256.log",
+    "sha256": "ca89144c74de95fe5b5e5f63e934c4f361446d3f46387fcb882fb3da9c447936"
+  },
+  {
+    "path": "memory-chat-short/alloc-after.pprof",
+    "sha256": "37e6b687cad5a5ee2d7540709548be5df178db19ed045fb6e09c00213a0d1358"
+  },
+  {
+    "path": "memory-chat-short/alloc-before.pprof",
+    "sha256": "f84d6528869cc8e1a748c5cbf88540a2d3be71434d7c6b013877614682fd16e2"
+  },
+  {
+    "path": "memory-chat-short/alloc_objects-top.txt",
+    "sha256": "7b270f500f0cec453b5b4ccf93fa822f3a63e7c77cf6c44bf9bcfc7bb204fd6a"
+  },
+  {
+    "path": "memory-chat-short/alloc_space-top.txt",
+    "sha256": "e3e7f2027d355ecfb554189e68a1cb156f2766344ff1bac9d2bebe4e6ecd68c5"
+  },
+  {
+    "path": "memory-chat-short/heap-active.pprof",
+    "sha256": "a7a89b2940c0fc3c49c121268bde80c2e55b5023faca420eeda8b701f20a08d0"
+  },
+  {
+    "path": "memory-chat-short/heap-drained.pprof",
+    "sha256": "36dddcab50cc623dff4bc50905c88152be7674bc410c30bb82834de24612491e"
+  },
+  {
+    "path": "memory-chat-short/inuse_space-top.txt",
+    "sha256": "0a0177d304be94c68a863db64971736d8aec44e57ef578323dd05cd164c250d5"
+  },
+  {
+    "path": "memory-chat-short/measurements.json",
+    "sha256": "0bf8134fd1d2870f4f74d2e1262a98797c892ed92048fb5a2e46cfd295176647"
+  },
+  {
+    "path": "memory-chat-short.log",
+    "sha256": "1406d9450727c9701a9cd7fb6c1c631f12e911eafaa9ca5d38a7c8ecf4d9986a"
+  },
+  {
+    "path": "memory-image2/alloc-after.pprof",
+    "sha256": "b2f8701399edc5eb12cb6630a7d45cf345157c48fac32c36c0efe5655307ccc8"
+  },
+  {
+    "path": "memory-image2/alloc-before.pprof",
+    "sha256": "54c342f6d28b60d413c839121b75f85d98fa668e52357c3ae0c4bebae73ee034"
+  },
+  {
+    "path": "memory-image2/alloc_objects-top.txt",
+    "sha256": "d76e94b294d7f481fc9345901e69b000600af8abf97f8b23ffa231a9394bb12b"
+  },
+  {
+    "path": "memory-image2/alloc_space-top.txt",
+    "sha256": "6755c8e8319e7093ebb27df7a10ac8c9ced9b8bd6ab39d36d58e09ef54cdeef5"
+  },
+  {
+    "path": "memory-image2/heap-active.pprof",
+    "sha256": "f76d6a546d1bc46094e724fa70d673ebaee196a9fbcb9fb64def5b53aa243bc7"
+  },
+  {
+    "path": "memory-image2/heap-drained.pprof",
+    "sha256": "1535b97cb6f892dcb0cd22d3da15060401b024c9b6a697c33e0ec6ca414b19a2"
+  },
+  {
+    "path": "memory-image2/inuse_space-top.txt",
+    "sha256": "440bca853d1b0eaf168482d6f35d59eb9d6da92a619e55d13c18dd3dc17585c7"
+  },
+  {
+    "path": "memory-image2/measurements.json",
+    "sha256": "81357ac0ba8415aa0612d8fbd9cebe8166fb8ea816b6ee69af237c75262fe4e9"
+  },
+  {
+    "path": "memory-image2.log",
+    "sha256": "5eb176ad5e6aa9c89913786f67903eaed7ab14f55b90450baa6fcfea2e49d2f8"
+  },
+  {
+    "path": "memory-stream256/alloc-after.pprof",
+    "sha256": "3144cedb6af48d3779e0b786e238ea054eb76f9869c368c2627b74864687d851"
+  },
+  {
+    "path": "memory-stream256/alloc-before.pprof",
+    "sha256": "39d572f94df94529927ec39a49456a754b593d246e27578b6737c938beb7cdcf"
+  },
+  {
+    "path": "memory-stream256/alloc_objects-top.txt",
+    "sha256": "39a67b81ef54ce31c53112b07cb83d8e4987b65ade15e3dc2572d56a851d0284"
+  },
+  {
+    "path": "memory-stream256/alloc_space-top.txt",
+    "sha256": "b5ffce09e9250e6f29c86a076e8968fe1b67a66c8f076286c165f6945044f13c"
+  },
+  {
+    "path": "memory-stream256/heap-active.pprof",
+    "sha256": "6b52039bfb2737a8bfbcf6c2bcb681245cedd91f25a7e4a2ce48bebf207371d7"
+  },
+  {
+    "path": "memory-stream256/heap-drained.pprof",
+    "sha256": "82a19a8ca0f9e2c03407e29132151164e328f8b407546ddbbca8989ab73b8b2e"
+  },
+  {
+    "path": "memory-stream256/inuse_space-top.txt",
+    "sha256": "b3cab8821b43e7b929868dda5d35fd692c7eb53c55c08dc55292ae10fc2532f5"
+  },
+  {
+    "path": "memory-stream256/measurements.json",
+    "sha256": "a47111b97918f9eee7c97dd28dec3fe98157f35f5eb9bc1bb8020475b8e149f7"
+  },
+  {
+    "path": "memory-stream256.log",
+    "sha256": "a8dfd6de5a37257b933b9388749c50c20ebbb187f381ed51fd049b28831ef1ba"
+  },
+  {
+    "path": "report.json",
+    "sha256": "2bfbdf14e76e8bcea2ead066d376173b9ade4ab614b1f555e96ae64ec5935bb0"
+  },
+  {
+    "path": "runner.mjs",
+    "sha256": "6e95fbb0b0d73ec8313bc3bfe3b3f7738df8b69a44a97b80cba60c0062014c96"
+  },
+  {
+    "path": "source.patch",
+    "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+  },
+  {
+    "path": "summary.md",
+    "sha256": "401e65d4900cd511f7440045dfc6c6300f33c0b9989c2c52cf8485d593cf2241"
+  }
+]

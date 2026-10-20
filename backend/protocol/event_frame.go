@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+
+	"github.com/bytedance/sonic"
 )
 
 // EventFrame groups the semantic events produced by one wire frame. Native
@@ -33,11 +35,11 @@ func (compiled *Compiled) decodeFrame(ctx context.Context, direction Direction, 
 	result := &EventFrame{Events: events, encoderHash: compiled.mappings[eventEncoder(direction)].definitionHash, decoderHash: compiled.mappings[direction].definitionHash}
 	if compiled.native.Preserve && !isTransportControl {
 		result.native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: direction, Scope: options.Scope}, Value: frame}
-		encoded, err := EncodeValue(events)
+		digest, err := digestSemanticEvents(events)
 		if err != nil {
 			return nil, err
 		}
-		result.digest = sha256.Sum256(encoded.Bytes())
+		result.digest = digest
 	}
 	return result, nil
 }
@@ -76,12 +78,12 @@ func (compiled *Compiled) encodeFrame(ctx context.Context, direction Direction, 
 func (compiled *Compiled) EncodeConvertedFrame(ctx context.Context, frame *EventFrame, events []Event, options EvaluationContext) ([]Value, error) {
 	converted := *frame
 	converted.Events = events
-	if converted.native != nil {
-		encoded, err := EncodeValue(events)
+	if converted.native != nil && compiled.native.Preserve && CanPreserveNative(converted.native.Source, compiled.target(EncodeEvent, options)) {
+		digest, err := digestSemanticEvents(events)
 		if err != nil {
 			return nil, err
 		}
-		if converted.digest != sha256.Sum256(encoded.Bytes()) {
+		if converted.digest != digest {
 			converted.native = nil
 		}
 	}
@@ -99,11 +101,11 @@ func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Dire
 			return nil, streamIssue(ResourceScopeMismatch, "/frame", "native frame scope differs from target")
 		}
 		if !checked {
-			encoded, err := EncodeValue(frame.Events)
+			digest, err := digestSemanticEvents(frame.Events)
 			if err != nil {
 				return nil, err
 			}
-			if frame.digest != sha256.Sum256(encoded.Bytes()) {
+			if frame.digest != digest {
 				mapping := compiled.mappings[direction]
 				if len(frame.Events) == 1 && mapping.module == nil && !mapping.frameBatch {
 					event := frame.Events[0]
@@ -137,4 +139,16 @@ func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Dire
 		return []Value{frame.native.Value}, nil
 	}
 	return frames, nil
+}
+
+// Fingerprinting needs one temporary byte encoding, not an immutable Value
+// followed by another mutable copy (and detachment above 64 KiB). []Event is
+// not one of EncodeValue's special Value containers, so the codec and spelling
+// are identical. The digest never escapes onto the wire or a public Event.
+func digestSemanticEvents(events []Event) ([sha256.Size]byte, error) {
+	encoded, err := sonic.ConfigStd.Marshal(events)
+	if err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	return sha256.Sum256(encoded), nil
 }

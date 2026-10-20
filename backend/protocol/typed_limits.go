@@ -235,7 +235,7 @@ func (meter *typedMeter) raw(raw string) bool {
 		return meter.scanRaw(raw)
 	}
 	value := Value{raw: raw}
-	entry := meter.cache.entries[value]
+	entry, _ := meter.cache.lookup(value)
 	if !entry.hasMetrics {
 		local := typedMeter{limits: meter.limits}
 		if !local.scanRaw(raw) {

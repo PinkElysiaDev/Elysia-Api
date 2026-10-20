@@ -1,0 +1,96 @@
+File: server.test
+Build ID: d178d191986e516395912b7c624c5baa8c69f91f
+Type: inuse_space
+Time: 2026-10-21 00:01:31 CST
+Showing nodes accounting for 4710.55kB, 100% of 4710.55kB total
+      flat  flat%   sum%        cum   cum%
+    1123kB 23.84% 23.84%     1123kB 23.84%  github.com/bytedance/sonic/internal/caching.newProgramMap (inline)
+ 1025.25kB 21.76% 45.61%  1025.25kB 21.76%  runtime.mallocgc
+ 1024.75kB 21.75% 67.36%  1536.79kB 32.62%  github.com/santhosh-tekuri/jsonschema/v6.newSchema (inline)
+  513.50kB 10.90% 78.26%   513.50kB 10.90%  github.com/elysia-api/backend/protocol.verifyCombination
+  512.04kB 10.87% 89.13%   512.04kB 10.87%  fmt.Sprintf
+  512.01kB 10.87%   100%   512.01kB 10.87%  internal/bytealg.MakeNoZero
+         0     0%   100%   512.01kB 10.87%  decode_
+         0     0%   100%   512.01kB 10.87%  github.com/bytedance/sonic.frozenConfig.Unmarshal
+         0     0%   100%   512.01kB 10.87%  github.com/bytedance/sonic.frozenConfig.UnmarshalFromString
+         0     0%   100%   512.01kB 10.87%  github.com/bytedance/sonic/internal/caching.(*FieldMap).Set
+         0     0%   100%   512.01kB 10.87%  github.com/bytedance/sonic/internal/caching.(*ProgramCache).Compute
+         0     0%   100%   512.01kB 10.87%  github.com/bytedance/sonic/internal/decoder/api.(*Decoder).Decode
+         0     0%   100%   512.01kB 10.87%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Compiler).compile
+         0     0%   100%   512.01kB 10.87%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Compiler).compileOne
+         0     0%   100%   512.01kB 10.87%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Compiler).compileOps
+         0     0%   100%   512.01kB 10.87%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Compiler).compileStruct
+         0     0%   100%   512.01kB 10.87%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Compiler).compileStructBody
+         0     0%   100%   512.01kB 10.87%  github.com/bytedance/sonic/internal/decoder/jitdec.Decode
+         0     0%   100%   512.01kB 10.87%  github.com/bytedance/sonic/internal/decoder/jitdec.decodeTypedPointer
+         0     0%   100%   512.01kB 10.87%  github.com/bytedance/sonic/internal/decoder/jitdec.findOrCompile
+         0     0%   100%   512.01kB 10.87%  github.com/bytedance/sonic/internal/decoder/jitdec.makeDecoder
+         0     0%   100%   561.50kB 11.92%  github.com/bytedance/sonic/internal/decoder/optdec.init
+         0     0%   100%   561.50kB 11.92%  github.com/bytedance/sonic/internal/encoder/vars.init
+         0     0%   100%   512.01kB 10.87%  github.com/elysia-api/backend/protocol.(*Compiled).OperationRoutes.func1 (inline)
+         0     0%   100%   512.38kB 10.88%  github.com/elysia-api/backend/protocol.(*Compiler).Compile
+         0     0%   100%   512.38kB 10.88%  github.com/elysia-api/backend/protocol.(*Compiler).compileModelMappings
+         0     0%   100%   512.38kB 10.88%  github.com/elysia-api/backend/protocol.(*Service).ReloadAvailable (inline)
+         0     0%   100%   512.38kB 10.88%  github.com/elysia-api/backend/protocol.(*Service).loadVerifiedRevision
+         0     0%   100%   512.38kB 10.88%  github.com/elysia-api/backend/protocol.(*Service).reload
+         0     0%   100%   513.50kB 10.90%  github.com/elysia-api/backend/protocol.VerifyBindingCombination
+         0     0%   100%   513.50kB 10.90%  github.com/elysia-api/backend/protocol.VerifyBindingProfiles
+         0     0%   100%   512.38kB 10.88%  github.com/elysia-api/backend/protocol.compileValueSchema
+         0     0%   100%   512.01kB 10.87%  github.com/elysia-api/backend/server.(*Server).authMiddleware.func1
+         0     0%   100%   512.01kB 10.87%  github.com/elysia-api/backend/server.(*Server).chatCompletions
+         0     0%   100%   512.38kB 10.88%  github.com/elysia-api/backend/server.(*Server).initializeProtocolRuntime
+         0     0%   100%   512.01kB 10.87%  github.com/elysia-api/backend/server.(*Server).pinGatewayConversions
+         0     0%   100%   512.01kB 10.87%  github.com/elysia-api/backend/server.(*Server).prepareGatewayPlan
+         0     0%   100%   512.38kB 10.88%  github.com/elysia-api/backend/server.(*Server).reloadProtocolRuntime
+         0     0%   100%   512.01kB 10.87%  github.com/elysia-api/backend/server.(*Server).serveProtocolRequest
+         0     0%   100%   512.01kB 10.87%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress
+         0     0%   100%   512.01kB 10.87%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress-range1 (inline)
+         0     0%   100%  1025.88kB 21.78%  github.com/elysia-api/backend/server.TestConversionHTTPProcess
+         0     0%   100%   512.01kB 10.87%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func7
+         0     0%   100%  1025.88kB 21.78%  github.com/elysia-api/backend/server.newTestServerWithStore
+         0     0%   100%   513.50kB 10.90%  github.com/elysia-api/backend/server.seedFixtureBindings
+         0     0%   100%   513.50kB 10.90%  github.com/elysia-api/backend/server.seedRoutingGroups
+         0     0%   100%   513.50kB 10.90%  github.com/elysia-api/backend/server.verifyFixtureBinding
+         0     0%   100%   513.50kB 10.90%  github.com/elysia-api/backend/server.verifyFixtureBinding.func2
+         0     0%   100%   512.01kB 10.87%  github.com/elysia-api/backend/storage.(*Store).ConversionSnapshot
+         0     0%   100%   512.01kB 10.87%  github.com/gin-gonic/gin.(*Context).Next
+         0     0%   100%   512.01kB 10.87%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0%   100%   512.01kB 10.87%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0%   100%  1536.79kB 32.62%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).Compile
+         0     0%   100%  1024.41kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).MustCompile
+         0     0%   100%  1536.79kB 32.62%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).compileObject
+         0     0%   100%  1536.79kB 32.62%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).compileValue
+         0     0%   100%  1536.79kB 32.62%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).doCompile
+         0     0%   100%  1536.79kB 32.62%  github.com/santhosh-tekuri/jsonschema/v6.(*Compiler).enqueue
+         0     0%   100%  1536.79kB 32.62%  github.com/santhosh-tekuri/jsonschema/v6.(*objCompiler).compile
+         0     0%   100%  1536.79kB 32.62%  github.com/santhosh-tekuri/jsonschema/v6.(*objCompiler).compileDraft4
+         0     0%   100%  1024.75kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.(*objCompiler).enqueueMap
+         0     0%   100%   512.04kB 10.87%  github.com/santhosh-tekuri/jsonschema/v6.(*objCompiler).enqueueProp
+         0     0%   100%  1536.79kB 32.62%  github.com/santhosh-tekuri/jsonschema/v6.(*objCompiler).enqueuePtr (inline)
+         0     0%   100%   512.04kB 10.87%  github.com/santhosh-tekuri/jsonschema/v6.(*urlPtr).String
+         0     0%   100%  1024.41kB 21.75%  github.com/santhosh-tekuri/jsonschema/v6.init.0
+         0     0%   100%   512.01kB 10.87%  net/http.(*conn).serve
+         0     0%   100%   512.01kB 10.87%  net/http.HandlerFunc.ServeHTTP
+         0     0%   100%   512.01kB 10.87%  net/http.serverHandler.ServeHTTP
+         0     0%   100%      513kB 10.89%  runtime.allocm
+         0     0%   100%  2147.41kB 45.59%  runtime.doInit (inline)
+         0     0%   100%  2147.41kB 45.59%  runtime.doInit1
+         0     0%   100%   512.25kB 10.87%  runtime.gcBgMarkWorker
+         0     0%   100%  2147.41kB 45.59%  runtime.main
+         0     0%   100%      513kB 10.89%  runtime.mstart
+         0     0%   100%      513kB 10.89%  runtime.mstart0
+         0     0%   100%      513kB 10.89%  runtime.mstart1
+         0     0%   100%      513kB 10.89%  runtime.newm
+         0     0%   100%  1025.25kB 21.76%  runtime.newobject
+         0     0%   100%      513kB 10.89%  runtime.resetspinning
+         0     0%   100%      513kB 10.89%  runtime.schedule
+         0     0%   100%      513kB 10.89%  runtime.startm
+         0     0%   100%      513kB 10.89%  runtime.wakep
+         0     0%   100%   512.01kB 10.87%  strings.(*Builder).Grow
+         0     0%   100%   512.01kB 10.87%  strings.(*Builder).grow
+         0     0%   100%   512.01kB 10.87%  strings.ToLower
+         0     0%   100%   513.50kB 10.90%  sync.(*Once).Do
+         0     0%   100%   513.50kB 10.90%  sync.(*Once).doSlow
+         0     0%   100%   513.50kB 10.90%  sync.OnceValue[go.shape.[]github.com/elysia-api/backend/protocol.CombinationReport].func1
+         0     0%   100%   513.50kB 10.90%  sync.OnceValue[go.shape.[]github.com/elysia-api/backend/protocol.CombinationReport].func1.1
+         0     0%   100%  1025.88kB 21.78%  testing.tRunner

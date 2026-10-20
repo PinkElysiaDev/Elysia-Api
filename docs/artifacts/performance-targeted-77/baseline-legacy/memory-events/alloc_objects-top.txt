@@ -1,0 +1,215 @@
+File: server.test
+Build ID: edee8132cefc91147fcafeede7abc34945437d57
+Type: alloc_objects
+Time: 2026-10-20 23:56:30 CST
+Showing nodes accounting for 2843664, 100% of 2843664 total
+      flat  flat%   sum%        cum   cum%
+    334982 11.78% 11.78%     476979 16.77%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+    305840 10.76% 22.54%     305840 10.76%  reflect.unsafe_New
+    240299  8.45% 30.99%     242889  8.54%  decode_
+    229379  8.07% 39.05%     425989 14.98%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+    157501  5.54% 44.59%     266727  9.38%  github.com/elysia-api/backend/protocol.MergeUsage
+    141997  4.99% 49.58%     141997  4.99%  internal/stringslite.Clone (inline)
+    133417  4.69% 54.28%     133417  4.69%  github.com/elysia-api/backend/protocol.Value.Bytes (inline)
+    131075  4.61% 58.88%     131075  4.61%  github.com/bytedance/sonic/internal/decoder/api.NewDecoder
+    109226  3.84% 62.73%     109226  3.84%  github.com/elysia-api/backend/protocol.mergeCounter (inline)
+     65538  2.30% 65.03%      76461  2.69%  github.com/elysia-api/backend/protocol.CheckEvent
+     65536  2.30% 67.34%      65536  2.30%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyConversionState.func1
+     65536  2.30% 69.64%     136538  4.80%  github.com/elysia-api/backend/protocol/builtin.requireWireString
+     52806  1.86% 71.50%      52806  1.86%  github.com/elysia-api/backend/protocol/builtin.copyFields (inline)
+     49934  1.76% 73.25%      49934  1.76%  github.com/bytedance/gopkg/lang/dirtmake.Bytes
+     37138  1.31% 74.56%      37138  1.31%  runtime/pprof.allFrames
+     32769  1.15% 75.71%     234877  8.26%  github.com/bytedance/sonic/internal/encoder.encodeInto
+     32769  1.15% 76.86%     155185  5.46%  github.com/elysia-api/backend/protocol.WriteFrame
+     32769  1.15% 78.02%      40496  1.42%  github.com/elysia-api/backend/protocol.sonicObjectMember
+     32768  1.15% 79.17%      98319  3.46%  github.com/elysia-api/backend/protocol.(*ItemIdentities).Resolve
+     32768  1.15% 80.32%      87383  3.07%  github.com/elysia-api/backend/protocol.Value.IsString
+     32768  1.15% 81.47%     152933  5.38%  github.com/elysia-api/backend/protocol.readString
+     32768  1.15% 82.63%     276717  9.73%  github.com/elysia-api/backend/protocol/builtin.module.ValidateWireOutput
+     32768  1.15% 83.78%      32768  1.15%  github.com/elysia-api/backend/server.updateRecordProtocolUsage.func1 (inline)
+     32768  1.15% 84.93%      32768  1.15%  github.com/santhosh-tekuri/jsonschema/v6.unevalFrom
+     32768  1.15% 86.08%      32768  1.15%  strings.(*Builder).WriteByte (inline)
+     30951  1.09% 87.17%    2691201 94.64%  github.com/elysia-api/backend/protocol.ReadFrames.func1
+     28570  1.00% 88.18%      28570  1.00%  github.com/elysia-api/backend/protocol.(*CompiledConversion).projectUsage
+     26220  0.92% 89.10%     466036 16.39%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Event
+     21847  0.77% 89.87%     434818 15.29%  github.com/elysia-api/backend/protocol.(*Compiled).decodeFrame
+     21846  0.77% 90.63%     214830  7.55%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).captureFrameExtensions
+     21845  0.77% 91.40%     193505  6.80%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeConvertedFrame
+     21845  0.77% 92.17%     914799 32.17%  github.com/elysia-api/backend/protocol.(*WireStreamValidation).Consume
+     21845  0.77% 92.94%     153467  5.40%  github.com/elysia-api/backend/protocol.normalizeMappingSemantic[go.shape.[]github.com/elysia-api/backend/protocol.Event]
+     21845  0.77% 93.71%      33317  1.17%  reflect.MakeSlice
+     18028  0.63% 94.34%     254712  8.96%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).decodeAnthropicFrame
+     16408  0.58% 94.92%      16437  0.58%  runtime/pprof.(*profileBuilder).emitLocation
+     15965  0.56% 95.48%      15965  0.56%  github.com/elysia-api/backend/protocol.(*Compiled).Capabilities (inline)
+     11472   0.4% 95.88%      11472   0.4%  reflect.unsafe_NewArray
+     10924  0.38% 96.27%    2660242 93.55%  github.com/elysia-api/backend/server.(*protocolSourceStream).Push
+     10923  0.38% 96.65%      10923  0.38%  github.com/elysia-api/backend/protocol.(*capabilityCheck).usage
+     10923  0.38% 97.03%      10923  0.38%  github.com/elysia-api/backend/protocol/builtin.module.decodeUsage
+     10923  0.38% 97.42%      10923  0.38%  github.com/elysia-api/backend/protocol/builtin.module.encodeMessages
+     10923  0.38% 97.80%      10923  0.38%  strings.(*Builder).WriteString (inline)
+      9832  0.35% 98.15%       9832  0.35%  github.com/elysia-api/backend/protocol.conversionPhases (inline)
+      8192  0.29% 98.44%      61832  2.17%  runtime/pprof.writeHeapProto
+      7688  0.27% 98.71%       7688  0.27%  github.com/bytedance/sonic/ast.newLazyObject (inline)
+      5462  0.19% 98.90%       5462  0.19%  bufio.(*Scanner).Text (inline)
+      5462  0.19% 99.09%    2696663 94.83%  github.com/elysia-api/backend/protocol.ReadFrames.func2
+      5461  0.19% 99.28%       5461  0.19%  github.com/bytedance/sonic/internal/encoder/alg.IteratorStart
+      4681  0.16% 99.45%       4681  0.16%  strings.Fields
+      3641  0.13% 99.58%      36409  1.28%  github.com/santhosh-tekuri/jsonschema/v6.(*Schema).validate
+      3278  0.12% 99.69%       3278  0.12%  github.com/elysia-api/backend/protocol.(*ConversionEventState).Push
+      2521 0.089% 99.78%      10576  0.37%  github.com/elysia-api/backend/protocol.(*Compiled).Operations
+      2521 0.089% 99.87%       2590 0.091%  github.com/elysia-api/backend/protocol.(*Expression).UnmarshalJSON
+      1820 0.064% 99.93%       1820 0.064%  maps.clone
+      1024 0.036%   100%       1024 0.036%  os.readFileContents
+       455 0.016%   100%        455 0.016%  github.com/elysia-api/backend/protocol.ParseValue
+       128 0.0045%   100%        128 0.0045%  bufio.(*Scanner).Scan
+       105 0.0037%   100%        105 0.0037%  github.com/bytedance/sonic/internal/decoder/jitdec.newStack
+        55 0.0019%   100%         55 0.0019%  runtime/pprof.(*protobuf).string
+        39 0.0014%   100%         39 0.0014%  github.com/bytedance/sonic/internal/native/types.init.func1
+        37 0.0013%   100%         37 0.0013%  github.com/bytedance/sonic/internal/encoder/vars.init.func1
+        33 0.0012%   100%         33 0.0012%  net/http.init.func2
+        21 0.00074%   100%         21 0.00074%  runtime/pprof.(*profileBuilder).stringIndex
+        16 0.00056%   100%         16 0.00056%  compress/flate.(*compressor).init
+         2 7e-05%   100%         18 0.00063%  compress/flate.NewWriter
+         0     0%   100%         18 0.00063%  compress/gzip.(*Writer).Write
+         0     0%   100%       5461  0.19%  encode_*protocol.ValueSchema
+         0     0%   100%     196610  6.91%  encode_[...]protocol.Event
+         0     0%   100%       5461  0.19%  github.com/bytedance/sonic.frozenConfig.Marshal
+         0     0%   100%     279350  9.82%  github.com/bytedance/sonic.frozenConfig.MarshalToString
+         0     0%   100%     374000 13.15%  github.com/bytedance/sonic.frozenConfig.UnmarshalFromString
+         0     0%   100%       7688  0.27%  github.com/bytedance/sonic/ast.(*Node).Properties
+         0     0%   100%       7688  0.27%  github.com/bytedance/sonic/ast.(*Node).checkRaw
+         0     0%   100%       7688  0.27%  github.com/bytedance/sonic/ast.(*Node).parseRaw
+         0     0%   100%       7688  0.27%  github.com/bytedance/sonic/ast.(*Node).should
+         0     0%   100%       7688  0.27%  github.com/bytedance/sonic/ast.(*Parser).Parse
+         0     0%   100%         39 0.0014%  github.com/bytedance/sonic/ast.(*Parser).skip
+         0     0%   100%         39 0.0014%  github.com/bytedance/sonic/ast.NewRaw
+         0     0%   100%     242925  8.54%  github.com/bytedance/sonic/internal/decoder/api.(*Decoder).Decode
+         0     0%   100%     242925  8.54%  github.com/bytedance/sonic/internal/decoder/jitdec.Decode
+         0     0%   100%       2590 0.091%  github.com/bytedance/sonic/internal/decoder/jitdec.decodeJsonUnmarshaler
+         0     0%   100%     242889  8.54%  github.com/bytedance/sonic/internal/decoder/jitdec.decodeTypedPointer
+         0     0%   100%     284811 10.02%  github.com/bytedance/sonic/internal/encoder.Encode
+         0     0%   100%     234877  8.26%  github.com/bytedance/sonic/internal/encoder.encodeIntoCheckRace (inline)
+         0     0%   100%      98305  3.46%  github.com/bytedance/sonic/internal/encoder/prim.EncodeJsonMarshaler
+         0     0%   100%      98305  3.46%  github.com/bytedance/sonic/internal/encoder/prim.IsZero
+         0     0%   100%         37 0.0013%  github.com/bytedance/sonic/internal/encoder/vars.NewStack
+         0     0%   100%     202071  7.11%  github.com/bytedance/sonic/internal/encoder/x86.EncodeTypedPointer
+         0     0%   100%         39 0.0014%  github.com/bytedance/sonic/internal/native/types.NewStateMachine
+         0     0%   100%      98305  3.46%  github.com/bytedance/sonic/internal/resolver.typeFields.func3
+         0     0%   100%    2713176 95.41%  github.com/elysia-api/backend/internal/eventstream.Read
+         0     0%   100%    2696663 94.83%  github.com/elysia-api/backend/internal/eventstream.Read-range1
+         0     0%   100%       4096  0.14%  github.com/elysia-api/backend/protocol.(*Compiled).CheckOperationInput
+         0     0%   100%     434818 15.29%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeFrame (inline)
+         0     0%   100%      45511  1.60%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest
+         0     0%   100%      10923  0.38%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequest.func2
+         0     0%   100%       8055  0.28%  github.com/elysia-api/backend/protocol.(*Compiled).Operation
+         0     0%   100%     276717  9.73%  github.com/elysia-api/backend/protocol.(*Compiled).ValidateWireOutput
+         0     0%   100%     292033 10.27%  github.com/elysia-api/backend/protocol.(*Compiled).decodeEventValues
+         0     0%   100%     302956 10.65%  github.com/elysia-api/backend/protocol.(*Compiled).decodeEvents
+         0     0%   100%      21846  0.77%  github.com/elysia-api/backend/protocol.(*Compiled).encodeCheckedFrame
+         0     0%   100%       1820 0.064%  github.com/elysia-api/backend/protocol.(*Compiled).finishDecodedRequest
+         0     0%   100%       1820 0.064%  github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative
+         0     0%   100%       2735 0.096%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Request
+         0     0%   100%     366089 12.87%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyConversionState
+         0     0%   100%          4 0.00014%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyRequestObject
+         0     0%   100%      28570  1.00%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyResponseObject
+         0     0%   100%       2735 0.096%  github.com/elysia-api/backend/protocol.(*CompiledConversion).convertOwnedRequest
+         0     0%   100%      28570  1.00%  github.com/elysia-api/backend/protocol.(*CompiledConversion).projectUsageObject
+         0     0%   100%          4 0.00014%  github.com/elysia-api/backend/protocol.(*CompiledConversion).reasoningControls
+         0     0%   100%          4 0.00014%  github.com/elysia-api/backend/protocol.(*CompiledConversion).reasoningOutputLimit
+         0     0%   100%     345973 12.17%  github.com/elysia-api/backend/protocol.(*EventReplay).Consume
+         0     0%   100%      71597  2.52%  github.com/elysia-api/backend/protocol.(*EventReplay).Usage (inline)
+         0     0%   100%     147471  5.19%  github.com/elysia-api/backend/protocol.(*EventReplay).consumeItem
+         0     0%   100%      98319  3.46%  github.com/elysia-api/backend/protocol.(*EventReplay).itemKey (inline)
+         0     0%   100%     290721 10.22%  github.com/elysia-api/backend/protocol.(*conversionState).apply
+         0     0%   100%      36409  1.28%  github.com/elysia-api/backend/protocol.(*runtimeValueSchema).validate
+         0     0%   100%     109228  3.84%  github.com/elysia-api/backend/protocol.(*valueReader).fragment (inline)
+         0     0%   100%       2521 0.089%  github.com/elysia-api/backend/protocol.CheckBinding
+         0     0%   100%      32768  1.15%  github.com/elysia-api/backend/protocol.CheckGenerationOutcome
+         0     0%   100%      26888  0.95%  github.com/elysia-api/backend/protocol.CheckModelEvent
+         0     0%   100%       2521 0.089%  github.com/elysia-api/backend/protocol.CheckRoute
+         0     0%   100%     246570  8.67%  github.com/elysia-api/backend/protocol.EncodeValue
+         0     0%   100%       1820 0.064%  github.com/elysia-api/backend/protocol.NormalizeReasoningParameters
+         0     0%   100%    2713176 95.41%  github.com/elysia-api/backend/protocol.ReadFrames
+         0     0%   100%      32780  1.15%  github.com/elysia-api/backend/protocol.StringValue
+         0     0%   100%     374000 13.15%  github.com/elysia-api/backend/protocol.Value.Decode
+         0     0%   100%      98305  3.46%  github.com/elysia-api/backend/protocol.Value.MarshalJSON
+         0     0%   100%     476979 16.77%  github.com/elysia-api/backend/protocol.Value.ReadObject
+         0     0%   100%     476979 16.77%  github.com/elysia-api/backend/protocol.Value.readObject (inline)
+         0     0%   100%      15965  0.56%  github.com/elysia-api/backend/protocol.bindingTarget
+         0     0%   100%       2521 0.089%  github.com/elysia-api/backend/protocol.checkBinding
+         0     0%   100%      44242  1.56%  github.com/elysia-api/backend/protocol.cloneSemantic
+         0     0%   100%       2731 0.096%  github.com/elysia-api/backend/protocol.cloneSemanticInto
+         0     0%   100%          4 0.00014%  github.com/elysia-api/backend/protocol.controlValue
+         0     0%   100%       2590 0.091%  github.com/elysia-api/backend/protocol.decodeContract
+         0     0%   100%      43691  1.54%  github.com/elysia-api/backend/protocol.encodeRequestMapping[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0%   100%      43691  1.54%  github.com/elysia-api/backend/protocol.encodeTyped[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0%   100%      73731  2.59%  github.com/elysia-api/backend/protocol.normalizeMappingSemantic[go.shape.*uint8]
+         0     0%   100%      32768  1.15%  github.com/elysia-api/backend/protocol.parsePointer
+         0     0%   100%      40496  1.42%  github.com/elysia-api/backend/protocol.readValuePointer
+         0     0%   100%     542365 19.07%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).DecodeEvents
+         0     0%   100%     143821  5.06%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).ValidateWireEvent
+         0     0%   100%      52806  1.86%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).captureFrameExtensions.func1 (inline)
+         0     0%   100%      10923  0.38%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).decodeUsageUpdate
+         0     0%   100%      32772  1.15%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).itemEvent
+         0     0%   100%      10923  0.38%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).usageEvent
+         0     0%   100%      52806  1.86%  github.com/elysia-api/backend/protocol/builtin.collectUnknown
+         0     0%   100%      49153  1.73%  github.com/elysia-api/backend/protocol/builtin.frameIndex
+         0     0%   100%      10923  0.38%  github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest
+         0     0%   100%      10923  0.38%  github.com/elysia-api/backend/protocol/builtin.module.encodeRequest
+         0     0%   100%      40052  1.41%  github.com/elysia-api/backend/protocol/builtin.module.validateWireContract
+         0     0%   100%      91026  3.20%  github.com/elysia-api/backend/protocol/builtin.readWireObject
+         0     0%   100%      76475  2.69%  github.com/elysia-api/backend/protocol/builtin.stringValue
+         0     0%   100%    2776094 97.62%  github.com/elysia-api/backend/server.(*Server).authMiddleware.func1
+         0     0%   100%    2776094 97.62%  github.com/elysia-api/backend/server.(*Server).chatCompletions
+         0     0%   100%      61832  2.17%  github.com/elysia-api/backend/server.(*Server).dashboardAuthMiddleware.func1
+         0     0%   100%    2713631 95.43%  github.com/elysia-api/backend/server.(*Server).forwardGateway
+         0     0%   100%    2713176 95.41%  github.com/elysia-api/backend/server.(*Server).forwardGatewayStream
+         0     0%   100%      54408  1.91%  github.com/elysia-api/backend/server.(*Server).prepareGatewayPlan
+         0     0%   100%    2768039 97.34%  github.com/elysia-api/backend/server.(*Server).serveProtocolRequest
+         0     0%   100%    2776094 97.62%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress
+         0     0%   100%    1868456 65.71%  github.com/elysia-api/backend/server.(*gatewayStream).consumeSourceFrame
+         0     0%   100%    1069984 37.63%  github.com/elysia-api/backend/server.(*gatewayStream).emit
+         0     0%   100%    2649318 93.17%  github.com/elysia-api/backend/server.(*protocolSourceStream).decode
+         0     0%   100%    2837926 99.80%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func7
+         0     0%   100%       5705   0.2%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func8
+         0     0%   100%       5705   0.2%  github.com/elysia-api/backend/server.conversionWorkingSetBytes
+         0     0%   100%       2521 0.089%  github.com/elysia-api/backend/server.matchGatewayCombination
+         0     0%   100%      62165  2.19%  github.com/elysia-api/backend/server.updateRecordProtocolUsage
+         0     0%   100%    2837926 99.80%  github.com/gin-gonic/gin.(*Context).Next
+         0     0%   100%    2837926 99.80%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0%   100%    2837926 99.80%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0%   100%      61832  2.17%  github.com/gin-gonic/gin.WrapH.func1
+         0     0%   100%      36409  1.28%  github.com/santhosh-tekuri/jsonschema/v6.(*Schema).Validate (inline)
+         0     0%   100%      32768  1.15%  github.com/santhosh-tekuri/jsonschema/v6.(*validator).objValidate
+         0     0%   100%      32768  1.15%  github.com/santhosh-tekuri/jsonschema/v6.(*validator).validate
+         0     0%   100%      32768  1.15%  github.com/santhosh-tekuri/jsonschema/v6.(*validator).validateVal
+         0     0%   100%    2713176 95.41%  github.com/tmaxmax/go-sse.read.func1 (inline)
+         0     0%   100%    2696663 94.83%  github.com/tmaxmax/go-sse.read.func1.func1 (inline)
+         0     0%   100%       5590   0.2%  github.com/tmaxmax/go-sse/internal/parser.(*Parser).Next
+         0     0%   100%       1820 0.064%  maps.Clone[go.shape.map[string]github.com/elysia-api/backend/protocol.Value,go.shape.string,go.shape.struct { github.com/elysia-api/backend/protocol.raw string }]
+         0     0%   100%         33 0.0012%  net/http.(*Request).write
+         0     0%   100%    2837926 99.80%  net/http.(*conn).serve
+         0     0%   100%         33 0.0012%  net/http.(*persistConn).writeLoop
+         0     0%   100%         33 0.0012%  net/http.(*transferWriter).doBodyCopy
+         0     0%   100%         33 0.0012%  net/http.(*transferWriter).writeBody
+         0     0%   100%    2837926 99.80%  net/http.HandlerFunc.ServeHTTP
+         0     0%   100%         33 0.0012%  net/http.getCopyBuf
+         0     0%   100%    2837926 99.80%  net/http.serverHandler.ServeHTTP
+         0     0%   100%      61832  2.17%  net/http/pprof.handler.ServeHTTP
+         0     0%   100%       1024 0.036%  os.ReadFile
+         0     0%   100%      10925  0.38%  reflect.New
+         0     0%   100%     294915 10.37%  reflect.Value.Interface (inline)
+         0     0%   100%     294915 10.37%  reflect.packEface (inline)
+         0     0%   100%     294915 10.37%  reflect.packEfaceData
+         0     0%   100%     294915 10.37%  reflect.valueInterface
+         0     0%   100%      61832  2.17%  runtime/pprof.(*Profile).WriteTo
+         0     0%   100%      53575  1.88%  runtime/pprof.(*profileBuilder).appendLocsForStack
+         0     0%   100%         55 0.0019%  runtime/pprof.(*profileBuilder).build
+         0     0%   100%         18 0.00063%  runtime/pprof.(*profileBuilder).flush
+         0     0%   100%         10 0.00035%  runtime/pprof.(*profileBuilder).pbSample
+         0     0%   100%         55 0.0019%  runtime/pprof.(*protobuf).strings
+         0     0%   100%       7673  0.27%  runtime/pprof.writeAlloc
+         0     0%   100%      54159  1.90%  runtime/pprof.writeHeap
+         0     0%   100%      61832  2.17%  runtime/pprof.writeHeapInternal
+         0     0%   100%     141997  4.99%  strings.Clone (inline)
+         0     0%   100%        109 0.0038%  sync.(*Pool).Get

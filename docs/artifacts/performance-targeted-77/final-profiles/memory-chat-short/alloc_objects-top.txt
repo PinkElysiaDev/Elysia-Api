@@ -1,0 +1,38 @@
+File: server.test
+Build ID: d178d191986e516395912b7c624c5baa8c69f91f
+Type: alloc_objects
+Time: 2026-10-20 23:40:01 CST
+Showing nodes accounting for 68998, 99.84% of 69109 total
+Dropped 23 nodes (cum <= 345)
+Showing top 30 nodes out of 42
+      flat  flat%   sum%        cum   cum%
+     32768 47.41% 47.41%      32768 47.41%  github.com/elysia-api/backend/protocol.requestCaches.func1
+     26218 37.94% 85.35%      26218 37.94%  runtime/pprof.allFrames
+      8192 11.85% 97.21%      34516 49.94%  runtime/pprof.writeHeapProto
+      1820  2.63% 99.84%       1820  2.63%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+         0     0% 99.84%      34593 50.06%  github.com/elysia-api/backend/protocol.(*Compiled).OperationRoutes.func1 (inline)
+         0     0% 99.84%       1820  2.63%  github.com/elysia-api/backend/protocol.(*Compiled).ValidateWireOutput (inline)
+         0     0% 99.84%       1820  2.63%  github.com/elysia-api/backend/protocol.(*Compiled).validateWireOutput
+         0     0% 99.84%      32773 47.42%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Request
+         0     0% 99.84%      32773 47.42%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyConversionState
+         0     0% 99.84%      32773 47.42%  github.com/elysia-api/backend/protocol.(*CompiledConversion).convertOwnedRequest
+         0     0% 99.84%      32768 47.41%  github.com/elysia-api/backend/protocol.(*conversionState).validateContext
+         0     0% 99.84%       1820  2.63%  github.com/elysia-api/backend/protocol.EvaluationContext.ReadObject (inline)
+         0     0% 99.84%      32768 47.41%  github.com/elysia-api/backend/protocol.requestCaches
+         0     0% 99.84%      32768 47.41%  github.com/elysia-api/backend/protocol.validateRequestContext
+         0     0% 99.84%      32768 47.41%  github.com/elysia-api/backend/protocol.validateRequestHints
+         0     0% 99.84%       1820  2.63%  github.com/elysia-api/backend/protocol/builtin.module.ValidateWireObjectOutput
+         0     0% 99.84%       1820  2.63%  github.com/elysia-api/backend/protocol/builtin.module.ValidateWireOutput
+         0     0% 99.84%       1820  2.63%  github.com/elysia-api/backend/protocol/builtin.module.decodeRequest
+         0     0% 99.84%       1820  2.63%  github.com/elysia-api/backend/protocol/builtin.module.validateRequestWireContract
+         0     0% 99.84%       1820  2.63%  github.com/elysia-api/backend/protocol/builtin.module.validateWireObjectContract
+         0     0% 99.84%      34593 50.06%  github.com/elysia-api/backend/server.(*Server).authMiddleware.func1
+         0     0% 99.84%      34593 50.06%  github.com/elysia-api/backend/server.(*Server).chatCompletions
+         0     0% 99.84%      34516 49.94%  github.com/elysia-api/backend/server.(*Server).dashboardAuthMiddleware.func1
+         0     0% 99.84%       1820  2.63%  github.com/elysia-api/backend/server.(*Server).forwardGateway
+         0     0% 99.84%      32773 47.42%  github.com/elysia-api/backend/server.(*Server).prepareGatewayPlan
+         0     0% 99.84%      34593 50.06%  github.com/elysia-api/backend/server.(*Server).serveProtocolRequest
+         0     0% 99.84%      34593 50.06%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress
+         0     0% 99.84%      34593 50.06%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress-range1 (inline)
+         0     0% 99.84%      69109   100%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func7
+         0     0% 99.84%      69109   100%  github.com/gin-gonic/gin.(*Context).Next

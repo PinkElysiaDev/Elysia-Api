@@ -51,7 +51,7 @@ func TestSemanticCacheCapacityAndNormalization(t *testing.T) {
 		if err := cache.check(&Node{Kind: TextNode, Payload: value}, limits); err != nil {
 			t.Fatal(err)
 		}
-		if len(cache.entries) > 1 || cache.retainedBytes > 1024 {
+		if cache.size() > 1 || cache.retainedBytes > 1024 {
 			t.Fatal("cache exceeded budget")
 		}
 	}

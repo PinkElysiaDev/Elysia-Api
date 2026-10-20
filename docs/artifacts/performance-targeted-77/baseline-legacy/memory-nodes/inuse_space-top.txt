@@ -1,0 +1,42 @@
+File: server.test
+Build ID: edee8132cefc91147fcafeede7abc34945437d57
+Type: inuse_space
+Time: 2026-10-20 23:55:28 CST
+Showing nodes accounting for 3149.14kB, 100% of 3149.14kB total
+      flat  flat%   sum%        cum   cum%
+ 1025.25kB 32.56% 32.56%  1025.25kB 32.56%  runtime.mallocgc
+  574.34kB 18.24% 50.79%   574.34kB 18.24%  reflect.compiledTypelinks
+  525.43kB 16.68% 67.48%   525.43kB 16.68%  github.com/go-playground/validator/v10.map.init.7
+  512.08kB 16.26% 83.74%   512.08kB 16.26%  regexp.compile
+  512.04kB 16.26%   100%  1086.38kB 34.50%  encoding/gob.buildTypeInfo
+         0     0%   100%   574.34kB 18.24%  encoding/gob.getBaseType
+         0     0%   100%   574.34kB 18.24%  encoding/gob.getType
+         0     0%   100%  1086.38kB 34.50%  encoding/gob.getTypeInfo
+         0     0%   100%   574.34kB 18.24%  encoding/gob.implementsInterface
+         0     0%   100%   574.34kB 18.24%  encoding/gob.init
+         0     0%   100%   512.04kB 16.26%  encoding/gob.init.1
+         0     0%   100%  1086.38kB 34.50%  encoding/gob.mustGetTypeInfo
+         0     0%   100%   574.34kB 18.24%  encoding/gob.newTypeObject
+         0     0%   100%   574.34kB 18.24%  encoding/gob.userType
+         0     0%   100%   574.34kB 18.24%  encoding/gob.validUserType
+         0     0%   100%   525.43kB 16.68%  github.com/go-playground/validator/v10.init
+         0     0%   100%   512.08kB 16.26%  google.golang.org/grpc/internal/binarylog.init
+         0     0%   100%   574.34kB 18.24%  reflect.(*rtype).ptrTo
+         0     0%   100%   574.34kB 18.24%  reflect.PointerTo (inline)
+         0     0%   100%   574.34kB 18.24%  reflect.typesByString
+         0     0%   100%   512.08kB 16.26%  regexp.Compile (inline)
+         0     0%   100%   512.08kB 16.26%  regexp.MustCompile
+         0     0%   100%      513kB 16.29%  runtime.allocm
+         0     0%   100%  2123.89kB 67.44%  runtime.doInit (inline)
+         0     0%   100%  2123.89kB 67.44%  runtime.doInit1
+         0     0%   100%   512.25kB 16.27%  runtime.gcBgMarkWorker
+         0     0%   100%  2123.89kB 67.44%  runtime.main
+         0     0%   100%      513kB 16.29%  runtime.mstart
+         0     0%   100%      513kB 16.29%  runtime.mstart0
+         0     0%   100%      513kB 16.29%  runtime.mstart1
+         0     0%   100%      513kB 16.29%  runtime.newm
+         0     0%   100%  1025.25kB 32.56%  runtime.newobject
+         0     0%   100%      513kB 16.29%  runtime.resetspinning
+         0     0%   100%      513kB 16.29%  runtime.schedule
+         0     0%   100%      513kB 16.29%  runtime.startm
+         0     0%   100%      513kB 16.29%  runtime.wakep

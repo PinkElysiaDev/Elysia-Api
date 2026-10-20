@@ -4,6 +4,10 @@
     "sha256": "423d546f354ea6a66ef91b15cc8e3ecca67f847e0df5be2e6453c9b39666bdaa"
   },
   {
+    "path": "run-logs.txt",
+    "sha256": "226251eb51fd4dac261efc3b1773e4ec93ed6defa4a04d2c4c5a9eb43bc813ca"
+  },
+  {
     "path": "runner.mjs",
     "sha256": "2db3de9208332f777b3f2301c4e1aad3d5e31d675b87fdcf8586be14f32c238d"
   },

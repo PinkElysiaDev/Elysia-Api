@@ -1,0 +1,37 @@
+File: server.test
+Build ID: d178d191986e516395912b7c624c5baa8c69f91f
+Type: inuse_space
+Time: 2026-10-20 23:40:59 CST
+Showing nodes accounting for 5286.54kB, 100% of 5286.54kB total
+Showing top 30 nodes out of 93
+      flat  flat%   sum%        cum   cum%
+ 1025.25kB 19.39% 19.39%  1025.25kB 19.39%  runtime.mallocgc
+  574.34kB 10.86% 30.26%   574.34kB 10.86%  reflect.compiledTypelinks
+  561.50kB 10.62% 40.88%   561.50kB 10.62%  github.com/bytedance/sonic/internal/caching.(*_ProgramMap).copy (inline)
+  561.50kB 10.62% 51.50%   561.50kB 10.62%  github.com/bytedance/sonic/internal/caching.newProgramMap (inline)
+     514kB  9.72% 61.22%      514kB  9.72%  bufio.NewReaderSize (inline)
+  513.50kB  9.71% 70.94%   513.50kB  9.71%  github.com/bytedance/sonic/internal/rt.GrowSlice
+  512.38kB  9.69% 80.63%   512.38kB  9.69%  github.com/santhosh-tekuri/jsonschema/v6.newSchema
+  512.05kB  9.69% 90.31%   512.05kB  9.69%  context.(*cancelCtx).Done
+  512.02kB  9.69%   100%   512.02kB  9.69%  github.com/elysia-api/backend/protocol.(*expressionCompiler).compile
+         0     0%   100%      514kB  9.72%  bufio.NewReader
+         0     0%   100%   512.05kB  9.69%  database/sql.(*DB).connectionOpener
+         0     0%   100%   513.50kB  9.71%  decode_
+         0     0%   100%   574.34kB 10.86%  encoding/gob.buildTypeInfo
+         0     0%   100%   574.34kB 10.86%  encoding/gob.getBaseType
+         0     0%   100%   574.34kB 10.86%  encoding/gob.getType
+         0     0%   100%   574.34kB 10.86%  encoding/gob.getTypeInfo
+         0     0%   100%   574.34kB 10.86%  encoding/gob.implementsInterface
+         0     0%   100%   574.34kB 10.86%  encoding/gob.init
+         0     0%   100%   574.34kB 10.86%  encoding/gob.mustGetTypeInfo
+         0     0%   100%   574.34kB 10.86%  encoding/gob.newTypeObject
+         0     0%   100%   574.34kB 10.86%  encoding/gob.userType
+         0     0%   100%   574.34kB 10.86%  encoding/gob.validUserType
+         0     0%   100%   513.50kB  9.71%  github.com/bytedance/sonic.frozenConfig.Unmarshal
+         0     0%   100%   513.50kB  9.71%  github.com/bytedance/sonic.frozenConfig.UnmarshalFromString
+         0     0%   100%   561.50kB 10.62%  github.com/bytedance/sonic/internal/caching.(*ProgramCache).Compute
+         0     0%   100%   561.50kB 10.62%  github.com/bytedance/sonic/internal/caching.(*_ProgramMap).add
+         0     0%   100%   513.50kB  9.71%  github.com/bytedance/sonic/internal/decoder/api.(*Decoder).Decode
+         0     0%   100%   513.50kB  9.71%  github.com/bytedance/sonic/internal/decoder/jitdec.Decode
+         0     0%   100%   513.50kB  9.71%  github.com/bytedance/sonic/internal/decoder/jitdec.decodeTypedPointer
+         0     0%   100%   561.50kB 10.62%  github.com/bytedance/sonic/internal/decoder/optdec.init

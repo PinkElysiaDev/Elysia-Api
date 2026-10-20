@@ -6,6 +6,8 @@
 
 实测版本对照：[v1.6.2 与 `5a8115e` 的 profiling 对比](backend-performance-comparison-v1.6.2.md)（同机重测、原始证据、内存回退及热点分析）。
 
+后续定向优化：[issue #77 三批次优化与最终 profiling 对照](backend-performance-targeted-77-final.md)（局部验收、签名 PR、累计分配及峰值改善、计时波动和未完成项）。
+
 ## 运行
 
 在仓库根目录执行，需要 Node.js、项目要求的 Go 工具链以及本地回环网络。所有 provider、凭据和数据库都是测试夹具，无需真实供应商账户。

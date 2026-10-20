@@ -1,0 +1,39 @@
+File: server.test
+Build ID: d178d191986e516395912b7c624c5baa8c69f91f
+Type: cpu
+Time: 2026-10-20 23:40:04 CST
+Duration: 20s, Total samples = 21.53s (107.63%)
+Showing nodes accounting for 9.61s, 44.64% of 21.53s total
+Dropped 1064 nodes (cum <= 0.11s)
+Showing top 30 nodes out of 411
+      flat  flat%   sum%        cum   cum%
+     1.62s  7.52%  7.52%      1.62s  7.52%  internal/runtime/syscall/linux.Syscall6
+     1.17s  5.43% 12.96%      1.17s  5.43%  runtime.futex
+     0.77s  3.58% 16.54%      1.03s  4.78%  github.com/elysia-api/backend/protocol.jsonStringBytes
+     0.52s  2.42% 18.95%      0.52s  2.42%  unicode/utf8.ValidString
+     0.44s  2.04% 20.99%      0.44s  2.04%  indexbytebody
+     0.40s  1.86% 22.85%      0.99s  4.60%  decode_
+     0.35s  1.63% 24.48%      2.97s 13.79%  github.com/elysia-api/backend/protocol.(*typedMeter).visit
+     0.31s  1.44% 25.92%      1.92s  8.92%  runtime.mallocgc
+     0.31s  1.44% 27.36%      0.45s  2.09%  runtime.mallocgcSmallScanNoHeaderSC2
+     0.31s  1.44% 28.80%      0.31s  1.44%  runtime.usleep
+     0.29s  1.35% 30.14%      0.29s  1.35%  internal/runtime/maps.memHashAES
+     0.29s  1.35% 31.49%      0.48s  2.23%  reflect.Value.Field
+     0.27s  1.25% 32.75%      0.27s  1.25%  runtime.memmove
+     0.23s  1.07% 33.81%      1.81s  8.41%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+     0.21s  0.98% 34.79%      0.39s  1.81%  github.com/elysia-api/backend/protocol.jsonStringEnd
+     0.20s  0.93% 35.72%      0.33s  1.53%  runtime.tryDeferToSpanScan
+     0.18s  0.84% 36.55%      0.18s  0.84%  memeqbody
+     0.18s  0.84% 37.39%      0.62s  2.88%  runtime.scanObject
+     0.16s  0.74% 38.13%      0.26s  1.21%  internal/runtime/maps.(*Iter).Next
+     0.15s   0.7% 38.83%      0.15s   0.7%  internal/abi.Name.IsExported (inline)
+     0.15s   0.7% 39.53%      0.21s  0.98%  runtime.mallocgcTinySC2
+     0.15s   0.7% 40.22%      0.48s  2.23%  runtime.mapaccess2_faststr
+     0.14s  0.65% 40.87%      0.20s  0.93%  runtime.typePointers.next
+     0.13s   0.6% 41.48%      0.30s  1.39%  internal/stringslite.Index
+     0.12s  0.56% 42.03%      0.12s  0.56%  _vstring
+     0.12s  0.56% 42.59%      0.12s  0.56%  runtime.memclrNoHeapPointers
+     0.11s  0.51% 43.10%      0.11s  0.51%  encoding/json/internal/jsonwire.ConsumeSimpleString (inline)
+     0.11s  0.51% 43.61%      0.11s  0.51%  indexbody
+     0.11s  0.51% 44.12%      0.26s  1.21%  internal/runtime/maps.(*Map).getWithoutKeySmallFastStr
+     0.11s  0.51% 44.64%      0.11s  0.51%  runtime.typePointers.nextFast (inline)

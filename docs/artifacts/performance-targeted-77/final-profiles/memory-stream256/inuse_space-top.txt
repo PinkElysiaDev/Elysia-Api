@@ -1,0 +1,37 @@
+File: server.test
+Build ID: d178d191986e516395912b7c624c5baa8c69f91f
+Type: inuse_space
+Time: 2026-10-20 23:40:29 CST
+Showing nodes accounting for 5381.76kB, 100% of 5381.76kB total
+Showing top 30 nodes out of 90
+      flat  flat%   sum%        cum   cum%
+    1123kB 20.87% 20.87%     1123kB 20.87%  github.com/bytedance/sonic/internal/caching.(*_ProgramMap).copy (inline)
+    1123kB 20.87% 41.73%     1123kB 20.87%  github.com/bytedance/sonic/internal/caching.newProgramMap (inline)
+ 1025.25kB 19.05% 60.78%  1025.25kB 19.05%  runtime.mallocgc
+  574.34kB 10.67% 71.46%   574.34kB 10.67%  reflect.compiledTypelinks
+  512.07kB  9.51% 80.97%  1073.57kB 19.95%  decode_
+  512.07kB  9.51% 90.49%   512.07kB  9.51%  net/http.(*Transport).prepareTransportCancel
+  512.03kB  9.51%   100%   512.03kB  9.51%  fmt.Sprintf
+         0     0%   100%   574.34kB 10.67%  encoding/gob.buildTypeInfo
+         0     0%   100%   574.34kB 10.67%  encoding/gob.getBaseType
+         0     0%   100%   574.34kB 10.67%  encoding/gob.getType
+         0     0%   100%   574.34kB 10.67%  encoding/gob.getTypeInfo
+         0     0%   100%   574.34kB 10.67%  encoding/gob.implementsInterface
+         0     0%   100%   574.34kB 10.67%  encoding/gob.init
+         0     0%   100%   574.34kB 10.67%  encoding/gob.mustGetTypeInfo
+         0     0%   100%   574.34kB 10.67%  encoding/gob.newTypeObject
+         0     0%   100%   574.34kB 10.67%  encoding/gob.userType
+         0     0%   100%   574.34kB 10.67%  encoding/gob.validUserType
+         0     0%   100%  1073.57kB 19.95%  github.com/bytedance/sonic.frozenConfig.Unmarshal
+         0     0%   100%  1073.57kB 19.95%  github.com/bytedance/sonic.frozenConfig.UnmarshalFromString
+         0     0%   100%     1123kB 20.87%  github.com/bytedance/sonic/internal/caching.(*ProgramCache).Compute
+         0     0%   100%     1123kB 20.87%  github.com/bytedance/sonic/internal/caching.(*_ProgramMap).add
+         0     0%   100%  1073.57kB 19.95%  github.com/bytedance/sonic/internal/decoder/api.(*Decoder).Decode
+         0     0%   100%  1073.57kB 19.95%  github.com/bytedance/sonic/internal/decoder/jitdec.Decode
+         0     0%   100%  1073.57kB 19.95%  github.com/bytedance/sonic/internal/decoder/jitdec.decodeTypedPointer
+         0     0%   100%   561.50kB 10.43%  github.com/bytedance/sonic/internal/decoder/jitdec.findOrCompile
+         0     0%   100%   561.50kB 10.43%  github.com/bytedance/sonic/internal/decoder/optdec.init
+         0     0%   100%   561.50kB 10.43%  github.com/bytedance/sonic/internal/encoder.(*StreamEncoder).Encode
+         0     0%   100%   561.50kB 10.43%  github.com/bytedance/sonic/internal/encoder.EncodeInto
+         0     0%   100%   561.50kB 10.43%  github.com/bytedance/sonic/internal/encoder.encodeInto
+         0     0%   100%   561.50kB 10.43%  github.com/bytedance/sonic/internal/encoder.encodeIntoCheckRace (inline)
