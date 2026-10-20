@@ -80,7 +80,10 @@ func TestJSONPointerOwnsSelectedFragment(t *testing.T) {
 
 func TestJSONPointerSkipsDeepSibling(t *testing.T) {
 	t.Parallel()
-	for _, depth := range []int{128, 4096} {
+	// Sonic validation from #49 counts the enclosing object/array towards its
+	// 4096-container limit. Exercise the deepest accepted sibling, not invalid
+	// input that the previous standard-library validator happened to accept.
+	for _, depth := range []int{128, 4094} {
 		raw := `{"skip":` + strings.Repeat("[", depth) + "0" + strings.Repeat("]", depth) + `,"value":1}`
 		value, err := ParseValue([]byte(raw))
 		if err != nil {
