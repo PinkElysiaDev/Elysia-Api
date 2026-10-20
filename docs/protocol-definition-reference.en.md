@@ -10,6 +10,8 @@ The compiler translates the restricted `ValueSchema` language into draft 2020-12
 
 **Migration compatibility:** compiler version `2.0.0-dev.73` requires renewed verification evidence. Schema-validated values (including unknown descendants and enum entries) now enforce the numeric conversion bound: at most 4096 bytes per number spelling and exponent in -4096…4096. Complete-value byte/node/depth budgets run before decoding. Diagnostics use library error trees and escaped instance paths; message wording and error ordering can change. See [the migration report](backend-runtime-schema-migration.md) for scope, benchmarks and validation.
 
+**Request-budget correction:** compiler version `2.0.0-dev.74` makes operation input validation use the pinned request-body budget (32 MiB by default), matching request decoding and encoding. Explicit protocol limits still impose a tighter cap; response and event budgets remain independent. Existing verification evidence must be regenerated for the corrected validation behavior.
+
 ## Generated JSON Schema
 
 The live catalog uses **`github.com/invopop/jsonschema` v0.14.0** to reflect the Go models into JSON Schema draft 2020-12. It provides definition, binding, conversion-policy, and semantic schemas. Structs reject unknown properties; JSON `omitempty` and `omitzero` tags control required fields. The protocol's `Value` type is explicitly mapped to an unrestricted JSON schema, retaining arbitrary JSON values, including null, false, zero, and large numbers. Cache-intent descriptions use the library's `jsonschema_description` tag.

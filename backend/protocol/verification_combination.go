@@ -454,7 +454,7 @@ func verifyRequestCombination(ctx context.Context, ingress, upstream *Compiled, 
 	for _, name := range sortedKeys(upstream.operations) {
 		operation := upstream.operations[name]
 		if operation.Kind == "generate" || operation.Kind == "submit" {
-			if err := upstream.CheckOperationInput(name, wire); err != nil {
+			if err := upstream.CheckOperationInput(ctx, name, wire); err != nil {
 				return err
 			}
 		}

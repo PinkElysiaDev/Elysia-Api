@@ -129,10 +129,10 @@ func TestRuntimeSchemaConcurrentOperationValidation(t *testing.T) {
 	for range 2 {
 		t.Run("reader", func(t *testing.T) {
 			t.Parallel()
-			if err := compiled.CheckOperationInput("generate", []byte(`{"id":9007199254740993123}`)); err != nil {
+			if err := compiled.CheckOperationInput(t.Context(), "generate", []byte(`{"id":9007199254740993123}`)); err != nil {
 				t.Fatal(err)
 			}
-			if err := compiled.CheckOperationInput("generate", []byte(`{"id":"wrong"}`)); err == nil {
+			if err := compiled.CheckOperationInput(t.Context(), "generate", []byte(`{"id":"wrong"}`)); err == nil {
 				t.Fatal("invalid operation input accepted")
 			}
 		})

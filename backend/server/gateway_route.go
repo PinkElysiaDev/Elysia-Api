@@ -73,7 +73,7 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		return nil, err
 	}
 	plan.request = request
-	if err := ingress.CheckOperationInput(plan.operationName, body); err != nil {
+	if err := ingress.CheckOperationInput(c.Request.Context(), plan.operationName, body); err != nil {
 		return nil, err
 	}
 	if plan.operation.Transport != protocol.WebSocket {
@@ -150,7 +150,7 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		}
 		body, encodeErr := candidate.compiled.EncodeRequest(c.Request.Context(), probe, probeOptions)
 		if encodeErr == nil {
-			encodeErr = candidate.compiled.CheckOperationInput(candidate.operationName, body)
+			encodeErr = candidate.compiled.CheckOperationInput(c.Request.Context(), candidate.operationName, body)
 		}
 		if encodeErr != nil {
 			if c.Request.Context().Err() != nil {

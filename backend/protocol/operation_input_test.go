@@ -1,6 +1,11 @@
 package protocol
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+)
 
 func TestOperationSchemaIsVerifiedAndImmutable(t *testing.T) {
 	definition := textVerificationDefinition(t, "operation-input")
@@ -18,13 +23,13 @@ func TestOperationSchemaIsVerifiedAndImmutable(t *testing.T) {
 	}
 	copy := compiled.Operations()[name]
 	copy.Input.Required[0] = "missing"
-	if err := compiled.CheckOperationInput(name, definition.Samples[0].Input.Bytes()); err != nil {
+	if err := compiled.CheckOperationInput(t.Context(), name, definition.Samples[0].Input.Bytes()); err != nil {
 		t.Fatal("operation snapshot mutated", err)
 	}
-	if err := compiled.CheckOperationInput(name, []byte(`{}`)); err == nil {
+	if err := compiled.CheckOperationInput(t.Context(), name, []byte(`{}`)); err == nil {
 		t.Fatal("missing required field accepted")
 	}
-	if err := compiled.CheckOperationInput("missing", []byte(`{}`)); err == nil {
+	if err := compiled.CheckOperationInput(t.Context(), "missing", []byte(`{}`)); err == nil {
 		t.Fatal("unknown operation accepted")
 	}
 	operation.Input.Required = []string{"missing"}
@@ -32,6 +37,69 @@ func TestOperationSchemaIsVerifiedAndImmutable(t *testing.T) {
 	definition.Operations[name] = operation
 	if report := Verify(t.Context(), compileTestDefinition(t, definition)); report.Passed {
 		t.Fatal("invalid operation bypassed verification")
+	}
+}
+
+func TestOperationInputRequestBudget(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		bodyBytes     int
+		requestLimit  int64
+		authoredLimit int
+		wantLimit     int
+	}{
+		{name: "default accepts over 8 MiB", bodyBytes: 9 << 20},
+		{name: "configured exact boundary", bodyBytes: 1024, requestLimit: 1024},
+		{name: "configured one byte over", bodyBytes: 1025, requestLimit: 1024, wantLimit: 1024},
+		{name: "authored exact boundary", bodyBytes: 2048, requestLimit: 4096, authoredLimit: 2048},
+		{name: "authored one byte over", bodyBytes: 2049, requestLimit: 4096, authoredLimit: 2048, wantLimit: 2048},
+		{name: "configured tighter than authored", bodyBytes: 1025, requestLimit: 1024, authoredLimit: 2048, wantLimit: 1024},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			definition := textVerificationDefinition(t, "operation-budget")
+			var name string
+			for key, operation := range definition.Operations {
+				name = key
+				operation.Input = &ValueSchema{Type: ObjectType, Required: []string{"engine"}, Properties: map[string]ValueSchema{"engine": {Type: StringType}}, AllowUnknown: true}
+				definition.Operations[key] = operation
+			}
+			if tc.authoredLimit > 0 {
+				limits := DefaultLimits()
+				limits.BufferBytes = tc.authoredLimit
+				definition.Limits = &limits
+			}
+			compiled := compileTestDefinition(t, definition)
+			ctx := t.Context()
+			if tc.requestLimit > 0 {
+				var err error
+				ctx, err = WithRequestBodyLimit(ctx, tc.requestLimit)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			// Unknown descendants still count toward the complete wire budget.
+			body := []byte(`{"engine":"m","payload":"` + strings.Repeat("a", tc.bodyBytes-len(`{"engine":"m","payload":""}`)) + `"}`)
+			err := compiled.CheckOperationInput(ctx, name, body)
+			if tc.wantLimit == 0 {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				var resource *ResourceLimitError
+				var conversion *ConversionError
+				if !errors.As(err, &resource) || resource.Metric != "bytes" || resource.Limit != tc.wantLimit || resource.Observed != len(body) {
+					t.Fatalf("wrong request budget: %v", err)
+				}
+				if !errors.As(err, &conversion) || conversion.Issues[0].Code != LimitExceeded || conversion.Issues[0].Direction != DecodeRequest {
+					t.Fatalf("resource diagnostic lost: %v", err)
+				}
+			}
+			canceled, cancel := context.WithCancel(ctx)
+			cancel()
+			if err := compiled.CheckOperationInput(canceled, name, body); !errors.Is(err, context.Canceled) {
+				t.Fatalf("cancellation lost: %v", err)
+			}
+		})
 	}
 }
 
