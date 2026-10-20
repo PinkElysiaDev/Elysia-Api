@@ -136,3 +136,27 @@ Built-in event conversion operates on owned, normalized semantic containers. Aut
 `EncodeConvertedFrame` compares the completed conversion batch with the decode-time native digest and immediately encodes it. This avoids separately serializing the original batch and repeating the equality check within the call. It never exports or caches an equality proof for publicly mutable events; ordinary `EncodeFrame` continues to detect external edits on every call. Changed or buffered gateway batches are explicitly re-encoded.
 
 Regression coverage includes typed/JSON event conversion and wire encoding across the four built-in text/tool stream families, normalization and resource/cancellation boundaries, native mutation checks, and concurrent execution-wrapper isolation plus generation/revision changes. Compare phase-three evidence against the clean phase-two commit, using the same HTTP matrix and environment above.
+
+## Owned storage and bounded workspaces
+
+The final phase reduces payload work and keeps reuse bounded by its owner:
+
+- JSON syntax validation uses the standard-library scanner without decoding an object tree. Values are still validated and copied on entry, numbers keep their spelling, and protocol resource limits remain separate mandatory checks. The former strict Sonic decoder remains a differential fuzz oracle.
+- Generic Value and strict semantic-contract decoding use a single string-backed decoder with number preservation, string copying and validation. Decoded strings cannot retain a large input through small views; strict contracts still reject unknown fields and trailing documents.
+- JSON string spans use bulk quote search with backslash-parity checks. Semantic metering counts literal HTML/line-separator expansion without decoding strings; invalid UTF-8 still follows the codec's replacement behavior. Metering continues to charge every occurrence, including shared immutable payloads.
+- Deep cloning writes directly into destination structs and slice elements. Only the mutable destination graph is allocated; immutable Values and the private immutable request baseline remain shareable. Reasoning validation uses a shallow local request header because its normalizer replaces fields and owns parameter edits. Candidate recovery clones input only when recovery is active; conversion still produces an independent result.
+- Closed JSON containers use stack storage for up to 16 keys/parts and one exactly sized immutable result. Larger containers allocate temporary arrays for that call. Simple keys are written directly; escaped keys retain the standard codec. The common 4/16-field helper targets one allocation for the returned string, not zero-allocation HTTP encoding.
+- Small codec results use the immutable string API. Results larger than 64 KiB are detached to avoid retaining excess capacity from a grown encoder buffer.
+- Each gateway stream reuses its accepted-event slice up to capacity 16, clears payload references on every return (including failure), and discards larger backing arrays. Reuse is synchronous and stream-local; returned frame bytes do not borrow that storage.
+
+No application-level cross-request buffer pool is added: common container temporaries are on the stack, event storage stays with one stream, and immutable returned JSON must own its bytes. Pooling those outputs would require another copy or a different lifetime contract. The codec and standard-library scanner retain their own internal reuse policies; cold/pool-miss costs remain part of measured runs.
+
+```sh
+cd backend
+GOMAXPROCS=4 GOGC=100 GOMEMLIMIT=2GiB go test -tags=sonic -pgo=off \
+  ./protocol ./internal/jsonutil -run '^$' \
+  -bench '^(BenchmarkValueDecodeLarge|BenchmarkValueContainerEncoding|BenchmarkSemanticClone|BenchmarkStrictJSONValidation|BenchmarkTypedResourceCheck)$' \
+  -benchmem -benchtime=300ms -count=5
+```
+
+`TestGatewayStreamWorkspaceReleasesFailedFrame` exercises actual replay failure after accepting a payload-bearing event and checks reference release and oversized-buffer discard. Clone isolation walks the closed semantic graph, including maps, nested slices and pointers. Fuzz checks cover strict syntax, escaped quote spans and exact semantic metering. Final HTTP comparisons should use phase three as the immediate baseline and phase one for the cumulative four-phase result; report remaining timing/peak regressions as well as allocation gains.

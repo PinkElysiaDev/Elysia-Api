@@ -77,12 +77,22 @@ func skipJSONSpace(raw string, offset int) int {
 
 // These span scanners operate only on Value's validated JSON, never raw input.
 func jsonStringEnd(raw string, start int) int {
-	for offset := start + 1; offset < len(raw); offset++ {
-		if raw[offset] == '\\' {
-			offset++
-		} else if raw[offset] == '"' {
-			return offset + 1
+	// IndexByte uses the platform's bulk byte search for large plain strings.
+	// A quote ends the string iff its immediately preceding backslash run is even.
+	for offset := start + 1; offset < len(raw); {
+		next := strings.IndexByte(raw[offset:], '"')
+		if next < 0 {
+			return len(raw)
 		}
+		quote := offset + next
+		back := quote - 1
+		for back > start && raw[back] == '\\' {
+			back--
+		}
+		if (quote-1-back)%2 == 0 {
+			return quote + 1
+		}
+		offset = quote + 1
 	}
 	return len(raw)
 }

@@ -110,7 +110,12 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		if err != nil {
 			return nil, err
 		}
-		restored := request.Clone()
+		// Conversion owns its output. Only authenticated recovery needs a
+		// mutable candidate-local input before that ownership boundary.
+		restored := request
+		if candidate.continuation != nil {
+			restored = request.Clone()
+		}
 		if err = s.restoreGatewayContinuation(c, candidate.continuation, restored, plan.carriers); err != nil {
 			return nil, err
 		}

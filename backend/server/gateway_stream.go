@@ -34,6 +34,7 @@ type gatewayStream struct {
 	finalValidation    *protocol.WireStreamValidation
 	terminalFailure    error
 	isFailureDelivered bool
+	acceptedScratch    []protocol.Event
 }
 
 func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate, response *http.Response) error {
@@ -122,7 +123,19 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, metadata protocol.Object) error {
 	stream.options.Values = metadata
 	var err error
-	acceptedEvents := []protocol.Event{}
+	acceptedEvents := stream.acceptedScratch[:0]
+	if acceptedEvents == nil {
+		acceptedEvents = []protocol.Event{}
+	}
+	defer func() {
+		// No frame payload may survive in reusable slots, including on failure.
+		clear(acceptedEvents)
+		if cap(acceptedEvents) <= 16 {
+			stream.acceptedScratch = acceptedEvents[:0]
+		} else {
+			stream.acceptedScratch = nil
+		}
+	}()
 	deliveryEvents := decoded.Events
 	if stream.candidate.conversion.HasAnthropicEnvelope(protocol.ConversionEvent, stream.route) {
 		deliveryEvents = protocol.DeliveryFrameEvents(decoded.Events)

@@ -235,14 +235,11 @@ func cloneSemantic(value reflect.Value, plan *typedPlan) reflect.Value {
 			return value
 		}
 		result := reflect.New(value.Type().Elem())
-		result.Elem().Set(cloneSemantic(value.Elem(), plan.element))
+		cloneSemanticInto(result.Elem(), value.Elem(), plan.element)
 		return result
 	case reflect.Struct:
 		result := reflect.New(value.Type()).Elem()
-		result.Set(value)
-		for _, field := range plan.fields {
-			result.Field(field.index).Set(cloneSemantic(value.Field(field.index), field.plan))
-		}
+		cloneSemanticInto(result, value, plan)
 		return result
 	case reflect.Slice:
 		if value.IsNil() {
@@ -250,7 +247,7 @@ func cloneSemantic(value reflect.Value, plan *typedPlan) reflect.Value {
 		}
 		result := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
 		for index := range value.Len() {
-			result.Index(index).Set(cloneSemantic(value.Index(index), plan.element))
+			cloneSemanticInto(result.Index(index), value.Index(index), plan.element)
 		}
 		return result
 	case reflect.Map:
@@ -270,6 +267,19 @@ func cloneSemantic(value reflect.Value, plan *typedPlan) reflect.Value {
 	}
 }
 
+// Populate already-owned struct storage directly. Pointer destinations and slice
+// elements need no additional temporary struct allocation before assignment.
+func cloneSemanticInto(destination, value reflect.Value, plan *typedPlan) {
+	if plan.kind != reflect.Struct || plan.isJSON {
+		destination.Set(cloneSemantic(value, plan))
+		return
+	}
+	destination.Set(value)
+	for _, field := range plan.fields {
+		cloneSemanticInto(destination.Field(field.index), value.Field(field.index), field.plan)
+	}
+}
+
 // Value is already valid JSON. Only whitespace outside strings and the HTML /
 // JavaScript separators and invalid UTF-8 escaped by the codec can change here.
 func needsSemanticCompaction(raw string) bool {
@@ -280,7 +290,7 @@ func needsSemanticCompaction(raw string) bool {
 		case '"':
 			end := jsonStringEnd(raw, offset)
 			text := raw[offset:end]
-			if strings.ContainsAny(text, "<>&") || strings.Contains(text, "\u2028") || strings.Contains(text, "\u2029") || !utf8.ValidString(text) {
+			if strings.IndexByte(text, '<') >= 0 || strings.IndexByte(text, '>') >= 0 || strings.IndexByte(text, '&') >= 0 || strings.Contains(text, "\u2028") || strings.Contains(text, "\u2029") || !utf8.ValidString(text) {
 				return true
 			}
 			offset = end - 1

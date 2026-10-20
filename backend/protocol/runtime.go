@@ -48,8 +48,10 @@ func (compiled *Compiled) finishDecodedRequest(ctx context.Context, input Value,
 	}
 	request.Source = compiled.identity
 	if codec := compiled.Codec(DecodeRequest); knownConversionCodec(codec) {
-		validation := request.Clone()
-		if err := NormalizeReasoningParameters(validation, codec, options.InterleavedThinking); err != nil {
+		// Normalization replaces only Parameters/Reasoning and clones parameters
+		// before editing them; history and tool containers are read-only here.
+		validation := *request
+		if err := NormalizeReasoningParameters(&validation, codec, options.InterleavedThinking); err != nil {
 			return nil, err
 		}
 		if err := validateSourceReasoning(codec, validation.Reasoning); err != nil {

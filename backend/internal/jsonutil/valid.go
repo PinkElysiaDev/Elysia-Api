@@ -1,14 +1,10 @@
-// Package jsonutil provides strict JSON validation using Sonic's decoder.
+// Package jsonutil provides strict JSON validation without materializing values.
 package jsonutil
 
-import "github.com/bytedance/sonic/decoder"
+import "encoding/json"
 
 // Valid checks one complete JSON value, including string escapes and control
-// characters. UseNumber allows numbers outside the float64 range.
+// characters. Syntax validation never converts numbers or builds an object tree.
 func Valid(data []byte) bool {
-	d := decoder.NewDecoder(string(data))
-	d.UseNumber()
-	d.ValidateString()
-	var value any
-	return d.Decode(&value) == nil && d.CheckTrailings() == nil
+	return json.Valid(data)
 }
