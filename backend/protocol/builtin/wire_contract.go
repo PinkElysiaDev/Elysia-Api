@@ -16,6 +16,10 @@ func (adapter module) validateWireContract(direction p.Direction, value p.Value)
 	if err != nil {
 		return err
 	}
+	return adapter.validateWireObjectContract(direction, value, fields)
+}
+
+func (adapter module) validateWireObjectContract(direction p.Direction, value p.Value, fields p.Object) error {
 	if direction == p.EncodeRequest {
 		return adapter.validateRequestWireContract(value, fields)
 	}
@@ -50,7 +54,7 @@ func readWireObject(v p.Value, at string) (p.Object, error) {
 	if !v.IsObject() {
 		return nil, wireContractError(at, "wire contract requires an object")
 	}
-	return v.ReadObject()
+	return (p.EvaluationContext{}).WithValueReader(v).ReadObject(v)
 }
 
 func requireWireString(v p.Value, at string) error {
@@ -70,8 +74,11 @@ func requireWireInteger(v p.Value, at string) error {
 }
 
 func readWireArray(v p.Value, at string) ([]p.Value, error) {
-	var a []p.Value
-	if v.IsZero() || v.IsNull() || v.Decode(&a) != nil {
+	if v.IsZero() || v.IsNull() {
+		return nil, wireContractError(at, "wire contract requires an array")
+	}
+	a, err := (p.EvaluationContext{}).WithValueReader(v).ReadArray(v)
+	if err != nil {
 		return nil, wireContractError(at, "wire contract requires an array")
 	}
 	return a, nil
@@ -176,7 +183,7 @@ func (adapter module) validateRequestWireContract(value p.Value, fields p.Object
 	// Decode the final bytes using this codec, not a user's after mapping.
 	// Capability and resource scopes were checked earlier; repeat structural
 	// associations here so a wire edit cannot create orphan tool results.
-	request, err := adapter.decodeRequest(value, p.EvaluationContext{})
+	request, err := adapter.decodeRequest(value, (p.EvaluationContext{}).WithValueReader(value))
 	if err != nil {
 		return err
 	}

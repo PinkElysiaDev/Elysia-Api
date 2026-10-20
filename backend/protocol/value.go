@@ -94,6 +94,13 @@ func (value Value) IsStringValue() bool {
 // Bytes returns a copy of the original JSON representation.
 func (value Value) Bytes() []byte { return []byte(value.raw) }
 
+// JSONString returns the immutable original JSON spelling without a byte copy.
+// Callers retaining a small selection of a larger view must detach that selection.
+func (value Value) JSONString() string { return value.raw }
+
+// Len reports the encoded byte length without materializing a mutable copy.
+func (value Value) Len() int { return len(value.raw) }
+
 // Decode reads into a typed destination. Interface destinations receive
 // json.Number, never float64, so integers larger than 2^53 remain exact.
 func (value Value) Decode(target any) error {

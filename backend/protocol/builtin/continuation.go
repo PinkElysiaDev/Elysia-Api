@@ -15,7 +15,8 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
 	if err != nil {
 		return nil, nil, err
 	}
-	fields, err := root.ReadObject()
+	reader := (p.EvaluationContext{}).WithValueReader(root)
+	fields, err := reader.ReadObject(root)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -31,14 +32,14 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
 		return true
 	}
 	stripBlocks := func(raw p.Value) (p.Value, error) {
-		var blocks []p.Value
-		if raw.Decode(&blocks) != nil {
+		blocks, err := reader.ReadArray(raw)
+		if err != nil {
 			return raw, nil
 		}
 		out := make([]p.Value, 0, len(blocks))
 		changed := false
 		for _, block := range blocks {
-			b, e := block.ReadObject()
+			b, e := reader.ReadObject(block)
 			if e != nil {
 				out = append(out, block)
 				continue
@@ -68,13 +69,13 @@ func ExtractContinuationCarriers(body []byte, family string, limit int) ([]byte,
 	if family == "openai_responses" {
 		history = "input"
 	}
-	var messages []p.Value
-	if fields[history].Decode(&messages) != nil {
+	messages, err := reader.ReadArray(fields[history])
+	if err != nil {
 		return body, nil, nil
 	}
 	var out []p.Value
 	for _, message := range messages {
-		m, e := message.ReadObject()
+		m, e := reader.ReadObject(message)
 		if e != nil {
 			out = append(out, message)
 			continue

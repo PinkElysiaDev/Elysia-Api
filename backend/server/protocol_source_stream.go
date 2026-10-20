@@ -28,8 +28,8 @@ func newProtocolSourceStream(ctx context.Context, candidate gatewayCandidate, ta
 }
 
 func (source *protocolSourceStream) Push(value protocol.Value, metadata protocol.Object) error {
-	if source.record != nil {
-		source.record.appendStreamEvent(string(value.Bytes()))
+	if source.record != nil && source.record.bodyOpts.maxBytes > 0 {
+		source.record.appendStreamEvent(value.JSONString())
 	}
 	frames, err := source.state.Push(source.ctx, value, metadata)
 	if err != nil {

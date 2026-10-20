@@ -39,8 +39,9 @@ func continuationSession(c *gin.Context, body []byte) string {
 	if err != nil {
 		return ""
 	}
-	fields, _ := v.ReadObject()
-	metadata, _ := fields["metadata"].ReadObject()
+	reader := (protocol.EvaluationContext{}).WithValueReader(v)
+	fields, _ := reader.ReadObject(v)
+	metadata, _ := reader.ReadObject(fields["metadata"])
 	var session string
 	if metadata["session_id"].Decode(&session) == nil && session != "" && len(session) <= 512 {
 		return session
