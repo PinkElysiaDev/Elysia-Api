@@ -46,7 +46,8 @@ func Read(ctx context.Context, reader io.Reader, limit int, consume func(sse.Eve
 type completeReader struct {
 	ctx    context.Context
 	reader io.Reader
-	tail   string
+	tail   [4]byte
+	used   int
 }
 
 func (r *completeReader) Read(p []byte) (int, error) {
@@ -55,20 +56,24 @@ func (r *completeReader) Read(p []byte) (int, error) {
 	}
 	n, err := r.reader.Read(p)
 	if n > 0 {
-		r.tail += string(p[max(0, n-4):n])
-		r.tail = r.tail[max(0, len(r.tail)-4):]
+		if n >= len(r.tail) {
+			r.used = copy(r.tail[:], p[n-len(r.tail):n])
+		} else {
+			keep := min(r.used, len(r.tail)-n)
+			copy(r.tail[:keep], r.tail[r.used-keep:r.used])
+			r.used = keep + copy(r.tail[keep:], p[:n])
+		}
 	}
-	if err == io.EOF && r.tail != "" {
+	if err == io.EOF && r.used > 0 {
 		// Remove one complete newline, then require another newline immediately
 		// before it. CRLF is one separator, not two.
-		tail := strings.TrimSuffix(r.tail, "\r\n")
-		if tail == r.tail {
-			tail = strings.TrimSuffix(r.tail, "\n")
-			if tail == r.tail {
-				tail = strings.TrimSuffix(tail, "\r")
-			}
+		end := r.used
+		if end >= 2 && r.tail[end-2] == '\r' && r.tail[end-1] == '\n' {
+			end -= 2
+		} else if r.tail[end-1] == '\n' || r.tail[end-1] == '\r' {
+			end--
 		}
-		if !strings.HasSuffix(tail, "\n") && !strings.HasSuffix(tail, "\r") {
+		if end == 0 || r.tail[end-1] != '\n' && r.tail[end-1] != '\r' {
 			return n, ErrIncomplete
 		}
 	}

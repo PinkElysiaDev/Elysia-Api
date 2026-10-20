@@ -47,11 +47,15 @@ func (s *Server) startUsageWriter() {
 	writer.wg.Add(1)
 	go func() {
 		defer writer.wg.Done()
+		var batchStorage [64]*usageRecord
+		timer := time.NewTimer(0)
+		timer.Stop()
+		defer timer.Stop()
 		for record := range writer.queue {
-			batch := []*usageRecord{record}
-			timer := time.NewTimer(50 * time.Millisecond)
+			batch := append(batchStorage[:0], record)
+			timer.Reset(50 * time.Millisecond)
 		collect:
-			for len(batch) < 64 {
+			for len(batch) < len(batchStorage) {
 				select {
 				case next, ok := <-writer.queue:
 					if !ok {
@@ -69,6 +73,9 @@ func (s *Server) startUsageWriter() {
 				writer.retainedBytes -= item.queuedPayloadBytes
 			}
 			writer.mu.Unlock()
+			// The writer outlives every batch. Release payload references before
+			// waiting for another record, including after persistence failures.
+			clear(batch)
 		}
 	}()
 }

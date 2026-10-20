@@ -100,3 +100,25 @@ go tool pprof -http=127.0.0.1:0 \
 ```
 
 Rerun matching scenarios after each optimization. Compare allocations/request, bytes/request, CPU/request, peaks and recovery curves together: fewer allocations should not cause sustained oversized-buffer retention. Scope zero-allocation budgets to specific helpers or steady-state stages; establish HTTP budgets after sufficient repetitions. Keep raw evidence in CI artifacts or local output directories and publish summaries and collection settings in the PR/issue.
+
+## Local reuse and allocation budgets
+
+Local optimizations keep resources with their request, stream or writer owner:
+
+- SSE completeness tracking retains four trailing bytes; fragmented reads and EOF checks do not construct tail strings.
+- Each upstream stream reuses one idle timer and notification channel. Every Read stops the timer and waits for an already-fired callback before allowing reuse. Consumer processing time does not count as upstream idle; Close cancels the request to interrupt a blocked Read.
+- The usage writer reuses a 64-entry batch and timer, clearing batch references after persistence, including failures. The original 50ms collection window and payload accounting remain in effect.
+- Final wire validation consumes typed events directly while preserving the semantic budget, JSON normalization and mutable-container isolation. Final byte checks and lifecycle replay still run; JSON-only decoders retain the generic path.
+- Semantic deep cloning allocates mutable containers and destination structs; container field assignment copies scalar values without separate temporary holders. Immutable Value bytes can still be shared.
+
+The following helpers measure fragmented SSE tail checks, a single read on an established stream, and final validation of 256 deltas plus start/end frames. The first two target `0 B/op, 0 allocs/op` in steady state, excluding stream construction, networking and arbitrary Reader internals.
+
+```sh
+cd backend
+GOMAXPROCS=4 go test -tags=sonic -pgo=off \
+  ./internal/eventstream ./relay ./protocol/builtin -run '^$' \
+  -bench '^(BenchmarkSSECompleteReader|BenchmarkStreamBodyRead|BenchmarkFinalWireValidation)$' \
+  -benchmem -benchtime=300ms -count=5
+```
+
+`TestFinalWireValidationTypedParity` compares typed and JSON final validation over identical built-in protocol samples, including rejection positions and terminal results. Focused regressions also cover timer reuse, consumer pauses, concurrent Close, candidate request isolation, and writer shutdown/failure release.

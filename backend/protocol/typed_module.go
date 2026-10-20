@@ -19,6 +19,8 @@ type TypedModule interface {
 }
 
 // TypedEventModule shares the request-owned stream instance with Module.
+// DecodeEvents exposes the same events as Convert; callers retain resource
+// checks and reproduce a JSON boundary's normalization where required.
 type TypedEventModule interface {
 	Module
 	DecodeEvents(context.Context, Value, EvaluationContext) ([]Event, error)
@@ -45,15 +47,15 @@ func (compiled *Compiled) hasTypedRequestSchema(direction Direction) bool {
 	return direction == EncodeRequest && mapping.input == nil && mapping.output != nil
 }
 
-// normalizeMappingRequest reproduces a semantic JSON boundary on owned mutable
+// normalizeMappingSemantic reproduces a semantic JSON boundary on owned mutable
 // containers while preserving immutable payloads that need no normalization.
-func normalizeMappingRequest[T any](input *T, limits Limits) *T {
+func normalizeMappingSemantic[T any](input T, limits Limits) T {
 	value := reflect.ValueOf(input)
 	plan := typedLimitPlans[value.Type()]
 	owned := cloneSemantic(value, plan)
 	state := conversionState{cache: &semanticCache{limits: limits}}
 	state.normalize(owned, plan)
-	return owned.Interface().(*T)
+	return owned.Interface().(T)
 }
 
 func checkMappingSemantic(value any, limits Limits, domain string) error {
@@ -136,7 +138,7 @@ func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 			if err := checkSemanticValue(output, semanticBudget); err != nil {
 				return fail(err)
 			}
-			output = normalizeMappingRequest(output, semanticBudget)
+			output = normalizeMappingSemantic(output, semanticBudget)
 			if err := checkMappingSemantic(output, outputLimits, "mapping_output"); err != nil {
 				return fail(err)
 			}
@@ -237,7 +239,7 @@ func encodeRequestMapping[T any](ctx context.Context, compiled *Compiled, input 
 	if err := checkSemanticValue(input, semanticBudget); err != nil {
 		return Value{}, err
 	}
-	input = normalizeMappingRequest(input, semanticBudget)
+	input = normalizeMappingSemantic(input, semanticBudget)
 	fail := func(err error) (Value, error) { return Value{}, compiled.mappingError(direction, err) }
 	if err := ctx.Err(); err != nil {
 		return fail(err)

@@ -108,7 +108,7 @@ func (value Value) Decode(target any) error {
 		return err
 	case *string, *bool, *int, *int64, *uint64, *json.Number,
 		*Request, *Response, *Event, *[]Event:
-		return sonic.ConfigStd.Unmarshal(value.Bytes(), target)
+		return sonic.ConfigStd.UnmarshalFromString(value.raw, target)
 	}
 	decoder := sonic.ConfigStd.NewDecoder(bytes.NewBufferString(value.raw))
 	decoder.UseNumber()

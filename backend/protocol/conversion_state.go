@@ -229,37 +229,45 @@ func cloneSemantic(value reflect.Value, plan *typedPlan) reflect.Value {
 	if plan.isJSON {
 		return value
 	}
-	result := reflect.New(value.Type()).Elem()
 	switch plan.kind {
 	case reflect.Pointer:
-		if !value.IsNil() {
-			result.Set(reflect.New(value.Type().Elem()))
-			result.Elem().Set(cloneSemantic(value.Elem(), plan.element))
+		if value.IsNil() {
+			return value
 		}
+		result := reflect.New(value.Type().Elem())
+		result.Elem().Set(cloneSemantic(value.Elem(), plan.element))
+		return result
 	case reflect.Struct:
+		result := reflect.New(value.Type()).Elem()
 		result.Set(value)
 		for _, field := range plan.fields {
 			result.Field(field.index).Set(cloneSemantic(value.Field(field.index), field.plan))
 		}
+		return result
 	case reflect.Slice:
-		if !value.IsNil() {
-			result.Set(reflect.MakeSlice(value.Type(), value.Len(), value.Len()))
-			for index := range value.Len() {
-				result.Index(index).Set(cloneSemantic(value.Index(index), plan.element))
-			}
+		if value.IsNil() {
+			return value
 		}
+		result := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
+		for index := range value.Len() {
+			result.Index(index).Set(cloneSemantic(value.Index(index), plan.element))
+		}
+		return result
 	case reflect.Map:
-		if !value.IsNil() {
-			result.Set(reflect.MakeMapWithSize(value.Type(), value.Len()))
-			iter := value.MapRange()
-			for iter.Next() {
-				result.SetMapIndex(iter.Key(), cloneSemantic(iter.Value(), plan.element))
-			}
+		if value.IsNil() {
+			return value
 		}
+		result := reflect.MakeMapWithSize(value.Type(), value.Len())
+		iter := value.MapRange()
+		for iter.Next() {
+			result.SetMapIndex(iter.Key(), cloneSemantic(iter.Value(), plan.element))
+		}
+		return result
 	default:
-		result.Set(value)
+		// Scalars are copied by the owning container's Set. A separate
+		// addressable reflect.New holder adds no ownership or isolation.
+		return value
 	}
-	return result
 }
 
 // Value is already valid JSON. Only whitespace outside strings and the HTML /

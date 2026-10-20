@@ -32,26 +32,39 @@ type streamBody struct {
 	io.ReadCloser
 	ctx    context.Context
 	cancel context.CancelCauseFunc
-	idle   time.Duration
+	idle   *streamIdleTimer
 }
 
-// limitStreamRead cancels the HTTP request itself so a stalled network read
-// cannot leave a goroutine behind. Consumer processing time is not upstream idle.
-func limitStreamRead(cancel context.CancelCauseFunc, idle time.Duration, phase StreamIdlePhase) func() {
-	fired := make(chan struct{})
-	timer := time.AfterFunc(idle, func() { cancel(&StreamIdleError{Phase: phase}); close(fired) })
-	return func() {
-		if !timer.Stop() {
-			<-fired
-		}
+// One timer belongs to the sequential HTTP exchange/read owner. stop waits for
+// an expired callback before the phase or timer can be reused. Close only
+// cancels the request, so it can safely interrupt an outstanding Read.
+type streamIdleTimer struct {
+	timer *time.Timer
+	fired chan struct{}
+	idle  time.Duration
+	phase StreamIdlePhase
+}
+
+func newStreamIdleTimer(cancel context.CancelCauseFunc, idle time.Duration) *streamIdleTimer {
+	state := &streamIdleTimer{fired: make(chan struct{}, 1), idle: idle, phase: StreamAwaitingResponse}
+	state.timer = time.AfterFunc(idle, func() {
+		cancel(&StreamIdleError{Phase: state.phase})
+		state.fired <- struct{}{}
+	})
+	return state
+}
+
+func (state *streamIdleTimer) stop() {
+	if !state.timer.Stop() {
+		<-state.fired
 	}
 }
 
 func (transport *ProtocolTransport) sendStreamRequest(request *http.Request, idle time.Duration) (*http.Response, error) {
 	ctx, cancel := context.WithCancelCause(request.Context())
-	stop := limitStreamRead(cancel, idle, StreamAwaitingResponse)
+	timer := newStreamIdleTimer(cancel, idle)
 	response, err := transport.streamClient.Do(request.WithContext(ctx))
-	stop()
+	timer.stop()
 	if err != nil || context.Cause(ctx) != nil {
 		err = errors.Join(sanitizeTransportError(err), context.Cause(ctx))
 		cancel(nil)
@@ -60,14 +73,15 @@ func (transport *ProtocolTransport) sendStreamRequest(request *http.Request, idl
 		}
 		return nil, err
 	}
-	response.Body = &streamBody{ReadCloser: response.Body, ctx: ctx, cancel: cancel, idle: idle}
+	response.Body = &streamBody{ReadCloser: response.Body, ctx: ctx, cancel: cancel, idle: timer}
 	return response, nil
 }
 
 func (body *streamBody) Read(buffer []byte) (int, error) {
-	stop := limitStreamRead(body.cancel, body.idle, StreamReadingBody)
+	body.idle.phase = StreamReadingBody
+	body.idle.timer.Reset(body.idle.idle)
 	count, err := body.ReadCloser.Read(buffer)
-	stop()
+	body.idle.stop()
 	if cause := context.Cause(body.ctx); cause != nil {
 		return count, errors.Join(err, cause)
 	}

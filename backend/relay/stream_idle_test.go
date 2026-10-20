@@ -159,3 +159,70 @@ func TestStreamIdleExcludesConsumerTime(t *testing.T) {
 		t.Fatalf("consumer delay truncated stream: %s %s %v", first, rest, err)
 	}
 }
+
+func TestStreamIdleReuseAndConcurrentClose(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		transport := NewProtocolTransport(time.Second)
+		var providerContext context.Context
+		reader, writer := io.Pipe()
+		transport.streamClient.Transport = streamRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			providerContext = request.Context()
+			return &http.Response{StatusCode: 200, Body: reader}, nil
+		})
+		response, err := transport.SendProtocolRequest(t.Context(), "https://upstream.test", "", protocol.Operation{Method: "GET", Path: "/", Transport: protocol.SSE, Auth: protocol.Credential{Location: "none"}, Framing: &protocol.Framing{IdleMillis: 100}}, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		defer writer.Close()
+		for range 3 {
+			go func() { _, _ = writer.Write([]byte("x")) }()
+			var value [1]byte
+			if n, err := response.Body.Read(value[:]); err != nil || n != 1 {
+				t.Fatalf("read: %d %v", n, err)
+			}
+			// A previously armed timer must not cancel consumer processing.
+			time.Sleep(time.Second)
+			if err := providerContext.Err(); err != nil {
+				t.Fatalf("stale read timer: %v", err)
+			}
+		}
+		done := make(chan error, 1)
+		go func() {
+			var value [1]byte
+			_, err := response.Body.Read(value[:])
+			done <- err
+		}()
+		synctest.Wait()
+		response.Body.Close()
+		if err := <-done; !errors.Is(err, context.Canceled) || errors.Is(err, errStreamIdle) {
+			t.Fatalf("close changed cancellation attribution: %v", err)
+		}
+		// No armed callback may survive the completed Read/Close pair.
+		time.Sleep(time.Second)
+		if cause := context.Cause(providerContext); !errors.Is(cause, context.Canceled) {
+			t.Fatalf("late timeout replaced cancellation: %v", cause)
+		}
+	})
+}
+
+func BenchmarkStreamBodyRead(b *testing.B) {
+	var source strings.Reader
+	transport := NewProtocolTransport(time.Second)
+	transport.streamClient.Transport = streamRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(&source)}, nil
+	})
+	response, err := transport.SendProtocolRequest(b.Context(), "https://upstream.test", "", protocol.Operation{Method: "GET", Path: "/", Transport: protocol.SSE, Auth: protocol.Credential{Location: "none"}}, nil, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer response.Body.Close()
+	var value [1]byte
+	b.ReportAllocs()
+	for b.Loop() {
+		source.Reset("x")
+		if n, err := response.Body.Read(value[:]); err != nil || n != 1 {
+			b.Fatalf("read: %d %v", n, err)
+		}
+	}
+}
