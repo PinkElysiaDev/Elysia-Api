@@ -43,8 +43,6 @@ func newAgentIntegrationServer(t *testing.T) *Server {
 		config:                 cfg,
 		engine:                 gin.New(),
 		protocolTransport:      relay.NewProtocolTransport(10 * time.Second),
-		roundRobinIndex:        make(map[string]int),
-		rateLimits:             make(map[string]*rateLimitState),
 		affinity:               newAffinityCache(),
 		store:                  store,
 		skipOutboundValidation: true,

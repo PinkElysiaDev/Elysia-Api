@@ -123,7 +123,7 @@ func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView,
 	setRecordModel(record, candidate.model, builtin.Platform("custom:"+candidate.binding.ProtocolID))
 	record.UpstreamRevision, record.TargetEndpoint, record.TargetFormat = candidate.compiled.Hash(), candidate.operation.Path, candidate.binding.ProtocolID
 	record.OutgoingBody = record.sanitizeBody(body)
-	release, err := s.acquireRateLimit(plan.group, s.estimateProtocolTokens(candidate.prepared))
+	release, err := s.limiter.Acquire(plan.group, s.estimateProtocolTokens(candidate.prepared))
 	if err != nil {
 		s.failGateway(c, record, http.StatusTooManyRequests, err)
 		return
@@ -204,7 +204,7 @@ func (s *Server) recordGatewaySession(record *usageRecord, adapter *protocol.Ses
 					total += response.Usage.Output.Count
 				}
 			}
-			s.adjustTokenUsage(record.GroupID, int(total), usageDayKey(record.StartedAt))
+			s.limiter.Adjust(record.GroupID, int(total), usageDayKey(record.StartedAt))
 		}
 		s.recordUsage(&entry)
 	}

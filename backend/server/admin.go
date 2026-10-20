@@ -17,7 +17,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/internal/outbound"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
@@ -127,7 +127,7 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 		"outbound": gin.H{
 			"proxyUrl":              s.config.GetOutboundConfig().ProxyURL,
 			"deniedIpRanges":        s.config.GetOutboundConfig().DeniedIPRanges,
-			"defaultDeniedIpRanges": relay.DefaultDeniedIPRanges,
+			"defaultDeniedIpRanges": outbound.DefaultDeniedIPRanges,
 		},
 		// 生效值（归一化后）：表单直接显示当前实际口径，保存时整体回写。
 		"usageLog":  usageLogStatusJSON(usageLog),
@@ -274,7 +274,7 @@ func validateRuntimeConfigPayload(p *runtimeConfigPayload) *runtimeConfigError {
 	}
 	if p.Outbound != nil {
 		if p.Outbound.ProxyURL != nil {
-			if _, err := relay.ParseProxyURL(*p.Outbound.ProxyURL); err != nil {
+			if _, err := outbound.ParseProxyURL(*p.Outbound.ProxyURL); err != nil {
 				return &runtimeConfigError{400, "invalid_proxy_url", err.Error()}
 			}
 		}
@@ -474,9 +474,7 @@ func (s *Server) deleteSourceCascade(ctx context.Context, store *storage.Store, 
 	s.sourceRefreshMu.Unlock()
 	s.logSystemEvent("warn", "model source deleted", map[string]any{"sourceId": id})
 	// 游标以 sourceID 为键，删除/重建循环下不清理会让 map 随历史源数量无限增长。
-	s.keyRRMutex.Lock()
-	delete(s.keyRRIndex, id)
-	s.keyRRMutex.Unlock()
+	s.scheduler.ForgetSource(id)
 	s.invalidateRouteCache()
 	return nil
 }

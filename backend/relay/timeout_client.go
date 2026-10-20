@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/elysia-api/backend/internal/outbound"
 )
 
 // dynamicTimeoutClient 封装可运行时替换的 *http.Client。
@@ -18,7 +20,7 @@ type dynamicTimeoutClient struct {
 }
 
 func newDynamicTimeoutClient(timeout time.Duration) *dynamicTimeoutClient {
-	transport := newSecureTransport()
+	transport := outbound.NewSecureTransport()
 	client := &http.Client{Transport: transport}
 	if timeout > 0 {
 		client.Timeout = timeout

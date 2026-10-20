@@ -8,6 +8,14 @@ import (
 	"github.com/elysia-api/backend/config"
 )
 
+func names(refs []config.ModelRef) []string {
+	out := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, ref.Name)
+	}
+	return out
+}
+
 func refs(names ...string) []config.ModelRef {
 	out := make([]config.ModelRef, 0, len(names))
 	for _, n := range names {

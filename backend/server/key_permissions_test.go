@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -19,6 +20,11 @@ func newKeyPermissionTestServer(t *testing.T) *Server {
 	t.Cleanup(func() { store.Close() })
 	s := newUnboundTestServer(t, nil)
 	s.store = store
+	s.initLifecycle()
+	t.Cleanup(func() {
+		s.lifecycleCancel()
+		s.sourceRefreshWG.Wait()
+	})
 	activateDiscoveryPresets(t, s)
 	return s
 }
@@ -178,9 +184,9 @@ func TestAssemblyFiltersModelsByPerKeyPermissions(t *testing.T) {
 		t.Fatalf("upsert group: %v", err)
 	}
 
-	groups, ok := s.assembleGroupsFromStore()
-	if !ok || len(groups) != 1 {
-		t.Fatalf("assembly failed: ok=%v groups=%d", ok, len(groups))
+	groups, err := routing.AssembleGroups(ctx, s.store)
+	if err != nil || len(groups) != 1 {
+		t.Fatalf("assembly failed: err=%v groups=%d", err, len(groups))
 	}
 	refs := groups[0].Models
 	if len(refs) != 2 {
@@ -250,8 +256,8 @@ func TestSingleKeyRefreshUsesDiscoveredModels(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("upsert group: %v", err)
 	}
-	groups, ok := s.assembleGroupsFromStore()
-	if !ok || len(groups) != 1 || len(groups[0].Models) != 1 {
-		t.Fatalf("m2-new must be available after discovery: ok=%v groups=%+v", ok, groups)
+	groups, err := routing.AssembleGroups(ctx, s.store)
+	if err != nil || len(groups) != 1 || len(groups[0].Models) != 1 {
+		t.Fatalf("m2-new must be available after discovery: err=%v groups=%+v", err, groups)
 	}
 }

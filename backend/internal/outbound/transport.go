@@ -1,4 +1,4 @@
-package relay
+package outbound
 
 import (
 	"fmt"
@@ -12,8 +12,8 @@ import (
 	log "github.com/elysia-api/backend/logging"
 )
 
-// DefaultDeniedIPRanges 是出站禁止 IP 段的预置默认（CIDR），覆盖旧固定判定
-// IsPrivateOrRestrictedIP 的全部语义：环回、私网、组播、未指定、链路本地、
+// DefaultDeniedIPRanges 是出站禁止 IP 段的预置默认（CIDR）：
+// 环回、私网、组播、未指定、链路本地、
 // CGNAT、文档/基准/保留段及对应 IPv6 段。列表整体可配置（config 的
 // outbound.deniedIpRanges）：用户可在运行时配置页增删段（例如放行本机
 // 127.0.0.1 上游时移除 127.0.0.0/8），清空即全放行。
@@ -47,7 +47,7 @@ func SetAllowPrivateDial(allow bool) { allowPrivateDial.Store(allow) }
 
 // deniedIPRanges 是配置驱动的禁止出站 IP 段（已解析的 CIDR），由 server 层
 // 在启动/热重载/admin 改配置/agent 改配置后调用 SetDeniedIPRanges 下发。
-// 连接时校验（secureControl）与 server 层预校验（validateOutboundBaseURL）
+// 连接时校验（secureControl）与 URL 预校验（ValidateBaseURL）
 // 共用同一份判定，两层同时生效。空列表 = 全放行。
 var deniedIPRanges atomic.Pointer[[]*net.IPNet]
 
@@ -106,8 +106,6 @@ func NewSecureTransport(proxyOverride ...string) http.RoundTripper {
 	}
 	return transport
 }
-
-func newSecureTransport() http.RoundTripper { return NewSecureTransport() }
 
 // newDirectTransport 构造带连接时 SSRF 校验的 http.Transport。
 // 所有上游适配器（OpenAI/Claude/Gemini）共用，确保出站连接的目标 IP

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -46,7 +47,7 @@ func TestRouteCacheConcurrentReloadFailsClosed(t *testing.T) {
 	}
 	s.invalidateRouteCache()
 	checkConcurrent(false)
-	if s.routeCacheLoaded {
+	if s.routeSnapshot() != nil {
 		t.Fatal("database failure published a routing snapshot")
 	}
 	if groups := s.getGroups(); len(groups) != 0 {
@@ -81,9 +82,9 @@ func TestAssemblyPrefersSourceIdentityOverStaleSnapshots(t *testing.T) {
 		t.Fatalf("upsert group: %v", err)
 	}
 
-	groups, ok := s.assembleGroupsFromStore()
-	if !ok || len(groups) != 1 || len(groups[0].Models) != 1 {
-		t.Fatalf("assembly failed: ok=%v groups=%+v", ok, groups)
+	groups, err := routing.AssembleGroups(ctx, s.store)
+	if err != nil || len(groups) != 1 || len(groups[0].Models) != 1 {
+		t.Fatalf("assembly failed: err=%v groups=%+v", err, groups)
 	}
 	ref := groups[0].Models[0]
 	if ref.BaseURL != "https://fresh.example.com" {

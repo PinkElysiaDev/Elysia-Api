@@ -1,6 +1,7 @@
-package server
+package routing
 
 import (
+	"math"
 	"sync"
 	"testing"
 
@@ -93,10 +94,10 @@ func TestOrderedCandidatesRandomCoversAll(t *testing.T) {
 }
 
 func TestNextRoundRobinIndexAdvancesAndWraps(t *testing.T) {
-	s := &Server{roundRobinIndex: map[string]int{}}
+	s := &Scheduler{}
 	got := []int{}
 	for i := 0; i < 5; i++ {
-		got = append(got, s.nextRoundRobinIndex("g1", 3))
+		got = append(got, s.groups.next("g1", 3, true))
 	}
 	want := []int{0, 1, 2, 0, 1}
 	for i := range want {
@@ -107,8 +108,8 @@ func TestNextRoundRobinIndexAdvancesAndWraps(t *testing.T) {
 }
 
 func TestNextRoundRobinIndexEmpty(t *testing.T) {
-	s := &Server{roundRobinIndex: map[string]int{}}
-	if idx := s.nextRoundRobinIndex("g1", 0); idx != 0 {
+	s := &Scheduler{}
+	if idx := s.groups.next("g1", 0, true); idx != 0 {
 		t.Fatalf("expected 0 for empty group, got %d", idx)
 	}
 }
@@ -117,7 +118,7 @@ func TestNextRoundRobinIndexEmpty(t *testing.T) {
 // 并读取候选列表，配合模型数量变化，验证不会越界 panic / 死锁。
 // 注意：要真正检出数据竞争需在装有 C 编译器的环境用 `go test -race` 运行。
 func TestRoundRobinConcurrentNoPanic(t *testing.T) {
-	s := &Server{roundRobinIndex: map[string]int{}}
+	s := &Scheduler{}
 	g := makeGroup("round-robin", "a", "b", "c")
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
@@ -125,7 +126,7 @@ func TestRoundRobinConcurrentNoPanic(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 200; j++ {
-				start := s.nextRoundRobinIndex(g.ID, len(g.Models))
+				start := s.groups.next(g.ID, len(g.Models), true)
 				cands := orderedCandidates(g, start)
 				if len(cands) != 3 {
 					t.Errorf("expected 3 candidates, got %d", len(cands))
@@ -141,16 +142,32 @@ func TestMaxAttempts(t *testing.T) {
 	cases := []struct {
 		maxRetries, candidates, want int
 	}{
-		{0, 3, 1},  // 不重试：只试 1 次
-		{2, 3, 3},  // 重试 2 次：共 3 次
-		{5, 3, 3},  // 重试次数超过候选数：上限为候选数
-		{2, 1, 1},  // 只有 1 个候选
-		{-1, 3, 1}, // 负数视为 0
-		{3, 0, 0},  // 没有候选
+		{0, 3, 1},           // 不重试：只试 1 次
+		{2, 3, 3},           // 重试 2 次：共 3 次
+		{5, 3, 3},           // 重试次数超过候选数：上限为候选数
+		{2, 1, 1},           // 只有 1 个候选
+		{-1, 3, 1},          // 负数视为 0
+		{3, 0, 0},           // 没有候选
+		{math.MaxInt, 3, 3}, // Retry bounds must not overflow into a negative slice limit.
 	}
 	for _, tc := range cases {
-		if got := maxAttempts(tc.maxRetries, tc.candidates); got != tc.want {
+		if got := MaxAttempts(tc.maxRetries, tc.candidates); got != tc.want {
 			t.Fatalf("maxAttempts(%d,%d)=%d want %d", tc.maxRetries, tc.candidates, got, tc.want)
 		}
+	}
+}
+
+func TestSourceKeyCursorPreservesOrdinalAcrossPermissionPools(t *testing.T) {
+	t.Parallel()
+	var scheduler Scheduler
+	choose := func(keys ...string) string {
+		return scheduler.ExpandKeys([]config.ModelRef{{SourceID: "source", KeyStrategy: "round-robin", APIKeys: keys}})[0].APIKey
+	}
+	if choose("a", "b") != "a" || choose("a", "b") != "b" || choose("a", "b", "c") != "c" {
+		t.Fatal("model-specific permission pools reset the shared source cursor")
+	}
+	scheduler.ForgetSource("source")
+	if choose("a", "b") != "a" {
+		t.Fatal("deleted source retained its cursor")
 	}
 }

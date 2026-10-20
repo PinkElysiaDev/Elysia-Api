@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elysia-api/backend/protocol/builtin"
-
+	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/gin-gonic/gin"
 )
 
@@ -99,7 +99,7 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 	if *s.config.GetUsageConfig().EstimateWhenMissing {
 		record.Usage.Estimated, record.Usage.EstimatedTokens, record.UsageSource = true, estimate, "protocol_estimate"
 	}
-	release, err := s.acquireRateLimit(plan.group, estimate)
+	release, err := s.limiter.Acquire(plan.group, estimate)
 	if err != nil {
 		s.failGateway(c, record, http.StatusTooManyRequests, err)
 		return
@@ -119,10 +119,10 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 					total += usage.Output.Count
 				}
 			}
-			s.adjustTokenUsage(plan.group.ID, int(total), usageDayKey(start))
+			s.limiter.Adjust(plan.group.ID, int(total), usageDayKey(start))
 		}
 	}()
-	for index, candidate := range plan.candidates[:maxAttempts(plan.group.MaxRetries, len(plan.candidates))] {
+	for index, candidate := range plan.candidates[:routing.MaxAttempts(plan.group.MaxRetries, len(plan.candidates))] {
 		if err := c.Request.Context().Err(); err != nil {
 			s.failGateway(c, record, statusClientClosedRequest, err)
 			return
@@ -137,7 +137,7 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 			return
 		}
 		canRetry := canRetryGeneration(err)
-		isLast := index+1 == maxAttempts(plan.group.MaxRetries, len(plan.candidates))
+		isLast := index+1 == routing.MaxAttempts(plan.group.MaxRetries, len(plan.candidates))
 		if !canRetry || isLast {
 			s.failGateway(c, record, http.StatusBadGateway, err)
 			return

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/atomicfile"
 )
 
 const panelTokenRandomBytes = 32
@@ -70,5 +71,5 @@ func writeDefaultConfig(path, token string) error {
 	if err != nil {
 		return err
 	}
-	return WriteFileAtomic(path, out, 0o600)
+	return atomicfile.WriteFile(path, out, 0o600)
 }

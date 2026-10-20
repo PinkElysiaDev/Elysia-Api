@@ -20,9 +20,14 @@ Python and vision dependencies are required only to regenerate login assets, not
 ```text
 backend/
   agent/       # Agent engine
-  config/      # Bootstrap and runtime policies
+  config/      # Explicit configuration loading and runtime policies
+  internal/
+    routing/   # Route snapshots, scheduling and quotas
+    outbound/  # Shared proxy and address policy
+    dbpath/    # Database filesystem rules
+    architecture/ # Dependency-boundary tests
   protocol/    # Protocol definitions, semantics, conversion and validation
-  relay/       # Outbound HTTP/WebSocket and legacy definition import
+  relay/       # Protocol HTTP/WebSocket transports and timeouts
   server/      # HTTP routes, auth, CLI, orchestration
   storage/     # SQLite
   webui/       # Embedded frontend assets
@@ -30,6 +35,14 @@ packages/webui/ # React + Vite
 scripts/       # Builds, native app, asset tooling
 docs/          # Documentation
 ```
+
+`main.go` owns CLI parsing, configuration bootstrap, signals and process exit.
+`server/bootstrap.go` composes services; `server/lifecycle.go` drains requests and
+closes owned resources. HTTP authentication lives in `server/http_auth.go`.
+Routing components own their locks and state; configuration shares filesystem
+and network rules through `internal/dbpath` and `internal/outbound` rather than
+depending on storage or relay implementations. Package-boundary tests run with
+the regular Go suite. See [architecture](architecture.md) (Chinese) for details.
 
 ## Local development
 

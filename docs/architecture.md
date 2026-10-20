@@ -10,13 +10,40 @@ Elysia API 是自部署 AI 网关。Go 后端负责鉴权、路由、协议转�
 | --- | --- |
 | `backend/protocol` | 协议定义、编译、语义模型、转换规则、验证、事件与任务状态 |
 | `backend/protocol/builtin` | 四种内置协议定义与编解码模块 |
-| `backend/server` | HTTP 入口、鉴权、候选路由、管理 API、CLI、Agent 集成和用量结算 |
-| `backend/relay` | 出站 HTTP/WebSocket、地址限制、连接与超时，以及旧定义导入 |
+| `backend/server` | 应用装配、HTTP 入口与鉴权、管理 API、CLI、Agent 集成和用量结算 |
+| `backend/internal/routing` | 路由快照、模型源凭据解析、模型/Key 调度、并发与日配额 |
+| `backend/relay` | 协议 HTTP/WebSocket 传输、流式空闲期限、动态请求超时 |
+| `backend/internal/outbound` | 共享出站代理、URL 预校验、连接时 IP 校验与连接池 |
 | `backend/agent` | 模型调用循环、工具执行、审批、上下文与会话状态 |
 | `backend/storage` | SQLite、加密、迁移、协议修订、任务、日志与统计 |
-| `backend/config` | 启动配置与可热更新的运行策略 |
+| `backend/config` | 显式配置加载、校验、原子保存与可热更新的运行策略 |
+| `backend/internal/dbpath` | 配置与存储共用的数据库路径派生、符号链接/硬链接冲突校验 |
+| `backend/internal/atomicfile` | 配置、密钥、缓存与资产共用的原子文件写入 |
 | `packages/webui` | React 管理界面 |
 | `scripts` | 构建、浏览器测试、协议验证和原生 App 工具 |
+
+### 依赖方向与职责边界
+
+- `main.go` 是进程入口，负责命令行、首次配置创建、信号和退出码。`config` 不持有全局配置指针，也不通过 `init()` 读写配置或退出进程；多个加载结果相互独立。
+- `server/bootstrap.go` 装配存储、日志、协议和后台服务；`server/lifecycle.go` 统一管理启动、请求排空、后台任务取消及最终持久化。`Server` 持有资源，组件不反向依赖 `Server`。
+- `server/http.go` 注册路由并提供公共 HTTP 端点；`server/http_auth.go` 集中处理凭据优先级、面板/推理/Agent 作用域与回环限制。Gin 上下文停留在 HTTP 适配层。
+- `routing.Repository` 由消费方声明，只要求构建路由所需的四类读取。`storage.Store` 满足该接口；路由组件不打开或关闭数据库，也不写 HTTP 响应。当前边界复用 `config` 的运行时模型类型及 `storage` 的读取 DTO，不重复维护同形模型。
+- `config` 与 `storage` 共享 `dbpath` 的路径规则，`config` 与 `relay` 共享 `outbound` 的网络规则。配置不依赖 SQLite 实现或协议转发适配器。
+- `protocol` 核心只依赖底层 JSON/SSE 工具；`protocol/builtin` 依赖协议核心；`agent` 通过已有的调用、持久化及工具接口接入宿主。业务层不会被 HTTP、CLI 或 SQLite 细节反向牵引。
+
+### 状态所有权与失效约束
+
+`routing.Cache` 将组装结果和授权信息作为只读快照发布。一次加载期间的并发请求合并；每次写入成功后失效并递增代际，旧加载不能回填，后续代际不等待旧加载。读取失败返回错误，不复用已失效的授权。调用方不得修改快照内的模型、密钥切片或 map。
+
+`routing.Scheduler` 封装模型组与源级 Key 游标，候选排序保留原列表；删除组/源时同步清理相应游标。`routing.Sources` 为路由和健康探测提供同一份源地址、密钥及模型权限解析，健康探测可解析暂时不可用的模型，路由装配另行过滤可用性。
+
+`routing.Limiter` 封装预留、释放、实际用量与日切。释放幂等；跨午夜保留在途并发计数，只清空日配额；旧日期的预留及结算不影响新日期。删除后重建的模型组不接受旧预留的释放。出站网络策略目前仍是进程级共享策略，启动和热更新统一发布。
+
+### 开发约定
+
+新增逻辑按业务能力及状态所有权放置：协议语义进入 `protocol`，纯路由策略进入 `internal/routing`，传输适配进入 `relay`，事务和 SQL 留在 `storage`，HTTP/CLI 协调留在 `server`。只有存在明确消费边界时才引入接口，避免为每个函数包装一层服务；共用规则只保留一个实现。
+
+底层返回可包装的错误，由入口决定日志与 HTTP 表示；加载和持久化不依赖隐式进程状态。并发组件内部维护锁，测试通过组件行为验证，涉及日期的边界使用可控时钟。`internal/architecture` 的测试约束包依赖、Gin 边界及进程控制归属，随 `go test ./...` 在 CI 中执行；新增包或跨层依赖需同步审查此约束。
 
 ## 一次推理请求
 

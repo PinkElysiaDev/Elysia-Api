@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/dbpath"
 	"github.com/elysia-api/backend/internal/storagequery"
 )
 
@@ -26,14 +27,14 @@ func Open(path string) (*Store, error) {
 // （api token、上游 api_key）做透明 AES-256-GCM 加解密。
 // key 为空时使用显式明文模式。
 func OpenWithKey(path string, key []byte) (*Store, error) {
-	return OpenWithLogPath(path, DefaultLogPath(path), key)
+	return OpenWithLogPath(path, dbpath.DefaultLogPath(path), key)
 }
 
 func OpenWithLogPath(path, logPath string, key []byte) (*Store, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("database path is required")
 	}
-	if err := ValidateDatabasePaths(path, logPath); err != nil {
+	if err := dbpath.Validate(path, logPath); err != nil {
 		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

@@ -2,214 +2,61 @@ package server
 
 import (
 	"context"
-	"strconv"
+	"strings"
 
 	"github.com/elysia-api/backend/config"
-	"github.com/elysia-api/backend/storage"
+	"github.com/elysia-api/backend/internal/routing"
 )
 
-// routeCache 借鉴 new-api 的内存缓存 + 配置热更新（SyncOptions）思路：
-// 把每次请求都要用到的"模型组装配结果"和"API token 表"载入内存，
-// 请求热路径只读内存，避免每请求 3+ 次串行 SQLite 查询与 ListGroups 的
-// N+1 子查询。所有写操作（source/group/token 的增删、模型刷新、/__reload）
-// 调用 invalidateRouteCache 失效缓存，下次读取时按需重建。
+// All source/group/token mutations invalidate this snapshot after persistence.
+func (s *Server) invalidateRouteCache() { s.routes.Invalidate() }
 
-// ensureRouteCache 在缓存未加载时从 store 装配并填充缓存。
-// 调用方不应持有 routeCacheMu。存储不可用时拒绝装配。
-func (s *Server) ensureRouteCache() bool {
+func (s *Server) forgetGroupRuntimeState(groupID string) {
+	if groupID == "" {
+		return
+	}
+	s.limiter.Forget(groupID)
+	s.scheduler.ForgetGroup(groupID)
+	s.affinity.removeGroup(groupID)
+}
+
+func (s *Server) routeSnapshot() *routing.Snapshot {
 	if s.store == nil {
-		return false
+		return nil
 	}
-	s.routeCacheMu.RLock()
-	loaded := s.routeCacheLoaded
-	// 代际计数：装配期间若有写操作触发失效，gen 会递增——旧快照不允许
-	// 带着 loaded=true 落缓存（已撤销的 token/已删模型会继续放行）。
-	generation := s.routeCacheGeneration
-	s.routeCacheMu.RUnlock()
-	if loaded {
-		return true
-	}
-
-	// Each generation has its own flight, so invalidation never makes new
-	// callers wait for an obsolete snapshot. Recheck after entering the flight
-	// in case another caller completed between the initial lookup and Do.
-	result, _, _ := s.routeCacheFlights.Do(strconv.FormatUint(generation, 10), func() (any, error) {
-		s.routeCacheMu.RLock()
-		current, loaded := s.routeCacheGeneration == generation, s.routeCacheLoaded
-		s.routeCacheMu.RUnlock()
-		if !current || loaded {
-			return current && loaded, nil
-		}
-
-		groups, okGroups := s.assembleGroupsFromStore()
-		tokens, okTokens := s.loadTokensFromStore()
-		if !okGroups || !okTokens {
-			return false, nil // 存储失败时不得使用过期授权或猜测路由。
-		}
-
-		s.routeCacheMu.Lock()
-		defer s.routeCacheMu.Unlock()
-		if s.routeCacheGeneration != generation {
-			return false, nil
-		}
-		s.cachedGroups = groups
-		s.cachedTokens = tokens
-		s.routeCacheLoaded = true
-		return true, nil
+	snapshot, err := s.routes.Load(context.Background(), func(ctx context.Context) (*routing.Snapshot, error) {
+		return routing.Load(ctx, s.store)
 	})
-	s.routeCacheMu.RLock()
-	defer s.routeCacheMu.RUnlock()
-	return result.(bool) && s.routeCacheGeneration == generation && s.routeCacheLoaded
-}
-
-// invalidateRouteCache 标记缓存失效，下次读取时重建。
-// 在所有写操作后调用。
-func (s *Server) invalidateRouteCache() {
-	s.routeCacheMu.Lock()
-	s.routeCacheLoaded = false
-	s.routeCacheGeneration++
-	s.cachedGroups = nil
-	s.cachedTokens = nil
-	s.routeCacheMu.Unlock()
-}
-
-// sourceKeyMeta 是源级 key 调度元数据（方向6），装配时随 ModelRef 下发。
-// keys 保留完整 SourceAPIKey：除 value 外还需按 key 的
-// FetchedModels/AllowedModels 对每个模型过滤可服务该模型的 key 池
-// （多 key 权限发现，见 KeyAllowsModel）。
-type sourceKeyMeta struct {
-	keys       []storage.SourceAPIKey
-	strategy   string
-	hasKeyPool bool
-	// 源级缓存断点合成开关：透传到 ModelRef，由网关在编码前消费。
-	cacheSynthesis bool
-	// 源地址：热路径以源为准，不消费模型行的过期快照。
-	baseURL string
-}
-
-// assembleGroupsFromStore 一次性读取 groups + models 并装配成
-// 运行时模型组（含解析后的 ModelRef），消除旧 getGroups 的 N+1。
-func (s *Server) assembleGroupsFromStore() ([]config.ModelGroupConfig, bool) {
-	ctx := context.Background()
-	groups, err := s.store.ListGroups(ctx)
 	if err != nil {
-		s.logEvent("error").Err(err).Msg("failed to load model groups from sqlite")
-		return nil, false
+		s.logEvent("error").Err(err).Msg("failed to load routes from sqlite")
 	}
-	models, err := s.store.ListModels(ctx)
-	if err != nil {
-		s.logEvent("error").Err(err).Msg("failed to load models from sqlite")
-		return nil, false
-	}
-	// 源级多 key 元数据：ModelRef 的 key 集合以源为准（models.api_key 冗余列仅作
-	// 单 key 回退，不再随多 key 演进——避免大迁移）。
-	sources, err := s.store.ListSources(ctx)
-	if err != nil {
-		s.logEvent("error").Err(err).Msg("failed to load model sources from sqlite")
-		return nil, false
-	}
-	keyMeta := collectSourceKeys(sources)
-	// 只按完整身份 sourceId:modelId 解析模型，禁止猜测同名模型的来源。
-	modelByComposite := make(map[string]storage.Model, len(models))
-	for _, model := range models {
-		modelByComposite[model.SourceID+":"+model.ID] = model
-	}
-	converted := make([]config.ModelGroupConfig, 0, len(groups))
-	for _, group := range groups {
-		refs := make([]config.ModelRef, 0, len(group.Models))
-		for _, modelRef := range group.Models {
-			model, found := modelByComposite[modelRef]
-			ref, ok := s.expandModelRef(model, found, keyMeta)
-			if !ok {
-				continue
-			}
-			refs = append(refs, ref)
-		}
-		vision := group.VisionCapable
-		tools := group.ToolsCapable
-		converted = append(converted, config.ModelGroupConfig{
-			ID: group.ID, Name: group.Name, Enabled: group.Enabled, Models: refs,
-			Strategy: group.Strategy, MaxRetries: group.MaxRetries, RetryInterval: group.RetryInterval,
-			MaxConcurrency: group.MaxConcurrency, DailyLimitMaxRequests: group.DailyLimitMaxRequests,
-			DailyLimitMaxTokens: group.DailyLimitMaxTokens, Type: group.Type, MaxTokens: group.MaxTokens,
-			VisionCapable: &vision, ToolsCapable: &tools,
-		})
-	}
-	return converted, true
+	return snapshot
 }
 
-// expandModelRef 把组内一个模型引用展开为可调度的 ModelRef：健康+启用校验、
-// 源级地址/key 快照合并与按模型的多 key 权限过滤。返回 false 表示该候选
-// 应从组内剔除。
-func (s *Server) expandModelRef(model storage.Model, found bool, keyMeta map[string]sourceKeyMeta) (config.ModelRef, bool) {
-	// 可调度 = 健康可用（available，健康检测自动翻转）&& 用户启用（enabled，手动开关）。
-	if !found || !model.Available || !model.Enabled {
-		return config.ModelRef{}, false
+func (s *Server) getGroups() []config.ModelGroupConfig {
+	if snapshot := s.routeSnapshot(); snapshot != nil {
+		return snapshot.Groups
 	}
-	return s.resolveModelSource(model, keyMeta)
+	return nil
 }
 
-// resolveModelSource shares current credentials and model permissions with probes.
-// Health is checked by routing callers; unhealthy models must still be probed.
-func (s *Server) resolveModelSource(model storage.Model, keyMeta map[string]sourceKeyMeta) (config.ModelRef, bool) {
-	ref := config.ModelRef{ID: model.ID, Name: model.Name, Platform: model.Platform,
-		VisionCapable: model.VisionCapable, ToolsCapable: model.ToolsCapable, SourceID: model.SourceID}
-	meta, ok := keyMeta[model.SourceID]
-	if !ok || meta.baseURL == "" {
-		return config.ModelRef{}, false
-	}
-	if meta, ok := keyMeta[model.SourceID]; ok {
-		if meta.hasKeyPool && len(meta.keys) == 0 {
-			return config.ModelRef{}, false
+func (s *Server) findGroupByName(name string) *config.ModelGroupConfig {
+	for _, group := range s.getGroups() {
+		if group.Name == name {
+			// Copy only the matched group; the cached snapshot remains read-only.
+			groupCopy := group
+			return &groupCopy
 		}
-		ref.BaseURL = meta.baseURL
-		ref.CacheSynthesis = meta.cacheSynthesis
 	}
-	if meta, ok := keyMeta[model.SourceID]; ok && len(meta.keys) > 0 {
-		// 按模型过滤可服务该模型的 key（多 key 权限发现）：不在任何 key 的
-		// 启用/拉取集合内的模型没有可用 key，该候选从组内剔除。
-		permitted := make([]string, 0, len(meta.keys))
-		for _, key := range meta.keys {
-			if key.KeyAllowsModel(model.ID) {
-				permitted = append(permitted, key.Value)
-			}
-		}
-		if len(permitted) == 0 {
-			s.logVerbose("[RouteCache] model %s (source %s) excluded: no api key in this source may serve it", model.ID, model.SourceID)
-			return config.ModelRef{}, false
-		}
-		// 单 key 源同样以源级最新 key 为准（旧实现此时用的是 models 行
-		// 快照，源换 key 后仍带旧 key 请求）；APIKey 仅供单 key 直连路径
-		// 消费，多 key 展开仍走 APIKeys + KeyStrategy。
-		ref.APIKey = permitted[0]
-		ref.APIKeys = permitted
-		ref.KeyStrategy = meta.strategy
-	}
-	return ref, true
+	return nil
 }
 
-// loadTokensFromStore 读取全部启用的 API token 到内存映射（token 明文 -> 元信息）。
-func (s *Server) loadTokensFromStore() (map[string]config.AccessToken, bool) {
-	items, err := s.store.ListAPITokens(context.Background())
-	if err != nil {
-		s.logEvent("error").Err(err).Msg("failed to load api tokens from sqlite")
-		return nil, false
-	}
-	tokens := make(map[string]config.AccessToken, len(items))
-	for _, item := range items {
-		if !item.Enabled {
-			continue
+func (s *Server) findAccessToken(token string) (config.AccessToken, bool) {
+	if strings.TrimSpace(token) != "" {
+		if snapshot := s.routeSnapshot(); snapshot != nil {
+			item, ok := snapshot.Tokens[token]
+			return item, ok
 		}
-		tokens[item.Token] = config.AccessToken{Name: item.Name, Token: item.Token, Enabled: item.Enabled, AllowedGroups: item.AllowedGroups, Scopes: item.Scopes}
 	}
-	return tokens, true
-}
-
-func collectSourceKeys(sources []storage.ModelSource) map[string]sourceKeyMeta {
-	keyMeta := make(map[string]sourceKeyMeta, len(sources))
-	for _, source := range sources {
-		keys := source.EffectiveKeys()
-		keyMeta[source.ID] = sourceKeyMeta{keys: keys, hasKeyPool: len(source.APIKeys) > 0, strategy: string(source.KeyStrategy), baseURL: source.BaseURL, cacheSynthesis: source.CacheSynthesis}
-	}
-	return keyMeta
+	return config.AccessToken{}, false
 }

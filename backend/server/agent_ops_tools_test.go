@@ -16,7 +16,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/config"
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/internal/outbound"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -416,7 +416,7 @@ func TestOutboundPolicyTool(t *testing.T) {
 	}
 	s.config = cfg
 	tool := &outboundPolicyTool{server: s}
-	t.Cleanup(func() { relay.SetDeniedIPRanges(relay.DefaultDeniedIPRanges) })
+	t.Cleanup(func() { outbound.SetDeniedIPRanges(outbound.DefaultDeniedIPRanges) })
 
 	// 只读：返回当前（默认预置）与默认列表，且不下发改动。
 	read := opsExecute(t, tool, `{}`)
@@ -430,7 +430,7 @@ func TestOutboundPolicyTool(t *testing.T) {
 
 	// 替换：移除环回段后 127.0.0.1 放行、私网仍拦；同步已下发到 relay。
 	trimmed := []string{}
-	for _, entry := range relay.DefaultDeniedIPRanges {
+	for _, entry := range outbound.DefaultDeniedIPRanges {
 		if entry != "127.0.0.0/8" {
 			trimmed = append(trimmed, entry)
 		}
@@ -440,10 +440,10 @@ func TestOutboundPolicyTool(t *testing.T) {
 	if !replaced.OK {
 		t.Fatalf("replace failed: %+v", replaced)
 	}
-	if relay.IsDeniedIP(net.ParseIP("127.0.0.1")) {
+	if outbound.IsDeniedIP(net.ParseIP("127.0.0.1")) {
 		t.Fatalf("loopback should be allowed after removing 127.0.0.0/8")
 	}
-	if !relay.IsDeniedIP(net.ParseIP("10.0.0.1")) {
+	if !outbound.IsDeniedIP(net.ParseIP("10.0.0.1")) {
 		t.Fatalf("private range should remain denied")
 	}
 	// 落盘检查：config.json 的 outbound 块同步更新。
@@ -460,7 +460,7 @@ func TestOutboundPolicyTool(t *testing.T) {
 	if reset := opsExecute(t, tool, `{"resetDefault":true}`); !reset.OK {
 		t.Fatalf("reset failed: %+v", reset)
 	}
-	if !relay.IsDeniedIP(net.ParseIP("127.0.0.1")) {
+	if !outbound.IsDeniedIP(net.ParseIP("127.0.0.1")) {
 		t.Fatalf("loopback should be denied again after reset")
 	}
 }

@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/outbound"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/relay"
 )
 
 const liveRequestLimit = 256
@@ -209,7 +209,7 @@ func openLiveSuite(t *testing.T) *liveSuite {
 	} else if !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
-	suite := &liveSuite{SchemaVersion: 1, Model: "gpt-6.1-sol", Origin: "https://moyuu.cc", Compiler: protocol.CompilerVersion, StartedAt: time.Now().UTC(), Limit: liveRequestLimit, key: key, budget: budget, path: filepath.Join(directory, "live.json"), client: &http.Client{Transport: relay.NewSecureTransport(), Timeout: liveRequestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	suite := &liveSuite{SchemaVersion: 1, Model: "gpt-6.1-sol", Origin: "https://moyuu.cc", Compiler: protocol.CompilerVersion, StartedAt: time.Now().UTC(), Limit: liveRequestLimit, key: key, budget: budget, path: filepath.Join(directory, "live.json"), client: &http.Client{Transport: outbound.NewSecureTransport(), Timeout: liveRequestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 	suite.Targets = profiles
 	suite.CallsAtStart, suite.Suite = budget.Calls, os.Getenv("ELYSIA_LIVE_SUITE")
 	if testing.Short() {

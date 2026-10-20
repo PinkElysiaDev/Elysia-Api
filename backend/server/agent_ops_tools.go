@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/elysia-api/backend/internal/outbound"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -1258,12 +1258,12 @@ func (t *outboundPolicyTool) Execute(ctx context.Context, tctx CLIContext, args 
 	view := func(summary string) CLIResult {
 		return CLIResult{OK: true, Summary: summary, Data: map[string]any{
 			"deniedIpRanges":        t.server.config.GetOutboundConfig().DeniedIPRanges,
-			"defaultDeniedIpRanges": relay.DefaultDeniedIPRanges,
+			"defaultDeniedIpRanges": outbound.DefaultDeniedIPRanges,
 		}}
 	}
 
 	if params.ResetDefault {
-		ranges = append([]string(nil), relay.DefaultDeniedIPRanges...)
+		ranges = append([]string(nil), outbound.DefaultDeniedIPRanges...)
 	} else if params.Ranges == nil {
 		// 只读查询，不落盘。
 		return view("当前出站禁止段如下（未修改）")

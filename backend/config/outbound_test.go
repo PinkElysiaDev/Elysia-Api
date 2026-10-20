@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/internal/outbound"
 )
 
 // writeOutboundConfig 落一份 config.json 并 Load。
@@ -27,7 +27,7 @@ func writeOutboundConfig(t *testing.T, content string) *Config {
 
 func TestOutboundDefaults(t *testing.T) {
 	cfg := writeOutboundConfig(t, `{"panelAccessToken":"x"}`)
-	if !reflect.DeepEqual(cfg.Outbound.DeniedIPRanges, relay.DefaultDeniedIPRanges) {
+	if !reflect.DeepEqual(cfg.Outbound.DeniedIPRanges, outbound.DefaultDeniedIPRanges) {
 		t.Fatalf("expected default preset when outbound block absent")
 	}
 
