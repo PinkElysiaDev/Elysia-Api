@@ -84,6 +84,22 @@ go test -tags=sonic -race ./protocol ./server \
 `server/protocol_schema_library_test.go` 验证 HTTP 与 CLI schema 查询；现有 authoring 测试覆盖编辑、验证及启用流程。
 输出表示差异见 [JSON Schema 参考](../docs/protocol-definition-reference.md#schema-表示迁移)。
 
+## Sonic JSON Pointer 定向验证
+
+```sh
+go test -tags=sonic -race ./protocol ./protocol/builtin ./server \
+  -run '^(Test(JSONPointer|RequestViews|RequestResources|Value|Expression|CompileChecksNestedOutputSchema|Native|MutationTransaction|TypedMeter|RequestWireSchemaTypedParity|JSONModuleFallbackMatchesShippedSamples|HTTP|GatewaySSEAndNDJSON|GatewayBrokenStream|AgentProtocolV2)|FuzzJSONPointerObjectLookup)' \
+  -count=1 -timeout=3m
+go test -tags=sonic ./protocol -run '^$' \
+  -fuzz '^FuzzJSONPointerObjectLookup$' -fuzztime=10s -parallel=2
+GOMAXPROCS=1 go test -tags=sonic ./protocol -run '^$' \
+  -bench '^BenchmarkJSONTraversal/pointer' -benchmem -benchtime=500ms -count=5
+```
+
+覆盖重复键、转义/Unicode 键、精确数值、缺失与 null、索引校验、深层输入回退及内存所有权。
+选型与前后基准见 [JSON 遍历评估](../docs/backend-json-traversal-benchmarks.md)。
+本次采用 Sonic Pointer 定点读取；全量 AST 容器替换因小对象、宽对象和数组场景回退而未采用。
+
 ## 测试组织与去重
 
 缓存的定向 benchmark、Otter 替换前后结果及容量语义差异见
