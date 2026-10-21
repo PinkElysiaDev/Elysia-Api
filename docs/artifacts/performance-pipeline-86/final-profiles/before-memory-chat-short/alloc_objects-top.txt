@@ -1,0 +1,48 @@
+File: server.test
+Build ID: cd5a81169609bad526abf832f7235a39cef8a024
+Type: alloc_objects
+Time: 2026-10-21 09:13:12 CST
+Showing nodes accounting for 77408, 99.59% of 77726 total
+Dropped 23 nodes (cum <= 388)
+Showing top 40 nodes out of 44
+      flat  flat%   sum%        cum   cum%
+     49154 63.24% 63.24%      49154 63.24%  runtime/pprof.allFrames
+     10960 14.10% 77.34%      10972 14.12%  runtime/pprof.(*profileBuilder).emitLocation
+      8192 10.54% 87.88%      68318 87.90%  runtime/pprof.writeHeapProto
+      3277  4.22% 92.10%       3277  4.22%  reflect.unsafe_New
+      2185  2.81% 94.91%       2185  2.81%  github.com/elysia-api/backend/protocol.ParseValue
+      1820  2.34% 97.25%       1820  2.34%  github.com/elysia-api/backend/protocol.(*CompiledConversion).WithVerificationContext
+      1820  2.34% 99.59%       1820  2.34%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+         0     0% 99.59%       4014  5.16%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeResponse
+         0     0% 99.59%       1829  2.35%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeResponse.func2
+         0     0% 99.59%       2185  2.81%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeResponse
+         0     0% 99.59%       9408 12.10%  github.com/elysia-api/backend/protocol.(*Compiled).OperationRoutes.func1 (inline)
+         0     0% 99.59%       2185  2.81%  github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative
+         0     0% 99.59%       3277  4.22%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Request
+         0     0% 99.59%       3277  4.22%  github.com/elysia-api/backend/protocol.(*CompiledConversion).convertOwnedRequest
+         0     0% 99.59%       1820  2.34%  github.com/elysia-api/backend/protocol.Value.ReadObject
+         0     0% 99.59%       1820  2.34%  github.com/elysia-api/backend/protocol.Value.readObject (inline)
+         0     0% 99.59%       3277  4.22%  github.com/elysia-api/backend/protocol.cloneSemantic
+         0     0% 99.59%       3277  4.22%  github.com/elysia-api/backend/protocol.cloneSemanticInto
+         0     0% 99.59%       1829  2.35%  github.com/elysia-api/backend/protocol.decodeTyped[go.shape.0509f5d0194e6d48d4edfa47a71047fc43d721c9dd14d184546c9f0ec54bd318]
+         0     0% 99.59%       1829  2.35%  github.com/elysia-api/backend/protocol/builtin.module.DecodeResponse
+         0     0% 99.59%       1829  2.35%  github.com/elysia-api/backend/protocol/builtin.module.decodeResponse
+         0     0% 99.59%       9408 12.10%  github.com/elysia-api/backend/server.(*Server).authMiddleware.func1
+         0     0% 99.59%       9408 12.10%  github.com/elysia-api/backend/server.(*Server).chatCompletions
+         0     0% 99.59%      68318 87.90%  github.com/elysia-api/backend/server.(*Server).dashboardAuthMiddleware.func1
+         0     0% 99.59%       4307  5.54%  github.com/elysia-api/backend/server.(*Server).forwardGateway
+         0     0% 99.59%       5101  6.56%  github.com/elysia-api/backend/server.(*Server).prepareGatewayPlan
+         0     0% 99.59%       9408 12.10%  github.com/elysia-api/backend/server.(*Server).serveProtocolRequest
+         0     0% 99.59%       9408 12.10%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress
+         0     0% 99.59%       9408 12.10%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress-range1 (inline)
+         0     0% 99.59%      77726   100%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func8
+         0     0% 99.59%       1820  2.34%  github.com/elysia-api/backend/server.matchGatewayCombination
+         0     0% 99.59%      77726   100%  github.com/gin-gonic/gin.(*Context).Next
+         0     0% 99.59%      77726   100%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0% 99.59%      77726   100%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0% 99.59%      68318 87.90%  github.com/gin-gonic/gin.WrapH.func1
+         0     0% 99.59%      77726   100%  net/http.(*conn).serve
+         0     0% 99.59%      77726   100%  net/http.HandlerFunc.ServeHTTP
+         0     0% 99.59%      77726   100%  net/http.serverHandler.ServeHTTP
+         0     0% 99.59%      68318 87.90%  net/http/pprof.handler.ServeHTTP
+         0     0% 99.59%       3277  4.22%  reflect.New
