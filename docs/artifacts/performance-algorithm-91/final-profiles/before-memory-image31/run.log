@@ -1,4 +1,0 @@
-=== RUN   TestConversionFlamegraph
-    conversion_flamegraph_test.go:413: mode=memory stream=false repeat=0 requests=1 elapsed_ms=853.462 heap_peak_MiB=283.532
---- PASS: TestConversionFlamegraph (5.33s)
-PASS

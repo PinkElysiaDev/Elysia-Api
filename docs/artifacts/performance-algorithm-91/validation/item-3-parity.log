@@ -1,5 +1,0 @@
---- FAIL: TestRequestPartitionRuleParity (0.00s)
-    conversion_partition_test.go:84: ambiguous conversion rule order request:0: "include" and "stream"
-FAIL
-FAIL	github.com/elysia-api/backend/protocol	0.714s
-FAIL
