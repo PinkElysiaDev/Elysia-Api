@@ -18,6 +18,7 @@ import (
 )
 
 type gatewayCandidate struct {
+	finalAttempt  bool
 	encoding      *gatewayRequestEncoding
 	conversion    *protocol.CompiledConversion
 	routeBinding  protocol.Binding
