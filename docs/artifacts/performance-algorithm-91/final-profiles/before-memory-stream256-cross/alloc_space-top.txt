@@ -1,0 +1,48 @@
+File: server.test
+Build ID: 7a3a168b96ceaf6fba3faef2a1d4ab23e852d89a
+Type: alloc_space
+Time: 2026-10-21 10:50:01 CST
+Showing nodes accounting for 599.19MB, 94.09% of 636.83MB total
+Dropped 135 nodes (cum <= 3.18MB)
+Showing top 40 nodes out of 145
+      flat  flat%   sum%        cum   cum%
+  290.99MB 45.69% 45.69%   290.99MB 45.69%  github.com/bytedance/gopkg/lang/dirtmake.Bytes
+   51.84MB  8.14% 53.83%    51.84MB  8.14%  internal/stringslite.Clone (inline)
+   37.51MB  5.89% 59.72%    74.52MB 11.70%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+      20MB  3.14% 62.86%    20.50MB  3.22%  decode_
+      16MB  2.51% 65.38%       19MB  2.98%  github.com/elysia-api/backend/protocol.MergeUsage
+   15.88MB  2.49% 67.87%    15.88MB  2.49%  github.com/bytedance/sonic/internal/rt.GrowSlice
+   14.35MB  2.25% 70.12%    14.35MB  2.25%  strings.(*Builder).WriteString (inline)
+   14.23MB  2.24% 72.36%    14.23MB  2.24%  github.com/bytedance/sonic/internal/encoder/vars.init.func1
+      13MB  2.04% 74.40%       13MB  2.04%  internal/bytealg.MakeNoZero
+   11.22MB  1.76% 76.16%    11.22MB  1.76%  github.com/elysia-api/backend/protocol.Value.Bytes (inline)
+   11.05MB  1.74% 77.90%    11.05MB  1.74%  github.com/bytedance/sonic/internal/decoder/jitdec.newStack (inline)
+   11.01MB  1.73% 79.63%    19.33MB  3.03%  github.com/elysia-api/backend/protocol.(*CompiledConversion).chatEventShape
+    8.50MB  1.33% 80.96%     8.50MB  1.33%  reflect.unsafe_New
+    8.50MB  1.33% 82.30%        9MB  1.41%  github.com/elysia-api/backend/protocol.CheckEvent
+       8MB  1.26% 83.55%        8MB  1.26%  github.com/bytedance/sonic/internal/decoder/api.NewDecoder
+    7.50MB  1.18% 84.73%   609.33MB 95.68%  github.com/elysia-api/backend/protocol.ReadFrames.func1
+    6.50MB  1.02% 85.75%    19.56MB  3.07%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).chatChunk
+       6MB  0.94% 86.69%    39.33MB  6.18%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Event
+    4.50MB  0.71% 87.40%     4.50MB  0.71%  bufio.(*Scanner).Text (inline)
+    4.50MB  0.71% 88.11%    58.67MB  9.21%  github.com/elysia-api/backend/protocol.(*Compiled).encodeEventOutput
+    4.50MB  0.71% 88.81%    37.67MB  5.91%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).encodeEvent
+    4.50MB  0.71% 89.52%     9.50MB  1.49%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+       4MB  0.63% 90.15%        4MB  0.63%  github.com/elysia-api/backend/protocol.(*semanticCache).store
+    3.50MB  0.55% 90.70%   303.48MB 47.65%  github.com/elysia-api/backend/protocol.StringValue
+    3.50MB  0.55% 91.25%     3.50MB  0.55%  reflect.unsafe_NewArray
+    2.50MB  0.39% 91.64%    11.16MB  1.75%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).decodeAnthropicFrame
+    2.50MB  0.39% 92.03%    20.06MB  3.15%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).decodeChatFrame
+    2.08MB  0.33% 92.36%     3.96MB  0.62%  runtime/pprof.(*profileBuilder).emitLocation
+    1.50MB  0.24% 92.60%   610.83MB 95.92%  github.com/elysia-api/backend/protocol.ReadFrames.func2
+    1.50MB  0.24% 92.83%    25.06MB  3.94%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).encodeDelta
+       1MB  0.16% 92.99%    39.58MB  6.22%  github.com/elysia-api/backend/protocol.(*Compiled).decodeFrame
+       1MB  0.16% 93.15%    11.50MB  1.81%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).captureFrameExtensions
+       1MB  0.16% 93.30%    80.73MB 12.68%  github.com/elysia-api/backend/protocol.(*WireStreamValidation).Consume
+       1MB  0.16% 93.46%    32.89MB  5.16%  github.com/bytedance/sonic/internal/encoder.encodeInto
+       1MB  0.16% 93.62%    23.03MB  3.62%  github.com/elysia-api/backend/protocol.readString
+       1MB  0.16% 93.77%     5.66MB  0.89%  github.com/elysia-api/backend/protocol/builtin.stringValue
+    0.50MB 0.079% 93.85%   621.40MB 97.58%  github.com/elysia-api/backend/server.(*Server).forwardGatewayStream
+    0.50MB 0.079% 93.93%    23.16MB  3.64%  github.com/elysia-api/backend/protocol.(*Compiled).decodeEventValues
+    0.50MB 0.079% 94.01%    14.42MB  2.26%  github.com/elysia-api/backend/protocol.digestSemanticEvents
+    0.50MB 0.079% 94.09%    60.17MB  9.45%  github.com/elysia-api/backend/protocol.(*Compiled).encodeCheckedFrame

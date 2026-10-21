@@ -1,0 +1,34 @@
+File: server.test
+Build ID: 757b9a39e20cf4ff57fc7bcd6f72d2a8f04f8604
+Type: alloc_objects
+Time: 2026-10-21 10:53:12 CST
+Showing nodes accounting for 48478, 99.41% of 48767 total
+Dropped 76 nodes (cum <= 243)
+      flat  flat%   sum%        cum   cum%
+     38235 78.40% 78.40%      38672 79.30%  runtime/pprof.(*profileBuilder).emitLocation
+      9831 20.16% 98.56%       9831 20.16%  runtime/pprof.allFrames
+       410  0.84% 99.40%        410  0.84%  compress/flate.newHuffmanEncoder (inline)
+         2 0.0041% 99.41%        416  0.85%  compress/flate.NewWriter (inline)
+         0     0% 99.41%        414  0.85%  compress/flate.(*compressor).init
+         0     0% 99.41%        410  0.84%  compress/flate.newHuffmanBitWriter
+         0     0% 99.41%        418  0.86%  compress/gzip.(*Writer).Write
+         0     0% 99.41%        251  0.51%  github.com/elysia-api/backend/server.(*Server).authMiddleware.func1
+         0     0% 99.41%        251  0.51%  github.com/elysia-api/backend/server.(*Server).chatCompletions
+         0     0% 99.41%      48516 99.49%  github.com/elysia-api/backend/server.(*Server).dashboardAuthMiddleware.func1
+         0     0% 99.41%        251  0.51%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress
+         0     0% 99.41%      48767   100%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func8
+         0     0% 99.41%      48767   100%  github.com/gin-gonic/gin.(*Context).Next
+         0     0% 99.41%      48767   100%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0% 99.41%      48767   100%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0% 99.41%      48516 99.49%  github.com/gin-gonic/gin.WrapH.func1
+         0     0% 99.41%      48767   100%  net/http.(*conn).serve
+         0     0% 99.41%      48767   100%  net/http.HandlerFunc.ServeHTTP
+         0     0% 99.41%      48767   100%  net/http.serverHandler.ServeHTTP
+         0     0% 99.41%      48516 99.49%  net/http/pprof.handler.ServeHTTP
+         0     0% 99.41%      48516 99.49%  runtime/pprof.(*Profile).WriteTo
+         0     0% 99.41%      48503 99.46%  runtime/pprof.(*profileBuilder).appendLocsForStack
+         0     0% 99.41%        418  0.86%  runtime/pprof.(*profileBuilder).flush
+         0     0% 99.41%      33184 68.05%  runtime/pprof.writeAlloc
+         0     0% 99.41%      15332 31.44%  runtime/pprof.writeHeap
+         0     0% 99.41%      48516 99.49%  runtime/pprof.writeHeapInternal
+         0     0% 99.41%      48516 99.49%  runtime/pprof.writeHeapProto

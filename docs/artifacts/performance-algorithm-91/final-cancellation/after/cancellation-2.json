@@ -1,0 +1,62 @@
+{
+  "Workers": 4,
+  "SizeMiB": 2,
+  "Settled": {
+    "Preparation": {
+      "Active": 0,
+      "Queued": 0,
+      "PeakActive": 4,
+      "PeakQueued": 0,
+      "ReservedBodyBytes": 0,
+      "PeakReservedBodyBytes": 8389836,
+      "Rejected": 0,
+      "TimedOut": 0,
+      "Canceled": 0
+    },
+    "Allocated": 89010296,
+    "Heap": 43232728,
+    "PeakHeap": 72777976,
+    "WorkingSet": 143953920,
+    "PeakWorkingSet": 143953920,
+    "Calls": 0,
+    "Allocations": 19726,
+    "GCPauseNS": 1135181,
+    "GCCycles": 5,
+    "CPUTimeNS": 128210000,
+    "GCCPUSeconds": 0.01419295900000006,
+    "Goroutines": 12,
+    "ActiveRequests": 0,
+    "QueueDepth": 0,
+    "QueuedPayloadBytes": 0,
+    "DroppedSamples": 0
+  },
+  "Reclaimed": {
+    "Preparation": {
+      "Active": 0,
+      "Queued": 0,
+      "PeakActive": 4,
+      "PeakQueued": 0,
+      "ReservedBodyBytes": 0,
+      "PeakReservedBodyBytes": 8389836,
+      "Rejected": 0,
+      "TimedOut": 0,
+      "Canceled": 0
+    },
+    "Allocated": 89027016,
+    "Heap": 3801312,
+    "PeakHeap": 72777976,
+    "WorkingSet": 124956672,
+    "PeakWorkingSet": 143929344,
+    "Calls": 0,
+    "Allocations": 19775,
+    "GCPauseNS": 1310361,
+    "GCCycles": 7,
+    "CPUTimeNS": 134567000,
+    "GCCPUSeconds": 0.01823663100000006,
+    "Goroutines": 12,
+    "ActiveRequests": 0,
+    "QueueDepth": 0,
+    "QueuedPayloadBytes": 0,
+    "DroppedSamples": 0
+  }
+}

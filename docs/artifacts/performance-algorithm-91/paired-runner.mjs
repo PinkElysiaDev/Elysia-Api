@@ -3,7 +3,7 @@ import { resolve, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 
-const [beforePath, afterPath, outputPath, casesCSV, requests, repeats] = process.argv.slice(2)
+const [beforePath, afterPath, outputPath, casesCSV, requests, repeats, imageRequests] = process.argv.slice(2)
 if (!casesCSV) throw new Error('Usage: node paired-performance.mjs BEFORE_REPORT AFTER_REPORT NEW_OUTPUT CASES')
 const output = resolve(outputPath)
 mkdirSync(output, { recursive: false })
@@ -27,7 +27,8 @@ try {
       for (const key of Object.keys(env)) if (/^ELYSIA_(FLAME_|CONVERSION_HTTP_|LOG_MEMORY_BASELINE)/.test(key)) delete env[key]
       Object.assign(env, step.environment, { ELYSIA_FLAME_OUTPUT: directory })
       if (requests && step.environment.ELYSIA_FLAME_WORKLOAD !== 'image') env.ELYSIA_FLAME_REQUESTS = requests
-      if (repeats) env.ELYSIA_FLAME_REPEATS = repeats
+       if (repeats) env.ELYSIA_FLAME_REPEATS = repeats
+       if (imageRequests && step.environment.ELYSIA_FLAME_WORKLOAD === 'image') env.ELYSIA_FLAME_REQUESTS = imageRequests
       const sha = createHash('sha256').update(readFileSync(step.command)).digest('hex')
       if (sha !== report.binarySHA256) throw new Error(`Binary hash mismatch: ${label}`)
       console.log(`${name}: ${index + 1}/4 ${label}`)

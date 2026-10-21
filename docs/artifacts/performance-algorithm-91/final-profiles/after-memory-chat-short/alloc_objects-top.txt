@@ -1,0 +1,48 @@
+File: server.test
+Build ID: 757b9a39e20cf4ff57fc7bcd6f72d2a8f04f8604
+Type: alloc_objects
+Time: 2026-10-21 10:51:39 CST
+Showing nodes accounting for 155104, 98.82% of 156955 total
+Dropped 29 nodes (cum <= 784)
+Showing top 40 nodes out of 79
+      flat  flat%   sum%        cum   cum%
+     36408 23.20% 23.20%      36408 23.20%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+     32768 20.88% 44.07%      32768 20.88%  github.com/bytedance/sonic/internal/decoder/api.NewDecoder
+     32768 20.88% 64.95%      32768 20.88%  reflect.unsafe_New
+     28400 18.09% 83.05%      28400 18.09%  runtime/pprof.allFrames
+     10923  6.96% 90.00%      10923  6.96%  github.com/elysia-api/backend/protocol/builtin.module.encodeUsage
+      5516  3.51% 93.52%       5518  3.52%  runtime/pprof.(*profileBuilder).emitLocation
+      4681  2.98% 96.50%       4681  2.98%  github.com/elysia-api/backend/protocol.Value.Bytes (inline)
+      1820  1.16% 97.66%       1820  1.16%  github.com/elysia-api/backend/protocol/builtin.module.encodeChatMessage
+      1820  1.16% 98.82%       1820  1.16%  maps.clone
+         0     0% 98.82%      32768 20.88%  github.com/bytedance/sonic.frozenConfig.UnmarshalFromString
+         0     0% 98.82%      50972 32.48%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeResponse
+         0     0% 98.82%      50972 32.48%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeResponse.func2
+         0     0% 98.82%       3640  2.32%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequestValue
+         0     0% 98.82%      43691 27.84%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeResponse
+         0     0% 98.82%     121643 77.50%  github.com/elysia-api/backend/protocol.(*Compiled).OperationRoutes.func1
+         0     0% 98.82%      10923  6.96%  github.com/elysia-api/backend/protocol.(*Compiled).executeMapping
+         0     0% 98.82%      47331 30.16%  github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative
+         0     0% 98.82%       1820  1.16%  github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1
+         0     0% 98.82%      32768 20.88%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Request
+         0     0% 98.82%      32768 20.88%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyConversionState
+         0     0% 98.82%      32768 20.88%  github.com/elysia-api/backend/protocol.(*CompiledConversion).convertOwnedRequest
+         0     0% 98.82%       1820  1.16%  github.com/elysia-api/backend/protocol.(*Request).Clone
+         0     0% 98.82%      32768 20.88%  github.com/elysia-api/backend/protocol.(*conversionState).apply
+         0     0% 98.82%      32768 20.88%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+         0     0% 98.82%       1820  1.16%  github.com/elysia-api/backend/protocol.(*nativeReconciler).merge
+         0     0% 98.82%      32768 20.88%  github.com/elysia-api/backend/protocol.Value.Decode
+         0     0% 98.82%      34588 22.04%  github.com/elysia-api/backend/protocol.Value.ReadObject
+         0     0% 98.82%      34588 22.04%  github.com/elysia-api/backend/protocol.Value.readObject (inline)
+         0     0% 98.82%      50972 32.48%  github.com/elysia-api/backend/protocol.decodeTyped[go.shape.0509f5d0194e6d48d4edfa47a71047fc43d721c9dd14d184546c9f0ec54bd318]
+         0     0% 98.82%       1820  1.16%  github.com/elysia-api/backend/protocol.encodeRequestMapping[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0% 98.82%       1820  1.16%  github.com/elysia-api/backend/protocol.equalNativeValues
+         0     0% 98.82%       1820  1.16%  github.com/elysia-api/backend/protocol.reconcileNative
+         0     0% 98.82%      16384 10.44%  github.com/elysia-api/backend/protocol/builtin.counter
+         0     0% 98.82%      10923  6.96%  github.com/elysia-api/backend/protocol/builtin.module.Convert
+         0     0% 98.82%      50972 32.48%  github.com/elysia-api/backend/protocol/builtin.module.DecodeResponse
+         0     0% 98.82%       1820  1.16%  github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest
+         0     0% 98.82%      50972 32.48%  github.com/elysia-api/backend/protocol/builtin.module.decodeResponse
+         0     0% 98.82%      16384 10.44%  github.com/elysia-api/backend/protocol/builtin.module.decodeUsage
+         0     0% 98.82%       1820  1.16%  github.com/elysia-api/backend/protocol/builtin.module.encodeMessages
+         0     0% 98.82%       1820  1.16%  github.com/elysia-api/backend/protocol/builtin.module.encodeRequest

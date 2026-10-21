@@ -1,0 +1,8 @@
+=== RUN   TestConversionHTTPCancellationIsolated
+    conversion_http_performance_test.go:562: batch=0 size_MiB=2 workers=4 cancelled_calls=4 gateway_peak_heap_MiB=84.587 gateway_reclaimed_heap_MiB=3.611
+    conversion_http_performance_test.go:562: batch=1 size_MiB=2 workers=4 cancelled_calls=4 gateway_peak_heap_MiB=75.421 gateway_reclaimed_heap_MiB=3.617
+    conversion_http_performance_test.go:562: batch=2 size_MiB=2 workers=4 cancelled_calls=4 gateway_peak_heap_MiB=78.059 gateway_reclaimed_heap_MiB=3.615
+    conversion_http_performance_test.go:562: batch=3 size_MiB=2 workers=4 cancelled_calls=4 gateway_peak_heap_MiB=61.127 gateway_reclaimed_heap_MiB=3.618
+    conversion_http_performance_test.go:562: batch=4 size_MiB=2 workers=4 cancelled_calls=4 gateway_peak_heap_MiB=68.100 gateway_reclaimed_heap_MiB=3.619
+--- PASS: TestConversionHTTPCancellationIsolated (3.46s)
+PASS
