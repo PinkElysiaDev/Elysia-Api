@@ -1,6 +1,0 @@
-=== RUN   TestGatewayHeldStreamRetention
-    gateway_lifetime_profile_test.go:87: batch=0 workers=4 size_MiB=2 held_heap_MiB=35.998 held_RSS_MiB=111.949 settled_heap_MiB=3.609
-    gateway_lifetime_profile_test.go:87: batch=1 workers=4 size_MiB=2 held_heap_MiB=36.021 held_RSS_MiB=115.883 settled_heap_MiB=3.611
-    gateway_lifetime_profile_test.go:87: batch=2 workers=4 size_MiB=2 held_heap_MiB=36.022 held_RSS_MiB=117.934 settled_heap_MiB=3.612
---- PASS: TestGatewayHeldStreamRetention (4.00s)
-PASS

@@ -24,6 +24,9 @@ go test -tags=sonic -parallel=1 -count=1 -timeout=30m ./...
 工具串行执行微基准、三进程隔离 HTTP 测量、独立 CPU/分配 profile 及取消诊断；
 包含分配次数、累计字节、GC、逐请求延迟、采样峰值和自然空闲恢复曲线。
 场景、参数、测量边界与证据说明见[性能基准](../docs/backend-performance.md)。
+后续优化统一参考[最新 profiling 总报告](../docs/backend-performance-algorithm-91-final.md)及其
+[原始证据](../docs/artifacts/performance-algorithm-91/)；旧轮次报告可从 Git 历史查询。
+该报告测量的是 `4fc5011`，不包含随后合入的 #90；对当前 `deploy` 做新优化前应重新采集基线。
 
 ## 后端结构与组件边界
 

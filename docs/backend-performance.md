@@ -2,13 +2,15 @@
 
 [English](backend-performance.en.md) · [开发指南](development.md)
 
-本工具用于性能优化 issue [#65](https://github.com/PinkElysiaDev/Elysia-Api/issues/65) 的基线采集与后续对照。第一阶段记录分配次数、累计分配量、内存峰值和空闲恢复行为，并定位热点；之后分别推进局部优化、执行计划与 typed 流水线、所有权与池化。
+本工具用于 Go 后端的性能基线采集与后续对照，记录分配次数、累计分配量、内存峰值和空闲恢复行为，并定位热点。本文保留可复用的采集方法；实测结论统一以最新报告为入口。
 
-实测版本对照：[v1.6.2 与 `5a8115e` 的 profiling 对比](backend-performance-comparison-v1.6.2.md)（同机重测、原始证据、内存回退及热点分析）。
+## 最新报告与保留范围
 
-后续定向优化：[issue #77 三批次优化与最终 profiling 对照](backend-performance-targeted-77-final.md)（局部验收、签名 PR、累计分配及峰值改善、计时波动和未完成项）。
+- [#91 最新 profiling 总报告](backend-performance-algorithm-91-final.md)：规模递增 benchmark、HTTP ABBA、CPU/分配归因及明确保留的回退。
+- [完整证据与校验入口](artifacts/performance-algorithm-91/)：原始测量、40 份 profile、取消诊断，以及本轮未接受试验与相反结果。
+- 工作树仅保留这一轮总报告和完整证据；旧版对比、#77、#81、#86 的报告与归档及 #91 分项报告均可从 [清理前的 Git 快照](https://github.com/PinkElysiaDev/Elysia-Api/tree/6a16292/docs)查询。通用 benchmark、profiling 工具和回归测试继续保留。
 
-结构性后续：[issue #81 的嵌套编码、不可变请求复用与准备阶段准入](backend-performance-structural-81-final.md)（三项逐项验收、独立 profiling、容量约束及排队代价）。
+**版本边界：** 最新报告实际测量的集成源码是 `4fc5011`，其基线为 `bdb02c6`，两者均不包含 #90 的生命周期修改。当前已同步的 `deploy@6a16292` 已包含 #90 和 #92–#94，但尚无针对这个合并后版本的新测量；后续优化须重新采集基线，不能将现有报告直接称为当前 `deploy` 的性能数据。
 
 ## 运行
 
