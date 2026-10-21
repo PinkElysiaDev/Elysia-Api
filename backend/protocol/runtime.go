@@ -30,6 +30,7 @@ func (compiled *Compiled) DecodeRequestValue(ctx context.Context, input Value, o
 
 func (compiled *Compiled) decodeRequestValue(ctx context.Context, input Value, options EvaluationContext, boundScope *Scope) (result *Request, err error) {
 	defer func() { err = compiled.runtimeError(DecodeRequest, err) }()
+	ctx = withDocumentMetrics(ctx, input.Len())
 	if input.IsZero() {
 		return nil, fmt.Errorf("invalid JSON value")
 	}
@@ -97,7 +98,7 @@ func (compiled *Compiled) finishDecodedRequest(ctx context.Context, input Value,
 		return nil, err
 	}
 	compiled.stampRequestProvenance(request, options.Scope)
-	if err := checkSemanticValue(request, semanticLimits(compiled.wireLimits(ctx, DecodeRequest))); err != nil {
+	if err := checkDocumentSemantic(ctx, request, semanticLimits(compiled.wireLimits(ctx, DecodeRequest))); err != nil {
 		return nil, err
 	}
 	target := compiled.target(DecodeRequest, options)
@@ -123,11 +124,14 @@ func (compiled *Compiled) EncodeRequest(ctx context.Context, request *Request, o
 // validation boundaries. Public byte encoding still returns an independent copy.
 func (compiled *Compiled) EncodeRequestValue(ctx context.Context, request *Request, options EvaluationContext) (result Value, err error) {
 	defer func() { err = compiled.runtimeError(EncodeRequest, err) }()
+	if request != nil && request.Native != nil {
+		ctx = withDocumentMetrics(ctx, request.Native.Value.Len())
+	}
 	if err := ctx.Err(); err != nil {
 		return Value{}, err
 	}
 	inputLimits, _, _ := compiled.mappingLimits(ctx, EncodeRequest)
-	if err := checkSemanticValue(request, inputLimits); err != nil {
+	if err := checkDocumentSemantic(ctx, request, inputLimits); err != nil {
 		return Value{}, err
 	}
 	if err := validateRequestContext(request); err != nil {
