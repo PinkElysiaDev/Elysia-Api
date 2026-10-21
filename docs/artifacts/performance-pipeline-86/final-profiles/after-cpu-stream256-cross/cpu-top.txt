@@ -1,0 +1,49 @@
+File: server.test
+Build ID: cb6c80f23551c3d30b7e733c210ca286d296a81f
+Type: cpu
+Time: 2026-10-21 09:15:48 CST
+Duration: 15s, Total samples = 17.16s (114.39%)
+Showing nodes accounting for 9.95s, 57.98% of 17.16s total
+Dropped 583 nodes (cum <= 0.09s)
+Showing top 40 nodes out of 337
+      flat  flat%   sum%        cum   cum%
+     1.88s 10.96% 10.96%      1.88s 10.96%  internal/runtime/syscall/linux.Syscall6
+     0.92s  5.36% 16.32%      1.44s  8.39%  runtime.tryDeferToSpanScan
+     0.74s  4.31% 20.63%      0.74s  4.31%  runtime.memmove
+     0.56s  3.26% 23.89%      1.90s 11.07%  runtime.scanObject
+     0.37s  2.16% 26.05%      0.37s  2.16%  indexbytebody
+     0.32s  1.86% 27.91%      0.38s  2.21%  runtime.typePointers.next
+     0.29s  1.69% 29.60%      0.29s  1.69%  runtime.futex
+     0.28s  1.63% 31.24%      0.28s  1.63%  runtime.heapArenaOf (inline)
+     0.23s  1.34% 32.58%      0.28s  1.63%  github.com/elysia-api/backend/protocol.jsonStringBytes
+     0.23s  1.34% 33.92%      0.25s  1.46%  internal/runtime/maps.(*Iter).Next
+     0.23s  1.34% 35.26%      0.23s  1.34%  internal/runtime/maps.memHashAES
+     0.23s  1.34% 36.60%      0.23s  1.34%  runtime.madvise
+     0.22s  1.28% 37.88%      0.22s  1.28%  _html_escape
+     0.21s  1.22% 39.10%      0.21s  1.22%  runtime.typePointers.nextFast (inline)
+     0.19s  1.11% 40.21%      0.19s  1.11%  _quote
+     0.18s  1.05% 41.26%      0.52s  3.03%  runtime.scanblock
+     0.18s  1.05% 42.31%      0.18s  1.05%  unicode/utf8.ValidString
+     0.17s  0.99% 43.30%      0.17s  0.99%  runtime.spanClass.sizeclass (inline)
+     0.15s  0.87% 44.17%      0.18s  1.05%  runtime.mallocgcSmallScanNoHeaderSC2
+     0.14s  0.82% 44.99%      0.14s  0.82%  crypto/internal/fips140/sha256.blockSHANI
+     0.14s  0.82% 45.80%      0.27s  1.57%  internal/stringslite.Index
+     0.13s  0.76% 46.56%      0.13s  0.76%  internal/bytealg.IndexByteString
+     0.13s  0.76% 47.32%      0.22s  1.28%  reflect.Value.Field
+     0.13s  0.76% 48.08%      0.13s  0.76%  runtime.nextFreeFast (inline)
+     0.13s  0.76% 48.83%      0.13s  0.76%  runtime.procyieldAsm
+     0.13s  0.76% 49.59%      0.36s  2.10%  runtime.scanObjectsSmall
+     0.12s   0.7% 50.29%      0.12s   0.7%  encoding/json/internal/jsonwire.ConsumeSimpleString
+     0.12s   0.7% 50.99%      0.27s  1.57%  internal/runtime/maps.(*Map).getWithoutKeySmallFastStr
+     0.12s   0.7% 51.69%      1.49s  8.68%  runtime.mallocgc
+     0.12s   0.7% 52.39%      0.12s   0.7%  runtime.memclrNoHeapPointers
+     0.11s  0.64% 53.03%      0.28s  1.63%  github.com/elysia-api/backend/protocol.jsonStringEnd
+     0.11s  0.64% 53.67%      0.25s  1.46%  runtime.findObject
+     0.10s  0.58% 54.25%      0.59s  3.44%  internal/stringslite.IndexByte (inline)
+     0.10s  0.58% 54.84%      0.21s  1.22%  runtime.mallocgcTinySC2
+     0.10s  0.58% 55.42%      0.14s  0.82%  runtime.spanOf (inline)
+     0.09s  0.52% 55.94%      0.09s  0.52%  _validate_utf8_fast
+     0.09s  0.52% 56.47%      0.09s  0.52%  internal/abi.Name.IsExported (inline)
+     0.09s  0.52% 56.99%      0.17s  0.99%  runtime.(*spanSet).push
+     0.09s  0.52% 57.52%      0.39s  2.27%  runtime.mapaccess2_faststr
+     0.08s  0.47% 57.98%      0.96s  5.59%  github.com/elysia-api/backend/protocol.(*conversionState).normalize

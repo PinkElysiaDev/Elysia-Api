@@ -129,14 +129,18 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 			s.limiter.Adjust(plan.group.ID, int(total), usageDayKey(start))
 		}
 	}()
-	for index, candidate := range plan.candidates[:routing.MaxAttempts(plan.group.MaxRetries, len(plan.candidates))] {
+	attempts := routing.MaxAttempts(plan.group.MaxRetries, len(plan.candidates))
+	defer plan.releasePreparation()
+	for index := range attempts {
 		if err := c.Request.Context().Err(); err != nil {
 			s.failGateway(c, record, statusClientClosedRequest, err)
 			return
 		}
+		candidate := plan.takeCandidate(index, attempts)
+		modelName := candidate.model.Name
 		err := s.forwardGateway(c, record, plan, candidate)
 		if err == nil {
-			s.affinity.set(record.KeyHash, plan.group.ID, candidate.model.Name)
+			s.affinity.set(record.KeyHash, plan.group.ID, modelName)
 			return
 		}
 		if c.Writer.Written() {
@@ -144,12 +148,12 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 			return
 		}
 		canRetry := canRetryGeneration(err)
-		isLast := index+1 == routing.MaxAttempts(plan.group.MaxRetries, len(plan.candidates))
+		isLast := index+1 == attempts
 		if !canRetry || isLast {
 			s.failGateway(c, record, http.StatusBadGateway, err)
 			return
 		}
-		s.appendRetryEvent(record, index, candidate.model.Name, err.Error())
+		s.appendRetryEvent(record, index, modelName, err.Error())
 		if plan.group.RetryInterval > 0 && !waitForRetryOrCancel(c, plan.group.RetryInterval) {
 			s.failGateway(c, record, statusClientClosedRequest, c.Request.Context().Err())
 			return
@@ -167,7 +171,8 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 		return &gatewayFailure{preparationStatus(err), err}
 	}
 	defer s.releaseGatewayPreparation(c)
-	defer candidate.releaseRequestEncoding()
+	// Capture the current attempt variable, not a value copy retaining history.
+	defer func() { candidate.releaseRequestEncoding() }()
 	record.UpstreamHTTPStatus = 0
 	record.TransportFailure = nil
 	defer s.protocolUses.acquire(candidate.binding.ProtocolID, candidate.compiled.Hash())()
@@ -184,6 +189,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	// 上行模型串用 API id；Name 是显示名（Gemini displayName 直接拼路径会 404）。
 	request.Model = protocol.StringValue(candidate.model.Identifier())
 	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}, ClientOutput: request.ClientOutput}
+	delivery := plan.responsePlan(options.ClientOutput)
 	if candidate.continuation != nil {
 		candidate.continuation.sink = options.Diagnostics
 	}
@@ -222,11 +228,20 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	if err := candidate.compiled.CheckOperationValueInput(c.Request.Context(), candidate.operationName, wireValue); err != nil {
 		return &gatewayFailure{http.StatusBadRequest, err}
 	}
+	responseRoute, err := candidate.conversionContext(plan.ingress, true).WithRequestModelOrigin(plan.ingress, candidate.compiled, wireValue)
+	if err != nil {
+		return err
+	}
 	setRecordModel(record, candidate.model, builtin.Platform("custom:"+candidate.binding.ProtocolID))
 	body := wireValue.Bytes() // Materialize mutable transport bytes once, after final checks.
 	record.UpstreamRevision, record.TargetEndpoint, record.TargetFormat = candidate.compiled.Hash(), candidate.operation.Path, candidate.binding.ProtocolID
 	record.OutgoingBody = record.sanitizeBody(body)
-	outboundBody := body
+	candidate.prepared = nil
+	candidate.releaseRequestEncoding()
+	candidate.encoding = nil
+	if candidate.finalAttempt {
+		plan.releasePreparation()
+	}
 	s.releaseGatewayPreparation(c)
 	response, err := s.protocolTransport.SendProtocolRequest(c.Request.Context(), candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Identifier()})
 	if err != nil {
@@ -243,8 +258,11 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 		record.ProviderResponse = record.sanitizeBody(body)
 		return mapGatewayHTTPFailure(c.Request.Context(), record, response.StatusCode, body, plan.ingress, candidate, options)
 	}
+	// Successful provider headers close the retry lifetime even if later response
+	// conversion fails. Stream/response consumers receive only delivery metadata.
+	plan.releasePreparation()
 	if candidate.operation.Transport != protocol.HTTPJSON {
-		return s.forwardGatewayStream(c, record, plan, candidate, response)
+		return s.forwardGatewayStream(c, record, delivery, candidate, response)
 	}
 	body, err = protocol.ReadBoundedBody(response.Body, candidate.compiled.ResourceLimits().BufferBytes)
 	if err != nil {
@@ -271,7 +289,11 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	if err := s.captureContinuationResponse(c, candidate.continuation, semantic); err != nil {
 		return err
 	}
-	route, originErr := candidate.conversionContext(plan.ingress, true).WithResponseModelOrigin(plan.ingress, candidate.compiled, outboundBody, body)
+	// Recovery evidence is created while capturing this response. Only the
+	// outbound model is a dispatch snapshot; refresh mutable recovery context now.
+	route := candidate.conversionContext(plan.ingress, true)
+	route.ResponseModel = responseRoute.ResponseModel
+	route, originErr := route.WithObservedResponseModel(body)
 	if originErr != nil {
 		return originErr
 	}
@@ -281,7 +303,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 			return err
 		}
 	}
-	applyClientModelAlias(semantic, plan.request.Model)
+	applyClientModelAlias(semantic, delivery.clientModel)
 	body, err = plan.ingress.EncodeResponse(c.Request.Context(), semantic, options)
 	if err != nil {
 		return err

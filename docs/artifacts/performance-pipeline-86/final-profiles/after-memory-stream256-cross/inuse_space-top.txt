@@ -1,0 +1,47 @@
+File: server.test
+Build ID: cb6c80f23551c3d30b7e733c210ca286d296a81f
+Type: inuse_space
+Time: 2026-10-21 09:15:44 CST
+Showing nodes accounting for 8300.54kB, 100% of 8300.54kB total
+Showing top 40 nodes out of 133
+      flat  flat%   sum%        cum   cum%
+ 1025.25kB 12.35% 12.35%  1025.25kB 12.35%  runtime.mallocgc
+  574.34kB  6.92% 19.27%   574.34kB  6.92%  reflect.compiledTypelinks
+  525.43kB  6.33% 25.60%   525.43kB  6.33%  github.com/go-playground/validator/v10.map.init.7
+  525.43kB  6.33% 31.93%   525.43kB  6.33%  github.com/twitchyliquid64/golang-asm/asm/arch.archX86
+  518.02kB  6.24% 38.17%   518.02kB  6.24%  google.golang.org/protobuf/types/descriptorpb.init
+  516.64kB  6.22% 44.40%   516.64kB  6.22%  google.golang.org/protobuf/reflect/protoregistry.(*Types).register
+  515.32kB  6.21% 50.60%   515.32kB  6.21%  google.golang.org/protobuf/internal/strs.(*Builder).grow
+  514.38kB  6.20% 56.80%   514.38kB  6.20%  github.com/bytedance/sonic/internal/rt.GrowSlice
+  512.69kB  6.18% 62.98%   512.69kB  6.18%  regexp/syntax.(*compiler).inst
+  512.56kB  6.18% 69.15%   512.56kB  6.18%  github.com/elysia-api/backend/protocol/builtin.map.init.0
+  512.38kB  6.17% 75.33%   512.38kB  6.17%  github.com/santhosh-tekuri/jsonschema/v6.newSchema
+  512.05kB  6.17% 81.49%   512.05kB  6.17%  regexp/syntax.(*parser).newRegexp
+  512.02kB  6.17% 87.66%   512.02kB  6.17%  github.com/go-playground/validator/v10.map.init.8
+  512.02kB  6.17% 93.83%   512.02kB  6.17%  internal/sync.newEntryNode[go.shape.interface {},go.shape.interface {}] (inline)
+  512.01kB  6.17%   100%   512.01kB  6.17%  reflect.unsafe_New
+         0     0%   100%   514.38kB  6.20%  decode_
+         0     0%   100%   512.02kB  6.17%  encoding/gob.Register
+         0     0%   100%   512.02kB  6.17%  encoding/gob.RegisterName
+         0     0%   100%   574.34kB  6.92%  encoding/gob.buildTypeInfo
+         0     0%   100%   574.34kB  6.92%  encoding/gob.getBaseType
+         0     0%   100%   574.34kB  6.92%  encoding/gob.getType
+         0     0%   100%   574.34kB  6.92%  encoding/gob.getTypeInfo
+         0     0%   100%   574.34kB  6.92%  encoding/gob.implementsInterface
+         0     0%   100%   574.34kB  6.92%  encoding/gob.init
+         0     0%   100%   512.02kB  6.17%  encoding/gob.init.1
+         0     0%   100%   574.34kB  6.92%  encoding/gob.mustGetTypeInfo
+         0     0%   100%   574.34kB  6.92%  encoding/gob.newTypeObject
+         0     0%   100%   512.02kB  6.17%  encoding/gob.registerBasics
+         0     0%   100%   574.34kB  6.92%  encoding/gob.userType
+         0     0%   100%   574.34kB  6.92%  encoding/gob.validUserType
+         0     0%   100%   512.01kB  6.17%  encoding/json.(*Decoder).Decode
+         0     0%   100%   512.01kB  6.17%  encoding/json/v2.Unmarshal
+         0     0%   100%   512.01kB  6.17%  encoding/json/v2.makeInterfaceArshaler.func2
+         0     0%   100%   512.01kB  6.17%  encoding/json/v2.makeMapArshaler.func3
+         0     0%   100%   512.01kB  6.17%  encoding/json/v2.unmarshalDecode
+         0     0%   100%   514.38kB  6.20%  github.com/bytedance/sonic.frozenConfig.Unmarshal
+         0     0%   100%   514.38kB  6.20%  github.com/bytedance/sonic.frozenConfig.UnmarshalFromString
+         0     0%   100%   514.38kB  6.20%  github.com/bytedance/sonic/internal/decoder/api.(*Decoder).Decode
+         0     0%   100%   514.38kB  6.20%  github.com/bytedance/sonic/internal/decoder/jitdec.Decode
+         0     0%   100%   514.38kB  6.20%  github.com/bytedance/sonic/internal/decoder/jitdec.decodeTypedPointer

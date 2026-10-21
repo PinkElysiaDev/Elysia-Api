@@ -1,0 +1,48 @@
+File: server.test
+Build ID: cd5a81169609bad526abf832f7235a39cef8a024
+Type: alloc_objects
+Time: 2026-10-21 09:14:08 CST
+Showing nodes accounting for 12408, 98.93% of 12542 total
+Dropped 87 nodes (cum <= 62)
+Showing top 40 nodes out of 56
+      flat  flat%   sum%        cum   cum%
+      4681 37.32% 37.32%       4681 37.32%  time.newTimer
+      2185 17.42% 54.74%       2185 17.42%  net/http.(*conn).readRequest
+      2185 17.42% 72.17%       2185 17.42%  runtime/pprof.allFrames
+      1820 14.51% 86.68%       1820 14.51%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+       910  7.26% 93.93%        910  7.26%  github.com/elysia-api/backend/protocol/builtin.module.encodeResponse
+       455  3.63% 97.56%        455  3.63%  github.com/elysia-api/backend/server.(*Server).initUsageRecord
+        90  0.72% 98.28%         90  0.72%  io.ReadAll
+        82  0.65% 98.93%         82  0.65%  runtime/pprof.(*protobuf).string (inline)
+         0     0% 98.93%       4681 37.32%  context.WithDeadline (inline)
+         0     0% 98.93%       4681 37.32%  context.WithDeadlineCause
+         0     0% 98.93%        910  7.26%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeResponse
+         0     0% 98.93%        910  7.26%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeResponse.func2
+         0     0% 98.93%       7933 63.25%  github.com/elysia-api/backend/protocol.(*Compiled).OperationRoutes.func1 (inline)
+         0     0% 98.93%       1829 14.58%  github.com/elysia-api/backend/protocol.(*Compiled).ValidateWireOutput (inline)
+         0     0% 98.93%       1829 14.58%  github.com/elysia-api/backend/protocol.(*Compiled).validateWireOutput
+         0     0% 98.93%       1820 14.51%  github.com/elysia-api/backend/protocol.EvaluationContext.ReadObject (inline)
+         0     0% 98.93%         90  0.72%  github.com/elysia-api/backend/protocol.ReadBoundedBody
+         0     0% 98.93%        910  7.26%  github.com/elysia-api/backend/protocol.encodeTyped[go.shape.0509f5d0194e6d48d4edfa47a71047fc43d721c9dd14d184546c9f0ec54bd318]
+         0     0% 98.93%        910  7.26%  github.com/elysia-api/backend/protocol/builtin.module.EncodeResponse
+         0     0% 98.93%       1829 14.58%  github.com/elysia-api/backend/protocol/builtin.module.ValidateWireObjectOutput
+         0     0% 98.93%       1829 14.58%  github.com/elysia-api/backend/protocol/builtin.module.ValidateWireOutput
+         0     0% 98.93%       1829 14.58%  github.com/elysia-api/backend/protocol/builtin.module.validateRequestWireContract
+         0     0% 98.93%       1829 14.58%  github.com/elysia-api/backend/protocol/builtin.module.validateWireObjectContract
+         0     0% 98.93%       1820 14.51%  github.com/elysia-api/backend/protocol/builtin.readWireObject
+         0     0% 98.93%       4681 37.32%  github.com/elysia-api/backend/relay.(*ProtocolTransport).SendProtocolRequest
+         0     0% 98.93%       4681 37.32%  github.com/elysia-api/backend/relay.(*dynamicTimeoutClient).Do
+         0     0% 98.93%       8023 63.97%  github.com/elysia-api/backend/server.(*Server).authMiddleware.func1
+         0     0% 98.93%       8023 63.97%  github.com/elysia-api/backend/server.(*Server).chatCompletions
+         0     0% 98.93%       2330 18.58%  github.com/elysia-api/backend/server.(*Server).dashboardAuthMiddleware.func1
+         0     0% 98.93%       7433 59.26%  github.com/elysia-api/backend/server.(*Server).forwardGateway
+         0     0% 98.93%         90  0.72%  github.com/elysia-api/backend/server.(*Server).readGatewayRequest
+         0     0% 98.93%       7933 63.25%  github.com/elysia-api/backend/server.(*Server).serveProtocolRequest
+         0     0% 98.93%       8023 63.97%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress
+         0     0% 98.93%       7933 63.25%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress-range1 (inline)
+         0     0% 98.93%      10353 82.55%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func8
+         0     0% 98.93%      10353 82.55%  github.com/gin-gonic/gin.(*Context).Next
+         0     0% 98.93%      10353 82.55%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0% 98.93%      10353 82.55%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0% 98.93%       2330 18.58%  github.com/gin-gonic/gin.WrapH.func1
+         0     0% 98.93%       4681 37.32%  net/http.(*Client).Do (inline)

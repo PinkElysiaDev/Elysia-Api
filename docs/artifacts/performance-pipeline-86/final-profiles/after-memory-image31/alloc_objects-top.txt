@@ -1,0 +1,25 @@
+File: server.test
+Build ID: cb6c80f23551c3d30b7e733c210ca286d296a81f
+Type: alloc_objects
+Time: 2026-10-21 09:16:53 CST
+Showing nodes accounting for 26223, 99.25% of 26420 total
+Dropped 85 nodes (cum <= 132)
+      flat  flat%   sum%        cum   cum%
+     20756 78.56% 78.56%      20756 78.56%  runtime/pprof.allFrames
+      5467 20.69% 99.25%       5559 21.04%  runtime/pprof.(*profileBuilder).emitLocation
+         0     0% 99.25%      26393 99.90%  github.com/elysia-api/backend/server.(*Server).dashboardAuthMiddleware.func1
+         0     0% 99.25%      26420   100%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func8
+         0     0% 99.25%      26420   100%  github.com/gin-gonic/gin.(*Context).Next
+         0     0% 99.25%      26420   100%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0% 99.25%      26420   100%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0% 99.25%      26393 99.90%  github.com/gin-gonic/gin.WrapH.func1
+         0     0% 99.25%      26420   100%  net/http.(*conn).serve
+         0     0% 99.25%      26420   100%  net/http.HandlerFunc.ServeHTTP
+         0     0% 99.25%      26420   100%  net/http.serverHandler.ServeHTTP
+         0     0% 99.25%      26393 99.90%  net/http/pprof.handler.ServeHTTP
+         0     0% 99.25%      26393 99.90%  runtime/pprof.(*Profile).WriteTo
+         0     0% 99.25%      26315 99.60%  runtime/pprof.(*profileBuilder).appendLocsForStack
+         0     0% 99.25%       5469 20.70%  runtime/pprof.writeAlloc
+         0     0% 99.25%      20924 79.20%  runtime/pprof.writeHeap
+         0     0% 99.25%      26393 99.90%  runtime/pprof.writeHeapInternal
+         0     0% 99.25%      26393 99.90%  runtime/pprof.writeHeapProto

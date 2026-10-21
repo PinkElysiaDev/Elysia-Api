@@ -138,7 +138,7 @@ func TestGatewayFailureEncodingRetainsOriginalCause(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/v1/responses", nil)
 	c.Writer.WriteHeaderNow()
 	cause := errors.New("original upstream failure")
-	err = emitFailureEvent(c, &gatewayPlan{ingress: compiled}, options, func(protocol.Value) error {
+	err = emitFailureEvent(c, &gatewayResponsePlan{ingress: compiled}, options, func(protocol.Value) error {
 		t.Fatal("exhausted sequence produced a frame")
 		return nil
 	}, cause)

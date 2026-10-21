@@ -1,0 +1,49 @@
+File: server.test
+Build ID: cb6c80f23551c3d30b7e733c210ca286d296a81f
+Type: cpu
+Time: 2026-10-21 09:16:14 CST
+Duration: 15s, Total samples = 15.85s (105.64%)
+Showing nodes accounting for 14.15s, 89.27% of 15.85s total
+Dropped 532 nodes (cum <= 0.08s)
+Showing top 40 nodes out of 231
+      flat  flat%   sum%        cum   cum%
+     4.75s 29.97% 29.97%      4.75s 29.97%  indexbytebody
+     1.41s  8.90% 38.86%      1.41s  8.90%  countbody
+     1.26s  7.95% 46.81%      1.37s  8.64%  unicode/utf8.ValidString
+     1.19s  7.51% 54.32%      1.19s  7.51%  runtime.memmove
+     0.74s  4.67% 58.99%      0.74s  4.67%  internal/runtime/syscall/linux.Syscall6
+     0.67s  4.23% 63.22%      0.68s  4.29%  encoding/json/internal/jsonwire.ConsumeSimpleString (inline)
+     0.61s  3.85% 67.07%      0.61s  3.85%  internal/runtime/maps.memHashAES
+     0.46s  2.90% 69.97%      0.75s  4.73%  runtime.tryDeferToSpanScan
+     0.37s  2.33% 72.30%      0.37s  2.33%  _value
+     0.34s  2.15% 74.45%      0.34s  2.15%  runtime.memclrNoHeapPointers
+     0.31s  1.96% 76.40%      0.31s  1.96%  runtime.madvise
+     0.25s  1.58% 77.98%      0.97s  6.12%  runtime.scanObject
+     0.20s  1.26% 79.24%      0.20s  1.26%  runtime.tgkill
+     0.20s  1.26% 80.50%      0.20s  1.26%  runtime.typePointers.nextFast (inline)
+     0.18s  1.14% 81.64%      0.18s  1.14%  runtime.futex
+     0.17s  1.07% 82.71%      0.18s  1.14%  runtime.heapArenaOf (inline)
+     0.16s  1.01% 83.72%      0.16s  1.01%  runtime.osyield
+     0.11s  0.69% 84.42%      0.16s  1.01%  runtime.typePointers.next
+     0.10s  0.63% 85.05%      0.24s  1.51%  runtime.scanblock
+     0.09s  0.57% 85.62%      0.09s  0.57%  runtime.procyieldAsm
+     0.09s  0.57% 86.18%      0.09s  0.57%  runtime.spanClass.sizeclass (inline)
+     0.08s   0.5% 86.69%      0.08s   0.5%  unicode/utf8.word[go.shape.string] (inline)
+     0.07s  0.44% 87.13%      0.10s  0.63%  runtime.pcvalue
+     0.05s  0.32% 87.44%      0.08s   0.5%  runtime.findObject
+     0.05s  0.32% 87.76%      0.16s  1.01%  runtime.scanObjectsSmall
+     0.04s  0.25% 88.01%      0.20s  1.26%  github.com/elysia-api/backend/protocol.checkValueLimits
+     0.04s  0.25% 88.26%      0.55s  3.47%  runtime.scanSpan
+     0.02s  0.13% 88.39%      3.25s 20.50%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+     0.02s  0.13% 88.52%      1.81s 11.42%  github.com/elysia-api/backend/protocol.fitsDocumentMetrics
+     0.02s  0.13% 88.64%      2.40s 15.14%  strings.Count
+     0.01s 0.063% 88.71%      0.69s  4.35%  decode_
+     0.01s 0.063% 88.77%      0.73s  4.61%  github.com/bytedance/sonic.frozenConfig.UnmarshalFromString
+     0.01s 0.063% 88.83%      0.55s  3.47%  github.com/elysia-api/backend/protocol.(*Compiled).decodeRequestValue.func2
+     0.01s 0.063% 88.90%      3.14s 19.81%  github.com/elysia-api/backend/protocol.(*semanticCache).normalize
+     0.01s 0.063% 88.96%      3.75s 23.66%  github.com/elysia-api/backend/protocol.(*typedMeter).measure2
+     0.01s 0.063% 89.02%      3.73s 23.53%  github.com/elysia-api/backend/protocol.(*typedMeter).raw
+     0.01s 0.063% 89.09%      3.44s 21.70%  github.com/elysia-api/backend/protocol.(*typedMeter).scanRaw
+     0.01s 0.063% 89.15%      1.65s 10.41%  github.com/elysia-api/backend/protocol.jsonStringEnd
+     0.01s 0.063% 89.21%      3.35s 21.14%  github.com/elysia-api/backend/protocol.needsSemanticCompaction
+     0.01s 0.063% 89.27%     11.33s 71.48%  github.com/elysia-api/backend/server.(*Server).serveProtocolRequest

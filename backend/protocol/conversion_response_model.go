@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"errors"
+	"strings"
 )
 
 // ResponseModelOrigin describes one observed response, independently of later
@@ -52,23 +53,51 @@ func (route ConversionContext) WithResponseModelOrigin(ingress, upstream *Compil
 	if route.Transport != HTTPJSON || !chatResponseModelPair(ingress, upstream) {
 		return route, nil
 	}
-	read := func(body []byte) (Object, error) {
-		value, err := ParseValue(body)
-		if err != nil {
-			return nil, err
-		}
-		return value.ReadObject()
-	}
-	request, err := read(outbound)
+	request, err := ParseValue(outbound)
 	if err != nil {
 		return route, err
 	}
-	response, err := read(source)
+	route, err = route.WithRequestModelOrigin(ingress, upstream, request)
+	if err != nil {
+		return route, err
+	}
+	return route.WithObservedResponseModel(source)
+}
+
+// WithRequestModelOrigin snapshots only the final outbound model at dispatch.
+// No request body has to survive provider I/O for later response attribution.
+func (route ConversionContext) WithRequestModelOrigin(ingress, upstream *Compiled, outbound Value) (ConversionContext, error) {
+	route.ResponseModel = nil
+	if route.Transport != HTTPJSON || !chatResponseModelPair(ingress, upstream) {
+		return route, nil
+	}
+	fields, err := (EvaluationContext{}).WithValueReader(outbound).ReadObject(outbound)
+	if err != nil {
+		return route, err
+	}
+	model := fields["model"]
+	route.ResponseModel = &ResponseModelOrigin{RequestModel: Value{raw: strings.Clone(model.raw)}}
+	return route, nil
+}
+
+// WithObservedResponseModel completes a dispatch-time snapshot without mutating
+// a reusable route. Absence remains distinct from null or an invalid model.
+func (route ConversionContext) WithObservedResponseModel(source []byte) (ConversionContext, error) {
+	if route.ResponseModel == nil {
+		return route, nil
+	}
+	value, err := ParseValue(source)
+	if err != nil {
+		return route, err
+	}
+	response, err := (EvaluationContext{}).WithValueReader(value).ReadObject(value)
 	if err != nil {
 		return route, err
 	}
 	model, isPresent := response["model"]
-	route.ResponseModel = &ResponseModelOrigin{RequestModel: request["model"], SourcePresent: isPresent, SourceModel: model}
+	origin := *route.ResponseModel
+	origin.SourcePresent, origin.SourceModel = isPresent, Value{raw: strings.Clone(model.raw)}
+	route.ResponseModel = &origin
 	return route, nil
 }
 

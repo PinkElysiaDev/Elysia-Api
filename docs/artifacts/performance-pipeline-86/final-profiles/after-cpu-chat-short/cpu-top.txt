@@ -1,0 +1,49 @@
+File: server.test
+Build ID: cb6c80f23551c3d30b7e733c210ca286d296a81f
+Type: cpu
+Time: 2026-10-21 09:15:20 CST
+Duration: 15s, Total samples = 16.29s (108.58%)
+Showing nodes accounting for 7.34s, 45.06% of 16.29s total
+Dropped 956 nodes (cum <= 0.08s)
+Showing top 40 nodes out of 412
+      flat  flat%   sum%        cum   cum%
+     1.13s  6.94%  6.94%      1.13s  6.94%  internal/runtime/syscall/linux.Syscall6
+     0.66s  4.05% 10.99%      0.66s  4.05%  runtime.futex
+     0.59s  3.62% 14.61%      0.71s  4.36%  github.com/elysia-api/backend/protocol.jsonStringBytes
+     0.40s  2.46% 17.07%      0.40s  2.46%  unicode/utf8.ValidString
+     0.33s  2.03% 19.09%      0.75s  4.60%  decode_
+     0.29s  1.78% 20.87%      0.29s  1.78%  indexbytebody
+     0.22s  1.35% 22.22%      0.22s  1.35%  runtime.memmove
+     0.21s  1.29% 23.51%      1.28s  7.86%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+     0.19s  1.17% 24.68%      0.26s  1.60%  runtime.mallocgcSmallScanNoHeaderSC2
+     0.19s  1.17% 25.84%      0.31s  1.90%  runtime.tryDeferToSpanScan
+     0.18s  1.10% 26.95%      0.24s  1.47%  internal/runtime/maps.(*Iter).Next
+     0.18s  1.10% 28.05%      0.22s  1.35%  reflect.Value.Field
+     0.18s  1.10% 29.16%      0.18s  1.10%  runtime.usleep
+     0.17s  1.04% 30.20%      1.30s  7.98%  runtime.mallocgc
+     0.16s  0.98% 31.18%      0.95s  5.83%  github.com/elysia-api/backend/protocol.(*typedMeter).scanRaw
+     0.16s  0.98% 32.17%      0.35s  2.15%  github.com/elysia-api/backend/protocol.jsonStringEnd
+     0.15s  0.92% 33.09%      0.15s  0.92%  countbody
+     0.14s  0.86% 33.95%      0.14s  0.86%  internal/runtime/maps.memHashAES
+     0.14s  0.86% 34.81%      0.14s  0.86%  memeqbody
+     0.14s  0.86% 35.67%      0.48s  2.95%  runtime.scanObject
+     0.13s   0.8% 36.46%      0.42s  2.58%  strings.Count
+     0.12s  0.74% 37.20%      0.24s  1.47%  internal/runtime/maps.(*Map).getWithoutKeySmallFastStr
+     0.12s  0.74% 37.94%      0.66s  4.05%  modernc.org/sqlite/lib._sqlite3VdbeExec
+     0.10s  0.61% 38.55%      0.24s  1.47%  internal/stringslite.Index
+     0.10s  0.61% 39.17%      0.16s  0.98%  runtime.mallocgcTinySC2
+     0.09s  0.55% 39.72%      0.33s  2.03%  github.com/elysia-api/backend/protocol.needsSemanticCompaction
+     0.08s  0.49% 40.21%      0.09s  0.55%  runtime.heapArenaOf (inline)
+     0.08s  0.49% 40.70%      0.15s  0.92%  runtime.rand
+     0.07s  0.43% 41.13%      0.14s  0.86%  github.com/elysia-api/backend/protocol.(*typedMeter).scalar (inline)
+     0.07s  0.43% 41.56%      0.10s  0.61%  internal/runtime/maps.(*Map).putSlotSmallFastStr
+     0.07s  0.43% 41.99%      0.10s  0.61%  runtime.mallocgcSmallScanNoHeaderSC5
+     0.06s  0.37% 42.36%      0.73s  4.48%  github.com/elysia-api/backend/protocol.(*typedMeter).measure11
+     0.06s  0.37% 42.73%      0.20s  1.23%  github.com/elysia-api/backend/protocol.jsonValueEnd
+     0.06s  0.37% 43.09%      0.11s  0.68%  reflect.Value.SetZero
+     0.06s  0.37% 43.46%      0.35s  2.15%  runtime.mapassign_faststr
+     0.06s  0.37% 43.83%      0.12s  0.74%  runtime.scanblock
+     0.05s  0.31% 44.14%      0.21s  1.29%  github.com/elysia-api/backend/protocol.(*capabilityCheck).content
+     0.05s  0.31% 44.44%      0.23s  1.41%  github.com/elysia-api/backend/protocol.cloneSemanticInto
+     0.05s  0.31% 44.75%      0.41s  2.52%  github.com/elysia-api/backend/protocol.encodeValueContainer
+     0.05s  0.31% 45.06%      0.16s  0.98%  internal/runtime/maps.(*Iter).Init

@@ -1,0 +1,48 @@
+File: server.test
+Build ID: cb6c80f23551c3d30b7e733c210ca286d296a81f
+Type: alloc_objects
+Time: 2026-10-21 09:16:10 CST
+Showing nodes accounting for 76284, 99.82% of 76423 total
+Dropped 90 nodes (cum <= 382)
+Showing top 40 nodes out of 44
+      flat  flat%   sum%        cum   cum%
+     32768 42.88% 42.88%      32768 42.88%  reflect.unsafe_New
+     21853 28.59% 71.47%      21853 28.59%  decode_value
+     10922 14.29% 85.76%      10955 14.33%  runtime/pprof.(*profileBuilder).emitLocation
+      9831 12.86% 98.63%       9831 12.86%  runtime/pprof.allFrames
+       910  1.19% 99.82%      22763 29.79%  decode_
+         0     0% 99.82%      21853 28.59%  github.com/bytedance/sonic.frozenConfig.UnmarshalFromString
+         0     0% 99.82%      22763 29.79%  github.com/bytedance/sonic/internal/decoder/api.(*Decoder).Decode
+         0     0% 99.82%      22763 29.79%  github.com/bytedance/sonic/internal/decoder/jitdec.Decode
+         0     0% 99.82%      22763 29.79%  github.com/bytedance/sonic/internal/decoder/jitdec.decodeTypedPointer
+         0     0% 99.82%      21845 28.58%  github.com/elysia-api/backend/protocol.(*Compiled).CheckOperationValueInput
+         0     0% 99.82%      55563 72.70%  github.com/elysia-api/backend/protocol.(*Compiled).OperationRoutes.func1 (inline)
+         0     0% 99.82%      32768 42.88%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Request
+         0     0% 99.82%        914  1.20%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Response
+         0     0% 99.82%      32768 42.88%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyConversionState
+         0     0% 99.82%      32768 42.88%  github.com/elysia-api/backend/protocol.(*CompiledConversion).convertOwnedRequest
+         0     0% 99.82%      32768 42.88%  github.com/elysia-api/backend/protocol.(*conversionState).apply
+         0     0% 99.82%      32768 42.88%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+         0     0% 99.82%      21845 28.58%  github.com/elysia-api/backend/protocol.(*runtimeValueSchema).validate
+         0     0% 99.82%        910  1.19%  github.com/elysia-api/backend/protocol.decodeContract
+         0     0% 99.82%      21845 28.58%  github.com/elysia-api/backend/protocol.decodeSchemaValue
+         0     0% 99.82%      55601 72.75%  github.com/elysia-api/backend/server.(*Server).authMiddleware.func1
+         0     0% 99.82%      55601 72.75%  github.com/elysia-api/backend/server.(*Server).chatCompletions
+         0     0% 99.82%      20797 27.21%  github.com/elysia-api/backend/server.(*Server).dashboardAuthMiddleware.func1
+         0     0% 99.82%      22767 29.79%  github.com/elysia-api/backend/server.(*Server).forwardGateway
+         0     0% 99.82%      32796 42.91%  github.com/elysia-api/backend/server.(*Server).prepareGatewayPlan
+         0     0% 99.82%      55563 72.70%  github.com/elysia-api/backend/server.(*Server).serveProtocolRequest
+         0     0% 99.82%      55601 72.75%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress
+         0     0% 99.82%      55563 72.70%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress-range1 (inline)
+         0     0% 99.82%      76398   100%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func8
+         0     0% 99.82%      76398   100%  github.com/gin-gonic/gin.(*Context).Next
+         0     0% 99.82%      76398   100%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0% 99.82%      76398   100%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0% 99.82%      20797 27.21%  github.com/gin-gonic/gin.WrapH.func1
+         0     0% 99.82%      76402   100%  net/http.(*conn).serve
+         0     0% 99.82%      76402   100%  net/http.HandlerFunc.ServeHTTP
+         0     0% 99.82%      76402   100%  net/http.serverHandler.ServeHTTP
+         0     0% 99.82%      20797 27.21%  net/http/pprof.handler.ServeHTTP
+         0     0% 99.82%      32768 42.88%  reflect.New
+         0     0% 99.82%      20797 27.21%  runtime/pprof.(*Profile).WriteTo
+         0     0% 99.82%      20786 27.20%  runtime/pprof.(*profileBuilder).appendLocsForStack

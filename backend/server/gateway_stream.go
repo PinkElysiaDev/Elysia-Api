@@ -20,7 +20,7 @@ type gatewayStream struct {
 	server             *Server
 	context            *gin.Context
 	record             *usageRecord
-	plan               *gatewayPlan
+	plan               *gatewayResponsePlan
 	candidate          gatewayCandidate
 	limits             protocol.Limits
 	options            protocol.EvaluationContext
@@ -37,13 +37,10 @@ type gatewayStream struct {
 	acceptedScratch    []protocol.Event
 }
 
-func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate, response *http.Response) error {
+func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan *gatewayResponsePlan, candidate gatewayCandidate, response *http.Response) error {
 	limits := plan.ingress.ResourceLimits()
 	options := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}
-	options.ClientOutput = plan.request.ClientOutput
-	if candidate.prepared != nil {
-		options.ClientOutput = candidate.prepared.ClientOutput
-	}
+	options.ClientOutput = plan.clientOutput
 	defer func() { record.appendConversionIssues(options.Diagnostics.Issues()) }()
 	route := candidate.conversionContext(plan.ingress, true)
 	route.Delivery = protocol.NewDeliveryState()
@@ -299,7 +296,7 @@ func (stream *gatewayStream) finish(err error) error {
 // written; the trailer is the signal when the target has no error event of its
 // own. A failure to deliver the error frame is reported back to the caller so it
 // can be logged, but the original stream error is what the caller still returns.
-func emitFailureEvent(c *gin.Context, plan *gatewayPlan, options protocol.EvaluationContext, emit func(protocol.Value) error, cause error) error {
+func emitFailureEvent(c *gin.Context, plan *gatewayResponsePlan, options protocol.EvaluationContext, emit func(protocol.Value) error, cause error) error {
 	if !c.Writer.Written() {
 		return nil
 	}

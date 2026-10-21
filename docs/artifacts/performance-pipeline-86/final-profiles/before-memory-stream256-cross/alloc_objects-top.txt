@@ -1,0 +1,48 @@
+File: server.test
+Build ID: cd5a81169609bad526abf832f7235a39cef8a024
+Type: alloc_objects
+Time: 2026-10-21 09:13:36 CST
+Showing nodes accounting for 3847441, 96.38% of 3991836 total
+Dropped 120 nodes (cum <= 19959)
+Showing top 40 nodes out of 154
+      flat  flat%   sum%        cum   cum%
+    484980 12.15% 12.15%     484980 12.15%  reflect.unsafe_New
+    473343 11.86% 24.01%     904091 22.65%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+    468832 11.74% 35.75%     468832 11.74%  internal/stringslite.Clone (inline)
+    327683  8.21% 43.96%     651729 16.33%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+    278531  6.98% 50.94%     278531  6.98%  github.com/bytedance/sonic/internal/decoder/api.NewDecoder
+    262143  6.57% 57.51%     262143  6.57%  github.com/elysia-api/backend/protocol.mergeCounter (inline)
+    258292  6.47% 63.98%     520435 13.04%  github.com/elysia-api/backend/protocol.MergeUsage
+    191846  4.81% 68.78%     191846  4.81%  decode_
+    131072  3.28% 72.07%     326736  8.19%  github.com/elysia-api/backend/protocol.readString
+     87384  2.19% 74.25%      87384  2.19%  github.com/elysia-api/backend/protocol.CheckEvent
+     65537  1.64% 75.90%     214348  5.37%  github.com/bytedance/sonic/internal/encoder.encodeInto
+     65536  1.64% 77.54%      65536  1.64%  github.com/elysia-api/backend/protocol.checkResourceValue
+     65536  1.64% 79.18%      65536  1.64%  github.com/elysia-api/backend/server.updateRecordProtocolUsage.func1 (inline)
+     58227  1.46% 80.64%      58227  1.46%  github.com/bytedance/gopkg/lang/dirtmake.Bytes
+     50974  1.28% 81.92%     186917  4.68%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).encodeDelta
+     43691  1.09% 83.01%      53251  1.33%  github.com/elysia-api/backend/protocol/builtin.array (inline)
+     38970  0.98% 83.99%      38970  0.98%  internal/bytealg.MakeNoZero
+     32771  0.82% 84.81%      32771  0.82%  github.com/elysia-api/backend/protocol.(*semanticCache).store
+     32770  0.82% 85.63%     123163  3.09%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).chatChunk
+     32768  0.82% 86.45%      32768  0.82%  github.com/elysia-api/backend/protocol.(*SourceEventState).Push
+     32768  0.82% 87.27%     132532  3.32%  github.com/elysia-api/backend/protocol/builtin.(*ContinuationStream).Frames
+     32768  0.82% 88.09%     256561  6.43%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).encodeItem
+     32768  0.82% 88.91%     110345  2.76%  github.com/elysia-api/backend/protocol/builtin.module.validateChatWireContract
+     32768  0.82% 89.73%     135213  3.39%  github.com/elysia-api/backend/protocol/builtin.stringValue
+     31451  0.79% 90.52%    3762776 94.26%  github.com/elysia-api/backend/protocol.ReadFrames.func1
+     31154  0.78% 91.30%      31154  0.78%  github.com/elysia-api/backend/protocol.Value.Bytes (inline)
+     29409  0.74% 92.04%      40332  1.01%  github.com/elysia-api/backend/protocol.(*CompiledConversion).projectUsage
+     26222  0.66% 92.69%     687552 17.22%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Event
+     21845  0.55% 93.24%     869053 21.77%  github.com/elysia-api/backend/protocol.(*WireStreamValidation).Consume
+     21845  0.55% 93.79%      46429  1.16%  github.com/elysia-api/backend/protocol/builtin.readArray
+     21845  0.55% 94.34%      21845  0.55%  github.com/tmaxmax/go-sse.(*Message).appendText
+     16390  0.41% 94.75%     524694 13.14%  github.com/elysia-api/backend/protocol.(*Compiled).encodeEventValue
+     13654  0.34% 95.09%     592254 14.84%  github.com/elysia-api/backend/protocol.(*Compiled).decodeFrame
+     11472  0.29% 95.38%     177189  4.44%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).decodeAnthropicFrame
+     10923  0.27% 95.65%     321689  8.06%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).captureFrameExtensions
+      8713  0.22% 95.87%      76310  1.91%  github.com/elysia-api/backend/protocol.(*CompiledConversion).chatEventShape
+      7450  0.19% 96.05%    3770226 94.45%  github.com/elysia-api/backend/protocol.ReadFrames.func2
+      6555  0.16% 96.22%     326203  8.17%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).encodeEvent
+      4917  0.12% 96.34%     191086  4.79%  github.com/elysia-api/backend/protocol/builtin.(*streamModule).decodeChatFrame
+      1638 0.041% 96.38%    2697354 67.57%  github.com/elysia-api/backend/server.(*gatewayStream).consumeSourceFrame

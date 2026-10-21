@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "results": [
+    {
+      "label": "before",
+      "heldHeapMiB": 36.02136993408203,
+      "heldRSSMiB": 113.916015625,
+      "settledHeapMiB": 3.6121749877929688
+    },
+    {
+      "label": "after",
+      "heldHeapMiB": 19.91541290283203,
+      "heldRSSMiB": 95.375,
+      "settledHeapMiB": 3.6277198791503906
+    }
+  ]
+}
