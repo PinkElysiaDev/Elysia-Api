@@ -14,12 +14,14 @@ import (
 // actions. Authored JSON operations synchronize it before observing any value.
 // It is never retained by the compiled policy or shared with another call.
 type conversionState struct {
-	wire          Value
-	document      any
-	limits        Limits
-	isStrict      bool
-	needsEncoding bool
-	cache         *semanticCache
+	wire              Value
+	document          any
+	limits            Limits
+	isStrict          bool
+	needsEncoding     bool
+	cache             *semanticCache
+	requestNormalized bool
+	requestPartition  *requestPartition
 }
 
 func (state *conversionState) validateContext(phase ConversionPhase) error {
@@ -76,6 +78,7 @@ func (state *conversionState) load(phase ConversionPhase, strict bool) error {
 		return err
 	}
 	state.document, state.isStrict = document, strict
+	state.requestNormalized, state.requestPartition = false, nil
 	return nil
 }
 
@@ -90,6 +93,11 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 	}
 	if state.cache == nil {
 		state.cache = &semanticCache{limits: state.limits}
+	}
+	if rule.partitionRequest {
+		state.prepareRequestPartition(phase, rule.Action)
+	} else {
+		state.requestPartition = nil
 	}
 	var target string
 	var err error
@@ -110,10 +118,17 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 		return target, nil
 	}
 	// Match the old pre-serialization check before removing omitted fields.
-	if err := state.cache.check(state.document, state.limits); err != nil {
-		return "", err
+	if !state.checkRequestPartition() {
+		if err := state.cache.check(state.document, state.limits); err != nil {
+			return "", err
+		}
 	}
-	state.normalize(reflect.ValueOf(state.document), typedLimitPlans[reflect.TypeOf(state.document)])
+	if state.requestPartition != nil {
+		state.normalizeRequestPartition()
+	} else {
+		state.normalize(reflect.ValueOf(state.document), typedLimitPlans[reflect.TypeOf(state.document)])
+	}
+	state.requestNormalized = phase == ConversionRequest
 	state.needsEncoding, state.isStrict = true, true
 	state.wire = Value{} // The owned document now contains the complete current value.
 	return target, nil

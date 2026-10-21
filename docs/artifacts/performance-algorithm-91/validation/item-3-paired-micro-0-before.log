@@ -1,0 +1,11 @@
+goos: linux
+goarch: amd64
+pkg: github.com/elysia-api/backend/protocol
+cpu: AMD Ryzen 7 8845H w/ Radeon 780M Graphics
+BenchmarkAlgorithmConversion/nodes1024/rules1-4         	     100	  10207011 ns/op	 1268049 B/op	   47146 allocs/op
+BenchmarkAlgorithmConversion/nodes1024/rules1-4         	      51	  11223140 ns/op	 1257745 B/op	   47139 allocs/op
+BenchmarkAlgorithmConversion/nodes1024/rules1-4         	      50	  12970344 ns/op	 1262780 B/op	   47139 allocs/op
+BenchmarkAlgorithmConversion/nodes1024/rules16-4        	      15	  36118815 ns/op	 1794175 B/op	   77981 allocs/op
+BenchmarkAlgorithmConversion/nodes1024/rules16-4        	      28	  18978700 ns/op	 1773050 B/op	   77981 allocs/op
+BenchmarkAlgorithmConversion/nodes1024/rules16-4        	      21	  27217968 ns/op	 1756553 B/op	   77980 allocs/op
+PASS

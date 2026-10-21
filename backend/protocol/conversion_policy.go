@@ -48,16 +48,18 @@ type ConversionUsageSettings struct {
 }
 
 type ConversionRule struct {
-	ID         string          `json:"id"`
-	Order      int             `json:"order"`
-	Enabled    bool            `json:"enabled"`
-	Phase      ConversionPhase `json:"phase"`
-	Match      ConversionMatch `json:"match"`
-	Action     string          `json:"action"`
-	Path       string          `json:"path,omitempty"`
-	Value      Value           `json:"value,omitzero"`
-	Expression *Expression     `json:"expression,omitempty"`
-	Reason     string          `json:"reason,omitempty"`
+	// Compiled execution hint; never part of an authored policy or its hash.
+	partitionRequest bool
+	ID               string          `json:"id"`
+	Order            int             `json:"order"`
+	Enabled          bool            `json:"enabled"`
+	Phase            ConversionPhase `json:"phase"`
+	Match            ConversionMatch `json:"match"`
+	Action           string          `json:"action"`
+	Path             string          `json:"path,omitempty"`
+	Value            Value           `json:"value,omitzero"`
+	Expression       *Expression     `json:"expression,omitempty"`
+	Reason           string          `json:"reason,omitempty"`
 }
 
 type ConversionMatch struct {
@@ -292,6 +294,7 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		c.phases[rule.Phase] = append(c.phases[rule.Phase], rule)
 		c.ownedPhases[rule.Phase] = c.ownedPhases[rule.Phase] && state.accepts(rule.Phase, rule)
 	}
+	markRequestPartitions(c.phases[ConversionRequest])
 	return c, nil
 }
 

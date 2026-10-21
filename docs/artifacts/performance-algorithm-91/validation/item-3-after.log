@@ -1,0 +1,33 @@
+goos: linux
+goarch: amd64
+pkg: github.com/elysia-api/backend/protocol
+cpu: AMD Ryzen 7 8845H w/ Radeon 780M Graphics
+BenchmarkAlgorithmConversion/nodes64/rules1-4         	     952	    457597 ns/op	   77946 B/op	    2467 allocs/op
+BenchmarkAlgorithmConversion/nodes64/rules1-4         	     378	    591756 ns/op	   76488 B/op	    2467 allocs/op
+BenchmarkAlgorithmConversion/nodes64/rules1-4         	     248	   1094689 ns/op	   78842 B/op	    2467 allocs/op
+BenchmarkAlgorithmConversion/nodes64/rules4-4         	     270	    843429 ns/op	   76855 B/op	    2497 allocs/op
+BenchmarkAlgorithmConversion/nodes64/rules4-4         	     243	   1030695 ns/op	   78566 B/op	    2497 allocs/op
+BenchmarkAlgorithmConversion/nodes64/rules4-4         	     775	    318954 ns/op	   77980 B/op	    2497 allocs/op
+BenchmarkAlgorithmConversion/nodes64/rules16-4        	     549	    415848 ns/op	   80290 B/op	    2617 allocs/op
+BenchmarkAlgorithmConversion/nodes64/rules16-4        	     614	    520743 ns/op	   80276 B/op	    2617 allocs/op
+BenchmarkAlgorithmConversion/nodes64/rules16-4        	     315	    837038 ns/op	   80316 B/op	    2617 allocs/op
+BenchmarkAlgorithmConversion/nodes256/rules1-4        	      85	   3401993 ns/op	  296753 B/op	    9763 allocs/op
+BenchmarkAlgorithmConversion/nodes256/rules1-4        	     100	   2727760 ns/op	  301833 B/op	    9763 allocs/op
+BenchmarkAlgorithmConversion/nodes256/rules1-4        	      87	   3566708 ns/op	  300225 B/op	    9764 allocs/op
+BenchmarkAlgorithmConversion/nodes256/rules4-4        	      55	   3695370 ns/op	  298148 B/op	    9793 allocs/op
+BenchmarkAlgorithmConversion/nodes256/rules4-4        	      56	   4114631 ns/op	  299869 B/op	    9793 allocs/op
+BenchmarkAlgorithmConversion/nodes256/rules4-4        	      68	   3657686 ns/op	  305704 B/op	    9794 allocs/op
+BenchmarkAlgorithmConversion/nodes256/rules16-4       	      85	   3234072 ns/op	  304199 B/op	    9914 allocs/op
+BenchmarkAlgorithmConversion/nodes256/rules16-4       	      45	   4454306 ns/op	  306970 B/op	    9914 allocs/op
+BenchmarkAlgorithmConversion/nodes256/rules16-4       	      60	   4099999 ns/op	  301059 B/op	    9914 allocs/op
+BenchmarkAlgorithmConversion/nodes1024/rules1-4       	      14	  16580783 ns/op	 1235162 B/op	   45094 allocs/op
+BenchmarkAlgorithmConversion/nodes1024/rules1-4       	      16	  13587551 ns/op	 1229522 B/op	   45094 allocs/op
+BenchmarkAlgorithmConversion/nodes1024/rules1-4       	      16	  17117285 ns/op	 1236144 B/op	   45094 allocs/op
+BenchmarkAlgorithmConversion/nodes1024/rules4-4       	      30	   9253452 ns/op	 1225557 B/op	   45124 allocs/op
+BenchmarkAlgorithmConversion/nodes1024/rules4-4       	      16	  15148878 ns/op	 1236720 B/op	   45125 allocs/op
+BenchmarkAlgorithmConversion/nodes1024/rules4-4       	      19	  15440008 ns/op	 1229235 B/op	   45124 allocs/op
+BenchmarkAlgorithmConversion/nodes1024/rules16-4      	      16	  14260468 ns/op	 1231878 B/op	   45244 allocs/op
+BenchmarkAlgorithmConversion/nodes1024/rules16-4      	      14	  15172357 ns/op	 1222362 B/op	   45244 allocs/op
+BenchmarkAlgorithmConversion/nodes1024/rules16-4      	      15	  14805053 ns/op	 1227395 B/op	   45244 allocs/op
+PASS
+ok  	github.com/elysia-api/backend/protocol	7.043s
