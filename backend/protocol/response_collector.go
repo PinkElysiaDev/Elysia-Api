@@ -10,15 +10,40 @@ type collectedPosition struct {
 // ResponseCollector assembles a bounded result for consumers that need a whole
 // response (Agent and probes). Ordinary gateway streams use EventReplay alone.
 type ResponseCollector struct {
-	replay     *EventReplay
-	response   Response
-	items      map[string]collectedPosition
+	replay   *EventReplay
+	response Response
+	items    map[string]collectedPosition
+	// Prefix entries become immutable once preceding messages close. Advancing
+	// this frontier visits each top-level item once across the whole stream.
+	topKeys    []string
+	ordinals   []int
 	containers bool
-	texts      map[string]*strings.Builder
+	texts      map[string]*collectedText
 	metadata   map[string]int
 	unmapped   []Value
 	bytes      int
 	limit      int
+}
+
+type collectedText struct {
+	strings.Builder
+	dirty bool
+}
+
+// Text is encoded only at an observation boundary, never after every delta.
+// Replay still validates every delta/snapshot before it reaches this owner.
+func (collector *ResponseCollector) materializeText(key string) {
+	text := collector.texts[key]
+	if text != nil && text.dirty {
+		collector.item(key).Payload = StringValue(text.String())
+		text.dirty = false
+	}
+}
+
+func (collector *ResponseCollector) materializeTexts() {
+	for key := range collector.texts {
+		collector.materializeText(key)
+	}
 }
 
 // CompletedNode returns an isolated snapshot only at an acknowledged item end.
@@ -44,22 +69,27 @@ func (collector *ResponseCollector) CompletedNode(event Event) (Node, int, bool)
 	}
 	// A preceding open message could still append children and shift this
 	// ordinal. Such nodes are captured from the complete terminal response.
-	for id, p := range collector.items {
-		if p.parent == "" && p.index < top && collector.replay.items[id].kind == MessageNode && !collector.replay.items[id].isFinished {
+	if len(collector.ordinals) == 0 {
+		collector.ordinals = append(collector.ordinals, 0)
+	}
+	for len(collector.ordinals) <= top {
+		index := len(collector.ordinals) - 1
+		previous := collector.replay.items[collector.topKeys[index]]
+		if previous != nil && previous.kind == MessageNode && !previous.isFinished {
 			return Node{}, 0, false
 		}
-	}
-	ordinal := 0
-	for _, n := range collector.response.Content[:top] {
+		n := collector.response.Content[index]
+		count := 1
 		if n.Kind == MessageNode {
-			ordinal += len(n.Children)
-		} else {
-			ordinal++
+			count = len(n.Children)
 		}
+		collector.ordinals = append(collector.ordinals, collector.ordinals[index]+count)
 	}
+	ordinal := collector.ordinals[top]
 	if position.parent != "" {
 		ordinal += position.index
 	}
+	collector.materializeText(key)
 	return CanonicalReasoning(cloneNodes([]Node{*node})[0]), ordinal, true
 }
 
@@ -77,7 +107,7 @@ func NewResponseCollector(target Target, limits Limits) (*ResponseCollector, err
 	if err != nil {
 		return nil, err
 	}
-	return &ResponseCollector{replay: replay, response: Response{SchemaVersion: SemanticSchemaVersion, Source: target.Protocol}, items: map[string]collectedPosition{}, texts: map[string]*strings.Builder{}, metadata: map[string]int{}, limit: limits.BufferBytes}, nil
+	return &ResponseCollector{replay: replay, response: Response{SchemaVersion: SemanticSchemaVersion, Source: target.Protocol}, items: map[string]collectedPosition{}, texts: map[string]*collectedText{}, metadata: map[string]int{}, limit: limits.BufferBytes}, nil
 }
 
 // Consume returns the newly appended text, if any. Snapshot prefixes and
@@ -117,6 +147,7 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 	case OperationFailed, OperationCancelled:
 		return "", "", streamIssue(UpstreamContractViolation, "/type", "generation ended with "+string(event.Type))
 	case ResponseFinished:
+		collector.materializeTexts()
 		if err := collector.finishTools(); err != nil {
 			return "", "", err
 		}
@@ -245,6 +276,10 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 		parent := collector.replay.items[key].parent
 		if parent == "" {
 			collector.items[key] = collectedPosition{index: len(collector.response.Content)}
+			for len(collector.topKeys) < len(collector.response.Content) {
+				collector.topKeys = append(collector.topKeys, "")
+			}
+			collector.topKeys = append(collector.topKeys, key)
 			collector.response.Content = append(collector.response.Content, *event.Item)
 		} else {
 			node := collector.item(parent)
@@ -252,7 +287,7 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 			node.Children = append(node.Children, *event.Item)
 		}
 		collector.containers = collector.containers || event.Item.Kind == MessageNode
-		collector.texts[key] = &strings.Builder{}
+		collector.texts[key] = &collectedText{}
 	}
 	item := collector.item(key)
 	if event.Item != nil {
@@ -334,11 +369,11 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 			return item.Kind, "", nil
 		}
 		for _, resource := range item.Resources {
-			if resource.Kind == "encrypted_content" && item.Payload.IsZero() {
+			if resource.Kind == "encrypted_content" && item.Payload.IsZero() && !buffer.dirty {
 				return item.Kind, "", nil
 			}
 		}
-		item.Payload = StringValue(buffer.String())
+		buffer.dirty = true
 		return item.Kind, delta, nil
 	}
 	if event.Type == ItemFinished {
@@ -381,6 +416,7 @@ func (collector *ResponseCollector) Finish() (*Response, error) {
 	if err := collector.replay.Finish(); err != nil {
 		return nil, err
 	}
+	collector.materializeTexts()
 	collector.response.Usage = collector.replay.Usage()
 	for i := range collector.response.Content {
 		collector.response.Content[i] = CanonicalReasoning(collector.response.Content[i])
@@ -392,6 +428,7 @@ func (collector *ResponseCollector) Finish() (*Response, error) {
 // Partial returns a snapshot for diagnostics after interruption. It is never a
 // successful terminal and cannot authorize execution of incomplete tool calls.
 func (collector *ResponseCollector) Partial() (*Response, error) {
+	collector.materializeTexts()
 	partial := collector.response
 	partial.Status = StringValue("incomplete")
 	partial.Usage = collector.replay.Usage()

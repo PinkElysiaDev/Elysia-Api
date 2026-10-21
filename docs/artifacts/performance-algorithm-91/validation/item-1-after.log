@@ -1,0 +1,24 @@
+goos: linux
+goarch: amd64
+pkg: github.com/elysia-api/backend/protocol
+cpu: AMD Ryzen 7 8845H w/ Radeon 780M Graphics
+BenchmarkAlgorithmCollector/128-4       	     705	    409980 ns/op	  79.93 MB/s	  349277 B/op	    2162 allocs/op
+BenchmarkAlgorithmCollector/128-4       	     206	   1151851 ns/op	  28.45 MB/s	  345859 B/op	    2139 allocs/op
+BenchmarkAlgorithmCollector/128-4       	     195	   1268411 ns/op	  25.83 MB/s	  347551 B/op	    2139 allocs/op
+BenchmarkAlgorithmCollector/512-4       	      56	   3614322 ns/op	  36.26 MB/s	 1452805 B/op	    8294 allocs/op
+BenchmarkAlgorithmCollector/512-4       	     100	   4428679 ns/op	  29.60 MB/s	 1436719 B/op	    8294 allocs/op
+BenchmarkAlgorithmCollector/512-4       	      79	   4165034 ns/op	  31.47 MB/s	 1447045 B/op	    8295 allocs/op
+BenchmarkAlgorithmCollector/2048-4      	      10	  21226032 ns/op	  24.70 MB/s	 6945716 B/op	   32894 allocs/op
+BenchmarkAlgorithmCollector/2048-4      	      10	  20782152 ns/op	  25.23 MB/s	 6703156 B/op	   32892 allocs/op
+BenchmarkAlgorithmCollector/2048-4      	      10	  21092548 ns/op	  24.86 MB/s	 6638055 B/op	   32892 allocs/op
+BenchmarkAlgorithmMessageCompletion/128-4         	      38	   5884948 ns/op	  777138 B/op	   13180 allocs/op
+BenchmarkAlgorithmMessageCompletion/128-4         	      46	   6540837 ns/op	  765173 B/op	   13180 allocs/op
+BenchmarkAlgorithmMessageCompletion/128-4         	      39	   6549480 ns/op	  766907 B/op	   13179 allocs/op
+BenchmarkAlgorithmMessageCompletion/512-4         	      15	  16601128 ns/op	 3035488 B/op	   52406 allocs/op
+BenchmarkAlgorithmMessageCompletion/512-4         	      12	  21294137 ns/op	 3071616 B/op	   52407 allocs/op
+BenchmarkAlgorithmMessageCompletion/512-4         	       7	  29646967 ns/op	 3013449 B/op	   52408 allocs/op
+BenchmarkAlgorithmMessageCompletion/2048-4        	       2	 109450760 ns/op	12918048 B/op	  209270 allocs/op
+BenchmarkAlgorithmMessageCompletion/2048-4        	       4	  52361120 ns/op	12474886 B/op	  209235 allocs/op
+BenchmarkAlgorithmMessageCompletion/2048-4        	       6	  55076452 ns/op	12658396 B/op	  209246 allocs/op
+PASS
+ok  	github.com/elysia-api/backend/protocol	4.733s
