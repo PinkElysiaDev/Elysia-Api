@@ -121,7 +121,7 @@ func (state *conversionState) normalizeRequestPartition() {
 		if field.omitZero && child.IsZero() || field.omitEmpty && isEmptyJSONField(child) {
 			child.SetZero()
 		} else {
-			state.normalize(child, field.plan)
+			state.cache.normalizeDocument(child, field.plan)
 		}
 	}
 }

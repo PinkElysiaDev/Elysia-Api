@@ -53,7 +53,7 @@ func (c *CompiledConversion) convertOwnedRequest(ctx context.Context, request *R
 	owned := cloneSemantic(reflect.ValueOf(request), plan).Interface().(*Request)
 	limits := c.phaseLimits(ctx, ConversionRequest)
 	state := conversionState{document: owned, limits: limits, isStrict: true, needsEncoding: true, cache: &semanticCache{limits: limits}}
-	state.normalize(reflect.ValueOf(owned), plan)
+	state.cache.normalizeDocument(reflect.ValueOf(owned), plan)
 	state.requestNormalized = true
 	if _, err := c.applyConversionState(ctx, ConversionIngress, Value{}, route, sink, &state, false); err != nil {
 		return nil, err

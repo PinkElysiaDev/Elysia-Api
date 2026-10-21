@@ -36,6 +36,11 @@ func TestStreamTracksLongTextWithoutRetainingPayload(t *testing.T) {
 	if state.buffered != 0 || state.texts["text"].Length() != 32<<20 {
 		t.Fatal("text retained in buffers or length lost")
 	}
+	for _, b := range state.texts["text"].scratch {
+		if b != 0 {
+			t.Fatal("tracker retained plaintext in workspace")
+		}
+	}
 	if _, err := state.TrackText("text", "rewrite", true); err == nil {
 		t.Fatal("shortened snapshot accepted")
 	}

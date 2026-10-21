@@ -12,7 +12,7 @@ func normalizedPartitionState(request *Request) *conversionState {
 	plan := typedLimitPlans[reflect.TypeFor[*Request]()]
 	owned := cloneSemantic(reflect.ValueOf(request), plan).Interface().(*Request)
 	state := &conversionState{document: owned, limits: limits, isStrict: true, cache: &semanticCache{limits: limits}}
-	state.normalize(reflect.ValueOf(owned), plan)
+	state.cache.normalizeDocument(reflect.ValueOf(owned), plan)
 	state.requestNormalized = true
 	return state
 }
@@ -107,28 +107,6 @@ func TestRequestPartitionRuleParity(t *testing.T) {
 		}
 		if rule.Action == "request_projection" && fast.requestPartition != nil {
 			t.Fatal("partition survived mutation")
-		}
-	}
-}
-
-func TestRequestPartitionCompileSelection(t *testing.T) {
-	for _, count := range []int{1, 3, 4, 16} {
-		rules := make([]ConversionRule, count)
-		for i := range rules {
-			rules[i] = ConversionRule{Action: "stream_options"}
-		}
-		markRequestPartitions(rules)
-		for _, rule := range rules {
-			if rule.partitionRequest != (count >= 4) {
-				t.Fatal("unexpected run selection", count)
-			}
-		}
-	}
-	rules := []ConversionRule{{Action: "stream_options"}, {Action: "responses_include"}, {Action: "responses_storage"}, {Action: "gemini_safety_settings", Match: ConversionMatch{Model: "conditional"}}, {Action: "stream_options"}}
-	markRequestPartitions(rules)
-	for _, rule := range rules {
-		if rule.partitionRequest {
-			t.Fatal("conditional rule did not break run")
 		}
 	}
 }

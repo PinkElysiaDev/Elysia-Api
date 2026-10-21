@@ -360,24 +360,33 @@ func mediaURL(media p.Object) (p.Value, error) {
 }
 
 func anthropicMediaSource(media p.Object) (p.Value, error) {
-	if !media["text"].IsZero() {
-		return object(p.Object{"type": p.StringValue("text"), "media_type": media["mime"], "data": media["text"]}), nil
-	}
-	if !media["data"].IsZero() {
-		return object(p.Object{"type": p.StringValue("base64"), "media_type": media["mime"], "data": media["data"]}), nil
-	}
-	url, err := stringValue(media["url"])
+	fields, err := anthropicMediaSourceFields(media)
 	if err != nil {
 		return p.Value{}, err
 	}
+	return object(fields), nil
+}
+
+// Both eager and deferred renderers use the same source selection and validation.
+func anthropicMediaSourceFields(media p.Object) (p.Object, error) {
+	if !media["text"].IsZero() {
+		return p.Object{"type": p.StringValue("text"), "media_type": media["mime"], "data": media["text"]}, nil
+	}
+	if !media["data"].IsZero() {
+		return p.Object{"type": p.StringValue("base64"), "media_type": media["mime"], "data": media["data"]}, nil
+	}
+	url, err := stringValue(media["url"])
+	if err != nil {
+		return nil, err
+	}
 	if !strings.HasPrefix(url, "data:") {
-		return object(p.Object{"type": p.StringValue("url"), "url": media["url"]}), nil
+		return p.Object{"type": p.StringValue("url"), "url": media["url"]}, nil
 	}
 	meta, data, ok := strings.Cut(strings.TrimPrefix(url, "data:"), ",")
 	if !ok || !strings.HasSuffix(meta, ";base64") {
-		return p.Value{}, unsupported("/media", "only explicitly base64 data URIs can be converted without transcoding")
+		return nil, unsupported("/media", "only explicitly base64 data URIs can be converted without transcoding")
 	}
-	return object(p.Object{"type": p.StringValue("base64"), "media_type": p.StringValue(strings.TrimSuffix(meta, ";base64")), "data": p.StringValue(data)}), nil
+	return p.Object{"type": p.StringValue("base64"), "media_type": p.StringValue(strings.TrimSuffix(meta, ";base64")), "data": p.StringValue(data)}, nil
 }
 
 func (adapter module) encodeGeminiPart(node p.Node, fields p.Object) (p.Value, error) {

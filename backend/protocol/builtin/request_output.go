@@ -114,34 +114,13 @@ func (adapter module) planAnthropicBlock(ctx context.Context, node p.Node, optio
 				return p.JSONOutput{}, unsupported("/document/name", "a filename cannot be substituted for an Anthropic document title")
 			}
 		}
-		source, err := planAnthropicSource(media)
+		source, err := anthropicMediaSourceFields(media)
 		if err != nil {
 			return p.JSONOutput{}, err
 		}
-		return plannedObject(p.Object{"type": p.StringValue(kind)}, map[string]p.JSONOutput{"source": source}), nil
+		return plannedObject(p.Object{"type": p.StringValue(kind)}, map[string]p.JSONOutput{"source": plannedObject(source, nil)}), nil
 	default:
 		value, err := adapter.encodeBlock(node, p.EncodeRequest, options)
 		return p.JSONLeaf(value), err
 	}
-}
-
-func planAnthropicSource(media p.Object) (p.JSONOutput, error) {
-	if !media["text"].IsZero() {
-		return plannedObject(p.Object{"type": p.StringValue("text"), "media_type": media["mime"], "data": media["text"]}, nil), nil
-	}
-	if !media["data"].IsZero() {
-		return plannedObject(p.Object{"type": p.StringValue("base64"), "media_type": media["mime"], "data": media["data"]}, nil), nil
-	}
-	url, err := stringValue(media["url"])
-	if err != nil {
-		return p.JSONOutput{}, err
-	}
-	if !strings.HasPrefix(url, "data:") {
-		return plannedObject(p.Object{"type": p.StringValue("url"), "url": media["url"]}, nil), nil
-	}
-	meta, data, ok := strings.Cut(strings.TrimPrefix(url, "data:"), ",")
-	if !ok || !strings.HasSuffix(meta, ";base64") {
-		return p.JSONOutput{}, unsupported("/media", "only explicitly base64 data URIs can be converted without transcoding")
-	}
-	return plannedObject(p.Object{"type": p.StringValue("base64"), "media_type": p.StringValue(strings.TrimSuffix(meta, ";base64")), "data": p.StringValue(data)}, nil), nil
 }

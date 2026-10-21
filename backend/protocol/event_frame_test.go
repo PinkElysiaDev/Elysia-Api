@@ -1,9 +1,34 @@
 package protocol
 
 import (
+	"crypto/sha256"
 	"slices"
+	"strings"
 	"testing"
 )
+
+func TestSemanticDigestMatchesValueEncoding(t *testing.T) {
+	for _, payload := range []Value{
+		StringValue("small"),
+		StringValue(strings.Repeat("large", 32<<10)),
+		parseTestValue(t, ` { "number":9007199254740993,"null":null,"escape":"<>&\u2028" } `),
+	} {
+		events := []Event{{SchemaVersion: 1, Type: ItemDelta, ItemID: StringValue("id"), Delta: payload}}
+		encoded, err := EncodeValue(events)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := digestSemanticEvents(events)
+		if err != nil || got != sha256.Sum256(encoded.Bytes()) {
+			t.Fatalf("single-buffer digest differs from Value encoding: %v", err)
+		}
+		events[0].Delta = StringValue("changed")
+		changed, err := digestSemanticEvents(events)
+		if err != nil || changed == got {
+			t.Fatal("digest missed an external event mutation")
+		}
+	}
+}
 
 func TestConvertedFrameChecksNativeAtEncodingBoundary(t *testing.T) {
 	compiled := compileTestDefinition(t, compoundFrameDefinition(t))

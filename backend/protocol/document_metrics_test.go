@@ -23,7 +23,11 @@ func TestDocumentMetricsOwnershipAndBudgetParity(t *testing.T) {
 			if got, want := checkDocumentSemantic(ctx, request, budget), checkSemanticValue(request, budget); !reflect.DeepEqual(got, want) {
 				t.Fatalf("budget verdict changed: %v / %v", got, want)
 			}
-			if got, want := checkDocumentMapping(ctx, request, budget, "mapping_input"), checkMappingSemantic(request, budget, "mapping_input"); !reflect.DeepEqual(got, want) {
+			encoded, err := EncodeValue(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := checkDocumentMapping(ctx, request, budget, "mapping_input"), checkResourceValue(encoded, budget, "mapping_input"); !reflect.DeepEqual(got, want) {
 				t.Fatalf("mapping error changed: %v / %v", got, want)
 			}
 		}
