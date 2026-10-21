@@ -1,0 +1,450 @@
+diff --git a/backend/protocol/algorithm_document_test.go b/backend/protocol/algorithm_document_test.go
+new file mode 100644
+index 0000000..1edcefb
+--- /dev/null
++++ b/backend/protocol/algorithm_document_test.go
+@@ -0,0 +1,53 @@
++package protocol
++
++import (
++	"fmt"
++	"strings"
++	"testing"
++)
++
++// Identical fixtures compile against the previous source via a test-only overlay.
++func BenchmarkAlgorithmDocumentIndex(b *testing.B) {
++	for _, size := range []int{64 << 10, 1 << 20, 4 << 20} {
++		b.Run(fmt.Sprint(size), func(b *testing.B) {
++			root, _ := ParseValue([]byte(strings.Repeat(`{"child":`, 8) + `"` + strings.Repeat("A", size) + `"` + strings.Repeat("}", 8)))
++			b.ReportAllocs()
++			b.SetBytes(int64(root.Len()))
++			for b.Loop() {
++				reader := requestValueReader(root)
++				for range 4 {
++					value := root
++					for range 8 {
++						fields, err := value.readObjectWithin(reader)
++						if err != nil {
++							b.Fatal(err)
++						}
++						value = fields["child"]
++					}
++					if value.Len() != size+2 {
++						b.Fatal("wrong leaf")
++					}
++				}
++			}
++		})
++	}
++}
++
++func BenchmarkAlgorithmMetricIdentity(b *testing.B) {
++	for _, size := range []int{64 << 10, 1 << 20, 4 << 20} {
++		b.Run(fmt.Sprint(size), func(b *testing.B) {
++			cache := &semanticCache{limits: Limits{BufferBytes: 64 << 20, StateItems: 16}}
++			var value Value
++			for i := range 12 {
++				value = StringValue(strings.Repeat(string(rune('a'+i)), size))
++				cache.store(value, semanticValueEntry{hasMetrics: true})
++			}
++			b.ReportAllocs()
++			for b.Loop() {
++				if entry, ok := cache.lookup(value); !ok || !entry.hasMetrics {
++					b.Fatal("miss")
++				}
++			}
++		})
++	}
++}
+diff --git a/backend/protocol/semantic_cache.go b/backend/protocol/semantic_cache.go
+index fdca6bc..7aaf5a5 100644
+--- a/backend/protocol/semantic_cache.go
++++ b/backend/protocol/semantic_cache.go
+@@ -16,28 +16,30 @@ type semanticValueEntry struct {
+ // encoded size and node count at its actual nesting depth.
+ type semanticCache struct {
+ 	limits        Limits
+-	entries       map[Value]semanticValueEntry
++	entries       map[immutableSpan]semanticValueEntry
+ 	inline        *[2]semanticCacheEntry
+ 	inlineCount   int
+ 	retainedBytes int
+ }
+ 
+ type semanticCacheEntry struct {
+-	value Value
++	value immutableSpan
+ 	entry semanticValueEntry
+ }
+ 
+ // Most frame-local segments visit only a payload and its native envelope. A
+ // lazily allocated two-entry workspace avoids a hash table (and hashing large
+ // identical strings) without increasing storage for executions that cache none.
+-// Wider segments spill to the same bounded map; no storage crosses requests.
++// Wider segments use storage identities instead of hashing entire payloads;
++// independently allocated equal content may miss. No storage crosses requests.
+ func (cache *semanticCache) lookup(value Value) (semanticValueEntry, bool) {
++	identity := spanIdentity(value.raw)
+ 	for index := range cache.inlineCount {
+-		if cached := cache.inline[index]; cached.value == value {
++		if cached := cache.inline[index]; cached.value == identity {
+ 			return cached.entry, true
+ 		}
+ 	}
+-	entry, exists := cache.entries[value]
++	entry, exists := cache.entries[identity]
+ 	return entry, exists
+ }
+ 
+@@ -64,6 +66,7 @@ func (entry semanticValueEntry) retainedBytes(value Value) int {
+ }
+ 
+ func (cache *semanticCache) store(value Value, entry semanticValueEntry) {
++	identity := spanIdentity(value.raw)
+ 	previous, exists := cache.lookup(value)
+ 	if !exists && cache.size() >= cache.limits.StateItems {
+ 		return
+@@ -80,7 +83,7 @@ func (cache *semanticCache) store(value Value, entry semanticValueEntry) {
+ 		return
+ 	}
+ 	for index := range cache.inlineCount {
+-		if cache.inline[index].value == value {
++		if cache.inline[index].value == identity {
+ 			cache.inline[index].entry = entry
+ 			cache.retainedBytes += entry.retainedBytes(value) - previousBytes
+ 			return
+@@ -90,13 +93,13 @@ func (cache *semanticCache) store(value Value, entry semanticValueEntry) {
+ 		if cache.inline == nil {
+ 			cache.inline = new([2]semanticCacheEntry)
+ 		}
+-		cache.inline[cache.inlineCount] = semanticCacheEntry{value, entry}
++		cache.inline[cache.inlineCount] = semanticCacheEntry{identity, entry}
+ 		cache.inlineCount++
+ 	} else {
+ 		if cache.entries == nil {
+-			cache.entries = make(map[Value]semanticValueEntry)
++			cache.entries = make(map[immutableSpan]semanticValueEntry)
+ 		}
+-		cache.entries[value] = entry
++		cache.entries[identity] = entry
+ 	}
+ 	cache.retainedBytes += entry.retainedBytes(value) - previousBytes
+ }
+diff --git a/backend/protocol/value_container.go b/backend/protocol/value_container.go
+index 6161e8f..ed8e4a8 100644
+--- a/backend/protocol/value_container.go
++++ b/backend/protocol/value_container.go
+@@ -32,7 +32,7 @@ func (value Value) readObjectWithin(reader *valueReader) (Object, error) {
+ 			key = strings.Clone(key)
+ 		}
+ 		offset = skipJSONSpace(raw, skipJSONSpace(raw, end)+1)
+-		end = jsonValueEnd(raw, offset)
++		end = reader.valueEnd(raw, offset)
+ 		// Retained metadata must not keep an entire large frame alive through a
+ 		// tiny substring; resource accounting measures the child value's bytes.
+ 		fields[key] = Value{raw: reader.fragment(raw[offset:end])}
+@@ -58,7 +58,7 @@ func (value Value) readArrayWithin(reader *valueReader) ([]Value, error) {
+ 	}
+ 	items := []Value{}
+ 	for offset := skipJSONSpace(raw, 1); raw[offset] != ']'; {
+-		end := jsonValueEnd(raw, offset)
++		end := reader.valueEnd(raw, offset)
+ 		items = append(items, Value{raw: reader.fragment(raw[offset:end])})
+ 		offset = skipJSONSpace(raw, end)
+ 		if raw[offset] == ',' {
+diff --git a/backend/protocol/value_identity.go b/backend/protocol/value_identity.go
+new file mode 100644
+index 0000000..10afe35
+--- /dev/null
++++ b/backend/protocol/value_identity.go
+@@ -0,0 +1,19 @@
++package protocol
++
++import "unsafe"
++
++// immutableSpan identifies storage, not equal JSON content. It is only used in
++// bounded execution-local caches of validated immutable strings. The typed
++// pointer keeps storage alive (never convert it to uintptr), preventing address
++// reuse while a fact is cached. Length distinguishes views at the same address.
++// StringData is inspected for identity only: no dereference or mutation occurs.
++// Equal content in independently owned storage may miss; it cannot reuse a stale
++// fact. Public Value equality and its single-string representation are unchanged.
++type immutableSpan struct {
++	data  *byte
++	bytes int
++}
++
++func spanIdentity(raw string) immutableSpan {
++	return immutableSpan{unsafe.StringData(raw), len(raw)}
++}
+diff --git a/backend/protocol/value_index.go b/backend/protocol/value_index.go
+new file mode 100644
+index 0000000..171db18
+--- /dev/null
++++ b/backend/protocol/value_index.go
+@@ -0,0 +1,71 @@
++package protocol
++
++import "sync"
++
++// Large borrowed subtrees are the ones expensive to rescan and useful to index.
++// One sequential structural scan records their ends, without materializing
++// objects or per-byte entries. Small/copied fragments keep the direct scanner.
++// Limits bound both metadata and parser stack independently of authored budgets;
++// exceeding them discards the optional index and keeps the established reader.
++const valueIndexEntries = 4096
++
++type valueIndex struct {
++	root         string
++	minimumBytes int
++	once         sync.Once
++	ends         map[*byte]int
++}
++
++func (reader *valueReader) valueEnd(raw string, start int) int {
++	if reader != nil && reader.index != nil && len(raw) >= reader.minimumSharedBytes {
++		index := reader.index
++		index.once.Do(index.indexLargeSpans)
++		if length := index.ends[spanIdentity(raw[start:]).data]; length != 0 && length <= len(raw)-start {
++			return start + length
++		}
++	}
++	return jsonValueEnd(raw, start)
++}
++
++func (index *valueIndex) indexLargeSpans() {
++	raw := index.root
++	var stack [typedMeterTraversalDepth]int
++	depth := 0
++	ends := make(map[*byte]int)
++	add := func(start, end int) bool {
++		if end-start < index.minimumBytes {
++			return true
++		}
++		if len(ends) >= valueIndexEntries {
++			return false
++		}
++		ends[spanIdentity(raw[start:end]).data] = end - start
++		return true
++	}
++	for offset := 0; offset < len(raw); {
++		switch raw[offset] {
++		case '"':
++			end := jsonStringEnd(raw, offset)
++			if !add(offset, end) {
++				return
++			}
++			offset = end
++		case '{', '[':
++			if depth == len(stack) {
++				return
++			}
++			stack[depth] = offset
++			depth++
++			offset++
++		case '}', ']':
++			depth--
++			offset++
++			if !add(stack[depth], offset) {
++				return
++			}
++		default:
++			offset++
++		}
++	}
++	index.ends = ends
++}
+diff --git a/backend/protocol/value_index_test.go b/backend/protocol/value_index_test.go
+new file mode 100644
+index 0000000..6f06f6c
+--- /dev/null
++++ b/backend/protocol/value_index_test.go
+@@ -0,0 +1,163 @@
++package protocol
++
++import (
++	"fmt"
++	"reflect"
++	"runtime"
++	"strings"
++	"sync"
++	"testing"
++)
++
++func TestValueIndexParityAndOwnership(t *testing.T) {
++	for _, raw := range []string{
++		` { "duplicate":0,"dupl\u0069cate":9007199254740993,"nested":[{"text":"` + strings.Repeat("A", 128<<10) + `"}],"escaped":"\\\"" } `,
++		`{"large":"` + strings.Repeat("<>&", 32768) + `","small":{"null":null,"array":[],"number":1e999}}`,
++	} {
++		root, err := ParseValue([]byte(raw))
++		if err != nil {
++			t.Fatal(err)
++		}
++		reader := requestValueReader(root)
++		var compare func(Value)
++		compare = func(value Value) {
++			t.Helper()
++			if value.IsObject() {
++				got, err := value.readObjectWithin(reader)
++				want, wantErr := value.ReadObject()
++				if err != nil || wantErr != nil || !reflect.DeepEqual(got, want) {
++					t.Fatal("object mismatch", err, wantErr)
++				}
++				for _, child := range got {
++					compare(child)
++				}
++				got["mutated"] = StringValue("not shared")
++				again, _ := value.readObjectWithin(reader)
++				if !again["mutated"].IsZero() {
++					t.Fatal("map shared")
++				}
++			} else if value.IsArray() {
++				got, err := value.readArrayWithin(reader)
++				want, wantErr := value.readArray()
++				if err != nil || wantErr != nil || !reflect.DeepEqual(got, want) {
++					t.Fatal("array mismatch", err, wantErr)
++				}
++				for _, child := range got {
++					compare(child)
++				}
++			}
++		}
++		compare(root)
++		if reader.index == nil || len(reader.index.ends) == 0 || len(reader.index.ends) > valueIndexEntries {
++			t.Fatal("index not built or bounded")
++		}
++	}
++	// Metadata exhaustion is an optimization miss, never a resource verdict.
++	root, err := ParseValue([]byte(strings.Repeat("[", typedMeterTraversalDepth+1) + `"` + strings.Repeat("x", 65536) + `"` + strings.Repeat("]", typedMeterTraversalDepth+1)))
++	if err != nil {
++		t.Fatal(err)
++	}
++	r := requestValueReader(root)
++	got, err := root.readArrayWithin(r)
++	want, _ := root.readArray()
++	if err != nil || !reflect.DeepEqual(got, want) || r.index.ends != nil {
++		t.Fatal("deep fallback changed")
++	}
++}
++
++func TestValueIndexConcurrentReads(t *testing.T) {
++	root, _ := ParseValue([]byte(`{"items":[{"data":"` + strings.Repeat("A", 1<<20) + `"}]}`))
++	reader := requestValueReader(root)
++	var wg sync.WaitGroup
++	for range 8 {
++		wg.Go(func() {
++			for range 10 {
++				fields, err := root.readObjectWithin(reader)
++				if err != nil {
++					t.Error(err)
++					return
++				}
++				items, err := fields["items"].readArrayWithin(reader)
++				if err != nil || len(items) != 1 {
++					t.Error("bad array", err)
++					return
++				}
++			}
++		})
++	}
++	wg.Wait()
++}
++
++func TestImmutableMetricIdentityDoesNotCrossStorage(t *testing.T) {
++	limits := DefaultLimits()
++	cache := &semanticCache{limits: limits}
++	values := make([]Value, 4)
++	for i := range values {
++		values[i] = StringValue(strings.Repeat(fmt.Sprint(i), 1024))
++		if err := cache.check(&Node{Payload: values[i]}, limits); err != nil {
++			t.Fatal(err)
++		}
++	}
++	if cache.size() != 4 {
++		t.Fatal("fixture did not spill")
++	}
++	runtime.GC()
++	for _, v := range values {
++		if _, ok := cache.lookup(v); !ok {
++			t.Fatal("live identity lost")
++		}
++	}
++	copy := Value{raw: strings.Clone(values[3].raw)}
++	if _, ok := cache.lookup(copy); ok {
++		t.Fatal("different storage must be a safe miss")
++	}
++	if got, want := cache.check(&Node{Payload: copy}, limits), checkSemanticValue(&Node{Payload: copy}, limits); !reflect.DeepEqual(got, want) {
++		t.Fatal(got, want)
++	}
++	// Same start, different extent must never share metrics.
++	a := Value{raw: "12345"}
++	cache.store(a, semanticValueEntry{hasMetrics: true, metrics: semanticMetrics{bytes: 5, nodes: 1}})
++	if _, ok := cache.lookup(Value{raw: a.raw[:3]}); ok {
++		t.Fatal("extent omitted from identity")
++	}
++}
++
++func FuzzIndexedContainerParity(f *testing.F) {
++	for _, raw := range []string{`{"a":[true,null,1e99]}`, `{"x":1,"\u0078":2}`, `["\\\"",{},[]]`} {
++		f.Add(raw)
++	}
++	f.Fuzz(func(t *testing.T, raw string) {
++		if len(raw) > 4096 {
++			t.Skip()
++		}
++		value, err := ParseValue([]byte(raw))
++		if err != nil {
++			return
++		}
++		// A tiny threshold exercises every indexed span with small fuzz inputs.
++		reader := &valueReader{minimumSharedBytes: 1, index: &valueIndex{root: value.raw, minimumBytes: 1}}
++		var compare func(Value)
++		compare = func(v Value) {
++			if v.IsObject() {
++				a, e := v.readObjectWithin(reader)
++				b, w := v.ReadObject()
++				if !reflect.DeepEqual(a, b) || fmt.Sprint(e) != fmt.Sprint(w) {
++					t.Fatal("object parity")
++				}
++				for _, x := range a {
++					compare(x)
++				}
++			} else if v.IsArray() {
++				a, e := v.readArrayWithin(reader)
++				b, w := v.readArray()
++				if !reflect.DeepEqual(a, b) || fmt.Sprint(e) != fmt.Sprint(w) {
++					t.Fatal("array parity")
++				}
++				for _, x := range a {
++					compare(x)
++				}
++			}
++		}
++		compare(value)
++	})
++}
+diff --git a/backend/protocol/value_reader.go b/backend/protocol/value_reader.go
+index be2c229..0526883 100644
+--- a/backend/protocol/value_reader.go
++++ b/backend/protocol/value_reader.go
+@@ -7,10 +7,17 @@ const requestViewMinBytes = 64 << 10
+ // valueReader is scoped to one decode. Small fragments are detached immediately;
+ // sharing is useful only for payloads that account for a substantial part of the
+ // root. Public ReadObject/Decode continue to return independent child storage.
+-type valueReader struct{ minimumSharedBytes int }
++type valueReader struct {
++	minimumSharedBytes int
++	index              *valueIndex
++}
+ 
+ func requestValueReader(root Value) *valueReader {
+-	return &valueReader{minimumSharedBytes: max(requestViewMinBytes, len(root.raw)/4)}
++	reader := &valueReader{minimumSharedBytes: max(requestViewMinBytes, len(root.raw)/4)}
++	if len(root.raw) >= requestViewMinBytes {
++		reader.index = &valueIndex{root: root.raw, minimumBytes: reader.minimumSharedBytes}
++	}
++	return reader
+ }
+ 
+ // WithValueReader scopes large immutable views to a trusted adapter invocation.

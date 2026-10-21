@@ -32,7 +32,7 @@ func (value Value) readObjectWithin(reader *valueReader) (Object, error) {
 			key = strings.Clone(key)
 		}
 		offset = skipJSONSpace(raw, skipJSONSpace(raw, end)+1)
-		end = jsonValueEnd(raw, offset)
+		end = reader.valueEnd(raw, offset)
 		// Retained metadata must not keep an entire large frame alive through a
 		// tiny substring; resource accounting measures the child value's bytes.
 		fields[key] = Value{raw: reader.fragment(raw[offset:end])}
@@ -58,7 +58,7 @@ func (value Value) readArrayWithin(reader *valueReader) ([]Value, error) {
 	}
 	items := []Value{}
 	for offset := skipJSONSpace(raw, 1); raw[offset] != ']'; {
-		end := jsonValueEnd(raw, offset)
+		end := reader.valueEnd(raw, offset)
 		items = append(items, Value{raw: reader.fragment(raw[offset:end])})
 		offset = skipJSONSpace(raw, end)
 		if raw[offset] == ',' {
