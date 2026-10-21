@@ -4,6 +4,7 @@ import (
 	"bytes"
 	stdjson "encoding/json" // Independent token oracle for the resource meter.
 	"io"
+	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
@@ -53,6 +54,10 @@ func checkMeterEquivalent(t *testing.T, value any) {
 	}
 	if meter.bytes != len(encoded.raw) || meter.nodes != nodes || meter.depth != 0 {
 		t.Fatalf("meter (%d,%d,%d) != encoding (%d,%d,0)", meter.bytes, meter.nodes, meter.depth, len(encoded.raw), nodes)
+	}
+	generated := typedMeter{limits: limits}
+	if ok, supported := generated.visitTyped(value); supported && (!ok || generated.bytes != meter.bytes || generated.nodes != meter.nodes || generated.depth != meter.depth || generated.maxDepth != meter.maxDepth) {
+		t.Fatalf("generated meter differs from reflective/JSON oracle: %+v / %+v", generated, meter)
 	}
 	limits.Nodes, limits.Depth = nodes, maxDepth
 	for _, delta := range []int{-1, 0, 1} {
@@ -187,6 +192,37 @@ func BenchmarkTypedResourceCheck(b *testing.B) {
 				}
 				if err != nil {
 					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestGeneratedMeterCurrent(t *testing.T) {
+	command := exec.Command("go", "run", "-tags=semanticmeter_bootstrap", "../internal/semanticmeter", "--check")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("generated model traversal is stale: %v\n%s", err, output)
+	}
+}
+
+func BenchmarkTypedTraversal(b *testing.B) {
+	request := &Request{SchemaVersion: 1, Model: StringValue("model")}
+	for range 64 {
+		request.Content = append(request.Content, Node{Kind: MessageNode, Role: StringValue("user"), Children: []Node{{Kind: TextNode, Payload: StringValue("hello")}}})
+	}
+	for _, mode := range []string{"reflective", "generated"} {
+		b.Run(mode, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				meter := typedMeter{limits: semanticLimits(DefaultLimits())}
+				var ok bool
+				if mode == "reflective" {
+					ok = meter.visit(typedLimitPlans[reflect.TypeFor[*Request]()], reflect.ValueOf(request))
+				} else {
+					ok = meter.visitSemantic(request)
+				}
+				if !ok {
+					b.Fatal("request did not fit")
 				}
 			}
 		})
