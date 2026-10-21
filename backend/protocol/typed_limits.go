@@ -14,6 +14,8 @@ import (
 // use the encoder, retaining its error precedence, cycle detection and wording.
 const typedMeterTraversalDepth = 256
 
+//go:generate go run -tags=semanticmeter_bootstrap ../internal/semanticmeter
+
 type typedMeter struct {
 	limits              Limits
 	bytes, nodes, depth int
@@ -106,12 +108,19 @@ func buildTypedLimitPlans() map[reflect.Type]*typedPlan {
 }
 
 func fitsTypedLimits(value any, limits Limits) bool {
+	meter := typedMeter{limits: limits}
+	return meter.visitSemantic(value) && meter.fits()
+}
+
+func (meter *typedMeter) visitSemantic(value any) bool {
+	if fits, supported := meter.visitTyped(value); supported {
+		return fits
+	}
 	plan := typedLimitPlans[reflect.TypeOf(value)]
 	if plan == nil {
 		return false
 	}
-	meter := typedMeter{limits: limits}
-	return meter.visit(plan, reflect.ValueOf(value)) && meter.fits()
+	return meter.visit(plan, reflect.ValueOf(value))
 }
 
 func (meter *typedMeter) fits() bool {

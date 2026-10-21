@@ -139,6 +139,12 @@ func checkResourceValue(value Value, limits Limits, domain string) error {
 
 // checkSemanticValue bounds the serialization before making a JSON copy.
 func checkSemanticValue(value any, limits Limits) error {
+	fast := typedMeter{limits: limits}
+	if ok, supported := fast.visitTyped(value); supported && ok && fast.fits() {
+		return nil
+	}
+	// The reflective failure path preserves the previous error precedence and
+	// observed counts, including map traversal and unsupported/cyclic values.
 	if plan := typedLimitPlans[reflect.TypeOf(value)]; plan != nil {
 		meter := typedMeter{limits: limits}
 		if meter.visit(plan, reflect.ValueOf(value)) && meter.fits() {

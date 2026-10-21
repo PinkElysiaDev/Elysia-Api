@@ -1,0 +1,8 @@
+fuzz: elapsed: 0s, gathering baseline coverage: 0/436 completed
+fuzz: elapsed: 3s, gathering baseline coverage: 239/436 completed
+fuzz: elapsed: 6s, gathering baseline coverage: 405/436 completed
+fuzz: elapsed: 7s, gathering baseline coverage: 436/436 completed, now fuzzing with 2 workers
+fuzz: elapsed: 9s, execs: 27464 (9020/sec), new interesting: 19 (total: 455)
+fuzz: elapsed: 10s, execs: 36262 (7916/sec), new interesting: 28 (total: 464)
+PASS
+ok  	github.com/elysia-api/backend/protocol	10.160s

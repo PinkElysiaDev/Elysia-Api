@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"context"
-	"reflect"
 	"sync"
 )
 
@@ -32,14 +31,10 @@ func fitsDocumentMetrics(ctx context.Context, value any, limits Limits) bool {
 	if owner == nil {
 		return fitsTypedLimits(value, limits)
 	}
-	plan := typedLimitPlans[reflect.TypeOf(value)]
-	if plan == nil {
-		return false
-	}
 	owner.mu.Lock()
 	defer owner.mu.Unlock()
 	meter := typedMeter{limits: limits, cache: &owner.cache}
-	return meter.visit(plan, reflect.ValueOf(value)) && meter.fits()
+	return meter.visitSemantic(value) && meter.fits()
 }
 
 func checkDocumentSemantic(ctx context.Context, value any, limits Limits) error {

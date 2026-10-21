@@ -1,7 +1,5 @@
 package protocol
 
-import "reflect"
-
 const semanticCacheMinBytes = 256
 
 type semanticMetrics struct{ bytes, nodes, depth int }
@@ -49,11 +47,9 @@ func (cache *semanticCache) check(value any, limits Limits) error {
 	if cache == nil {
 		return checkSemanticValue(value, limits)
 	}
-	if plan := typedLimitPlans[reflect.TypeOf(value)]; plan != nil {
-		meter := typedMeter{limits: limits, cache: cache}
-		if meter.visit(plan, reflect.ValueOf(value)) && meter.fits() {
-			return nil
-		}
+	meter := typedMeter{limits: limits, cache: cache}
+	if meter.visitSemantic(value) && meter.fits() {
+		return nil
 	}
 	// Preserve exact observed counts and the encoder's original error priority.
 	return checkSemanticValue(value, limits)
