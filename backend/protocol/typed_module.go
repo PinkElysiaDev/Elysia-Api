@@ -162,7 +162,7 @@ func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 			if err != nil {
 				return nil, err
 			}
-			if err := checkSemanticValue(output, outputLimits); err != nil {
+			if err := checkDocumentSemantic(ctx, output, outputLimits); err != nil {
 				return nil, err
 			}
 			return output, nil
@@ -194,11 +194,11 @@ func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 			}
 			// Module.Convert first calls EncodeSemantic with the call-wide budget.
 			semanticBudget := semanticLimits(requestLimits(ctx, DefaultLimits(), false))
-			if err := checkSemanticValue(output, semanticBudget); err != nil {
+			if err := checkDocumentSemantic(ctx, output, semanticBudget); err != nil {
 				return fail(err)
 			}
 			output = normalizeMappingSemantic(output, semanticBudget)
-			if err := checkMappingSemantic(output, outputLimits, "mapping_output"); err != nil {
+			if err := checkDocumentMapping(ctx, output, outputLimits, "mapping_output"); err != nil {
 				return fail(err)
 			}
 			return output, nil
@@ -223,7 +223,7 @@ func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 			if err := ctx.Err(); err != nil {
 				return Value{}, err
 			}
-			if err := checkSemanticValue(input, inputLimits); err != nil {
+			if err := checkDocumentSemantic(ctx, input, inputLimits); err != nil {
 				return Value{}, err
 			}
 			options = options.forDefinition(compiled)
@@ -295,7 +295,7 @@ func encodeRequestMapping[T any](ctx context.Context, compiled *Compiled, input 
 	inputLimits, outputLimits, _ := compiled.mappingLimits(ctx, direction)
 	// This originally ran before executeMapping, including its context check.
 	semanticBudget := semanticLimits(requestLimits(ctx, DefaultLimits(), false))
-	if err := checkSemanticValue(input, semanticBudget); err != nil {
+	if err := checkDocumentSemantic(ctx, input, semanticBudget); err != nil {
 		return Value{}, err
 	}
 	input = normalizeMappingSemantic(input, semanticBudget)
@@ -303,7 +303,7 @@ func encodeRequestMapping[T any](ctx context.Context, compiled *Compiled, input 
 	if err := ctx.Err(); err != nil {
 		return fail(err)
 	}
-	if err := checkMappingSemantic(input, inputLimits, "mapping_input"); err != nil {
+	if err := checkDocumentMapping(ctx, input, inputLimits, "mapping_input"); err != nil {
 		return fail(err)
 	}
 	if _, err := EncodeValue(options.Values); err != nil {
