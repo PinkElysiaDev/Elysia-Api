@@ -1,0 +1,48 @@
+File: server.test
+Build ID: d178d191986e516395912b7c624c5baa8c69f91f
+Type: alloc_objects
+Time: 2026-10-21 01:40:50 CST
+Showing nodes accounting for 63951, 99.49% of 64277 total
+Dropped 91 nodes (cum <= 321)
+Showing top 40 nodes out of 57
+      flat  flat%   sum%        cum   cum%
+     43693 67.98% 67.98%      43693 67.98%  runtime/pprof.allFrames
+     10929 17.00% 84.98%      10945 17.03%  runtime/pprof.(*profileBuilder).emitLocation
+      5461  8.50% 93.48%       5469  8.51%  github.com/elysia-api/backend/protocol/builtin.module.decodeMessages
+      2048  3.19% 96.66%       2048  3.19%  modernc.org/sqlite.(*conn).bind
+      1820  2.83% 99.49%       1828  2.84%  github.com/elysia-api/backend/protocol.Value.readObjectWithin
+         0     0% 99.49%       2048  3.19%  database/sql.(*DB).retry
+         0     0% 99.49%       2048  3.19%  database/sql.(*Stmt).ExecContext
+         0     0% 99.49%       2048  3.19%  database/sql.(*Stmt).ExecContext.func1
+         0     0% 99.49%       2048  3.19%  database/sql.ctxDriverStmtExec
+         0     0% 99.49%       2048  3.19%  database/sql.resultFromStatement
+         0     0% 99.49%       1824  2.84%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeResponse
+         0     0% 99.49%       1824  2.84%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeResponse.func2
+         0     0% 99.49%       7435 11.57%  github.com/elysia-api/backend/protocol.(*Compiled).OperationRoutes.func1 (inline)
+         0     0% 99.49%       5475  8.52%  github.com/elysia-api/backend/protocol.(*Compiled).ValidateWireOutput (inline)
+         0     0% 99.49%       5475  8.52%  github.com/elysia-api/backend/protocol.(*Compiled).validateWireOutput
+         0     0% 99.49%       1828  2.84%  github.com/elysia-api/backend/protocol.Value.ReadObject
+         0     0% 99.49%       1828  2.84%  github.com/elysia-api/backend/protocol.Value.readObject (inline)
+         0     0% 99.49%       1824  2.84%  github.com/elysia-api/backend/protocol.decodeTyped[go.shape.0509f5d0194e6d48d4edfa47a71047fc43d721c9dd14d184546c9f0ec54bd318]
+         0     0% 99.49%       1824  2.84%  github.com/elysia-api/backend/protocol/builtin.module.DecodeResponse
+         0     0% 99.49%       5475  8.52%  github.com/elysia-api/backend/protocol/builtin.module.ValidateWireObjectOutput
+         0     0% 99.49%       5475  8.52%  github.com/elysia-api/backend/protocol/builtin.module.ValidateWireOutput
+         0     0% 99.49%       5469  8.51%  github.com/elysia-api/backend/protocol/builtin.module.decodeRequest
+         0     0% 99.49%       1824  2.84%  github.com/elysia-api/backend/protocol/builtin.module.decodeResponse
+         0     0% 99.49%       5475  8.52%  github.com/elysia-api/backend/protocol/builtin.module.validateRequestWireContract
+         0     0% 99.49%       5475  8.52%  github.com/elysia-api/backend/protocol/builtin.module.validateWireObjectContract
+         0     0% 99.49%       7485 11.64%  github.com/elysia-api/backend/server.(*Server).authMiddleware.func1
+         0     0% 99.49%       7485 11.64%  github.com/elysia-api/backend/server.(*Server).chatCompletions
+         0     0% 99.49%      54740 85.16%  github.com/elysia-api/backend/server.(*Server).dashboardAuthMiddleware.func1
+         0     0% 99.49%       7311 11.37%  github.com/elysia-api/backend/server.(*Server).forwardGateway
+         0     0% 99.49%       2052  3.19%  github.com/elysia-api/backend/server.(*Server).persistUsageBatch
+         0     0% 99.49%       2052  3.19%  github.com/elysia-api/backend/server.(*Server).saveUsageBatchToStore
+         0     0% 99.49%       7435 11.57%  github.com/elysia-api/backend/server.(*Server).serveProtocolRequest
+         0     0% 99.49%       7485 11.64%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress
+         0     0% 99.49%       7435 11.57%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress-range1 (inline)
+         0     0% 99.49%       2052  3.19%  github.com/elysia-api/backend/server.(*usageWriterState).run
+         0     0% 99.49%      62225 96.81%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func7
+         0     0% 99.49%       2048  3.19%  github.com/elysia-api/backend/storage.(*LogStore).SaveUsageBatch (inline)
+         0     0% 99.49%       2048  3.19%  github.com/elysia-api/backend/storage.(*LogStore).SaveUsageBatch.func1
+         0     0% 99.49%       2048  3.19%  github.com/elysia-api/backend/storage.saveUsageRecordTx
+         0     0% 99.49%       2048  3.19%  github.com/elysia-api/backend/storage.withTx

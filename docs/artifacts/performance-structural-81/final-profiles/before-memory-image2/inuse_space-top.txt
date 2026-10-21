@@ -1,0 +1,47 @@
+File: server.test
+Build ID: d178d191986e516395912b7c624c5baa8c69f91f
+Type: inuse_space
+Time: 2026-10-21 01:40:51 CST
+Showing nodes accounting for 8391.68kB, 100% of 8391.68kB total
+Showing top 40 nodes out of 125
+      flat  flat%   sum%        cum   cum%
+ 2050.29kB 24.43% 24.43%  2050.29kB 24.43%  runtime.mallocgc
+  574.34kB  6.84% 31.28%   574.34kB  6.84%  reflect.compiledTypelinks
+  561.50kB  6.69% 37.97%   561.50kB  6.69%  github.com/bytedance/sonic/internal/caching.(*_ProgramMap).copy (inline)
+  561.50kB  6.69% 44.66%   561.50kB  6.69%  github.com/bytedance/sonic/internal/caching.newProgramMap
+  532.26kB  6.34% 51.00%   532.26kB  6.34%  github.com/elysia-api/backend/protocol.ParseValue
+  525.43kB  6.26% 57.26%   525.43kB  6.26%  github.com/go-playground/validator/v10.map.init.7
+     513kB  6.11% 63.38%      513kB  6.11%  github.com/ugorji/go/codec.helperDecDriverJsonBytes.fastpathDList
+  512.56kB  6.11% 69.48%   512.56kB  6.11%  github.com/bytedance/sonic/internal/caching.newBucket (inline)
+  512.44kB  6.11% 75.59%     1025kB 12.21%  github.com/bytedance/sonic/internal/caching.CreateFieldMap (inline)
+  512.28kB  6.10% 81.70%   512.28kB  6.10%  github.com/bytedance/sonic/loader.makeModuledata
+  512.05kB  6.10% 87.80%   512.05kB  6.10%  regexp/syntax.(*parser).newRegexp
+  512.02kB  6.10% 93.90%   512.02kB  6.10%  internal/sync.newEntryNode[go.shape.interface {},go.shape.interface {}] (inline)
+  512.01kB  6.10%   100%   512.01kB  6.10%  github.com/gabriel-vasile/mimetype.init
+         0     0%   100%  1586.34kB 18.90%  decode_
+         0     0%   100%   574.34kB  6.84%  encoding/gob.buildTypeInfo
+         0     0%   100%   574.34kB  6.84%  encoding/gob.getBaseType
+         0     0%   100%   574.34kB  6.84%  encoding/gob.getType
+         0     0%   100%   574.34kB  6.84%  encoding/gob.getTypeInfo
+         0     0%   100%   574.34kB  6.84%  encoding/gob.implementsInterface
+         0     0%   100%   574.34kB  6.84%  encoding/gob.init
+         0     0%   100%   574.34kB  6.84%  encoding/gob.mustGetTypeInfo
+         0     0%   100%   574.34kB  6.84%  encoding/gob.newTypeObject
+         0     0%   100%   574.34kB  6.84%  encoding/gob.userType
+         0     0%   100%   574.34kB  6.84%  encoding/gob.validUserType
+         0     0%   100%   512.02kB  6.10%  encoding/json.Unmarshal
+         0     0%   100%   512.02kB  6.10%  encoding/json/v2.Unmarshal
+         0     0%   100%   512.02kB  6.10%  encoding/json/v2.lookupArshaler
+         0     0%   100%   512.02kB  6.10%  encoding/json/v2.unmarshalDecode
+         0     0%   100%   561.50kB  6.69%  github.com/bytedance/sonic.frozenConfig.Unmarshal
+         0     0%   100%   561.50kB  6.69%  github.com/bytedance/sonic.frozenConfig.UnmarshalFromString
+         0     0%   100%  2098.78kB 25.01%  github.com/bytedance/sonic/internal/caching.(*ProgramCache).Compute
+         0     0%   100%   561.50kB  6.69%  github.com/bytedance/sonic/internal/caching.(*_ProgramMap).add
+         0     0%   100%  2098.78kB 25.01%  github.com/bytedance/sonic/internal/decoder/api.(*Decoder).Decode
+         0     0%   100%   512.28kB  6.10%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Assembler).Load (inline)
+         0     0%   100%     1025kB 12.21%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Compiler).compile
+         0     0%   100%     1025kB 12.21%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Compiler).compileOne
+         0     0%   100%     1025kB 12.21%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Compiler).compileOps
+         0     0%   100%   512.44kB  6.11%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Compiler).compilePtr
+         0     0%   100%     1025kB 12.21%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Compiler).compileSlice
+         0     0%   100%     1025kB 12.21%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Compiler).compileSliceBody

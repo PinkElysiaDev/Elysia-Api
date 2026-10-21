@@ -1,0 +1,49 @@
+File: server.test
+Build ID: cd5a81169609bad526abf832f7235a39cef8a024
+Type: cpu
+Time: 2026-10-21 01:42:48 CST
+Duration: 15s, Total samples = 15.32s (102.12%)
+Showing nodes accounting for 13.61s, 88.84% of 15.32s total
+Dropped 468 nodes (cum <= 0.08s)
+Showing top 40 nodes out of 204
+      flat  flat%   sum%        cum   cum%
+     4.68s 30.55% 30.55%      4.68s 30.55%  indexbytebody
+     2.67s 17.43% 47.98%      2.67s 17.43%  countbody
+     1.61s 10.51% 58.49%      1.80s 11.75%  unicode/utf8.ValidString
+     0.94s  6.14% 64.62%      0.94s  6.14%  runtime.memmove
+     0.65s  4.24% 68.86%      0.65s  4.24%  internal/runtime/syscall/linux.Syscall6
+     0.37s  2.42% 71.28%      0.37s  2.42%  internal/runtime/maps.memHashAES
+     0.36s  2.35% 73.63%      0.36s  2.35%  runtime.memclrNoHeapPointers
+     0.32s  2.09% 75.72%      0.32s  2.09%  encoding/json/internal/jsonwire.ConsumeSimpleString
+     0.32s  2.09% 77.81%      0.48s  3.13%  runtime.tryDeferToSpanScan
+     0.30s  1.96% 79.77%      0.30s  1.96%  _value
+     0.27s  1.76% 81.53%      0.27s  1.76%  runtime.madvise
+     0.19s  1.24% 82.77%      0.19s  1.24%  unicode/utf8.word[go.shape.string] (inline)
+     0.16s  1.04% 83.81%      0.67s  4.37%  runtime.scanObject
+     0.10s  0.65% 84.46%      0.11s  0.72%  runtime.heapArenaOf (inline)
+     0.10s  0.65% 85.12%      0.10s  0.65%  runtime.typePointers.nextFast (inline)
+     0.09s  0.59% 85.70%      0.09s  0.59%  runtime.osyield
+     0.08s  0.52% 86.23%      0.09s  0.59%  runtime.typePointers.next
+     0.07s  0.46% 86.68%      0.14s  0.91%  runtime.scanblock
+     0.05s  0.33% 87.01%      0.14s  0.91%  runtime.scanObjectsSmall
+     0.04s  0.26% 87.27%      0.34s  2.22%  runtime.scanSpan
+     0.03s   0.2% 87.47%      2.32s 15.14%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+     0.02s  0.13% 87.60%      0.59s  3.85%  decode_value
+     0.02s  0.13% 87.73%      6.34s 41.38%  github.com/elysia-api/backend/protocol.(*typedMeter).visit
+     0.02s  0.13% 87.86%      0.39s  2.55%  runtime.mallocgc
+     0.02s  0.13% 87.99%      0.10s  0.65%  runtime.netpoll
+     0.02s  0.13% 88.12%      4.26s 27.81%  strings.Count
+     0.01s 0.065% 88.19%      0.63s  4.11%  decode_
+     0.01s 0.065% 88.25%      2.22s 14.49%  github.com/elysia-api/backend/protocol.needsSemanticCompaction
+     0.01s 0.065% 88.32%      0.09s  0.59%  github.com/elysia-api/backend/protocol/builtin.readContextArray
+     0.01s 0.065% 88.38%      0.13s  0.85%  net/http.(*connReader).Read
+     0.01s 0.065% 88.45%      0.08s  0.52%  runtime.(*mcache).refill
+     0.01s 0.065% 88.51%      0.19s  1.24%  runtime.findRunnable
+     0.01s 0.065% 88.58%      1.52s  9.92%  runtime.gcDrain
+     0.01s 0.065% 88.64%      0.08s  0.52%  runtime.makeslice
+     0.01s 0.065% 88.71%      0.58s  3.79%  syscall.RawSyscall6
+     0.01s 0.065% 88.77%      0.16s  1.04%  syscall.Read (inline)
+     0.01s 0.065% 88.84%      0.38s  2.48%  syscall.Write (inline)
+         0     0% 88.84%      0.13s  0.85%  bufio.(*Reader).Read
+         0     0% 88.84%      0.43s  2.81%  bufio.(*Writer).ReadFrom
+         0     0% 88.84%      0.15s  0.98%  database/sql.(*DB).retry

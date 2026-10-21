@@ -1,0 +1,47 @@
+File: server.test
+Build ID: cd5a81169609bad526abf832f7235a39cef8a024
+Type: alloc_objects
+Time: 2026-10-21 01:41:59 CST
+Showing nodes accounting for 51606, 99.86% of 51680 total
+Dropped 24 nodes (cum <= 258)
+      flat  flat%   sum%        cum   cum%
+     32768 63.41% 63.41%      32768 63.41%  reflect.unsafe_New
+     15293 29.59% 93.00%      15293 29.59%  runtime/pprof.allFrames
+      2521  4.88% 97.88%       2521  4.88%  github.com/elysia-api/backend/protocol/builtin.module.decodeResponse
+      1024  1.98% 99.86%       1024  1.98%  sync.(*Pool).pinSlow
+         0     0% 99.86%       2521  4.88%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeResponse
+         0     0% 99.86%       2521  4.88%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeResponse.func2
+         0     0% 99.86%      35293 68.29%  github.com/elysia-api/backend/protocol.(*Compiled).OperationRoutes.func1 (inline)
+         0     0% 99.86%      32772 63.41%  github.com/elysia-api/backend/protocol.(*CompiledConversion).Request
+         0     0% 99.86%      32772 63.41%  github.com/elysia-api/backend/protocol.(*CompiledConversion).applyConversionState
+         0     0% 99.86%      32772 63.41%  github.com/elysia-api/backend/protocol.(*CompiledConversion).convertOwnedRequest
+         0     0% 99.86%      32772 63.41%  github.com/elysia-api/backend/protocol.(*conversionState).apply
+         0     0% 99.86%      32768 63.41%  github.com/elysia-api/backend/protocol.(*conversionState).normalize
+         0     0% 99.86%       2521  4.88%  github.com/elysia-api/backend/protocol.decodeTyped[go.shape.0509f5d0194e6d48d4edfa47a71047fc43d721c9dd14d184546c9f0ec54bd318]
+         0     0% 99.86%       2521  4.88%  github.com/elysia-api/backend/protocol/builtin.module.DecodeResponse
+         0     0% 99.86%      35293 68.29%  github.com/elysia-api/backend/server.(*Server).authMiddleware.func1
+         0     0% 99.86%      35293 68.29%  github.com/elysia-api/backend/server.(*Server).chatCompletions
+         0     0% 99.86%      15363 29.73%  github.com/elysia-api/backend/server.(*Server).dashboardAuthMiddleware.func1
+         0     0% 99.86%       2521  4.88%  github.com/elysia-api/backend/server.(*Server).forwardGateway
+         0     0% 99.86%      32772 63.41%  github.com/elysia-api/backend/server.(*Server).prepareGatewayPlan
+         0     0% 99.86%      35293 68.29%  github.com/elysia-api/backend/server.(*Server).serveProtocolRequest
+         0     0% 99.86%      35293 68.29%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress
+         0     0% 99.86%      35293 68.29%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress-range1 (inline)
+         0     0% 99.86%      51680   100%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func8
+         0     0% 99.86%      50656 98.02%  github.com/gin-gonic/gin.(*Context).Next
+         0     0% 99.86%      51680   100%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0% 99.86%      50656 98.02%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0% 99.86%      15363 29.73%  github.com/gin-gonic/gin.WrapH.func1
+         0     0% 99.86%      51680   100%  net/http.(*conn).serve
+         0     0% 99.86%      51680   100%  net/http.HandlerFunc.ServeHTTP
+         0     0% 99.86%      51680   100%  net/http.serverHandler.ServeHTTP
+         0     0% 99.86%      15363 29.73%  net/http/pprof.handler.ServeHTTP
+         0     0% 99.86%      32768 63.41%  reflect.(*MapIter).Value
+         0     0% 99.86%      32768 63.41%  reflect.copyVal
+         0     0% 99.86%      15363 29.73%  runtime/pprof.(*Profile).WriteTo
+         0     0% 99.86%      15363 29.73%  runtime/pprof.(*profileBuilder).appendLocsForStack
+         0     0% 99.86%      15346 29.69%  runtime/pprof.writeHeap
+         0     0% 99.86%      15363 29.73%  runtime/pprof.writeHeapInternal
+         0     0% 99.86%      15363 29.73%  runtime/pprof.writeHeapProto
+         0     0% 99.86%       1028  1.99%  sync.(*Pool).Get
+         0     0% 99.86%       1024  1.98%  sync.(*Pool).pin
