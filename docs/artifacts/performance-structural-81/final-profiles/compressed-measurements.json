@@ -1,0 +1,92 @@
+[
+  {
+    "path": "after-cpu-chat-short/measurements.json.gz",
+    "originalPath": "after-cpu-chat-short/measurements.json",
+    "sha256": "fc0e18b86f57a5e271a80dc033b448399be00fad5ec3c76c871a6a69732cf2c1"
+  },
+  {
+    "path": "after-cpu-image2/measurements.json.gz",
+    "originalPath": "after-cpu-image2/measurements.json",
+    "sha256": "5b6d2b7020439cee10cdcdab3c80ed5dbd784659569c1443fc37b46de39e1c51"
+  },
+  {
+    "path": "after-cpu-image31/measurements.json.gz",
+    "originalPath": "after-cpu-image31/measurements.json",
+    "sha256": "0fc99857a049850ab54321b07ead582918985b0d0c04fc2a087f76e9221b09d3"
+  },
+  {
+    "path": "after-cpu-stream256-cross/measurements.json.gz",
+    "originalPath": "after-cpu-stream256-cross/measurements.json",
+    "sha256": "28fd442f6e12e1e0e58eda503e05fb4f2407fbd41047ba311850a474b276d6b5"
+  },
+  {
+    "path": "after-measure-image31/measurements.json.gz",
+    "originalPath": "after-measure-image31/measurements.json",
+    "sha256": "abcfca55b94b8ae86e47944cf1b0081aa83d7f6a72156e3d30c3578222faf372"
+  },
+  {
+    "path": "after-memory-chat-short/measurements.json.gz",
+    "originalPath": "after-memory-chat-short/measurements.json",
+    "sha256": "311faa76e52c79e626377ffc41cddecf8f7d1fb712975e03ec2cd537aa0c3ce4"
+  },
+  {
+    "path": "after-memory-image2/measurements.json.gz",
+    "originalPath": "after-memory-image2/measurements.json",
+    "sha256": "64500e362ac5273cc10713782865b68978edca2553e56c8b183ba556e6767021"
+  },
+  {
+    "path": "after-memory-image31/measurements.json.gz",
+    "originalPath": "after-memory-image31/measurements.json",
+    "sha256": "22784f6097ac32d64ee7349a6daa8b93d5ad55d7cd82a7f525578ad9aa8b5eee"
+  },
+  {
+    "path": "after-memory-stream256-cross/measurements.json.gz",
+    "originalPath": "after-memory-stream256-cross/measurements.json",
+    "sha256": "d3a693502db0315a2de6cc51200a40ff542e70d5e2cf70018f8db35b202e428d"
+  },
+  {
+    "path": "before-cpu-chat-short/measurements.json.gz",
+    "originalPath": "before-cpu-chat-short/measurements.json",
+    "sha256": "216b2ce20cf4db02940cdbeff71f6f9bf525aa684e7627b5774e752358a4cd10"
+  },
+  {
+    "path": "before-cpu-image2/measurements.json.gz",
+    "originalPath": "before-cpu-image2/measurements.json",
+    "sha256": "e94c52bc1ab465e1cb92c3d6cd10677226571b5817f37e0d2a6e0ca0fa9a6551"
+  },
+  {
+    "path": "before-cpu-image31/measurements.json.gz",
+    "originalPath": "before-cpu-image31/measurements.json",
+    "sha256": "24309f44777bca2ffbfbf6f5f1b07864329d58ec5a36ab5a00986c94d380e4bd"
+  },
+  {
+    "path": "before-cpu-stream256-cross/measurements.json.gz",
+    "originalPath": "before-cpu-stream256-cross/measurements.json",
+    "sha256": "7fb18f5da78704a801f7e18d4eb91c02e2cf20b7c5bfae6abcd26e803d499e08"
+  },
+  {
+    "path": "before-measure-image31/measurements.json.gz",
+    "originalPath": "before-measure-image31/measurements.json",
+    "sha256": "a6821aeb61d7c64be699683d597864b4fab1342b1c18fc4de49d145aee9dcae7"
+  },
+  {
+    "path": "before-memory-chat-short/measurements.json.gz",
+    "originalPath": "before-memory-chat-short/measurements.json",
+    "sha256": "d970872b249cefd1380c347ab48eb13d979bda4c0b88aadae5ed75011adac860"
+  },
+  {
+    "path": "before-memory-image2/measurements.json.gz",
+    "originalPath": "before-memory-image2/measurements.json",
+    "sha256": "4b859b490793b7ee6bf1467f4a208e24e5af92e277579778a90eeaac5138c8c0"
+  },
+  {
+    "path": "before-memory-image31/measurements.json.gz",
+    "originalPath": "before-memory-image31/measurements.json",
+    "sha256": "f4142fce46d51be6edfd48af82f9f9463b1f147a637b6ba1f0becfcf80199238"
+  },
+  {
+    "path": "before-memory-stream256-cross/measurements.json.gz",
+    "originalPath": "before-memory-stream256-cross/measurements.json",
+    "sha256": "71deb8add62a6cc2eb4d2fe97612c7f37c8dbcd8bb471420b62c749e0e1e3693"
+  }
+]

@@ -1,0 +1,47 @@
+File: server.test
+Build ID: d178d191986e516395912b7c624c5baa8c69f91f
+Type: inuse_space
+Time: 2026-10-21 01:41:37 CST
+Showing nodes accounting for 4175.11kB, 100% of 4175.11kB total
+Showing top 40 nodes out of 84
+      flat  flat%   sum%        cum   cum%
+ 1034.71kB 24.78% 24.78%  1034.71kB 24.78%  github.com/go-playground/validator/v10.map.init.12
+ 1024.32kB 24.53% 49.32%  1024.32kB 24.53%  github.com/bytedance/sonic/loader.makeModuledata
+  574.34kB 13.76% 63.07%   574.34kB 13.76%  reflect.compiledTypelinks
+  516.64kB 12.37% 75.45%   516.64kB 12.37%  google.golang.org/protobuf/reflect/protoregistry.(*Types).register
+     513kB 12.29% 87.73%      513kB 12.29%  runtime.mallocgc
+  512.10kB 12.27%   100%   512.10kB 12.27%  runtime/pprof.lockProfiles
+         0     0%   100%   512.28kB 12.27%  encode_[...]protocol.Node
+         0     0%   100%   512.28kB 12.27%  encode_protocol.Request
+         0     0%   100%   574.34kB 13.76%  encoding/gob.buildTypeInfo
+         0     0%   100%   574.34kB 13.76%  encoding/gob.getBaseType
+         0     0%   100%   574.34kB 13.76%  encoding/gob.getType
+         0     0%   100%   574.34kB 13.76%  encoding/gob.getTypeInfo
+         0     0%   100%   574.34kB 13.76%  encoding/gob.implementsInterface
+         0     0%   100%   574.34kB 13.76%  encoding/gob.init
+         0     0%   100%   574.34kB 13.76%  encoding/gob.mustGetTypeInfo
+         0     0%   100%   574.34kB 13.76%  encoding/gob.newTypeObject
+         0     0%   100%   574.34kB 13.76%  encoding/gob.userType
+         0     0%   100%   574.34kB 13.76%  encoding/gob.validUserType
+         0     0%   100%   512.28kB 12.27%  github.com/bytedance/sonic.frozenConfig.MarshalToString
+         0     0%   100%  1024.32kB 24.53%  github.com/bytedance/sonic/internal/caching.(*ProgramCache).Compute
+         0     0%   100%   512.04kB 12.26%  github.com/bytedance/sonic/internal/decoder/api.(*Decoder).Decode
+         0     0%   100%   512.04kB 12.26%  github.com/bytedance/sonic/internal/decoder/jitdec.(*_Assembler).Load (inline)
+         0     0%   100%   512.04kB 12.26%  github.com/bytedance/sonic/internal/decoder/jitdec.Decode
+         0     0%   100%   512.04kB 12.26%  github.com/bytedance/sonic/internal/decoder/jitdec.decodeTypedPointer
+         0     0%   100%   512.04kB 12.26%  github.com/bytedance/sonic/internal/decoder/jitdec.findOrCompile
+         0     0%   100%   512.04kB 12.26%  github.com/bytedance/sonic/internal/decoder/jitdec.makeDecoder
+         0     0%   100%   512.28kB 12.27%  github.com/bytedance/sonic/internal/encoder.Encode
+         0     0%   100%   512.28kB 12.27%  github.com/bytedance/sonic/internal/encoder.encodeInto
+         0     0%   100%   512.28kB 12.27%  github.com/bytedance/sonic/internal/encoder.encodeIntoCheckRace (inline)
+         0     0%   100%   512.28kB 12.27%  github.com/bytedance/sonic/internal/encoder.makeEncoderX86
+         0     0%   100%   512.28kB 12.27%  github.com/bytedance/sonic/internal/encoder/vars.FindOrCompile
+         0     0%   100%   512.28kB 12.27%  github.com/bytedance/sonic/internal/encoder/x86.(*Assembler).Load (inline)
+         0     0%   100%   512.28kB 12.27%  github.com/bytedance/sonic/internal/encoder/x86.EncodeTypedPointer
+         0     0%   100%  1024.32kB 24.53%  github.com/bytedance/sonic/internal/jit.(*BaseAssembler).Load
+         0     0%   100%  1024.32kB 24.53%  github.com/bytedance/sonic/loader.Load
+         0     0%   100%  1024.32kB 24.53%  github.com/bytedance/sonic/loader.Loader.LoadOne
+         0     0%   100%   512.28kB 12.27%  github.com/elysia-api/backend/protocol.EncodeValue
+         0     0%   100%  1024.32kB 24.53%  github.com/elysia-api/backend/protocol.Verify
+         0     0%   100%   512.04kB 12.26%  github.com/elysia-api/backend/protocol.comparableExpected
+         0     0%   100%   512.28kB 12.27%  github.com/elysia-api/backend/protocol.comparableSemantic
