@@ -7,10 +7,17 @@ const requestViewMinBytes = 64 << 10
 // valueReader is scoped to one decode. Small fragments are detached immediately;
 // sharing is useful only for payloads that account for a substantial part of the
 // root. Public ReadObject/Decode continue to return independent child storage.
-type valueReader struct{ minimumSharedBytes int }
+type valueReader struct {
+	minimumSharedBytes int
+	index              *valueIndex
+}
 
 func requestValueReader(root Value) *valueReader {
-	return &valueReader{minimumSharedBytes: max(requestViewMinBytes, len(root.raw)/4)}
+	reader := &valueReader{minimumSharedBytes: max(requestViewMinBytes, len(root.raw)/4)}
+	if len(root.raw) >= requestViewMinBytes {
+		reader.index = &valueIndex{root: root.raw, minimumBytes: reader.minimumSharedBytes}
+	}
+	return reader
 }
 
 // WithValueReader scopes large immutable views to a trusted adapter invocation.

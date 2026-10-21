@@ -16,28 +16,30 @@ type semanticValueEntry struct {
 // encoded size and node count at its actual nesting depth.
 type semanticCache struct {
 	limits        Limits
-	entries       map[Value]semanticValueEntry
+	entries       map[immutableSpan]semanticValueEntry
 	inline        *[2]semanticCacheEntry
 	inlineCount   int
 	retainedBytes int
 }
 
 type semanticCacheEntry struct {
-	value Value
+	value immutableSpan
 	entry semanticValueEntry
 }
 
 // Most frame-local segments visit only a payload and its native envelope. A
 // lazily allocated two-entry workspace avoids a hash table (and hashing large
 // identical strings) without increasing storage for executions that cache none.
-// Wider segments spill to the same bounded map; no storage crosses requests.
+// Wider segments use storage identities instead of hashing entire payloads;
+// independently allocated equal content may miss. No storage crosses requests.
 func (cache *semanticCache) lookup(value Value) (semanticValueEntry, bool) {
+	identity := spanIdentity(value.raw)
 	for index := range cache.inlineCount {
-		if cached := cache.inline[index]; cached.value == value {
+		if cached := cache.inline[index]; cached.value == identity {
 			return cached.entry, true
 		}
 	}
-	entry, exists := cache.entries[value]
+	entry, exists := cache.entries[identity]
 	return entry, exists
 }
 
@@ -64,6 +66,7 @@ func (entry semanticValueEntry) retainedBytes(value Value) int {
 }
 
 func (cache *semanticCache) store(value Value, entry semanticValueEntry) {
+	identity := spanIdentity(value.raw)
 	previous, exists := cache.lookup(value)
 	if !exists && cache.size() >= cache.limits.StateItems {
 		return
@@ -80,7 +83,7 @@ func (cache *semanticCache) store(value Value, entry semanticValueEntry) {
 		return
 	}
 	for index := range cache.inlineCount {
-		if cache.inline[index].value == value {
+		if cache.inline[index].value == identity {
 			cache.inline[index].entry = entry
 			cache.retainedBytes += entry.retainedBytes(value) - previousBytes
 			return
@@ -90,13 +93,13 @@ func (cache *semanticCache) store(value Value, entry semanticValueEntry) {
 		if cache.inline == nil {
 			cache.inline = new([2]semanticCacheEntry)
 		}
-		cache.inline[cache.inlineCount] = semanticCacheEntry{value, entry}
+		cache.inline[cache.inlineCount] = semanticCacheEntry{identity, entry}
 		cache.inlineCount++
 	} else {
 		if cache.entries == nil {
-			cache.entries = make(map[Value]semanticValueEntry)
+			cache.entries = make(map[immutableSpan]semanticValueEntry)
 		}
-		cache.entries[value] = entry
+		cache.entries[identity] = entry
 	}
 	cache.retainedBytes += entry.retainedBytes(value) - previousBytes
 }
