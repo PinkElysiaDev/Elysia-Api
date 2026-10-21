@@ -20,7 +20,7 @@ React 18 + TypeScript 管理界面，使用 Vite、Tailwind、Radix、SWR、Rech
 
    ```sh
    cd backend
-   go run -tags=sonic . --config ./config.json
+   go run . --config ./config.json
    ```
 
 2. 在仓库根目录的另一个终端启动前端：

@@ -9,9 +9,6 @@ on:
 permissions:
   contents: write
 
-env:
-  GOFLAGS: -tags=sonic
-
 jobs:
   build-binaries:
     runs-on: ubuntu-latest

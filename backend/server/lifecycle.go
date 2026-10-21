@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/utils"
+
 	"github.com/elysia-api/backend/logging"
-	"github.com/gin-gonic/gin"
 )
 
 func (s *Server) ListenAndServe() (result error) {
@@ -19,35 +20,28 @@ func (s *Server) ListenAndServe() (result error) {
 		return s.startupErr
 	}
 	s.setupRoutes()
-	s.startUsageWriter()
-	if err := s.startGatewayJobs(); err != nil {
-		return err
-	}
-	s.healthChecker = newHealthChecker(s)
-	s.healthChecker.start()
-	s.usageRetention = newUsageRetention(s)
-	s.usageRetention.start()
+	// OnRun runs after Hertz initialization, before binding the listener. Any
+	// hook or bind failure still goes through the deferred application shutdown.
+	s.engine.OnRun = append(s.engine.OnRun, s.startServices)
 
 	listen := s.config.GetServer()
 	addr := fmt.Sprintf("%s:%d", listen.Host, listen.Port)
 	s.logEvent("info").Str("address", addr).Msg("starting server")
-	s.httpServer = &http.Server{
-		Addr: addr, Handler: http.HandlerFunc(s.serveHTTP),
-		ErrorLog:    s.Logger().Standard("http_server"),
-		BaseContext: func(net.Listener) context.Context { return s.lifecycleCtx },
-	}
-
-	// Bind before launching the console; startup errors still drain owned work.
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return err
-	}
-	launchConsoleBrowser(s.config.OpenBrowserOnStart, listen.Host, listen.Port)
 
 	// main owns OS signals; all shutdown sources share RequestShutdown.
 	serveDone := make(chan struct{})
 	defer close(serveDone)
 	go func() {
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for !s.engine.IsRunning() {
+			select {
+			case <-serveDone:
+				return
+			case <-ticker.C:
+			}
+		}
+		launchConsoleBrowser(s.config.OpenBrowserOnStart, listen.Host, listen.Port)
 		select {
 		case <-s.shutdownRequested:
 			s.logEvent("info").Msg("shutdown requested; draining")
@@ -57,12 +51,23 @@ func (s *Server) ListenAndServe() (result error) {
 		s.doShutdown()
 	}()
 
-	err = s.httpServer.Serve(listener)
-	if err == http.ErrServerClosed {
-		<-s.shutdownDone
-		return nil
+	return s.engine.Run()
+}
+
+func (s *Server) startServices(context.Context) error {
+	s.startUsageWriter()
+	if err := s.startGatewayJobs(); err != nil {
+		return err
 	}
-	return err
+	if s.store != nil {
+		s.store.StartRollupBackfill()
+	}
+	go s.catalog.runPeriodic()
+	s.healthChecker = newHealthChecker(s)
+	s.healthChecker.start()
+	s.usageRetention = newUsageRetention(s)
+	s.usageRetention.start()
+	return nil
 }
 
 func (s *Server) initLifecycle() {
@@ -80,23 +85,12 @@ func (s *Server) RequestShutdown() {
 	s.shutdownRequestOnce.Do(func() { close(s.shutdownRequested) })
 }
 
-func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
-	s.requestMu.Lock()
-	if s.stopping {
-		s.requestMu.Unlock()
-		http.Error(w, "server is shutting down", http.StatusServiceUnavailable)
-		return
-	}
-	s.requestWG.Add(1)
-	s.requestMu.Unlock()
-	defer s.requestWG.Done()
-	s.engine.ServeHTTP(w, r)
-}
-
-func (s *Server) shutdown(c *gin.Context) {
+func (s *Server) shutdown(ctx context.Context, c *app.RequestContext) {
 	s.logSystemEvent("info", "server shutdown requested", nil)
-	c.JSON(http.StatusOK, gin.H{"shuttingDown": true})
-	s.RequestShutdown()
+	c.JSON(http.StatusOK, utils.H{"shuttingDown": true})
+	// JSON is buffered. Signal only after Hertz has attempted to send the
+	// acknowledgment; RequestShutdown must remain non-blocking inside Finish.
+	onHTTPComplete(c, s.RequestShutdown)
 }
 
 func (s *Server) doShutdown() {
@@ -108,9 +102,7 @@ func (s *Server) doShutdown() {
 		defer s.usageWriteCancel()
 		ctx, cancel := context.WithDeadline(context.Background(), deadline)
 		defer cancel()
-		s.requestMu.Lock()
-		s.stopping = true
-		s.requestMu.Unlock()
+		s.httpRequests.stop()
 		s.preparationLimiter().Close()
 		s.lifecycleCancel()
 		if s.healthChecker != nil {
@@ -137,16 +129,18 @@ func (s *Server) doShutdown() {
 		// Sessions and jobs own long-lived connections and stop before HTTP drains.
 		s.gatewaySessions.stop()
 		s.gatewayJobs.stop()
-		if s.httpServer != nil {
+		if s.engine != nil && s.engine.IsRunning() {
 			httpCtx, stopHTTP := context.WithTimeout(ctx, 5*time.Second)
-			if err := s.httpServer.Shutdown(httpCtx); err != nil {
+			if err := s.engine.Shutdown(httpCtx); err != nil || httpCtx.Err() != nil {
 				s.logEvent("warn").Err(err).Msg("HTTP graceful shutdown timed out; canceling connections")
-				_ = s.httpServer.Close()
+				_ = s.engine.Close()
 			}
 			stopHTTP()
 		}
+		// Also covers an engine that returned after an external listener close.
+		s.httpRequests.interrupt()
 		requestsDone := make(chan struct{})
-		go func() { s.requestWG.Wait(); s.sourceRefreshJobs().wait(); close(requestsDone) }()
+		go func() { s.httpRequests.wait(); s.sourceRefreshJobs().wait(); close(requestsDone) }()
 		select {
 		case <-requestsDone:
 		case <-ctx.Done():

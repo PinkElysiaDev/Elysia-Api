@@ -401,8 +401,8 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
       if (current === 'sdk') await mapConcurrent(sdkTasks, plan.api.concurrency, task => task())
       if (current === 'code') {
         const defaults = [
-          { id: 'backend-tests', command: ['go', 'test', '-tags=sonic', '-json', './...', '-count=1', '-timeout=45m'], cwd: 'backend', timeoutMs: 3600000 },
-          { id: 'backend-vet', command: ['go', 'vet', '-tags=sonic', './...'], cwd: 'backend' },
+          { id: 'backend-tests', command: ['go', 'test', '-json', './...', '-count=1', '-timeout=45m'], cwd: 'backend', timeoutMs: 3600000 },
+          { id: 'backend-vet', command: ['go', 'vet', './...'], cwd: 'backend' },
           { id: 'frontend-types', command: [process.execPath, join(plan.root, 'node_modules/typescript/bin/tsc'), '--noEmit'], cwd: 'packages/webui' },
           { id: 'frontend-lint', command: [process.execPath, join(plan.root, 'node_modules/eslint/bin/eslint.js'), '.', '--ext', 'ts,tsx', '--max-warnings', '0'], cwd: 'packages/webui' },
           { id: 'frontend-build', command: process.platform === 'win32' ? ['cmd.exe', '/d', '/c', 'npm', 'run', 'build:webui'] : ['npm', 'run', 'build:webui'], cwd: '.' },

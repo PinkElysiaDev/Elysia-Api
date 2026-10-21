@@ -29,7 +29,7 @@ type usageWriterState struct {
 }
 
 // startUsageWriter 在 store 模式下启动单个后台 writer goroutine，
-// 从队列取记录落库。仅在有 store 时调用一次（ListenAndServe 内）。
+// 从队列取记录落库。生产环境在 Hertz OnRun 启动阶段调用。
 func (s *Server) startUsageWriter() {
 	if s.store == nil {
 		return

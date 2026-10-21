@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elysia-api/backend/protocol/builtin"
+	"github.com/cloudwego/hertz/pkg/app"
 
-	"github.com/gin-gonic/gin"
+	"github.com/elysia-api/backend/protocol/builtin"
 )
 
 // errorDetailTruncateBytes 是错误详情入库的展示截断上限。
@@ -31,7 +31,7 @@ func inputFormatFromPath(path string) builtin.FormatType {
 }
 
 // writeProtocolError 按客户端线制写标准错误体（HTTP 层，SSE 尚未开始时）。
-func writeProtocolError(c *gin.Context, format builtin.FormatType, mErr *builtin.GatewayError) {
+func writeProtocolError(ctx context.Context, c *app.RequestContext, format builtin.FormatType, mErr *builtin.GatewayError) {
 	status, body := builtin.ProtocolErrorBody(format, mErr)
 	c.Data(status, contentTypeJSON, body)
 }
@@ -61,9 +61,9 @@ func setUsageError(record *usageRecord, ctx context.Context, err error) {
 
 // waitForRetryOrCancel 等待重试间隔；客户端在等待期断开时返回 false
 // （调用方负责落库并终止，见 abortRetryOnClientCancel）。
-func waitForRetryOrCancel(c *gin.Context, retryIntervalMs int) bool {
+func waitForRetryOrCancel(ctx context.Context, retryIntervalMs int) bool {
 	select {
-	case <-c.Request.Context().Done():
+	case <-ctx.Done():
 		return false
 	case <-time.After(time.Duration(retryIntervalMs) * time.Millisecond):
 		return true

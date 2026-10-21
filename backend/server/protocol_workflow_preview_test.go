@@ -36,7 +36,8 @@ func TestProtocolWorkflowPreviewUsesSessionAndTaskRuntime(t *testing.T) {
 			t.Fatal(err)
 		}
 		ctx, response := adminProtocolContext("POST", "/api/admin/protocols/preview", string(body))
-		s.adminProtocolPreviewV2(ctx)
+		s.adminProtocolPreviewV2(contextForTest(ctx), ctx)
+		flushTestResponse(ctx)
 		if response.Code != 200 {
 			t.Fatal(response.Body)
 		}

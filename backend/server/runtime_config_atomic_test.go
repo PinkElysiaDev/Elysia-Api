@@ -13,7 +13,8 @@ import (
 func TestRuntimeConfigRejectsWholeInvalidPatch(t *testing.T) {
 	s := &Server{config: &config.Config{HTTPTimeout: 12}}
 	c, recorder := adminProtocolContext(http.MethodPut, "/runtime-config", `{"httpTimeout":321,"agent":{"toolLoopLimit":101}}`)
-	s.adminUpdateRuntimeConfig(c)
+	s.adminUpdateRuntimeConfig(contextForTest(c), c)
+	flushTestResponse(c)
 	if recorder.Code != 400 || s.config.GetHTTPTimeout() != 12 {
 		t.Fatalf("status=%d timeout=%d", recorder.Code, s.config.GetHTTPTimeout())
 	}
@@ -38,7 +39,8 @@ func TestRuntimeConfigSaveFailureHasNoSideEffects(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, recorder := adminProtocolContext(http.MethodPut, "/runtime-config", `{"host":"192.0.2.1","httpTimeout":321,"agent":{"toolLoopLimit":25},"usageLog":{"maxRecords":1},"outbound":{"deniedIpRanges":[]}}`)
-	s.adminUpdateRuntimeConfig(c)
+	s.adminUpdateRuntimeConfig(contextForTest(c), c)
+	flushTestResponse(c)
 	if recorder.Code != 500 || cfg.GetHTTPTimeout() != 12 || cfg.ResolveAgentToolLoopLimit() != 17 || cfg.GetUsageLogConfig().MaxRecords != 0 || len(cfg.GetOutboundConfig().DeniedIPRanges) == 0 || s.restartRequired {
 		t.Fatalf("failed save mutated runtime: status=%d timeout=%d", recorder.Code, cfg.GetHTTPTimeout())
 	}

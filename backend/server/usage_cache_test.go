@@ -1,7 +1,7 @@
 package server
 
 import (
-	"io"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,11 +12,16 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/app/middlewares/server/recovery"
+	"github.com/cloudwego/hertz/pkg/common/utils"
 )
 
 // TestUsageCacheCoalescesAndServes：并发同 key 请求合并为一次回源、缓存命中
 // 直接回放、参数顺序不同视为同 key。
+// Wait until every request is blocked: one leader in the handler and the
+// remaining callers in the cache. This proves coalescing, not just cache hits.
+// TTL 内再次请求（参数顺序不同）：命中缓存，不回源。
 func TestUsageCacheCoalescesAndServes(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -24,18 +29,16 @@ func TestUsageCacheCoalescesAndServes(t *testing.T) {
 		defer cache.close()
 		var executions int32
 		release := make(chan struct{})
-		unblock := sync.OnceFunc(func() { close(release) })
+		unblock := sync.OnceFunc(func() {
+			close(release)
+		})
 		defer unblock()
-
-		r := gin.New()
-		r.GET("/p", cache.middleware(), func(c *gin.Context) {
+		r := newTestEngine(t)
+		r.GET("/p", cache.middleware(), func(ctx context.Context, c *app.RequestContext) {
 			atomic.AddInt32(&executions, 1)
 			<-release
-			c.JSON(http.StatusOK, gin.H{"ok": true})
+			c.JSON(http.StatusOK, utils.H{"ok": true})
 		})
-
-		// Wait until every request is blocked: one leader in the handler and the
-		// remaining callers in the cache. This proves coalescing, not just cache hits.
 		var wg sync.WaitGroup
 		bodies := make([]string, 5)
 		codes := make([]int, 5)
@@ -44,7 +47,7 @@ func TestUsageCacheCoalescesAndServes(t *testing.T) {
 			go func(i int) {
 				defer wg.Done()
 				w := httptest.NewRecorder()
-				r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/p?a=1&b=2", nil))
+				serveTestHTTP(r, w, httptest.NewRequest(http.MethodGet, "/p?a=1&b=2", nil))
 				bodies[i] = w.Body.String()
 				codes[i] = w.Code
 			}(i)
@@ -63,10 +66,8 @@ func TestUsageCacheCoalescesAndServes(t *testing.T) {
 				t.Fatalf("waiter %d got code=%d body=%q", i, codes[i], bodies[i])
 			}
 		}
-
-		// TTL 内再次请求（参数顺序不同）：命中缓存，不回源。
 		w := httptest.NewRecorder()
-		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/p?b=2&a=1", nil))
+		serveTestHTTP(r, w, httptest.NewRequest(http.MethodGet, "/p?b=2&a=1", nil))
 		if w.Code != http.StatusOK || w.Body.String() != bodies[0] {
 			t.Fatalf("cache hit mismatch: code=%d body=%q", w.Code, w.Body.String())
 		}
@@ -89,21 +90,23 @@ func TestUsageCacheSkipsUncacheableResponses(t *testing.T) {
 				defer cache.close()
 				var executions atomic.Int32
 				release := make(chan struct{})
-				unblock := sync.OnceFunc(func() { close(release) })
+				unblock := sync.OnceFunc(func() {
+					close(release)
+				})
 				defer unblock()
-				r := gin.New()
-				r.GET("/e", cache.middleware(), func(c *gin.Context) {
+				r := newTestEngine(t)
+				r.GET("/e", cache.middleware(), func(ctx context.Context, c *app.RequestContext) {
 					executions.Add(1)
 					<-release
 					if status == http.StatusOK {
 						c.Status(status)
 					} else {
-						c.JSON(status, gin.H{"error": "boom"})
+						c.JSON(status, utils.H{"error": "boom"})
 					}
 				})
 				request := func() {
 					w := httptest.NewRecorder()
-					r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/e", nil))
+					serveTestHTTP(r, w, httptest.NewRequest(http.MethodGet, "/e", nil))
 					if w.Code != status {
 						t.Errorf("response status = %d, want %d", w.Code, status)
 					}
@@ -129,6 +132,7 @@ func TestUsageCacheSkipsUncacheableResponses(t *testing.T) {
 
 // New-generation callers must not join an old flight; old waiters must not
 // replay its result or allow it to overwrite the new cache entry.
+// Must complete while the old leader is still blocked.
 func TestUsageCacheFlushIsolatesFlights(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -136,33 +140,39 @@ func TestUsageCacheFlushIsolatesFlights(t *testing.T) {
 		defer cache.close()
 		var executions atomic.Int32
 		release := make(chan struct{})
-		unblock := sync.OnceFunc(func() { close(release) })
+		unblock := sync.OnceFunc(func() {
+			close(release)
+		})
 		defer unblock()
-		r := gin.New()
-		r.GET("/p", cache.middleware(), func(c *gin.Context) {
+		r := newTestEngine(t)
+		r.GET("/p", cache.middleware(), func(ctx context.Context, c *app.RequestContext) {
 			if executions.Add(1) == 1 {
 				<-release
-				c.JSON(http.StatusOK, gin.H{"gen": 1})
+				c.JSON(http.StatusOK, utils.H{"gen": 1})
 				return
 			}
-			c.JSON(http.StatusOK, gin.H{"gen": 2})
+			c.JSON(http.StatusOK, utils.H{"gen": 2})
 		})
 		request := func() *httptest.ResponseRecorder {
 			w := httptest.NewRecorder()
-			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/p", nil))
+			serveTestHTTP(r, w, httptest.NewRequest(http.MethodGet, "/p", nil))
 			return w
 		}
 		var leader, waiter *httptest.ResponseRecorder
 		var wg sync.WaitGroup
-		wg.Go(func() { leader = request() })
+		wg.Go(func() {
+			leader = request()
+		})
 		synctest.Wait()
-		wg.Go(func() { waiter = request() })
+		wg.Go(func() {
+			waiter = request()
+		})
 		synctest.Wait()
 		if executions.Load() != 1 {
 			t.Fatal("waiter did not join the old flight")
 		}
 		cache.flush()
-		fresh := request() // Must complete while the old leader is still blocked.
+		fresh := request()
 		if fresh.Code != http.StatusOK || !strings.Contains(fresh.Body.String(), `"gen":2`) {
 			t.Fatalf("new generation response = %d %s", fresh.Code, fresh.Body.String())
 		}
@@ -177,35 +187,39 @@ func TestUsageCacheFlushIsolatesFlights(t *testing.T) {
 	})
 }
 
-// Exercise panic propagation through Gin, then recovery of the same cache key.
+// Exercise panic propagation through Hertz, then recovery of the same cache key.
 func TestUsageCacheSurvivesHandlerPanic(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		cache := &usageResponseCache{}
 		defer cache.close()
 		release := make(chan struct{})
-		unblock := sync.OnceFunc(func() { close(release) })
+		unblock := sync.OnceFunc(func() {
+			close(release)
+		})
 		defer unblock()
 		fail := true
-		r := gin.New()
-		r.Use(gin.RecoveryWithWriter(io.Discard))
-		r.GET("/p", cache.middleware(), func(c *gin.Context) {
+		r := newTestEngine(t)
+		r.Use(recovery.Recovery())
+		r.GET("/p", cache.middleware(), func(ctx context.Context, c *app.RequestContext) {
 			<-release
 			if fail {
 				panic("boom")
 			}
-			c.JSON(http.StatusOK, gin.H{"ok": true})
+			c.JSON(http.StatusOK, utils.H{"ok": true})
 		})
 		request := func(status int) {
 			w := httptest.NewRecorder()
-			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/p", nil))
+			serveTestHTTP(r, w, httptest.NewRequest(http.MethodGet, "/p", nil))
 			if w.Code != status {
 				t.Errorf("response status = %d, want %d", w.Code, status)
 			}
 		}
 		var wg sync.WaitGroup
 		for range 4 {
-			wg.Go(func() { request(http.StatusInternalServerError) })
+			wg.Go(func() {
+				request(http.StatusInternalServerError)
+			})
 		}
 		synctest.Wait()
 		unblock()
@@ -230,14 +244,14 @@ func TestUsageCacheReadsDoNotExtendTTL(t *testing.T) {
 		cache := &usageResponseCache{}
 		defer cache.close()
 		calls := 0
-		router := gin.New()
-		router.GET("/p", cache.middleware(), func(c *gin.Context) {
+		router := newTestEngine(t)
+		router.GET("/p", cache.middleware(), func(ctx context.Context, c *app.RequestContext) {
 			calls++
-			c.JSON(http.StatusOK, gin.H{"calls": calls})
+			c.JSON(http.StatusOK, utils.H{"calls": calls})
 		})
 		request := func() string {
 			w := httptest.NewRecorder()
-			router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/p", nil))
+			serveTestHTTP(router, w, httptest.NewRequest(http.MethodGet, "/p", nil))
 			return w.Body.String()
 		}
 		first := request()

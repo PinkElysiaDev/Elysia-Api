@@ -3,20 +3,24 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 func TestCatalogShutdownCancelsAndWaitsForFetch(t *testing.T) {
@@ -193,18 +197,16 @@ func TestShutdownCancelsActiveHTTPHandlerBeforeClosingStore(t *testing.T) {
 	s := newKeyPermissionTestServer(t)
 	s.initLifecycle()
 	s.startUsageWriter()
-	s.engine = gin.New()
+	s.engine = newTestEngine(t)
+	s.engine.Use(s.requestLifecycle())
 	started, handled := make(chan struct{}), make(chan struct{})
-	s.engine.GET("/stream", func(c *gin.Context) {
+	s.engine.GET("/stream", func(ctx context.Context, c *app.RequestContext) {
 		close(started)
-		<-c.Request.Context().Done()
+		<-ctx.Done()
 		s.recordUsage(&usageRecord{RequestID: "last-http-call", StartedAt: time.Now(), EndedAt: time.Now(), StatusCode: 499})
 		close(handled)
 	})
-	web := httptest.NewUnstartedServer(http.HandlerFunc(s.serveHTTP))
-	web.Config.BaseContext = func(net.Listener) context.Context { return s.lifecycleCtx }
-	s.httpServer = web.Config
-	web.Start()
+	web := startTestServer(s.engine)
 	defer web.Close()
 	clientDone := make(chan struct{})
 	go func() {
@@ -244,44 +246,226 @@ func TestRequestedShutdownBeforeListenClosesAllResources(t *testing.T) {
 	}
 }
 
-func TestShutdownForceClosesStuckHTTPConnection(t *testing.T) {
-	s := newKeyPermissionTestServer(t)
-	s.initLifecycle()
-	s.engine = gin.New()
-	started, release := make(chan struct{}), make(chan struct{})
-	s.engine.GET("/stuck", func(c *gin.Context) {
-		c.Writer.WriteHeader(http.StatusOK)
-		c.Writer.Flush()
-		close(started)
-		<-release
-	})
-	web := httptest.NewUnstartedServer(http.HandlerFunc(s.serveHTTP))
-	web.Config.BaseContext = func(net.Listener) context.Context { return s.lifecycleCtx }
-	s.httpServer = web.Config
-	web.Start()
-	defer web.Close()
-	connectionClosed := make(chan struct{})
-	go func() {
-		defer close(connectionClosed)
-		if resp, err := http.Get(web.URL + "/stuck"); err == nil {
-			_, _ = io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
+func TestStartupFailureDrainsStartedServices(t *testing.T) {
+	for _, stage := range []string{"hook", "jobs", "bind"} {
+		t.Run(stage, func(t *testing.T) {
+			// Keep the address occupied: if startup hooks succeed, binding fails.
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer listener.Close()
+			cfg := startupFixtureConfig(t, t.TempDir())
+			cfg.Host, cfg.Port = "127.0.0.1", listener.Addr().(*net.TCPAddr).Port
+			s := New(cfg)
+			if s.startupErr != nil {
+				t.Fatal(s.startupErr)
+			}
+			failure := errors.New("startup hook failed")
+			switch stage {
+			case "hook":
+				s.engine.OnRun = append(s.engine.OnRun, func(context.Context) error { return failure })
+			case "jobs":
+				s.gatewayJobs.stop()
+			}
+			err = s.ListenAndServe()
+			if err == nil {
+				t.Fatal("failed startup reported success")
+			}
+			if stage == "hook" && !errors.Is(err, failure) {
+				t.Fatal("lost startup error", err)
+			}
+			if (s.healthChecker != nil) != (stage == "bind") {
+				t.Fatal("services started out of hook order")
+			}
+			if s.healthChecker != nil {
+				select {
+				case <-s.healthChecker.done:
+				default:
+					t.Fatal("health worker survived startup failure")
+				}
+				select {
+				case <-s.usageRetention.done:
+				default:
+					t.Fatal("retention worker survived startup failure")
+				}
+			}
+			if s.usageWriterSnapshot() != nil || s.usageWriterStats().Closed != (stage != "hook") {
+				t.Fatal("usage writer was not started/drained in hook order")
+			}
+			if err := s.store.Ping(context.Background()); err == nil {
+				t.Fatal("failed startup left storage open")
+			}
+			if s.shutdownErr != nil {
+				t.Fatal(s.shutdownErr)
+			}
+		})
+	}
+}
+
+func TestShutdownSignalWaitsForResponseCompletion(t *testing.T) {
+	for _, failWrite := range []bool{false, true} {
+		name := "success"
+		if failWrite {
+			name = "write_failure"
 		}
-	}()
-	<-started
-	done := make(chan struct{})
-	go func() { s.doShutdown(); close(done) }()
+		t.Run(name, func(t *testing.T) {
+			s := &Server{}
+			e := newTestEngine(t)
+			e.Use(s.requestLifecycle())
+			started, release := make(chan struct{}), make(chan struct{})
+			unblock := sync.OnceFunc(func() { close(release) })
+			const acknowledgment = `{"shuttingDown":true}`
+			e.POST("/shutdown", func(ctx context.Context, c *app.RequestContext) {
+				s.shutdown(ctx, c)
+				// Gate actual response serialization after the handler returns.
+				var body io.Reader = strings.NewReader(string(c.Response.Body()))
+				if failWrite {
+					body = iotest.ErrReader(errors.New("acknowledgment write failed"))
+				}
+				c.SetBodyStream(io.MultiReader(&heldHTTPBody{started: started, release: release}, body), len(acknowledgment))
+			})
+			web := startTestServer(e)
+			defer web.Close()
+			defer unblock()
+			result := make(chan error, 1)
+			go func() {
+				response, err := web.Client().Post(web.URL+"/shutdown", "application/json", nil)
+				if err == nil {
+					defer response.Body.Close()
+					var body []byte
+					body, err = io.ReadAll(response.Body)
+					if err == nil && (response.StatusCode != 200 || string(body) != acknowledgment) {
+						err = fmt.Errorf("unexpected acknowledgment: %d %s", response.StatusCode, body)
+					}
+				}
+				result <- err
+			}()
+			select {
+			case <-started:
+			case <-time.After(3 * time.Second):
+				t.Fatal("response serialization did not start")
+			}
+			select {
+			case <-s.shutdownRequested:
+				t.Fatal("shutdown signaled before sending acknowledgment")
+			default:
+			}
+			unblock()
+			select {
+			case <-s.shutdownRequested:
+			case <-time.After(3 * time.Second):
+				t.Fatal("response completion did not signal shutdown")
+			}
+			select {
+			case err := <-result:
+				if (err != nil) != failWrite {
+					t.Fatalf("response error = %v, failWrite = %t", err, failWrite)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("client did not finish")
+			}
+		})
+	}
+}
+
+func TestHTTPCompletionPanicStillReleasesRequest(t *testing.T) {
+	s := &Server{}
+	e := newTestEngine(t)
+	e.Use(s.requestLifecycle())
+	released := make(chan struct{})
+	e.GET("/complete", func(_ context.Context, c *app.RequestContext) {
+		onHTTPComplete(c, func() { close(released) })
+		onHTTPComplete(c, func() { panic("first completion failure") })
+		onHTTPComplete(c, func() { panic("second completion failure") })
+		c.String(200, "done")
+	})
+	web := startTestServer(e)
+	defer web.Close()
+	response, err := web.Client().Get(web.URL + "/complete")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil || response.StatusCode != 200 || string(body) != "done" {
+		t.Fatal(response.StatusCode, string(body), err)
+	}
 	select {
-	case <-connectionClosed:
-	case <-time.After(7 * time.Second):
-		t.Error("HTTP shutdown deadline did not force-close the active connection")
+	case <-released:
+	case <-time.After(3 * time.Second):
+		t.Fatal("panic skipped a resource release")
 	}
-	if err := s.store.Ping(context.Background()); err != nil {
-		t.Errorf("storage closed before the active handler released it: %v", err)
+	s.httpRequests.stop()
+	drained := make(chan struct{})
+	go func() { s.httpRequests.wait(); close(drained) }()
+	select {
+	case <-drained:
+	case <-time.After(3 * time.Second):
+		t.Fatal("panic leaked the request lifecycle lease")
 	}
-	close(release)
-	<-done
-	if err := s.store.Ping(context.Background()); err == nil {
-		t.Error("storage remained open after the last handler exited")
+}
+
+func TestShutdownForceClosesStuckHTTPConnection(t *testing.T) {
+	for _, stage := range []string{"handler", "response_body"} {
+		t.Run(stage, func(t *testing.T) {
+			s := newKeyPermissionTestServer(t)
+			s.initLifecycle()
+			s.engine = newTestEngine(t)
+			s.engine.Use(s.requestLifecycle())
+			started, release := make(chan struct{}), make(chan struct{})
+			s.engine.GET("/stuck", func(ctx context.Context, c *app.RequestContext) {
+				if stage == "response_body" {
+					c.SetBodyStream(io.MultiReader(strings.NewReader("started"), &heldHTTPBody{started: started, release: release}), -1)
+					return
+				}
+				w := startStream(c)
+				_, _ = w.Write([]byte("started"))
+				_ = w.Flush()
+				close(started)
+				<-release
+			})
+			web := startTestServer(s.engine)
+			defer web.Close()
+			connectionClosed := make(chan struct{})
+			go func() {
+				defer close(connectionClosed)
+				if resp, err := http.Get(web.URL + "/stuck"); err == nil {
+					_, _ = io.Copy(io.Discard, resp.Body)
+					resp.Body.Close()
+				}
+			}()
+			<-started
+			done := make(chan struct{})
+			go func() {
+				s.doShutdown()
+				close(done)
+			}()
+			select {
+			case <-connectionClosed:
+			case <-time.After(7 * time.Second):
+				t.Error("HTTP shutdown deadline did not force-close the active connection")
+			}
+			if err := s.store.Ping(context.Background()); err != nil {
+				t.Errorf("storage closed before the active handler released it: %v", err)
+			}
+			close(release)
+			<-done
+			if err := s.store.Ping(context.Background()); err == nil {
+				t.Error("storage remained open after the last handler exited")
+			}
+		})
 	}
+}
+
+// Simulates a reader retained by Hertz after its route handler has returned.
+type heldHTTPBody struct {
+	started chan struct{}
+	release <-chan struct{}
+}
+
+func (r *heldHTTPBody) Read([]byte) (int, error) {
+	close(r.started)
+	<-r.release
+	return 0, io.EOF
 }

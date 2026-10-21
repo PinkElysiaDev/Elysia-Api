@@ -25,7 +25,9 @@ func TestGatewayResponsesReturnsSignedThinkingWithItsAnthropicToolTurn(t *testin
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { s.store.Close() })
+			t.Cleanup(func() {
+				s.store.Close()
+			})
 			activateDiscoveryPresets(t, s)
 			service, _ := s.protocolService()
 			upstream, _ := service.Pin(protocol.PresetAnthropicID)
@@ -104,7 +106,7 @@ func TestGatewayResponsesReturnsSignedThinkingWithItsAnthropicToolTurn(t *testin
 				r.Header.Set("Authorization", "Bearer gateway-test-token")
 				r.Header.Set("x-elysia-session-id", "block-history")
 				out := httptest.NewRecorder()
-				s.engine.ServeHTTP(out, r)
+				serveTestHTTP(s.engine, out, r)
 				return out
 			}
 			first := call(fmt.Sprintf(`{"model":"group","max_output_tokens":64,"store":false,"include":["reasoning.encrypted_content"],"stream":%v,"input":[{"role":"user","content":"hi"}]}`, stream))

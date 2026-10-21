@@ -15,7 +15,6 @@ import (
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 // newPersistTestServer 带 store + 可写 config 的 Server（免登录直调 handler）。
@@ -132,6 +131,7 @@ func TestPersistDisabledDropsRecord(t *testing.T) {
 
 // 回归：/v1/chat/completions 请求转换失败必须落 usage 记录（bodyOnErrorOnly
 // 模式下这是唯一保留请求体的排查样本），而不是像旧版那样静默 400。
+// 与 chatCompletions 内一致的失败路径。
 func TestConversionFailureIsRecorded(t *testing.T) {
 	store, err := storage.Open(filepath.Join(t.TempDir(), "convert-fail.sqlite3"))
 	if err != nil {
@@ -143,18 +143,15 @@ func TestConversionFailureIsRecorded(t *testing.T) {
 	s := &Server{store: store, config: cfg}
 	s.startUsageWriter()
 	defer s.stopUsageWriter()
-
 	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{invalid json`))
+	c := newTestContext(rec)
+	setTestRequest(c, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{invalid json`)))
 	start := time.Now()
-	record := s.initUsageRecord(c, start, []byte(`{invalid json`), "openai")
+	record := s.initUsageRecord(contextForTest(c), c, start, []byte(`{invalid json`), "openai")
 	record.appendConversionIssues([]protocol.ConversionIssue{{Code: protocol.ConversionNormalized, Stage: "request", Path: "/include", Severity: protocol.SeverityInfo}})
-
-	// 与 chatCompletions 内一致的失败路径。
-	s.failGateway(c, record, http.StatusBadRequest, gatewayIssue(protocol.Identity{}, protocol.InvalidInput, "/", "bad json"))
+	s.failGateway(contextForTest(c), c, record, http.StatusBadRequest, gatewayIssue(protocol.Identity{}, protocol.InvalidInput, "/", "bad json"))
+	flushTestResponse(c)
 	s.recordUsage(record)
-
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d", rec.Code)
 	}
@@ -176,33 +173,29 @@ func TestConversionFailureIsRecorded(t *testing.T) {
 }
 
 // 管理端资产路由：鉴权由 admin 组中间件负责，这里覆盖文件名校验与正常下发。
+// 准备一条记录 + 一个真实资产文件。
+// 正常获取：请求拥有资产引用时可下发，Content-Type 按 ext。
+// 穿越与非法名一律 400/404。
 func TestAdminUsageAssetServesFileAndRejectsTraversal(t *testing.T) {
 	s, cfg, store := newPersistTestServer(t)
-
-	// 准备一条记录 + 一个真实资产文件。
 	record := newExternalizeRecord("req_asset")
 	payload := strings.Repeat("B", 600)
 	record.sanitizeBody([]byte(`{"url":"data:image/png;base64,` + payload + `"}`))
 	if err := s.saveUsageRecordToStore(record); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-
-	router := gin.New()
+	router := newTestEngine(t)
 	s.setupAdminRoutes(router.Group("/api/admin"))
-
-	// 正常获取：请求拥有资产引用时可下发，Content-Type 按 ext。
 	fileName := record.assets.items[0].Hash + "." + record.assets.items[0].Ext
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/usage/assets/req_asset/"+fileName, nil)
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
+	serveTestHTTP(router, w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("asset status=%d body=%s", w.Code, w.Body.String())
 	}
 	if ct := w.Header().Get("Content-Type"); ct != "image/png" {
 		t.Fatalf("content-type=%s", ct)
 	}
-
-	// 穿越与非法名一律 400/404。
 	for _, path := range []string{
 		"/api/admin/usage/assets/req_asset/..%2F..%2Fetc%2Fpasswd",
 		"/api/admin/usage/assets/req_asset/short.png",
@@ -210,7 +203,7 @@ func TestAdminUsageAssetServesFileAndRejectsTraversal(t *testing.T) {
 	} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
+		serveTestHTTP(router, w, req)
 		if w.Code == http.StatusOK {
 			t.Fatalf("path %s must not return 200", path)
 		}
@@ -231,9 +224,11 @@ func TestMissingModelKeepsRequestMetadataWithoutBodies(t *testing.T) {
 				c, _ = newResponsesContext(rec, `{"model":"missing-model","stream":true,"input":"hi"}`)
 			}
 			if endpoint == "responses" {
-				s.responses(c)
+				s.responses(contextForTest(c), c)
+				flushTestResponse(c)
 			} else {
-				s.chatCompletions(c)
+				s.chatCompletions(contextForTest(c), c)
+				flushTestResponse(c)
 			}
 			logs := latestUsageRecords(t, s)
 			if rec.Code != 404 || len(logs) != 1 || logs[0].RequestedModelGroup != "missing-model" || !logs[0].Stream || logs[0].ModelName != "" {

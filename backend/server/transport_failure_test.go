@@ -14,7 +14,6 @@ import (
 	"github.com/elysia-api/backend/config"
 	p "github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
-	"github.com/gin-gonic/gin"
 )
 
 func TestTransportFailureAttribution(t *testing.T) {
@@ -72,10 +71,11 @@ func TestTransportFailureAttribution(t *testing.T) {
 			}
 			setUsageError(record, ctx, err)
 			out := httptest.NewRecorder()
-			gateway, _ := gin.CreateTestContext(out)
-			gateway.Request = httptest.NewRequest("POST", "/gateway/test/chat/completions", nil).WithContext(ctx)
+			gateway := newTestContext(out)
+			gateway.Set("testContext", ctx)
 			gatewayRecord := &usageRecord{UpstreamHTTPStatus: record.UpstreamHTTPStatus}
-			s.failGateway(gateway, gatewayRecord, 502, err)
+			s.failGateway(contextForTest(gateway), gateway, gatewayRecord, 502, err)
+			flushTestResponse(gateway)
 			wantKind := ErrorKindUpstreamIdleTimeout
 			if scenario == "cancel" {
 				wantKind = ErrorKindClientCanceled

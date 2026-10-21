@@ -1,20 +1,22 @@
 package server
 
 import (
+	"context"
 	"strings"
+
+	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2acompat/a2av0"
 	"github.com/a2aproject/a2a-go/v2/a2asrv"
-	"github.com/gin-gonic/gin"
 )
 
-func (s *Server) handleAgentCard(c *gin.Context) {
-	version, ok := a2aVersion(c)
+func (s *Server) handleAgentCard(ctx context.Context, c *app.RequestContext) {
+	version, ok := a2aVersion(ctx, c)
 	if !ok {
 		return
 	}
-	base := strings.TrimRight(s.publicBaseURL(c), "/")
+	base := strings.TrimRight(s.publicBaseURL(ctx, c), "/")
 	card := &a2a.AgentCard{
 		Name: "Elysia API Gateway Agent", Version: "1.0.0",
 		Description:       "Elysia API 网关内置智能体的远程运维面：通过任务驱动网关配置与诊断。",
@@ -33,8 +35,14 @@ func (s *Server) handleAgentCard(c *gin.Context) {
 		}},
 	}
 	if version == a2av0.Version {
-		a2asrv.NewAgentCardHandler(a2av0.NewStaticAgentCardProducer(card)).ServeHTTP(c.Writer, c.Request)
+		producer := a2av0.NewStaticAgentCardProducer(card).(a2asrv.AgentCardJSONProducer)
+		body, err := producer.CardJSON(ctx)
+		if err != nil {
+			c.String(500, "%s", err)
+			return
+		}
+		c.Data(200, "application/json", body)
 	} else {
-		a2asrv.NewStaticAgentCardHandler(card).ServeHTTP(c.Writer, c.Request)
+		c.JSON(200, card)
 	}
 }

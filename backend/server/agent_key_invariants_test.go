@@ -9,14 +9,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/route/param"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
-
-// 远程访问 Key 独立化的回归：判定只认 scopes、agent 键绑定强制为 ["agent"]
-//（纯展示值）、普通键绑定真实 "agent" 组合法、推理隔离、重命名、agent
-// 工具拒绝操作 agent 键、方案分析摘要链路。
 
 func TestAgentKeyStorageInvariants(t *testing.T) {
 	s := newOpsTestServer(t)
@@ -69,17 +66,19 @@ func TestAgentKeyInferenceIsolation(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 	s.invalidateRouteCache()
-
-	router := gin.New()
+	router := newTestEngine(t)
 	passed := false
-	router.POST("/v1/chat/completions", s.authMiddleware(), func(c *gin.Context) { passed = true; c.Status(200) })
+	router.POST("/v1/chat/completions", s.authMiddleware(), func(ctx context.Context, c *app.RequestContext) {
+		passed = true
+		c.Status(200)
+	})
 	post := func(auth string) int {
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 		if auth != "" {
 			req.Header.Set("Authorization", "Bearer "+auth)
 		}
 		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
+		serveTestHTTP(router, rec, req)
 		return rec.Code
 	}
 	if code := post("tok-remote-1"); code == http.StatusOK {
@@ -91,18 +90,20 @@ func TestAgentKeyInferenceIsolation(t *testing.T) {
 }
 
 // admin 端点重命名（newName）与 agent 工具对 agent 键的拒绝。
+// PUT /api-tokens/:name + newName：改名成功且绑定不变式保持。
+// 工具守卫：update/delete 对 agent 键拒绝。
+// 普通键不受影响。
 func TestAgentKeyRenameAndToolGuards(t *testing.T) {
 	s := newOpsTestServer(t)
 	ctx := context.Background()
 	if err := s.store.UpsertAPIToken(ctx, storage.APIToken{Name: "remote", Token: "tok-remote-1", Enabled: true, Scopes: []string{storage.TokenScopeAgent}}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-
-	// PUT /api-tokens/:name + newName：改名成功且绑定不变式保持。
 	body := `{"enabled":true,"newName":"cursor"}`
 	c, rec := remoteContext(http.MethodPut, "/api/admin/api-tokens/remote", body, nil)
-	c.Params = gin.Params{{Key: "name", Value: "remote"}}
-	s.adminUpsertToken(c)
+	c.Params = param.Params{{Key: "name", Value: "remote"}}
+	s.adminUpsertToken(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body.String())
 	}
@@ -113,15 +114,12 @@ func TestAgentKeyRenameAndToolGuards(t *testing.T) {
 	if _, found, _ := s.store.FindAPITokenByName(ctx, "remote"); found {
 		t.Fatalf("old name must be gone")
 	}
-
-	// 工具守卫：update/delete 对 agent 键拒绝。
 	if result := opsExecute(t, &updateAPIKeyTool{server: s}, `{"name":"cursor","enabled":false}`); result.OK {
 		t.Fatalf("update agent key must be rejected")
 	}
 	if result := opsExecute(t, &deleteAPIKeyTool{server: s}, `{"name":"cursor"}`); result.OK {
 		t.Fatalf("delete agent key must be rejected")
 	}
-	// 普通键不受影响。
 	if err := s.store.UpsertAPIToken(ctx, storage.APIToken{Name: "normal", Token: "tok-normal-1", Enabled: true}); err != nil {
 		t.Fatalf("seed normal: %v", err)
 	}

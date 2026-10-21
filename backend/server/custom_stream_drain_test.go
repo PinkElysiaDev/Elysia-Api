@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/route/param"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/gin-gonic/gin"
 )
 
 func TestCustomProtocolStreamTrailingUsageAfterFinishEndToEnd(t *testing.T) {
@@ -25,7 +25,8 @@ func TestCustomProtocolStreamTrailingUsageAfterFinishEndToEnd(t *testing.T) {
 	defer upstream.Close()
 	s := newTestServer(t, standaloneGroup(t, definition, upstream.URL), definition)
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	for _, want := range []string{`"content":"hello"`, `"prompt_tokens":11`, `"completion_tokens":22`, `"finish_reason":"stop"`, "data: [DONE]"} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("trailing usage lost %s: %s", want, rec.Body)
@@ -52,14 +53,16 @@ func TestCustomProtocolStreamHangingAfterFinishCanBeCanceled(t *testing.T) {
 	defer upstream.Close()
 	s := newTestServer(t, standaloneGroup(t, definition, upstream.URL), definition)
 	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/gateway/vendor-cumulative/v2/generate/grp", strings.NewReader(`{"deployment":"grp","turns":[{"actor":"user","segments":[{"text":"hi"}]}],"parameters":{"stream":true}}`))
-	c.Params = gin.Params{{Key: "protocolId", Value: definition.ID}, {Key: "path", Value: "/v2/generate/grp"}}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	c := newTestContext(rec)
+	setTestRequest(c, httptest.NewRequest(http.MethodPost, "/gateway/vendor-cumulative/v2/generate/grp", strings.NewReader(`{"deployment":"grp","turns":[{"actor":"user","segments":[{"text":"hi"}]}],"parameters":{"stream":true}}`)))
+	c.Params = param.Params{{Key: "protocolId", Value: definition.ID}, {Key: "path", Value: "/v2/generate/grp"}}
+	ctx, cancel := context.WithTimeout(contextForTest(c), 5*time.Second)
 	defer cancel()
-	c.Request = c.Request.WithContext(ctx)
-	c.Writer = &cancelAfterFlushWriter{c.Writer, rec, `"count":1`, cancel, ctx}
-	s.gatewayProtocol(c)
+	c.Set("testContext", ctx)
+	observeTestFlush(c)
+	c.Response.HijackWriter(&cancelAfterFlushWriter{startStream(c), rec, `"count":1`, cancel, ctx})
+	s.gatewayProtocol(contextForTest(c), c)
+	flushTestResponse(c)
 	select {
 	case <-closed:
 	case <-time.After(time.Second):
@@ -80,7 +83,8 @@ func TestCustomProtocolStreamEmptyCompletionWithFinishReasonEndToEnd(t *testing.
 	defer upstream.Close()
 	s := newTestServer(t, standaloneGroup(t, definition, upstream.URL), definition)
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	logs := latestUsageRecords(t, s)
 	if len(logs) != 1 || logs[0].StatusCode != http.StatusOK || !strings.Contains(rec.Body.String(), `"finish_reason":"content_filter"`) || !strings.Contains(rec.Body.String(), "[DONE]") {
 		t.Fatal(logs, rec.Body)
@@ -103,7 +107,8 @@ func TestCustomProtocolStreamRetryableFailureRecordsUsageOnce(t *testing.T) {
 	groups[0].MaxRetries = 1
 	s := newTestServer(t, groups, definition)
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	logs := latestUsageRecords(t, s)
 	if rec.Code != http.StatusInternalServerError || attempts.Load() != 2 || len(logs) != 1 || logs[0].StatusCode != http.StatusInternalServerError {
 		t.Fatal(rec.Code, attempts.Load(), logs, rec.Body)

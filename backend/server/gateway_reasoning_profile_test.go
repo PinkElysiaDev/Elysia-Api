@@ -54,7 +54,7 @@ func TestGatewayVisibleReasoningHistoryAndSummaryRejection(t *testing.T) {
 		r := httptest.NewRequest("POST", "/gateway/openai-responses/responses", strings.NewReader(`{"model":"group","store":false,"input":[{"role":"user","content":"hi"},`+item+`,{"role":"assistant","content":"OK"},{"role":"user","content":"continue"}]}`))
 		r.Header.Set("Authorization", "Bearer gateway-test-token")
 		out := httptest.NewRecorder()
-		s.engine.ServeHTTP(out, r)
+		serveTestHTTP(s.engine, out, r)
 		if strings.Contains(item, `"text":"visible"`) {
 			if out.Code != 200 {
 				t.Fatal(out.Code, out.Body.String())

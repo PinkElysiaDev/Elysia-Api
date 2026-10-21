@@ -15,11 +15,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/utils"
+	"github.com/cloudwego/hertz/pkg/route"
+
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/internal/outbound"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 type adminError struct {
@@ -27,13 +30,15 @@ type adminError struct {
 	Message string `json:"message"`
 }
 
-func respondOK(c *gin.Context, data any) { c.JSON(http.StatusOK, gin.H{"ok": true, "data": data}) }
-
-func respondFail(c *gin.Context, status int, code, message string) {
-	c.JSON(status, gin.H{"ok": false, "error": adminError{Code: code, Message: message}})
+func respondOK(ctx context.Context, c *app.RequestContext, data any) {
+	c.JSON(http.StatusOK, utils.H{"ok": true, "data": data})
 }
 
-func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
+func respondFail(ctx context.Context, c *app.RequestContext, status int, code, message string) {
+	c.JSON(status, utils.H{"ok": false, "error": adminError{Code: code, Message: message}})
+}
+
+func (s *Server) setupAdminRoutes(admin *route.RouterGroup) {
 	s.setupProtocolRevisionRoutes(admin)
 	admin.GET("/runtime-config", s.adminRuntimeConfig)
 	admin.PUT("/runtime-config", s.adminUpdateRuntimeConfig)
@@ -51,7 +56,7 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.GET("/models", s.adminListModels)
 	admin.POST("/models/refresh", s.adminRefreshModels)
 	// modelId 走 query 而非路径段：模型 ID 常含 "/"（如 org/model），路径参数
-	// 在 Gin 路由前已被 URL 解码，%2F 会拆成多段导致 404；query 值只经一次
+	// 在 Hertz 路由前已被 URL 解码，%2F 会拆成多段导致 404；query 值只经一次
 	// 解码、不参与路由匹配，对任意字符稳健。
 	admin.PATCH("/models/:sourceId", s.adminUpdateModel)
 	admin.DELETE("/models/:sourceId", s.adminDeleteModel)
@@ -84,9 +89,9 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.GET("/health", s.adminHealth)
 }
 
-func (s *Server) requireStore(c *gin.Context) (*storage.Store, bool) {
+func (s *Server) requireStore(ctx context.Context, c *app.RequestContext) (*storage.Store, bool) {
 	if s.store == nil {
-		respondFail(c, http.StatusServiceUnavailable, "store_unavailable", "sqlite store is unavailable")
+		respondFail(ctx, c, http.StatusServiceUnavailable, "store_unavailable", "sqlite store is unavailable")
 		return nil, false
 	}
 	return s.store, true
@@ -94,8 +99,8 @@ func (s *Server) requireStore(c *gin.Context) (*storage.Store, bool) {
 
 // usageLogStatusJSON 把日志留存配置序列化为对外生效值（归一化后）：运行
 // 配置页与存储状态卡片共用同一形状。
-func usageLogStatusJSON(cfg config.UsageLogResolved) gin.H {
-	return gin.H{
+func usageLogStatusJSON(cfg config.UsageLogResolved) utils.H {
+	return utils.H{
 		"persistEnabled":         cfg.PersistEnabled,
 		"retentionDays":          cfg.RetentionDays,
 		"maxContentMB":           cfg.MaxContentBytes / 1024 / 1024,
@@ -107,12 +112,12 @@ func usageLogStatusJSON(cfg config.UsageLogResolved) gin.H {
 	}
 }
 
-func (s *Server) adminRuntimeConfig(c *gin.Context) {
+func (s *Server) adminRuntimeConfig(ctx context.Context, c *app.RequestContext) {
 	server := s.config.GetServer()
 	catalog := s.config.GetModelCatalog()
 	catalogEnabled := catalog.Enabled == nil || *catalog.Enabled
 	usageLog := s.config.GetUsageLogConfig()
-	respondOK(c, gin.H{
+	respondOK(ctx, c, utils.H{
 		"host":                server.Host,
 		"port":                server.Port,
 		"panelAccessToken":    s.config.GetPanelAccessToken(),
@@ -124,7 +129,7 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 		"logLevel":            s.config.GetLogLevel(),
 		"httpTimeout":         s.config.GetHTTPTimeout(),
 		"enablePprof":         s.config.GetEnablePprof(),
-		"outbound": gin.H{
+		"outbound": utils.H{
 			"proxyUrl":              s.config.GetOutboundConfig().ProxyURL,
 			"deniedIpRanges":        s.config.GetOutboundConfig().DeniedIPRanges,
 			"defaultDeniedIpRanges": outbound.DefaultDeniedIPRanges,
@@ -132,18 +137,18 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 		// 生效值（归一化后）：表单直接显示当前实际口径，保存时整体回写。
 		"usageLog":  usageLogStatusJSON(usageLog),
 		"systemLog": s.config.GetSystemLogConfig(),
-		"modelCatalog": gin.H{
+		"modelCatalog": utils.H{
 			"enabled": catalogEnabled,
 			"url":     catalogResolveURL(catalog),
 			"proxy":   catalog.Proxy,
 			// 未配置（nil）时回填默认 1440 供表单显示；显式 0 = 不启用定期同步。
 			"syncIntervalMinutes": config.ResolveModelCatalogInterval(catalog),
 		},
-		"agentRemote": gin.H{
+		"agentRemote": utils.H{
 			"enabled":   s.config.GetAgentRemote().AgentRemoteEnabled(),
 			"publicUrl": s.config.GetAgentRemote().PublicURL,
 		},
-		"agent": gin.H{
+		"agent": utils.H{
 			"toolLoopLimit": s.config.ResolveAgentToolLoopLimit(),
 		},
 	})
@@ -191,23 +196,23 @@ type outboundConfigPayload struct {
 	DeniedIPRanges []string `json:"deniedIpRanges"`
 }
 
-func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
+func (s *Server) adminUpdateRuntimeConfig(ctx context.Context, c *app.RequestContext) {
 	var payload runtimeConfigPayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		respondFail(c, 400, "invalid_json", err.Error())
+	if err := bindJSON(ctx, c, &payload); err != nil {
+		respondFail(ctx, c, 400, "invalid_json", err.Error())
 		return
 	}
 	hasRestartChange, err := s.updateRuntimeConfig(payload)
 	if err != nil {
 		var invalid *runtimeConfigError
 		if errors.As(err, &invalid) {
-			respondFail(c, invalid.status, invalid.code, invalid.message)
+			respondFail(ctx, c, invalid.status, invalid.code, invalid.message)
 		} else {
-			respondFail(c, 500, "save_config_failed", err.Error())
+			respondFail(ctx, c, 500, "save_config_failed", err.Error())
 		}
 		return
 	}
-	respondOK(c, gin.H{"updated": true, "restartRequired": hasRestartChange})
+	respondOK(ctx, c, utils.H{"updated": true, "restartRequired": hasRestartChange})
 }
 
 // runtimeConfigError 携带校验失败的 HTTP 语义（状态码 + 错误码 + 消息）。
@@ -313,7 +318,7 @@ func validateRuntimeConfigPayload(p *runtimeConfigPayload) *runtimeConfigError {
 	return nil
 }
 
-func (s *Server) adminReload(c *gin.Context) { s.reloadConfig(c) }
+func (s *Server) adminReload(ctx context.Context, c *app.RequestContext) { s.reloadConfig(ctx, c) }
 
 // markRestartRequired 记录"存在需要重启才能生效的变更"，
 // 供 /api/admin/restart-required/check 查询。
@@ -323,21 +328,21 @@ func (s *Server) markRestartRequired() {
 	s.restartMu.Unlock()
 }
 
-func (s *Server) adminRestartRequired(c *gin.Context) {
+func (s *Server) adminRestartRequired(ctx context.Context, c *app.RequestContext) {
 	s.restartMu.Lock()
 	pending := s.restartRequired
 	s.restartMu.Unlock()
-	respondOK(c, gin.H{"restartRequired": pending})
+	respondOK(ctx, c, utils.H{"restartRequired": pending})
 }
 
-func (s *Server) adminListSources(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminListSources(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	items, err := store.ListSources(c.Request.Context())
+	items, err := store.ListSources(ctx)
 	if err != nil {
-		respondFail(c, 500, "list_sources_failed", err.Error())
+		respondFail(ctx, c, 500, "list_sources_failed", err.Error())
 		return
 	}
 	// 叠加运行时拉取状态（后台任务进行中/最近结果），内嵌结构体 JSON 展平，
@@ -353,17 +358,17 @@ func (s *Server) adminListSources(c *gin.Context) {
 			RefreshState: s.sourceRefreshStateOf(items[i].ID),
 		}
 	}
-	respondOK(c, gin.H{"items": withState})
+	respondOK(ctx, c, utils.H{"items": withState})
 }
 
-func (s *Server) adminUpsertSource(c *gin.Context) {
-	_, okStore := s.requireStore(c)
+func (s *Server) adminUpsertSource(ctx context.Context, c *app.RequestContext) {
+	_, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
 	var item storage.ModelSource
-	if err := c.ShouldBindJSON(&item); err != nil {
-		respondFail(c, 400, "invalid_json", err.Error())
+	if err := bindJSON(ctx, c, &item); err != nil {
+		respondFail(ctx, c, 400, "invalid_json", err.Error())
 		return
 	}
 	if id := c.Param("id"); id != "" {
@@ -373,15 +378,15 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 		item.ID = slugID(item.Name)
 	}
 	if err := s.validateSourceProtocol(&item); err != nil {
-		respondFail(c, 400, "invalid_custom_protocol_source", err.Error())
+		respondFail(ctx, c, 400, "invalid_custom_protocol_source", err.Error())
 		return
 	}
 	// 「留空即不变」：编辑时若未填 apiKey，保留已有记录的原 key，避免被清空。
 	if strings.TrimSpace(item.APIKey) == "" {
-		existing, found, findErr := s.findSourceByID(c.Request.Context(), item.ID)
+		existing, found, findErr := s.findSourceByID(ctx, item.ID)
 		if findErr != nil {
 			// 查询失败时绝不能带着空 key 继续保存（会把存量密钥抹掉）。
-			respondFail(c, 500, "lookup_source_failed", findErr.Error())
+			respondFail(ctx, c, 500, "lookup_source_failed", findErr.Error())
 			return
 		}
 		if found {
@@ -391,11 +396,11 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 	// 保存前预校验出站地址(请求与拉取都会走该地址):内网/云元数据目标
 	// 在保存时即拒绝,与拨号级校验形成双层防护。
 	if err := s.validateSourceURLs(item); err != nil {
-		respondFail(c, 400, "invalid_base_url", err.Error())
+		respondFail(ctx, c, 400, "invalid_base_url", err.Error())
 		return
 	}
-	if err := s.saveSource(c.Request.Context(), item); err != nil {
-		respondFail(c, 400, "save_source_failed", err.Error())
+	if err := s.saveSource(ctx, item); err != nil {
+		respondFail(ctx, c, 400, "save_source_failed", err.Error())
 		return
 	}
 	s.invalidateRouteCache()
@@ -409,7 +414,7 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 	//     共享去重/并发约束，结果落在源的 refreshState 上（前端可见进度与成败）。
 	saved := item
 	if !saved.AutoFetchModels {
-		if _, err := s.refreshSourceByID(c.Request.Context(), saved.ID); err != nil {
+		if _, err := s.refreshSourceByID(ctx, saved.ID); err != nil {
 			s.logSystemEvent("warn", "manual model sync after save failed", map[string]any{"sourceId": saved.ID, "sourceName": saved.Name, "error": err.Error()})
 		} else {
 			s.invalidateRouteCache()
@@ -418,55 +423,55 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 		s.launchSourceRefresh(saved.ID)
 	}
 
-	respondOK(c, item)
+	respondOK(ctx, c, item)
 }
 
-func (s *Server) adminDeleteSource(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminDeleteSource(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	if err := s.deleteSourceCascade(c.Request.Context(), store, c.Param("id")); err != nil {
-		respondFail(c, 500, "delete_source_failed", err.Error())
+	if err := s.deleteSourceCascade(ctx, store, c.Param("id")); err != nil {
+		respondFail(ctx, c, 500, "delete_source_failed", err.Error())
 		return
 	}
-	respondOK(c, gin.H{"deleted": true})
+	respondOK(ctx, c, utils.H{"deleted": true})
 }
 
 // adminFetchSource 发起指定源的后台模型拉取：**立即返回**，任务在后台执行
 // （refresh_jobs.go），前端轮询源列表的 refreshState 获取进度与结果。慢上游
 // 不再阻塞界面；同一源重复触发会被去重。
-func (s *Server) adminFetchSource(c *gin.Context) {
-	if _, okStore := s.requireStore(c); !okStore {
+func (s *Server) adminFetchSource(ctx context.Context, c *app.RequestContext) {
+	if _, okStore := s.requireStore(ctx, c); !okStore {
 		return
 	}
-	started, alreadyRunning, err := s.startSourceRefreshByID(c.Request.Context(), c.Param("id"))
+	started, alreadyRunning, err := s.startSourceRefreshByID(ctx, c.Param("id"))
 	if err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "not found") {
 			status = http.StatusNotFound
 		}
-		respondFail(c, status, "fetch_source_failed", err.Error())
+		respondFail(ctx, c, status, "fetch_source_failed", err.Error())
 		return
 	}
 	if alreadyRunning {
-		respondOK(c, gin.H{"started": false, "alreadyRunning": true})
+		respondOK(ctx, c, utils.H{"started": false, "alreadyRunning": true})
 		return
 	}
-	respondOK(c, gin.H{"started": started})
+	respondOK(ctx, c, utils.H{"started": started})
 }
 
 // adminRefreshModels 为所有启用的源发起后台拉取，立即返回启动数量。
 // 各源独立成任务（源间并发受全局信号量约束），单个源失败只记日志与状态，
 // 不影响其他源——返回值不再携带失败明细，结果见各源 refreshState 与系统日志。
-func (s *Server) adminRefreshModels(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminRefreshModels(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	sources, err := store.ListSources(c.Request.Context())
+	sources, err := store.ListSources(ctx)
 	if err != nil {
-		respondFail(c, 500, "refresh_models_failed", err.Error())
+		respondFail(ctx, c, 500, "refresh_models_failed", err.Error())
 		return
 	}
 	enabled := 0
@@ -481,34 +486,34 @@ func (s *Server) adminRefreshModels(c *gin.Context) {
 		}
 	}
 	s.invalidateRouteCache()
-	respondOK(c, gin.H{"started": started, "total": enabled})
+	respondOK(ctx, c, utils.H{"started": started, "total": enabled})
 }
 
 // adminSetSourceEnabled 仅切换源启停：专用轻量端点，避免整源 PUT 附带的
 // 「保存后自动同步模型」副作用（启停与模型列表无关，重拉上游可能触发限流）。
-func (s *Server) adminSetSourceEnabled(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminSetSourceEnabled(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
 	var payload struct {
 		Enabled *bool `json:"enabled"`
 	}
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		respondFail(c, 400, "invalid_json", err.Error())
+	if err := bindJSON(ctx, c, &payload); err != nil {
+		respondFail(ctx, c, 400, "invalid_json", err.Error())
 		return
 	}
 	if payload.Enabled == nil {
-		respondFail(c, 400, "enabled_required", "enabled field is required")
+		respondFail(ctx, c, 400, "enabled_required", "enabled field is required")
 		return
 	}
-	found, err := store.UpdateSourceEnabled(c.Request.Context(), c.Param("id"), *payload.Enabled)
+	found, err := store.UpdateSourceEnabled(ctx, c.Param("id"), *payload.Enabled)
 	if err != nil {
-		respondFail(c, 500, "set_source_enabled_failed", err.Error())
+		respondFail(ctx, c, 500, "set_source_enabled_failed", err.Error())
 		return
 	}
 	if !found {
-		respondFail(c, 404, "source_not_found", "model source not found")
+		respondFail(ctx, c, 404, "source_not_found", "model source not found")
 		return
 	}
 	// 路由装配按源 enabled 过滤模型（ListModels 的 join 条件），必须失效。
@@ -516,29 +521,29 @@ func (s *Server) adminSetSourceEnabled(c *gin.Context) {
 	s.logSystemEvent("info", "model source "+map[bool]string{true: "enabled", false: "disabled"}[*payload.Enabled], map[string]any{
 		"sourceId": c.Param("id"),
 	})
-	respondOK(c, gin.H{"updated": true, "enabled": *payload.Enabled})
+	respondOK(ctx, c, utils.H{"updated": true, "enabled": *payload.Enabled})
 }
 
 // adminModelCatalogStatus 返回能力目录（models.dev）的运行状态（方向1）。
-func (s *Server) adminModelCatalogStatus(c *gin.Context) {
-	respondOK(c, s.catalog.Status())
+func (s *Server) adminModelCatalogStatus(ctx context.Context, c *app.RequestContext) {
+	respondOK(ctx, c, s.catalog.Status())
 }
 
 // adminModelCatalogRefresh 立即更新能力目录（绕过周期/退避），返回最新状态。
 // 已有拉取进行中时等待其完成（有限时），不会重复发起。
-func (s *Server) adminModelCatalogRefresh(c *gin.Context) {
+func (s *Server) adminModelCatalogRefresh(ctx context.Context, c *app.RequestContext) {
 	status, refreshed := s.catalog.Refresh()
 	if !refreshed {
 		if disabled, _ := status["enabled"].(bool); !disabled {
-			respondFail(c, 400, "catalog_disabled", "model catalog is disabled")
+			respondFail(ctx, c, 400, "catalog_disabled", "model catalog is disabled")
 			return
 		}
 	}
-	respondOK(c, gin.H{"refreshed": refreshed, "status": status})
+	respondOK(ctx, c, utils.H{"refreshed": refreshed, "status": status})
 }
 
-func (s *Server) adminListModels(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminListModels(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
@@ -546,18 +551,18 @@ func (s *Server) adminListModels(c *gin.Context) {
 		SourceID: strings.TrimSpace(c.Query("sourceId")),
 		Search:   strings.TrimSpace(c.Query("search")),
 	}
-	items, err := store.ListModelsFiltered(c.Request.Context(), filter)
+	items, err := store.ListModelsFiltered(ctx, filter)
 	if err != nil {
-		respondFail(c, 500, "list_models_failed", err.Error())
+		respondFail(ctx, c, 500, "list_models_failed", err.Error())
 		return
 	}
-	respondOK(c, gin.H{"items": items})
+	respondOK(ctx, c, utils.H{"items": items})
 }
 
 // adminUpdateModel 单模型部分更新（方向4）：名称/类型/能力/maxTokens/启停。
 // 能力字段被修改时 capability_source 置 manual，后续刷新保留用户值。
-func (s *Server) adminUpdateModel(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminUpdateModel(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
@@ -571,8 +576,8 @@ func (s *Server) adminUpdateModel(c *gin.Context) {
 		ThinkingMode     *string `json:"thinkingMode"`
 		Enabled          *bool   `json:"enabled"`
 	}
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		respondFail(c, 400, "invalid_json", err.Error())
+	if err := bindJSON(ctx, c, &payload); err != nil {
+		respondFail(ctx, c, 400, "invalid_json", err.Error())
 		return
 	}
 	patch := storage.ModelPatch{
@@ -586,124 +591,124 @@ func (s *Server) adminUpdateModel(c *gin.Context) {
 		Enabled:          payload.Enabled,
 	}
 	if patch.ThinkingMode != nil && *patch.ThinkingMode == "" {
-		respondFail(c, 400, "invalid_thinking_mode", "thinkingMode must not be empty")
+		respondFail(ctx, c, 400, "invalid_thinking_mode", "thinkingMode must not be empty")
 		return
 	}
 	modelID := c.Query("modelId")
 	if modelID == "" {
-		respondFail(c, 400, "model_id_required", "modelId query parameter is required")
+		respondFail(ctx, c, 400, "model_id_required", "modelId query parameter is required")
 		return
 	}
-	found, err := store.UpdateModel(c.Request.Context(), modelID, c.Param("sourceId"), patch)
+	found, err := store.UpdateModel(ctx, modelID, c.Param("sourceId"), patch)
 	if err != nil {
-		respondFail(c, 500, "update_model_failed", err.Error())
+		respondFail(ctx, c, 500, "update_model_failed", err.Error())
 		return
 	}
 	if !found {
-		respondFail(c, 404, "model_not_found", "model not found in source")
+		respondFail(ctx, c, 404, "model_not_found", "model not found in source")
 		return
 	}
 	s.invalidateRouteCache()
-	respondOK(c, gin.H{"updated": true})
+	respondOK(ctx, c, utils.H{"updated": true})
 }
 
 // adminDeleteModel 删除单个模型（事务内同步清理组内引用，方向4）。
-func (s *Server) adminDeleteModel(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminDeleteModel(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
 	modelID := c.Query("modelId")
 	if modelID == "" {
-		respondFail(c, 400, "model_id_required", "modelId query parameter is required")
+		respondFail(ctx, c, 400, "model_id_required", "modelId query parameter is required")
 		return
 	}
-	deleted, err := store.DeleteModel(c.Request.Context(), modelID, c.Param("sourceId"))
+	deleted, err := store.DeleteModel(ctx, modelID, c.Param("sourceId"))
 	if err != nil {
-		respondFail(c, 500, "delete_model_failed", err.Error())
+		respondFail(ctx, c, 500, "delete_model_failed", err.Error())
 		return
 	}
 	if !deleted {
-		respondFail(c, 404, "model_not_found", "model not found in source")
+		respondFail(ctx, c, 404, "model_not_found", "model not found in source")
 		return
 	}
 	s.invalidateRouteCache()
-	respondOK(c, gin.H{"deleted": true})
+	respondOK(ctx, c, utils.H{"deleted": true})
 }
 
 // adminAddGroupMembers 向现有组追加成员（方向3：批量「添加到已有组」原子端点）。
-func (s *Server) adminAddGroupMembers(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminAddGroupMembers(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
 	var payload struct {
 		Models []string `json:"models"`
 	}
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		respondFail(c, 400, "invalid_json", err.Error())
+	if err := bindJSON(ctx, c, &payload); err != nil {
+		respondFail(ctx, c, 400, "invalid_json", err.Error())
 		return
 	}
 	if len(payload.Models) == 0 {
-		respondFail(c, 400, "models_required", "models list must not be empty")
+		respondFail(ctx, c, 400, "models_required", "models list must not be empty")
 		return
 	}
-	added, err := store.AddGroupMembers(c.Request.Context(), c.Param("id"), payload.Models)
+	added, err := store.AddGroupMembers(ctx, c.Param("id"), payload.Models)
 	if err != nil {
-		respondFail(c, 400, "add_group_models_failed", err.Error())
+		respondFail(ctx, c, 400, "add_group_models_failed", err.Error())
 		return
 	}
 	s.invalidateRouteCache()
-	respondOK(c, gin.H{"added": added})
+	respondOK(ctx, c, utils.H{"added": added})
 }
 
 // adminRemoveGroupMembers 从组移除成员（方向3）。
-func (s *Server) adminRemoveGroupMembers(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminRemoveGroupMembers(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
 	var payload struct {
 		Models []string `json:"models"`
 	}
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		respondFail(c, 400, "invalid_json", err.Error())
+	if err := bindJSON(ctx, c, &payload); err != nil {
+		respondFail(ctx, c, 400, "invalid_json", err.Error())
 		return
 	}
 	if len(payload.Models) == 0 {
-		respondFail(c, 400, "models_required", "models list must not be empty")
+		respondFail(ctx, c, 400, "models_required", "models list must not be empty")
 		return
 	}
-	removed, err := store.RemoveGroupMembers(c.Request.Context(), c.Param("id"), payload.Models)
+	removed, err := store.RemoveGroupMembers(ctx, c.Param("id"), payload.Models)
 	if err != nil {
-		respondFail(c, 400, "remove_group_models_failed", err.Error())
+		respondFail(ctx, c, 400, "remove_group_models_failed", err.Error())
 		return
 	}
 	s.invalidateRouteCache()
-	respondOK(c, gin.H{"removed": removed})
+	respondOK(ctx, c, utils.H{"removed": removed})
 }
 
-func (s *Server) adminListGroups(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminListGroups(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	items, err := store.ListGroups(c.Request.Context())
+	items, err := store.ListGroups(ctx)
 	if err != nil {
-		respondFail(c, 500, "list_groups_failed", err.Error())
+		respondFail(ctx, c, 500, "list_groups_failed", err.Error())
 		return
 	}
-	respondOK(c, gin.H{"items": items})
+	respondOK(ctx, c, utils.H{"items": items})
 }
 
-func (s *Server) adminUpsertGroup(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminUpsertGroup(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
 	var item storage.ModelGroup
-	if err := c.ShouldBindJSON(&item); err != nil {
-		respondFail(c, 400, "invalid_json", err.Error())
+	if err := bindJSON(ctx, c, &item); err != nil {
+		respondFail(ctx, c, 400, "invalid_json", err.Error())
 		return
 	}
 	if id := c.Param("id"); id != "" {
@@ -712,26 +717,26 @@ func (s *Server) adminUpsertGroup(c *gin.Context) {
 	if item.ID == "" {
 		item.ID = slugID(item.Name)
 	}
-	if err := store.UpsertGroup(c.Request.Context(), item); err != nil {
-		respondFail(c, 400, "save_group_failed", err.Error())
+	if err := store.UpsertGroup(ctx, item); err != nil {
+		respondFail(ctx, c, 400, "save_group_failed", err.Error())
 		return
 	}
 	s.invalidateRouteCache()
 	s.logSystemEvent("info", "model group saved", map[string]any{"groupId": item.ID, "groupName": item.Name})
-	respondOK(c, item)
+	respondOK(ctx, c, item)
 }
 
-func (s *Server) adminDeleteGroup(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminDeleteGroup(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	disabledTokens, err := s.deleteGroupCascade(c.Request.Context(), store, c.Param("id"))
+	disabledTokens, err := s.deleteGroupCascade(ctx, store, c.Param("id"))
 	if err != nil {
-		respondFail(c, 500, "delete_group_failed", err.Error())
+		respondFail(ctx, c, 500, "delete_group_failed", err.Error())
 		return
 	}
-	respondOK(c, gin.H{"deleted": true, "disabledTokens": disabledTokens})
+	respondOK(ctx, c, utils.H{"deleted": true, "disabledTokens": disabledTokens})
 }
 
 // deleteGroupCascade 删除模型组并清理运行时状态（限流/RR 游标/亲和缓存、
@@ -754,44 +759,44 @@ func (s *Server) deleteGroupCascade(ctx context.Context, store *storage.Store, i
 	return disabledTokens, nil
 }
 
-func (s *Server) adminListTokens(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminListTokens(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	items, err := store.ListAPITokens(c.Request.Context())
+	items, err := store.ListAPITokens(ctx)
 	if err != nil {
-		respondFail(c, 500, "list_tokens_failed", err.Error())
+		respondFail(ctx, c, 500, "list_tokens_failed", err.Error())
 		return
 	}
 	for i := range items {
 		items[i].Token = maskSecret(items[i].Token)
 	}
-	respondOK(c, gin.H{"items": items})
+	respondOK(ctx, c, utils.H{"items": items})
 }
 
 // adminRevealToken 在 dashboard 鉴权下返回指定 API Key 的完整明文，
 // 供前端"复制"按钮按需取用（列表默认仍脱敏，不在页面常驻明文）。
-func (s *Server) adminRevealToken(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminRevealToken(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	item, found, err := store.FindAPITokenByName(c.Request.Context(), c.Param("name"))
+	item, found, err := store.FindAPITokenByName(ctx, c.Param("name"))
 	if err != nil {
-		respondFail(c, 500, "reveal_token_failed", err.Error())
+		respondFail(ctx, c, 500, "reveal_token_failed", err.Error())
 		return
 	}
 	if !found {
-		respondFail(c, 404, "token_not_found", "api key not found")
+		respondFail(ctx, c, 404, "token_not_found", "api key not found")
 		return
 	}
 	s.logSystemEvent("info", "api token plaintext revealed (audit)", map[string]any{"tokenName": item.Name})
-	respondOK(c, gin.H{"name": item.Name, "token": item.Token})
+	respondOK(ctx, c, utils.H{"name": item.Name, "token": item.Token})
 }
 
-func (s *Server) adminUpsertToken(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminUpsertToken(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
@@ -801,16 +806,16 @@ func (s *Server) adminUpsertToken(c *gin.Context) {
 		// NewName 非空且 ≠ 路径名时执行重命名（其余字段照常更新）。
 		NewName string `json:"newName,omitempty"`
 	}
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		respondFail(c, 400, "invalid_json", err.Error())
+	if err := bindJSON(ctx, c, &payload); err != nil {
+		respondFail(ctx, c, 400, "invalid_json", err.Error())
 		return
 	}
 	item := payload.APIToken
 	if name := c.Param("name"); name != "" {
 		item.Name = name
 	}
-	isNew := c.Request.Method == http.MethodPost
-	saved, err := store.SaveAPIToken(c.Request.Context(), item.Name, storage.APITokenUpdate{
+	isNew := string(c.Method()) == http.MethodPost
+	saved, err := store.SaveAPIToken(ctx, item.Name, storage.APITokenUpdate{
 		NewName: payload.NewName, Token: item.Token, Enabled: payload.Enabled, AllowedGroups: item.AllowedGroups, Scopes: item.Scopes,
 	}, isNew)
 	if err != nil {
@@ -821,7 +826,7 @@ func (s *Server) adminUpsertToken(c *gin.Context) {
 		if errors.Is(err, storage.ErrTokenNotFound) {
 			status = http.StatusNotFound
 		}
-		respondFail(c, status, "save_token_failed", err.Error())
+		respondFail(ctx, c, status, "save_token_failed", err.Error())
 		return
 	}
 	s.invalidateRouteCache()
@@ -829,66 +834,66 @@ func (s *Server) adminUpsertToken(c *gin.Context) {
 	item.Token = maskSecret(item.Token)
 	action := map[bool]string{true: "created", false: "updated"}[isNew]
 	s.logSystemEvent("info", "api token "+action, map[string]any{"tokenName": item.Name})
-	respondOK(c, item)
+	respondOK(ctx, c, item)
 }
 
-func (s *Server) adminDeleteToken(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminDeleteToken(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	if err := store.DeleteAPIToken(c.Request.Context(), c.Param("name")); err != nil {
-		respondFail(c, 500, "delete_token_failed", err.Error())
+	if err := store.DeleteAPIToken(ctx, c.Param("name")); err != nil {
+		respondFail(ctx, c, 500, "delete_token_failed", err.Error())
 		return
 	}
 	s.invalidateRouteCache()
 	s.logSystemEvent("warn", "api token deleted", map[string]any{"tokenName": c.Param("name")})
-	respondOK(c, gin.H{"deleted": true})
+	respondOK(ctx, c, utils.H{"deleted": true})
 }
 
 // adminUsageTrend 按请求方提供的固定 UTC offset 聚合本地日趋势。
-func (s *Server) adminUsageTrend(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminUsageTrend(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	utcOffsetMinutes, okOffset := parseUTCOffsetMinutes(c)
+	utcOffsetMinutes, okOffset := parseUTCOffsetMinutes(ctx, c)
 	if !okOffset {
 		return
 	}
-	buckets, err := store.UsageDaily(c.Request.Context(), usageQueryFromRequest(c), utcOffsetMinutes)
+	buckets, err := store.UsageDaily(ctx, usageQueryFromRequest(ctx, c), utcOffsetMinutes)
 	if err != nil {
-		respondFail(c, 500, "usage_trend_failed", err.Error())
+		respondFail(ctx, c, 500, "usage_trend_failed", err.Error())
 		return
 	}
-	respondOK(c, buckets)
+	respondOK(ctx, c, buckets)
 }
 
-func parseUTCOffsetMinutes(c *gin.Context) (int, bool) {
+func parseUTCOffsetMinutes(ctx context.Context, c *app.RequestContext) (int, bool) {
 	utcOffsetMinutes, err := strconv.Atoi(c.DefaultQuery("utcOffsetMinutes", "0"))
 	if err != nil || utcOffsetMinutes < -14*60 || utcOffsetMinutes > 14*60 {
-		respondFail(c, 400, "invalid_utc_offset", "utcOffsetMinutes must be an integer between -840 and 840")
+		respondFail(ctx, c, 400, "invalid_utc_offset", "utcOffsetMinutes must be an integer between -840 and 840")
 		return 0, false
 	}
 	return utcOffsetMinutes, true
 }
 
 // adminUsagePulse 短窗按分钟桶聚合 RPM 与时延（平均 / P95）。
-func (s *Server) adminUsagePulse(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminUsagePulse(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	utcOffsetMinutes, okOffset := parseUTCOffsetMinutes(c)
+	utcOffsetMinutes, okOffset := parseUTCOffsetMinutes(ctx, c)
 	if !okOffset {
 		return
 	}
 	bucketMinutes, err := strconv.Atoi(c.DefaultQuery("bucketMinutes", "1"))
 	if err != nil || (bucketMinutes != 1 && bucketMinutes != 5 && bucketMinutes != 15) {
-		respondFail(c, 400, "invalid_bucket", "bucketMinutes must be 1, 5, or 15")
+		respondFail(ctx, c, 400, "invalid_bucket", "bucketMinutes must be 1, 5, or 15")
 		return
 	}
-	query := usageQueryFromRequest(c)
+	query := usageQueryFromRequest(ctx, c)
 	if err := storage.ValidatePulseQuery(query); err != nil {
 		code := "invalid_from"
 		if errors.Is(err, storage.ErrPulseWindowTooLong) {
@@ -896,24 +901,24 @@ func (s *Server) adminUsagePulse(c *gin.Context) {
 		} else if errors.Is(err, storage.ErrPulseInvertedRange) {
 			code = "invalid_range"
 		}
-		respondFail(c, 400, code, err.Error())
+		respondFail(ctx, c, 400, code, err.Error())
 		return
 	}
-	result, err := store.UsagePulse(c.Request.Context(), query, utcOffsetMinutes, bucketMinutes)
+	result, err := store.UsagePulse(ctx, query, utcOffsetMinutes, bucketMinutes)
 	if err != nil {
-		respondFail(c, 500, "usage_pulse_failed", err.Error())
+		respondFail(ctx, c, 500, "usage_pulse_failed", err.Error())
 		return
 	}
-	respondOK(c, result)
+	respondOK(ctx, c, result)
 }
 
 // adminUsageByModelDaily 按本地日 × 模型聚合；top 之外的模型合并为 isOther=true。
-func (s *Server) adminUsageByModelDaily(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminUsageByModelDaily(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	utcOffsetMinutes, okOffset := parseUTCOffsetMinutes(c)
+	utcOffsetMinutes, okOffset := parseUTCOffsetMinutes(ctx, c)
 	if !okOffset {
 		return
 	}
@@ -921,115 +926,115 @@ func (s *Server) adminUsageByModelDaily(c *gin.Context) {
 	if raw := c.Query("top"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 || n > 50 {
-			respondFail(c, 400, "invalid_top", "top must be an integer between 1 and 50")
+			respondFail(ctx, c, 400, "invalid_top", "top must be an integer between 1 and 50")
 			return
 		}
 		top = n
 	}
-	buckets, err := store.UsageByModelDaily(c.Request.Context(), usageQueryFromRequest(c), utcOffsetMinutes, top)
+	buckets, err := store.UsageByModelDaily(ctx, usageQueryFromRequest(ctx, c), utcOffsetMinutes, top)
 	if err != nil {
-		respondFail(c, 500, "usage_by_model_daily_failed", err.Error())
+		respondFail(ctx, c, 500, "usage_by_model_daily_failed", err.Error())
 		return
 	}
-	respondOK(c, buckets)
+	respondOK(ctx, c, buckets)
 }
 
 // adminUsageByModel 按模型聚合（热门模型 / 明细表），支持与 stats 相同的时间与多选筛选。
-func (s *Server) adminUsageByModel(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminUsageByModel(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	buckets, err := store.UsageByModel(c.Request.Context(), usageQueryFromRequest(c))
+	buckets, err := store.UsageByModel(ctx, usageQueryFromRequest(ctx, c))
 	if err != nil {
-		respondFail(c, 500, "usage_by_model_failed", err.Error())
+		respondFail(ctx, c, 500, "usage_by_model_failed", err.Error())
 		return
 	}
-	respondOK(c, buckets)
+	respondOK(ctx, c, buckets)
 }
 
-func (s *Server) adminUsageStats(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminUsageStats(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	summary, err := store.UsageTotals(c.Request.Context(), usageQueryFromRequest(c))
+	summary, err := store.UsageTotals(ctx, usageQueryFromRequest(ctx, c))
 	if err != nil {
-		respondFail(c, 500, "usage_stats_failed", err.Error())
+		respondFail(ctx, c, 500, "usage_stats_failed", err.Error())
 		return
 	}
-	respondOK(c, summary)
+	respondOK(ctx, c, summary)
 }
 
-func (s *Server) adminUsageLogs(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminUsageLogs(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	total, items, err := store.QueryUsageLogs(c.Request.Context(), usageQueryFromRequest(c))
+	total, items, err := store.QueryUsageLogs(ctx, usageQueryFromRequest(ctx, c))
 	if err != nil {
-		respondFail(c, 500, "usage_logs_failed", err.Error())
+		respondFail(ctx, c, 500, "usage_logs_failed", err.Error())
 		return
 	}
-	respondOK(c, gin.H{"total": total, "items": items})
+	respondOK(ctx, c, utils.H{"total": total, "items": items})
 }
 
-func (s *Server) adminUsageLogDetail(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminUsageLogDetail(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	payload, found, err := store.GetUsageRecordJSON(c.Request.Context(), c.Param("id"))
+	payload, found, err := store.GetUsageRecordJSON(ctx, c.Param("id"))
 	if err != nil {
-		respondFail(c, 500, "usage_detail_failed", err.Error())
+		respondFail(ctx, c, 500, "usage_detail_failed", err.Error())
 		return
 	}
 	if !found {
-		respondFail(c, 404, "usage_log_not_found", "usage log not found")
+		respondFail(ctx, c, 404, "usage_log_not_found", "usage log not found")
 		return
 	}
 	var value any
 	if err := sonic.ConfigStd.Unmarshal(payload, &value); err != nil {
-		respondFail(c, 500, "usage_detail_decode_failed", err.Error())
+		respondFail(ctx, c, 500, "usage_detail_decode_failed", err.Error())
 		return
 	}
-	respondOK(c, value)
+	respondOK(ctx, c, value)
 }
 
-func (s *Server) adminUsageSeq(c *gin.Context) {
-	respondOK(c, gin.H{"seq": s.usageSeq.Load()})
+func (s *Server) adminUsageSeq(ctx context.Context, c *app.RequestContext) {
+	respondOK(ctx, c, utils.H{"seq": s.usageSeq.Load()})
 }
 
-func (s *Server) adminUsageReset(c *gin.Context) { s.resetUsage(c) }
+func (s *Server) adminUsageReset(ctx context.Context, c *app.RequestContext) { s.resetUsage(ctx, c) }
 
 // ---- 日志管理（usage-assets / 占用状态 / 手动清理）----
 
 // adminUsageAsset 下发外置媒体文件。资产是捕获的用户内容，必须留在管理
 // 鉴权之后，绝不做公开静态目录。存储为扁平内容寻址（usage-assets/<hash>.<ext>，
 // 同一图片全局一份）；请求 ID 必须拥有有效引用。文件名严格校验防穿越。
-func (s *Server) adminUsageAsset(c *gin.Context) {
+func (s *Server) adminUsageAsset(ctx context.Context, c *app.RequestContext) {
 	fileName := c.Param("file")
 	hash, ext, ok := parseAssetFileName(fileName)
 	if !ok {
-		respondFail(c, 400, "invalid_asset_name", "invalid asset file name")
+		respondFail(ctx, c, 400, "invalid_asset_name", "invalid asset file name")
 		return
 	}
-	store, okStore := s.requireStore(c)
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	exists, err := store.HasUsageAsset(c.Request.Context(), c.Param("requestId"), fileName)
+	exists, err := store.HasUsageAsset(ctx, c.Param("requestId"), fileName)
 	if err != nil {
-		respondFail(c, 500, "asset_lookup_failed", err.Error())
+		respondFail(ctx, c, 500, "asset_lookup_failed", err.Error())
 		return
 	}
 	if !exists {
-		respondFail(c, 404, "asset_not_found", "asset reference not found")
+		respondFail(ctx, c, 404, "asset_not_found", "asset reference not found")
 		return
 	}
 	data, err := os.ReadFile(filepath.Join(s.usageAssetsRoot(), hash+"."+ext))
 	if err != nil {
-		respondFail(c, 404, "asset_not_found", "asset file not found")
+		respondFail(ctx, c, 404, "asset_not_found", "asset file not found")
 		return
 	}
 	c.Header("Cache-Control", "private, max-age=86400")
@@ -1104,62 +1109,61 @@ func (s *Server) usageAssetsUsage() usageAssetsUsage {
 }
 
 // adminUsageStorage 返回日志占用状态与最近一轮清理结果（设置页展示）。
-func (s *Server) adminUsageStorage(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminUsageStorage(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	ctx := c.Request.Context()
 	db, err := store.LogStorageStats(ctx)
 	if err != nil {
-		respondFail(c, 500, "storage_stats_failed", err.Error())
+		respondFail(ctx, c, 500, "storage_stats_failed", err.Error())
 		return
 	}
 	content, err := store.LogContentStats(ctx)
 	if err != nil {
-		respondFail(c, 500, "storage_stats_failed", err.Error())
+		respondFail(ctx, c, 500, "storage_stats_failed", err.Error())
 		return
 	}
-	resp := gin.H{"db": db, "content": content, "assets": s.usageAssetsUsage(), "usageLog": usageLogStatusJSON(s.config.GetUsageLogConfig()), "systemLog": s.config.GetSystemLogConfig()}
+	resp := utils.H{"db": db, "content": content, "assets": s.usageAssetsUsage(), "usageLog": usageLogStatusJSON(s.config.GetUsageLogConfig()), "systemLog": s.config.GetSystemLogConfig()}
 	resp["logDatabasePath"] = store.LogStore.Path()
-	resp["writers"] = gin.H{"system": s.Logger().Stats(), "usage": s.usageWriterStats()}
+	resp["writers"] = utils.H{"system": s.Logger().Stats(), "usage": s.usageWriterStats()}
 	if r := s.usageRetention; r != nil {
 		resp["maintenance"] = r.snapshotStats()
 	}
-	respondOK(c, resp)
+	respondOK(ctx, c, resp)
 }
 
 // adminUsageCleanup 手动触发一轮清理巡检（异步执行，防重入）。
-func (s *Server) adminUsageCleanup(c *gin.Context) {
+func (s *Server) adminUsageCleanup(ctx context.Context, c *app.RequestContext) {
 	if s.usageRetention == nil {
-		respondFail(c, http.StatusServiceUnavailable, "retention_unavailable", "usage retention is not running")
+		respondFail(ctx, c, http.StatusServiceUnavailable, "retention_unavailable", "usage retention is not running")
 		return
 	}
 	accepted := s.usageRetention.triggerAsync()
-	respondOK(c, gin.H{"accepted": accepted})
+	respondOK(ctx, c, utils.H{"accepted": accepted})
 }
 
-func (s *Server) adminSystemLogs(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+func (s *Server) adminSystemLogs(ctx context.Context, c *app.RequestContext) {
+	store, okStore := s.requireStore(ctx, c)
 	if !okStore {
 		return
 	}
-	total, items, err := store.QuerySystemLogs(c.Request.Context(), parsePositiveInt(c.Query("limit"), 100), parsePositiveInt(c.Query("offset"), 0), c.Query("level"))
+	total, items, err := store.QuerySystemLogs(ctx, parsePositiveInt(c.Query("limit"), 100), parsePositiveInt(c.Query("offset"), 0), c.Query("level"))
 	if err != nil {
-		respondFail(c, 500, "logs_failed", err.Error())
+		respondFail(ctx, c, 500, "logs_failed", err.Error())
 		return
 	}
-	respondOK(c, gin.H{"total": total, "items": items})
+	respondOK(ctx, c, utils.H{"total": total, "items": items})
 }
 
-func (s *Server) adminHealth(c *gin.Context) {
+func (s *Server) adminHealth(ctx context.Context, c *app.RequestContext) {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
-	respondOK(c, gin.H{"status": "ok", "database": s.store != nil, "memory": gin.H{"alloc": mem.Alloc, "sys": mem.Sys, "numGC": mem.NumGC}})
+	respondOK(ctx, c, utils.H{"status": "ok", "database": s.store != nil, "memory": utils.H{"alloc": mem.Alloc, "sys": mem.Sys, "numGC": mem.NumGC}})
 }
 
-func usageQueryFromRequest(c *gin.Context) storage.UsageQuery {
-	from, to := usageTimeRange(c)
+func usageQueryFromRequest(ctx context.Context, c *app.RequestContext) storage.UsageQuery {
+	from, to := usageTimeRange(ctx, c)
 	status := strings.ToLower(strings.TrimSpace(c.Query("status")))
 	if status != "success" && status != "failed" {
 		status = ""
@@ -1172,10 +1176,10 @@ func usageQueryFromRequest(c *gin.Context) storage.UsageQuery {
 		Offset:     parsePositiveInt(c.Query("offset"), 0),
 		Status:     status,
 		StatusCode: parsePositiveInt(c.Query("statusCode"), 0),
-		KeyNames:   compactQueryArray(c.QueryArray("keyName")),
-		GroupNames: compactQueryArray(c.QueryArray("groupName")),
-		ModelNames: compactQueryArray(c.QueryArray("modelName")),
-		SourceIDs:  compactQueryArray(c.QueryArray("sourceId")),
+		KeyNames:   compactQueryArray(queryValues(c, "keyName")),
+		GroupNames: compactQueryArray(queryValues(c, "groupName")),
+		ModelNames: compactQueryArray(queryValues(c, "modelName")),
+		SourceIDs:  compactQueryArray(queryValues(c, "sourceId")),
 	}
 }
 
@@ -1236,10 +1240,10 @@ func compactQueryArray(values []string) []string {
 	return out
 }
 
-func (s *Server) adminLogMaintenance(c *gin.Context) {
+func (s *Server) adminLogMaintenance(ctx context.Context, c *app.RequestContext) {
 	if s.usageRetention == nil {
-		respondOK(c, retentionStats{State: "idle", Phase: "idle"})
+		respondOK(ctx, c, retentionStats{State: "idle", Phase: "idle"})
 		return
 	}
-	respondOK(c, s.usageRetention.snapshotStats())
+	respondOK(ctx, c, s.usageRetention.snapshotStats())
 }

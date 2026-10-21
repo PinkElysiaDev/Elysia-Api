@@ -4,19 +4,19 @@
 
 ```sh
 # 日常回归：Go 默认并行运行各包，包内隔离用例通过 t.Parallel 并行。
-go test -tags=sonic ./...
+go test ./...
 
 # 实际耗时（禁用测试结果缓存，但保留编译缓存）。
-go test -tags=sonic -count=1 -timeout=30m ./...
+go test -count=1 -timeout=30m ./...
 
 # 检查共享状态、执行顺序依赖和数据竞争。
-go test -tags=sonic -race -shuffle=on -count=1 -timeout=30m ./...
+go test -race -shuffle=on -count=1 -timeout=30m ./...
 
 # 对照包内串行执行；与默认并行命令使用相同机器、环境和编译缓存。
-go test -tags=sonic -parallel=1 -count=1 -timeout=30m ./...
+go test -parallel=1 -count=1 -timeout=30m ./...
 ```
 
-`-tags=sonic` 启用 Gin 的 Sonic 编解码，使测试与构建脚本、Docker 和 CI 使用相同实现。
+Hertz 在支持的平台上默认使用 Sonic，测试、构建脚本、Docker 和 CI 均无需额外 JSON build tag。
 
 ## 性能基线与分配归因
 
@@ -24,27 +24,34 @@ go test -tags=sonic -parallel=1 -count=1 -timeout=30m ./...
 工具串行执行微基准、三进程隔离 HTTP 测量、独立 CPU/分配 profile 及取消诊断；
 包含分配次数、累计字节、GC、逐请求延迟、采样峰值和自然空闲恢复曲线。
 场景、参数、测量边界与证据说明见[性能基准](../docs/backend-performance.md)。
-后续优化统一参考[最新 profiling 总报告](../docs/backend-performance-algorithm-91-final.md)及其
-[原始证据](../docs/artifacts/performance-algorithm-91/)；旧轮次报告可从 Git 历史查询。
-该报告测量的是 `4fc5011`，不包含随后合入的 #90；对当前 `deploy` 做新优化前应重新采集基线。
+迁移结果见 [Hertz 简报](../docs/backend-hertz-migration.md)。原始测量与 profile
+保存到源码树外；旧轮次报告可从 Git 历史查询。后续优化应重新采集对应源码的基线。
 
 ## 后端结构与组件边界
 
 ```sh
-go test -tags=sonic ./internal/architecture
-go test -tags=sonic -race -shuffle=on ./internal/routing ./internal/outbound ./config ./storage ./relay ./server
-go vet -tags=sonic ./...
+go test ./internal/architecture
+go test -race -shuffle=on ./internal/routing ./internal/outbound ./config ./storage ./relay ./server
+go vet ./...
 ```
 
-架构测试检查包依赖方向、Gin 的 HTTP 边界以及命令行/进程退出归属。
+架构测试检查包依赖方向、Hertz 的 HTTP 边界以及命令行/进程退出归属，并禁止重新引入 Gin 或 HTTP handler 兼容适配器。
 路由组件测试覆盖加载失效代际、并发合并、失败重试、模型/Key 游标、跨午夜配额与幂等释放；
 现有 server 集成测试继续覆盖真实存储、凭据撤销、故障转移、鉴权与关停。
-配置导入本身不创建文件；启动仍通过 `go run -tags=sonic . --config <path>` 显式执行。
+配置导入本身不创建文件；启动仍通过 `go run . --config <path>` 显式执行。
+
+性能路径的回归按所属组件维护：语义克隆/归一化由 `semantic_document.go` 提供，
+typed mapping 和转换规则共享该实现；文档预算检查集中在 `document_metrics.go`。
+普通 HTTP 与流式响应均通过 `gatewayResponsePlan` 接收交付所需信息。
+
+测试优先验证外部行为、资源预算、所有权和快慢路径等价性。分配次数由 benchmark
+报告，不在普通单测中固定为零；不为内部优化阈值或调用同一实现的包装函数重复建立
+等价性测试。摘要、缓存和流状态回归分别归入对应组件测试，性能采集入口继续保留。
 
 后台组件定向回归：
 
 ```sh
-go test -tags=sonic -race -shuffle=on -count=1 -timeout=5m ./server \
+go test -race -shuffle=on -count=1 -timeout=5m ./server \
   -run '^Test(Health|SourceRefresh|Retention|UsageWriter|UsageQueue)'
 ```
 
@@ -61,7 +68,7 @@ go test -tags=sonic -race -shuffle=on -count=1 -timeout=5m ./server \
 ## 刷新任务与异步任务等待
 
 ```sh
-go test -tags=sonic -race -shuffle=on -parallel=4 -count=1 -timeout=5m ./server \
+go test -race -shuffle=on -parallel=4 -count=1 -timeout=5m ./server \
   -run '^Test(SourceRefresh|GatewayJobWaitReadOutcomes|GatewayJobExplicitWaitTimeoutPolicies)'
 ```
 
@@ -76,10 +83,10 @@ go test -tags=sonic -race -shuffle=on -parallel=4 -count=1 -timeout=5m ./server 
 ## MCP 定向验证
 
 ```sh
-go test -tags=sonic -race ./server -run '^Test(MCP|AgentRemote|A2A|RemoteThinkingEffortWhitelistAndSchema)' -count=1 -timeout=3m
+go test -race ./server -run '^Test(MCP|AgentRemote|A2A|RemoteThinkingEffortWhitelistAndSchema)' -count=1 -timeout=3m
 ```
 
-`mcp_sdk_test.go` 使用官方 Go SDK 客户端经过真实 HTTP/Gin 鉴权层验证发现、
+`mcp_sdk_test.go` 使用官方 Go SDK 客户端经过真实 Hertz HTTP/鉴权层验证发现、
 工具调用、进度和 Key 撤销；`mcp_cli_tool_test.go` 保留无状态批处理、部分失败、
 脱敏及实际 SSE 断开取消的回归。传输层兼容性变化见
 [远程 Agent 接入](../docs/remote-agent-api.md#取代手写传输层的破坏性迁移)。
@@ -87,7 +94,7 @@ go test -tags=sonic -race ./server -run '^Test(MCP|AgentRemote|A2A|RemoteThinkin
 ## A2A 定向验证
 
 ```sh
-go test -tags=sonic -race ./server -run '^Test(A2A|AgentRemote|Remote|MCP)' -count=1 -timeout=3m
+go test -race ./server -run '^Test(A2A|AgentRemote|Remote|MCP)' -count=1 -timeout=3m
 ```
 
 `a2a_sdk_test.go` 使用官方 0.3 / 1.0 客户端验证真实 HTTP/SSE、鉴权撤销、
@@ -95,10 +102,24 @@ go test -tags=sonic -race ./server -run '^Test(A2A|AgentRemote|Remote|MCP)' -cou
 `agent_remote_test.go` 保留审批恢复、显式裁决、取消终态和旧任务取代的集成回归。
 版本与响应差异见[远程 Agent 接入](../docs/remote-agent-api.md#sdk-线协议迁移)。
 
+## Hertz 原生 HTTP 验证
+
+```sh
+go test -race -shuffle=on ./server ./relay ./internal/architecture \
+  -run '^Test(Hertz|MCP|A2A|GatewayWebSocket|GatewaySSEAndNDJSON|GatewayFailureEncoding|Shutdown|RequestedShutdown|Preparation|StreamCancellationUsage)' \
+  -count=1 -timeout=5m
+```
+
+原生 listener 的测试覆盖未完成上传时拒绝、首帧前断连取消、流错误 trailer、
+流式 panic、chunked keep-alive、WebSocket 会话清理及强制关停（包括 handler 返回后的 BodyStream）；
+MCP/A2A 用官方客户端验证 SDK 消息与原生传输的互操作。
+测试输出默认在请求完成后解析一次；仅取消时序用例开启逐 Flush 快照，不对第三方 JSON 库或内部指针装配重复建测。
+迁移边界与网络库选择见 [Hertz 迁移说明](../docs/backend-hertz-migration.md)。
+
 ## CLI 语法与命令框架定向验证
 
 ```sh
-go test -tags=sonic -race ./server ./agent ./internal/clishell \
+go test -race ./server ./agent ./internal/clishell \
   -run '^Test(CLI|MCPCLI|MaskSecret|RedactCommand|MaskedPending)' -count=1 -timeout=3m
 ```
 
@@ -107,13 +128,13 @@ go test -tags=sonic -race ./server ./agent ./internal/clishell \
 中文 CLI 参考由运行时 Cobra help 生成：
 
 ```sh
-UPDATE_AGENT_CLI_DOCS=1 go test -tags=sonic ./server -run '^TestCLIReferenceUpToDate$' -count=1
+UPDATE_AGENT_CLI_DOCS=1 go test ./server -run '^TestCLIReferenceUpToDate$' -count=1
 ```
 
 ## SSE 库迁移定向验证
 
 ```sh
-go test -tags=sonic -race ./internal/eventstream ./protocol ./relay ./server \
+go test -race ./internal/eventstream ./protocol ./relay ./server \
   -run '^Test(SSE|HTTP|StreamIdle|OpenAIStreamNotCut|GatewaySSEAndNDJSON|GatewayBrokenStream|GatewayResponsesNativeFailure|GatewayFailureEncoding|ProviderFailureRetains|CustomProtocolStream|TransportFailure|FailureEvidence|AgentCaller|AgentFullTurn|AgentGatedToolApproval|AgentStopTurn|AgentKeyCreateSecret|OpenAIChatPassthroughStream|ResponsesPassthroughStream|StreamCancellationUsage|ToolOnlyStreamWithoutUsage|CanceledConnection)' \
   -count=1 -timeout=4m
 ```
@@ -125,7 +146,7 @@ go test -tags=sonic -race ./internal/eventstream ./protocol ./relay ./server \
 ## JSON Schema 反射迁移定向验证
 
 ```sh
-go test -tags=sonic -race ./protocol ./server \
+go test -race ./protocol ./server \
   -run '^Test(Schema|ProtocolSchemaLibrary|ProtocolRevisionAdmin|ProtocolAdminRejects|AgentProtocolV2|CLIReferenceUpToDate|RemoteThinkingEffortWhitelistAndSchema|OperationSchema|CompileChecksNestedOutputSchema)' \
   -count=1 -timeout=3m
 ```
@@ -138,12 +159,12 @@ go test -tags=sonic -race ./protocol ./server \
 ## Sonic JSON Pointer 定向验证
 
 ```sh
-go test -tags=sonic -race ./protocol ./protocol/builtin ./server \
+go test -race ./protocol ./protocol/builtin ./server \
   -run '^(Test(JSONPointer|RequestViews|RequestResources|Value|Expression|CompileChecksNestedOutputSchema|Native|MutationTransaction|TypedMeter|RequestWireSchemaTypedParity|JSONModuleFallbackMatchesShippedSamples|HTTP|GatewaySSEAndNDJSON|GatewayBrokenStream|AgentProtocolV2)|FuzzJSONPointerObjectLookup)' \
   -count=1 -timeout=3m
-go test -tags=sonic ./protocol -run '^$' \
+go test ./protocol -run '^$' \
   -fuzz '^FuzzJSONPointerObjectLookup$' -fuzztime=10s -parallel=2
-GOMAXPROCS=1 go test -tags=sonic ./protocol -run '^$' \
+GOMAXPROCS=1 go test ./protocol -run '^$' \
   -bench '^BenchmarkJSONTraversal/pointer' -benchmem -benchtime=500ms -count=5
 ```
 
@@ -154,13 +175,13 @@ GOMAXPROCS=1 go test -tags=sonic ./protocol -run '^$' \
 ## 运行时 Schema 校验迁移
 
 ```sh
-go test -tags=sonic -race ./protocol ./protocol/builtin ./server \
+go test -race ./protocol ./protocol/builtin ./server \
   -run '^Test(RuntimeSchema|Expression|Compile|Operation|Model|Request|JSONModule|Native|Mutation|Typed|Verification|Schema|AgentProtocolV2|ProtocolRevision|ProtocolAdmin|CLIReference)' \
   -count=1 -timeout=3m
-go test -tags=sonic -race ./protocol/builtin \
+go test -race ./protocol/builtin \
   -run '^Test(ShippedDefinitionsVerify|BuiltinVerifiedProfilesKeepTextRoutesAndFullDiagnostics)$' \
   -count=1 -timeout=3m
-GOMAXPROCS=1 go test -tags=sonic ./protocol -run '^$' \
+GOMAXPROCS=1 go test ./protocol -run '^$' \
   -bench '^BenchmarkRuntimeSchema' -benchmem -benchtime=200ms -count=3
 ```
 
@@ -175,10 +196,10 @@ GOMAXPROCS=1 go test -tags=sonic ./protocol -run '^$' \
 ## sqlc 增量查询验证
 
 ```sh
-go test -tags=sonic -race ./storage ./server \
+go test -race ./storage ./server \
   -run '^Test(ListGroups|Group|CreateGroup|AddGroup|RemoveGroup|DeleteGroup|SourceModelsGroupsTokensAndUsage|ModelGroup|UpsertGroup|RuntimeConfig|AdminListGroups)' \
   -count=1 -timeout=3m
-GOMAXPROCS=1 go test -tags=sonic ./storage -run '^$' \
+GOMAXPROCS=1 go test ./storage -run '^$' \
   -bench '^BenchmarkListGroups$' -benchmem -benchtime=200ms -count=3
 ```
 
@@ -187,12 +208,12 @@ GOMAXPROCS=1 go test -tags=sonic ./storage -run '^$' \
 ## 原子文件写入验证
 
 ```sh
-go test -tags=sonic -race ./internal/atomicfile ./config ./storage ./server \
+go test -race ./internal/atomicfile ./config ./storage ./server \
   -run '^Test(WriteFile|Config|AgentSettingsSave|EnsureConfig|Bootstrap|DBEncryption|Secret|ModelCatalogCache|Catalog|ProtocolSnapshot|SnapshotCleanup|RuntimeConfigAtomic)' \
   -count=1 -timeout=3m
-GOOS=windows GOARCH=amd64 go test -tags=sonic ./internal/atomicfile \
+GOOS=windows GOARCH=amd64 go test ./internal/atomicfile \
   -run '^$' -c -o /tmp/opencode/atomicfile-windows.test.exe
-GOMAXPROCS=1 go test -tags=sonic ./internal/atomicfile -run '^$' \
+GOMAXPROCS=1 go test ./internal/atomicfile -run '^$' \
   -bench '^BenchmarkAtomicWrite$' -benchmem -benchtime=200ms -count=3
 ```
 

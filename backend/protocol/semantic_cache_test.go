@@ -64,6 +64,37 @@ func TestSemanticCacheCapacityAndNormalization(t *testing.T) {
 	}
 }
 
+func TestSemanticCacheSpillAndUpdates(t *testing.T) {
+	limits := DefaultLimits()
+	limits.StateItems = 3
+	cache := &semanticCache{limits: limits}
+	var retained int
+	for index := range 4 {
+		value := StringValue(strings.Repeat(string(rune('a'+index)), 300))
+		node := &Node{Kind: TextNode, Payload: value}
+		for range 2 {
+			if err := cache.check(node, limits); err != nil {
+				t.Fatal(err)
+			}
+			if cache.normalize(value) != value {
+				t.Fatal("workspace changed normalized content")
+			}
+		}
+		entry, exists := cache.lookup(value)
+		if index < 3 {
+			if !exists || !entry.hasMetrics || !entry.hasNormalized {
+				t.Fatal("metric/normalization updates were lost")
+			}
+			retained += value.Len()
+		} else if exists {
+			t.Fatal("workspace exceeded item budget")
+		}
+	}
+	if cache.size() != 3 || cache.retainedBytes != retained {
+		t.Fatalf("workspace accounting: %d items, %d bytes", cache.size(), cache.retainedBytes)
+	}
+}
+
 func TestCanonicalToolTextMatchesLegacy(t *testing.T) {
 	for _, raw := range []string{`"plain"`, ` " a b " `, `"<>&"`, `"\u0061"`, `"line\n"`, `"\ud800"`, "\"\xff\"", `null`, `{}`, `17`} {
 		value, err := ParseValue([]byte(raw))

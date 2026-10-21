@@ -50,7 +50,7 @@ npm install
 
 ```bash
 cd backend
-go run -tags=sonic . --config ./config.json
+go run . --config ./config.json
 ```
 
 另一个终端从仓库根目录启动前端：
@@ -68,12 +68,12 @@ npm run dev --workspace @root/webui
 后端检查，在 `backend/` 执行：
 
 ```bash
-go test -tags=sonic ./...
-go vet -tags=sonic ./...
+go test ./...
+go vet ./...
 ```
 
 后端直接使用 Sonic 编解码。手工运行 `go build`、`go run`、
-`go test` 和 `go vet` 时均需带上 `-tags=sonic`，以同时启用 Gin 的 Sonic 编解码。
+Hertz 在支持的平台上默认使用 Sonic；`go build`、`go run`、`go test` 和 `go vet` 均无需额外 JSON build tag。
 构建脚本、Docker 和 CI 已启用此 tag。
 
 前端检查，在仓库根目录执行：

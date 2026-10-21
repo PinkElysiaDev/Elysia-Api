@@ -44,7 +44,8 @@ func TestResponsesSeparateToolLedgerPersistedAcrossClientProjection(t *testing.T
 			defer upstream.Close()
 			s := newTestServer(t, presetGroup(t, "custom:openai-responses", upstream.URL))
 			request, recorder := chatRequestContext(fmt.Sprintf(`{"model":"grp","messages":[{"role":"user","content":"hi"}],"stream":%t,"stream_options":{"include_usage":true}}`, stream))
-			s.chatCompletions(request)
+			s.chatCompletions(contextForTest(request), request)
+			flushTestResponse(request)
 			if recorder.Code != 200 || !strings.Contains(recorder.Body.String(), "OK") || strings.Contains(recorder.Body.String(), "tool_usage") || recorder.Header().Get("X-Elysia-Stream-Error") != "" {
 				t.Fatalf("bad projected response: %d %s", recorder.Code, recorder.Body)
 			}

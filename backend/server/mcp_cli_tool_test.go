@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -36,7 +36,8 @@ func callMCPCLI(t *testing.T, s *Server, args map[string]any) (map[string]any, s
 		"name": "elysia_cli", "arguments": args, "_meta": map[string]any{"progressToken": "cli-test"},
 	})
 	c, rec := remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(body, nil))
-	s.handleMCP(c)
+	s.handleMCP(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("MCP status: %d %s", rec.Code, rec.Body.String())
 	}
@@ -217,7 +218,8 @@ func TestMCPCLIDiscoveryAndModernCall(t *testing.T) {
 		"_meta": map[string]any{mcp.MetaKeyProtocolVersion: mcpModernProtocolVersion, "progressToken": "modern-cli"},
 	})
 	c, rec := remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(body, nil))
-	s.handleMCP(c)
+	s.handleMCP(contextForTest(c), c)
+	flushTestResponse(c)
 	frames := parseA2AFrames(t, rec.Body.String())
 	if rec.Code != http.StatusOK || len(frames) < 2 {
 		t.Fatalf("modern call missing progress/result: %s", rec.Body.String())
@@ -229,6 +231,8 @@ func TestMCPCLIDiscoveryAndModernCall(t *testing.T) {
 	cliMCPData(t, result, false)
 }
 
+// Cross the real HTTP/SSE boundary: cancellation must propagate from the
+// disconnected POST through the SDK's ephemeral session into the CLI.
 func TestMCPCLICancellationIsStateless(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	started := make(chan struct{})
@@ -247,15 +251,14 @@ func TestMCPCLICancellationIsStateless(t *testing.T) {
 	args := map[string]any{
 		"command": mcpTestProtocolDraft(t) + " ; elysia protocol test --operation generate --sample " + mcpProtocolSample + " --base-url " + upstream.URL + "; elysia group create --name must-not-run",
 	}
-	// Cross the real HTTP/SSE boundary: cancellation must propagate from the
-	// disconnected POST through the SDK's ephemeral session into the CLI.
 	handlerDone := make(chan struct{})
-	router := gin.New()
-	router.POST("/mcp", func(c *gin.Context) {
+	router := newTestEngine(t)
+	router.POST("/mcp", func(ctx context.Context, c *app.RequestContext) {
 		defer close(handlerDone)
-		s.handleMCP(c)
+		s.handleMCP(ctx, c)
+		flushTestResponse(c)
 	})
-	httpServer := httptest.NewServer(router)
+	httpServer := startTestServer(router)
 	defer func() {
 		cancel()
 		close(release)
@@ -326,7 +329,7 @@ func TestMCPCLIAuthAndRemoteSwitch(t *testing.T) {
 		}
 	}
 	s.invalidateRouteCache()
-	router := gin.New()
+	router := newTestEngine(t)
 	router.POST("/mcp", s.agentRemoteGate(), s.agentRemoteAuth(), s.handleMCP)
 	for _, tc := range []struct {
 		key    string
@@ -340,7 +343,7 @@ func TestMCPCLIAuthAndRemoteSwitch(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer "+tc.key)
 		req.Header.Set("Accept", "application/json, text/event-stream")
 		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
+		serveTestHTTP(router, rec, req)
 		if rec.Code != tc.status {
 			t.Fatalf("key %q: status=%d want=%d", tc.key, rec.Code, tc.status)
 		}
@@ -350,7 +353,7 @@ func TestMCPCLIAuthAndRemoteSwitch(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer operator")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	serveTestHTTP(router, rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("remote disabled: status=%d", rec.Code)
 	}

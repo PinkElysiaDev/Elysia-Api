@@ -104,7 +104,7 @@ func TestDiscoveryRegressionSaveUsesDiscoveredModels(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPut, "/discovery/source/"+src.ID, bytes.NewReader(payload))
 	request.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
-	s.engine.ServeHTTP(recorder, request)
+	serveTestHTTP(s.engine, recorder, request)
 	if recorder.Code != 200 {
 		t.Fatalf("save status=%d body=%s", recorder.Code, recorder.Body.String())
 	}

@@ -16,19 +16,14 @@ import (
 	"github.com/elysia-api/backend/storage"
 )
 
+// JSON fields are sorted: inspect frames rather than depend on order.
 func TestGatewayGeminiClientStreamUsagePreferences(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		name, option string
 		want         bool
 		reject       bool
-	}{
-		{"true", `,"stream_options":{"include_usage":true}`, true, false},
-		{"false", `,"stream_options":{"include_usage":false}`, false, false},
-		{"missing", "", false, false},
-		{"null", `,"stream_options":null`, false, false},
-		{"unknown", `,"stream_options":{"include_usage":true,"future_flag":true}`, false, true},
-	} {
+	}{{"true", `,"stream_options":{"include_usage":true}`, true, false}, {"false", `,"stream_options":{"include_usage":false}`, false, false}, {"missing", "", false, false}, {"null", `,"stream_options":null`, false, false}, {"unknown", `,"stream_options":{"include_usage":true,"future_flag":true}`, false, true}} {
 		t.Run(test.name, func(t *testing.T) {
 			s, _ := newProtocolAdminTestServer(t)
 			activateDiscoveryPresets(t, s)
@@ -50,7 +45,7 @@ func TestGatewayGeminiClientStreamUsagePreferences(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/gateway/openai-chat-completions/chat/completions", strings.NewReader(body))
 			req.Header.Set("Authorization", "Bearer gateway-test-token")
 			rec := httptest.NewRecorder()
-			s.engine.ServeHTTP(rec, req)
+			serveTestHTTP(s.engine, rec, req)
 			if test.reject {
 				if rec.Code != 400 || calls != 0 || !strings.Contains(rec.Body.String(), "/stream_options/future_flag") {
 					t.Fatal("unknown stream option reached upstream", rec.Code, calls, rec.Body)
@@ -60,7 +55,6 @@ func TestGatewayGeminiClientStreamUsagePreferences(t *testing.T) {
 			if rec.Code != 200 || calls != 1 || !strings.Contains(rec.Body.String(), "hello") || strings.Contains(rec.Body.String(), "conversion_rejected") {
 				t.Fatal(rec.Code, calls, rec.Body)
 			}
-			// JSON fields are sorted: inspect frames rather than depend on order.
 			hasUsage := false
 			for _, line := range strings.Split(rec.Body.String(), "\n") {
 				if !strings.HasPrefix(line, "data: {") {
@@ -107,7 +101,7 @@ func TestGatewayMessagesGeminiContinuationRoundTrip(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer gateway-test-token")
 		req.Header.Set("x-elysia-session-id", "session-one")
 		rec := httptest.NewRecorder()
-		s.engine.ServeHTTP(rec, req)
+		serveTestHTTP(s.engine, rec, req)
 		return rec
 	}
 	first := call(`{"model":"group","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`)
@@ -141,7 +135,9 @@ func TestGatewayContinuationPersistenceAndIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { s.store.Close() })
+	t.Cleanup(func() {
+		s.store.Close()
+	})
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()
 	upstream, _ := service.Pin(protocol.PresetGeminiID)
@@ -164,7 +160,7 @@ func TestGatewayContinuationPersistenceAndIsolation(t *testing.T) {
 		r.Header.Set("Authorization", "Bearer gateway-test-token")
 		r.Header.Set("x-elysia-session-id", session)
 		rec := httptest.NewRecorder()
-		s.engine.ServeHTTP(rec, r)
+		serveTestHTTP(s.engine, rec, r)
 		if rec.Code != 200 {
 			t.Fatalf("HTTP %d %s", rec.Code, rec.Body)
 		}
@@ -228,13 +224,12 @@ func TestGatewayParallelGeminiToolSignatures(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.invalidateRouteCache()
-
 	call := func(body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", "/gateway/anthropic-messages/v1/messages", strings.NewReader(body))
 		r.Header.Set("Authorization", "Bearer gateway-test-token")
 		r.Header.Set("x-elysia-session-id", "tools")
 		rec := httptest.NewRecorder()
-		s.engine.ServeHTTP(rec, r)
+		serveTestHTTP(s.engine, rec, r)
 		if rec.Code != 200 {
 			t.Fatalf("HTTP %d: %s", rec.Code, rec.Body)
 		}
@@ -262,7 +257,9 @@ func TestGatewayStrictLateGeminiSignature(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { s.store.Close() })
+	t.Cleanup(func() {
+		s.store.Close()
+	})
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()
 	upstream, _ := service.Pin(protocol.PresetGeminiID)
@@ -292,7 +289,7 @@ func TestGatewayStrictLateGeminiSignature(t *testing.T) {
 	r.Header.Set("Authorization", "Bearer gateway-test-token")
 	r.Header.Set("x-elysia-session-id", "strict-session")
 	rec := httptest.NewRecorder()
-	s.engine.ServeHTTP(rec, r)
+	serveTestHTTP(s.engine, rec, r)
 	if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" || !strings.Contains(rec.Body.String(), protocol.ContinuationPrefix) || !strings.Contains(rec.Body.String(), `"type":"message_stop"`) {
 		t.Fatal(rec.Code, rec.Body)
 	}
@@ -336,8 +333,9 @@ func TestProviderSignatureProbeRequiresAcceptedScopedEvidence(t *testing.T) {
 	}
 	call := func() *httptest.ResponseRecorder {
 		c, rec := adminProtocolContext("POST", "/probe-signature", fmt.Sprintf(`{"hash":%q,"ruleId":"configured-fallback","ingressId":"anthropic-messages","sourceId":"gateway-source","modelId":"upstream-model"}`, draft.Hash))
-		c.AddParam("policyId", policy.ID)
-		s.adminConversionSignatureProbe(c)
+		addTestParam(c, "policyId", policy.ID)
+		s.adminConversionSignatureProbe(contextForTest(c), c)
+		flushTestResponse(c)
 		return rec
 	}
 	if rec := call(); rec.Code != 400 {
@@ -375,8 +373,9 @@ func TestProviderSignatureProbeRequiresAcceptedScopedEvidence(t *testing.T) {
 	}
 	keyCall := func(index int) *httptest.ResponseRecorder {
 		c, rec := adminProtocolContext("POST", "/probe-signature", fmt.Sprintf(`{"hash":%q,"ruleId":"configured-fallback","ingressId":"anthropic-messages","sourceId":"gateway-source","modelId":"upstream-model","keyIndex":%d}`, draft.Hash, index))
-		c.AddParam("policyId", policy.ID)
-		s.adminConversionSignatureProbe(c)
+		addTestParam(c, "policyId", policy.ID)
+		s.adminConversionSignatureProbe(contextForTest(c), c)
+		flushTestResponse(c)
 		return rec
 	}
 	for _, index := range []int{-1, 2, 3} {

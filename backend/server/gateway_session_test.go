@@ -115,7 +115,7 @@ func TestGatewayWebSocketIndependentProtocolsAndUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	server.invalidateRouteCache()
-	gateway := httptest.NewServer(server.engine)
+	gateway := startTestServer(server.engine)
 	defer gateway.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
 	defer cancel()
@@ -201,10 +201,13 @@ func TestGatewayWebSocketRejectsAuthAndOriginBeforeUpstream(t *testing.T) {
 	server, _ := newProtocolAdminTestServer(t)
 	compiled := activateGatewayDefinition(t, server, loadGatewayDefinition(t, "session-alpha"))
 	var calls atomic.Int32
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(500) }))
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(500)
+	}))
 	defer provider.Close()
 	setupSessionModel(t, server, compiled, provider.URL)
-	gateway := httptest.NewServer(server.engine)
+	gateway := startTestServer(server.engine)
 	defer gateway.Close()
 	for _, test := range []struct {
 		query, token, origin string
@@ -242,7 +245,7 @@ func TestGatewayWebSocketLateErrorClosesWithoutReplay(t *testing.T) {
 	}))
 	defer provider.Close()
 	setupSessionModel(t, server, compiled, provider.URL)
-	gateway := httptest.NewServer(server.engine)
+	gateway := startTestServer(server.engine)
 	defer gateway.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
 	defer cancel()

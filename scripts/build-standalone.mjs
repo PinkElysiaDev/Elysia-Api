@@ -111,7 +111,7 @@ resetBuildDirectory(releaseDir)
 
 for (const target of targets) {
   log(`Building ${target.output} (${target.goos}/${target.goarch})`)
-  run('go', ['build', '-tags=sonic', '-ldflags', `-s -w -X github.com/elysia-api/backend/server.AppVersion=${appVersion} -X github.com/elysia-api/backend/server.AppCommit=${appCommit}`, '-o', join(releaseDir, target.output), '.'], {
+  run('go', ['build', '-ldflags', `-s -w -X github.com/elysia-api/backend/server.AppVersion=${appVersion} -X github.com/elysia-api/backend/server.AppCommit=${appCommit}`, '-o', join(releaseDir, target.output), '.'], {
     cwd: backendDir,
     env: {
       ...process.env,

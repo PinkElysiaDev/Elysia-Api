@@ -55,7 +55,7 @@ func TestGatewayAuditFailureDetailsReachAllClients(t *testing.T) {
 			req.Header.Set("Authorization", "Bearer gateway-test-token")
 			out := httptest.NewRecorder()
 			before := calls.Load()
-			s.engine.ServeHTTP(out, req)
+			serveTestHTTP(s.engine, out, req)
 			want := "synthetic tool_choice.name"
 			if stream {
 				want = "gateway_concurrency_limit"
@@ -123,7 +123,7 @@ func TestHTTP524GatewayAndAgentPreserveObservedFailure(t *testing.T) {
 			req.Header.Set("Authorization", "Bearer gateway-test-token")
 			out := httptest.NewRecorder()
 			before := calls.Load()
-			s.engine.ServeHTTP(out, req)
+			serveTestHTTP(s.engine, out, req)
 			if calls.Load() != before+1 || out.Code != 524 || !strings.Contains(out.Body.String(), "上游源站响应超时") || strings.Contains(out.Body.String(), "must-not-leak") {
 				t.Fatalf("%s stream=%v: %d %s", ingress.id, stream, out.Code, out.Body.String())
 			}

@@ -9,9 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
-	"github.com/gin-gonic/gin"
 )
 
 func (s *Server) pinProtocolBudget(ctx context.Context) (context.Context, error) {
@@ -22,14 +23,13 @@ func (s *Server) pinProtocolBudget(ctx context.Context) (context.Context, error)
 	return protocol.WithRequestBodyLimit(ctx, limit)
 }
 
-func (s *Server) pinProtocolRequest(c *gin.Context) bool {
-	ctx, err := s.pinProtocolBudget(c.Request.Context())
+func (s *Server) pinProtocolRequest(ctx context.Context, c *app.RequestContext) (context.Context, bool) {
+	ctx, err := s.pinProtocolBudget(ctx)
 	if err != nil {
-		respondFail(c, http.StatusInternalServerError, "invalid_resource_config", err.Error())
-		return false
+		respondFail(ctx, c, http.StatusInternalServerError, "invalid_resource_config", err.Error())
+		return ctx, false
 	}
-	c.Request = c.Request.WithContext(ctx)
-	return true
+	return ctx, true
 }
 
 // Preview envelopes contain semantic snapshots as well as wire input. Their
@@ -38,24 +38,26 @@ func protocolPreviewPath(path string) bool {
 	return strings.HasPrefix(path, "/api/admin/protocols/") && strings.HasSuffix(path, "/preview")
 }
 
-func (s *Server) readGatewayRequest(c *gin.Context, compiled *protocol.Compiled) ([]byte, bool) {
-	if !s.pinProtocolRequest(c) {
+func (s *Server) readGatewayRequest(ctx context.Context, c *app.RequestContext, compiled *protocol.Compiled) ([]byte, bool) {
+	var budgetOK bool
+	ctx, budgetOK = s.pinProtocolRequest(ctx, c)
+	if !budgetOK {
 		return nil, false
 	}
-	limit := compiled.RequestLimits(c.Request.Context()).BufferBytes
-	declared := c.Request.ContentLength
+	limit := compiled.RequestLimits(ctx).BufferBytes
+	declared := int64(c.Request.Header.ContentLength())
 	reservation := int64(limit)
 	if declared >= 0 {
 		reservation = min(reservation, max(1, declared))
 	}
-	if err := s.acquireGatewayPreparation(c, reservation); err != nil {
-		s.rejectPreparation(c, compiled, err)
+	if err := s.acquireGatewayPreparation(ctx, c, reservation); err != nil {
+		s.rejectPreparation(ctx, c, compiled, err)
 		return nil, false
 	}
 	// A declared length is not trusted: read at most one extra byte and reject
 	// mismatches rather than extending a reservation while holding other slots.
 	// Unknown/chunked input reserves the full pinned request limit up front.
-	reader := io.Reader(c.Request.Body)
+	reader := io.Reader(requestBody(c))
 	if declared >= 0 && declared < int64(limit) {
 		reader = io.LimitReader(reader, declared+1)
 	}
@@ -68,11 +70,11 @@ func (s *Server) readGatewayRequest(c *gin.Context, compiled *protocol.Compiled)
 	}
 	s.releaseGatewayPreparation(c)
 	err = protocol.AnnotateResourceError(err, compiled.Identity(), protocol.DecodeRequest, "read.request")
-	record := s.initUsageRecord(c, time.Now(), nil, builtin.FormatType(compiled.Identity().Family))
+	record := s.initUsageRecord(ctx, c, time.Now(), nil, builtin.FormatType(compiled.Identity().Family))
 	record.IngressRevision, record.SourceFormat = compiled.Hash(), compiled.Identity().DefinitionID
 	record.RelayMode = "protocol_v2"
 	installDownstreamCapture(c, record, downstreamCaptureLimit(s.usageLogConfig()))
-	s.failGateway(c, record, http.StatusBadRequest, err)
+	s.failGateway(ctx, c, record, http.StatusBadRequest, err)
 	s.recordUsage(record)
 	return nil, false
 }

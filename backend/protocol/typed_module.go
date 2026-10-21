@@ -3,7 +3,6 @@ package protocol
 import (
 	"context"
 	"fmt"
-	"reflect"
 )
 
 // TypedModule avoids serializing semantic documents between trusted Go
@@ -82,7 +81,7 @@ func (compiled *Compiled) encodeEventOutput(ctx context.Context, direction Direc
 		return fail(err)
 	}
 	inputLimits, outputLimits, _ := compiled.mappingLimits(ctx, direction)
-	if err := checkMappingSemantic(input, inputLimits, "mapping_input"); err != nil {
+	if err := checkDocumentMapping(ctx, input, inputLimits, "mapping_input"); err != nil {
 		return fail(err)
 	}
 	if _, err := EncodeValue(options.Values); err != nil {
@@ -146,28 +145,6 @@ func (compiled *Compiled) hasTypedRequestSchema(direction Direction) bool {
 		return mapping.input != nil && mapping.output == nil
 	}
 	return direction == EncodeRequest && mapping.input == nil && mapping.output != nil
-}
-
-// normalizeMappingSemantic reproduces a semantic JSON boundary on owned mutable
-// containers while preserving immutable payloads that need no normalization.
-func normalizeMappingSemantic[T any](input T, limits Limits) T {
-	value := reflect.ValueOf(input)
-	plan := typedLimitPlans[value.Type()]
-	owned := cloneSemantic(value, plan)
-	state := conversionState{cache: &semanticCache{limits: limits}}
-	state.normalize(owned, plan)
-	return owned.Interface().(T)
-}
-
-func checkMappingSemantic(value any, limits Limits, domain string) error {
-	if fitsTypedLimits(value, limits) {
-		return nil
-	}
-	encoded, err := EncodeValue(value)
-	if err != nil {
-		return err
-	}
-	return checkResourceValue(encoded, limits, domain)
 }
 
 func checkTypedLimits(value any, limits Limits) error {

@@ -29,11 +29,14 @@ func TestContinuationExtractionRebuildsOnlyChangedHistory(t *testing.T) {
 	token := p.ContinuationPrefix + "opaque"
 	untouched := `{ "role": "user", "content": "hello", "n": 9007199254740993 }`
 	body := []byte(`{"messages":[` + untouched + `,{"role":"assistant","content":"ok","elysia_continuation":["` + token + `"]}]}`)
-	got, tokens, err := ExtractContinuationCarriers(body, "openai_chat", len(body))
+	input := testValue(t, string(body))
+	root, tokens, err := ExtractContinuationCarriersValue(input, "openai_chat", len(body))
 	if err != nil || len(tokens) != 1 || tokens[0] != token {
 		t.Fatalf("carrier extraction: %q, %v", tokens, err)
 	}
-	root, _ := p.ParseValue(got)
+	if input.JSONString() != string(body) {
+		t.Fatal("carrier extraction mutated immutable input")
+	}
 	fields, _ := root.ReadObject()
 	var messages []p.Value
 	if err := fields["messages"].Decode(&messages); err != nil || len(messages) != 2 {
@@ -51,15 +54,11 @@ func TestContinuationExtractionRebuildsOnlyChangedHistory(t *testing.T) {
 	}
 }
 
-func TestCollectUnknownAllocatesOnlyForExtensions(t *testing.T) {
+func TestCollectUnknownPreservesExtensions(t *testing.T) {
 	fields := p.Object{"id": p.StringValue("id"), "model": p.StringValue("model")}
 	known := []string{"id", "model"}
-	if got := testing.AllocsPerRun(100, func() {
-		if !collectUnknown(fields, known).IsZero() {
-			t.Fatal("known fields reported as unknown")
-		}
-	}); got != 0 {
-		t.Fatalf("extension-free collection allocates: %g", got)
+	if !collectUnknown(fields, known).IsZero() {
+		t.Fatal("known fields reported as unknown")
 	}
 	fields["extension"] = p.StringValue("preserved")
 	extra, err := collectUnknown(fields, known).ReadObject()

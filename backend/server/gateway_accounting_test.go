@@ -94,9 +94,10 @@ func TestHostedToolUsagePersistedHTTPAndSSE(t *testing.T) {
 			defer upstream.Close()
 			server := newTestServer(t, presetGroup(t, "custom:openai-responses", upstream.URL))
 			request, recorder := chatRequestContext(fmt.Sprintf(`{"model":"grp","input":"hello","stream":%t}`, isStream))
-			request.Request.URL.Path = "/v1/responses"
+			request.Request.URI().SetPath("/v1/responses")
 			request.Request.Header.Set("X-Elysia-Request-Id", "untrusted-client-id")
-			server.responses(request)
+			server.responses(contextForTest(request), request)
+			flushTestResponse(request)
 			if recorder.Code != 200 || !strings.Contains(recorder.Body.String(), "s2") {
 				t.Fatalf("native hosted tools failed: %d %s", recorder.Code, recorder.Body)
 			}
@@ -126,8 +127,9 @@ func TestRejectedRequestIDIdentifiesPersistedCall(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t, presetGroup(t, "custom:openai-responses", "http://127.0.0.1:1"))
 	request, recorder := chatRequestContext(`{"model":"grp","input":"hello","store":42}`)
-	request.Request.URL.Path = "/v1/responses"
-	server.responses(request)
+	request.Request.URI().SetPath("/v1/responses")
+	server.responses(contextForTest(request), request)
+	flushTestResponse(request)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("invalid input accepted: %d %s", recorder.Code, recorder.Body)
 	}

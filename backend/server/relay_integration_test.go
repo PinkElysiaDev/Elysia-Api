@@ -14,12 +14,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/internal/outbound"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 func parseTestIP(t *testing.T, raw string) net.IP {
@@ -32,18 +32,12 @@ func parseTestIP(t *testing.T, raw string) net.IP {
 }
 
 // newUnboundTestServer constructs the transport shell used by isolated tests.
+// TestMain allows loopback connections to isolated httptest upstreams.
 func newUnboundTestServer(t *testing.T, groups []config.ModelGroupConfig) *Server {
 	t.Helper()
-	// TestMain allows loopback connections to isolated httptest upstreams.
 	cfg := &config.Config{}
 	cfg.Host, cfg.Port = "127.0.0.1", 8765
-	s := &Server{
-		config:                 cfg,
-		engine:                 gin.New(),
-		protocolTransport:      relay.NewProtocolTransport(10 * time.Second),
-		affinity:               newAffinityCache(),
-		skipOutboundValidation: true,
-	}
+	s := &Server{config: cfg, engine: newTestEngine(t), protocolTransport: relay.NewProtocolTransport(10 * time.Second), affinity: newAffinityCache(), skipOutboundValidation: true}
 	t.Cleanup(s.closeCaches)
 	return s
 }
@@ -116,12 +110,12 @@ func openAIModel(name, baseURL string) config.ModelRef {
 	return config.ModelRef{ID: name, Name: name, BaseURL: baseURL, Platform: "custom:" + protocol.PresetChatCompletionsID, APIKey: "test-key", ToolsCapable: true, VisionCapable: true}
 }
 
-func chatRequestContext(body string) (*gin.Context, *httptest.ResponseRecorder) {
+func chatRequestContext(body string) (*app.RequestContext, *httptest.ResponseRecorder) {
 	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
+	c := newTestContext(rec)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	c.Request = req
+	setTestRequest(c, req)
 	return c, rec
 }
 
@@ -146,16 +140,14 @@ func TestChatCompletionsFailoverToHealthyModel(t *testing.T) {
 		_, _ = io.WriteString(w, okChatCompletionBody(t))
 	}))
 	defer good.Close()
-
 	group := config.ModelGroupConfig{
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 2,
 		Models: []config.ModelRef{openAIModel("m-bad", bad.URL), openAIModel("m-good", good.URL)},
 	}
 	s := newTestServer(t, []config.ModelGroupConfig{group})
-
 	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hello"}]}`)
-	s.chatCompletions(c)
-
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 after failover, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -182,16 +174,14 @@ func TestChatCompletionsNoRetryOnClientError(t *testing.T) {
 		_, _ = io.WriteString(w, okChatCompletionBody(t))
 	}))
 	defer second.Close()
-
 	group := config.ModelGroupConfig{
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 3,
 		Models: []config.ModelRef{openAIModel("m-bad", bad.URL), openAIModel("m-2", second.URL)},
 	}
 	s := newTestServer(t, []config.ModelGroupConfig{group})
-
 	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
-
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 passthrough, got %d", rec.Code)
 	}
@@ -204,6 +194,7 @@ func TestChatCompletionsNoRetryOnClientError(t *testing.T) {
 }
 
 // 所有候选都失败时，客户端应收到最后一次的错误状态码，且每个候选都被尝试。
+// MaxRetries=5 但只有 2 个候选 → 最多尝试 2 次
 func TestChatCompletionsAllModelsFail(t *testing.T) {
 	var hits int32
 	makeBad := func() *httptest.Server {
@@ -216,20 +207,17 @@ func TestChatCompletionsAllModelsFail(t *testing.T) {
 	a, b := makeBad(), makeBad()
 	defer a.Close()
 	defer b.Close()
-
 	group := config.ModelGroupConfig{
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 5,
 		Models: []config.ModelRef{openAIModel("a", a.URL), openAIModel("b", b.URL)},
 	}
 	s := newTestServer(t, []config.ModelGroupConfig{group})
-
 	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
-
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502 when all fail, got %d", rec.Code)
 	}
-	// MaxRetries=5 但只有 2 个候选 → 最多尝试 2 次
 	if atomic.LoadInt32(&hits) != 2 {
 		t.Fatalf("expected 2 upstream attempts (capped by candidate count), got %d", hits)
 	}
@@ -248,16 +236,14 @@ func TestChatCompletionsMaxRetriesZero(t *testing.T) {
 		_, _ = io.WriteString(w, okChatCompletionBody(t))
 	}))
 	defer good.Close()
-
 	group := config.ModelGroupConfig{
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 0,
 		Models: []config.ModelRef{openAIModel("bad", bad.URL), openAIModel("good", good.URL)},
 	}
 	s := newTestServer(t, []config.ModelGroupConfig{group})
-
 	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
-
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if atomic.LoadInt32(&firstHits) != 1 || atomic.LoadInt32(&secondHits) != 0 {
 		t.Fatalf("maxRetries=0 should try exactly 1 model: first=%d second=%d", firstHits, secondHits)
 	}
@@ -273,7 +259,8 @@ func TestChatCompletionsDisabledGroup(t *testing.T) {
 	}
 	s := newTestServer(t, []config.ModelGroupConfig{group})
 	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("disabled group should return 403, got %d", rec.Code)
 	}
@@ -282,7 +269,8 @@ func TestChatCompletionsDisabledGroup(t *testing.T) {
 func TestChatCompletionsUnknownGroup(t *testing.T) {
 	s := newTestServer(t, nil)
 	c, rec := chatRequestContext(`{"model":"nope","messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown group should return 404, got %d", rec.Code)
 	}
@@ -360,37 +348,38 @@ func TestRateLimitSettlesToActualOnSuccess(t *testing.T) {
 	}
 }
 
+// cookie 路径：前端 encodeURIComponent 写入、此处 QueryUnescape 还原。
 func TestExtractAccessToken(t *testing.T) {
 	cases := []struct {
 		name   string
 		setup  func(r *http.Request)
 		expect string
-	}{
-		{"bearer", func(r *http.Request) { r.Header.Set("Authorization", "Bearer abc123") }, "abc123"},
-		{"x-api-key", func(r *http.Request) { r.Header.Set("x-api-key", "key789") }, "key789"},
-		{"x-goog", func(r *http.Request) { r.Header.Set("x-goog-api-key", "goog1") }, "goog1"},
-		{"query", func(r *http.Request) { r.URL.RawQuery = "key=qk" }, "qk"},
-		// cookie 路径：前端 encodeURIComponent 写入、此处 QueryUnescape 还原。
-		{"cookie", func(r *http.Request) {
-			r.AddCookie(&http.Cookie{Name: "panel_access_token", Value: "ck123"})
-		}, "ck123"},
-		{"cookie encoded", func(r *http.Request) {
-			r.AddCookie(&http.Cookie{Name: "panel_access_token", Value: url.QueryEscape("面板 令牌/4+2==")})
-		}, "面板 令牌/4+2=="},
-		{"cookie invalid escape falls back", func(r *http.Request) {
-			r.AddCookie(&http.Cookie{Name: "panel_access_token", Value: "%zz"})
-		}, "%zz"},
-		{"bearer beats cookie", func(r *http.Request) {
-			r.Header.Set("Authorization", "Bearer abc123")
-			r.AddCookie(&http.Cookie{Name: "panel_access_token", Value: "ck123"})
-		}, "abc123"},
-		{"none", func(r *http.Request) {}, ""},
-	}
+	}{{"bearer", func(r *http.Request) {
+		r.Header.Set("Authorization", "Bearer abc123")
+	}, "abc123"}, {"x-api-key", func(r *http.Request) {
+		r.Header.Set("x-api-key", "key789")
+	}, "key789"}, {"x-goog", func(r *http.Request) {
+		r.Header.Set("x-goog-api-key", "goog1")
+	}, "goog1"}, {"query", func(r *http.Request) {
+		r.URL.RawQuery = "key=qk"
+	}, "qk"}, {"cookie", func(r *http.Request) {
+		r.AddCookie(&http.Cookie{Name: "panel_access_token", Value: "ck123"})
+	}, "ck123"}, {"cookie encoded", func(r *http.Request) {
+		r.AddCookie(&http.Cookie{Name: "panel_access_token", Value: url.QueryEscape("面板 令牌/4+2==")})
+	}, "面板 令牌/4+2=="}, {"cookie invalid escape falls back", func(r *http.Request) {
+		r.AddCookie(&http.Cookie{Name: "panel_access_token", Value: "%zz"})
+	}, "%zz"}, {"bearer beats cookie", func(r *http.Request) {
+		r.Header.Set("Authorization", "Bearer abc123")
+		r.AddCookie(&http.Cookie{Name: "panel_access_token", Value: "ck123"})
+	}, "abc123"}, {"none", func(r *http.Request) {
+	}, ""}}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 			tc.setup(r)
-			if got := extractAccessToken(r); got != tc.expect {
+			c := newTestContext(httptest.NewRecorder())
+			setTestRequest(c, r)
+			if got := extractAccessToken(c); got != tc.expect {
 				t.Fatalf("extractAccessToken = %q, want %q", got, tc.expect)
 			}
 		})
@@ -434,7 +423,12 @@ func TestIsDeniedIP(t *testing.T) {
 	}
 }
 
-func TestIsLoopbackRequest(t *testing.T) {
+func TestLoopbackMiddleware(t *testing.T) {
+	e := newTestEngine(t)
+	s := &Server{}
+	e.POST("/__reload", s.loopbackOnly(), func(_ context.Context, c *app.RequestContext) {
+		c.Status(http.StatusNoContent)
+	})
 	cases := map[string]bool{
 		"127.0.0.1:5000":  true,
 		"[::1]:5000":      true,
@@ -444,8 +438,16 @@ func TestIsLoopbackRequest(t *testing.T) {
 	for remote, want := range cases {
 		r := httptest.NewRequest(http.MethodPost, "/__reload", nil)
 		r.RemoteAddr = remote
-		if got := isLoopbackRequest(r); got != want {
-			t.Fatalf("isLoopbackRequest(%q) = %v, want %v", remote, got, want)
+		// Forwarded headers cannot turn a remote peer into a loopback caller.
+		r.Header.Set("X-Forwarded-For", "127.0.0.1")
+		rec := httptest.NewRecorder()
+		serveTestHTTP(e, rec, r)
+		status := http.StatusForbidden
+		if want {
+			status = http.StatusNoContent
+		}
+		if rec.Code != status {
+			t.Fatalf("loopback middleware(%q) = %d, want %d", remote, rec.Code, status)
 		}
 	}
 }
@@ -457,27 +459,25 @@ func ExampleServer_smoke() {
 
 // 流式请求：上游返回 200 但 body 立即关闭（空 SSE 流），转发会出错。
 // 回归断言：record.StatusCode 必须从 200 下调为失败码，否则会被日志/统计误判为成功。
+// 不写任何 SSE 事件，直接结束 —— 模拟"上游返回结构体为空"。
 func TestStreamEmptyUpstreamRecordsFailure(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		// 不写任何 SSE 事件，直接结束 —— 模拟"上游返回结构体为空"。
 	}))
 	defer upstream.Close()
-
 	group := config.ModelGroupConfig{
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 1,
 		Models: []config.ModelRef{openAIModel("m", upstream.URL)},
 	}
 	s := newTestServerWithStore(t, []config.ModelGroupConfig{group})
-
 	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
+	c := newTestContext(rec)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`))
 	req.Header.Set("Content-Type", "application/json")
-	c.Request = req
-	s.chatCompletions(c)
-
+	setTestRequest(c, req)
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	records := latestUsageRecords(t, s)
 	if len(records) == 0 {
 		t.Fatal("expected a usage record to be written")

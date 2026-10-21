@@ -81,7 +81,8 @@ func TestStandaloneCumulativeBooleanAndMultilineFrames(t *testing.T) {
 	defer provider.Close()
 	server := newTestServer(t, standaloneGroup(t, definition, provider.URL), definition)
 	ctx, response := chatRequestContext(`{"model":"grp","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hello"}]}`)
-	server.chatCompletions(ctx)
+	server.chatCompletions(contextForTest(ctx), ctx)
+	flushTestResponse(ctx)
 	for _, want := range []string{`"content":"hel"`, `"content":"lo"`, `"content":"!"`, `"prompt_tokens":2`, `"completion_tokens":3`, `"finish_reason":"stop"`, "data: [DONE]"} {
 		if !strings.Contains(response.Body.String(), want) {
 			t.Fatal("cumulative/combined frame lost", want, response.Code, response.Body)
@@ -106,7 +107,8 @@ func TestStandaloneCumulativeRewriteAndUnknownFrameFail(t *testing.T) {
 		}))
 		server := newTestServer(t, standaloneGroup(t, definition, provider.URL), definition)
 		ctx, response := chatRequestContext(`{"model":"grp","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hello"}]}`)
-		server.chatCompletions(ctx)
+		server.chatCompletions(contextForTest(ctx), ctx)
+		flushTestResponse(ctx)
 		provider.Close()
 		if response.Result().Trailer.Get(gatewayStreamErrorTrailer) == "" || strings.Contains(response.Body.String(), "[DONE]") {
 			t.Fatal("invalid stream disguised as success", response.Body)

@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/route/param"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
-	"github.com/gin-gonic/gin"
 )
 
 func declareResponseFailures(t *testing.T, definition protocol.Definition, field string) protocol.Definition {
@@ -66,9 +66,10 @@ func TestHTTPFailureKeepsStatusAndSafePrimaryCause(t *testing.T) {
 					t.Fatalf("lost secondary decode diagnostics: %v", err)
 				}
 				out := httptest.NewRecorder()
-				request, _ := gin.CreateTestContext(out)
-				request.Request = httptest.NewRequest("POST", "/gateway/"+targetID, nil)
-				s.failGateway(request, record, 502, err)
+				request := newTestContext(out)
+				setTestRequest(request, httptest.NewRequest("POST", "/gateway/"+targetID, nil))
+				s.failGateway(contextForTest(request), request, record, 502, err)
+				flushTestResponse(request)
 				if out.Code != 524 || record.ErrorKind != "upstream" || len(record.ConversionIssues) == 0 || !strings.Contains(out.Body.String(), fixture.message) || strings.Contains(out.Body.String(), "must-not-leak") || strings.Contains(err.Error(), "HTTP 524: HTTP 524:") {
 					t.Fatalf("unsafe or obscured failure: %s -> %s: %d %s; %+v", sourceID, targetID, out.Code, out.Body.String(), record)
 				}
@@ -99,10 +100,11 @@ func TestCustomHTTPFailuresUseDeclaredResponseDirections(t *testing.T) {
 			groups[0].Models = append(groups[0].Models, second)
 			server := newTestServer(t, groups, upstreamDefinition, ingress)
 			recorder := httptest.NewRecorder()
-			request, _ := gin.CreateTestContext(recorder)
-			request.Request = httptest.NewRequest(http.MethodPost, "/gateway/failure-client/v2/generate/grp", strings.NewReader(`{"deployment":"grp","turns":[{"actor":"user","segments":[{"text":"hello"}]}]}`))
-			request.Params = gin.Params{{Key: "protocolId", Value: ingress.ID}, {Key: "path", Value: "/v2/generate/grp"}}
-			server.gatewayProtocol(request)
+			request := newTestContext(recorder)
+			setTestRequest(request, httptest.NewRequest(http.MethodPost, "/gateway/failure-client/v2/generate/grp", strings.NewReader(`{"deployment":"grp","turns":[{"actor":"user","segments":[{"text":"hello"}]}]}`)))
+			request.Params = param.Params{{Key: "protocolId", Value: ingress.ID}, {Key: "path", Value: "/v2/generate/grp"}}
+			server.gatewayProtocol(contextForTest(request), request)
+			flushTestResponse(request)
 			if calls.Load() != 1 {
 				t.Fatalf("generation replayed %d times after a nonretryable outcome", calls.Load())
 			}
@@ -119,6 +121,10 @@ func TestCustomHTTPFailuresUseDeclaredResponseDirections(t *testing.T) {
 	}
 }
 
+// Opaque fields remain rejected; only the typed message is added to the
+// public failure context. This is not successful provider error mapping.
+// Invalid custom output still reports the existing typed error, even when
+// no provider message can be read from it.
 func TestGatewayUnmappedFailureKeepsProviderMessageAndConversionIssue(t *testing.T) {
 	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
@@ -143,7 +149,7 @@ func TestGatewayUnmappedFailureKeepsProviderMessageAndConversionIssue(t *testing
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"group","max_tokens":128,"messages":[{"role":"user","content":"hello"}]}`))
 		req.Header.Set("Authorization", "Bearer gateway-test-token")
 		rec := httptest.NewRecorder()
-		s.engine.ServeHTTP(rec, req)
+		serveTestHTTP(s.engine, rec, req)
 		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), message) || !strings.Contains(rec.Body.String(), "vendor_tool_choice_detail") || strings.Contains(rec.Body.String(), "unsupported_capability") {
 			t.Fatalf("provider cause masked: %d %s", rec.Code, rec.Body.String())
 		}
@@ -163,15 +169,11 @@ func TestGatewayUnmappedFailureKeepsProviderMessageAndConversionIssue(t *testing
 			t.Fatal("HTTP retry classification changed")
 		}
 	}
-	// Opaque fields remain rejected; only the typed message is added to the
-	// public failure context. This is not successful provider error mapping.
 	response := &protocol.Response{SchemaVersion: 1, Error: mustProtocolValue(t, `{"message":"readable provider cause","code":"unsupported-code","details":{"private":"must-not-leak"}}`)}
 	failure := encodeGatewayFailure(t.Context(), http.StatusBadGateway, response, ingress, protocol.EvaluationContext{})
 	if !strings.Contains(failure.Error(), "readable provider cause") || strings.Contains(failure.Error(), "must-not-leak") || canRetryGeneration(failure) {
 		t.Fatalf("unsafe/misclassified conversion context: %v", failure)
 	}
-	// Invalid custom output still reports the existing typed error, even when
-	// no provider message can be read from it.
 	failure = encodeGatewayFailure(t.Context(), http.StatusBadGateway, nil, ingress, protocol.EvaluationContext{})
 	var missing *protocol.ConversionError
 	if !errors.As(failure, &missing) || strings.Contains(failure.Error(), "upstream failure:") {

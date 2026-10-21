@@ -1,13 +1,14 @@
 package server
 
 import (
-	"github.com/elysia-api/backend/config"
-	"github.com/elysia-api/backend/internal/outbound"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/internal/outbound"
 )
 
 func TestRuntimeProxyPatchPreservesDenylistAndPersists(t *testing.T) {
@@ -20,11 +21,15 @@ func TestRuntimeProxyPatchPreservesDenylistAndPersists(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &Server{config: cfg}
-	t.Cleanup(func() { outbound.SetOutboundProxyURL(""); outbound.SetDeniedIPRanges(outbound.DefaultDeniedIPRanges) })
+	t.Cleanup(func() {
+		outbound.SetOutboundProxyURL("")
+		outbound.SetDeniedIPRanges(outbound.DefaultDeniedIPRanges)
+	})
 	save := func(body string, status int) {
 		t.Helper()
 		c, w := adminProtocolContext(http.MethodPut, "/runtime-config", body)
-		s.adminUpdateRuntimeConfig(c)
+		s.adminUpdateRuntimeConfig(contextForTest(c), c)
+		flushTestResponse(c)
 		if w.Code != status {
 			t.Fatalf("status %d: %s", w.Code, w.Body.String())
 		}

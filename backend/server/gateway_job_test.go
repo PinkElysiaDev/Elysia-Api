@@ -23,7 +23,7 @@ func jobGatewayRequest(t *testing.T, s *Server, method, path, body, key string) 
 		request.Header.Set("Idempotency-Key", key)
 	}
 	response := httptest.NewRecorder()
-	s.engine.ServeHTTP(response, request)
+	serveTestHTTP(s.engine, response, request)
 	return response
 }
 

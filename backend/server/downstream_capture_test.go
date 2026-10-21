@@ -1,36 +1,38 @@
 package server
 
 import (
+	"io"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/cloudwego/hertz/pkg/network"
 )
 
 // usageBodyMaxBytes 是测试用的请求体捕获上限。生产路径的上限来自
 // usageLogConfig().BodyMaxBytes，测试需要固定值来断言截断行为。
 const usageBodyMaxBytes = 1 * 1024 * 1024
 
-// newTestGinWriter 借助 gin.CreateTestContext 拿到一个真实的 gin.ResponseWriter
-// （底层是 httptest recorder），避免手写实现整个接口。
-func newTestGinWriter() (gin.ResponseWriter, *httptest.ResponseRecorder) {
+func newTestStreamCapture(limit int) (*downstreamCapture, network.ExtWriter, *httptest.ResponseRecorder) {
 	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	return c.Writer, rec
+	c := newTestContext(rec)
+	observeTestFlush(c)
+	capture := installDownstreamCapture(c, &usageRecord{}, limit)
+	return capture, startStream(c), rec
 }
 
+// 实际写出给客户端的内容必须完整（capture 不应吞字节）。
 func TestDownstreamCaptureRecordsWrittenBytes(t *testing.T) {
-	inner, rec := newTestGinWriter()
-	capture := newDownstreamCaptureWriter(inner, usageBodyMaxBytes)
-
-	if _, err := capture.Write([]byte(`{"hello":`)); err != nil {
+	capture, writer, rec := newTestStreamCapture(usageBodyMaxBytes)
+	if _, err := writer.Write([]byte(`{"hello":`)); err != nil {
 		t.Fatalf("unexpected write error: %v", err)
 	}
-	if _, err := capture.WriteString(`"world"}`); err != nil {
+	if _, err := io.WriteString(writer, `"world"}`); err != nil {
 		t.Fatalf("unexpected writestring error: %v", err)
 	}
-
+	if err := writer.Flush(); err != nil {
+		t.Fatal(err)
+	}
 	body := capture.downstreamBody()
 	if body.Content != `{"hello":"world"}` {
 		t.Fatalf("captured content mismatch, got %q", body.Content)
@@ -38,21 +40,21 @@ func TestDownstreamCaptureRecordsWrittenBytes(t *testing.T) {
 	if body.Truncated {
 		t.Fatal("did not expect truncation for small body")
 	}
-	// 实际写出给客户端的内容必须完整（capture 不应吞字节）。
 	if rec.Body.String() != `{"hello":"world"}` {
 		t.Fatalf("downstream client body mismatch, got %q", rec.Body.String())
 	}
 }
 
+// 截断只影响捕获的副本，客户端仍收到完整字节。
 func TestDownstreamCaptureTruncatesAtLimit(t *testing.T) {
-	inner, rec := newTestGinWriter()
-	capture := newDownstreamCaptureWriter(inner, usageBodyMaxBytes)
-
+	capture, writer, rec := newTestStreamCapture(usageBodyMaxBytes)
 	big := strings.Repeat("a", usageBodyMaxBytes+512)
-	if _, err := capture.Write([]byte(big)); err != nil {
+	if _, err := writer.Write([]byte(big)); err != nil {
 		t.Fatalf("unexpected write error: %v", err)
 	}
-
+	if err := writer.Flush(); err != nil {
+		t.Fatal(err)
+	}
 	body := capture.downstreamBody()
 	if !body.Truncated {
 		t.Fatal("expected truncation flag for oversized body")
@@ -60,31 +62,17 @@ func TestDownstreamCaptureTruncatesAtLimit(t *testing.T) {
 	if len(body.Content) != usageBodyMaxBytes {
 		t.Fatalf("expected captured content capped at %d, got %d", usageBodyMaxBytes, len(body.Content))
 	}
-	// 截断只影响捕获的副本，客户端仍收到完整字节。
 	if rec.Body.Len() != len(big) {
 		t.Fatalf("downstream client must receive full body, got %d want %d", rec.Body.Len(), len(big))
 	}
 }
 
-func TestInstallDownstreamCaptureWiresRecord(t *testing.T) {
+func TestBufferedDownstreamCapture(t *testing.T) {
 	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
+	c := newTestContext(rec)
 	record := &usageRecord{}
-
-	capture := installDownstreamCapture(c, record, usageBodyMaxBytes)
-	if capture == nil {
-		t.Fatal("expected capture writer")
-	}
-	if record.downstream != capture {
-		t.Fatal("record.downstream not wired to capture writer")
-	}
-	// 幂等：重复安装应复用已有 capture，不再二次包裹。
-	again := installDownstreamCapture(c, record, usageBodyMaxBytes)
-	if again != capture {
-		t.Fatal("expected installDownstreamCapture to be idempotent")
-	}
-
-	if _, err := c.Writer.Write([]byte("downstream-bytes")); err != nil {
+	installDownstreamCapture(c, record, usageBodyMaxBytes)
+	if _, err := c.Write([]byte("downstream-bytes")); err != nil {
 		t.Fatalf("unexpected write error: %v", err)
 	}
 	if got := record.downstream.downstreamBody().Content; got != "downstream-bytes" {

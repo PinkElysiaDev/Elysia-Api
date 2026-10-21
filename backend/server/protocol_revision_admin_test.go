@@ -10,11 +10,11 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/route"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/gin-gonic/gin"
 )
 
-func revisionAdminRequest(t *testing.T, engine *gin.Engine, method, path string, body []byte, etag string) *httptest.ResponseRecorder {
+func revisionAdminRequest(t *testing.T, engine *route.Engine, method, path string, body []byte, etag string) *httptest.ResponseRecorder {
 	t.Helper()
 	request := httptest.NewRequest(method, path, bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
@@ -22,7 +22,7 @@ func revisionAdminRequest(t *testing.T, engine *gin.Engine, method, path string,
 		request.Header.Set("If-Match", etag)
 	}
 	response := httptest.NewRecorder()
-	engine.ServeHTTP(response, request)
+	serveTestHTTP(engine, response, request)
 	return response
 }
 

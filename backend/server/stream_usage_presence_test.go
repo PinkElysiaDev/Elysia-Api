@@ -11,27 +11,22 @@ import (
 	"github.com/bytedance/sonic"
 )
 
+// The custom revision exercises the complete tail-to-storage path; platform
+// alias normalization is independent of observed-zero accounting.
 func TestStreamUsageTailZeroReachesClientAndStorage(t *testing.T) {
 	t.Parallel()
-	// The custom revision exercises the complete tail-to-storage path; platform
-	// alias normalization is independent of observed-zero accounting.
 	const platform = "custom:usage-tail-copy"
 	preset := presetDefinition(t, "anthropic-messages")
 	preset.ID = "usage-tail-copy"
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10,\"cache_read_input_tokens\":90,\"cache_creation_input_tokens\":20}}}\n\n"+
-			"data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n"+
-			"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n"+
-			"data: {\"type\":\"content_block_stop\",\"index\":0}\n\n"+
-			"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":3}}\n\n"+
-			"data: {\"type\":\"message_delta\",\"usage\":{\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0,\"output_tokens\":0}}\n\n"+
-			"data: {\"type\":\"message_stop\"}\n\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10,\"cache_read_input_tokens\":90,\"cache_creation_input_tokens\":20}}}\n\n"+"data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n"+"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n"+"data: {\"type\":\"content_block_stop\",\"index\":0}\n\n"+"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":3}}\n\n"+"data: {\"type\":\"message_delta\",\"usage\":{\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0,\"output_tokens\":0}}\n\n"+"data: {\"type\":\"message_stop\"}\n\n")
 	}))
 	defer upstream.Close()
 	s := newTestServerWithStore(t, presetGroup(t, platform, upstream.URL), preset)
 	context, response := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hello"}]}`)
-	s.chatCompletions(context)
+	s.chatCompletions(contextForTest(context), context)
+	flushTestResponse(context)
 	if response.Code != http.StatusOK || strings.Contains(response.Body.String(), `"error"`) {
 		t.Fatalf("response: %d %s", response.Code, response.Body.String())
 	}

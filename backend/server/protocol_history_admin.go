@@ -1,53 +1,55 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
 	"net/http"
 	"strings"
 
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/utils"
+
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
-func (s *Server) adminProtocolHistory(c *gin.Context) {
-	items, err := s.store.ListProtocolHistory(c.Request.Context())
+func (s *Server) adminProtocolHistory(ctx context.Context, c *app.RequestContext) {
+	items, err := s.store.ListProtocolHistory(ctx)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	for index := range items {
 		items[index].Definition = protocol.Value{}
 		items[index].RawDefinition = ""
 	}
-	respondOK(c, gin.H{"items": items})
+	respondOK(ctx, c, utils.H{"items": items})
 }
 
-func (s *Server) adminProtocolHistoryDetail(c *gin.Context) {
-	ctx := c.Request.Context()
+func (s *Server) adminProtocolHistoryDetail(ctx context.Context, c *app.RequestContext) {
 	item, err := s.store.ReadProtocolHistory(ctx, c.Param("archiveId"))
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	references, err := s.store.ProtocolRevisionReferences(ctx, item.ProtocolID, item.Hash)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	references = append(references, s.protocolUses.references(item.ProtocolID, item.Hash)...)
 	report, err := s.store.ReadProtocolReport(ctx, item.ProtocolID, item.Hash)
 	if err != nil && !errors.Is(err, protocol.ErrNotFound) && !errors.Is(err, storage.ErrCorruptProtocolRecord) {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	service, ok := s.requireProtocolService(c)
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
-	result := gin.H{"item": item, "references": references, "report": report}
+	result := utils.H{"item": item, "references": references, "report": report}
 	if errors.Is(err, storage.ErrCorruptProtocolRecord) {
 		result["reportError"] = err.Error()
 	}
@@ -62,39 +64,38 @@ func (s *Server) adminProtocolHistoryDetail(c *gin.Context) {
 			result["changes"] = changes
 		}
 	}
-	respondOK(c, result)
+	respondOK(ctx, c, result)
 }
 
-func (s *Server) adminRestoreProtocolHistory(c *gin.Context) {
+func (s *Server) adminRestoreProtocolHistory(ctx context.Context, c *app.RequestContext) {
 	var input struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	}
-	if err := decodeProtocolAdminBody(c, &input); err != nil {
-		respondProtocolError(c, err)
+	if err := decodeProtocolAdminBody(ctx, c, &input); err != nil {
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	service, ok := s.requireProtocolService(c)
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
-	ctx := c.Request.Context()
 	item, err := s.store.ReadProtocolHistory(ctx, c.Param("archiveId"))
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	if strings.TrimSpace(input.ID) == item.ProtocolID {
-		respondFail(c, http.StatusBadRequest, "invalid_restore_id", "恢复必须使用新的协议 ID")
+		respondFail(ctx, c, http.StatusBadRequest, "invalid_restore_id", "恢复必须使用新的协议 ID")
 		return
 	}
 	if item.ReadError != "" {
-		respondFail(c, http.StatusBadRequest, "corrupt_archive", "归档保留了损坏原文，请先修正定义再验证："+item.ReadError)
+		respondFail(ctx, c, http.StatusBadRequest, "corrupt_archive", "归档保留了损坏原文，请先修正定义再验证："+item.ReadError)
 		return
 	}
 	fields, err := item.Definition.ReadObject()
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	fields["id"] = protocol.StringValue(strings.TrimSpace(input.ID))
@@ -103,52 +104,51 @@ func (s *Server) adminRestoreProtocolHistory(c *gin.Context) {
 	}
 	definition, err := protocol.EncodeValue(fields)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	draft, issues, err := service.SaveDraft(ctx, strings.TrimSpace(input.ID), definition.Bytes(), "")
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	result := gin.H{"protocolId": draft.ProtocolID, "activated": false, "issues": issues}
+	result := utils.H{"protocolId": draft.ProtocolID, "activated": false, "issues": issues}
 	if protocol.IssuesError(issues) != nil {
-		respondOK(c, result)
+		respondOK(ctx, c, result)
 		return
 	}
 	revision, report, err := service.VerifyDraft(ctx, draft.ProtocolID, draft.Hash)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	result["report"], result["issues"] = report, report.Issues
 	if !report.Passed {
-		respondOK(c, result)
+		respondOK(ctx, c, result)
 		return
 	}
 	activation, err := service.Activate(ctx, draft.ProtocolID, revision.Hash, "")
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	s.invalidateRouteCache()
 	result["activated"], result["activation"] = true, activation
-	respondOK(c, result)
+	respondOK(ctx, c, result)
 }
 
-func (s *Server) adminDeleteProtocolHistory(c *gin.Context) {
-	ctx := c.Request.Context()
+func (s *Server) adminDeleteProtocolHistory(ctx context.Context, c *app.RequestContext) {
 	item, err := s.store.ReadProtocolHistory(ctx, c.Param("archiveId"))
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	// 预置只读：preset_replaced 历史行是引擎更新的审计痕迹，不提供物理删除。
 	if protocol.IsPresetProtocolID(item.ProtocolID) {
-		respondFail(c, http.StatusBadRequest, "preset_readonly", "预置协议只读，历史版本随引擎更新保留")
+		respondFail(ctx, c, http.StatusBadRequest, "preset_readonly", "预置协议只读，历史版本随引擎更新保留")
 		return
 	}
-	service, ok := s.requireProtocolService(c)
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
@@ -160,14 +160,14 @@ func (s *Server) adminDeleteProtocolHistory(c *gin.Context) {
 			refs, lookupErr := s.store.ProtocolRevisionReferences(ctx, item.ProtocolID, item.Hash)
 			if lookupErr == nil {
 				refs = append(refs, s.protocolUses.references(item.ProtocolID, item.Hash)...)
-				c.JSON(http.StatusConflict, gin.H{"ok": false, "error": gin.H{"code": "protocol_in_use", "message": "历史版本仍被引用，请解除依赖后重试", "references": refs}})
+				c.JSON(http.StatusConflict, utils.H{"ok": false, "error": utils.H{"code": "protocol_in_use", "message": "历史版本仍被引用，请解除依赖后重试", "references": refs}})
 				return
 			}
 		}
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	respondOK(c, gin.H{"deleted": true})
+	respondOK(ctx, c, utils.H{"deleted": true})
 }
 
 type protocolReferenceSnapshot struct {
@@ -179,8 +179,7 @@ type protocolReferenceSnapshot struct {
 	models         []storage.Model
 }
 
-func (s *Server) protocolReferences(c *gin.Context, id string) (protocolReferenceSnapshot, error) {
-	ctx := c.Request.Context()
+func (s *Server) protocolReferences(ctx context.Context, id string) (protocolReferenceSnapshot, error) {
 	result := protocolReferenceSnapshot{References: []storage.ProtocolReference{}, AffectedModels: []storage.ProtocolReference{}}
 	var err error
 	result.Baseline, err = s.store.ProtocolUpgradeBaseline(ctx)
@@ -233,52 +232,51 @@ func (s *Server) protocolReferences(c *gin.Context, id string) (protocolReferenc
 	return result, nil
 }
 
-func (s *Server) adminProtocolReferences(c *gin.Context) {
-	result, err := s.protocolReferences(c, c.Param("id"))
+func (s *Server) adminProtocolReferences(ctx context.Context, c *app.RequestContext) {
+	result, err := s.protocolReferences(ctx, c.Param("id"))
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	respondOK(c, result)
+	respondOK(ctx, c, result)
 }
 
-func (s *Server) adminArchiveProtocol(c *gin.Context) {
+func (s *Server) adminArchiveProtocol(ctx context.Context, c *app.RequestContext) {
 	var input struct {
 		Mode             string `json:"mode"`
 		TargetProtocolID string `json:"targetProtocolId"`
 		Baseline         string `json:"baseline"`
 	}
-	if err := decodeProtocolAdminBody(c, &input); err != nil {
-		respondProtocolError(c, err)
+	if err := decodeProtocolAdminBody(ctx, c, &input); err != nil {
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	if input.Mode == "" {
 		input.Mode = "block"
 	}
 	if input.Mode != "block" && input.Mode != "replace" && input.Mode != "unbind" {
-		respondFail(c, http.StatusBadRequest, "invalid_mode", "请选择替换协议或取消绑定")
+		respondFail(ctx, c, http.StatusBadRequest, "invalid_mode", "请选择替换协议或取消绑定")
 		return
 	}
 	id := c.Param("id")
 	if protocol.IsPresetProtocolID(id) {
-		respondFail(c, http.StatusBadRequest, "preset_readonly", "当前预置协议不能删除")
+		respondFail(ctx, c, http.StatusBadRequest, "preset_readonly", "当前预置协议不能删除")
 		return
 	}
-	ctx := c.Request.Context()
-	snapshot, err := s.protocolReferences(c, id)
+	snapshot, err := s.protocolReferences(ctx, id)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	if input.Baseline == "" || input.Baseline != snapshot.Baseline {
-		respondProtocolError(c, protocol.ErrRevisionConflict)
+		respondProtocolError(ctx, c, protocol.ErrRevisionConflict)
 		return
 	}
 	if input.Mode == "block" && len(snapshot.References) > 0 {
-		c.JSON(http.StatusConflict, gin.H{"ok": false, "error": gin.H{"code": "protocol_in_use", "message": "请先替换协议或取消绑定", "references": snapshot.References}})
+		c.JSON(http.StatusConflict, utils.H{"ok": false, "error": utils.H{"code": "protocol_in_use", "message": "请先替换协议或取消绑定", "references": snapshot.References}})
 		return
 	}
-	service, ok := s.requireProtocolService(c)
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
@@ -287,19 +285,19 @@ func (s *Server) adminArchiveProtocol(c *gin.Context) {
 	replacement := ""
 	if input.Mode == "replace" {
 		if input.TargetProtocolID == id {
-			respondFail(c, http.StatusBadRequest, "invalid_target", "替换目标必须是其他已启用协议")
+			respondFail(ctx, c, http.StatusBadRequest, "invalid_target", "替换目标必须是其他已启用协议")
 			return
 		}
 		target, _ = view.Pin(input.TargetProtocolID)
 		if target == nil {
-			respondFail(c, http.StatusBadRequest, "invalid_target", "替换目标协议未启用")
+			respondFail(ctx, c, http.StatusBadRequest, "invalid_target", "替换目标协议未启用")
 			return
 		}
 		replacement = "custom:" + input.TargetProtocolID
 		for _, source := range snapshot.sources {
 			if strings.EqualFold(source.Platform, "custom:"+id) && source.AutoFetchModels {
 				if _, _, err := selectModelDiscovery(target); err != nil {
-					respondProtocolError(c, err)
+					respondProtocolError(ctx, c, err)
 					return
 				}
 			}
@@ -356,21 +354,21 @@ func (s *Server) adminArchiveProtocol(c *gin.Context) {
 				issues = protocol.CheckIngressBinding(entry.Binding, target)
 			}
 			if err := protocol.IssuesError(issues); err != nil {
-				respondProtocolError(c, err)
+				respondProtocolError(ctx, c, err)
 				return
 			}
 			if err := s.checkProtocolBindingTarget(ctx, entry); err != nil {
-				respondProtocolError(c, err)
+				respondProtocolError(ctx, c, err)
 				return
 			}
 			if entry.Kind != "group" {
 				entry.Combinations, err = s.verifyGatewayBinding(ctx, view, entry, id)
 				if err != nil {
-					respondProtocolError(c, err)
+					respondProtocolError(ctx, c, err)
 					return
 				}
 				if !hasPassingGatewayCombination(entry.Combinations) {
-					respondProtocolError(c, fmt.Errorf("替换协议未通过入口兼容性验证"))
+					respondProtocolError(ctx, c, fmt.Errorf("替换协议未通过入口兼容性验证"))
 					return
 				}
 			}
@@ -379,9 +377,9 @@ func (s *Server) adminArchiveProtocol(c *gin.Context) {
 	}
 	err = service.RemoveActive(id, func() error { return s.store.ArchiveProtocol(ctx, id, input.Baseline, replacement, updates) })
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	s.invalidateRouteCache()
-	respondOK(c, gin.H{"archived": true})
+	respondOK(ctx, c, utils.H{"archived": true})
 }

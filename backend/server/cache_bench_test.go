@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
@@ -9,7 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/cloudwego/hertz/pkg/app"
 )
 
 // Run with -cpu=1,8 to compare uncontended operations and shared-cache contention.
@@ -48,7 +49,7 @@ func BenchmarkAffinityCache(b *testing.B) {
 	}
 }
 
-// Include Gin routing, cache-key normalization and response writing. The handler
+// Include Hertz routing, cache-key normalization and response writing. The handler
 // serves a fixed 1 KiB body so SQL latency cannot hide cache overhead.
 func BenchmarkUsageResponseCache(b *testing.B) {
 	for _, workload := range []struct {
@@ -60,8 +61,8 @@ func BenchmarkUsageResponseCache(b *testing.B) {
 			b.Cleanup(cache.close)
 			body := []byte(strings.Repeat("x", 1024))
 			var loads atomic.Uint64
-			router := gin.New()
-			router.GET("/usage", cache.middleware(), func(c *gin.Context) {
+			router := newTestEngine(b)
+			router.GET("/usage", cache.middleware(), func(ctx context.Context, c *app.RequestContext) {
 				loads.Add(1)
 				c.Data(http.StatusOK, "application/json", body)
 			})
@@ -69,7 +70,7 @@ func BenchmarkUsageResponseCache(b *testing.B) {
 			for i := range requests {
 				requests[i] = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/usage?model=%d&window=day", i), nil)
 				if i < usageCacheMaxEntries {
-					router.ServeHTTP(httptest.NewRecorder(), requests[i])
+					serveTestHTTP(router, httptest.NewRecorder(), requests[i])
 				}
 			}
 			var workers atomic.Uint64
@@ -80,7 +81,7 @@ func BenchmarkUsageResponseCache(b *testing.B) {
 				random := rand.New(rand.NewPCG(workers.Add(1), 1))
 				for pb.Next() {
 					recorder := httptest.NewRecorder()
-					router.ServeHTTP(recorder, requests[random.IntN(len(requests))])
+					serveTestHTTP(router, recorder, requests[random.IntN(len(requests))])
 					if recorder.Code != http.StatusOK || recorder.Body.Len() != len(body) {
 						b.Error("unexpected usage response")
 					}

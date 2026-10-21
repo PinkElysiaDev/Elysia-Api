@@ -7,6 +7,7 @@ import (
 	"github.com/elysia-api/backend/protocol"
 )
 
+// 预置只读：未验证草稿只能以副本 ID 存在（原实现会在预置 ID 上存草稿）。
 func TestEnabledProtocolCatalogUsesPinnedRevision(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	service, err := s.protocolService()
@@ -14,7 +15,6 @@ func TestEnabledProtocolCatalogUsesPinnedRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	compiled, _ := service.Pin("openai-chat-completions")
-	// 预置只读：未验证草稿只能以副本 ID 存在（原实现会在预置 ID 上存草稿）。
 	definition := compiled.Definition()
 	definition.Name = "unverified draft"
 	definition.ID = "unactivated-copy"
@@ -28,7 +28,8 @@ func TestEnabledProtocolCatalogUsesPinnedRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, response := adminProtocolContext("GET", "/api/admin/protocols/enabled", "")
-	s.adminEnabledProtocols(c)
+	s.adminEnabledProtocols(contextForTest(c), c)
+	flushTestResponse(c)
 	var envelope struct {
 		Data struct {
 			Items []enabledProtocol `json:"items"`

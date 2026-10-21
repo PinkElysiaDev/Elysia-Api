@@ -63,7 +63,7 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 				req := httptest.NewRequest("POST", "/gateway/"+id+path, strings.NewReader(raw))
 				req.Header.Set("Authorization", "Bearer gateway-test-token")
 				rec := httptest.NewRecorder()
-				s.engine.ServeHTTP(rec, req)
+				serveTestHTTP(s.engine, rec, req)
 				return rec
 			}
 			raw := `{"model":"group","input":"question","store":false,"max_output_tokens":100,"prompt_cache_key":"session","metadata":{"trace":"anonymous"},"user":"opaque"}`
@@ -73,7 +73,8 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 			}
 			previewBody, _ := sonic.ConfigStd.Marshal(map[string]any{"policy": policy, "phase": "request", "context": protocol.ConversionContext{Source: source.Identity(), Target: target.Identity(), Model: "upstream-model"}, "input": decoded})
 			ctx, preview := adminProtocolContext("POST", "/api/admin/protocols/conversion-policies/preview", string(previewBody))
-			s.adminConversionPreview(ctx)
+			s.adminConversionPreview(contextForTest(ctx), ctx)
+			flushTestResponse(ctx)
 			rec := perform(protocol.PresetResponsesID, "/responses", raw)
 			if mode == "strict" {
 				if preview.Code != 400 || rec.Code != 400 || calls != 0 {
@@ -121,7 +122,8 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 			}
 			previewBody, _ = sonic.ConfigStd.Marshal(map[string]any{"policy": policy, "phase": "request", "context": protocol.ConversionContext{Source: anthropic.Identity(), Target: target.Identity(), Model: "upstream-model"}, "input": toolRequest})
 			ctx, preview = adminProtocolContext("POST", "/api/admin/protocols/conversion-policies/preview", string(previewBody))
-			s.adminConversionPreview(ctx)
+			s.adminConversionPreview(contextForTest(ctx), ctx)
+			flushTestResponse(ctx)
 			before := calls
 			rec = perform(protocol.PresetAnthropicID, "/v1/messages", toolRaw)
 			if mode == "strict" {
@@ -152,7 +154,8 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 				}
 				previewBody, _ := sonic.ConfigStd.Marshal(map[string]any{"policy": policy, "phase": "request", "context": protocol.ConversionContext{Source: anthropic.Identity(), Target: target.Identity(), Model: "upstream-model"}, "input": decoded})
 				ctx, preview := adminProtocolContext("POST", "/api/admin/protocols/conversion-policies/preview", string(previewBody))
-				s.adminConversionPreview(ctx)
+				s.adminConversionPreview(contextForTest(ctx), ctx)
+				flushTestResponse(ctx)
 				before := calls
 				rec := perform(protocol.PresetAnthropicID, "/v1/messages", resultRaw)
 				if mode == "strict" {

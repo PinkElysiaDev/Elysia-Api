@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 // initializeProtocolRuntime publishes only verified current definitions.
@@ -134,9 +135,9 @@ func (s *Server) protocolRuntimeError() error {
 	return nil
 }
 
-func (s *Server) requireProtocolRuntime(c *gin.Context) bool {
+func (s *Server) requireProtocolRuntime(ctx context.Context, c *app.RequestContext) bool {
 	if err := s.protocolRuntimeError(); err != nil {
-		respondFail(c, http.StatusServiceUnavailable, "protocol_runtime_unavailable", err.Error())
+		respondFail(ctx, c, http.StatusServiceUnavailable, "protocol_runtime_unavailable", err.Error())
 		return false
 	}
 	return true

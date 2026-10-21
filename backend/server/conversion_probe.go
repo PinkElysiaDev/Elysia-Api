@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/utils"
+
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 func (s *Server) providerEvidenceScope(ref config.ModelRef) (string, error) {
@@ -40,7 +42,7 @@ func (s *Server) loadProviderConversionEvidence(ctx context.Context, c *protocol
 
 // Explicit admin action: performs a synthetic request, never executes any tool
 // the provider returns. Evidence authorizes one exact policy/account/model only.
-func (s *Server) adminConversionSignatureProbe(c *gin.Context) {
+func (s *Server) adminConversionSignatureProbe(ctx context.Context, c *app.RequestContext) {
 	var input struct {
 		Hash      string `json:"hash"`
 		RuleID    string `json:"ruleId"`
@@ -49,12 +51,14 @@ func (s *Server) adminConversionSignatureProbe(c *gin.Context) {
 		ModelID   string `json:"modelId"`
 		KeyIndex  *int   `json:"keyIndex,omitempty"`
 	}
-	if err := decodeProtocolAdminBody(c, &input); err != nil {
-		respondProtocolError(c, err)
+	if err := decodeProtocolAdminBody(ctx, c, &input); err != nil {
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	fail := func(err error) { respondFail(c, http.StatusBadRequest, "conversion_verification_failed", err.Error()) }
-	service, ok := s.requireProtocolService(c)
+	fail := func(err error) {
+		respondFail(ctx, c, http.StatusBadRequest, "conversion_verification_failed", err.Error())
+	}
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
@@ -63,16 +67,16 @@ func (s *Server) adminConversionSignatureProbe(c *gin.Context) {
 		fail(fmt.Errorf("select an active ingress protocol"))
 		return
 	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	models, err := s.store.ListModelsFiltered(ctx, storage.ModelListFilter{ShouldIncludeDisabledSources: true})
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	sources, err := s.store.ListSources(ctx)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	sourceKeys := routing.IndexSources(sources)
@@ -112,7 +116,7 @@ func (s *Server) adminConversionSignatureProbe(c *gin.Context) {
 	}
 	policies, bindings, _, err := s.store.ConversionSnapshot(ctx)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	candidate, e := makeGatewayCandidate(service.View(), bindings, model, protocol.HTTPJSON, "generate")
@@ -122,7 +126,7 @@ func (s *Server) adminConversionSignatureProbe(c *gin.Context) {
 	}
 	drafts, err := s.store.ListConversionPolicies(ctx, false)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	var draft *storage.ConversionPolicyRecord
@@ -133,7 +137,7 @@ func (s *Server) adminConversionSignatureProbe(c *gin.Context) {
 		}
 	}
 	if draft == nil {
-		respondProtocolError(c, protocol.ErrRevisionConflict)
+		respondProtocolError(ctx, c, protocol.ErrRevisionConflict)
 		return
 	}
 	next := []storage.ConversionPolicyRecord{}
@@ -229,8 +233,8 @@ func (s *Server) adminConversionSignatureProbe(c *gin.Context) {
 	}
 	expires := time.Now().Add(30 * 24 * time.Hour).Unix()
 	if err = s.store.SaveConversionProviderEvidence(ctx, conversion.Hash, input.RuleID, scope, candidate.compiled.Hash(), expires); err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	respondOK(c, gin.H{"verified": true, "policyHash": conversion.Hash, "ruleId": input.RuleID, "targetRevision": candidate.compiled.Hash(), "modelId": model.Identifier(), "expiresAt": expires, "toolsExecuted": false})
+	respondOK(ctx, c, utils.H{"verified": true, "policyHash": conversion.Hash, "ruleId": input.RuleID, "targetRevision": candidate.compiled.Hash(), "modelId": model.Identifier(), "expiresAt": expires, "toolsExecuted": false})
 }

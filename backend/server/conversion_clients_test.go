@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -23,6 +24,11 @@ import (
 // Acceptance runs standard HTTP and opt-in installed clients against a loopback gateway and a
 // deterministic upstream. It never uses a real provider account or executes a
 // provider-supplied command. Claude has only the read-only Read tool available.
+// This explicitly configured loss is unrelated to signature preservation:
+// This fixture drops Claude request tracking and effort configuration
+// through named rules, without claiming Gemini's reasoning is equivalent.
+// SDKs commonly add content:null. It must not shift an identified
+// tool out of its exact persistent lookup after reopening storage.
 func TestConversionClientToolRoundTrip(t *testing.T) {
 	for _, client := range []string{"http-reopen", "openai", "claude"} {
 		t.Run(client, func(t *testing.T) {
@@ -41,7 +47,9 @@ func TestConversionClientToolRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { s.store.Close() })
+			t.Cleanup(func() {
+				s.store.Close()
+			})
 			activateDiscoveryPresets(t, s)
 			service, _ := s.protocolService()
 			upstream, _ := service.Pin(protocol.PresetGeminiID)
@@ -90,9 +98,6 @@ func TestConversionClientToolRoundTrip(t *testing.T) {
 			if err := s.store.UpsertGroup(t.Context(), storage.ModelGroup{ID: "gateway-group", Name: "group", Enabled: true, ToolsCapable: true, Models: []string{"gateway-source:upstream-model"}, Strategy: "sequential"}); err != nil {
 				t.Fatal(err)
 			}
-			// This explicitly configured loss is unrelated to signature preservation:
-			// This fixture drops Claude request tracking and effort configuration
-			// through named rules, without claiming Gemini's reasoning is equivalent.
 			bindings, _ := s.store.ListProtocolBindings(t.Context())
 			bindings[0].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "client-acceptance", Rules: []protocol.ConversionRule{{ID: "client-metadata", Order: 110, Enabled: true, Phase: protocol.ConversionRequest, Match: protocol.ConversionMatch{SourceFamily: "claude", TargetFamily: "gemini"}, Action: "remove", Path: "/parameters/anthropic_metadata"}, {ID: "client-effort", Order: 120, Enabled: true, Phase: protocol.ConversionRequest, Match: protocol.ConversionMatch{SourceFamily: "claude", TargetFamily: "gemini"}, Action: "remove", Path: "/parameters/anthropic_output_config"}}}}
 			verified, err := s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
@@ -103,15 +108,20 @@ func TestConversionClientToolRoundTrip(t *testing.T) {
 				t.Fatal(err)
 			}
 			s.invalidateRouteCache()
-			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				body, _ := io.ReadAll(r.Body)
-				if strings.Contains(string(body), protocol.ContinuationPrefix) {
-					returnedCarriers.Add(1)
-				}
-				r.Body = io.NopCloser(strings.NewReader(string(body)))
-				s.engine.ServeHTTP(w, r)
-			})
-			gateway := httptest.NewServer(handler)
+			newGateway := func() *hertzTestServer {
+				s.engine = newTestEngine(t)
+				s.engine.Use(func(ctx context.Context, c *app.RequestContext) {
+					body, _ := io.ReadAll(requestBody(c))
+					if strings.Contains(string(body), protocol.ContinuationPrefix) {
+						returnedCarriers.Add(1)
+					}
+					c.Request.SetBody(body)
+					c.Next(ctx)
+				})
+				s.setupRoutes()
+				return startTestServer(s.engine)
+			}
+			gateway := newGateway()
 			defer gateway.Close()
 			if client == "http-reopen" {
 				post := func(body string) string {
@@ -143,10 +153,8 @@ func TestConversionClientToolRoundTrip(t *testing.T) {
 				}
 				s.protocolServiceOnce, s.protocolServiceInst, s.protocolServiceErr = sync.Once{}, nil, nil
 				s.invalidateRouteCache()
-				gateway = httptest.NewServer(handler)
+				gateway = newGateway()
 				defer gateway.Close()
-				// SDKs commonly add content:null. It must not shift an identified
-				// tool out of its exact persistent lookup after reopening storage.
 				second := post(`{"model":"group","messages":[{"role":"user","content":"fixture"},{"role":"assistant","content":null,"tool_calls":[{"id":"client-call","type":"function","function":{"name":"lookup","arguments":"{\"value\":\"fixture\"}"}}]},{"role":"tool","tool_call_id":"client-call","content":"result"}]}`)
 				if !strings.Contains(second, "LOCAL_CLIENT_OK") || restored.Load() != 1 || returnedCarriers.Load() != 0 {
 					t.Fatal("reopened persistent tool recovery failed", second)

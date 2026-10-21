@@ -19,14 +19,25 @@ func TestGatewayAuditToolRoundTrips(t *testing.T) {
 	t.Parallel()
 	auditGatewayToolRoundTrips(t, false, false)
 }
+
 func TestGatewayAuditParallelToolRoundTrips(t *testing.T) {
 	t.Parallel()
 	auditGatewayToolRoundTrips(t, true, false)
 }
+
 func TestGatewayChatStartupParallelToolRoundTrips(t *testing.T) {
 	t.Parallel()
 	auditGatewayToolRoundTrips(t, true, true)
 }
+
+// A cross-family cycle covers every client and provider. Single-tool
+// cases additionally cover native forwarding; parallel tool behavior
+// does not need to repeat the full codec Cartesian product.
+// SDKs assemble streamed blocks into one assistant
+// history message. The generic event collector exposes
+// blocks, not an already reconstructed client request.
+// Responses permits text between independent function items.
+// Chat must keep both calls together before either result.
 func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) {
 	ids := []string{protocol.PresetChatCompletionsID, protocol.PresetResponsesID, protocol.PresetAnthropicID, protocol.PresetGeminiID}
 	for upstreamIndex, upstreamID := range ids {
@@ -167,9 +178,6 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) 
 			}
 			s.invalidateRouteCache()
 			for _, id := range ids {
-				// A cross-family cycle covers every client and provider. Single-tool
-				// cases additionally cover native forwarding; parallel tool behavior
-				// does not need to repeat the full codec Cartesian product.
 				next := ids[(upstreamIndex+1)%len(ids)]
 				if id != next && (parallel || id != upstreamID) {
 					continue
@@ -212,7 +220,7 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) 
 							r.Header.Set("Authorization", "Bearer gateway-test-token")
 							rec := httptest.NewRecorder()
 							before := calls
-							s.engine.ServeHTTP(rec, r)
+							serveTestHTTP(s.engine, rec, r)
 							if rec.Code != 200 || calls != before+1 || rec.Result().Trailer.Get("X-Elysia-Stream-Error") != "" {
 								t.Fatalf("second=%v status=%d calls=%d trailer=%v body=%s request=%s", second, rec.Code, calls-before, rec.Result().Trailer, rec.Body, body)
 							}
@@ -284,15 +292,10 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) 
 								flat = flat && node.Kind != protocol.MessageNode
 							}
 							if flat {
-								// SDKs assemble streamed blocks into one assistant
-								// history message. The generic event collector exposes
-								// blocks, not an already reconstructed client request.
 								history = []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("assistant"), Children: history}}
 							}
 						}
 						if parallel && upstreamID == protocol.PresetChatCompletionsID && id == protocol.PresetResponsesID {
-							// Responses permits text between independent function items.
-							// Chat must keep both calls together before either result.
 							var mixed []protocol.Node
 							for _, node := range history {
 								mixed = append(mixed, node)

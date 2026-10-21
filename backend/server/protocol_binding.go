@@ -5,46 +5,47 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
-func (s *Server) adminProtocolBindings(c *gin.Context) {
-	bindings, err := s.store.ListProtocolBindings(c.Request.Context())
+func (s *Server) adminProtocolBindings(ctx context.Context, c *app.RequestContext) {
+	bindings, err := s.store.ListProtocolBindings(ctx)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	respondOK(c, bindings)
+	respondOK(ctx, c, bindings)
 }
 
-func (s *Server) adminSaveProtocolBinding(c *gin.Context) {
-	service, ok := s.requireProtocolService(c)
+func (s *Server) adminSaveProtocolBinding(ctx context.Context, c *app.RequestContext) {
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
 	var binding storage.ProtocolBinding
-	if err := decodeProtocolAdminBody(c, &binding); err != nil {
-		respondProtocolError(c, err)
+	if err := decodeProtocolAdminBody(ctx, c, &binding); err != nil {
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	policies, bindings, generation, err := s.store.ConversionSnapshot(c.Request.Context())
+	policies, bindings, generation, err := s.store.ConversionSnapshot(ctx)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	if binding.Conversion != nil && binding.Conversion.PolicyID != "" {
-		revisions, e := s.store.ConversionRevisions(c.Request.Context(), binding.Conversion.PolicyID)
+		revisions, e := s.store.ConversionRevisions(ctx, binding.Conversion.PolicyID)
 		if e != nil {
-			respondProtocolError(c, e)
+			respondProtocolError(ctx, c, e)
 			return
 		}
 		for _, r := range revisions {
 			if r.Hash == binding.Conversion.RevisionHash {
 				if r.CompilerVersion != protocol.CompilerVersion {
-					respondFail(c, http.StatusBadRequest, "verification_required", "conversion revision requires current verification")
+					respondFail(ctx, c, http.StatusBadRequest, "verification_required", "conversion revision requires current verification")
 					return
 				}
 				policies = append(policies, r)
@@ -62,21 +63,21 @@ func (s *Server) adminSaveProtocolBinding(c *gin.Context) {
 			issues = protocol.CheckIngressBinding(binding.Binding, compiled)
 		}
 		if err := protocol.IssuesError(issues); err != nil {
-			respondProtocolError(c, err)
+			respondProtocolError(ctx, c, err)
 			return
 		}
 	}
-	if err := s.checkProtocolBindingTarget(c.Request.Context(), binding); err != nil {
-		respondFail(c, http.StatusBadRequest, "invalid_binding", err.Error())
+	if err := s.checkProtocolBindingTarget(ctx, binding); err != nil {
+		respondFail(ctx, c, http.StatusBadRequest, "invalid_binding", err.Error())
 		return
 	}
-	updates, err := s.prepareBindingUpdate(c.Request.Context(), service.View(), policies, bindings, binding)
+	updates, err := s.prepareBindingUpdate(ctx, service.View(), policies, bindings, binding)
 	if err != nil {
-		respondFail(c, http.StatusBadRequest, "incompatible_binding", err.Error())
+		respondFail(ctx, c, http.StatusBadRequest, "incompatible_binding", err.Error())
 		return
 	}
-	if err := s.store.SaveManagedProtocolBindings(c.Request.Context(), binding.Key(), updates, generation); err != nil {
-		respondProtocolError(c, err)
+	if err := s.store.SaveManagedProtocolBindings(ctx, binding.Key(), updates, generation); err != nil {
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	for _, updated := range updates {
@@ -86,7 +87,7 @@ func (s *Server) adminSaveProtocolBinding(c *gin.Context) {
 		}
 	}
 	s.invalidateRouteCache()
-	respondOK(c, binding)
+	respondOK(ctx, c, binding)
 }
 
 func (s *Server) checkProtocolBindingTarget(ctx context.Context, binding storage.ProtocolBinding) error {

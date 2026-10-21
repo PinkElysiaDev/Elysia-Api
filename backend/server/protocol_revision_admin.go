@@ -10,10 +10,13 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/utils"
+	"github.com/cloudwego/hertz/pkg/route"
+
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
-	"github.com/gin-gonic/gin"
 )
 
 func (s *Server) protocolService() (*protocol.Service, error) {
@@ -42,16 +45,16 @@ func (s *Server) protocolService() (*protocol.Service, error) {
 	return s.protocolServiceInst, s.protocolServiceErr
 }
 
-func (s *Server) requireProtocolService(c *gin.Context) (*protocol.Service, bool) {
+func (s *Server) requireProtocolService(ctx context.Context, c *app.RequestContext) (*protocol.Service, bool) {
 	service, err := s.protocolService()
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return nil, false
 	}
 	return service, true
 }
 
-func (s *Server) setupProtocolRevisionRoutes(admin *gin.RouterGroup) {
+func (s *Server) setupProtocolRevisionRoutes(admin *route.RouterGroup) {
 	group := admin.Group("/protocols")
 	s.registerConversionPolicyRoutes(group)
 	group.GET("", s.adminProtocolDrafts)
@@ -82,13 +85,13 @@ func (s *Server) setupProtocolRevisionRoutes(admin *gin.RouterGroup) {
 	group.POST("/:id/rollback", s.adminProtocolActivate)
 }
 
-func readProtocolAdminBody(c *gin.Context) (result []byte, err error) {
+func readProtocolAdminBody(ctx context.Context, c *app.RequestContext) (result []byte, err error) {
 	defer func() { err = protocolManagementInputError(err) }()
 	limit := protocolAdminMaxBodyBytes
-	if protocolPreviewPath(c.Request.URL.Path) {
-		limit = protocol.PreviewEnvelopeLimit(c.Request.Context())
+	if protocolPreviewPath(string(c.Path())) {
+		limit = protocol.PreviewEnvelopeLimit(ctx)
 	}
-	body, err := io.ReadAll(io.LimitReader(c.Request.Body, int64(limit)+1))
+	body, err := io.ReadAll(io.LimitReader(requestBody(c), int64(limit)+1))
 	if err != nil {
 		return nil, err
 	}
@@ -98,9 +101,9 @@ func readProtocolAdminBody(c *gin.Context) (result []byte, err error) {
 	return body, nil
 }
 
-func decodeProtocolAdminBody(c *gin.Context, target any) (err error) {
+func decodeProtocolAdminBody(ctx context.Context, c *app.RequestContext, target any) (err error) {
 	defer func() { err = protocolManagementInputError(err) }()
-	body, err := readProtocolAdminBody(c)
+	body, err := readProtocolAdminBody(ctx, c)
 	if err != nil {
 		return err
 	}
@@ -126,7 +129,7 @@ func protocolManagementInputError(err error) error {
 	return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.InvalidInput, Severity: protocol.SeverityError, Stage: "management", Path: "/", Reason: err.Error(), Suggestion: "Supply a valid request using the current protocol management schema."}})
 }
 
-func respondProtocolError(c *gin.Context, err error) {
+func respondProtocolError(ctx context.Context, c *app.RequestContext, err error) {
 	status, code := http.StatusInternalServerError, "protocol_service_error"
 	if errors.Is(err, protocol.ErrRevisionConflict) {
 		status, code = http.StatusConflict, "revision_conflict"
@@ -137,25 +140,25 @@ func respondProtocolError(c *gin.Context, err error) {
 	var conversion *protocol.ConversionError
 	if errors.As(err, &conversion) {
 		status, code = http.StatusBadRequest, "invalid_protocol"
-		c.JSON(status, gin.H{"ok": false, "error": gin.H{"code": code, "message": err.Error(), "issues": conversion.Issues}})
+		c.JSON(status, utils.H{"ok": false, "error": utils.H{"code": code, "message": err.Error(), "issues": conversion.Issues}})
 		return
 	}
-	respondFail(c, status, code, err.Error())
+	respondFail(ctx, c, status, code, err.Error())
 }
 
-func (s *Server) adminProtocolDrafts(c *gin.Context) {
-	service, ok := s.requireProtocolService(c)
+func (s *Server) adminProtocolDrafts(ctx context.Context, c *app.RequestContext) {
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
-	drafts, err := service.ListDrafts(c.Request.Context())
+	drafts, err := service.ListDrafts(ctx)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	active, err := service.Activations(c.Request.Context())
+	active, err := service.Activations(ctx)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	loaded := make(map[string]string, len(active))
@@ -170,145 +173,145 @@ func (s *Server) adminProtocolDrafts(c *gin.Context) {
 			failures[id] = "预置未成功加载，请重新加载协议并检查启动日志"
 		}
 	}
-	result := gin.H{"drafts": drafts, "active": active, "loaded": loaded, "presets": requiredPresetIDs, "runtimeFailures": failures, "runtimeReady": s.protocolRuntimeReady.Load()}
+	result := utils.H{"drafts": drafts, "active": active, "loaded": loaded, "presets": requiredPresetIDs, "runtimeFailures": failures, "runtimeReady": s.protocolRuntimeReady.Load()}
 	if failure := s.protocolStartupFailure.Load(); failure != nil {
 		result["startupFailure"] = failure
 	}
 	if reason := s.protocolRuntimeFailure.Load(); reason != nil {
 		result["runtimeError"] = *reason
 	}
-	respondOK(c, result)
+	respondOK(ctx, c, result)
 }
 
-func (s *Server) adminProtocolSchemaV2(c *gin.Context) {
-	service, ok := s.requireProtocolService(c)
+func (s *Server) adminProtocolSchemaV2(ctx context.Context, c *app.RequestContext) {
+	service, ok := s.requireProtocolService(ctx, c)
 	if ok {
-		respondOK(c, service.Schema())
+		respondOK(ctx, c, service.Schema())
 	}
 }
 
-func (s *Server) adminProtocolValidate(c *gin.Context) {
-	service, ok := s.requireProtocolService(c)
+func (s *Server) adminProtocolValidate(ctx context.Context, c *app.RequestContext) {
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
-	body, err := readProtocolAdminBody(c)
+	body, err := readProtocolAdminBody(ctx, c)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	compiled, issues := service.Validate(body)
-	result := gin.H{"valid": compiled != nil, "issues": issues}
+	result := utils.H{"valid": compiled != nil, "issues": issues}
 	if compiled != nil {
 		result["hash"], result["identity"] = compiled.Hash(), compiled.Identity()
 	}
-	respondOK(c, result)
+	respondOK(ctx, c, result)
 }
 
-func (s *Server) adminProtocolDraft(c *gin.Context) {
-	service, ok := s.requireProtocolService(c)
+func (s *Server) adminProtocolDraft(ctx context.Context, c *app.RequestContext) {
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
-	draft, err := service.ReadDraft(c.Request.Context(), c.Param("id"))
+	draft, err := service.ReadDraft(ctx, c.Param("id"))
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	c.Header("ETag", `"`+draft.Hash+`"`)
-	respondOK(c, draft)
+	respondOK(ctx, c, draft)
 }
 
-func (s *Server) adminProtocolSaveDraft(c *gin.Context) {
-	body, err := readProtocolAdminBody(c)
+func (s *Server) adminProtocolSaveDraft(ctx context.Context, c *app.RequestContext) {
+	body, err := readProtocolAdminBody(ctx, c)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	s.saveProtocolDraft(c, c.Param("id"), body)
+	s.saveProtocolDraft(ctx, c, c.Param("id"), body)
 }
 
-func (s *Server) saveProtocolDraft(c *gin.Context, id string, body []byte) {
-	service, ok := s.requireProtocolService(c)
+func (s *Server) saveProtocolDraft(ctx context.Context, c *app.RequestContext, id string, body []byte) {
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
-	expected := strings.Trim(c.GetHeader("If-Match"), `"`)
-	draft, issues, err := service.SaveDraft(c.Request.Context(), id, body, expected)
+	expected := strings.Trim(string(c.GetHeader("If-Match")), `"`)
+	draft, issues, err := service.SaveDraft(ctx, id, body, expected)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	c.Header("ETag", `"`+draft.Hash+`"`)
-	respondOK(c, gin.H{"draft": draft, "issues": issues, "activated": false})
+	respondOK(ctx, c, utils.H{"draft": draft, "issues": issues, "activated": false})
 }
 
-func (s *Server) adminProtocolVerifyDraft(c *gin.Context) {
-	service, ok := s.requireProtocolService(c)
+func (s *Server) adminProtocolVerifyDraft(ctx context.Context, c *app.RequestContext) {
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
 	var input struct {
 		DraftHash string `json:"draftHash"`
 	}
-	if err := decodeProtocolAdminBody(c, &input); err != nil {
-		respondProtocolError(c, err)
+	if err := decodeProtocolAdminBody(ctx, c, &input); err != nil {
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	revision, report, err := service.VerifyDraft(c.Request.Context(), c.Param("id"), input.DraftHash)
+	revision, report, err := service.VerifyDraft(ctx, c.Param("id"), input.DraftHash)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	respondOK(c, gin.H{"revision": revision, "report": report})
+	respondOK(ctx, c, utils.H{"revision": revision, "report": report})
 }
 
-func (s *Server) adminProtocolRevisions(c *gin.Context) {
-	service, ok := s.requireProtocolService(c)
+func (s *Server) adminProtocolRevisions(ctx context.Context, c *app.RequestContext) {
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
-	revisions, err := service.Revisions(c.Request.Context(), c.Param("id"))
+	revisions, err := service.Revisions(ctx, c.Param("id"))
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	respondOK(c, gin.H{"items": revisions})
+	respondOK(ctx, c, utils.H{"items": revisions})
 }
 
-func (s *Server) adminProtocolRevision(c *gin.Context) {
-	service, ok := s.requireProtocolService(c)
+func (s *Server) adminProtocolRevision(ctx context.Context, c *app.RequestContext) {
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
-	revision, err := service.ReadRevision(c.Request.Context(), c.Param("id"), c.Param("hash"))
+	revision, err := service.ReadRevision(ctx, c.Param("id"), c.Param("hash"))
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	report, err := service.ReadReport(c.Request.Context(), c.Param("id"), c.Param("hash"))
+	report, err := service.ReadReport(ctx, c.Param("id"), c.Param("hash"))
 	if err != nil && !errors.Is(err, protocol.ErrNotFound) {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	respondOK(c, gin.H{"revision": revision, "report": report})
+	respondOK(ctx, c, utils.H{"revision": revision, "report": report})
 }
 
-func (s *Server) adminProtocolVerifyRevision(c *gin.Context) {
-	service, ok := s.requireProtocolService(c)
+func (s *Server) adminProtocolVerifyRevision(ctx context.Context, c *app.RequestContext) {
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
-	report, err := service.VerifyRevision(c.Request.Context(), c.Param("id"), c.Param("hash"))
+	report, err := service.VerifyRevision(ctx, c.Param("id"), c.Param("hash"))
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	respondOK(c, report)
+	respondOK(ctx, c, report)
 }
 
-func (s *Server) adminProtocolActivate(c *gin.Context) {
-	service, ok := s.requireProtocolService(c)
+func (s *Server) adminProtocolActivate(ctx context.Context, c *app.RequestContext) {
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
@@ -316,60 +319,64 @@ func (s *Server) adminProtocolActivate(c *gin.Context) {
 		RevisionHash   string `json:"revisionHash"`
 		ExpectedActive string `json:"expectedActive"`
 	}
-	if err := decodeProtocolAdminBody(c, &input); err != nil {
-		respondProtocolError(c, err)
+	if err := decodeProtocolAdminBody(ctx, c, &input); err != nil {
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	activation, err := service.Activate(c.Request.Context(), c.Param("id"), input.RevisionHash, input.ExpectedActive)
+	activation, err := service.Activate(ctx, c.Param("id"), input.RevisionHash, input.ExpectedActive)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	respondOK(c, activation)
+	respondOK(ctx, c, activation)
 }
 
-func (s *Server) adminProtocolReload(c *gin.Context) {
-	if err := s.initializeProtocolRuntime(c.Request.Context()); err != nil {
-		respondProtocolError(c, err)
+func (s *Server) adminProtocolReload(ctx context.Context, c *app.RequestContext) {
+	if err := s.initializeProtocolRuntime(ctx); err != nil {
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	respondOK(c, gin.H{"reloaded": true})
+	respondOK(ctx, c, utils.H{"reloaded": true})
 }
 
-func (s *Server) adminProtocolRevisionDiff(c *gin.Context) {
-	service, ok := s.requireProtocolService(c)
+func (s *Server) adminProtocolRevisionDiff(ctx context.Context, c *app.RequestContext) {
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
-	changes, err := service.Diff(c.Request.Context(), c.Param("id"), c.Query("from"), c.Query("to"))
+	changes, err := service.Diff(ctx, c.Param("id"), c.Query("from"), c.Query("to"))
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	respondOK(c, gin.H{"changes": changes})
+	respondOK(ctx, c, utils.H{"changes": changes})
 }
 
-func (s *Server) adminProtocolPreviewV2(c *gin.Context) {
-	if !s.pinProtocolRequest(c) {
+func (s *Server) adminProtocolPreviewV2(ctx context.Context, c *app.RequestContext) {
+	var budgetOK bool
+	ctx, budgetOK = s.pinProtocolRequest(ctx, c)
+	if !budgetOK {
 		return
 	}
-	service, ok := s.requireProtocolService(c)
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
 	var input protocol.PreviewInput
-	if err := decodeProtocolAdminBody(c, &input); err != nil {
-		respondProtocolError(c, err)
+	if err := decodeProtocolAdminBody(ctx, c, &input); err != nil {
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	respondOK(c, service.PreviewWorkflow(c.Request.Context(), input))
+	respondOK(ctx, c, service.PreviewWorkflow(ctx, input))
 }
 
-func (s *Server) adminProtocolCombination(c *gin.Context) {
-	if !s.pinProtocolRequest(c) {
+func (s *Server) adminProtocolCombination(ctx context.Context, c *app.RequestContext) {
+	var budgetOK bool
+	ctx, budgetOK = s.pinProtocolRequest(ctx, c)
+	if !budgetOK {
 		return
 	}
-	service, ok := s.requireProtocolService(c)
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
@@ -379,24 +386,24 @@ func (s *Server) adminProtocolCombination(c *gin.Context) {
 		Capabilities     protocol.CapabilitySet     `json:"capabilities,omitempty"`
 		Upstream         json.RawMessage            `json:"upstream"`
 	}
-	if err := decodeProtocolAdminBody(c, &input); err != nil {
-		respondProtocolError(c, err)
+	if err := decodeProtocolAdminBody(ctx, c, &input); err != nil {
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	ingress, first := service.Validate(input.Ingress)
 	upstream, second := service.Validate(input.Upstream)
 	if issues := append(first, second...); protocol.IssuesError(issues) != nil {
-		respondProtocolError(c, protocol.IssuesError(issues))
+		respondProtocolError(ctx, c, protocol.IssuesError(issues))
 		return
 	}
 	if input.ConversionPolicy != nil {
 		conversion, err := protocol.ResolveConversion(protocol.DefaultConversionPolicy(ingress, upstream), *input.ConversionPolicy)
 		if err != nil {
-			respondFail(c, http.StatusBadRequest, "invalid_conversion_policy", err.Error())
+			respondFail(ctx, c, http.StatusBadRequest, "invalid_conversion_policy", err.Error())
 			return
 		}
-		respondOK(c, protocol.VerifyBindingCombination(c.Request.Context(), ingress, upstream, input.Capabilities, conversion))
+		respondOK(ctx, c, protocol.VerifyBindingCombination(ctx, ingress, upstream, input.Capabilities, conversion))
 		return
 	}
-	respondOK(c, protocol.VerifyCombination(c.Request.Context(), ingress, upstream))
+	respondOK(ctx, c, protocol.VerifyCombination(ctx, ingress, upstream))
 }

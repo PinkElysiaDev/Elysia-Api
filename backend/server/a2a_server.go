@@ -1,32 +1,25 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
-	"io"
 	"iter"
-	"net/http"
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
-	"github.com/a2aproject/a2a-go/v2/a2acompat/a2av0"
 	"github.com/a2aproject/a2a-go/v2/a2asrv"
 	"github.com/elysia-api/backend/agent"
-	"github.com/gin-gonic/gin"
+
 	"golang.org/x/sync/singleflight"
 )
 
-// The SDK owns both JSON-RPC bindings, their wire models, errors and SSE. This
-// service implements only the gateway's session/turn/task and approval policy.
+// SDK wire models and business interfaces are shared by the native Hertz
+// transport. This service owns session/turn/task and approval policy.
 type a2aService struct {
 	server   *Server
-	v03, v10 http.Handler
 	mu       sync.Mutex
 	tasks    map[a2a.TaskID]*a2aTaskEntry
 	messages map[string]a2aRun
@@ -38,54 +31,9 @@ var _ a2asrv.RequestHandler = (*a2aService)(nil)
 func (s *Server) a2aService() *a2aService {
 	s.a2aOnce.Do(func() {
 		h := &a2aService{server: s, tasks: make(map[a2a.TaskID]*a2aTaskEntry), messages: make(map[string]a2aRun)}
-		options := []a2asrv.TransportOption{a2asrv.WithTransportKeepAlive(2 * time.Second)}
-		h.v03 = a2av0.NewJSONRPCHandler(h, options...)
-		h.v10 = a2asrv.NewJSONRPCHandler(h, options...)
 		s.a2aRuntime = h
 	})
 	return s.a2aRuntime
-}
-
-// Accept the existing patch-form headers as aliases for the SDK's major.minor
-// versions. No method names, payloads or responses are rewritten locally.
-func a2aVersion(c *gin.Context) (a2a.ProtocolVersion, bool) {
-	switch strings.TrimSpace(c.GetHeader("A2A-Version")) {
-	case "", "0.3", "0.3.0":
-		return a2av0.Version, true
-	case "1.0", "1.0.0":
-		return a2a.Version, true
-	default:
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "unsupported A2A-Version (supported: 0.3, 1.0)"})
-		return "", false
-	}
-}
-
-func (s *Server) handleA2A(c *gin.Context) {
-	version, ok := a2aVersion(c)
-	if !ok {
-		return
-	}
-	// Read the complete bounded body before SDK dispatch. Limiting only the SDK
-	// decoder's reads would accept an oversized body with a valid JSON prefix.
-	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, agentMaxBodyBytes))
-	_ = c.Request.Body.Close()
-	if err != nil {
-		status := http.StatusBadRequest
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			status = http.StatusRequestEntityTooLarge
-		}
-		http.Error(c.Writer, err.Error(), status)
-		return
-	}
-	c.Request.Body = io.NopCloser(bytes.NewReader(body))
-	c.Header("X-Accel-Buffering", "no")
-	h := s.a2aService()
-	if version == a2av0.Version {
-		h.v03.ServeHTTP(c.Writer, c.Request)
-	} else {
-		h.v10.ServeHTTP(c.Writer, c.Request)
-	}
 }
 
 // a2aRun identifies one execution within a resumable task. Its starting cursor

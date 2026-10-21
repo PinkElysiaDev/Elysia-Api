@@ -46,12 +46,14 @@ func TestGatewayUsageBodyPolicy(t *testing.T) {
 					var response *httptest.ResponseRecorder
 					if endpoint == "chat" {
 						c, rec := chatRequestContext(fmt.Sprintf(`{"model":"grp","stream":%t,"messages":[{"role":"user","content":[{"type":"text","text":"private-request"},{"type":"image_url","image_url":{"url":%q}}]}]}`, outcome == "stream", media))
-						s.chatCompletions(c)
+						s.chatCompletions(contextForTest(c), c)
+						flushTestResponse(c)
 						response = rec
 					} else {
 						response = httptest.NewRecorder()
 						c, _ := newResponsesContext(response, fmt.Sprintf(`{"model":"grp","stream":%t,"input":[{"role":"user","content":[{"type":"input_text","text":"private-request"},{"type":"input_image","image_url":%q}]}]}`, outcome == "stream", media))
-						s.responses(c)
+						s.responses(contextForTest(c), c)
+						flushTestResponse(c)
 					}
 					wantStatus := http.StatusOK
 					if outcome == "error" {

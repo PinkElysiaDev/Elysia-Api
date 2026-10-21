@@ -1,8 +1,0 @@
-# github.com/elysia-api/backend/protocol [github.com/elysia-api/backend/protocol.test]
-protocol/value_index_test.go:41:28: value.ReadArray undefined (type Value has no field or method ReadArray, but does have method readArray)
-protocol/value_index_test.go:62:18: root.ReadArray undefined (type Value has no field or method ReadArray, but does have method readArray)
-protocol/value_index_test.go:152:15: v.ReadArray undefined (type Value has no field or method ReadArray, but does have method readArray)
-FAIL	github.com/elysia-api/backend/protocol [build failed]
-ok  	github.com/elysia-api/backend/protocol/builtin	7.161s
-ok  	github.com/elysia-api/backend/server	32.976s
-FAIL

@@ -80,7 +80,8 @@ func TestGatewayMediaToolResultCandidateIsolation(t *testing.T) {
 					input = strings.Replace(raw, `"tool_use_id":"call_1"`, `"tool_use_id":"call_1","is_error":"bad"`, 1)
 				}
 				ctx, rec := adminProtocolContext("POST", "/v1/messages", input)
-				s.serveProtocolRequest(ctx, service.View(), ingress, "/v1/messages", []byte(input))
+				s.serveProtocolRequest(contextForTest(ctx), ctx, service.View(), ingress, "/v1/messages", []byte(input))
+				flushTestResponse(ctx)
 				rejected := order == "unsupported" || order == "invalid" || order == "reject"
 				if rejected {
 					if rec.Code != 400 || calls != 0 {

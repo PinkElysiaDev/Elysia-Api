@@ -10,11 +10,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/hertz-contrib/websocket"
+
 	"github.com/elysia-api/backend/protocol/builtin"
 
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/relay"
-	"github.com/gin-gonic/gin"
 )
 
 type gatewaySessionSet struct {
@@ -70,54 +71,63 @@ func gatewaySessionOperation(compiled *protocol.Compiled, method, path string) (
 	return protocol.Operation{}, false
 }
 
-func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView, ingress *protocol.Compiled, path string, handshake []byte) {
+func (s *Server) serveGatewaySession(ctx context.Context, c *app.RequestContext, view protocol.RegistryView, ingress *protocol.Compiled, path string, handshake []byte) {
 	start := time.Now()
-	record := s.initUsageRecord(c, start, handshake, builtin.FormatType(ingress.Identity().Family))
-	record.IngressRevision, record.SourceEndpoint, record.SourceFormat = ingress.Hash(), c.Request.URL.Path, ingress.Identity().DefinitionID
+	record := s.initUsageRecord(ctx, c, start, handshake, builtin.FormatType(ingress.Identity().Family))
+	record.IngressRevision, record.SourceEndpoint, record.SourceFormat = ingress.Hash(), string(c.Path()), ingress.Identity().DefinitionID
 	record.Stream, record.RelayMode = true, "protocol_v2_websocket"
 	var adapter *protocol.SessionAdapter
 	var releaseSession func()
-	defer func() {
+	var releases []func()
+	transferred := false
+	cleanup := sync.OnceFunc(func() {
+		for _, release := range releases {
+			release()
+		}
 		s.recordGatewaySession(record, adapter)
 		if releaseSession != nil {
 			releaseSession()
 		}
+	})
+	defer func() {
+		if !transferred {
+			cleanup()
+		}
 	}()
-	plan, err := s.prepareGatewayPlan(c, view, ingress, path, handshake, record)
+	plan, err := s.prepareGatewayPlan(ctx, c, view, ingress, path, handshake, record)
 	if err != nil {
-		s.failGateway(c, record, http.StatusBadRequest, err)
+		s.failGateway(ctx, c, record, http.StatusBadRequest, err)
 		return
 	}
 	candidate := plan.candidates[0]
-	defer s.protocolUses.acquire(candidate.binding.ProtocolID, candidate.compiled.Hash())()
-	defer s.protocolUses.acquire(ingress.Identity().DefinitionID, ingress.Hash())()
+	releases = append(releases, s.protocolUses.acquire(candidate.binding.ProtocolID, candidate.compiled.Hash()), s.protocolUses.acquire(ingress.Identity().DefinitionID, ingress.Hash()))
 	prepareCandidateRecord(record, candidate, plan.request)
 	if err := s.validateOutbound(candidate.model.BaseURL); err != nil {
-		s.failGateway(c, record, http.StatusForbidden, err)
+		s.failGateway(ctx, c, record, http.StatusForbidden, err)
 		return
 	}
 	request := candidate.prepared.Clone()
 	request.Model = protocol.StringValue(candidate.model.Identifier())
 	sessionOptions := protocol.EvaluationContext{Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}}
-	defer func() { record.appendConversionIssues(sessionOptions.Diagnostics.Issues()) }()
+	releases = append(releases, func() { record.appendConversionIssues(sessionOptions.Diagnostics.Issues()) })
 	if candidate.model.CacheSynthesis {
 		protocol.SynthesizeCacheBreakpoints(request, candidate.compiled.Capabilities(protocol.EncodeRequest), sessionOptions)
 	}
 	s.estimateGatewayAttempt(record, request)
 	record.SystemStructure.After = systemStructure(request)
-	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), request, sessionOptions)
+	body, err := candidate.compiled.EncodeRequest(ctx, request, sessionOptions)
 	if err != nil {
-		s.failGateway(c, record, http.StatusBadRequest, err)
+		s.failGateway(ctx, c, record, http.StatusBadRequest, err)
 		return
 	}
-	upstreamRequest, err := protocol.BuildSessionHandshake(c.Request.Context(), candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Identifier()})
+	upstreamRequest, err := protocol.BuildSessionHandshake(ctx, candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Identifier()})
 	if err != nil {
-		s.failGateway(c, record, http.StatusBadRequest, err)
+		s.failGateway(ctx, c, record, http.StatusBadRequest, err)
 		return
 	}
 	adapter, err = protocol.NewSessionAdapter(ingress, candidate.compiled, plan.operation, candidate.operation, candidate.binding, candidate.scope, plan.request.Model)
 	if err != nil {
-		s.failGateway(c, record, http.StatusBadRequest, err)
+		s.failGateway(ctx, c, record, http.StatusBadRequest, err)
 		return
 	}
 	setRecordModel(record, candidate.model, builtin.Platform("custom:"+candidate.binding.ProtocolID))
@@ -125,22 +135,39 @@ func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView,
 	record.OutgoingBody = record.sanitizeBody(body)
 	release, err := s.limiter.Acquire(plan.group, s.estimateProtocolTokens(candidate.prepared))
 	if err != nil {
-		s.failGateway(c, record, http.StatusTooManyRequests, err)
+		s.failGateway(ctx, c, record, http.StatusTooManyRequests, err)
 		return
 	}
-	defer release()
-	ctx, finish, err := s.gatewaySessions.begin(c.Request.Context())
+	releases = append(releases, release)
+	ctx, finish, err := s.gatewaySessions.begin(ctx)
 	if err != nil {
-		s.failGateway(c, record, http.StatusServiceUnavailable, err)
+		s.failGateway(ctx, c, record, http.StatusServiceUnavailable, err)
 		return
 	}
 	releaseSession = finish
-	client, err := relay.AcceptProtocolSession(c.Writer, c.Request, *plan.operation.Session)
+	connection := c.GetConn()
+	stopConnection := context.AfterFunc(ctx, func() { _ = connection.SetDeadline(time.Now()) })
+	releases = append(releases, func() { stopConnection() })
+	upgrader := websocket.HertzUpgrader{HandshakeTimeout: time.Duration(plan.operation.Session.CloseMillis) * time.Millisecond}
+	err = upgrader.Upgrade(c, func(conn *websocket.Conn) {
+		defer cleanup()
+		client := newWebsocketSession(conn, connection, *plan.operation.Session)
+		defer client.Close()
+		stopSession := context.AfterFunc(ctx, func() { _ = client.Close() })
+		defer stopSession()
+		s.runGatewaySession(ctx, record, adapter, plan, candidate, client, upstreamRequest)
+	})
 	if err != nil {
-		record.StatusCode, record.Error = c.Writer.Status(), "client WebSocket handshake rejected"
+		record.StatusCode, record.Error = c.Response.StatusCode(), "client WebSocket handshake rejected"
 		return
 	}
-	defer client.Close()
+	transferred = true
+	// A failed upgrade write skips the hijack callback. The native completion
+	// hook releases its admission and revision pins on that path as well.
+	onHTTPComplete(c, cleanup)
+}
+
+func (s *Server) runGatewaySession(ctx context.Context, record *usageRecord, adapter *protocol.SessionAdapter, plan *gatewayPlan, candidate gatewayCandidate, client protocol.SessionConnection, upstreamRequest *http.Request) {
 	deadline, stop := context.WithTimeout(ctx, time.Duration(candidate.operation.Session.CloseMillis)*time.Millisecond)
 	upstream, err := s.protocolTransport.DialProtocolSession(deadline, upstreamRequest, *candidate.operation.Session)
 	stop()
@@ -153,7 +180,7 @@ func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView,
 		}
 		return
 	}
-	record.FirstByteMs = time.Since(start).Milliseconds()
+	record.FirstByteMs = time.Since(record.StartedAt).Milliseconds()
 	err = protocol.RunSession(ctx, client, upstream, *plan.operation.Session, *candidate.operation.Session, adapter)
 	if err != nil {
 		record.StatusCode, record.Error = http.StatusBadGateway, err.Error()

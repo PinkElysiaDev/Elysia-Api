@@ -146,7 +146,7 @@ func gatewayTestRequest(server *Server, protocolID, body, token string) *httptes
 	request := httptest.NewRequest(http.MethodPost, "/gateway/"+protocolID+"/generate", strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer "+token)
 	response := httptest.NewRecorder()
-	server.engine.ServeHTTP(response, request)
+	serveTestHTTP(server.engine, response, request)
 	return response
 }
 
@@ -249,7 +249,9 @@ func TestGatewayCanceledRequestDoesNotReachUpstream(t *testing.T) {
 	server, _ := newProtocolAdminTestServer(t)
 	compiled := activateGatewayDefinition(t, server, loadGatewayDefinition(t, "text-alpha"))
 	var calls atomic.Int32
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1) }))
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+	}))
 	defer provider.Close()
 	setupGatewayModel(t, server, compiled, provider.URL)
 	ctx, cancel := context.WithCancel(t.Context())
@@ -257,7 +259,7 @@ func TestGatewayCanceledRequestDoesNotReachUpstream(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/gateway/text-alpha/generate", strings.NewReader(`{}`)).WithContext(ctx)
 	request.Header.Set("Authorization", "Bearer gateway-test-token")
 	result := httptest.NewRecorder()
-	server.engine.ServeHTTP(result, request)
+	serveTestHTTP(server.engine, result, request)
 	if result.Code != 499 || calls.Load() != 0 {
 		t.Fatalf("cancel: %d calls=%d", result.Code, calls.Load())
 	}

@@ -9,19 +9,19 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/route/param"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 // DBG-001 回归:删除某 token 的唯一授权组后,该 token 必须被禁用,而不是因
 // 「空列表=不限制」扩权为全组可用;多组/无限制 token 不受影响。
+// 管理响应透出禁用名单。
 func TestDeleteLastAllowedGroupDisablesToken(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
 	store := s.store
 	ctx := context.Background()
-
 	seed := func(id, name string) {
 		if err := store.UpsertGroup(ctx, storage.ModelGroup{ID: id, Name: name, Enabled: true}); err != nil {
 			t.Fatalf("seed group %s: %v", name, err)
@@ -30,7 +30,6 @@ func TestDeleteLastAllowedGroupDisablesToken(t *testing.T) {
 	seed("g-allowed", "allowed-group")
 	seed("g-other", "restricted-group")
 	seed("g-multi", "multi-group")
-
 	tokens := []storage.APIToken{
 		{Name: "restricted", Token: "sk-restricted", Enabled: true, AllowedGroups: []string{"allowed-group"}},
 		{Name: "multi", Token: "sk-multi", Enabled: true, AllowedGroups: []string{"allowed-group", "multi-group"}},
@@ -41,7 +40,6 @@ func TestDeleteLastAllowedGroupDisablesToken(t *testing.T) {
 			t.Fatalf("seed token %s: %v", token.Name, err)
 		}
 	}
-
 	disabled, err := store.DeleteGroup(ctx, "g-allowed")
 	if err != nil {
 		t.Fatalf("DeleteGroup: %v", err)
@@ -49,7 +47,6 @@ func TestDeleteLastAllowedGroupDisablesToken(t *testing.T) {
 	if len(disabled) != 1 || disabled[0] != "restricted" {
 		t.Fatalf("only the single-group token must be disabled, got %v", disabled)
 	}
-
 	byName := map[string]storage.APIToken{}
 	all, err := store.ListAPITokens(ctx)
 	if err != nil {
@@ -70,13 +67,12 @@ func TestDeleteLastAllowedGroupDisablesToken(t *testing.T) {
 	if !byName["unrestricted"].Enabled || len(byName["unrestricted"].AllowedGroups) != 0 {
 		t.Fatalf("unrestricted token must be untouched: %+v", byName["unrestricted"])
 	}
-
-	// 管理响应透出禁用名单。
 	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodDelete, "/api/admin/groups/g-multi", nil)
-	c.Params = gin.Params{{Key: "id", Value: "g-multi"}}
-	s.adminDeleteGroup(c)
+	c := newTestContext(rec)
+	setTestRequest(c, httptest.NewRequest(http.MethodDelete, "/api/admin/groups/g-multi", nil))
+	c.Params = param.Params{{Key: "id", Value: "g-multi"}}
+	s.adminDeleteGroup(contextForTest(c), c)
+	flushTestResponse(c)
 	if !strings.Contains(rec.Body.String(), `"disabledTokens":["multi"]`) {
 		t.Fatalf("admin response must surface disabled tokens: %s", rec.Body.String())
 	}
@@ -180,7 +176,6 @@ func TestStreamToolStableSlotIndices(t *testing.T) {
 // DBG-007 回归:复合帧(正文+结束+usage 同帧)不得因 first-match 只映射一类
 // 字段而丢失其余——预设每帧全量映射。
 func TestPresetCombinedFramesEndToEnd(t *testing.T) {
-
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"last\"},\"finish_reason\":\"stop\",\"index\":0}],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3},\"id\":\"r1\",\"model\":\"m\",\"created\":1,\"object\":\"chat.completion.chunk\"}\n\n")
@@ -189,7 +184,8 @@ func TestPresetCombinedFramesEndToEnd(t *testing.T) {
 	defer upstream.Close()
 	s := newTestServer(t, presetGroup(t, "custom:openai-chat-completions", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("chat combined frame: expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -199,7 +195,6 @@ func TestPresetCombinedFramesEndToEnd(t *testing.T) {
 			t.Fatalf("chat combined frame must keep text+finish+usage, missing %s: %s", want, body)
 		}
 	}
-
 	upstream = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"final answer\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":2,\"candidatesTokenCount\":3}}\n\n")
@@ -207,7 +202,8 @@ func TestPresetCombinedFramesEndToEnd(t *testing.T) {
 	defer upstream.Close()
 	s = newTestServer(t, presetGroup(t, "custom:google-generate-content", upstream.URL))
 	c, rec = chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("gemini combined frame: expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -235,18 +231,16 @@ func TestCustomProtocolMappedErrorIsFailure(t *testing.T) {
 	}
 	errorWire := mustProtocolValue(t, `{"error":{"message":"quota exhausted","category":"upstream"}}`)
 	errorSemantic := mustProtocolValue(t, `{"schemaVersion":1,"content":[],"error":{"message":"quota exhausted","category":"upstream"}}`)
-	definition.Samples = append(definition.Samples,
-		protocol.Sample{ID: "failure.decode", Direction: protocol.DecodeResponse, Input: errorWire, Expected: errorSemantic},
-		protocol.Sample{ID: "failure.encode", Direction: protocol.EncodeResponse, Input: errorSemantic, Expected: errorWire})
+	definition.Samples = append(definition.Samples, protocol.Sample{ID: "failure.decode", Direction: protocol.DecodeResponse, Input: errorWire, Expected: errorSemantic}, protocol.Sample{ID: "failure.encode", Direction: protocol.EncodeResponse, Input: errorSemantic, Expected: errorWire})
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"error":{"message":"quota exhausted","category":"upstream"}}`))
 	}))
 	defer upstream.Close()
-
 	s := newTestServer(t, standaloneGroup(t, definition, upstream.URL), definition)
 	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code == http.StatusOK {
 		t.Fatalf("mapped business error must not surface as 200: %s", rec.Body.String())
 	}
@@ -260,7 +254,6 @@ func TestCustomProtocolMappedErrorIsFailure(t *testing.T) {
 
 // DBG-009 回归:同一 delta 帧携带多个工具时全部产出(tool.path 数组遍历)。
 func TestPresetChatMultipleToolsInOneFrame(t *testing.T) {
-
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_a\",\"function\":{\"name\":\"first\",\"arguments\":\"{}\"}},{\"index\":1,\"id\":\"call_b\",\"function\":{\"name\":\"second\",\"arguments\":\"{}\"}}]},\"index\":0}],\"id\":\"r1\",\"model\":\"m\",\"created\":1,\"object\":\"chat.completion.chunk\"}\n\n")
@@ -268,10 +261,10 @@ func TestPresetChatMultipleToolsInOneFrame(t *testing.T) {
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	defer upstream.Close()
-
 	s := newTestServer(t, presetGroup(t, "custom:openai-chat-completions", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -283,7 +276,6 @@ func TestPresetChatMultipleToolsInOneFrame(t *testing.T) {
 
 // DBG-010 回归:预设的失败帧必须映射为流失败,终止后错误同样生效。
 func TestPresetErrorFramesEndToEnd(t *testing.T) {
-
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
@@ -292,10 +284,10 @@ func TestPresetErrorFramesEndToEnd(t *testing.T) {
 		_, _ = io.WriteString(w, "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"overloaded\"}}\n\n")
 	}))
 	defer upstream.Close()
-
 	s := newTestServer(t, presetGroup(t, "custom:anthropic-messages", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if !strings.Contains(rec.Body.String(), "overloaded") {
 		t.Fatalf("trailing error frame must surface as failure: %s", rec.Body.String())
 	}

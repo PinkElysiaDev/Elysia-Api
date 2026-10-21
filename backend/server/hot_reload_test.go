@@ -19,10 +19,11 @@ func TestGatewayFailureRecordsClientCancel(t *testing.T) {
 	s := &Server{}
 	c, rec := chatRequestContext(`{}`)
 	ctx, cancel := context.WithCancel(t.Context())
-	c.Request = c.Request.WithContext(ctx)
+	c.Set("testContext", ctx)
 	cancel()
 	record := &usageRecord{RequestID: "cancel-probe"}
-	s.failGateway(c, record, 502, ctx.Err())
+	s.failGateway(contextForTest(c), c, record, 502, ctx.Err())
+	flushTestResponse(c)
 	if record.StatusCode != 499 || record.ErrorKind != ErrorKindClientCanceled || rec.Code != 499 {
 		t.Fatal(record, rec.Code)
 	}

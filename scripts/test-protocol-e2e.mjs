@@ -62,7 +62,7 @@ try {
     modelCatalog: { enabled: false, syncIntervalMinutes: 0 },
     outbound: { deniedIpRanges: [] }, // isolated mock providers listen on loopback
   }), { mode: 0o600 })
-  await run('go', ['build', '-tags=sonic', '-o', binary, '.'], join(root, 'backend'))
+  await run('go', ['build', '-o', binary, '.'], join(root, 'backend'))
   const backend = start(binary, ['-config', config], runDirectory)
   const vite = start(process.execPath, [join(root, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(webPort), '--strictPort'], web)
   await Promise.all([waitReady(backend, `${backendURL}/health`), waitReady(vite, webURL)])

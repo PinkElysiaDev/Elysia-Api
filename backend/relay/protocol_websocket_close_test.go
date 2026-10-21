@@ -50,7 +50,7 @@ func TestWebSocketForceCloseInterruptsActiveHandshakeWithoutReader(t *testing.T)
 	observed := make(chan struct{})
 	accepted := make(chan *WebSocketSession, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		connection, err := AcceptProtocolSession(closeObservedWriter{w, observed}, r, protocol.DefaultSessionConfig())
+		connection, err := acceptTestProtocolSession(closeObservedWriter{w, observed}, r, protocol.DefaultSessionConfig())
 		if err != nil {
 			t.Error(err)
 			return

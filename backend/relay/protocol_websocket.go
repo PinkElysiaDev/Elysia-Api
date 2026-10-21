@@ -1,10 +1,8 @@
 package relay
 
 import (
-	"bufio"
 	"context"
 	"io"
-	"net"
 	"net/http"
 
 	"github.com/coder/websocket"
@@ -23,23 +21,6 @@ func wrapWebSocket(connection *websocket.Conn, transport io.Closer, limit int) *
 	return &WebSocketSession{connection: connection, transport: transport}
 }
 
-type sessionUpgradeWriter struct {
-	http.ResponseWriter
-	connection net.Conn
-}
-
-func (writer *sessionUpgradeWriter) WriteHeaderNow() {
-	if immediate, ok := writer.ResponseWriter.(interface{ WriteHeaderNow() }); ok {
-		immediate.WriteHeaderNow()
-	}
-}
-
-func (writer *sessionUpgradeWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	connection, buffer, err := http.NewResponseController(writer.ResponseWriter).Hijack()
-	writer.connection = connection
-	return connection, buffer, err
-}
-
 type sessionHandshakeTransport struct {
 	http.RoundTripper
 	body io.Closer
@@ -51,17 +32,6 @@ func (transport *sessionHandshakeTransport) RoundTrip(request *http.Request) (*h
 		transport.body = response.Body
 	}
 	return response, err
-}
-
-// AcceptProtocolSession verifies the handshake and same-origin policy. Gateway
-// authentication/model authorization must complete before calling this function.
-func AcceptProtocolSession(writer http.ResponseWriter, request *http.Request, config protocol.SessionConfig) (*WebSocketSession, error) {
-	upgrade := &sessionUpgradeWriter{ResponseWriter: writer}
-	connection, err := websocket.Accept(upgrade, request, &websocket.AcceptOptions{CompressionMode: websocket.CompressionDisabled})
-	if err != nil {
-		return nil, err
-	}
-	return wrapWebSocket(connection, upgrade.connection, config.FrameBytes), nil
 }
 
 // DialProtocolSession shares proxy/TLS/dial-time address policy with HTTP streams.

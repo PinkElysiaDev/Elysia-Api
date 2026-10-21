@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 func TestResetKeepsRecordsSubmittedAfterReturn(t *testing.T) {
@@ -19,11 +18,9 @@ func TestResetKeepsRecordsSubmittedAfterReturn(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 	defer store.Close()
-
 	s := &Server{store: store}
 	s.startUsageWriter()
 	defer s.stopUsageWriter()
-
 	var wg sync.WaitGroup
 	for i := 0; i < 16; i++ {
 		wg.Add(1)
@@ -34,22 +31,20 @@ func TestResetKeepsRecordsSubmittedAfterReturn(t *testing.T) {
 			s.recordUsage(&usageRecord{RequestID: id, StartedAt: now, EndedAt: now, ModelName: "m", StatusCode: 200})
 		}()
 	}
-
 	rec := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/reset", nil)
-	s.resetUsage(ctx)
+	ctx := newTestContext(rec)
+	setTestRequest(ctx, httptest.NewRequest(http.MethodPost, "/reset", nil))
+	s.resetUsage(contextForTest(ctx), ctx)
+	flushTestResponse(ctx)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("reset status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	wg.Wait()
-
 	now := time.Now()
 	s.recordUsage(&usageRecord{RequestID: "after-reset", StartedAt: now, EndedAt: now, ModelName: "m", StatusCode: 200})
-
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		_, items, err := store.QueryUsageLogs(ctx.Request.Context(), storage.UsageQuery{Limit: 50})
+		_, items, err := store.QueryUsageLogs(contextForTest(ctx), storage.UsageQuery{Limit: 50})
 		if err != nil {
 			t.Fatalf("logs: %v", err)
 		}
@@ -69,11 +64,9 @@ func TestResetUsageDropsQueuedWrites(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 	defer store.Close()
-
 	s := &Server{store: store}
 	s.startUsageWriter()
 	defer s.stopUsageWriter()
-
 	started := time.Now().UTC()
 	if err := s.saveUsageRecordToStore(&usageRecord{
 		RequestID: "keep-before", StartedAt: started, EndedAt: started.Add(time.Millisecond),
@@ -81,24 +74,22 @@ func TestResetUsageDropsQueuedWrites(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-
 	queued := &usageRecord{
 		RequestID: "queued-after-reset", StartedAt: started, EndedAt: started.Add(time.Millisecond),
 		ModelName: "m", StatusCode: 200, writeGen: 0,
 	}
 	s.usageWriter.queue <- queued
-
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/reset", nil)
-	s.resetUsage(ctx)
+	ctx := newTestContext(w)
+	setTestRequest(ctx, httptest.NewRequest(http.MethodPost, "/reset", nil))
+	s.resetUsage(contextForTest(ctx), ctx)
+	flushTestResponse(ctx)
 	if w.Code != http.StatusOK {
 		t.Fatalf("reset status=%d body=%s", w.Code, w.Body.String())
 	}
-
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		totals, err := store.UsageTotals(ctx.Request.Context(), storage.UsageQuery{})
+		totals, err := store.UsageTotals(contextForTest(ctx), storage.UsageQuery{})
 		if err != nil {
 			t.Fatalf("totals: %v", err)
 		}
@@ -107,7 +98,7 @@ func TestResetUsageDropsQueuedWrites(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	totals, _ := store.UsageTotals(ctx.Request.Context(), storage.UsageQuery{})
+	totals, _ := store.UsageTotals(contextForTest(ctx), storage.UsageQuery{})
 	t.Fatalf("reset must remain empty after queued write, totals=%#v", totals)
 }
 
@@ -157,18 +148,17 @@ func TestResetDrainDoesNotHangWhenQueueCloses(t *testing.T) {
 	defer store.Close()
 	s := &Server{store: store}
 	s.startUsageWriter()
-
 	for i := 0; i < 64; i++ {
 		s.enqueueUsageRecord(&usageRecord{RequestID: "q", StartedAt: time.Now()})
 	}
-
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		w := httptest.NewRecorder()
-		ctx, _ := gin.CreateTestContext(w)
-		ctx.Request = httptest.NewRequest(http.MethodPost, "/reset", nil)
-		s.resetUsage(ctx)
+		ctx := newTestContext(w)
+		setTestRequest(ctx, httptest.NewRequest(http.MethodPost, "/reset", nil))
+		s.resetUsage(contextForTest(ctx), ctx)
+		flushTestResponse(ctx)
 	}()
 	s.stopUsageWriter()
 	select {
@@ -178,6 +168,8 @@ func TestResetDrainDoesNotHangWhenQueueCloses(t *testing.T) {
 	}
 }
 
+// Synchronous job settlements must use the new generation and publish the
+// same accounting/cache changes as queued writes, rather than being skipped.
 func TestUsageSeqIncrementsOnPersistAndReset(t *testing.T) {
 	store, err := storage.Open(filepath.Join(t.TempDir(), "usage-seq.sqlite3"))
 	if err != nil {
@@ -196,14 +188,13 @@ func TestUsageSeqIncrementsOnPersistAndReset(t *testing.T) {
 		t.Fatalf("seq after persist = %d", s.usageSeq.Load())
 	}
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/reset", nil)
-	s.resetUsage(ctx)
+	ctx := newTestContext(w)
+	setTestRequest(ctx, httptest.NewRequest(http.MethodPost, "/reset", nil))
+	s.resetUsage(contextForTest(ctx), ctx)
+	flushTestResponse(ctx)
 	if s.usageSeq.Load() != 2 {
 		t.Fatalf("seq after reset = %d", s.usageSeq.Load())
 	}
-	// Synchronous job settlements must use the new generation and publish the
-	// same accounting/cache changes as queued writes, rather than being skipped.
 	if err := s.saveUsageRecordToStore(&usageRecord{RequestID: "after-reset", StartedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}

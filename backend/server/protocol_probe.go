@@ -8,9 +8,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/gin-gonic/gin"
 )
 
 type protocolProbeInput struct {
@@ -109,28 +110,28 @@ func (s *Server) activeRevisionHash(ctx context.Context, id string) (string, err
 	return "", nil
 }
 
-func (s *Server) adminProtocolProbe(c *gin.Context) {
+func (s *Server) adminProtocolProbe(ctx context.Context, c *app.RequestContext) {
 	var input protocolProbeInput
-	if err := decodeProtocolAdminBody(c, &input); err != nil {
-		respondProtocolError(c, err)
+	if err := decodeProtocolAdminBody(ctx, c, &input); err != nil {
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	result, err := s.probeProtocol(c.Request.Context(), input)
+	result, err := s.probeProtocol(ctx, input)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	respondOK(c, result)
+	respondOK(ctx, c, result)
 }
 
-func (s *Server) adminProtocolUpstreamReports(c *gin.Context) {
-	if _, ok := s.requireProtocolService(c); !ok {
+func (s *Server) adminProtocolUpstreamReports(ctx context.Context, c *app.RequestContext) {
+	if _, ok := s.requireProtocolService(ctx, c); !ok {
 		return
 	}
-	reports, err := s.store.ListProtocolUpstreamReports(c.Request.Context(), c.Param("id"), c.Param("hash"))
+	reports, err := s.store.ListProtocolUpstreamReports(ctx, c.Param("id"), c.Param("hash"))
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	respondOK(c, reports)
+	respondOK(ctx, c, reports)
 }

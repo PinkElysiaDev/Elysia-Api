@@ -1,3 +1,0 @@
-*.gz binary
-*.pprof binary
-*.patch -whitespace

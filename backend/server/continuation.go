@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 type gatewayContinuation struct {
@@ -29,32 +29,7 @@ type gatewayContinuation struct {
 	sink                             *protocol.DiagnosticSink
 }
 
-func continuationSession(c *gin.Context, v protocol.Value) string {
-	for _, name := range []string{"x-elysia-session-id", "x-claude-code-session-id", "claude-code-session-id", "x-session-id", "session_id"} {
-		if value := strings.TrimSpace(c.GetHeader(name)); value != "" && len(value) <= 512 {
-			return value
-		}
-	}
-	reader := (protocol.EvaluationContext{}).WithValueReader(v)
-	fields, _ := reader.ReadObject(v)
-	metadata, _ := reader.ReadObject(fields["metadata"])
-	var session string
-	if metadata["session_id"].Decode(&session) == nil && session != "" && len(session) <= 512 {
-		return session
-	}
-	var user string
-	if metadata["user_id"].Decode(&user) == nil {
-		if i := strings.LastIndex(user, "_session_"); i >= 0 {
-			session = user[i+9:]
-			if session != "" && len(session) <= 512 {
-				return session
-			}
-		}
-	}
-	return ""
-}
-
-func (s *Server) newGatewayContinuation(c *gin.Context, plan *gatewayPlan, candidate gatewayCandidate, sink *protocol.DiagnosticSink) (*gatewayContinuation, error) {
+func (s *Server) newGatewayContinuation(token string, plan *gatewayPlan, candidate gatewayCandidate, sink *protocol.DiagnosticSink) (*gatewayContinuation, error) {
 	policy := candidate.conversion
 	if policy == nil || policy.Policy.Continuation == nil {
 		return nil, nil
@@ -70,7 +45,7 @@ func (s *Server) newGatewayContinuation(c *gin.Context, plan *gatewayPlan, candi
 	if codec == nil {
 		return &gatewayContinuation{identity: candidate.compiled.Identity(), strict: policy.Policy.Mode == "strict", sink: sink}, nil
 	}
-	sum := sha256.Sum256([]byte(extractAccessToken(c.Request)))
+	sum := sha256.Sum256([]byte(token))
 	owner := codec.Digest(hex.EncodeToString(sum[:]))
 	scopeValue, _ := protocol.EncodeValue(candidate.scope)
 	g := &gatewayContinuation{codec: codec, owner: owner, session: plan.session, scope: candidate.scope, scopeKey: codec.Digest(string(scopeValue.Bytes())), identity: candidate.compiled.Identity(), settings: *policy.Policy.Continuation, strict: policy.Policy.Mode == "strict", saved: map[string]bool{}, restored: map[string]bool{}, sink: sink}
@@ -117,7 +92,7 @@ func (g *gatewayContinuation) historyDigest(nodes []protocol.Node) string {
 	return g.codec.Digest(strings.Join(parts, "\n"))
 }
 
-func (s *Server) restoreGatewayContinuation(c *gin.Context, g *gatewayContinuation, request *protocol.Request, tokens []string) error {
+func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayContinuation, request *protocol.Request, tokens []string) error {
 	if g == nil {
 		return nil
 	}
@@ -174,7 +149,7 @@ func (s *Server) restoreGatewayContinuation(c *gin.Context, g *gatewayContinuati
 				}
 			}
 			if len(matches) == 0 && g.settings.Persist && g.session != "" {
-				values, err := s.store.FindContinuation(c.Request.Context(), storage.StoredContinuation{Owner: g.owner, Session: g.session, ScopeKey: g.scopeKey, Parent: parent, Ordinal: position, MatchToolCall: byCall, Digest: g.codec.Digest(digest)})
+				values, err := s.store.FindContinuation(ctx, storage.StoredContinuation{Owner: g.owner, Session: g.session, ScopeKey: g.scopeKey, Parent: parent, Ordinal: position, MatchToolCall: byCall, Digest: g.codec.Digest(digest)})
 				if err != nil {
 					if e := g.warning("persistent continuation lookup failed"); e != nil {
 						return e
@@ -244,7 +219,7 @@ func (s *Server) restoreGatewayContinuation(c *gin.Context, g *gatewayContinuati
 	return nil
 }
 
-func (s *Server) captureContinuationNode(c *gin.Context, g *gatewayContinuation, node protocol.Node, ordinal int) error {
+func (s *Server) captureContinuationNode(ctx context.Context, g *gatewayContinuation, node protocol.Node, ordinal int) error {
 	if g == nil || !protocol.HasContinuationState(node) {
 		return nil
 	}
@@ -275,7 +250,7 @@ func (s *Server) captureContinuationNode(c *gin.Context, g *gatewayContinuation,
 	}
 	preserved := false
 	if g.settings.Persist && g.session != "" {
-		err = s.store.SaveContinuation(c.Request.Context(), storage.StoredContinuation{ID: id, Owner: g.owner, Session: g.session, ScopeKey: g.scopeKey, Parent: g.parent, Ordinal: ordinal, Digest: g.codec.Digest(digest), Ciphertext: token, ExpiresAt: record.ExpiresAt}, g.settings)
+		err = s.store.SaveContinuation(ctx, storage.StoredContinuation{ID: id, Owner: g.owner, Session: g.session, ScopeKey: g.scopeKey, Parent: g.parent, Ordinal: ordinal, Digest: g.codec.Digest(digest), Ciphertext: token, ExpiresAt: record.ExpiresAt}, g.settings)
 		if err != nil {
 			if g.settings.ClientCarrier {
 				g.sink.Add(protocol.ConversionIssue{Code: protocol.ContinuationUnavailable, Severity: protocol.SeverityWarning, Protocol: g.identity, Stage: "continuation", Path: "/continuation/persistence", Reason: "persistent continuation write failed; authenticated client carrier remains available"})
@@ -307,7 +282,7 @@ func (s *Server) captureContinuationNode(c *gin.Context, g *gatewayContinuation,
 	return nil
 }
 
-func (s *Server) captureContinuationResponse(c *gin.Context, g *gatewayContinuation, response *protocol.Response) error {
+func (s *Server) captureContinuationResponse(ctx context.Context, g *gatewayContinuation, response *protocol.Response) error {
 	if g == nil {
 		return nil
 	}
@@ -320,7 +295,7 @@ func (s *Server) captureContinuationResponse(c *gin.Context, g *gatewayContinuat
 					return err
 				}
 			} else {
-				if err := s.captureContinuationNode(c, g, n, ordinal); err != nil {
+				if err := s.captureContinuationNode(ctx, g, n, ordinal); err != nil {
 					return err
 				}
 				ordinal++

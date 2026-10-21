@@ -26,7 +26,7 @@ func openSocketPair(t *testing.T, config protocol.SessionConfig) (*WebSocketSess
 	t.Helper()
 	accepted := make(chan *WebSocketSession, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		connection, err := AcceptProtocolSession(w, r, config)
+		connection, err := acceptTestProtocolSession(w, r, config)
 		if err == nil {
 			accepted <- connection
 		}

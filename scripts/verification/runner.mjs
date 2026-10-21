@@ -52,9 +52,6 @@ export class VerificationRun {
   }
 
   async execute(name, command, args, { env = process.env, cwd = join(this.root, 'backend'), timeoutMillis = 1800000 } = {}) {
-    if (command === 'go' && ['build', 'run', 'test', 'vet'].includes(args[0])) {
-      args = [args[0], '-tags=sonic', ...args.slice(1)]
-    }
     const logPath = join(this.directory, `${name}.log`)
     const compiler = await readFile(join(cwd, 'protocol/definition.go'), 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error })
     const step = { name, command, args, startedAt: new Date().toISOString(), log: logPath, status: 'not_run', source: await sourceIdentity(this.root), compilerVersion: compiler.match(/CompilerVersion\s*=\s*"([^"]+)"/)?.[1] }

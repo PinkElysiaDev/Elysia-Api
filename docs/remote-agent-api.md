@@ -91,15 +91,15 @@ REST/admin Agent 事件及心跳注释使用 `go-sse` v0.11.0 编码，JSON 载�
 
 ## MCP
 
-传输层使用官方 `github.com/modelcontextprotocol/go-sdk` v1.8.0。只支持版本 `2026-07-28`，不支持旧版握手或缺省版本。每次调用必须在 `params._meta` 中传 `io.modelcontextprotocol/protocolVersion` 和 `io.modelcontextprotocol/clientCapabilities`（可为空对象）；使用 `server/discover` 获取能力，结果包含 `resultType`。
+HTTP/SSE 传输原生使用 Hertz；每个 POST 创建一个独立的 MCP connection，接入官方 `github.com/modelcontextprotocol/go-sdk` v1.8.0 的消息分派、发现和工具实现。只支持版本 `2026-07-28`，不支持旧版握手或缺省版本。每次调用必须在 `params._meta` 中传 `io.modelcontextprotocol/protocolVersion` 和 `io.modelcontextprotocol/clientCapabilities`（可为空对象）；使用 `server/discover` 获取能力，结果包含 `resultType`。
 
-POST 必须使用 `Content-Type: application/json`（否则 415），且 `Accept` 包含 `application/json` 和 `text/event-stream`（否则 400）。`MCP-Protocol-Version`、`Mcp-Method` 为必填头，`tools/call` 还必须携带 `Mcp-Name`，值须与 body 一致；缺少方法/名称镜像头或镜像不一致返回 `-32020`。GET / DELETE 返回 405；不支持 JSON-RPC batch。浏览器 `Origin` 需同源或符合回环规则，SDK 还启用其默认的本机 Host 校验。响应使用 SDK 默认的 SSE 传输，包括发现和工具列表。`tools/list` 返回 `ttlMs: 300000` 和 `cacheScope: "private"`。
+POST 必须使用 `Content-Type: application/json`（否则 415），且 `Accept` 包含 `application/json` 和 `text/event-stream`（否则 400）。`MCP-Protocol-Version`、`Mcp-Method` 为必填头，`tools/call` 还必须携带 `Mcp-Name`，值须与 body 一致；缺少方法/名称镜像头或镜像不一致返回 `-32020`。GET / DELETE 返回 405；不支持 JSON-RPC batch。浏览器 `Origin` 需同源或符合回环规则，原生传输保留本机 Host 校验。响应使用 SSE，包括发现和工具列表。`tools/list` 返回 `ttlMs: 300000` 和 `cacheScope: "private"`。
 
 ### 取代手写传输层的破坏性迁移
 
-此次迁移直接采用官方 SDK 行为，不保留旧实现的线协议兼容适配。
+此前迁移采用官方 SDK 的线协议行为；Hertz 迁移继续保持这些契约，HTTP/SSE 由原生 handler 实现，无 `net/http` handler 适配器。
 
-- SDK 校验必填镜像头和客户端能力元数据。手动构造请求时按下方示例补齐；支持当前协议的 SDK 客户端会自动填充。
+- 原生传输校验必填镜像头，SDK 校验客户端能力元数据。手动构造请求时按下方示例补齐；支持当前协议的 SDK 客户端会自动填充。
 - 当前协议版本已移除 `ping`；发现与连通性检查使用 `server/discover`。
 - 服务端身份位于 `result._meta["io.modelcontextprotocol/serverInfo"]`，不再使用顶层 `serverInfo`。成功的工具结果可能省略 `isError`，缺省即 false。原 `cacheScope: "user"` 改为规范值 `"private"`。
 - 发现和工具列表由原来的单独 JSON 响应改为 SSE。客户端应使用能处理两种声明响应类型的 Streamable HTTP 实现。
@@ -159,7 +159,7 @@ Mcp-Name: elysia_cli
 
 ## A2A
 
-传输层使用官方 `github.com/a2aproject/a2a-go/v2` v2.6.0：原生 JSON-RPC binding 服务 1.0，SDK 的 `a2acompat/a2av0` 模块服务 0.3。`A2A-Version` 缺省 `0.3`，`1.0` 选择当前 binding；原 `0.3.0`、`1.0.0` 请求头仍作为别名接受。请求及 Agent Card 的未知版本均返回 400。卡片公布 SDK 版本字符串 `0.3`、`1.0`，0.3 卡使用官方的合并兼容表示。
+Hertz 原生 JSON-RPC/SSE handler 使用官方 `github.com/a2aproject/a2a-go/v2` v2.6.0 的消息类型与业务接口，以及 `a2acompat/a2av0` 的版本转换函数。`A2A-Version` 缺省 `0.3`，`1.0` 选择当前 binding；仅接受这两个规范版本值，不再接受 `0.3.0`、`1.0.0` 别名。请求及 Agent Card 的未知版本均返回 400。卡片公布 SDK 版本字符串 `0.3`、`1.0`，0.3 卡使用官方的合并兼容表示。
 
 | v0.3 方法 | v1.0 方法 | 行为 |
 | --- | --- | --- |
@@ -178,7 +178,7 @@ Mcp-Name: elysia_cli
 - 异步发送须显式配置：0.3 使用 `configuration.blocking: false`，1.0 使用 `configuration.returnImmediately: true`。默认等待完成或等待输入，等待受 HTTP 请求上下文约束。断开请求不会取消引擎中的独立任务，终止任务需调用取消方法。
 - 1.0 的 send 结果包装为 `{ "task": ... }`（或 message），流式结果按 `task`、`statusUpdate`、`artifactUpdate` 包装；`GetTask` 和 `CancelTask` 直接返回 task。0.3 的 `kind` 判别字段由 SDK 生成。
 - `ListTasks` 将旧 `cursor` / `nextCursor` 改为 `pageToken` / `nextPageToken`，增加 `totalSize` / `pageSize`，支持按会话、状态和更新时间过滤。只有 `includeArtifacts: true` 时包含产物。
-- Agent Card 安全与能力字段、协议错误、JSON-RPC 校验及 SSE 编码均采用官方 binding。Push 不支持错误使用 SDK 错误码（0.3 为 `-32003`），替代原自定义映射。
+- Agent Card 安全与能力字段、消息格式沿用 SDK；JSON-RPC 分派与 SSE 编码使用 Hertz 原生传输。协议错误保持官方 binding 的错误码，Push 不支持为 `-32003`。
 - 新任务要求非空文本、用户角色及消息 ID。审批 data 由 SDK 解码后交给网关解释，显式 `approved: false` 与缺少决策仍有区别。
 - 应用层 JSON 编解码使用 Sonic，SDK 内部线协议序列化由依赖管理。
 

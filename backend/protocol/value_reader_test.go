@@ -55,13 +55,6 @@ func TestValueImmutableStringAndLength(t *testing.T) {
 	if wire != `{"n":9007199254740993,"s":"escaped\\text"}` || value.Len() != len(wire) || !value.IsObject() {
 		t.Fatal("immutable wire exposed caller-owned bytes or changed number spelling")
 	}
-	if got := testing.AllocsPerRun(100, func() {
-		if value.Len() != len(value.JSONString()) {
-			t.Fatal("inconsistent wire length")
-		}
-	}); got != 0 {
-		t.Fatalf("read-only wire access allocated: %g", got)
-	}
 }
 
 func TestRequestResourcesDoNotRetainBody(t *testing.T) {

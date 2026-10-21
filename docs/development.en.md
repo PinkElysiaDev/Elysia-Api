@@ -56,7 +56,7 @@ Start the backend in a separate terminal. This command creates its development c
 
 ```bash
 cd backend
-go run -tags=sonic . --config ./config.json
+go run . --config ./config.json
 ```
 
 In another terminal, start the frontend from the repository root:
@@ -74,13 +74,12 @@ Use development configuration and test data. Default outbound policies block loo
 Run backend checks from `backend/`:
 
 ```bash
-go test -tags=sonic ./...
-go vet -tags=sonic ./...
+go test ./...
+go vet ./...
 ```
 
-The backend uses Sonic directly. Include `-tags=sonic` when
-running `go build`, `go run`, `go test`, or `go vet` manually so Gin also uses
-Sonic. Build scripts, Docker, and CI already enable this tag.
+The backend and Hertz use Sonic on supported platforms. No additional JSON
+build tag is needed for `go build`, `go run`, `go test`, or `go vet`.
 
 Run frontend checks from the repository root:
 
