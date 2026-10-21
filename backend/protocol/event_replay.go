@@ -3,6 +3,7 @@ package protocol
 import "fmt"
 
 type replayItem struct {
+	openChildren  int
 	parent        string
 	wireID        Value
 	role          Value
@@ -109,6 +110,9 @@ func (replay *EventReplay) consumeItem(event Event) error {
 			item.input = event.Item.Input.Kind
 		}
 		replay.items[key] = item
+		if parent != "" {
+			replay.items[parent].openChildren++
+		}
 	}
 	if item == nil {
 		return streamIssue(InvalidAssociation, "/itemId", "delta or completion has no preceding item start")
@@ -136,10 +140,8 @@ func (replay *EventReplay) consumeItem(event Event) error {
 			return streamIssue(InvalidAssociation, "/item/children", "streamed message children require their own associated events")
 		}
 		if event.Type == ItemFinished {
-			for _, child := range replay.items {
-				if child.parent == key && !child.isFinished {
-					return streamIssue(InvalidAssociation, "/parentId", "message finished before its content")
-				}
+			if item.openChildren != 0 {
+				return streamIssue(InvalidAssociation, "/parentId", "message finished before its content")
 			}
 		}
 	}
@@ -207,6 +209,9 @@ func (replay *EventReplay) consumeItem(event Event) error {
 		}
 	}
 	item.isFinished = event.Type == ItemFinished
+	if parent != "" && event.Type == ItemFinished {
+		replay.items[parent].openChildren--
+	}
 	return nil
 }
 
