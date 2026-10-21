@@ -2,7 +2,15 @@
 
 [简体中文](backend-performance.md) · [Development guide](development.en.md)
 
-This harness establishes the baseline and subsequent comparisons for performance issue [#65](https://github.com/PinkElysiaDev/Elysia-Api/issues/65). Phase one measures allocation counts/volume, memory peaks and idle recovery, and attributes costs. Subsequent phases address local optimizations, execution plans/typed pipelines, and ownership/pooling.
+This harness collects Go backend baselines and comparisons, measuring allocation counts/volume, memory peaks and idle recovery, and attributing costs. This guide retains reusable collection methods; measured conclusions have one current report entry point.
+
+## Latest report and retention
+
+- [Latest profiling report (#91)](backend-performance-algorithm-91-final.md): size-scaling benchmarks, HTTP ABBA, CPU/allocation attribution and explicit regressions.
+- [Complete evidence and verification](artifacts/performance-algorithm-91/): raw measurements, 40 profiles, cancellation diagnostics, rejected trials and conflicting results from this round.
+- The working tree retains only this round's final report and complete evidence. Earlier version comparisons, #77/#81/#86 reports and archives, and #91 item reports remain accessible in the [pre-cleanup Git snapshot](https://github.com/PinkElysiaDev/Elysia-Api/tree/6a16292/docs). Reusable benchmarks, profiling tools and regression tests are retained.
+
+**Version boundary:** the latest report measured integrated source `4fc5011` against `bdb02c6`; neither includes #90's lifecycle changes. The synchronized `deploy@6a16292` includes #90 and #92–#94, but has not been measured as a combined version. Collect a fresh baseline before optimizing it; do not relabel historical results as measurements of current `deploy`.
 
 ## Running
 

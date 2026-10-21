@@ -1,5 +1,7 @@
 # Algorithmic backend follow-up (#91): final results
 
+> Retained as the latest measured report after synchronizing `deploy@6a16292`, which has merged #90 and #92–#94. The measurements below remain tied to `4fc5011` and do **not** include #90. Collect a fresh baseline for the merged backend before further optimization. Earlier reports and the item-level write-ups are available in Git history; the complete #91 evidence, including regressions and rejected trials, remains in the working tree.
+
 ## Outcome and source identities
 
 The strongest result is removal of repeated-prefix work in collected streams: final cross-stream cumulative allocation **-47.9%**, CPU **-24.6%**, P50 **-17.5%** in the integrated ABBA. Large-document indexing and bounded metric identity reuse show conditional helper gains; long local-rule runs now have an incremental path. **This series does not establish universal CPU, latency or peak-memory improvement.** Image2 timing changes direction with sample size, burst CPU regresses, and item-3 default-path controls remain noisy/unfavorable.
@@ -29,7 +31,7 @@ All three implementations were accepted/scoped individually, signed with `TR0MX 
 - Fresh image31 uses 31 MiB of input base64 text, single concurrency, one request × three repeats/transport plus warm-ups. This is a small separate control, not a capacity guarantee.
 - Wall times fluctuated markedly even in unchanged/ineligible controls. ABBA mitigates ordering bias but is not a significance test. Every rejected trial, failing test-fixture log and conflicting dataset remains archived.
 
-Per-item details: [1](backend-performance-algorithm-91-item-1.md) · [2](backend-performance-algorithm-91-item-2.md) · [3](backend-performance-algorithm-91-item-3.md).
+Historical per-item details (immutable snapshot): [1](https://github.com/PinkElysiaDev/Elysia-Api/blob/0db0de2321da4aa0faa063d13b258719748691cf/docs/backend-performance-algorithm-91-item-1.md) · [2](https://github.com/PinkElysiaDev/Elysia-Api/blob/0db0de2321da4aa0faa063d13b258719748691cf/docs/backend-performance-algorithm-91-item-2.md) · [3](https://github.com/PinkElysiaDev/Elysia-Api/blob/0db0de2321da4aa0faa063d13b258719748691cf/docs/backend-performance-algorithm-91-item-3.md).
 
 ## Integrated five-case ABBA
 
