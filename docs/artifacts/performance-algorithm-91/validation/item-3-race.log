@@ -1,0 +1,7 @@
+--- FAIL: TestRequestPartitionRuleParity (0.02s)
+    conversion_partition_test.go:87: responses_storage requires sourceCodec, targetCodec and onUnsupported: degrade or reject
+FAIL
+FAIL	github.com/elysia-api/backend/protocol	67.671s
+ok  	github.com/elysia-api/backend/protocol/builtin	5.995s
+ok  	github.com/elysia-api/backend/server	94.963s
+FAIL

@@ -1,0 +1,42 @@
+File: server.test
+Build ID: 7a3a168b96ceaf6fba3faef2a1d4ab23e852d89a
+Type: alloc_objects
+Time: 2026-10-21 10:51:15 CST
+Showing nodes accounting for 14132, 99.03% of 14271 total
+Dropped 76 nodes (cum <= 71)
+      flat  flat%   sum%        cum   cum%
+      7646 53.58% 53.58%       7646 53.58%  runtime/pprof.allFrames
+      5461 38.27% 91.84%       5514 38.64%  runtime/pprof.(*profileBuilder).emitLocation
+      1024  7.18% 99.02%       1024  7.18%  sync.(*Pool).pinSlow
+         1 0.007% 99.03%       1025  7.18%  github.com/elysia-api/backend/protocol.ParseValue
+         0     0% 99.03%       1024  7.18%  encoding/json.Valid (inline)
+         0     0% 99.03%       1024  7.18%  encoding/json.checkValid
+         0     0% 99.03%       1024  7.18%  encoding/json/jsontext.export.GetBufferedDecoder (inline)
+         0     0% 99.03%       1024  7.18%  encoding/json/jsontext.getBufferedDecoder
+         0     0% 99.03%       1024  7.18%  github.com/elysia-api/backend/internal/jsonutil.Valid (inline)
+         0     0% 99.03%       1024  7.18%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeResponse
+         0     0% 99.03%       1041  7.29%  github.com/elysia-api/backend/protocol.(*Compiled).OperationRoutes.func1 (inline)
+         0     0% 99.03%       1061  7.43%  github.com/elysia-api/backend/server.(*Server).authMiddleware.func1
+         0     0% 99.03%       1061  7.43%  github.com/elysia-api/backend/server.(*Server).chatCompletions
+         0     0% 99.03%      13210 92.57%  github.com/elysia-api/backend/server.(*Server).dashboardAuthMiddleware.func1
+         0     0% 99.03%       1026  7.19%  github.com/elysia-api/backend/server.(*Server).forwardGateway
+         0     0% 99.03%       1041  7.29%  github.com/elysia-api/backend/server.(*Server).serveProtocolRequest
+         0     0% 99.03%       1061  7.43%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress
+         0     0% 99.03%       1041  7.29%  github.com/elysia-api/backend/server.(*Server).serveVersionedPublicIngress-range1 (inline)
+         0     0% 99.03%      14271   100%  github.com/elysia-api/backend/server.TestConversionHTTPProcess.func8
+         0     0% 99.03%      14271   100%  github.com/gin-gonic/gin.(*Context).Next
+         0     0% 99.03%      14271   100%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0% 99.03%      14271   100%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0% 99.03%      13210 92.57%  github.com/gin-gonic/gin.WrapH.func1
+         0     0% 99.03%      14271   100%  net/http.(*conn).serve
+         0     0% 99.03%      14271   100%  net/http.HandlerFunc.ServeHTTP
+         0     0% 99.03%      14271   100%  net/http.serverHandler.ServeHTTP
+         0     0% 99.03%      13210 92.57%  net/http/pprof.handler.ServeHTTP
+         0     0% 99.03%      13210 92.57%  runtime/pprof.(*Profile).WriteTo
+         0     0% 99.03%      13160 92.21%  runtime/pprof.(*profileBuilder).appendLocsForStack
+         0     0% 99.03%       2226 15.60%  runtime/pprof.writeAlloc
+         0     0% 99.03%      10984 76.97%  runtime/pprof.writeHeap
+         0     0% 99.03%      13210 92.57%  runtime/pprof.writeHeapInternal
+         0     0% 99.03%      13210 92.57%  runtime/pprof.writeHeapProto
+         0     0% 99.03%       1028  7.20%  sync.(*Pool).Get
+         0     0% 99.03%       1024  7.18%  sync.(*Pool).pin

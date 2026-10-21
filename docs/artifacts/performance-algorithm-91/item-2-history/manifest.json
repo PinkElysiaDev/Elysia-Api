@@ -1,0 +1,30 @@
+[
+  {
+    "path": "build.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "measure-history256k/measurements.json",
+    "sha256": "2664b648f969a87772b50c532135c285d8c58211c4f5107f73f261f3ba489353"
+  },
+  {
+    "path": "measure-history256k.log",
+    "sha256": "1b5785c10171344d1ee0bdd1ab458ee6c63b48e98cbc0ce6f47e7b504d27a965"
+  },
+  {
+    "path": "report.json",
+    "sha256": "bf0dd4a5da38d7cb39a394311e536e8c344c3d6790a9f181604ea9263d57684a"
+  },
+  {
+    "path": "runner.mjs",
+    "sha256": "6e95fbb0b0d73ec8313bc3bfe3b3f7738df8b69a44a97b80cba60c0062014c96"
+  },
+  {
+    "path": "source.patch",
+    "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+  },
+  {
+    "path": "summary.md",
+    "sha256": "6e135d8a36851369509000be7e3614d27c5c1eaba41437d625f7e88993741d6d"
+  }
+]

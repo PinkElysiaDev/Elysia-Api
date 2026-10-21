@@ -1,0 +1,50 @@
+[
+  {
+    "label": "before",
+    "sha256": "4c6623c46d89c1605c5534fa6f04d476cf4d5a8a547346751567d0aa36135185",
+    "argv": [
+      "/tmp/opencode/algorithm-conversion-before.test",
+      "-test.run=^$",
+      "-test.bench=^BenchmarkAlgorithmConversion$/nodes1024/rules(1|16)$",
+      "-test.benchmem",
+      "-test.benchtime=500ms",
+      "-test.count=3"
+    ]
+  },
+  {
+    "label": "after",
+    "sha256": "7b7282a75f27c5371846f98b8d2461c0467270b23adc4679aa86a9ab00714103",
+    "argv": [
+      "/tmp/opencode/algorithm-conversion-after.test",
+      "-test.run=^$",
+      "-test.bench=^BenchmarkAlgorithmConversion$/nodes1024/rules(1|16)$",
+      "-test.benchmem",
+      "-test.benchtime=500ms",
+      "-test.count=3"
+    ]
+  },
+  {
+    "label": "after",
+    "sha256": "7b7282a75f27c5371846f98b8d2461c0467270b23adc4679aa86a9ab00714103",
+    "argv": [
+      "/tmp/opencode/algorithm-conversion-after.test",
+      "-test.run=^$",
+      "-test.bench=^BenchmarkAlgorithmConversion$/nodes1024/rules(1|16)$",
+      "-test.benchmem",
+      "-test.benchtime=500ms",
+      "-test.count=3"
+    ]
+  },
+  {
+    "label": "before",
+    "sha256": "4c6623c46d89c1605c5534fa6f04d476cf4d5a8a547346751567d0aa36135185",
+    "argv": [
+      "/tmp/opencode/algorithm-conversion-before.test",
+      "-test.run=^$",
+      "-test.bench=^BenchmarkAlgorithmConversion$/nodes1024/rules(1|16)$",
+      "-test.benchmem",
+      "-test.benchtime=500ms",
+      "-test.count=3"
+    ]
+  }
+]

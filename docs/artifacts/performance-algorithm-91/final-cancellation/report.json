@@ -1,0 +1,39 @@
+{
+  "status": "passed",
+  "runs": [
+    {
+      "label": "before",
+      "binary": "/home/zed/workspace/elysia-api/.tmp-dev/perf-algorithm/baseline/server.test",
+      "binarySHA256": "6ca3caa5788010e8b6860a2ef2a6ccdb00ca9a7ce36c28b0e7317cd5ba01c52b",
+      "argv": [
+        "-test.run=^TestConversionHTTPCancellationIsolated$",
+        "-test.v",
+        "-test.timeout=5m"
+      ],
+      "settings": {
+        "ELYSIA_CONVERSION_HTTP_CANCEL": "1",
+        "ELYSIA_CONVERSION_HTTP_MIB": "2",
+        "ELYSIA_CONVERSION_HTTP_WORKERS": "4",
+        "ELYSIA_CONVERSION_HTTP_LOG": "off",
+        "ELYSIA_CONVERSION_HTTP_OUTPUT": "/home/zed/workspace/elysia-api/.tmp-dev/perf-algorithm/final-cancellation/before"
+      }
+    },
+    {
+      "label": "after",
+      "binary": "/home/zed/workspace/elysia-api/.tmp-dev/perf-algorithm/item-3-accepted/server.test",
+      "binarySHA256": "58c3f47f35cad2fcc4c23581eebdf8204e1d388c078b64393a6c1288f6e198d7",
+      "argv": [
+        "-test.run=^TestConversionHTTPCancellationIsolated$",
+        "-test.v",
+        "-test.timeout=5m"
+      ],
+      "settings": {
+        "ELYSIA_CONVERSION_HTTP_CANCEL": "1",
+        "ELYSIA_CONVERSION_HTTP_MIB": "2",
+        "ELYSIA_CONVERSION_HTTP_WORKERS": "4",
+        "ELYSIA_CONVERSION_HTTP_LOG": "off",
+        "ELYSIA_CONVERSION_HTTP_OUTPUT": "/home/zed/workspace/elysia-api/.tmp-dev/perf-algorithm/final-cancellation/after"
+      }
+    }
+  ]
+}

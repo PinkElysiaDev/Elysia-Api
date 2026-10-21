@@ -1,0 +1,48 @@
+File: server.test
+Build ID: 7a3a168b96ceaf6fba3faef2a1d4ab23e852d89a
+Type: alloc_space
+Time: 2026-10-21 10:51:15 CST
+Showing nodes accounting for 323.80MB, 98.16% of 329.89MB total
+Dropped 36 nodes (cum <= 1.65MB)
+Showing top 40 nodes out of 75
+      flat  flat%   sum%        cum   cum%
+  124.03MB 37.60% 37.60%   124.03MB 37.60%  internal/bytealg.MakeNoZero
+   73.33MB 22.23% 59.83%    73.33MB 22.23%  io.ReadAll
+      62MB 18.79% 78.62%       62MB 18.79%  decode_value
+   31.01MB  9.40% 88.02%    31.51MB  9.55%  github.com/elysia-api/backend/protocol.ParseValue
+   31.01MB  9.40% 97.42%    31.01MB  9.40%  github.com/elysia-api/backend/protocol.Value.Bytes (inline)
+    1.92MB  0.58% 98.00%     2.49MB  0.75%  compress/flate.NewWriter (inline)
+    0.50MB  0.15% 98.16%     4.84MB  1.47%  runtime/pprof.(*profileBuilder).emitLocation
+         0     0% 98.16%     3.83MB  1.16%  compress/gzip.(*Writer).Write
+         0     0% 98.16%       62MB 18.79%  decode_
+         0     0% 98.16%    62.55MB 18.96%  github.com/bytedance/sonic.frozenConfig.UnmarshalFromString
+         0     0% 98.16%    62.55MB 18.96%  github.com/bytedance/sonic/internal/decoder/api.(*Decoder).Decode
+         0     0% 98.16%    62.55MB 18.96%  github.com/bytedance/sonic/internal/decoder/jitdec.Decode
+         0     0% 98.16%       62MB 18.79%  github.com/bytedance/sonic/internal/decoder/jitdec.decodeTypedPointer
+         0     0% 98.16%    31.58MB  9.57%  github.com/elysia-api/backend/protocol.(*Compiled).DecodeRequestValue (inline)
+         0     0% 98.16%   124.02MB 37.59%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequestValue
+         0     0% 98.16%    31.01MB  9.40%  github.com/elysia-api/backend/protocol.(*Compiled).EncodeRequestValue.func2
+         0     0% 98.16%   249.67MB 75.68%  github.com/elysia-api/backend/protocol.(*Compiled).OperationRoutes.func1
+         0     0% 98.16%    31.01MB  9.40%  github.com/elysia-api/backend/protocol.(*Compiled).ValidateWireOutput (inline)
+         0     0% 98.16%    31.58MB  9.57%  github.com/elysia-api/backend/protocol.(*Compiled).decodeRequestValue
+         0     0% 98.16%    31.01MB  9.40%  github.com/elysia-api/backend/protocol.(*Compiled).decodeRequestValue.func2
+         0     0% 98.16%    93.01MB 28.19%  github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative
+         0     0% 98.16%    31.01MB  9.40%  github.com/elysia-api/backend/protocol.(*Compiled).preserveMappedNative.func1
+         0     0% 98.16%    31.01MB  9.40%  github.com/elysia-api/backend/protocol.(*Compiled).validateWireOutput
+         0     0% 98.16%       62MB 18.79%  github.com/elysia-api/backend/protocol.(*nativeReconciler).merge
+         0     0% 98.16%    62.58MB 18.97%  github.com/elysia-api/backend/protocol.EncodeValue
+         0     0% 98.16%    62.02MB 18.80%  github.com/elysia-api/backend/protocol.JSONOutput.Encode
+         0     0% 98.16%    73.33MB 22.23%  github.com/elysia-api/backend/protocol.ReadBoundedBody
+         0     0% 98.16%    62.55MB 18.96%  github.com/elysia-api/backend/protocol.Value.Decode
+         0     0% 98.16%    31.01MB  9.40%  github.com/elysia-api/backend/protocol.decodeTyped[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0% 98.16%    62.02MB 18.80%  github.com/elysia-api/backend/protocol.encodeRequestMapping[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0% 98.16%    31.01MB  9.40%  github.com/elysia-api/backend/protocol.encodeTyped[go.shape.a0cc09fe0b069624b245958f591e4b84e04d7f6c729b53540db0fa6bf47922ed]
+         0     0% 98.16%    62.02MB 18.80%  github.com/elysia-api/backend/protocol.encodeValueContainer
+         0     0% 98.16%       62MB 18.79%  github.com/elysia-api/backend/protocol.equalNativeValues
+         0     0% 98.16%       62MB 18.79%  github.com/elysia-api/backend/protocol.equalValues
+         0     0% 98.16%       62MB 18.79%  github.com/elysia-api/backend/protocol.reconcileNative
+         0     0% 98.16%    62.02MB 18.80%  github.com/elysia-api/backend/protocol/builtin.decodeMedia
+         0     0% 98.16%    31.01MB  9.40%  github.com/elysia-api/backend/protocol/builtin.module.DecodeRequest
+         0     0% 98.16%    62.02MB 18.80%  github.com/elysia-api/backend/protocol/builtin.module.EncodeRequest
+         0     0% 98.16%    31.01MB  9.40%  github.com/elysia-api/backend/protocol/builtin.module.ValidateWireObjectOutput
+         0     0% 98.16%    31.01MB  9.40%  github.com/elysia-api/backend/protocol/builtin.module.ValidateWireOutput

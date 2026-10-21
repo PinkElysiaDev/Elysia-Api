@@ -1,0 +1,70 @@
+[
+  {
+    "path": "build.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "measure-burst4/measurements.json",
+    "sha256": "877b89195bf6b7133f7be58852b00ecf2b63a3ed5a013d1daacba17420246cf3"
+  },
+  {
+    "path": "measure-burst4.log",
+    "sha256": "4a6c56b2ac0bbb5582f8f9d80817c4b2944d64adeb07e6d7cec05e40c48cfaa5"
+  },
+  {
+    "path": "measure-candidates4/measurements.json",
+    "sha256": "3fce970cef12e1ce6e2347b5ecfe813b81e360b46a08f7efc8b6527a2f4d00d7"
+  },
+  {
+    "path": "measure-candidates4.log",
+    "sha256": "6e7834c06bca5eabbed360b14c1f4e2ade5855e1baa1e380245da8714c7b1b0f"
+  },
+  {
+    "path": "measure-chat-short/measurements.json",
+    "sha256": "ca8c9ae80ecf71888b620f0c97e5552ba7d25e07c08c56369ff22d7b6b62b2f7"
+  },
+  {
+    "path": "measure-chat-short.log",
+    "sha256": "c2dae972f28528bbaa30d923a2db9375e8460b958dec2164e120b2491cbb39c3"
+  },
+  {
+    "path": "measure-history256k/measurements.json",
+    "sha256": "6b43c7f7a8854f54b4e74a33686b6693044471db93a1c48917f426070df76a8f"
+  },
+  {
+    "path": "measure-history256k.log",
+    "sha256": "0a5d876e12ad1fd7f0eeaf944c7b81db8ef48374be84684608573a60a331a54d"
+  },
+  {
+    "path": "measure-image2/measurements.json",
+    "sha256": "7fdfb4bbbfe7437a1602f36fa273240fd5e296e6a617bec883b89219cfcb9be1"
+  },
+  {
+    "path": "measure-image2.log",
+    "sha256": "da82bce58f3ad235d596744c53ff69e0eff4e923fba6057140dae43b7d1f12f9"
+  },
+  {
+    "path": "measure-stream256-cross/measurements.json",
+    "sha256": "048a930ac302f4fd9fc9e050a4a78c2e3e20b77cddc1b0f9cebaf95aebbf6656"
+  },
+  {
+    "path": "measure-stream256-cross.log",
+    "sha256": "4c36a5ef563dbea320569efde42a2acaa868aa049d0b0fe7d09e37a8b636171b"
+  },
+  {
+    "path": "report.json",
+    "sha256": "b434bb2ac7e547cb59fc76156fe397df55a92923f434a71182a660910faa3384"
+  },
+  {
+    "path": "runner.mjs",
+    "sha256": "6e95fbb0b0d73ec8313bc3bfe3b3f7738df8b69a44a97b80cba60c0062014c96"
+  },
+  {
+    "path": "source.patch",
+    "sha256": "d680f2fa09ed24ab8e0c4f70cdab39991e33232b60187fb910ebe74c23aa7646"
+  },
+  {
+    "path": "summary.md",
+    "sha256": "144c00f7733b76aff922d36fda09c0816aea3488c131a3bc6c9735dca04c5874"
+  }
+]
