@@ -89,41 +89,53 @@ func (stream *streamModule) Convert(ctx context.Context, direction p.Direction, 
 }
 
 func (stream *streamModule) EncodeEventValue(ctx context.Context, event p.Event, options p.EvaluationContext) (p.Value, error) {
-	if err := ctx.Err(); err != nil {
-		return p.Value{}, err
-	}
-	if state := event.ResponsesTurnState; state != nil {
-		if stream.name != Responses {
-			return p.Value{}, unsupported(p.ResponsesTurnStatePath, "target has no turn-state control channel")
-		}
-		if err := p.ValidateResponsesTurnStateFrame(state.Frame); err != nil {
-			return p.Value{}, err
-		}
-		fields, _ := state.Frame.ReadObject()
-		if err := stream.observeResponsesSequence(fields["sequence_number"]); err != nil {
-			return p.Value{}, err
-		}
-		// Control frames retain their original optional sequence. Numbering
-		// a missing value would change the provider's opaque control envelope.
-		return array([]p.Value{state.Frame}), nil
-	}
-	frames, err := stream.encodeEvent(event, options)
-	if err != nil {
-		return p.Value{}, err
-	}
-	frames, err = stream.renderMetadata(frames, &event, options)
-	if err != nil {
-		return p.Value{}, err
-	}
-	frames, err = stream.numberFrames(frames)
+	frames, err := stream.EncodeEventFrames(ctx, event, options)
 	if err != nil {
 		return p.Value{}, err
 	}
 	return array(frames), nil
 }
 
+func (stream *streamModule) EncodeEventFrames(ctx context.Context, event p.Event, options p.EvaluationContext) ([]p.Value, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if state := event.ResponsesTurnState; state != nil {
+		if stream.name != Responses {
+			return nil, unsupported(p.ResponsesTurnStatePath, "target has no turn-state control channel")
+		}
+		if err := p.ValidateResponsesTurnStateFrame(state.Frame); err != nil {
+			return nil, err
+		}
+		fields, _ := state.Frame.ReadObject()
+		if err := stream.observeResponsesSequence(fields["sequence_number"]); err != nil {
+			return nil, err
+		}
+		// Control frames retain their original optional sequence. Numbering
+		// a missing value would change the provider's opaque control envelope.
+		return []p.Value{state.Frame}, nil
+	}
+	frames, err := stream.encodeEvent(event, options)
+	if err != nil {
+		return nil, err
+	}
+	frames, err = stream.renderMetadata(frames, &event, options)
+	if err != nil {
+		return nil, err
+	}
+	frames, err = stream.numberFrames(frames)
+	if err != nil {
+		return nil, err
+	}
+	if frames == nil {
+		frames = []p.Value{}
+	}
+	return frames, nil
+}
+
 func (stream *streamModule) DecodeEvents(ctx context.Context, input p.Value, options p.EvaluationContext) ([]p.Event, error) {
-	fields, err := input.ReadObject()
+	options = options.WithValueReader(input)
+	fields, err := options.ReadObject(input)
 	if err != nil {
 		stream.sourceFrameNumber++
 		return nil, err

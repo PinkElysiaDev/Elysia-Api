@@ -1,0 +1,12 @@
+goos: linux
+goarch: amd64
+pkg: github.com/elysia-api/backend/protocol
+cpu: AMD Ryzen 7 8845H w/ Radeon 780M Graphics
+BenchmarkFrameScalar/codec-4         	 2371777	       377.4 ns/op	      42 B/op	       2 allocs/op
+BenchmarkFrameScalar/codec-4         	  690342	       505.7 ns/op	      43 B/op	       2 allocs/op
+BenchmarkFrameScalar/codec-4         	  483932	       623.4 ns/op	      42 B/op	       2 allocs/op
+BenchmarkFrameScalar/owned-4         	 1334616	       278.0 ns/op	      24 B/op	       1 allocs/op
+BenchmarkFrameScalar/owned-4         	 3517327	       119.2 ns/op	      24 B/op	       1 allocs/op
+BenchmarkFrameScalar/owned-4         	 1318082	       277.1 ns/op	      24 B/op	       1 allocs/op
+PASS
+ok  	github.com/elysia-api/backend/protocol	2.731s
