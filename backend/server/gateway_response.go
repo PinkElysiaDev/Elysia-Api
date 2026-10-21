@@ -1,23 +1,25 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
-	"github.com/gin-gonic/gin"
 )
 
 // Response delivery uses the same narrow handoff as streaming; request history
 // and retry candidates belong exclusively to preparation and dispatch.
-func (s *Server) forwardGatewayResponse(c *gin.Context, record *usageRecord, plan *gatewayResponsePlan, candidate gatewayCandidate, response *http.Response, responseRoute protocol.ConversionContext, options protocol.EvaluationContext) error {
+func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestContext, record *usageRecord, plan *gatewayResponsePlan, candidate gatewayCandidate, response *http.Response, responseRoute protocol.ConversionContext, options protocol.EvaluationContext) error {
 	body, err := protocol.ReadBoundedBody(response.Body, candidate.compiled.ResourceLimits().BufferBytes)
 	if err != nil {
 		return protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response")
 	}
 	record.ProviderResponse = record.sanitizeBody(body)
-	semantic, err := candidate.compiled.DecodeResponse(c.Request.Context(), body, options)
+	semantic, err := candidate.compiled.DecodeResponse(ctx, body, options)
 	if err != nil {
 		return err
 	}
@@ -27,12 +29,12 @@ func (s *Server) forwardGatewayResponse(c *gin.Context, record *usageRecord, pla
 	// DecodeResponse has already validated usage arithmetic and capabilities.
 	updateRecordProtocolUsage(record, semantic.Usage)
 	if err := protocol.CheckGenerationOutcome(semantic); err != nil {
-		return projectGatewayFailure(c.Request.Context(), http.StatusBadGateway, semantic, plan.ingress, candidate, options)
+		return projectGatewayFailure(ctx, http.StatusBadGateway, semantic, plan.ingress, candidate, options)
 	}
 	if err := protocol.IssuesError(protocol.CheckModelResponse(semantic, candidate.compiled, candidate.binding, candidate.scope)); err != nil {
 		return err
 	}
-	if err := s.captureContinuationResponse(c, candidate.continuation, semantic); err != nil {
+	if err := s.captureContinuationResponse(ctx, candidate.continuation, semantic); err != nil {
 		return err
 	}
 	// Recovery evidence is created while capturing this response. Only the
@@ -44,23 +46,23 @@ func (s *Server) forwardGatewayResponse(c *gin.Context, record *usageRecord, pla
 		return originErr
 	}
 	if candidate.conversion != nil {
-		semantic, err = candidate.conversion.Response(c.Request.Context(), semantic, route, options.Diagnostics)
+		semantic, err = candidate.conversion.Response(ctx, semantic, route, options.Diagnostics)
 		if err != nil {
 			return err
 		}
 	}
 	applyClientModelAlias(semantic, plan.clientModel)
-	body, err = plan.ingress.EncodeResponse(c.Request.Context(), semantic, options)
+	body, err = plan.ingress.EncodeResponse(ctx, semantic, options)
 	if err != nil {
 		return err
 	}
 	if candidate.conversion.HasPhase(protocol.ConversionWire) {
-		body, err = candidate.conversion.Wire(c.Request.Context(), body, candidate.conversionContext(plan.ingress, true), options.Diagnostics)
+		body, err = candidate.conversion.Wire(ctx, body, candidate.conversionContext(plan.ingress, true), options.Diagnostics)
 		if err != nil {
 			return err
 		}
 		// The target decoder applies its declared structure and capabilities.
-		if _, err = plan.ingress.DecodeResponse(c.Request.Context(), body, options); err != nil {
+		if _, err = plan.ingress.DecodeResponse(ctx, body, options); err != nil {
 			return err
 		}
 	}

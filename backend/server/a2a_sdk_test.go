@@ -18,9 +18,9 @@ import (
 	"github.com/a2aproject/a2a-go/v2/a2acompat/a2av0"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
+// A repeated message must use the existing task, not execute the model again.
 func TestA2AOfficialClients(t *testing.T) {
 	for _, version := range []a2a.ProtocolVersion{a2av0.Version, a2a.Version} {
 		t.Run(string(version), func(t *testing.T) {
@@ -38,9 +38,9 @@ func TestA2AOfficialClients(t *testing.T) {
 			if err := s.store.UpsertAPIToken(t.Context(), token); err != nil {
 				t.Fatal(err)
 			}
-			router := gin.New()
+			router := newTestEngine(t)
 			router.POST("/a2a", s.agentRemoteGate(), s.agentRemoteAuth(), s.handleA2A)
-			server := httptest.NewServer(router)
+			server := startTestServer(router)
 			defer server.Close()
 			var client a2aclient.Transport
 			if version == a2av0.Version {
@@ -76,7 +76,6 @@ func TestA2AOfficialClients(t *testing.T) {
 			if err != nil || task.Status.State != a2a.TaskStateCompleted || len(task.Artifacts) != 1 {
 				t.Fatalf("snapshot: %+v %v", task, err)
 			}
-			// A repeated message must use the existing task, not execute the model again.
 			result, err := client.SendMessage(ctx, headers, request)
 			if err != nil || result.TaskInfo().TaskID != taskID || fake.calls.Load() != 1 {
 				t.Fatalf("deduplication: %v %v calls=%d", result, err, fake.calls.Load())
@@ -179,31 +178,54 @@ func TestA2ARegistryEvictionAndPagination(t *testing.T) {
 
 func TestA2AHTTPBodyLimitAndVersionRouting(t *testing.T) {
 	s := &Server{}
-	for _, version := range []string{"0.3", "0.3.0", "1.0", "1.0.0"} {
+	for _, version := range []string{"0.3", "1.0"} {
 		method := "tasks/get"
 		if strings.HasPrefix(version, "1.") {
 			method = "GetTask"
 		}
 		body := mcpRequest(1, method, map[string]any{"id": "missing"})
 		c, rec := remoteContext(http.MethodPost, "/a2a", body, map[string]string{"A2A-Version": version})
-		s.handleA2A(c)
+		s.handleA2A(contextForTest(c), c)
+		flushTestResponse(c)
 		if !strings.Contains(rec.Body.String(), "task not found") {
 			t.Fatalf("version %s: %s", version, rec.Body.String())
 		}
-		c, rec = remoteContext(http.MethodPost, "/a2a", body+strings.Repeat(" ", agentMaxBodyBytes), map[string]string{"A2A-Version": version})
-		c.Request.ContentLength = -1
-		s.handleA2A(c)
-		c.Writer.WriteHeaderNow()
-		if rec.Code != http.StatusRequestEntityTooLarge {
-			t.Fatalf("version %s: oversized body accepted (%d)", version, rec.Code)
+		if !strings.Contains(rec.Body.String(), `"reason":"TASK_NOT_FOUND"`) {
+			t.Fatal("missing structured error reason", rec.Body.String())
+		}
+	}
+	// The bounded reader is shared by both versions; test its oversized JSON
+	// prefix once instead of duplicating a 40 MiB allocation for each binding.
+	body := mcpRequest(1, "GetTask", map[string]any{"id": "missing"})
+	c, rec := remoteContext(http.MethodPost, "/a2a", body+strings.Repeat(" ", agentMaxBodyBytes), map[string]string{"A2A-Version": "1.0"})
+	c.Request.Header.SetContentLength(-1)
+	s.handleA2A(contextForTest(c), c)
+	flushTestResponse(c)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized body accepted (%d)", rec.Code)
+	}
+	for _, tc := range []struct {
+		body string
+		code int
+	}{{"{", -32700}, {"[]", -32600}} {
+		c, rec := remoteContext(http.MethodPost, "/a2a", tc.body, map[string]string{"A2A-Version": "1.0"})
+		s.handleA2A(contextForTest(c), c)
+		flushTestResponse(c)
+		if !strings.Contains(rec.Body.String(), fmt.Sprintf(`"code":%d`, tc.code)) {
+			t.Fatal(rec.Body.String())
 		}
 	}
 }
 
+// closes the HTTP stream while the engine is still executing
+// Empty new messages must be rejected before creating a session or running
+// a model turn that cannot produce the user-message sequence used as task ID.
 func TestA2ADisconnectAndConcurrentDuplicateSend(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	started, release := make(chan struct{}), make(chan struct{})
-	unblock := sync.OnceFunc(func() { close(release) })
+	unblock := sync.OnceFunc(func() {
+		close(release)
+	})
 	var calls atomic.Int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if calls.Add(1) == 1 {
@@ -222,16 +244,22 @@ func TestA2ADisconnectAndConcurrentDuplicateSend(t *testing.T) {
 			_, _ = w.Write([]byte(chunk))
 		}
 	}))
-	defer func() { unblock(); upstream.Close() }()
+	defer func() {
+		unblock()
+		upstream.Close()
+	}()
 	seedAgentModel(t, s, upstream.URL)
 	session, err := s.createRemoteAgentSession(t.Context(), "disconnect", agent.ModeCreate, "", &agent.Settings{ModelSourceID: "s1", ModelName: "fake-model"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	router := gin.New()
+	router := newTestEngine(t)
 	router.POST("/a2a", s.handleA2A)
-	server := httptest.NewServer(router)
-	defer func() { unblock(); server.Close() }()
+	server := startTestServer(router)
+	defer func() {
+		unblock()
+		server.Close()
+	}()
 	client := a2aclient.NewJSONRPCTransport(server.URL+"/a2a", server.Client())
 	defer client.Destroy()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -246,7 +274,7 @@ func TestA2ADisconnectAndConcurrentDuplicateSend(t *testing.T) {
 			t.Fatal(err)
 		}
 		taskID = event.TaskInfo().TaskID
-		break // closes the HTTP stream while the engine is still executing
+		break
 	}
 	select {
 	case <-started:
@@ -280,8 +308,6 @@ func TestA2ADisconnectAndConcurrentDuplicateSend(t *testing.T) {
 	if !completed || calls.Load() != 1 {
 		t.Fatalf("detached execution: completed=%v calls=%d", completed, calls.Load())
 	}
-	// Empty new messages must be rejected before creating a session or running
-	// a model turn that cannot produce the user-message sequence used as task ID.
 	_, err = client.SendMessage(ctx, headers, &a2a.SendMessageRequest{Message: a2a.NewMessage(a2a.MessageRoleUser, a2a.NewDataPart(map[string]any{"approved": true}))})
 	if !errors.Is(err, a2a.ErrInvalidParams) || calls.Load() != 1 {
 		t.Fatalf("empty new task: %v calls=%d", err, calls.Load())

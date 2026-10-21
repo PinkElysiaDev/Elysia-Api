@@ -72,7 +72,7 @@ func TestGatewayResponsesTurnStateFullStreamsAndCollector(t *testing.T) {
 				request := httptest.NewRequest("POST", "/gateway/"+ingress.id+ingress.path, strings.NewReader(body))
 				request.Header.Set("Authorization", "Bearer gateway-test-token")
 				out, before := httptest.NewRecorder(), calls.Load()
-				s.engine.ServeHTTP(out, request)
+				serveTestHTTP(s.engine, out, request)
 				if out.Code != 200 || out.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" || calls.Load() != before+1 {
 					t.Fatal(out.Code, out.Body.String(), out.Result().Trailer)
 				}

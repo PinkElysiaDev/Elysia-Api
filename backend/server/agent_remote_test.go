@@ -14,26 +14,22 @@ import (
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2acompat/a2av0"
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/utils"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// 远程面测试：API Key 作用域鉴权、MCP（2026-07-28）、A2A
-//（v0.3/v1.0 双线、审批恢复）、REST 列表过滤分页。
-
-// ---- 上下文构造辅助 ----
-
-func remoteContext(method, target, body string, headers map[string]string) (*gin.Context, *httptest.ResponseRecorder) {
+func remoteContext(method, target, body string, headers map[string]string) (*app.RequestContext, *httptest.ResponseRecorder) {
 	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
+	c := newTestContext(rec)
 	req := httptest.NewRequest(method, target, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
-	c.Request = req
+	setTestRequest(c, req)
 	return c, rec
 }
 
@@ -63,7 +59,8 @@ func mcpHeaders(body string, extra map[string]string) map[string]string {
 func mcpCall(t *testing.T, s *Server, body string, extraHeaders map[string]string) (int, map[string]any, string) {
 	t.Helper()
 	c, rec := remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(body, extraHeaders))
-	s.handleMCP(c)
+	s.handleMCP(contextForTest(c), c)
+	flushTestResponse(c)
 	var decoded map[string]any
 	if strings.HasPrefix(rec.Header().Get("Content-Type"), "text/event-stream") {
 		for _, frame := range parseA2AFrames(t, rec.Body.String()) {
@@ -112,7 +109,8 @@ func a2aCall(t *testing.T, s *Server, method string, params any, version string)
 		headers["A2A-Version"] = version
 	}
 	c, rec := remoteContext(http.MethodPost, "/a2a", mcpRequest(1, method, params), headers)
-	s.handleA2A(c)
+	s.handleA2A(contextForTest(c), c)
+	flushTestResponse(c)
 	var decoded map[string]any
 	_ = sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &decoded)
 	return rec.Code, decoded, rec.Body.String()
@@ -151,8 +149,8 @@ func a2aFrameStates(frames []map[string]any) []string {
 	return states
 }
 
-// ---- 鉴权与总开关 ----
-
+// 未知作用域在写路径被清洗（NormalizeScopes 只认 agent）。
+// 总开关关闭 → 404。
 func TestAgentRemoteAuthScopes(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
@@ -164,18 +162,18 @@ func TestAgentRemoteAuthScopes(t *testing.T) {
 		t.Fatalf("seed plain: %v", err)
 	}
 	s.invalidateRouteCache()
-
-	router := gin.New()
-	stub := func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) }
+	router := newTestEngine(t)
+	stub := func(ctx context.Context, c *app.RequestContext) {
+		c.JSON(http.StatusOK, utils.H{"ok": true})
+	}
 	router.GET("/probe", s.agentRemoteGate(), s.agentRemoteAuth(), stub)
-
 	get := func(auth string) int {
 		req := httptest.NewRequest(http.MethodGet, "/probe", nil)
 		if auth != "" {
 			req.Header.Set("Authorization", "Bearer "+auth)
 		}
 		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
+		serveTestHTTP(router, rec, req)
 		return rec.Code
 	}
 	if code := get(""); code != http.StatusUnauthorized {
@@ -187,8 +185,6 @@ func TestAgentRemoteAuthScopes(t *testing.T) {
 	if code := get("tok-scoped"); code != http.StatusOK {
 		t.Fatalf("scoped = %d, want 200", code)
 	}
-
-	// 未知作用域在写路径被清洗（NormalizeScopes 只认 agent）。
 	if err := s.store.UpsertAPIToken(ctx, storage.APIToken{Name: "dirty", Token: "tok-dirty", Enabled: true, Scopes: []string{"admin", "AGENT"}}); err != nil {
 		t.Fatalf("seed dirty: %v", err)
 	}
@@ -196,8 +192,6 @@ func TestAgentRemoteAuthScopes(t *testing.T) {
 	if len(dirty.Scopes) != 1 || dirty.Scopes[0] != storage.TokenScopeAgent {
 		t.Fatalf("scopes not normalized: %v", dirty.Scopes)
 	}
-
-	// 总开关关闭 → 404。
 	s.config.AgentRemote.Enabled = new(bool)
 	*s.config.AgentRemote.Enabled = false
 	if code := get("tok-scoped"); code != http.StatusNotFound {
@@ -205,27 +199,26 @@ func TestAgentRemoteAuthScopes(t *testing.T) {
 	}
 }
 
-// ---- MCP ----
-
+// 通知 → 202 无 body。
+// Hertz normally commits an empty response after routing.
+// 未知方法/未知工具。
+// SDK rejects incomplete Accept with HTTP 400.
+// GET → 405。
 func TestMCPMethodsAndToolsList(t *testing.T) {
 	t.Parallel()
 	s := newOpsTestServer(t)
 	headers := map[string]string{"MCP-Protocol-Version": mcpModernProtocolVersion}
-
-	// 通知 → 202 无 body。
 	body := mcpRequest(nil, "notifications/progress", map[string]any{"progressToken": "unused", "progress": 1})
 	c, rec := remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(body, headers))
-	s.handleMCP(c)
-	c.Writer.WriteHeaderNow() // Gin normally commits an empty response after routing.
+	s.handleMCP(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusAccepted || rec.Body.Len() != 0 {
 		t.Fatalf("progress notification: %d %q", rec.Code, rec.Body.String())
 	}
-
 	_, ping, _ := mcpCall(t, s, mcpRequest(2, "ping", nil), headers)
 	if ping["error"] == nil {
 		t.Fatalf("removed ping must fail on 2026-07-28: %v", ping)
 	}
-
 	_, listed, _ := mcpCall(t, s, mcpRequest(3, "tools/list", nil), headers)
 	tools := listed["result"].(map[string]any)["tools"].([]any)
 	names := map[string]bool{}
@@ -236,8 +229,6 @@ func TestMCPMethodsAndToolsList(t *testing.T) {
 	if !names["elysia_cli"] || len(names) != 1 {
 		t.Fatalf("tools/list must expose only elysia_cli, got %d: %v", len(names), names)
 	}
-
-	// 未知方法/未知工具。
 	_, missing, _ := mcpCall(t, s, mcpRequest(4, "tools/unknown", nil), headers)
 	if missing["error"] == nil {
 		t.Fatalf("unknown method must error: %v", missing)
@@ -246,17 +237,16 @@ func TestMCPMethodsAndToolsList(t *testing.T) {
 	if unknownTool["error"] == nil {
 		t.Fatalf("unknown tool must error: %v", unknownTool)
 	}
-
-	// SDK rejects incomplete Accept with HTTP 400.
 	body = mcpRequest(6, "tools/list", nil)
 	c, rec = remoteContext(http.MethodPost, "/mcp", body, mcpHeaders(body, map[string]string{"Accept": "application/json"}))
-	s.handleMCP(c)
+	s.handleMCP(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("partial accept = %d", rec.Code)
 	}
-	// GET → 405。
 	c, rec = remoteContext(http.MethodGet, "/mcp", "", mcpHeaders("", headers))
-	s.handleMCP(c)
+	s.handleMCP(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("GET = %d", rec.Code)
 	}
@@ -304,8 +294,6 @@ func TestMCPModernEra(t *testing.T) {
 	}
 }
 
-// ---- A2A ----
-
 const (
 	a2aVersionV03 = string(a2av0.Version)
 	a2aVersionV10 = string(a2a.Version)
@@ -315,8 +303,9 @@ func TestA2AAgentCard(t *testing.T) {
 	t.Parallel()
 	s := newOpsTestServer(t)
 	c, rec := remoteContext(http.MethodGet, "/.well-known/agent-card.json", "", nil)
-	c.Request.Host = "gw.example.com"
-	s.handleAgentCard(c)
+	c.Request.SetHost("gw.example.com")
+	s.handleAgentCard(contextForTest(c), c)
+	flushTestResponse(c)
 	var card map[string]any
 	if err := sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &card); err != nil {
 		t.Fatalf("card: %v", err)
@@ -324,10 +313,10 @@ func TestA2AAgentCard(t *testing.T) {
 	if card["protocolVersion"] != a2aVersionV03 || !strings.HasSuffix(card["url"].(string), "/a2a") {
 		t.Fatalf("v0.3 card wrong: %v", card)
 	}
-
 	c, rec = remoteContext(http.MethodGet, "/.well-known/agent-card.json", "", map[string]string{"A2A-Version": a2aVersionV10})
-	c.Request.Host = "gw.example.com"
-	s.handleAgentCard(c)
+	c.Request.SetHost("gw.example.com")
+	s.handleAgentCard(contextForTest(c), c)
+	flushTestResponse(c)
 	var v1Card map[string]any
 	_ = sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &v1Card)
 	if v1Card["supportedInterfaces"] == nil || v1Card["protocolVersion"] != nil {
@@ -357,10 +346,15 @@ func a2aMessageParams(contextID, taskID, text string, data any) map[string]any {
 	return map[string]any{"message": message, "configuration": map[string]any{"blocking": false}}
 }
 
+// 第 1 次：请求门控工具 → input-required；第 2 次：终稿。
+// message/stream：新任务 → input-required。
+// tasks/get 快照同状态。
+// 无 data part 的恢复 → invalid params。
+// data part 批准 → 续跑 → completed + artifact。
+// 终态后 tasks/get 仍是完整快照（artifacts 保留）。
 func TestA2AStreamApprovalResumeFlow(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
-	// 第 1 次：请求门控工具 → input-required；第 2 次：终稿。
 	fake := newFakeAgentModelServer(t, [][]string{
 		{openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia protocol test"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
@@ -374,7 +368,6 @@ func TestA2AStreamApprovalResumeFlow(t *testing.T) {
 		_, _ = w.Write([]byte(`{"answer":{"text":"hi"},"finish":"stop"}`))
 	}))
 	defer vendor.Close()
-
 	session, err := s.createRemoteAgentSession(context.Background(), "a2a", "create", "", nil)
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -387,10 +380,9 @@ func TestA2AStreamApprovalResumeFlow(t *testing.T) {
 	if err := s.store.UpdateSessionState(context.Background(), session.ID, stateUpdateWithDraft(json.RawMessage(agentTestConfig("a2a-proto")))); err != nil {
 		t.Fatalf("draft: %v", err)
 	}
-
-	// message/stream：新任务 → input-required。
 	c, rec := remoteContext(http.MethodPost, "/a2a", mcpRequest(1, "message/stream", a2aMessageParams(session.ID, "", "请测试", nil)), nil)
-	s.handleA2A(c)
+	s.handleA2A(contextForTest(c), c)
+	flushTestResponse(c)
 	frames := parseA2AFrames(t, rec.Body.String())
 	if len(frames) == 0 {
 		t.Fatalf("no frames: %s", rec.Body.String())
@@ -404,24 +396,19 @@ func TestA2AStreamApprovalResumeFlow(t *testing.T) {
 	if !containsString(states, "input-required") {
 		t.Fatalf("missing input-required: %v %s", states, rec.Body.String())
 	}
-
-	// tasks/get 快照同状态。
 	_, got, _ := a2aCall(t, s, "tasks/get", map[string]any{"id": taskID}, "")
 	snapshot := got["result"].(map[string]any)
 	status := snapshot["status"].(map[string]any)
 	if status["state"] != "input-required" {
 		t.Fatalf("snapshot state = %v", status)
 	}
-
-	// 无 data part 的恢复 → invalid params。
 	_, invalid, _ := a2aCall(t, s, "message/send", a2aMessageParams(session.ID, taskID, "同意", nil), "")
 	if invalid["error"] == nil {
 		t.Fatalf("resume without data part must fail: %v", invalid)
 	}
-
-	// data part 批准 → 续跑 → completed + artifact。
 	c, rec = remoteContext(http.MethodPost, "/a2a", mcpRequest(2, "message/stream", a2aMessageParams(session.ID, taskID, "", map[string]any{"approved": true})), nil)
-	s.handleA2A(c)
+	s.handleA2A(contextForTest(c), c)
+	flushTestResponse(c)
 	frames = parseA2AFrames(t, rec.Body.String())
 	states = a2aFrameStates(frames)
 	if !containsString(states, "completed") {
@@ -442,8 +429,6 @@ func TestA2AStreamApprovalResumeFlow(t *testing.T) {
 	if !foundReply {
 		t.Fatalf("reply artifact missing: %s", rec.Body.String())
 	}
-
-	// 终态后 tasks/get 仍是完整快照（artifacts 保留）。
 	_, got, _ = a2aCall(t, s, "tasks/get", map[string]any{"id": taskID}, "")
 	snapshot = got["result"].(map[string]any)
 	if len(snapshot["artifacts"].([]any)) == 0 {
@@ -451,6 +436,11 @@ func TestA2AStreamApprovalResumeFlow(t *testing.T) {
 	}
 }
 
+// v0.3 message/send：立即返回 working 快照（非阻塞）。
+// 轮询 tasks/get 到终态（伪模型一轮很快）。
+// v1.0 线格式：SendMessage（PascalCase）+ ROLE_* 枚举 + 无 kind Part。
+// 空 contextId：新会话继承最近会话的模型配置，完成独立的第三轮。
+// 未知版本头 → 400。
 func TestA2ASendNonBlockingAndV1Wire(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
@@ -470,8 +460,6 @@ func TestA2ASendNonBlockingAndV1Wire(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-
-	// v0.3 message/send：立即返回 working 快照（非阻塞）。
 	_, sent, _ := a2aCall(t, s, "message/send", a2aMessageParams(session.ID, "", "你好", nil), "")
 	result := sent["result"].(map[string]any)
 	state := result["status"].(map[string]any)["state"].(string)
@@ -479,8 +467,6 @@ func TestA2ASendNonBlockingAndV1Wire(t *testing.T) {
 		t.Fatalf("send state = %q", state)
 	}
 	taskID := result["id"].(string)
-
-	// 轮询 tasks/get 到终态（伪模型一轮很快）。
 	for i := 0; i < 50; i++ {
 		_, got, _ := a2aCall(t, s, "tasks/get", map[string]any{"id": taskID}, "")
 		state = got["result"].(map[string]any)["status"].(map[string]any)["state"].(string)
@@ -492,12 +478,8 @@ func TestA2ASendNonBlockingAndV1Wire(t *testing.T) {
 	if state != "completed" {
 		t.Fatalf("task did not complete: %q", state)
 	}
-
-	// v1.0 线格式：SendMessage（PascalCase）+ ROLE_* 枚举 + 无 kind Part。
-	_, v1Sent, _ := a2aCall(t, s, "SendMessage",
-		map[string]any{"message": map[string]any{"messageId": "m-v1", "role": "ROLE_USER",
-			"contextId": session.ID, "parts": []map[string]any{{"text": "v1 你好"}}}, "configuration": map[string]any{"returnImmediately": true}},
-		a2aVersionV10)
+	_, v1Sent, _ := a2aCall(t, s, "SendMessage", map[string]any{"message": map[string]any{"messageId": "m-v1", "role": "ROLE_USER",
+		"contextId": session.ID, "parts": []map[string]any{{"text": "v1 你好"}}}, "configuration": map[string]any{"returnImmediately": true}}, a2aVersionV10)
 	v1Result, ok := v1Sent["result"].(map[string]any)
 	if !ok {
 		t.Fatalf("v1 send failed: %v", v1Sent)
@@ -522,8 +504,6 @@ func TestA2ASendNonBlockingAndV1Wire(t *testing.T) {
 	if v1State != "TASK_STATE_COMPLETED" {
 		t.Fatalf("v1 task did not complete: %q", v1State)
 	}
-
-	// 空 contextId：新会话继承最近会话的模型配置，完成独立的第三轮。
 	_, fresh, _ := a2aCall(t, s, "message/send", a2aMessageParams("", "", "新线程", nil), "")
 	freshTask, ok := fresh["result"].(map[string]any)
 	if !ok || freshTask["contextId"] == "" || freshTask["id"] == "" {
@@ -541,10 +521,9 @@ func TestA2ASendNonBlockingAndV1Wire(t *testing.T) {
 	if freshState != "completed" || fake.calls.Load() != 3 {
 		t.Fatalf("fresh task state=%q model calls=%d", freshState, fake.calls.Load())
 	}
-
-	// 未知版本头 → 400。
 	c, rec := remoteContext(http.MethodPost, "/a2a", mcpRequest(9, "message/send", nil), map[string]string{"A2A-Version": "9.9.9"})
-	s.handleA2A(c)
+	s.handleA2A(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("unknown version = %d", rec.Code)
 	}
@@ -560,8 +539,7 @@ func TestA2APushConfigUnsupported(t *testing.T) {
 	}
 }
 
-// ---- REST 列表过滤分页 ----
-
+// 非法参数 → 400。
 func TestRemoteRESTListFilterPagination(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
@@ -572,7 +550,8 @@ func TestRemoteRESTListFilterPagination(t *testing.T) {
 	}
 	call := func(query string) map[string]any {
 		c, rec := remoteContext(http.MethodGet, "/api/agent/sessions"+query, "", nil)
-		s.listAgentSessionsFiltered(c)
+		s.listAgentSessionsFiltered(contextForTest(c), c)
+		flushTestResponse(c)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("list %q: %d %s", query, rec.Code, rec.Body.String())
 		}
@@ -599,20 +578,19 @@ func TestRemoteRESTListFilterPagination(t *testing.T) {
 	if filtered["total"] != 0 {
 		t.Fatalf("filter = %v", filtered)
 	}
-	// 非法参数 → 400。
 	c, rec := remoteContext(http.MethodGet, "/api/agent/sessions?limit=0", "", nil)
-	s.listAgentSessionsFiltered(c)
+	s.listAgentSessionsFiltered(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid limit = %d", rec.Code)
 	}
 	c, rec = remoteContext(http.MethodGet, "/api/agent/sessions?status=bogus", "", nil)
-	s.listAgentSessionsFiltered(c)
+	s.listAgentSessionsFiltered(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid status = %d", rec.Code)
 	}
 }
-
-// ---- 小工具 ----
 
 func ptrString(value string) *string { return &value }
 
@@ -624,8 +602,6 @@ func containsString(items []string, want string) bool {
 	}
 	return false
 }
-
-// ---- 远程面缺陷回归（终态不被覆盖 / 悬空任务取代 / 显式裁决 / 负值拒绝）----
 
 // seedGatedAgentSession 造一个带门控工具暂停链路的会话（假模型第 1 脚本
 // 请求 test_upstream，第 2 脚本终稿），返回会话 id。

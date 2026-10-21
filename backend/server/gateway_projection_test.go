@@ -56,7 +56,7 @@ func TestGatewayGeminiIncludeAndReasoningProjection(t *testing.T) {
 				req.Header.Set("Authorization", "Bearer gateway-test-token")
 				req.Header.Set("x-elysia-session-id", "projection-session")
 				rec := httptest.NewRecorder()
-				s.engine.ServeHTTP(rec, req)
+				serveTestHTTP(s.engine, rec, req)
 				if rec.Code != 200 || calls != 1 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" || !strings.Contains(rec.Body.String(), "hello") {
 					t.Fatal(rec.Code, calls, rec.Header(), rec.Body.String())
 				}
@@ -116,14 +116,16 @@ func TestGatewayInvalidIncludeDoesNotCallUpstream(t *testing.T) {
 	service, _ := s.protocolService()
 	upstream, _ := service.Pin(protocol.PresetGeminiID)
 	calls := 0
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++ }))
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+	}))
 	defer provider.Close()
 	setupGatewayModel(t, s, upstream, provider.URL)
 	for _, value := range []string{`42`, `[null]`, `["future"]`, `["reasoning.encrypted_content","future"]`} {
 		req := httptest.NewRequest("POST", "/gateway/openai-responses/responses", strings.NewReader(`{"model":"group","input":"hi","include":`+value+`}`))
 		req.Header.Set("Authorization", "Bearer gateway-test-token")
 		rec := httptest.NewRecorder()
-		s.engine.ServeHTTP(rec, req)
+		serveTestHTTP(s.engine, rec, req)
 		if rec.Code != 400 || calls != 0 || !strings.Contains(rec.Body.String(), "/include") {
 			t.Fatal(value, rec.Code, calls, rec.Body.String())
 		}
@@ -142,7 +144,9 @@ func TestGatewayIncludeCarrierDeliveryModes(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				t.Cleanup(func() { s.store.Close() })
+				t.Cleanup(func() {
+					s.store.Close()
+				})
 				activateDiscoveryPresets(t, s)
 				service, _ := s.protocolService()
 				upstream, _ := service.Pin(protocol.PresetGeminiID)
@@ -177,7 +181,7 @@ func TestGatewayIncludeCarrierDeliveryModes(t *testing.T) {
 				req.Header.Set("Authorization", "Bearer gateway-test-token")
 				req.Header.Set("x-elysia-session-id", "delivery-test")
 				rec := httptest.NewRecorder()
-				s.engine.ServeHTTP(rec, req)
+				serveTestHTTP(s.engine, rec, req)
 				if strict && signed {
 					if rec.Code != 502 || !strings.Contains(rec.Body.String(), "/include") {
 						t.Fatal(rec.Code, rec.Body.String())

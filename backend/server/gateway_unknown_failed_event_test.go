@@ -32,7 +32,7 @@ func TestGatewayUnknownFailedEventNeverReplays(t *testing.T) {
 		req := httptest.NewRequest("POST", client.path, strings.NewReader(client.body))
 		req.Header.Set("Authorization", "Bearer gateway-test-token")
 		out := httptest.NewRecorder()
-		s.engine.ServeHTTP(out, req)
+		serveTestHTTP(s.engine, out, req)
 		if out.Code != 429 || !strings.Contains(out.Body.String(), "synthetic provider limit") || !strings.Contains(out.Body.String(), "upstream_contract_violation at /type") || strings.Contains(out.Body.String(), "event: ***.failed") || strings.Contains(out.Body.String(), "unsupported_native") {
 			t.Fatal(out.Code, out.Body.String())
 		}

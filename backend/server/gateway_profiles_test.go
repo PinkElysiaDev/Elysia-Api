@@ -10,6 +10,7 @@ import (
 	"github.com/elysia-api/backend/storage"
 )
 
+// A profile verified before this edit cannot authorize the edited contract.
 func TestGatewayProfilesRejectUnsupportedInputAndUnexpectedOutput(t *testing.T) {
 	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
@@ -32,7 +33,7 @@ func TestGatewayProfilesRejectUnsupportedInputAndUnexpectedOutput(t *testing.T) 
 		r := httptest.NewRequest(http.MethodPost, "/gateway/openai-chat-completions/chat/completions", strings.NewReader(body))
 		r.Header.Set("Authorization", "Bearer gateway-test-token")
 		response := httptest.NewRecorder()
-		s.engine.ServeHTTP(response, r)
+		serveTestHTTP(s.engine, response, r)
 		return response
 	}
 	input := `{"model":"group","max_tokens":10,"messages":[{"role":"user","content":"hello"}]}`
@@ -51,7 +52,6 @@ func TestGatewayProfilesRejectUnsupportedInputAndUnexpectedOutput(t *testing.T) 
 		t.Fatal(err)
 	}
 	binding := bindings[0]
-	// A profile verified before this edit cannot authorize the edited contract.
 	binding.Binding.Capabilities[protocol.FreeTextToolsCapability] = false
 	if err := s.store.SaveProtocolBinding(t.Context(), binding); err != nil {
 		t.Fatal(err)

@@ -1,19 +1,22 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/elysia-api/backend/protocol/builtin"
-
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/route/param"
 	"github.com/elysia-api/backend/config"
-	"github.com/gin-gonic/gin"
+	"github.com/elysia-api/backend/protocol/builtin"
 )
 
 // 四线制错误矩阵:未知模型在每条客户端线制上都返回该协议的标准错误体
 // (4xx,SDK/Codex 不再自动重试;type/code/status 由 ErrorClass 派生)。
+// Params 见下方 v1beta 分支
+// gin 通配符路由 *action 捕获 /models/MODEL:action,直调 handler 时手动注入。
 func TestUnknownModelRendersProtocolErrors(t *testing.T) {
 	s := newTestServer(t, nil)
 	cases := []struct {
@@ -23,49 +26,44 @@ func TestUnknownModelRendersProtocolErrors(t *testing.T) {
 		status  int
 		want    []string
 		forbid  []string
-		handler func(c *gin.Context)
-	}{
-		{
-			name: "openai-chat", path: "/v1/chat/completions",
-			body:    `{"model":"gpt-5.6-luna","messages":[{"role":"user","content":"hi"}]}`,
-			status:  http.StatusNotFound,
-			want:    []string{`"type":"invalid_request_error"`, `"code":"model_not_found"`, `"param":"model"`},
-			forbid:  []string{"model group"},
-			handler: s.chatCompletions,
-		},
-		{
-			name: "claude-messages", path: "/v1/messages",
-			body:    `{"model":"gpt-5.6-luna","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}`,
-			status:  http.StatusNotFound,
-			want:    []string{`"type":"error"`, `"type":"not_found_error"`},
-			handler: s.chatCompletions,
-		},
-		{
-			name: "gemini", path: "/v1beta/models/gpt-5.6-luna:generateContent", // Params 见下方 v1beta 分支
-			body:    `{"contents":[{"parts":[{"text":"hi"}]}]}`,
-			status:  http.StatusNotFound,
-			want:    []string{`"status":"NOT_FOUND"`},
-			handler: s.chatCompletions,
-		},
-		{
-			name: "responses", path: "/v1/responses",
-			body:    `{"model":"gpt-5.6-luna","input":"hi"}`,
-			status:  http.StatusNotFound,
-			want:    []string{`"code":"model_not_found"`, `"param":"model"`},
-			handler: s.responses,
-		},
-	}
+		handler func(ctx context.Context, c *app.RequestContext)
+	}{{
+		name: "openai-chat", path: "/v1/chat/completions",
+		body:    `{"model":"gpt-5.6-luna","messages":[{"role":"user","content":"hi"}]}`,
+		status:  http.StatusNotFound,
+		want:    []string{`"type":"invalid_request_error"`, `"code":"model_not_found"`, `"param":"model"`},
+		forbid:  []string{"model group"},
+		handler: s.chatCompletions,
+	}, {
+		name: "claude-messages", path: "/v1/messages",
+		body:    `{"model":"gpt-5.6-luna","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}`,
+		status:  http.StatusNotFound,
+		want:    []string{`"type":"error"`, `"type":"not_found_error"`},
+		handler: s.chatCompletions,
+	}, {
+		name: "gemini", path: "/v1beta/models/gpt-5.6-luna:generateContent",
+		body:    `{"contents":[{"parts":[{"text":"hi"}]}]}`,
+		status:  http.StatusNotFound,
+		want:    []string{`"status":"NOT_FOUND"`},
+		handler: s.chatCompletions,
+	}, {
+		name: "responses", path: "/v1/responses",
+		body:    `{"model":"gpt-5.6-luna","input":"hi"}`,
+		status:  http.StatusNotFound,
+		want:    []string{`"code":"model_not_found"`, `"param":"model"`},
+		handler: s.responses,
+	}}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(rec)
-			c.Request = httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+			c := newTestContext(rec)
+			setTestRequest(c, httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body)))
 			c.Request.Header.Set("Content-Type", "application/json")
 			if strings.HasPrefix(tc.path, "/v1beta/") {
-				// gin 通配符路由 *action 捕获 /models/MODEL:action,直调 handler 时手动注入。
-				c.Params = gin.Params{{Key: "action", Value: strings.TrimPrefix(tc.path, "/v1beta")}}
+				c.Params = param.Params{{Key: "action", Value: strings.TrimPrefix(tc.path, "/v1beta")}}
 			}
-			tc.handler(c)
+			tc.handler(contextForTest(c), c)
+			flushTestResponse(c)
 			if rec.Code != tc.status {
 				t.Fatalf("status = %d, want %d, body=%s", rec.Code, tc.status, rec.Body.String())
 			}
@@ -92,11 +90,11 @@ func TestUnknownModelRendersProtocolErrors(t *testing.T) {
 func TestStreamPreflightErrorStaysJSON(t *testing.T) {
 	s := newTestServer(t, nil)
 	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.6-luna","stream":true,"input":"hi"}`))
+	c := newTestContext(rec)
+	setTestRequest(c, httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.6-luna","stream":true,"input":"hi"}`)))
 	c.Request.Header.Set("Content-Type", "application/json")
-	s.responses(c)
-
+	s.responses(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
@@ -112,10 +110,10 @@ func TestStreamPreflightErrorStaysJSON(t *testing.T) {
 func TestAuthFailureRendersOpenAIError(t *testing.T) {
 	s := newTestServer(t, nil)
 	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"x"}`))
-	s.authMiddleware()(c)
-
+	c := newTestContext(rec)
+	setTestRequest(c, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"x"}`)))
+	s.authMiddleware()(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rec.Code)
 	}
@@ -134,15 +132,14 @@ func TestCrossProtocolUpstreamErrorTranslation(t *testing.T) {
 		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"rate_limit_error","message":"Number of requests has exceeded your per-minute rate limit"}}`))
 	}))
 	defer upstream.Close()
-
 	group := config.ModelGroupConfig{
 		ID: "g1", Name: "grp", Enabled: true,
 		Models: []config.ModelRef{{ID: "m1", Name: "claude-x", BaseURL: upstream.URL, APIKey: "k", Platform: "anthropic"}},
 	}
 	s := newTestServer(t, []config.ModelGroupConfig{group})
 	c, rec := chatRequestContext(`{"model":"grp","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
-
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("status = %d, want 429, body=%s", rec.Code, rec.Body.String())
 	}
@@ -156,6 +153,7 @@ func TestCrossProtocolUpstreamErrorTranslation(t *testing.T) {
 }
 
 // 同线制上游错误原样透传(保真):OpenAI 上游错误体逐字节到达客户端。
+// 同信封(OpenAI 族上游 + OpenAI 客户端)必须逐字节透传,不得改写 type/丢字段。
 func TestSameProtocolUpstreamErrorPassthrough(t *testing.T) {
 	upstreamBody := `{"error":{"message":"You exceeded your current quota","type":"insufficient_quota","param":null,"code":"insufficient_quota"}}`
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -164,19 +162,17 @@ func TestSameProtocolUpstreamErrorPassthrough(t *testing.T) {
 		_, _ = w.Write([]byte(upstreamBody))
 	}))
 	defer upstream.Close()
-
 	group := config.ModelGroupConfig{
 		ID: "g1", Name: "grp", Enabled: true,
 		Models: []config.ModelRef{{ID: "m1", Name: "gpt-x", BaseURL: upstream.URL, APIKey: "k", Platform: "openai"}},
 	}
 	s := newTestServer(t, []config.ModelGroupConfig{group})
 	c, rec := chatRequestContext(`{"model":"grp","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
-
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("status = %d, want 429", rec.Code)
 	}
-	// 同信封(OpenAI 族上游 + OpenAI 客户端)必须逐字节透传,不得改写 type/丢字段。
 	if got := rec.Body.String(); got != upstreamBody {
 		t.Fatalf("same-envelope upstream error must pass through verbatim: got %s want %s", got, upstreamBody)
 	}

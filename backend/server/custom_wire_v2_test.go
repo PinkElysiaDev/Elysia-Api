@@ -13,7 +13,6 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/gin-gonic/gin"
 )
 
 // standaloneWireDefinition uses no built-in shape. Optional settings remain
@@ -132,6 +131,8 @@ func writeFixtureFrames(t *testing.T, writer http.ResponseWriter, definition pro
 	}
 }
 
+// The codec matrix covers all pairs. These six integration cases
+// cover each public ingress and all three transport implementations.
 func TestStandaloneProtocolFourPublicIngresses(t *testing.T) {
 	t.Parallel()
 	for _, transport := range []protocol.Transport{protocol.HTTPJSON, protocol.SSE, protocol.NDJSON} {
@@ -141,8 +142,6 @@ func TestStandaloneProtocolFourPublicIngresses(t *testing.T) {
 			{"anthropic", "/v1/messages", `{"model":"grp","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`},
 			{"gemini", "/v1beta/models/grp:generateContent", `{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`},
 		} {
-			// The codec matrix covers all pairs. These six integration cases
-			// cover each public ingress and all three transport implementations.
 			if source.id == "chat" || source.id == "responses" {
 				if transport == protocol.NDJSON {
 					continue
@@ -177,9 +176,10 @@ func TestStandaloneProtocolFourPublicIngresses(t *testing.T) {
 					}
 				}
 				recorder := httptest.NewRecorder()
-				ctx, _ := gin.CreateTestContext(recorder)
-				ctx.Request = httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
-				server.chatCompletions(ctx)
+				ctx := newTestContext(recorder)
+				setTestRequest(ctx, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
+				server.chatCompletions(contextForTest(ctx), ctx)
+				flushTestResponse(ctx)
 				if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "hello") || recorder.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
 					t.Fatal(recorder.Code, recorder.Body)
 				}
@@ -223,7 +223,8 @@ func TestStandaloneProtocolHTTPFailureRetriesOnceAndSettlesOnce(t *testing.T) {
 	groups[0].MaxRetries, groups[0].Strategy = 1, "sequential"
 	server := newTestServer(t, groups, definition)
 	ctx, recorder := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hello"}]}`)
-	server.chatCompletions(ctx)
+	server.chatCompletions(contextForTest(ctx), ctx)
+	flushTestResponse(ctx)
 	if recorder.Code != http.StatusOK || failures.Load() != 1 || !strings.Contains(recorder.Body.String(), "recovered") || len(latestUsageRecords(t, server)) != 1 {
 		t.Fatal("retry or settlement failed", recorder.Code, recorder.Body, failures.Load())
 	}

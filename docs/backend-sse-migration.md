@@ -11,7 +11,7 @@ The gateway uses **`github.com/tmaxmax/go-sse` v0.11.0** for SSE field parsing a
 | `go-sse` v0.11.0 | Incremental event iteration, configurable scanner/event limit, BOM removal, LF/CRLF/CR support, multiline data, persistent/reset event IDs, comment encoding, and writer-error propagation. Its reader accepts a final data line ending in one newline at EOF, so finite model streams need an EOF completeness guard. |
 | Existing `gin-contrib/sse` v1.1.0 | `Decode` calls `io.ReadAll`, buffers all events, and splits on LF; unsuitable for long-lived upstream streams. Several `Encode` paths discard writer errors, including byte-slice data, and cannot reliably signal disconnects to this gateway. |
 
-The selection is based on framing and lifecycle requirements, not a performance claim. Gin's transitive SSE dependency remains available to Gin itself.
+The selection is based on framing and lifecycle requirements, not a performance claim. The later native Hertz migration removes Gin and its transitive SSE dependency; application event framing continues to use this package.
 
 ## Ownership
 

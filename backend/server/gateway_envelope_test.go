@@ -49,7 +49,7 @@ func TestGatewayAnthropicEnvelopeAndClients(t *testing.T) {
 			req := httptest.NewRequest("POST", "/gateway/anthropic-messages/v1/messages", strings.NewReader(`{"model":"group","max_tokens":100,"messages":[{"role":"user","content":"hello"}],"stream":true}`))
 			req.Header.Set("Authorization", "Bearer gateway-test-token")
 			rec := httptest.NewRecorder()
-			s.engine.ServeHTTP(rec, req)
+			serveTestHTTP(s.engine, rec, req)
 			if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
 				t.Fatal(rec.Code, rec.Body.String(), rec.Result().Trailer)
 			}
@@ -104,7 +104,7 @@ func TestGatewayAnthropicEnvelopeAndClients(t *testing.T) {
 				}
 			}
 			if moduleRoot := os.Getenv("ELYSIA_TEST_ANTHROPIC_MODULES"); moduleRoot != "" {
-				gateway := httptest.NewServer(s.engine)
+				gateway := startTestServer(s.engine)
 				defer gateway.Close()
 				script, _ := filepath.Abs("testdata/conversion-anthropic.mjs")
 				cmd := exec.CommandContext(t.Context(), "node", script, moduleRoot, gateway.URL, scenario)
@@ -151,7 +151,7 @@ func TestGatewayResponsesStorage(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer gateway-test-token")
 		rec := httptest.NewRecorder()
 		before := calls
-		s.engine.ServeHTTP(rec, req)
+		serveTestHTTP(s.engine, rec, req)
 		if value == "42" || value == `"false"` {
 			if rec.Code != 400 || calls != before || !strings.Contains(rec.Body.String(), "/store") {
 				t.Fatal(rec.Code, rec.Body.String(), calls)
@@ -167,7 +167,7 @@ func TestGatewayResponsesStorage(t *testing.T) {
 	streamReq := httptest.NewRequest("POST", "/gateway/openai-responses/responses", strings.NewReader(`{"model":"group","input":"hello","stream":true,"store":true,"include":["reasoning.encrypted_content"]}`))
 	streamReq.Header.Set("Authorization", "Bearer gateway-test-token")
 	streamRec := httptest.NewRecorder()
-	s.engine.ServeHTTP(streamRec, streamReq)
+	serveTestHTTP(s.engine, streamRec, streamReq)
 	if streamRec.Code != 200 || streamRec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
 		t.Fatal(streamRec.Code, streamRec.Body.String())
 	}
@@ -197,7 +197,7 @@ func TestGatewayResponsesStorage(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer gateway-test-token")
 	before := calls
 	rec := httptest.NewRecorder()
-	s.engine.ServeHTTP(rec, req)
+	serveTestHTTP(s.engine, rec, req)
 	if rec.Code == 200 || calls != before {
 		t.Fatal("stateful request lost context", rec.Code, rec.Body.String())
 	}

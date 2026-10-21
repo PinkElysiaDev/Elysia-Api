@@ -1,21 +1,24 @@
 package server
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"net/url"
 	"slices"
 	"strings"
 
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/utils"
+
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
-func (s *Server) authMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		token := extractAccessToken(c.Request)
+func (s *Server) authMiddleware() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		token := extractAccessToken(c)
 		accessToken, ok := s.findAccessToken(token)
 		message := ""
 		if !ok {
@@ -26,7 +29,7 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 		if message != "" {
 			c.Abort()
 			// Inference authentication errors use the caller's wire protocol.
-			writeProtocolError(c, inputFormatFromPath(c.Request.URL.Path), &builtin.GatewayError{
+			writeProtocolError(ctx, c, inputFormatFromPath(string(c.Path())), &builtin.GatewayError{
 				Class: builtin.ErrorClassAuthentication, Message: message,
 			})
 			return
@@ -34,48 +37,48 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 		c.Set("elysiaKeyName", accessToken.Name)
 		c.Set("elysiaKeyHash", shortTokenHash(token))
 		c.Set("elysiaAllowedGroups", accessToken.AllowedGroups)
-		c.Next()
+		c.Next(ctx)
 	}
 }
 
-func (s *Server) dashboardAuthMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if !s.config.IsValidPanelAccessToken(extractAccessToken(c.Request)) {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+func (s *Server) dashboardAuthMiddleware() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		if !s.config.IsValidPanelAccessToken(extractAccessToken(c)) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, utils.H{
 				"error": "panel access token is not configured or invalid",
 			})
 			return
 		}
-		c.Next()
+		c.Next(ctx)
 	}
 }
 
 // All remote Agent surfaces share scope checks and WWW-Authenticate responses.
-func (s *Server) agentRemoteAuth() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		accessToken, ok := s.findAccessToken(extractAccessToken(c.Request))
+func (s *Server) agentRemoteAuth() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		accessToken, ok := s.findAccessToken(extractAccessToken(c))
 		if !ok {
 			c.Header("WWW-Authenticate", `Bearer realm="elysia-agent"`)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or missing API key"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, utils.H{"error": "invalid or missing API key"})
 			return
 		}
 		if !accessTokenHasScope(accessToken, storage.TokenScopeAgent) {
 			c.Header("WWW-Authenticate", `Bearer realm="elysia-agent", scope="agent"`)
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "this API key does not carry the agent scope"})
+			c.AbortWithStatusJSON(http.StatusForbidden, utils.H{"error": "this API key does not carry the agent scope"})
 			return
 		}
 		c.Set("elysiaKeyName", accessToken.Name)
-		c.Next()
+		c.Next(ctx)
 	}
 }
 
-func (s *Server) agentRemoteGate() gin.HandlerFunc {
-	return func(c *gin.Context) {
+func (s *Server) agentRemoteGate() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
 		if !s.config.GetAgentRemote().AgentRemoteEnabled() {
-			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "agent remote surface is disabled"})
+			c.AbortWithStatusJSON(http.StatusNotFound, utils.H{"error": "agent remote surface is disabled"})
 			return
 		}
-		c.Next()
+		c.Next(ctx)
 	}
 }
 
@@ -83,7 +86,8 @@ func accessTokenHasScope(token config.AccessToken, scope string) bool {
 	return slices.Contains(token.Scopes, scope)
 }
 
-func extractAccessToken(r *http.Request) string {
+func extractAccessToken(c *app.RequestContext) string {
+	r := &c.Request
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 	if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
 		return strings.TrimSpace(authHeader[7:])
@@ -93,41 +97,41 @@ func extractAccessToken(r *http.Request) string {
 			return key
 		}
 	}
-	if key := strings.TrimSpace(r.URL.Query().Get("key")); key != "" {
+	if key := strings.TrimSpace(c.Query("key")); key != "" {
 		return key
 	}
-	// The WebUI writes encodeURIComponent values; Request.Cookie does not decode.
-	if cookie, err := r.Cookie("panel_access_token"); err == nil {
-		if decoded, err := url.QueryUnescape(cookie.Value); err == nil {
+	// The WebUI writes encodeURIComponent values.
+	if cookie := string(r.Header.Cookie("panel_access_token")); cookie != "" {
+		if decoded, err := url.QueryUnescape(cookie); err == nil {
 			return strings.TrimSpace(decoded)
 		}
-		return strings.TrimSpace(cookie.Value)
+		return strings.TrimSpace(cookie)
 	}
 	return ""
 }
 
-func (s *Server) loopbackOnly(handler gin.HandlerFunc) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if !isLoopbackRequest(c.Request) {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error": "reload endpoint is only available from loopback",
+func (s *Server) loopbackOnly() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		if !isLoopbackRequest(c) {
+			c.AbortWithStatusJSON(http.StatusForbidden, utils.H{
+				"error": "endpoint is only available from loopback",
 			})
 			return
 		}
-		handler(c)
+		c.Next(ctx)
 	}
 }
 
-func isLoopbackRequest(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+func isLoopbackRequest(c *app.RequestContext) bool {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(c.RemoteAddr().String()))
 	if err != nil {
-		host = strings.TrimSpace(r.RemoteAddr)
+		host = strings.TrimSpace(c.RemoteAddr().String())
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
 }
 
-func (s *Server) tokenAllowsGroup(c *gin.Context, groupName string) bool {
+func (s *Server) tokenAllowsGroup(ctx context.Context, c *app.RequestContext, groupName string) bool {
 	allowed := c.GetStringSlice("elysiaAllowedGroups")
 	return len(allowed) == 0 || slices.Contains(allowed, groupName)
 }

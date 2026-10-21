@@ -26,7 +26,7 @@ Elysia API 是自部署 AI 网关。Go 后端负责鉴权、路由、协议转�
 
 - `main.go` 是进程入口，负责命令行、首次配置创建、信号和退出码。`config` 不持有全局配置指针，也不通过 `init()` 读写配置或退出进程；多个加载结果相互独立。
 - `server/bootstrap.go` 装配存储、日志、协议和后台服务；`server/lifecycle.go` 统一管理启动、请求排空、后台任务取消及最终持久化。`Server` 持有应用资源；后台组件接收显式依赖，不持有整个 `Server`。网关、CLI 和 Agent 的宿主适配器仍通过 `Server` 协调应用能力，不将其视为可独立复用的业务组件。
-- `server/http.go` 注册路由并提供公共 HTTP 端点；`server/http_auth.go` 集中处理凭据优先级、面板/推理/Agent 作用域与回环限制。Gin 上下文停留在 HTTP 适配层。
+- `server/http.go` 注册 Hertz 原生路由并提供公共 HTTP 端点；`server/http_auth.go` 集中处理凭据优先级、面板/推理/Agent 作用域与回环限制。`app.RequestContext` 停留在 HTTP 边界，业务取消使用显式 `context.Context`。SSE/NDJSON 使用原生 chunk writer，MCP/A2A 使用原生传输。见 [Hertz 迁移说明](backend-hertz-migration.md)。
 - `routing.Repository` 由消费方声明，只要求构建路由所需的四类读取。`storage.Store` 满足该接口；路由组件不打开或关闭数据库，也不写 HTTP 响应。当前边界复用 `config` 的运行时模型类型及 `storage` 的读取 DTO，不重复维护同形模型。
 - `config` 与 `storage` 共享 `dbpath` 的路径规则，`config` 与 `relay` 共享 `outbound` 的网络规则。配置不依赖 SQLite 实现或协议转发适配器。
 - `protocol` 核心只依赖底层 JSON/SSE 工具；`protocol/builtin` 依赖协议核心；`agent` 通过已有的调用、持久化及工具接口接入宿主。业务层不会被 HTTP、CLI 或 SQLite 细节反向牵引。
@@ -45,9 +45,9 @@ Elysia API 是自部署 AI 网关。Go 后端负责鉴权、路由、协议转�
 
 新增逻辑按业务能力及状态所有权放置：协议语义进入 `protocol`，纯路由策略进入 `internal/routing`，传输适配进入 `relay`，事务和 SQL 留在 `storage`，HTTP/CLI 协调留在 `server`。只有存在明确消费边界时才引入接口，避免为每个函数包装一层服务；共用规则只保留一个实现。
 
-底层返回可包装的错误，由入口决定日志与 HTTP 表示；加载和持久化不依赖隐式进程状态。并发组件内部维护锁，测试通过组件行为验证，涉及日期的边界使用可控时钟。`internal/architecture` 的测试约束包依赖、Gin 边界及进程控制归属，随 `go test ./...` 在 CI 中执行；新增包或跨层依赖需同步审查此约束。
+底层返回可包装的错误，由入口决定日志与 HTTP 表示；加载和持久化不依赖隐式进程状态。并发组件内部维护锁，测试通过组件行为验证，涉及日期的边界使用可控时钟。`internal/architecture` 的测试约束包依赖、Hertz 边界及进程控制归属，随 `go test ./...` 在 CI 中执行；新增包或跨层依赖需同步审查此约束。
 
-架构约束同时覆盖 `server` 的包依赖白名单、禁止直接引入 `database/sql`，以及三个后台组件文件不得引用 `Server` 或 Gin。它不是“全后端已完成组件化”的证明：用量持久化/统计及部分网关宿主协调仍在应用层，出站策略仍为进程级共享。后续拆分以独立状态和实际消费边界为依据，不以文件长度或接口数量作为完成标准。
+架构约束同时覆盖 `server` 的包依赖白名单、禁止直接引入 `database/sql`，以及三个后台组件文件不得引用 `Server` 或 Hertz。它不是“全后端已完成组件化”的证明：用量持久化/统计及部分网关宿主协调仍在应用层，出站策略仍为进程级共享。后续拆分以独立状态和实际消费边界为依据，不以文件长度或接口数量作为完成标准。
 
 ## 一次推理请求
 

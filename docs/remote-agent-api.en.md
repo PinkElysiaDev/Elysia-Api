@@ -91,15 +91,15 @@ Streams send a keepalive every 15 seconds. Closing REST HTTP does not stop the t
 
 ## MCP
 
-The transport uses the official `github.com/modelcontextprotocol/go-sdk` v1.8.0. Only version `2026-07-28` is supported, with no legacy handshake or implicit version. Each call must include `io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities` (an empty object is sufficient) in `params._meta`. Use `server/discover` for capabilities. Results include `resultType`.
+HTTP/SSE uses a native Hertz transport. Each POST owns an independent MCP connection to the official `github.com/modelcontextprotocol/go-sdk` v1.8.0 dispatcher, discovery and tools. Only version `2026-07-28` is supported, with no legacy handshake or implicit version. Each call must include `io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities` (an empty object is sufficient) in `params._meta`. Use `server/discover` for capabilities. Results include `resultType`.
 
-POST requires `Content-Type: application/json` (otherwise 415) and `Accept` containing both `application/json` and `text/event-stream` (otherwise 400). `MCP-Protocol-Version` and `Mcp-Method` are required; `tools/call` also requires `Mcp-Name`. These headers must mirror the body; missing method/name mirrors or mismatches return `-32020`. GET / DELETE return 405; JSON-RPC batches are unsupported. Browser `Origin` must be same-origin or satisfy loopback rules; the SDK also applies its default localhost Host protection. Responses use the SDK's default SSE transport, including discovery and tool lists. `tools/list` returns `ttlMs: 300000` and `cacheScope: "private"`.
+POST requires `Content-Type: application/json` (otherwise 415) and `Accept` containing both `application/json` and `text/event-stream` (otherwise 400). `MCP-Protocol-Version` and `Mcp-Method` are required; `tools/call` also requires `Mcp-Name`. These headers must mirror the body; missing method/name mirrors or mismatches return `-32020`. GET / DELETE return 405; JSON-RPC batches are unsupported. Browser `Origin` must be same-origin or satisfy loopback rules; the native transport retains localhost Host protection. Responses use SSE, including discovery and tool lists. `tools/list` returns `ttlMs: 300000` and `cacheScope: "private"`.
 
 ### Breaking migration from the hand-written transport
 
-This migration adopts official SDK behavior directly. It does not retain wire-compatibility adapters for the previous implementation.
+The earlier migration adopted official SDK wire behavior. The Hertz migration preserves those contracts using native HTTP/SSE handlers without a `net/http` handler adapter.
 
-- Required headers and client capability metadata are now validated by the SDK. Update manually constructed requests using the example below; current SDK clients populate them automatically.
+- The native transport validates required mirror headers; the SDK validates client capability metadata. Update manually constructed requests using the example below; current SDK clients populate them automatically.
 - `ping` is no longer supported in this protocol version; use `server/discover` for discovery/connectivity checks.
 - Server identity is returned in `result._meta["io.modelcontextprotocol/serverInfo"]`, rather than a top-level `serverInfo` field. Successful tool results may omit `isError`; absence means false. The former `cacheScope: "user"` is now the standard `"private"` value.
 - Discovery and tool lists now use SSE rather than the old method-specific JSON responses. Use a Streamable HTTP client that handles both advertised response media types.
@@ -159,7 +159,7 @@ See the [CLI reference](agent-cli.en.md) for complete semantics.
 
 ## A2A
 
-The transport uses official `github.com/a2aproject/a2a-go/v2` v2.6.0: the native JSON-RPC binding serves 1.0 and the SDK's `a2acompat/a2av0` binding serves 0.3. `A2A-Version` defaults to `0.3`; `1.0` selects the current binding. Existing `0.3.0` and `1.0.0` headers remain aliases. Unknown versions return 400 for both requests and Agent Cards. Cards advertise the SDK version strings `0.3` and `1.0`; the 0.3 card uses the official combined compatibility representation.
+Native Hertz JSON-RPC/SSE handlers use message types and business interfaces from `github.com/a2aproject/a2a-go/v2` v2.6.0, plus the version-conversion functions in `a2acompat/a2av0`. `A2A-Version` defaults to `0.3`; `1.0` selects the current binding. Only these canonical version values are accepted; `0.3.0` and `1.0.0` aliases have been removed. Unknown versions return 400 for both requests and Agent Cards. Cards advertise the SDK version strings `0.3` and `1.0`; the 0.3 card uses the official combined compatibility representation.
 
 | v0.3 method | v1.0 method | Behavior |
 | --- | --- | --- |
@@ -178,7 +178,7 @@ Both protocol generations remain available, but clients relying on the old hand-
 - For asynchronous send, explicitly set `configuration.blocking: false` on 0.3 or `configuration.returnImmediately: true` on 1.0. By default send waits for completion or input-required, bounded by the HTTP request context. A disconnected request does not cancel the engine's detached task; use the task cancellation method.
 - The 1.0 send result is `{ "task": ... }` (or a message). Stream results are wrapped as `task`, `statusUpdate`, or `artifactUpdate`. `GetTask` and `CancelTask` return the task directly. The SDK supplies 0.3 `kind` discriminators.
 - `ListTasks` replaces the old `cursor` / `nextCursor` fields with `pageToken` / `nextPageToken`, adds `totalSize` / `pageSize`, and supports context, state, and update-time filters. Artifacts are included only with `includeArtifacts: true`.
-- Agent Card security and capability fields, protocol errors, JSON-RPC validation, and SSE encoding follow the official bindings. In particular, unsupported push notification operations use the SDK error code (`-32003` on 0.3), rather than the former custom mapping.
+- Agent Card security/capability fields and message formats use the SDK. JSON-RPC dispatch and SSE encoding use native Hertz handlers. Protocol errors retain the official binding's codes, including `-32003` for unsupported push notifications.
 - New tasks require a nonempty text part and a user-role message with a message ID. Approval data is interpreted by the gateway after SDK decoding; an explicit `approved: false` remains distinct from an absent decision.
 - Application-owned JSON decoding/encoding uses Sonic; SDK-internal wire serialization is managed by the dependency.
 

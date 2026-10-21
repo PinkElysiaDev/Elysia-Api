@@ -8,11 +8,16 @@ import (
 	"testing"
 
 	"github.com/elysia-api/backend/config"
-	"github.com/gin-gonic/gin"
 )
 
 // 端到端:Claude 客户端 × Responses 型上游的完整工具循环(定义→调用→
 // 结果回传),验证三协议→Responses 接线后全链路可用且 call_id 配对。
+// 第二轮:Claude 客户端回传 tool_result(此前该链路上游 400)。
+// 上游收到的请求体:tools 必须是 Responses 扁平形状,input 必须含配对的
+// function_call + function_call_output(载荷非空)。
+// 客户端按 Claude 形态收到响应。
+// 消息 item 身份是传输记账：跨族目标丢弃并给 warning（记录在
+// ConversionIssues），不再 502。
 func TestClaudeClientResponsesUpstreamToolLoop(t *testing.T) {
 	var receivedBodies []string
 	hasNativeItemID := false
@@ -31,17 +36,14 @@ func TestClaudeClientResponsesUpstreamToolLoop(t *testing.T) {
 		_, _ = w.Write([]byte(response))
 	}))
 	defer upstream.Close()
-
 	group := config.ModelGroupConfig{
 		ID: "g1", Name: "grp", Enabled: true,
 		Models: []config.ModelRef{{ID: "m1", Name: "gpt-x", BaseURL: upstream.URL, APIKey: "k", Platform: "responses", ToolsCapable: true}},
 	}
 	s := newTestServer(t, []config.ModelGroupConfig{group})
-
-	// 第二轮:Claude 客户端回传 tool_result(此前该链路上游 400)。
 	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{
+	c := newTestContext(rec)
+	setTestRequest(c, httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{
 		"model": "grp", "max_tokens": 64,
 		"messages": [
 			{"role": "user", "content": "weather?"},
@@ -49,15 +51,13 @@ func TestClaudeClientResponsesUpstreamToolLoop(t *testing.T) {
 			{"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "sunny 28C"}]}
 		],
 		"tools": [{"name": "get_weather", "description": "w", "input_schema": {"type": "object", "properties": {"city": {"type": "string"}}}}]
-	}`))
+	}`)))
 	c.Request.Header.Set("Content-Type", "application/json")
-	s.chatCompletions(c)
-
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 	}
-	// 上游收到的请求体:tools 必须是 Responses 扁平形状,input 必须含配对的
-	// function_call + function_call_output(载荷非空)。
 	if len(receivedBodies) == 0 {
 		t.Fatal("upstream received no requests")
 	}
@@ -74,15 +74,13 @@ func TestClaudeClientResponsesUpstreamToolLoop(t *testing.T) {
 	if !strings.Contains(upstreamBody, `"call_id":"toolu_1"`) || !strings.Contains(upstreamBody, "sunny 28C") {
 		t.Fatalf("function_call_output missing or payload lost: %s", upstreamBody)
 	}
-	// 客户端按 Claude 形态收到响应。
 	if !strings.Contains(rec.Body.String(), `"type":"text"`) && !strings.Contains(rec.Body.String(), `"text":"sunny"`) {
 		t.Fatalf("claude client should receive anthropic-shaped response: %s", rec.Body.String())
 	}
 	hasNativeItemID = true
 	c, rec = messagesRequestContext(`{"model":"grp","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`)
-	s.chatCompletions(c)
-	// 消息 item 身份是传输记账：跨族目标丢弃并给 warning（记录在
-	// ConversionIssues），不再 502。
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"text"`) {
 		t.Fatal("item identity should convert with a warning instead of failing", rec.Code, rec.Body)
 	}

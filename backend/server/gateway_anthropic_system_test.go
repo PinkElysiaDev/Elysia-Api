@@ -78,9 +78,7 @@ func TestGatewayAnthropicSystemMessageClientHistory(t *testing.T) {
 				if isSecondRound {
 					var messages []protocol.Value
 					_ = fields["messages"].Decode(&messages)
-					messages = append(messages,
-						mustProtocolValue(t, `{"role":"assistant","content":[{"type":"tool_use","id":"call-a","name":"audit_tool_00","input":{"value":"one"}},{"type":"tool_use","id":"call-b","name":"audit_tool_00","input":{"value":"two"}}]}`),
-						mustProtocolValue(t, `{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-a","content":"first result"},{"type":"tool_result","tool_use_id":"call-b","content":"second result"}]}`))
+					messages = append(messages, mustProtocolValue(t, `{"role":"assistant","content":[{"type":"tool_use","id":"call-a","name":"audit_tool_00","input":{"value":"one"}},{"type":"tool_use","id":"call-b","name":"audit_tool_00","input":{"value":"two"}}]}`), mustProtocolValue(t, `{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-a","content":"first result"},{"type":"tool_result","tool_use_id":"call-b","content":"second result"}]}`))
 					fields["messages"], _ = protocol.EncodeValue(messages)
 				}
 				body, _ = protocol.EncodeValue(fields)
@@ -105,7 +103,7 @@ func TestGatewayAnthropicSystemMessageClientHistory(t *testing.T) {
 				req := httptest.NewRequest(http.MethodPost, "/gateway/anthropic-messages/v1/messages", strings.NewReader(string(body.Bytes())))
 				req.Header.Set("Authorization", "Bearer gateway-test-token")
 				rec := httptest.NewRecorder()
-				s.engine.ServeHTTP(rec, req)
+				serveTestHTTP(s.engine, rec, req)
 				if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" || strings.Contains(rec.Body.String(), "event: error") {
 					t.Fatalf("status=%d trailer=%v body=%s", rec.Code, rec.Result().Trailer, rec.Body)
 				}
@@ -180,7 +178,7 @@ func TestGatewaySystemHoistFailureRetainsRequestEvidence(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/gateway/anthropic-messages/v1/messages", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer gateway-test-token")
 	rec := httptest.NewRecorder()
-	s.engine.ServeHTTP(rec, req)
+	serveTestHTTP(s.engine, rec, req)
 	if rec.Code != 400 || calls.Load() != 0 || !strings.Contains(rec.Body.String(), "/messages/1/output_config") {
 		t.Fatalf("status=%d calls=%d body=%s", rec.Code, calls.Load(), rec.Body)
 	}
@@ -224,7 +222,7 @@ func TestGatewayInvalidThinkingDisplayRequestEvidence(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/gateway/anthropic-messages/v1/messages", strings.NewReader(body))
 		req.Header.Set("Authorization", "Bearer gateway-test-token")
 		rec := httptest.NewRecorder()
-		s.engine.ServeHTTP(rec, req)
+		serveTestHTTP(s.engine, rec, req)
 		if rec.Code != 400 || calls.Load() != 0 {
 			t.Fatalf("status=%d upstream calls=%d", rec.Code, calls.Load())
 		}

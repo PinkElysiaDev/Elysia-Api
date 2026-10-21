@@ -3,20 +3,23 @@ package server
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 )
 
@@ -67,18 +70,18 @@ func TestRequestLoggerCorrelatesAndRecovers(t *testing.T) {
 	s := &Server{logger: logging.New(logging.Options{Level: "debug", Format: "json"}, nil)}
 	var output bytes.Buffer
 	s.logger.SetOutput(&output)
-	engine := gin.New()
+	engine := newTestEngine(t)
 	engine.Use(s.requestLogging())
 	var id string
-	engine.GET("/panic", func(c *gin.Context) {
+	engine.GET("/panic", func(ctx context.Context, c *app.RequestContext) {
 		id = c.GetString("requestID")
-		zerolog.Ctx(c.Request.Context()).Info().Msg("in handler")
+		zerolog.Ctx(ctx).Info().Msg("in handler")
 		panic("test panic")
 	})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/panic", nil)
 	r.Header.Set("X-Elysia-Request-Id", "untrusted")
-	engine.ServeHTTP(w, r)
+	serveTestHTTP(engine, w, r)
 	if w.Code != 500 || id == "" || id == "untrusted" || w.Header().Get("X-Elysia-Request-Id") != id {
 		t.Fatalf("status/id: %d %q", w.Code, id)
 	}
@@ -90,6 +93,94 @@ func TestRequestLoggerCorrelatesAndRecovers(t *testing.T) {
 		if event["request_id"] != id {
 			t.Fatalf("uncorrelated event: %s", line)
 		}
+	}
+}
+
+type requestLogEvents chan []byte
+
+func (events requestLogEvents) Write(data []byte) (int, error) {
+	events <- bytes.Clone(data)
+	return len(data), nil
+}
+
+type loggedResponseBody struct {
+	started chan struct{}
+	release <-chan struct{}
+	err     error
+}
+
+func (body *loggedResponseBody) Read([]byte) (int, error) {
+	close(body.started)
+	<-body.release
+	return 0, body.err
+}
+
+func TestRequestLoggerWaitsForResponseCompletion(t *testing.T) {
+	for _, bodyErr := range []error{io.EOF, errors.New("response reader failed")} {
+		t.Run(bodyErr.Error(), func(t *testing.T) {
+			s := &Server{logger: logging.New(logging.Options{Level: "debug", Format: "json"}, nil)}
+			events := make(requestLogEvents, 4)
+			s.logger.SetOutput(events)
+			started, release := make(chan struct{}), make(chan struct{})
+			unblock := sync.OnceFunc(func() { close(release) })
+			e := newTestEngine(t)
+			e.Use(s.requestLogging())
+			e.GET("/body", func(_ context.Context, c *app.RequestContext) {
+				length := -1
+				if bodyErr != io.EOF {
+					// Production assets have a known length. Hertz's unknown-length
+					// reader path logs reader errors internally instead of returning them.
+					length = 1
+				}
+				c.SetBodyStream(&loggedResponseBody{started: started, release: release, err: bodyErr}, length)
+			})
+			web := startTestServer(e)
+			defer web.Close()
+			defer unblock()
+			clientDone := make(chan struct{})
+			go func() {
+				defer close(clientDone)
+				if response, err := web.Client().Get(web.URL + "/body"); err == nil {
+					_, _ = io.Copy(io.Discard, response.Body)
+					response.Body.Close()
+				}
+			}()
+			select {
+			case <-started:
+			case <-time.After(3 * time.Second):
+				t.Fatal("Hertz did not start the response reader")
+			}
+			select {
+			case event := <-events:
+				t.Fatalf("request logged before body finished: %s", event)
+			default:
+			}
+			unblock()
+			select {
+			case data := <-events:
+				var event map[string]any
+				if err := sonic.ConfigStd.Unmarshal(data, &event); err != nil {
+					t.Fatal(err)
+				}
+				if event["message"] != "request completed" || event["status_code"] != float64(200) {
+					t.Fatal(string(data))
+				}
+				if bodyErr == io.EOF {
+					if event["level"] != "debug" || event["error"] != nil {
+						t.Fatal(string(data))
+					}
+				} else if detail, _ := event["error"].(string); event["level"] != "error" || !strings.Contains(detail, bodyErr.Error()) {
+					t.Fatal("lost post-handler transport error", string(data))
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("missing completion log")
+			}
+			select {
+			case <-clientDone:
+			case <-time.After(3 * time.Second):
+				t.Fatal("response did not finish")
+			}
+		})
 	}
 }
 

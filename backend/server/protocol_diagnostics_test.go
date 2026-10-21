@@ -49,7 +49,8 @@ func TestAnthropicCopySystemCacheGateway(t *testing.T) {
 					s.invalidateRouteCache()
 					body := fmt.Sprintf(`{"model":"grp","max_tokens":64,"stream":%v,"system":%s,"messages":[{"role":"user","content":"hello"}]}`, stream, system)
 					c, rec := messagesRequestContext(body)
-					s.chatCompletions(c)
+					s.chatCompletions(contextForTest(c), c)
+					flushTestResponse(c)
 					if rec.Code != 200 {
 						t.Fatal(rec.Code, rec.Body)
 					}
@@ -88,6 +89,7 @@ func TestAnthropicCopySystemCacheGateway(t *testing.T) {
 	}
 }
 
+// 带身份的 system 不能无条件上提；确认失败保留候选与节点路径（无网络依赖）。
 func TestEncodingFailureKeepsCandidateAndExactField(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	compiled, _ := s.protocolServiceInst.Pin("google-generate-content")
@@ -98,8 +100,7 @@ func TestEncodingFailureKeepsCandidateAndExactField(t *testing.T) {
 	candidate.model.SourceID = "source"
 	c, _ := messagesRequestContext(`{}`)
 	record := &usageRecord{}
-	err := s.forwardGateway(c, record, &gatewayPlan{request: request}, candidate)
-	// 带身份的 system 不能无条件上提；确认失败保留候选与节点路径（无网络依赖）。
+	err := s.forwardGateway(contextForTest(c), c, record, &gatewayPlan{request: request}, candidate)
 	if err == nil || !strings.Contains(err.Error(), "/content/0") {
 		t.Fatal(err)
 	}

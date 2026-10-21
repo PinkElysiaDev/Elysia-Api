@@ -22,12 +22,7 @@ func TestGatewayChatWireContractFailure(t *testing.T) {
 	for _, tc := range []struct {
 		name, role, id, model, path string
 		created                     int
-	}{
-		{"missing-role", "", "r", "m", "/choices/0/delta/role", 1},
-		{"changed-id", `"role":"assistant",`, "other", "m", "/id", 1},
-		{"changed-model", `"role":"assistant",`, "r", "other", "/model", 1},
-		{"changed-created", `"role":"assistant",`, "r", "m", "/created", 2},
-	} {
+	}{{"missing-role", "", "r", "m", "/choices/0/delta/role", 1}, {"changed-id", `"role":"assistant",`, "other", "m", "/id", 1}, {"changed-model", `"role":"assistant",`, "r", "other", "/model", 1}, {"changed-created", `"role":"assistant",`, "r", "m", "/created", 2}} {
 		t.Run(tc.name, func(t *testing.T) {
 			prefix := `{"id":"r","model":"m","object":"chat.completion.chunk","created":1,"choices":[{"index":0,"delta":{` + tc.role + `"content":"hi"},"finish_reason":null}]}`
 			terminal := fmt.Sprintf(`{"id":%q,"model":%q,"object":"chat.completion.chunk","created":%d,"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`, tc.id, tc.model, tc.created)
@@ -41,7 +36,7 @@ func TestGatewayChatWireContractFailure(t *testing.T) {
 			s := newTestServerWithStore(t, []config.ModelGroupConfig{{ID: "g", Name: "grp", Enabled: true, Strategy: "round-robin", MaxRetries: 3,
 				Models: []config.ModelRef{openAIModel("m", provider.URL)}}})
 			s.engine.POST("/v1/chat/completions", s.chatCompletions)
-			gateway := httptest.NewServer(s.engine)
+			gateway := startTestServer(s.engine)
 			defer gateway.Close()
 			response, err := http.Post(gateway.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`))
 			if err != nil {

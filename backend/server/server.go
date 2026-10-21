@@ -2,10 +2,12 @@ package server
 
 import (
 	"context"
-	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cloudwego/hertz/pkg/route"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/config"
@@ -15,14 +17,13 @@ import (
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 // Server composes application services and their HTTP adapters. Construction is
 // in bootstrap.go; lifecycle.go owns request draining and resource shutdown.
 type Server struct {
 	config            *config.Config
-	engine            *gin.Engine
+	engine            *route.Engine
 	store             *storage.Store
 	logger            *logging.Logger
 	protocolTransport *relay.ProtocolTransport
@@ -58,7 +59,6 @@ type Server struct {
 	assetsUsage      usageAssetsUsage
 	assetsUsageAt    time.Time
 
-	httpServer          *http.Server
 	shutdownErr         error
 	shutdownOnce        sync.Once
 	lifecycleOnce       sync.Once
@@ -67,9 +67,7 @@ type Server struct {
 	shutdownRequested   chan struct{}
 	shutdownRequestOnce sync.Once
 	shutdownDone        chan struct{} // Closed only after the full shutdown sequence.
-	requestMu           sync.Mutex
-	requestWG           sync.WaitGroup
-	stopping            bool
+	httpRequests        httpRequests
 
 	restartMu       sync.Mutex
 	restartRequired bool
@@ -85,7 +83,7 @@ type Server struct {
 	a2aOnce           sync.Once
 	a2aRuntime        *a2aService
 	mcpOnce           sync.Once
-	mcpHandler        http.Handler
+	mcpHandler        *mcp.Server
 
 	protocolServiceOnce       sync.Once
 	protocolServiceInst       *protocol.Service

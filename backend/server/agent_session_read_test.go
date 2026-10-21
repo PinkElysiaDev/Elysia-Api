@@ -9,6 +9,7 @@ import (
 	"github.com/elysia-api/backend/storage"
 )
 
+// Use an independent instance so later missing/cancelled cases still read a live store.
 func TestAgentSessionReadErrorsKeepStorageFailure(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	session, err := s.store.CreateAgentSession(t.Context(), storage.AgentSessionUpsert{Title: "read failures"})
@@ -25,25 +26,28 @@ func TestAgentSessionReadErrorsKeepStorageFailure(t *testing.T) {
 				}
 				c, rec := agentContextWithID(http.MethodGet, "/api/admin/agent/sessions/"+id, id, "")
 				if failure == "cancelled" {
-					ctx, cancel := context.WithCancel(c.Request.Context())
+					ctx, cancel := context.WithCancel(contextForTest(c))
 					cancel()
-					c.Request = c.Request.WithContext(ctx)
+					c.Set("testContext", ctx)
 				}
 				if failure == "closed" {
-					// Use an independent instance so later missing/cancelled cases still read a live store.
 					isolated := newAgentIntegrationServer(t)
 					if err := isolated.store.Close(); err != nil {
 						t.Fatal(err)
 					}
 					if operation == "detail" {
-						isolated.adminGetAgentSession(c)
+						isolated.adminGetAgentSession(contextForTest(c), c)
+						flushTestResponse(c)
 					} else {
-						isolated.adminRestoreAgentDraft(c)
+						isolated.adminRestoreAgentDraft(contextForTest(c), c)
+						flushTestResponse(c)
 					}
 				} else if operation == "detail" {
-					s.adminGetAgentSession(c)
+					s.adminGetAgentSession(contextForTest(c), c)
+					flushTestResponse(c)
 				} else {
-					s.adminRestoreAgentDraft(c)
+					s.adminRestoreAgentDraft(contextForTest(c), c)
+					flushTestResponse(c)
 				}
 				if rec.Code != want {
 					t.Fatalf("got %d want %d: %s", rec.Code, want, rec.Body.String())

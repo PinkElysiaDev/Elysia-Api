@@ -29,7 +29,8 @@ func TestAgentHistoryRejectsInvalidBoundaryWithoutMutation(t *testing.T) {
 				t.Fatal(err)
 			}
 			c, rec := agentContextWithID(http.MethodDelete, "/api/admin/agent/sessions/"+session.ID+"/messages?"+query, session.ID, "")
-			s.adminClearAgentMessages(c)
+			s.adminClearAgentMessages(contextForTest(c), c)
+			flushTestResponse(c)
 			if rec.Code != http.StatusBadRequest {
 				t.Fatalf("got %d: %s", rec.Code, rec.Body.String())
 			}
@@ -72,7 +73,8 @@ func TestAgentHistoryValidBoundary(t *testing.T) {
 				}
 			}
 			c, rec := agentContextWithID(http.MethodDelete, "/api/admin/agent/sessions/"+session.ID+"/messages"+test.query, session.ID, "")
-			s.adminClearAgentMessages(c)
+			s.adminClearAgentMessages(contextForTest(c), c)
+			flushTestResponse(c)
 			messages, err := s.store.ListMessages(t.Context(), session.ID)
 			if rec.Code != http.StatusOK || err != nil || len(messages) != test.remaining {
 				t.Fatalf("truncate: %d %v messages=%d", rec.Code, err, len(messages))

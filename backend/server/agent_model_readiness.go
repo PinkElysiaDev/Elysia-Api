@@ -10,10 +10,12 @@ import (
 	"slices"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/utils"
+
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 type agentModelReadiness struct {
@@ -106,19 +108,19 @@ func checkAgentModel(view protocol.RegistryView, bindings []storage.ProtocolBind
 	return result
 }
 
-func (s *Server) adminAgentModels(c *gin.Context) {
-	service, ok := s.requireProtocolService(c)
+func (s *Server) adminAgentModels(ctx context.Context, c *app.RequestContext) {
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
-	models, err := s.store.ListModelsFiltered(c.Request.Context(), storage.ModelListFilter{})
+	models, err := s.store.ListModelsFiltered(ctx, storage.ModelListFilter{})
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
-	bindings, err := s.store.ListProtocolBindings(c.Request.Context())
+	bindings, err := s.store.ListProtocolBindings(ctx)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	items := []agentModelReadiness{}
@@ -126,75 +128,75 @@ func (s *Server) adminAgentModels(c *gin.Context) {
 	for _, model := range models {
 		items = append(items, checkAgentModel(view, bindings, model))
 	}
-	respondOK(c, gin.H{"items": items})
+	respondOK(ctx, c, utils.H{"items": items})
 }
 
-func (s *Server) adminVerifyAgentTools(c *gin.Context) {
+func (s *Server) adminVerifyAgentTools(ctx context.Context, c *app.RequestContext) {
 	var input struct {
 		SourceID string `json:"sourceId"`
 		ModelID  string `json:"modelId"`
 	}
-	if err := decodeProtocolAdminBody(c, &input); err != nil {
-		respondProtocolError(c, err)
+	if err := decodeProtocolAdminBody(ctx, c, &input); err != nil {
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	// 与 Agent 模型调用同一超时口径（300s）：慢推理模型的探针不再因 60s 预算必败。
-	ctx, cancel := context.WithTimeout(c.Request.Context(), s.probeTimeout(agentCallTimeoutSec*time.Second))
+	ctx, cancel := context.WithTimeout(ctx, s.probeTimeout(agentCallTimeoutSec*time.Second))
 	defer cancel()
-	service, ok := s.requireProtocolService(c)
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
 	baseline, err := s.store.ProtocolUpgradeBaseline(ctx)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	model, found := findCustomProtocolTestModel(ctx, s.store, input.SourceID, input.ModelID)
 	if !found {
-		respondFail(c, http.StatusNotFound, "model_not_found", "模型不存在")
+		respondFail(ctx, c, http.StatusNotFound, "model_not_found", "模型不存在")
 		return
 	}
 	if err := applyAgentPermittedKey(ctx, s.store, &model); err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	bindings, err := s.store.ListProtocolBindings(ctx)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	view := service.View()
 	status := checkAgentModel(view, bindings, model)
 	if !status.CanRepair && !status.Available {
-		respondFail(c, http.StatusBadRequest, status.ReasonCode, status.Reason)
+		respondFail(ctx, c, http.StatusBadRequest, status.ReasonCode, status.Reason)
 		return
 	}
 	if status.Available {
 		// 幂等短路：已就绪的模型不重复消耗真实探针调用。
-		respondOK(c, status)
+		respondOK(ctx, c, status)
 		return
 	}
 	entry, _ := selectProtocolBinding(bindings, modelReference(model))
 	compiled, _ := view.Pin(entry.Binding.ProtocolID)
 	entry = repairedModelBinding(entry, compiled, model)
 	if err := protocol.IssuesError(protocol.CheckBinding(entry.Binding, compiled)); err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	entry.Combinations, err = s.verifyGatewayBinding(ctx, view, entry)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	if !hasPassingGatewayCombination(entry.Combinations) {
-		respondFail(c, http.StatusBadRequest, "incompatible_binding", "工具能力与当前入口协议未通过兼容性验证")
+		respondFail(ctx, c, http.StatusBadRequest, "incompatible_binding", "工具能力与当前入口协议未通过兼容性验证")
 		return
 	}
 	model.ToolsCapable = true
 	candidate, failure := makeGatewayCandidate(view, []storage.ProtocolBinding{entry}, modelReference(model), agentTransport(entry.Binding, compiled), "generate")
 	if failure != nil {
-		respondProtocolError(c, failure)
+		respondProtocolError(ctx, c, failure)
 		return
 	}
 	// 探针是真实上游调用：与 Agent 调用同一口径入账，费用可审计。
@@ -209,14 +211,14 @@ func (s *Server) adminVerifyAgentTools(c *gin.Context) {
 	}()
 	fail := func(status int, code, reason string) {
 		record.StatusCode = status
-		respondFail(c, status, code, reason)
+		respondFail(ctx, c, status, code, reason)
 	}
 	nonce := rand.Text()
 	schema, _ := protocol.EncodeValue(map[string]any{"type": "object", "properties": map[string]any{"nonce": map[string]string{"type": "string"}}, "required": []string{"nonce"}, "additionalProperties": false})
 	choice, _ := protocol.EncodeValue(map[string]string{"mode": "required"})
 	request, err := compiled.BuildAgentRequest(ctx, protocol.Request{SchemaVersion: protocol.SemanticSchemaVersion, Source: protocol.AgentIdentity(), Model: protocol.StringValue(model.Name), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("Call elysia_capability_probe once with nonce " + nonce + ". This is a capability test; no tool will be executed.")}}}}, Tools: []protocol.Tool{{Kind: protocol.FunctionTool, Name: protocol.StringValue("elysia_capability_probe"), InputSchema: schema}}, ToolChoice: choice}, protocol.AgentPreferences{MaxOutputTokens: 128, Stream: candidate.operation.Transport != protocol.HTTPJSON})
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	response, err := s.collectProtocolGeneration(ctx, candidate, request, record, nil)
@@ -245,12 +247,12 @@ func (s *Server) adminVerifyAgentTools(c *gin.Context) {
 		return
 	}
 	if err := s.store.EnableModelFunctionTools(ctx, model.SourceID, model.ID, baseline, entry); err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	s.invalidateRouteCache()
 	model.CapabilitySource = "manual"
-	respondOK(c, checkAgentModel(view, []storage.ProtocolBinding{entry}, model))
+	respondOK(ctx, c, checkAgentModel(view, []storage.ProtocolBinding{entry}, model))
 }
 
 func protocolValueArguments(raw []byte, target any) error {

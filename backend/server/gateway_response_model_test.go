@@ -107,7 +107,8 @@ func TestCollectedChatModelRepairAndPreview(t *testing.T) {
 				t.Fatal(err)
 			}
 			ctx, preview := adminProtocolContext("POST", "/api/admin/protocols/conversion-policies/preview", string(previewBody))
-			s.adminConversionPreview(ctx)
+			s.adminConversionPreview(contextForTest(ctx), ctx)
+			flushTestResponse(ctx)
 			if mode == "strict" {
 				if preview.Code != 400 {
 					t.Fatal(preview.Code, preview.Body.String())
@@ -164,7 +165,7 @@ func TestGatewayChatMissingResponseModel(t *testing.T) {
 	req := httptest.NewRequest("POST", "/gateway/openai-chat-completions/chat/completions", strings.NewReader(`{"model":"group","messages":[{"role":"user","content":"hello"}]}`))
 	req.Header.Set("Authorization", "Bearer gateway-test-token")
 	rec := httptest.NewRecorder()
-	s.engine.ServeHTTP(rec, req)
+	serveTestHTTP(s.engine, rec, req)
 	if rec.Code != 200 {
 		t.Fatalf("missing model should be compatible: %d %s", rec.Code, rec.Body.String())
 	}
@@ -235,7 +236,7 @@ func TestGatewayChatInvalidResponseModelIsNotAliased(t *testing.T) {
 			req := httptest.NewRequest("POST", "/gateway/openai-chat-completions/chat/completions", strings.NewReader(`{"model":"group","messages":[{"role":"user","content":"hello"}]}`))
 			req.Header.Set("Authorization", "Bearer gateway-test-token")
 			rec := httptest.NewRecorder()
-			s.engine.ServeHTTP(rec, req)
+			serveTestHTTP(s.engine, rec, req)
 			if rec.Code != http.StatusBadGateway {
 				t.Fatalf("invalid provider model was hidden: %d %s", rec.Code, rec.Body.String())
 			}

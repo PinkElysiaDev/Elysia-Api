@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/network"
 	"github.com/elysia-api/backend/config"
-	"github.com/gin-gonic/gin"
 )
 
 // 回归：OpenAI 系同协议透传时，上游 SSE 必须原样转发，provider 私有字段
@@ -33,16 +33,14 @@ func TestOpenAIChatPassthroughStreamForwardsRawSSE(t *testing.T) {
 		}, "\n")+"\n")
 	}))
 	defer upstream.Close()
-
 	group := config.ModelGroupConfig{
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "round-robin", MaxRetries: 1,
 		Models: []config.ModelRef{openAIModel("m", upstream.URL)},
 	}
 	s := newTestServerWithStore(t, []config.ModelGroupConfig{group})
-
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
-
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 stream, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -114,19 +112,17 @@ func TestResponsesPassthroughStreamPreservesReasoningText(t *testing.T) {
 		}, "\n")+"\n")
 	}))
 	defer upstream.Close()
-
 	model := config.ModelRef{ID: "m", Name: "m", BaseURL: upstream.URL, Platform: "responses", APIKey: "k"}
 	group := config.ModelGroupConfig{
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "round-robin", MaxRetries: 1,
 		Models: []config.ModelRef{model},
 	}
 	s := newTestServerWithStore(t, []config.ModelGroupConfig{group})
-
 	requestBody := `{"model":"grp","stream":true,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},{"type":"reasoning_text","text":"prior thought"}]}`
 	rec := httptest.NewRecorder()
 	c, _ := newResponsesContext(rec, requestBody)
-	s.responses(c)
-
+	s.responses(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 stream, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -147,7 +143,6 @@ func TestResponsesPassthroughStreamPreservesReasoningText(t *testing.T) {
 	if trailer := rec.Result().Trailer.Get("X-Elysia-Stream-Error"); trailer != "" {
 		t.Fatalf("native stream failed after forwarding text: %s", trailer)
 	}
-
 	records := latestUsageRecords(t, s)
 	if len(records) == 0 {
 		t.Fatal("expected at least one usage record")
@@ -160,7 +155,7 @@ func TestResponsesPassthroughStreamPreservesReasoningText(t *testing.T) {
 
 // 取消发生在下游 flush 时，重现客户端看到终态就立即关闭连接的时序。
 type cancelAfterFlushWriter struct {
-	gin.ResponseWriter
+	network.ExtWriter
 	body   *httptest.ResponseRecorder
 	marker string
 	cancel context.CancelFunc
@@ -171,20 +166,25 @@ func (w *cancelAfterFlushWriter) Write(b []byte) (int, error) {
 	if err := w.ctx.Err(); err != nil {
 		return 0, err
 	}
-	return w.ResponseWriter.Write(b)
+	return w.ExtWriter.Write(b)
 }
 
 func (w *cancelAfterFlushWriter) WriteString(s string) (int, error) {
 	return w.Write([]byte(s))
 }
 
-func (w *cancelAfterFlushWriter) Flush() {
-	w.ResponseWriter.Flush()
+func (w *cancelAfterFlushWriter) Flush() error {
+	err := w.ExtWriter.Flush()
 	if strings.Contains(w.body.Body.String(), w.marker) {
 		w.cancel()
 	}
+	return err
 }
 
+// Cancellation is observed on the terminal flush, after the
+// same message's text and content part have completed.
+// The connection was canceled before transport completion. Converted
+// terminals remain pending until usage tails have been consumed.
 func TestStreamCancellationUsage(t *testing.T) {
 	for _, endpoint := range []string{"chat", "responses", "converted", "custom"} {
 		for _, completed := range []bool{false, true} {
@@ -199,11 +199,7 @@ func TestStreamCancellationUsage(t *testing.T) {
 				if endpoint == "responses" || endpoint == "converted" {
 					platform = "responses"
 					body = "data: {\"type\":\"response.created\",\"response\":{\"id\":\"r1\",\"model\":\"m\",\"object\":\"response\",\"created_at\":1,\"status\":\"in_progress\",\"output\":[]},\"sequence_number\":0}\n\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"msg1\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"in_progress\",\"content\":[]},\"sequence_number\":1}\n\n" + "data: {\"type\":\"response.content_part.added\",\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[]},\"sequence_number\":2,\"output_index\":0,\"content_index\":0,\"item_id\":\"msg1\"}\n\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\",\"sequence_number\":3,\"output_index\":0,\"content_index\":0,\"item_id\":\"msg1\"}\n\n"
-					// Cancellation is observed on the terminal flush, after the
-					// same message's text and content part have completed.
-					terminal = `data: {"type":"response.output_text.done","output_index":0,"content_index":0,"item_id":"msg1","text":"partial","sequence_number":4}` + "\n\n" +
-						`data: {"type":"response.content_part.done","output_index":0,"content_index":0,"item_id":"msg1","part":{"type":"output_text","text":"partial","annotations":[]},"sequence_number":5}` + "\n\n" +
-						`data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"partial","annotations":[]}],"id":"msg1","status":"completed"}],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3},"id":"r1","model":"m","created_at":1,"object":"response"},"sequence_number":7}` + "\n\n"
+					terminal = `data: {"type":"response.output_text.done","output_index":0,"content_index":0,"item_id":"msg1","text":"partial","sequence_number":4}` + "\n\n" + `data: {"type":"response.content_part.done","output_index":0,"content_index":0,"item_id":"msg1","part":{"type":"output_text","text":"partial","annotations":[]},"sequence_number":5}` + "\n\n" + `data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"partial","annotations":[]}],"id":"msg1","status":"completed"}],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3},"id":"r1","model":"m","created_at":1,"object":"response"},"sequence_number":7}` + "\n\n"
 					if endpoint == "responses" {
 						marker = "response.completed"
 					}
@@ -231,21 +227,22 @@ func TestStreamCancellationUsage(t *testing.T) {
 					rec = httptest.NewRecorder()
 					c, _ = newResponsesContext(rec, `{"model":"grp","stream":true,"input":"hi"}`)
 				}
-				ctx, cancel := context.WithTimeout(c.Request.Context(), time.Second)
+				ctx, cancel := context.WithTimeout(contextForTest(c), time.Second)
 				defer cancel()
-				c.Request = c.Request.WithContext(ctx)
+				c.Set("testContext", ctx)
 				if !completed {
 					marker = "partial"
 				}
-				c.Writer = &cancelAfterFlushWriter{c.Writer, rec, marker, cancel, ctx}
+				observeTestFlush(c)
+				c.Response.HijackWriter(&cancelAfterFlushWriter{startStream(c), rec, marker, cancel, ctx})
 				if endpoint == "responses" {
-					s.responses(c)
+					s.responses(contextForTest(c), c)
+					flushTestResponse(c)
 				} else {
-					s.chatCompletions(c)
+					s.chatCompletions(contextForTest(c), c)
+					flushTestResponse(c)
 				}
 				logs := latestUsageRecords(t, s)
-				// The connection was canceled before transport completion. Converted
-				// terminals remain pending until usage tails have been consumed.
 				want := 499
 				if len(logs) != 1 || logs[0].StatusCode != want {
 					t.Fatalf("want %d: %+v", want, logs)
@@ -273,7 +270,8 @@ func TestToolOnlyStreamWithoutUsageSucceeds(t *testing.T) {
 	defer upstream.Close()
 	s := newTestServerWithStore(t, []config.ModelGroupConfig{{ID: "g", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 1, Models: []config.ModelRef{openAIModel("m", upstream.URL)}}})
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	logs := latestUsageRecords(t, s)
 	if len(logs) != 1 || logs[0].StatusCode != 200 || !strings.Contains(rec.Body.String(), "call_1") {
 		t.Fatalf("tool completion: %+v", logs)
@@ -295,8 +293,9 @@ func TestCanceledConnectionDoesNotRetry(t *testing.T) {
 	model.Platform = "responses"
 	s := newTestServerWithStore(t, []config.ModelGroupConfig{{ID: "g", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 2, Models: []config.ModelRef{model}}})
 	c, _ := newResponsesContext(httptest.NewRecorder(), `{"model":"grp","stream":true,"input":"hi"}`)
-	c.Request = c.Request.WithContext(ctx)
-	s.responses(c)
+	c.Set("testContext", ctx)
+	s.responses(contextForTest(c), c)
+	flushTestResponse(c)
 	logs := latestUsageRecords(t, s)
 	if len(logs) != 1 || logs[0].StatusCode != 499 || calls.Load() != 1 {
 		t.Fatalf("calls=%d logs=%+v", calls.Load(), logs)

@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/route/param"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 func liveRequest(t *testing.T, model string, isStream bool) *protocol.Request {
@@ -153,15 +153,18 @@ func (gateway *liveGateway) request(t *testing.T, id string, ingress *protocol.C
 	}
 	c, rec := adminProtocolContext("POST", path, string(body))
 	if ingress.Identity().DefinitionID == "google-generate-content" {
-		c.Params = gin.Params{{Key: "action", Value: strings.TrimPrefix(path, "/v1beta/models/")}}
+		c.Params = param.Params{{Key: "action", Value: strings.TrimPrefix(path, "/v1beta/models/")}}
 	}
 	if ingress.Identity().DefinitionID == "openai-responses" {
-		gateway.server.responses(c)
+		gateway.server.responses(contextForTest(c), c)
+		flushTestResponse(c)
 	} else if ingress.Identity().DefinitionID == "openai-chat-completions" || ingress.Identity().DefinitionID == "anthropic-messages" || ingress.Identity().DefinitionID == "google-generate-content" {
-		gateway.server.chatCompletions(c)
+		gateway.server.chatCompletions(contextForTest(c), c)
+		flushTestResponse(c)
 	} else {
 		service, _ := gateway.server.protocolService()
-		gateway.server.serveProtocolRequest(c, service.View(), ingress, path, body)
+		gateway.server.serveProtocolRequest(contextForTest(c), c, service.View(), ingress, path, body)
+		flushTestResponse(c)
 	}
 	result.DownstreamStatus = rec.Code
 	result.DownstreamHash, result.DownstreamBytes = liveHash(rec.Body.Bytes()), rec.Body.Len()

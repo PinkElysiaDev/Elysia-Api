@@ -44,7 +44,7 @@ func TestGatewayAnthropicDirectToolToResponsesStream(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/gateway/openai-responses/responses", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer gateway-test-token")
 	rec := httptest.NewRecorder()
-	s.engine.ServeHTTP(rec, req)
+	serveTestHTTP(s.engine, rec, req)
 	if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" || !strings.Contains(rec.Body.String(), "response.completed") || strings.Contains(rec.Body.String(), "event: error") {
 		t.Fatal(rec.Code, rec.Result().Trailer, rec.Body.String())
 	}

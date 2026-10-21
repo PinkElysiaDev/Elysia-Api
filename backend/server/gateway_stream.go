@@ -1,15 +1,18 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/network"
+
 	"github.com/elysia-api/backend/internal/eventstream"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
-	"github.com/gin-gonic/gin"
 )
 
 const gatewayStreamErrorTrailer = "X-Elysia-Stream-Error"
@@ -18,7 +21,9 @@ const gatewayStreamErrorTrailer = "X-Elysia-Stream-Error"
 // generation; source accounting and client projection have distinct replays.
 type gatewayStream struct {
 	server             *Server
-	context            *gin.Context
+	context            *app.RequestContext
+	ctx                context.Context
+	writer             network.ExtWriter
 	record             *usageRecord
 	plan               *gatewayResponsePlan
 	candidate          gatewayCandidate
@@ -37,7 +42,7 @@ type gatewayStream struct {
 	acceptedScratch    []protocol.Event
 }
 
-func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan *gatewayResponsePlan, candidate gatewayCandidate, response *http.Response) error {
+func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext, record *usageRecord, plan *gatewayResponsePlan, candidate gatewayCandidate, response *http.Response) error {
 	limits := plan.ingress.ResourceLimits()
 	options := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}
 	options.ClientOutput = plan.clientOutput
@@ -67,15 +72,15 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 	if err != nil {
 		return err
 	}
-	stream := &gatewayStream{server: s, context: c, record: record, plan: plan, candidate: candidate,
+	stream := &gatewayStream{server: s, context: c, ctx: ctx, writer: startStream(c), record: record, plan: plan, candidate: candidate,
 		limits: limits, options: options, route: route, eventState: eventState, carriers: carriers,
 		collector: collector, replay: replay,
 		wireValidation: wireValidation, finalValidation: finalValidation}
-	stream.source, err = newProtocolSourceStream(c.Request.Context(), candidate, plan.ingress, route, options, record, stream.consumeSourceFrame)
+	stream.source, err = newProtocolSourceStream(ctx, candidate, plan.ingress, route, options, record, stream.consumeSourceFrame)
 	if err != nil {
 		return err
 	}
-	err = protocol.ReadFrames(c.Request.Context(), response.Body, candidate.operation, candidate.compiled.ResourceLimits().BufferBytes, stream.source.Push)
+	err = protocol.ReadFrames(ctx, response.Body, candidate.operation, candidate.compiled.ResourceLimits().BufferBytes, stream.source.Push)
 	return stream.finish(err)
 }
 
@@ -84,11 +89,11 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 		stream.record.FirstByteMs = time.Since(stream.record.StartedAt).Milliseconds()
 	}
 	if stream.candidate.conversion.HasPhase(protocol.ConversionWire) {
-		converted, e := stream.candidate.conversion.ApplyValue(stream.context.Request.Context(), protocol.ConversionWire, value, stream.route, stream.options.Diagnostics)
+		converted, e := stream.candidate.conversion.ApplyValue(stream.ctx, protocol.ConversionWire, value, stream.route, stream.options.Diagnostics)
 		if e != nil {
 			return e
 		}
-		if _, e = stream.plan.ingress.DecodeFrame(stream.context.Request.Context(), converted, stream.wireValidation); e != nil {
+		if _, e = stream.plan.ingress.DecodeFrame(stream.ctx, converted, stream.wireValidation); e != nil {
 			return e
 		}
 		value = converted
@@ -103,18 +108,20 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 		}
 	}
 	for _, frame := range frames {
-		if err := stream.finalValidation.Consume(stream.context.Request.Context(), frame); err != nil {
+		if err := stream.finalValidation.Consume(stream.ctx, frame); err != nil {
 			return err
 		}
 		if frame.Len() > stream.limits.BufferBytes {
 			return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.LimitExceeded, Severity: protocol.SeverityError, Stage: "continuation", Path: "/frame", Reason: "frame including continuation carriers exceeds target buffer limit"}})
 		}
-		if err := protocol.WriteFrame(stream.context.Writer, stream.plan.operation, frame); err != nil {
+		if err := protocol.WriteFrame(stream.writer, stream.plan.operation, frame); err != nil {
 			return err
 		}
 	}
-	stream.context.Writer.Flush()
-	return nil
+	if len(frames) == 0 {
+		return nil
+	}
+	return stream.writer.Flush()
 }
 
 func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, metadata protocol.Object) error {
@@ -146,7 +153,7 @@ func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, me
 				stream.collector = nil
 			} else {
 				if node, ordinal, ok := stream.collector.CompletedNode(event); ok {
-					if err := stream.server.captureContinuationNode(stream.context, stream.candidate.continuation, node, ordinal); err != nil {
+					if err := stream.server.captureContinuationNode(stream.ctx, stream.candidate.continuation, node, ordinal); err != nil {
 						return err
 					}
 				}
@@ -155,7 +162,7 @@ func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, me
 					if e != nil {
 						return e
 					}
-					if e = stream.server.captureContinuationResponse(stream.context, stream.candidate.continuation, collected); e != nil {
+					if e = stream.server.captureContinuationResponse(stream.ctx, stream.candidate.continuation, collected); e != nil {
 						return e
 					}
 				}
@@ -168,7 +175,7 @@ func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, me
 		for _, next := range queued {
 			if stream.candidate.conversion != nil {
 				stream.route.Recoverable = stream.candidate.conversionContext(stream.plan.ingress, true).Recoverable
-				next, err = stream.candidate.conversion.Event(stream.context.Request.Context(), next, stream.route, stream.options.Diagnostics)
+				next, err = stream.candidate.conversion.Event(stream.ctx, next, stream.route, stream.options.Diagnostics)
 				if err != nil {
 					return err
 				}
@@ -188,7 +195,7 @@ func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, me
 	if stream.eventState.Buffered {
 		decoded = &protocol.EventFrame{Events: acceptedEvents}
 	}
-	frames, err := stream.plan.ingress.EncodeConvertedFrame(stream.context.Request.Context(), decoded, acceptedEvents, stream.options)
+	frames, err := stream.plan.ingress.EncodeConvertedFrame(stream.ctx, decoded, acceptedEvents, stream.options)
 	if err != nil {
 		return err
 	}
@@ -218,7 +225,7 @@ func (stream *gatewayStream) finish(err error) error {
 				break
 			}
 			stream.route.Recoverable = stream.candidate.conversionContext(stream.plan.ingress, true).Recoverable
-			event, err = stream.candidate.conversion.Event(stream.context.Request.Context(), event, stream.route, stream.options.Diagnostics)
+			event, err = stream.candidate.conversion.Event(stream.ctx, event, stream.route, stream.options.Diagnostics)
 			if err != nil {
 				break
 			}
@@ -226,7 +233,7 @@ func (stream *gatewayStream) finish(err error) error {
 				break
 			}
 			var frames []protocol.Value
-			frames, err = stream.plan.ingress.EncodeFrame(stream.context.Request.Context(), &protocol.EventFrame{Events: []protocol.Event{event}}, stream.options)
+			frames, err = stream.plan.ingress.EncodeFrame(stream.ctx, &protocol.EventFrame{Events: []protocol.Event{event}}, stream.options)
 			if err != nil {
 				break
 			}
@@ -242,7 +249,7 @@ func (stream *gatewayStream) finish(err error) error {
 	}
 	if err == nil {
 		var frames []protocol.Value
-		frames, err = stream.plan.ingress.FinishEvents(stream.context.Request.Context(), stream.options)
+		frames, err = stream.plan.ingress.FinishEvents(stream.ctx, stream.options)
 		if err == nil {
 			for _, frame := range frames {
 				if writeErr := stream.emit(frame); writeErr != nil {
@@ -261,10 +268,10 @@ func (stream *gatewayStream) finish(err error) error {
 			// A provider failure already ended the client's event lifecycle.
 			// Reject an invalid tail without replacing the original cause or
 			// attempting a second terminal. Both errors remain inspectable.
-			stream.context.Header(gatewayStreamErrorTrailer, "protocol_stream_error")
+			stream.context.Response.Header.Trailer().Set(gatewayStreamErrorTrailer, "protocol_stream_error")
 			return err
 		}
-		if writeErr := emitFailureEvent(stream.context, stream.plan, stream.options, stream.emit, err); writeErr != nil {
+		if writeErr := emitFailureEvent(stream.ctx, stream.context, stream.plan, stream.options, stream.emit, err); writeErr != nil {
 			return writeErr
 		}
 		return err
@@ -273,22 +280,21 @@ func (stream *gatewayStream) finish(err error) error {
 		// The provider's error has already been delivered and validated. Keep
 		// usage tails, record a failed call, and never append a second error or
 		// a synthetic success marker to that native/projected terminal.
-		stream.context.Header(gatewayStreamErrorTrailer, "protocol_stream_error")
+		stream.context.Response.Header.Trailer().Set(gatewayStreamErrorTrailer, "protocol_stream_error")
 		return stream.terminalFailure
 	}
 	if stream.plan.operation.Framing != nil && len(stream.plan.operation.Framing.Done) > 0 {
 		// Done lists accepted alternatives; output uses the first canonical marker.
 		marker := stream.plan.operation.Framing.Done[0]
 		if stream.plan.operation.Transport == protocol.SSE {
-			if err := eventstream.Write(stream.context.Writer, "", marker); err != nil {
+			if err := eventstream.Write(stream.writer, "", marker); err != nil {
 				return err
 			}
-		} else if _, err := fmt.Fprintln(stream.context.Writer, marker); err != nil {
+		} else if _, err := fmt.Fprintln(stream.writer, marker); err != nil {
 			return err
 		}
 	}
-	stream.context.Writer.Flush()
-	return nil
+	return stream.writer.Flush()
 }
 
 // emitFailureEvent surfaces a late mapping failure after the response headers
@@ -296,17 +302,17 @@ func (stream *gatewayStream) finish(err error) error {
 // written; the trailer is the signal when the target has no error event of its
 // own. A failure to deliver the error frame is reported back to the caller so it
 // can be logged, but the original stream error is what the caller still returns.
-func emitFailureEvent(c *gin.Context, plan *gatewayResponsePlan, options protocol.EvaluationContext, emit func(protocol.Value) error, cause error) error {
-	if !c.Writer.Written() {
+func emitFailureEvent(ctx context.Context, c *app.RequestContext, plan *gatewayResponsePlan, options protocol.EvaluationContext, emit func(protocol.Value) error, cause error) error {
+	if !responseCommitted(c) {
 		return nil
 	}
-	c.Header(gatewayStreamErrorTrailer, "protocol_stream_error")
+	c.Response.Header.Trailer().Set(gatewayStreamErrorTrailer, "protocol_stream_error")
 	errorValue, encodeErr := protocol.EncodeValue(map[string]string{"category": "upstream", "message": cause.Error()})
 	if encodeErr != nil {
 		return fmt.Errorf("%w; downstream error frame: %v", cause, encodeErr)
 	}
 	failure := protocol.Event{SchemaVersion: protocol.SemanticSchemaVersion, Type: protocol.OperationFailed, Error: errorValue}
-	frames, encodeErr := plan.ingress.EncodeFrames(c.Request.Context(), failure, options)
+	frames, encodeErr := plan.ingress.EncodeFrames(ctx, failure, options)
 	if encodeErr != nil {
 		return fmt.Errorf("%w; downstream error frame: %v", cause, encodeErr)
 	}

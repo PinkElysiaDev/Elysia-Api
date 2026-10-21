@@ -10,7 +10,6 @@ import (
 	"testing/synctest"
 
 	"github.com/elysia-api/backend/protocol"
-	"github.com/gin-gonic/gin"
 )
 
 // Waiting only reads a task and optionally records cancellation. Embedded nil
@@ -81,11 +80,11 @@ func TestGatewayJobWaitReadOutcomes(t *testing.T) {
 						t.Fatal(err)
 					}
 					response := httptest.NewRecorder()
-					c, _ := gin.CreateTestContext(response)
-					c.Request = httptest.NewRequestWithContext(requestContext, http.MethodPost, "/gateway/wait/generate", nil)
+					c := newTestContext(response)
+					setTestRequest(c, httptest.NewRequestWithContext(requestContext, http.MethodPost, "/gateway/wait/generate", nil))
 					server := &Server{}
-					server.waitGatewayJob(c, coordinator, nil, job, protocol.JobWait{TimeoutMillis: 60, OnTimeout: policy}, &usageRecord{})
-
+					server.waitGatewayJob(contextForTest(c), c, coordinator, nil, job, protocol.JobWait{TimeoutMillis: 60, OnTimeout: policy}, &usageRecord{})
+					flushTestResponse(c)
 					status, message := http.StatusGatewayTimeout, "task wait-job follows the declared "+policy+" policy"
 					wantsCancel := policy == "cancel"
 					switch {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,13 +14,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/utils"
+
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/internal/jsonutil"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 type usageBody struct {
@@ -124,9 +127,9 @@ type usageRecord struct {
 	ProviderResponse   usageBody        `json:"providerResponse"`
 	DownstreamResponse usageBody        `json:"downstreamResponse"`
 
-	// downstream 是写回下游客户端的 ResponseWriter 捕获器，运行期内部使用，
+	// downstream 是请求内的下游正文捕获状态，运行期内部使用，
 	// 不参与 JSON 序列化。recordUsage 会从它回读 DownstreamResponse。
-	downstream *downstreamCaptureWriter `json:"-"`
+	downstream *downstreamCapture `json:"-"`
 	// writeGen 与 Server.usageWriteGen 对齐；reset 递增后丢弃更早的写入。
 	writeGen           uint64 `json:"-"`
 	queuedPayloadBytes int64  `json:"-"`
@@ -151,7 +154,7 @@ func shortTokenHash(token string) string {
 	return hex.EncodeToString(sum[:])[:8]
 }
 
-func (s *Server) initUsageRecord(c *gin.Context, start time.Time, body []byte, inputFormat builtin.FormatType) *usageRecord {
+func (s *Server) initUsageRecord(ctx context.Context, c *app.RequestContext, start time.Time, body []byte, inputFormat builtin.FormatType) *usageRecord {
 	cfg := s.usageLogConfig()
 	requestID := c.GetString("requestID")
 	if requestID == "" {
@@ -329,7 +332,7 @@ func (s *Server) recordUsage(record *usageRecord) {
 	if record == nil {
 		return
 	}
-	// 回读「返回下游」内容（第四段链路）。capture writer tee 了实际写给客户端的字节。
+	// 回读「返回下游」内容（第四段链路）：缓冲响应或流式写入的有界副本。
 	// 仅在还没显式设置过时回填，避免覆盖特殊路径手动赋的值。
 	// 物化后统一走 finalize（外置 + 最终截断）。
 	if record.downstream != nil && record.DownstreamResponse.Content == "" {
@@ -363,9 +366,9 @@ func (s *Server) recordUsage(record *usageRecord) {
 
 // resetUsage 清空全部 usage 数据并失效响应缓存。仅由 admin 端点调用；
 // 面板下线后不再有无 store 的内存态分支。
-func (s *Server) resetUsage(c *gin.Context) {
+func (s *Server) resetUsage(ctx context.Context, c *app.RequestContext) {
 	if s.store == nil {
-		respondFail(c, http.StatusServiceUnavailable, "store_unavailable", "sqlite store is unavailable")
+		respondFail(ctx, c, http.StatusServiceUnavailable, "store_unavailable", "sqlite store is unavailable")
 		return
 	}
 	// 先挡住 enqueue（w.mu），再拿 persist 锁清库/切 generation。
@@ -376,7 +379,7 @@ func (s *Server) resetUsage(c *gin.Context) {
 		w.mu.Lock()
 	}
 	s.usagePersistMu.Lock()
-	if err := s.store.ClearUsage(c.Request.Context()); err != nil {
+	if err := s.store.ClearUsage(ctx); err != nil {
 		s.usagePersistMu.Unlock()
 		if w != nil {
 			w.mu.Unlock()
@@ -384,11 +387,11 @@ func (s *Server) resetUsage(c *gin.Context) {
 		// 回填进行中：绝不在此排队等锁（调用方已持有 writer/persist 锁，
 		// 排队会卡住全部请求的 usage 落库），转 409 让用户稍后重试。
 		if errors.Is(err, storage.ErrRollupBackfillInProgress) {
-			respondFail(c, http.StatusConflict, "backfill_in_progress",
+			respondFail(ctx, c, http.StatusConflict, "backfill_in_progress",
 				"rollup backfill is running; retry after it completes")
 			return
 		}
-		respondFail(c, http.StatusInternalServerError, "clear_usage_failed", err.Error())
+		respondFail(ctx, c, http.StatusInternalServerError, "clear_usage_failed", err.Error())
 		return
 	}
 	// 清库成功后，在 enqueue 仍被挡住时排空旧队列并递增 generation，
@@ -407,10 +410,10 @@ func (s *Server) resetUsage(c *gin.Context) {
 	if s.usageRetention != nil {
 		reclaimQueued = s.usageRetention.triggerAsync()
 	}
-	respondOK(c, gin.H{"reset": true, "reclaimQueued": reclaimQueued})
+	respondOK(ctx, c, utils.H{"reset": true, "reclaimQueued": reclaimQueued})
 }
 
-func usageTimeRange(c *gin.Context) (time.Time, time.Time) {
+func usageTimeRange(ctx context.Context, c *app.RequestContext) (time.Time, time.Time) {
 	var from time.Time
 	to := time.Now()
 	if raw := strings.TrimSpace(c.Query("to")); raw != "" {

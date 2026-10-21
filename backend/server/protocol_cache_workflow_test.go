@@ -50,7 +50,8 @@ func TestCacheAliasEditorAgentAndForwardingShareContract(t *testing.T) {
 	input := mustProtocolValue(t, body)
 	preview, _ := sonic.ConfigStd.Marshal(protocol.PreviewInput{Definition: mustEncodedProtocolValue(t, definition), Direction: protocol.DecodeResponse, Input: input})
 	ctx, recorder := adminProtocolContext("POST", "/api/admin/protocols/preview", string(preview))
-	s.adminProtocolPreviewV2(ctx)
+	s.adminProtocolPreviewV2(contextForTest(ctx), ctx)
+	flushTestResponse(ctx)
 	if recorder.Code != http.StatusOK {
 		t.Fatal(recorder.Body)
 	}
@@ -92,7 +93,8 @@ func TestCacheAliasEditorAgentAndForwardingShareContract(t *testing.T) {
 			t.Fatal(err)
 		}
 		ctx, downstream := adminProtocolContext("POST", "/chat/completions", string(request))
-		gateway.server.serveProtocolRequest(ctx, gatewayService.View(), compiled, "/chat/completions", request)
+		gateway.server.serveProtocolRequest(contextForTest(ctx), ctx, gatewayService.View(), compiled, "/chat/completions", request)
+		flushTestResponse(ctx)
 		if downstream.Code != http.StatusOK || downstream.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
 			t.Fatal(downstream.Body)
 		}

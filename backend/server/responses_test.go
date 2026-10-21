@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/elysia-api/backend/config"
-	"github.com/gin-gonic/gin"
 )
 
 // C1 回归：/v1/responses 入口的故障转移。首个候选 500（可重试），第二个 200，
@@ -28,17 +28,15 @@ func TestResponsesFailoverToHealthyModel(t *testing.T) {
 		_, _ = io.WriteString(w, okChatCompletionBody(t))
 	}))
 	defer good.Close()
-
 	group := config.ModelGroupConfig{
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 2,
 		Models: []config.ModelRef{openAIModel("m-bad", bad.URL), openAIModel("m-good", good.URL)},
 	}
 	s := newTestServer(t, []config.ModelGroupConfig{group})
-
 	rec := httptest.NewRecorder()
 	c, _ := newResponsesContext(rec, `{"model":"grp","input":"hi"}`)
-	s.responses(c)
-
+	s.responses(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 after responses failover, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -57,11 +55,10 @@ func TestResponsesFailoverToHealthyModel(t *testing.T) {
 func TestResponsesEmptyGroupReturnsModelNotFound(t *testing.T) {
 	group := config.ModelGroupConfig{ID: "g1", Name: "grp", Enabled: true, Models: nil}
 	s := newTestServer(t, []config.ModelGroupConfig{group})
-
 	rec := httptest.NewRecorder()
 	c, _ := newResponsesContext(rec, `{"model":"grp","input":"hi"}`)
-	s.responses(c)
-
+	s.responses(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for empty group, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -73,10 +70,10 @@ func TestResponsesEmptyGroupReturnsModelNotFound(t *testing.T) {
 	}
 }
 
-func newResponsesContext(rec *httptest.ResponseRecorder, body string) (*gin.Context, *httptest.ResponseRecorder) {
-	c, _ := gin.CreateTestContext(rec)
+func newResponsesContext(rec *httptest.ResponseRecorder, body string) (*app.RequestContext, *httptest.ResponseRecorder) {
+	c := newTestContext(rec)
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	c.Request = req
+	setTestRequest(c, req)
 	return c, rec
 }

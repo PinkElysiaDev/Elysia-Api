@@ -12,11 +12,11 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/internal/admission"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
-	"github.com/gin-gonic/gin"
 )
 
 type preparationBody struct {
@@ -29,6 +29,7 @@ func (r *preparationBody) Read(p []byte) (int, error) {
 	r.bytes += n
 	return n, err
 }
+
 func (*preparationBody) Close() error { return nil }
 
 func preparationProtocol(t *testing.T) *protocol.Compiled {
@@ -48,6 +49,7 @@ func preparationProtocol(t *testing.T) *protocol.Compiled {
 	return nil
 }
 
+// Authentication remains before admission/body reading.
 func TestPreparationRejectsBeforeBodyRead(t *testing.T) {
 	zero := 0
 	cfg := &config.Config{MaxBodyBytes: 64}
@@ -57,21 +59,24 @@ func TestPreparationRejectsBeforeBodyRead(t *testing.T) {
 	hold, _ := s.preparationLimiter().Acquire(t.Context(), 64)
 	ctx, recorder := adminProtocolContext("POST", "/v1/messages", `{}`)
 	body := &preparationBody{Reader: strings.NewReader(`{}`)}
-	ctx.Request.Body = body
-	if _, ok := s.readGatewayRequest(ctx, compiled); ok || recorder.Code != 503 || recorder.Header().Get("Retry-After") != "1" || body.bytes != 0 {
+	ctx.Request.SetBodyStream(body, -1)
+	_, ok := s.readGatewayRequest(contextForTest(ctx), ctx, compiled)
+	flushTestResponse(ctx)
+	if ok || recorder.Code != 503 || recorder.Header().Get("Retry-After") != "1" || body.bytes != 0 {
 		t.Fatalf("overload read body: %d %d", recorder.Code, body.bytes)
 	}
 	hold.Release()
 	if stats := s.preparationLimiter().Snapshot(); stats.Active != 0 || stats.ReservedBodyBytes != 0 || stats.Queued != 0 {
 		t.Fatal(stats)
 	}
-	// Authentication remains before admission/body reading.
-	engine := gin.New()
-	engine.POST("/v1/messages", s.authMiddleware(), func(c *gin.Context) { t.Error("unauthenticated request entered preparation") })
+	engine := newTestEngine(t)
+	engine.POST("/v1/messages", s.authMiddleware(), func(ctx context.Context, c *app.RequestContext) {
+		t.Error("unauthenticated request entered preparation")
+	})
 	body = &preparationBody{Reader: strings.NewReader(`{}`)}
 	req := httptest.NewRequest("POST", "/v1/messages", body)
 	rec := httptest.NewRecorder()
-	engine.ServeHTTP(rec, req)
+	serveTestHTTP(engine, rec, req)
 	if rec.Code != 401 || body.bytes != 0 {
 		t.Fatalf("auth/body boundary: %d %d", rec.Code, body.bytes)
 	}
@@ -84,19 +89,16 @@ func TestPreparationDeclaredAndUnknownLength(t *testing.T) {
 		declared int64
 		body     string
 		status   int
-	}{
-		{"known", 2, `{}`, 200}, {"chunked", -1, `{}`, 200},
-		{"underdeclared", 1, strings.Repeat("x", 4096), 400},
-		{"overdeclared", 3, `{}`, 400}, {"unknown over budget", -1, strings.Repeat("x", 65), 413},
-	} {
+	}{{"known", 2, `{}`, 200}, {"chunked", -1, `{}`, 200}, {"underdeclared", 1, strings.Repeat("x", 4096), 400}, {"overdeclared", 3, `{}`, 400}, {"unknown over budget", -1, strings.Repeat("x", 65), 413}} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config.Config{MaxBodyBytes: 64}
 			cfg.SetPreparation(config.PreparationConfig{MaxConcurrent: 1, MaxReservedBodyBytes: 64})
 			s := &Server{config: cfg}
 			ctx, rec := adminProtocolContext("POST", "/v1/messages", "")
 			body := &preparationBody{Reader: strings.NewReader(tc.body)}
-			ctx.Request.Body, ctx.Request.ContentLength = body, tc.declared
-			_, ok := s.readGatewayRequest(ctx, compiled)
+			ctx.Request.SetBodyStream(body, int(tc.declared))
+			_, ok := s.readGatewayRequest(contextForTest(ctx), ctx, compiled)
+			flushTestResponse(ctx)
 			if ok != (tc.status == 200) || !ok && rec.Code != tc.status {
 				t.Fatalf("status=%d ok=%t", rec.Code, ok)
 			}
@@ -152,11 +154,15 @@ func TestPreparationQueuedCancellationAndShutdown(t *testing.T) {
 				ctx, rec := adminProtocolContext("POST", "/v1/messages", `{}`)
 				requestContext, cancel := context.WithCancel(t.Context())
 				defer cancel()
-				ctx.Request = ctx.Request.WithContext(requestContext)
+				ctx.Set("testContext", requestContext)
 				body := &preparationBody{Reader: strings.NewReader(`{}`)}
-				ctx.Request.Body = body
+				ctx.Request.SetBodyStream(body, -1)
 				done := make(chan bool, 1)
-				go func() { _, ok := s.readGatewayRequest(ctx, compiled); done <- ok }()
+				go func() {
+					_, ok := s.readGatewayRequest(contextForTest(ctx), ctx, compiled)
+					flushTestResponse(ctx)
+					done <- ok
+				}()
 				synctest.Wait()
 				if s.preparationLimiter().Snapshot().Queued != 1 {
 					t.Fatal("request did not queue before body read")
@@ -197,7 +203,7 @@ func TestPreparationReleasedBeforeUpstream(t *testing.T) {
 	zero := 0
 	s.config.SetPreparation(config.PreparationConfig{MaxConcurrent: 1, MaxQueued: &zero})
 	s.engine.POST("/v1/messages", s.chatCompletions)
-	gateway := httptest.NewServer(s.engine)
+	gateway := startTestServer(s.engine)
 	defer gateway.Close()
 	client := gateway.Client()
 	client.Timeout = 10 * time.Second
@@ -216,7 +222,9 @@ func TestPreparationReleasedBeforeUpstream(t *testing.T) {
 		return err
 	}
 	done := make(chan error, 1)
-	go func() { done <- do() }()
+	go func() {
+		done <- do()
+	}()
 	select {
 	case <-started:
 	case err := <-done:

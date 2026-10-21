@@ -11,18 +11,18 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/route/param"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
+// Exercise every ingress and target once; per-codec control combinations
+// belong to protocol tests, not repeated database-backed HTTP fixtures.
 func TestGatewayThinkingHTTPAndSSEMatrix(t *testing.T) {
 	t.Parallel()
 	models := map[string]string{"openai": "gpt-5.4", "responses": "gpt-5.4", "anthropic": "claude-opus-4-6", "gemini": "gemini-3.5-flash-lite"}
-	// Exercise every ingress and target once; per-codec control combinations
-	// belong to protocol tests, not repeated database-backed HTTP fixtures.
 	sourceForTarget := map[string]string{"openai": "gemini", "responses": "openai", "anthropic": "responses", "gemini": "anthropic"}
 	for _, target := range cacheWireFixtures() {
 		t.Run(target.platform, func(t *testing.T) {
@@ -86,12 +86,14 @@ func TestGatewayThinkingHTTPAndSSEMatrix(t *testing.T) {
 						}
 						c, rec := adminProtocolContext("POST", path, body)
 						if source.platform == "gemini" {
-							c.Params = gin.Params{{Key: "action", Value: strings.TrimPrefix(path, "/v1beta/models/")}}
+							c.Params = param.Params{{Key: "action", Value: strings.TrimPrefix(path, "/v1beta/models/")}}
 						}
 						if source.platform == "responses" {
-							s.responses(c)
+							s.responses(contextForTest(c), c)
+							flushTestResponse(c)
 						} else {
-							s.chatCompletions(c)
+							s.chatCompletions(contextForTest(c), c)
+							flushTestResponse(c)
 						}
 						if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" || calls != before+1 || !strings.Contains(rec.Body.String(), "ok") {
 							t.Fatalf("%d %s", rec.Code, rec.Body)
@@ -135,7 +137,8 @@ func TestGatewayThinkingGroupNameDoesNotRestrictCandidate(t *testing.T) {
 			for _, effort := range []string{`"minimal"`, `42`, `"invalid"`} {
 				before := upstream.requestCount()
 				c, rec := chatRequestContext(fmt.Sprintf(`{"model":%q,"store":false,"reasoning_effort":%s,"messages":[{"role":"user","content":"hi"}]}`, groupName, effort))
-				s.chatCompletions(c)
+				s.chatCompletions(contextForTest(c), c)
+				flushTestResponse(c)
 				status, calls := 400, before
 				if effort == `"minimal"` {
 					status, calls = 200, before+1
@@ -171,11 +174,12 @@ func TestGatewayThinkingNativeReplay(t *testing.T) {
 				s := newTestServer(t, groups)
 				c, rec := adminProtocolContext("POST", fixture.path, tc.body)
 				if tc.platform == "gemini" {
-					c.Params = gin.Params{{Key: "action", Value: strings.TrimPrefix(fixture.path, "/v1beta/models/")}}
+					c.Params = param.Params{{Key: "action", Value: strings.TrimPrefix(fixture.path, "/v1beta/models/")}}
 				} else {
 					c.Request.Header.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
 				}
-				s.chatCompletions(c)
+				s.chatCompletions(contextForTest(c), c)
+				flushTestResponse(c)
 				if rec.Code != 200 || upstream.requestCount() != 1 {
 					t.Fatal(rec.Code, rec.Body, upstream.requestCount())
 				}
@@ -184,6 +188,7 @@ func TestGatewayThinkingNativeReplay(t *testing.T) {
 	}
 }
 
+// Invalid source controls reject every route before a network call.
 func TestGatewayThinkingCandidateIsolation(t *testing.T) {
 	t.Parallel()
 	for _, control := range []string{"disabled", "output-limit"} {
@@ -261,13 +266,14 @@ func TestGatewayThinkingCandidateIsolation(t *testing.T) {
 					raw = `{"model":"grp","store":false,"max_completion_tokens":8192,"messages":[{"role":"user","content":"hi"}]}`
 				}
 				c, rec := chatRequestContext(raw)
-				s.chatCompletions(c)
+				s.chatCompletions(contextForTest(c), c)
+				flushTestResponse(c)
 				if rec.Code != 200 || len(models) != 1 || !strings.Contains(models[0], "gemini-2.5-flash") {
 					t.Fatal(rec.Code, rec.Body, models)
 				}
-				// Invalid source controls reject every route before a network call.
 				c, rec = chatRequestContext(`{"model":"grp","store":false,"reasoning_effort":42,"messages":[{"role":"user","content":"hi"}]}`)
-				s.chatCompletions(c)
+				s.chatCompletions(contextForTest(c), c)
+				flushTestResponse(c)
 				if rec.Code != 400 || len(models) != 1 {
 					t.Fatal(rec.Code, rec.Body, models)
 				}
@@ -285,13 +291,17 @@ func TestGatewayThinkingHardConstraintsNeverCallUpstream(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(500) }))
+			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				w.WriteHeader(500)
+			}))
 			defer provider.Close()
 			groups := presetGroup(t, "custom:"+tc.preset, provider.URL)
 			groups[0].Models[0].ID = tc.model
 			s := newTestServer(t, groups)
 			c, rec := chatRequestContext(`{"model":"grp","store":false,` + tc.controls + `,"messages":[{"role":"user","content":"hi"}]}`)
-			s.chatCompletions(c)
+			s.chatCompletions(contextForTest(c), c)
+			flushTestResponse(c)
 			if rec.Code != 400 || calls != 0 || !strings.Contains(rec.Body.String(), tc.reason) {
 				t.Fatal(rec.Code, rec.Body, calls)
 			}
@@ -302,7 +312,10 @@ func TestGatewayThinkingHardConstraintsNeverCallUpstream(t *testing.T) {
 func TestGatewayThinkingBudgetStrictNeverCallsUpstream(t *testing.T) {
 	t.Parallel()
 	calls := 0
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(500) }))
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(500)
+	}))
 	defer provider.Close()
 	groups := presetGroup(t, "custom:google-generate-content", provider.URL)
 	groups[0].Models[0].ID = "gemini-2.5-flash"
@@ -323,7 +336,8 @@ func TestGatewayThinkingBudgetStrictNeverCallsUpstream(t *testing.T) {
 	}
 	s.invalidateRouteCache()
 	c, rec := chatRequestContext(`{"model":"grp","store":false,"reasoning_effort":"high","messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != 400 || calls != 0 || !strings.Contains(rec.Body.String(), "approximated") {
 		t.Fatal(rec.Code, rec.Body, calls)
 	}
@@ -369,8 +383,9 @@ func TestGatewayDynamicBudgetStrictCandidateFallback(t *testing.T) {
 			s.invalidateRouteCache()
 			path := "/v1beta/models/grp:generateContent"
 			c, rec := adminProtocolContext("POST", path, `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingBudget":-1}}}`)
-			c.Params = gin.Params{{Key: "action", Value: "grp:generateContent"}}
-			s.chatCompletions(c)
+			c.Params = param.Params{{Key: "action", Value: "grp:generateContent"}}
+			s.chatCompletions(contextForTest(c), c)
+			flushTestResponse(c)
 			if fallback {
 				if rec.Code != 200 || upstream.requestCount() != 1 || !strings.Contains(upstream.last().Path, "gemini-2.5-flash") {
 					t.Fatal(rec.Code, rec.Body, upstream.last())
@@ -384,7 +399,9 @@ func TestGatewayDynamicBudgetStrictCandidateFallback(t *testing.T) {
 
 func TestGatewayLateOutputLimitNeverCallsUpstream(t *testing.T) {
 	t.Parallel()
-	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) { w.WriteHeader(500) })
+	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
+		w.WriteHeader(500)
+	})
 	groups := presetGroup(t, "custom:"+protocol.PresetChatCompletionsID, upstream.URL)
 	groups[0].Models[0].ID = "gpt-6.1-sol"
 	s := newTestServer(t, groups)
@@ -408,7 +425,8 @@ func TestGatewayLateOutputLimitNeverCallsUpstream(t *testing.T) {
 	}
 	s.invalidateRouteCache()
 	c, rec := chatRequestContext(`{"model":"grp","store":false,"max_completion_tokens":8192,"metadata":{"late_limit":"true"},"messages":[{"role":"user","content":"hi"}]}`)
-	s.chatCompletions(c)
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != 400 || upstream.requestCount() != 0 || !strings.Contains(rec.Body.String(), "exceeds confirmed hard limit") {
 		t.Fatal(rec.Code, rec.Body, upstream.requestCount())
 	}
@@ -478,9 +496,11 @@ func TestGatewayThinkingToolContinuation(t *testing.T) {
 					c, rec := adminProtocolContext("POST", path, string(body))
 					c.Request.Header.Set("x-elysia-session-id", "thinking-tools")
 					if source == protocol.PresetResponsesID {
-						s.responses(c)
+						s.responses(contextForTest(c), c)
+						flushTestResponse(c)
 					} else {
-						s.chatCompletions(c)
+						s.chatCompletions(contextForTest(c), c)
+						flushTestResponse(c)
 					}
 					if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
 						t.Fatalf("%d %s", rec.Code, rec.Body)

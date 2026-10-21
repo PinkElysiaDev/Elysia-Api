@@ -9,9 +9,6 @@ on:
 permissions:
   contents: read
 
-env:
-  GOFLAGS: -tags=sonic
-
 jobs:
   backend:
     runs-on: ubuntu-latest

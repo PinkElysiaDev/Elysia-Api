@@ -63,6 +63,7 @@ func TestPackageBoundaries(t *testing.T) {
 		}
 		imports := make(map[string]string)
 		worker := pkg == "server" && workers[filepath.Base(path)]
+		transportIndependent := pkg == "server" && (filepath.Base(path) == "continuation.go" || filepath.Base(path) == "a2a_server.go")
 		for _, spec := range file.Imports {
 			dependency, err := strconv.Unquote(spec.Path.Value)
 			if err != nil {
@@ -81,8 +82,11 @@ func TestPackageBoundaries(t *testing.T) {
 			if pkg != "." && dependency == "flag" {
 				t.Errorf("%s: command-line parsing belongs to main", path)
 			}
-			if (pkg != "server" || worker) && strings.HasPrefix(dependency, "github.com/gin-gonic/") {
-				t.Errorf("%s: Gin belongs to the HTTP adapter", path)
+			if (pkg != "server" || worker || transportIndependent) && (strings.HasPrefix(dependency, "github.com/cloudwego/hertz/") || strings.HasPrefix(dependency, "github.com/hertz-contrib/")) {
+				t.Errorf("%s: Hertz belongs to the HTTP adapter", path)
+			}
+			if strings.HasPrefix(dependency, "github.com/gin-gonic/") || strings.HasPrefix(dependency, "github.com/gin-contrib/") || dependency == "github.com/cloudwego/hertz/pkg/common/adaptor" {
+				t.Errorf("%s: HTTP adapters must use native Hertz", path)
 			}
 			if pkg == "server" && dependency == "database/sql" {
 				t.Errorf("%s: SQL belongs to storage", path)

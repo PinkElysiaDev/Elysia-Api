@@ -13,8 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
-
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/storage"
 )
@@ -372,14 +370,17 @@ func TestResetSchedulesReclaimAndPreservesNewRequests(t *testing.T) {
 	s.usageRetention = newUsageRetention(s)
 	defer s.usageRetention.shutdown()
 	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/reset", nil)
-	s.resetUsage(c)
+	c := newTestContext(rec)
+	setTestRequest(c, httptest.NewRequest(http.MethodPost, "/reset", nil))
+	s.resetUsage(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"reclaimQueued":true`) {
 		t.Fatalf("reset response: %d %s", rec.Code, rec.Body)
 	}
 	s.recordUsage(&usageRecord{RequestID: "after", StartedAt: time.Now(), StatusCode: 200})
-	waitMaintenance(t, s.usageRetention, func(st retentionStats) bool { return st.State == "completed" && !st.Pending })
+	waitMaintenance(t, s.usageRetention, func(st retentionStats) bool {
+		return st.State == "completed" && !st.Pending
+	})
 	ids := usageIDs(t, s.store)
 	if len(ids) != 1 || !ids["after"] {
 		t.Fatalf("reset/new record boundary: %v", ids)

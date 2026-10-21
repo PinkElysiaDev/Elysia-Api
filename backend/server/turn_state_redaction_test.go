@@ -24,10 +24,12 @@ func TestTurnStateRedactionAcrossLogContainers(t *testing.T) {
 			}
 		}
 	}
-	inner, recorder := newTestGinWriter()
-	capture := newDownstreamCaptureWriter(inner, 54)
+	capture, writer, recorder := newTestStreamCapture(54)
 	for _, chunk := range []string{raw[:25], raw[25:]} {
-		_, _ = capture.WriteString(chunk)
+		_, _ = writer.Write([]byte(chunk))
+	}
+	if err := writer.Flush(); err != nil {
+		t.Fatal(err)
 	}
 	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: 54}}
 	logged := record.finalizeDownstreamBody(capture.downstreamBody())

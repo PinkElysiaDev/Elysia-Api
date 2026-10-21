@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -29,9 +28,10 @@ func TestProviderFailureRetainsCauseWhenUsageTailIsUnsupported(t *testing.T) {
 	groups[0].MaxRetries = 3
 	s := newTestServer(t, groups)
 	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"grp","max_tokens":10,"stream":true,"messages":[{"role":"user","content":"hi"}]}`))
-	s.chatCompletions(c)
+	c := newTestContext(recorder)
+	setTestRequest(c, httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"grp","max_tokens":10,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)))
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	body := recorder.Body.String()
 	if calls.Load() != 1 || strings.Count(body, `"type":"error"`) != 1 || !strings.Contains(body, "synthetic provider overloaded") || recorder.Header().Get(gatewayStreamErrorTrailer) == "" {
 		t.Fatal(calls.Load(), body, recorder.Header())

@@ -8,27 +8,29 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/elysia-api/backend/config"
-	"github.com/gin-gonic/gin"
 )
 
 func claudeModel(name, baseURL string) config.ModelRef {
 	return config.ModelRef{ID: name, Name: name, BaseURL: baseURL, Platform: "anthropic", APIKey: "test-key"}
 }
 
-func messagesRequestContext(body string) (*gin.Context, *httptest.ResponseRecorder) {
+// chatCompletions 用路径后缀判定 inputFormat=Claude。
+func messagesRequestContext(body string) (*app.RequestContext, *httptest.ResponseRecorder) {
 	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
+	c := newTestContext(rec)
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	c.Request = req
-	// chatCompletions 用路径后缀判定 inputFormat=Claude。
-	c.Request.URL.Path = "/v1/messages"
+	setTestRequest(c, req)
+	c.Request.URI().SetPath("/v1/messages")
 	return c, rec
 }
 
 // Claude→Anthropic 同源：应走透传，上游收到的请求体保留客户端原始字段
 // （含 Maheshvara 尚未稳定表达的未知扩展），且 model 被改写为上游模型名。
+// 含 cache_control 与未知扩展字段，验证同协议透传默认保真。
+// cache_control 嵌在 system[0]，透传应保留原始结构。
 func TestChatCompletionsClaudePassthroughPreservesFields(t *testing.T) {
 	var gotBody []byte
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -37,22 +39,18 @@ func TestChatCompletionsClaudePassthroughPreservesFields(t *testing.T) {
 		_, _ = io.WriteString(w, `{"id":"msg_1","type":"message","role":"assistant","model":"upstream-claude","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`)
 	}))
 	defer upstream.Close()
-
 	group := config.ModelGroupConfig{
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 1,
 		Models: []config.ModelRef{claudeModel("upstream-claude", upstream.URL)},
 	}
 	s := newTestServer(t, []config.ModelGroupConfig{group})
-
-	// 含 cache_control 与未知扩展字段，验证同协议透传默认保真。
 	reqBody := `{"model":"grp","max_tokens":64,"system":[{"type":"text","text":"sys","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":"hello"}],"x_future_flag":true}`
 	c, rec := messagesRequestContext(reqBody)
-	s.chatCompletions(c)
-
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-
 	var sent map[string]any
 	if err := sonic.ConfigStd.Unmarshal(gotBody, &sent); err != nil {
 		t.Fatalf("upstream body not JSON: %v (%s)", err, gotBody)
@@ -63,7 +61,6 @@ func TestChatCompletionsClaudePassthroughPreservesFields(t *testing.T) {
 	if _, ok := sent["x_future_flag"]; !ok {
 		t.Errorf("unknown field x_future_flag dropped — passthrough not active")
 	}
-	// cache_control 嵌在 system[0]，透传应保留原始结构。
 	system, ok := sent["system"].([]any)
 	if !ok || len(system) == 0 {
 		t.Fatalf("system field lost: %v", sent["system"])

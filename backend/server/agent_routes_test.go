@@ -13,20 +13,18 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/route/param"
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
-// Agent 端到端：httptest 伪模型（OpenAI chat SSE）× 真 SQLite 会话存储 ×
-// 真 SSE 编码，覆盖「草稿工具 → 终稿」全轮次、门控审批、用量入账。
-
 // agentContextWithID 为带 :id 路由参数的 handler 构造测试上下文。
-func agentContextWithID(method, target, id, body string) (*gin.Context, *httptest.ResponseRecorder) {
+func agentContextWithID(method, target, id, body string) (*app.RequestContext, *httptest.ResponseRecorder) {
 	c, rec := adminProtocolContext(method, target, body)
-	c.Params = gin.Params{{Key: "id", Value: id}}
+	c.Params = param.Params{{Key: "id", Value: id}}
 	return c, rec
 }
 
@@ -38,15 +36,10 @@ func newAgentIntegrationServer(t *testing.T) *Server {
 	if err != nil {
 		t.Fatalf("storage.Open: %v", err)
 	}
-	t.Cleanup(func() { _ = store.Close() })
-	s := &Server{
-		config:                 cfg,
-		engine:                 gin.New(),
-		protocolTransport:      relay.NewProtocolTransport(10 * time.Second),
-		affinity:               newAffinityCache(),
-		store:                  store,
-		skipOutboundValidation: true,
-	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+	s := &Server{config: cfg, engine: newTestEngine(t), protocolTransport: relay.NewProtocolTransport(10 * time.Second), affinity: newAffinityCache(), store: store, skipOutboundValidation: true}
 	t.Cleanup(s.closeCaches)
 	activateDiscoveryPresets(t, s)
 	return s
@@ -169,10 +162,16 @@ func hasAgentEvent(events []agentSSEEvent, eventType string) bool {
 	return false
 }
 
+// 第 1 次调用：elysia_cli 写协议草稿；第 2 次：终稿文本。
+// 建会话 + 设置模型
+// 发消息 → SSE
+// 用量入账：两次模型调用各一条，key_name = AI 助手
+// 会话状态收敛 + 草稿落库
+// draftConfig 是 json.RawMessage，可能被序列化为任意 JSON 类型
+// 消息序列 user → assistant(tool) → tool_result → assistant(终稿)
 func TestAgentFullTurnWithDraftTool(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
-	// 第 1 次调用：elysia_cli 写协议草稿；第 2 次：终稿文本。
 	draftCommand := `{"command":"elysia protocol draft '{\"id\":\"agent-proto\",\"request\":{\"method\":\"POST\",\"path\":\"/v1/x\",\"bodyTemplate\":\"{\\\"model\\\":\\\"{{maheshvara.model}}\\\"}\"}}'"}`
 	fake := newFakeAgentModelServer(t, [][]string{
 		{openAIChunk("c1", map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"index": 0, "id": "call_1", "type": "function", "function": map[string]any{"name": "elysia_cli", "arguments": ""}}}}, "", nil),
@@ -185,10 +184,9 @@ func TestAgentFullTurnWithDraftTool(t *testing.T) {
 			openAIDone()},
 	})
 	seedAgentModel(t, s, fake.URL)
-
-	// 建会话 + 设置模型
 	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
-	s.adminCreateAgentSession(c)
+	s.adminCreateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	created := decodeAdminData(t, rec)
 	sessionID, _ := created["id"].(string)
 	if sessionID == "" {
@@ -196,14 +194,14 @@ func TestAgentFullTurnWithDraftTool(t *testing.T) {
 	}
 	settings := `{"settings":{"modelSourceId":"s1","modelName":"fake-model"}}`
 	c, rec = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID, settings)
-	s.adminUpdateAgentSession(c)
+	s.adminUpdateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("patch settings: %d %s", rec.Code, rec.Body.String())
 	}
-
-	// 发消息 → SSE
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"帮我接入测试协议"}`)
-	s.adminSendAgentMessage(c)
+	s.adminSendAgentMessage(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("send message: %d %s", rec.Code, rec.Body.String())
 	}
@@ -214,11 +212,9 @@ func TestAgentFullTurnWithDraftTool(t *testing.T) {
 			for _, event := range events {
 				types = append(types, event.Type+" "+truncateForDisplay(string(event.Data), 400))
 			}
-
 			t.Fatalf("missing %s event; types=%v first-error=%v", want, types, errorText(events))
 		}
 	}
-	// 用量入账：两次模型调用各一条，key_name = AI 助手
 	_, logs, err := s.store.QueryUsageLogs(t.Context(), storage.UsageQuery{KeyNames: []string{AgentUsageKeyName}, Limit: 10})
 	if err != nil {
 		t.Fatalf("query usage: %v", err)
@@ -232,33 +228,35 @@ func TestAgentFullTurnWithDraftTool(t *testing.T) {
 	if logs[0].RelayMode != agentRelayMode {
 		t.Fatalf("relay mode = %q", logs[0].RelayMode)
 	}
-
-	// 会话状态收敛 + 草稿落库
 	c, rec = agentContextWithID(http.MethodGet, "/api/admin/agent/sessions/"+sessionID, sessionID, "")
-	s.adminGetAgentSession(c)
+	s.adminGetAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	detail := decodeAdminData(t, rec)
 	session := detail["session"].(map[string]any)
 	if session["status"] != "idle" {
 		t.Fatalf("status = %v", session["status"])
 	}
 	if draft, _ := session["draftConfig"].(string); !strings.Contains(draft, "agent-proto") {
-		// draftConfig 是 json.RawMessage，可能被序列化为任意 JSON 类型
 		raw, _ := sonic.ConfigStd.Marshal(session["draftConfig"])
 		if !strings.Contains(string(raw), "agent-proto") {
 			t.Fatalf("draft missing: %v", session["draftConfig"])
 		}
 	}
-	// 消息序列 user → assistant(tool) → tool_result → assistant(终稿)
 	messages := detail["messages"].([]any)
 	if len(messages) != 4 {
 		t.Fatalf("messages = %d", len(messages))
 	}
 }
 
+// 第 1 次：请求 test_upstream（门控）；恢复后第 2 次：终稿。
+// 草稿 + 测试目标：vendor 上游返回 200 JSON
+// 预置草稿（直接写会话状态，走工具路径太长；此处聚焦门控）
+// 会话停在 waiting_approval
+// 批准 → 续跑（工具真实执行：vendor 上游收到请求）→ 终稿。
+// SSE 结果正文经截断，不逐字断言；以事件面与状态为准。
 func TestAgentGatedToolApprovalFlow(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
-	// 第 1 次：请求 test_upstream（门控）；恢复后第 2 次：终稿。
 	fake := newFakeAgentModelServer(t, [][]string{
 		{openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia protocol test"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
@@ -268,29 +266,28 @@ func TestAgentGatedToolApprovalFlow(t *testing.T) {
 			openAIDone()},
 	})
 	seedAgentModel(t, s, fake.URL)
-	// 草稿 + 测试目标：vendor 上游返回 200 JSON
 	vendor := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"answer":{"text":"hi"},"finish":"stop"}`))
 	}))
 	defer vendor.Close()
-
 	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
-	s.adminCreateAgentSession(c)
+	s.adminCreateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	sessionID := decodeAdminData(t, rec)["id"].(string)
 	patch := fmt.Sprintf(`{"settings":{"modelSourceId":"s1","modelName":"fake-model","testBaseUrl":%q},"apiKey":"vendor-key"}`, vendor.URL)
 	c, rec = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID, patch)
-	s.adminUpdateAgentSession(c)
+	s.adminUpdateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("patch: %d %s", rec.Code, rec.Body.String())
 	}
-	// 预置草稿（直接写会话状态，走工具路径太长；此处聚焦门控）
 	if err := s.store.UpdateSessionState(t.Context(), sessionID, stateUpdateWithDraft(json.RawMessage(agentTestConfig("gated-proto")))); err != nil {
 		t.Fatalf("seed draft: %v", err)
 	}
-
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"请测试"}`)
-	s.adminSendAgentMessage(c)
+	s.adminSendAgentMessage(contextForTest(c), c)
+	flushTestResponse(c)
 	events := parseSSEEvents(t, rec.Body.String())
 	if !hasAgentEvent(events, "approval_required") {
 		t.Fatalf("missing approval_required: %s", rec.Body.String())
@@ -298,18 +295,16 @@ func TestAgentGatedToolApprovalFlow(t *testing.T) {
 	if hasAgentEvent(events, "turn_done") {
 		t.Fatalf("paused turn must not emit turn_done")
 	}
-	// 会话停在 waiting_approval
 	c, rec = agentContextWithID(http.MethodGet, "/api/admin/agent/sessions/"+sessionID, sessionID, "")
-	s.adminGetAgentSession(c)
+	s.adminGetAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	session := decodeAdminData(t, rec)["session"].(map[string]any)
 	if session["status"] != "waiting_approval" {
 		t.Fatalf("status = %v", session["status"])
 	}
-
-	// 批准 → 续跑（工具真实执行：vendor 上游收到请求）→ 终稿。
-	// SSE 结果正文经截断，不逐字断言；以事件面与状态为准。
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":true}`)
-	s.adminApproveAgentAction(c)
+	s.adminApproveAgentAction(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
 	}
@@ -318,7 +313,8 @@ func TestAgentGatedToolApprovalFlow(t *testing.T) {
 		t.Fatalf("resume missing events: %s", rec.Body.String())
 	}
 	c, rec = agentContextWithID(http.MethodGet, "/api/admin/agent/sessions/"+sessionID, sessionID, "")
-	s.adminGetAgentSession(c)
+	s.adminGetAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	session = decodeAdminData(t, rec)["session"].(map[string]any)
 	if session["status"] != "idle" {
 		t.Fatalf("status after approve = %v", session["status"])
@@ -327,6 +323,7 @@ func TestAgentGatedToolApprovalFlow(t *testing.T) {
 
 // 审批卡出口：待批命令打码（敏感 flag 不得经 Reason 泄露），同批多个
 // elysia_cli 调用的门控命令全部点名（用户所见即所批）。
+// 同批第二个 elysia_cli 调用的门控命令也在批准面内，必须点名。
 func TestAgentApprovalReasonMaskingAndBatchScope(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
@@ -337,15 +334,16 @@ func TestAgentApprovalReasonMaskingAndBatchScope(t *testing.T) {
 			openAIDone()},
 	})
 	seedAgentModel(t, s, fake.URL)
-
 	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
-	s.adminCreateAgentSession(c)
+	s.adminCreateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	sessionID := decodeAdminData(t, rec)["id"].(string)
 	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID, `{"settings":{"modelSourceId":"s1","modelName":"fake-model"}}`)
-	s.adminUpdateAgentSession(c)
-
+	s.adminUpdateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"配好并清掉旧Key"}`)
-	s.adminSendAgentMessage(c)
+	s.adminSendAgentMessage(contextForTest(c), c)
+	flushTestResponse(c)
 	events := parseSSEEvents(t, rec.Body.String())
 	found := false
 	for _, event := range events {
@@ -360,7 +358,6 @@ func TestAgentApprovalReasonMaskingAndBatchScope(t *testing.T) {
 		if !strings.Contains(body, "--api-key ***") {
 			t.Fatalf("approval reason missing mask: %s", body)
 		}
-		// 同批第二个 elysia_cli 调用的门控命令也在批准面内，必须点名。
 		if !strings.Contains(body, "key delete --name prod-key") {
 			t.Fatalf("approval reason missing later gated command: %s", body)
 		}
@@ -371,6 +368,8 @@ func TestAgentApprovalReasonMaskingAndBatchScope(t *testing.T) {
 }
 
 // 旧版本 PendingAction（工具已下线）批准时明确报过期；拒绝仍可收尾。
+// 批准 → 409 stale_pending（而非静默 unknown_tool 执行失败）。
+// 拒绝 → 正常收尾（合成拒绝结果并续跑模型）。
 func TestAgentStalePendingApprovalRejected(t *testing.T) {
 	t.Parallel()
 	for _, oldName := range []string{"update_model_source", "bash"} {
@@ -392,22 +391,19 @@ func TestAgentStalePendingApprovalRejected(t *testing.T) {
 			if err := s.store.UpdateSessionState(t.Context(), sessionID, agent.SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
 				t.Fatalf("seed pending: %v", err)
 			}
-
-			// 批准 → 409 stale_pending（而非静默 unknown_tool 执行失败）。
 			c, rec := agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":true}`)
-			s.adminApproveAgentAction(c)
+			s.adminApproveAgentAction(contextForTest(c), c)
+			flushTestResponse(c)
 			if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "stale_pending") {
 				t.Fatalf("stale approve = %d %s", rec.Code, rec.Body.String())
 			}
-
 			groups, _ := s.store.ListGroups(t.Context())
 			if len(groups) != 0 || fake.calls.Load() != 0 {
 				t.Fatal("stale approval produced side effects")
 			}
-
-			// 拒绝 → 正常收尾（合成拒绝结果并续跑模型）。
 			c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":false}`)
-			s.adminApproveAgentAction(c)
+			s.adminApproveAgentAction(contextForTest(c), c)
+			flushTestResponse(c)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("deny stale pending = %d %s", rec.Code, rec.Body.String())
 			}
@@ -418,6 +414,7 @@ func TestAgentStalePendingApprovalRejected(t *testing.T) {
 	}
 }
 
+// 协议没有被保存
 func TestAgentDenyApprovalAdapts(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
@@ -430,25 +427,26 @@ func TestAgentDenyApprovalAdapts(t *testing.T) {
 			openAIDone()},
 	})
 	seedAgentModel(t, s, fake.URL)
-
 	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
-	s.adminCreateAgentSession(c)
+	s.adminCreateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	sessionID := decodeAdminData(t, rec)["id"].(string)
 	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID, `{"settings":{"modelSourceId":"s1","modelName":"fake-model"}}`)
-	s.adminUpdateAgentSession(c)
-
+	s.adminUpdateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"保存"}`)
-	s.adminSendAgentMessage(c)
+	s.adminSendAgentMessage(contextForTest(c), c)
+	flushTestResponse(c)
 	if !hasAgentEvent(parseSSEEvents(t, rec.Body.String()), "approval_required") {
 		t.Fatalf("expected approval: %s", rec.Body.String())
 	}
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":false,"note":"等等"}`)
-	s.adminApproveAgentAction(c)
+	s.adminApproveAgentAction(contextForTest(c), c)
+	flushTestResponse(c)
 	events := parseSSEEvents(t, rec.Body.String())
 	if !hasAgentEvent(events, "turn_done") {
 		t.Fatalf("deny must continue turn: %s", rec.Body.String())
 	}
-	// 协议没有被保存
 	rows, _ := s.store.ListProtocolDrafts(t.Context())
 	for _, row := range rows {
 		if strings.Contains(string(row.Definition.Bytes()), "agent-proto") {
@@ -457,47 +455,53 @@ func TestAgentDenyApprovalAdapts(t *testing.T) {
 	}
 }
 
+// 建 → 列表 → 清空消息 → 删除
 func TestAgentSessionLifecycle(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
-	// 建 → 列表 → 清空消息 → 删除
 	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create","title":"生命周期"}`)
-	s.adminCreateAgentSession(c)
+	s.adminCreateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	sessionID := decodeAdminData(t, rec)["id"].(string)
-
 	c, rec = adminProtocolContext(http.MethodGet, "/api/admin/agent/sessions", "")
-	s.listAgentSessionsFiltered(c)
+	s.listAgentSessionsFiltered(contextForTest(c), c)
+	flushTestResponse(c)
 	list := decodeAdminData(t, rec)["items"].([]any)
 	if len(list) != 1 {
 		t.Fatalf("sessions = %d", len(list))
 	}
-
 	if _, err := s.store.AppendMessage(t.Context(), sessionID, "user", map[string]any{"text": "hi"}, "", nil); err != nil {
 		t.Fatalf("append: %v", err)
 	}
 	c, rec = agentContextWithID(http.MethodDelete, "/api/admin/agent/sessions/"+sessionID+"/messages?afterSeq=0", sessionID, "")
-	s.adminClearAgentMessages(c)
+	s.adminClearAgentMessages(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("clear: %d %s", rec.Code, rec.Body.String())
 	}
 	c, rec = agentContextWithID(http.MethodGet, "/api/admin/agent/sessions/"+sessionID, sessionID, "")
-	s.adminGetAgentSession(c)
+	s.adminGetAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	if detail := decodeAdminData(t, rec); len(detail["messages"].([]any)) != 0 {
 		t.Fatalf("messages not cleared")
 	}
-
 	c, rec = agentContextWithID(http.MethodDelete, "/api/admin/agent/sessions/"+sessionID, sessionID, "")
-	s.adminDeleteAgentSession(c)
+	s.adminDeleteAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body.String())
 	}
 	c, rec = agentContextWithID(http.MethodGet, "/api/admin/agent/sessions/"+sessionID, sessionID, "")
-	s.adminGetAgentSession(c)
+	s.adminGetAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("get after delete = %d", rec.Code)
 	}
 }
 
+// OpenAI chat 线的思考映射为 reasoning_effort 原样档位。
+// 系统提示词与工具定义进入请求体（elysia_cli 是模型可见的操作入口；旧工具
+// 名不得再出现在提示词指令里）。
 func TestAgentThinkingSettingsMappedToRequest(t *testing.T) {
 	t.Parallel()
 	for _, effort := range []string{"high", "xhigh"} {
@@ -509,26 +513,23 @@ func TestAgentThinkingSettingsMappedToRequest(t *testing.T) {
 					openAIDone()},
 			})
 			seedAgentModel(t, s, fake.URL)
-
 			c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
-			s.adminCreateAgentSession(c)
+			s.adminCreateAgentSession(contextForTest(c), c)
+			flushTestResponse(c)
 			sessionID := decodeAdminData(t, rec)["id"].(string)
-			c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID,
-				fmt.Sprintf(`{"settings":{"modelSourceId":"s1","modelName":"fake-model","thinkingEnabled":true,"thinkingEffort":%q}}`, effort))
-			s.adminUpdateAgentSession(c)
-
+			c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID, fmt.Sprintf(`{"settings":{"modelSourceId":"s1","modelName":"fake-model","thinkingEnabled":true,"thinkingEffort":%q}}`, effort))
+			s.adminUpdateAgentSession(contextForTest(c), c)
+			flushTestResponse(c)
 			c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"hi"}`)
-			s.adminSendAgentMessage(c)
+			s.adminSendAgentMessage(contextForTest(c), c)
+			flushTestResponse(c)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("send: %d %s", rec.Code, rec.Body.String())
 			}
-			// OpenAI chat 线的思考映射为 reasoning_effort 原样档位。
 			want := fmt.Sprintf(`"reasoning_effort":%q`, effort)
 			if len(fake.bodies) == 0 || !strings.Contains(fake.bodies[0], want) {
 				t.Fatalf("reasoning_effort not mapped: want %s in %v", want, fake.bodies)
 			}
-			// 系统提示词与工具定义进入请求体（elysia_cli 是模型可见的操作入口；旧工具
-			// 名不得再出现在提示词指令里）。
 			if !strings.Contains(fake.bodies[0], `"elysia_cli"`) || strings.Contains(fake.bodies[0], `"bash"`) {
 				t.Fatalf("tools not sent: %v", fake.bodies)
 			}
@@ -548,17 +549,15 @@ func TestAgentThinkingEffortWhitelist(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 	sessionID := created.ID
-
-	c, rec := agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID,
-		`{"settings":{"thinkingEffort":"ultra"}}`)
-	s.adminUpdateAgentSession(c)
+	c, rec := agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID, `{"settings":{"thinkingEffort":"ultra"}}`)
+	s.adminUpdateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "invalid_effort") {
 		t.Fatalf("unknown effort = %d %s", rec.Code, rec.Body.String())
 	}
-
-	c, rec = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID,
-		`{"settings":{"thinkingEffort":"xhigh"}}`)
-	s.adminUpdateAgentSession(c)
+	c, rec = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID, `{"settings":{"thinkingEffort":"xhigh"}}`)
+	s.adminUpdateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("xhigh patch = %d %s", rec.Code, rec.Body.String())
 	}
@@ -591,6 +590,7 @@ func stateUpdateWithDraft(draft json.RawMessage) agent.SessionStateUpdate {
 }
 
 // 通用运维工具的全链路：模型发起 list_model_groups 工具调用并落终稿。
+// 只读工具不应触发审批
 func TestAgentFullTurnWithOpsTool(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
@@ -603,20 +603,20 @@ func TestAgentFullTurnWithOpsTool(t *testing.T) {
 			openAIDone()},
 	})
 	seedAgentModel(t, s, fake.URL)
-
 	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
-	s.adminCreateAgentSession(c)
+	s.adminCreateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	sessionID := decodeAdminData(t, rec)["id"].(string)
 	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID, `{"settings":{"modelSourceId":"s1","modelName":"fake-model"}}`)
-	s.adminUpdateAgentSession(c)
-
+	s.adminUpdateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"现在有哪些模型组"}`)
-	s.adminSendAgentMessage(c)
+	s.adminSendAgentMessage(contextForTest(c), c)
+	flushTestResponse(c)
 	events := parseSSEEvents(t, rec.Body.String())
 	if !hasAgentEvent(events, "tool_call") || !hasAgentEvent(events, "tool_result") || !hasAgentEvent(events, "turn_done") {
 		t.Fatalf("ops tool events missing: %s", truncateForDisplay(rec.Body.String(), 1200))
 	}
-	// 只读工具不应触发审批
 	if hasAgentEvent(events, "approval_required") {
 		t.Fatalf("read-only tool must not require approval")
 	}
@@ -625,11 +625,21 @@ func TestAgentFullTurnWithOpsTool(t *testing.T) {
 // elysia_cli 全链运维 e2e：空清单补救文案 → 批处理建组（失败回退策略）+ 建指定
 // 明文的 Key（审批暂停）→ 批准续跑 → 验证组与 Key 落库。锁住提示词重构
 // 后模型可见的运行时行为（空结果指引、明文照建、策略语义、审批面）。
+// 预置两个源：s0 空（测空清单补救文案）、s1 带手动模型 m1。
+// 第 1 轮：查空源模型清单
+// 第 2 轮：批处理建组（失败回退）+ 建指定明文 Key → 触发审批暂停
+// 第 3 轮：验证
+// 终稿
+// 第 1 轮结果：空清单补救文案进对话。
+// 批内逐命令进度：tool_progress 事件带 Text（第 N/M 条 + 脱敏命令），
+// 前端据此实时显示执行到哪条命令。
+// 批准 → 批处理执行 → 验证轮 → 终稿。
+// 组：名称/策略/成员。
+// Key：明文按给定值创建、组限定正确。
 func TestAgentCLIOpsChainE2E(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	ctx := t.Context()
-	// 预置两个源：s0 空（测空清单补救文案）、s1 带手动模型 m1。
 	if err := s.store.UpsertSource(ctx, storage.ModelSource{ID: "s0", Name: "空源", BaseURL: "https://s0.example", Platform: "openai", Enabled: true}); err != nil {
 		t.Fatalf("seed s0: %v", err)
 	}
@@ -637,38 +647,36 @@ func TestAgentCLIOpsChainE2E(t *testing.T) {
 		ManualModels: []storage.Model{{SourceID: "s1", Name: "m1"}}}); err != nil {
 		t.Fatalf("seed s1: %v", err)
 	}
-
 	fake := newFakeAgentModelServer(t, [][]string{
-		{ // 第 1 轮：查空源模型清单
+		{
 			openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia model ls --source s0"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
-		{ // 第 2 轮：批处理建组（失败回退）+ 建指定明文 Key → 触发审批暂停
+		{
 			openAIChunk("c2", toolCallDelta(0, "call_2", "elysia_cli", `{"command":"elysia group create --name test123 --models s1:m1 --strategy sequential ; elysia key create --name k1 --secret 123 --allowed-groups test123"}`), "", nil),
 			openAIChunk("c2", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
-		{ // 第 3 轮：验证
+		{
 			openAIChunk("c3", toolCallDelta(0, "call_3", "elysia_cli", `{"command":"elysia group ls | grep test123 && elysia key ls"}`), "", nil),
 			openAIChunk("c3", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
-		{ // 终稿
+		{
 			openAIChunk("c4", map[string]any{"role": "assistant", "content": "组与 Key 已建好"}, "", nil),
 			openAIChunk("c4", map[string]any{}, "stop", nil),
 			openAIDone()},
 	})
 	seedAgentModel(t, s, fake.URL)
-
 	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
-	s.adminCreateAgentSession(c)
+	s.adminCreateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	sessionID := decodeAdminData(t, rec)["id"].(string)
-	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID,
-		`{"settings":{"modelSourceId":"s1","modelName":"fake-model"}}`)
-	s.adminUpdateAgentSession(c)
-
+	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID, `{"settings":{"modelSourceId":"s1","modelName":"fake-model"}}`)
+	s.adminUpdateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"建组建Key"}`)
-	s.adminSendAgentMessage(c)
+	s.adminSendAgentMessage(contextForTest(c), c)
+	flushTestResponse(c)
 	events := parseSSEEvents(t, rec.Body.String())
-	// 第 1 轮结果：空清单补救文案进对话。
 	foundEmptyHint := false
 	for _, event := range events {
 		if event.Type == "tool_result" && strings.Contains(string(event.Data), "本地缓存清单为空") {
@@ -681,8 +689,6 @@ func TestAgentCLIOpsChainE2E(t *testing.T) {
 	if !hasAgentEvent(events, "approval_required") {
 		t.Fatalf("batch must pause for approval: %s", rec.Body.String())
 	}
-	// 批内逐命令进度：tool_progress 事件带 Text（第 N/M 条 + 脱敏命令），
-	// 前端据此实时显示执行到哪条命令。
 	progressTexts := []string{}
 	for _, event := range events {
 		if event.Type == "tool_progress" {
@@ -693,10 +699,9 @@ func TestAgentCLIOpsChainE2E(t *testing.T) {
 	if !strings.Contains(joined, `"text":"正在执行（1/1）：elysia model ls --source s0"`) {
 		t.Fatalf("per-command progress missing: %s", joined)
 	}
-
-	// 批准 → 批处理执行 → 验证轮 → 终稿。
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":true}`)
-	s.adminApproveAgentAction(c)
+	s.adminApproveAgentAction(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
 	}
@@ -704,8 +709,6 @@ func TestAgentCLIOpsChainE2E(t *testing.T) {
 	if !hasAgentEvent(events, "turn_done") {
 		t.Fatalf("turn must finish: %s", rec.Body.String())
 	}
-
-	// 组：名称/策略/成员。
 	groups, _ := s.store.ListGroups(ctx)
 	var group *storage.ModelGroup
 	for i := range groups {
@@ -716,7 +719,6 @@ func TestAgentCLIOpsChainE2E(t *testing.T) {
 	if group == nil || group.Strategy != "sequential" || len(group.Models) != 1 || group.Models[0] != "s1:m1" {
 		t.Fatalf("group wrong: %+v", group)
 	}
-	// Key：明文按给定值创建、组限定正确。
 	token, ok, err := s.store.FindAPITokenByName(ctx, "k1")
 	if err != nil || !ok {
 		t.Fatalf("key k1 missing: %v %v", ok, err)
@@ -732,50 +734,58 @@ func TestAgentCLIOpsChainE2E(t *testing.T) {
 // 计划模式全链：只读批放行 → 混合批被拒且点名被拒命令与只读连带提示 →
 // 按提示拆分重发只读批成功 → update_plan 定稿暂停 → 用户确认关闭计划模式
 // → 写入批走 save 审批 → 批准建成。锁住模型在计划模式下的自救闭环。
+// 第 1 轮：纯只读批 → 计划模式下放行
+// 第 2 轮：混合批（只读 + 门控 refresh）→ 整批拒绝，文案点名
+// 第 3 轮：按提示拆分，重发纯只读 → 成功
+// 第 4 轮：方案定稿 → plan 型暂停
+// 第 5 轮（方案确认后）：写入 → save 审批暂停
+// 终稿
+// 开计划模式 + 配模型
+// 第 1 轮：只读放行；第 2 轮：混合批拒绝 → 第 4 轮方案暂停（两次流）。
+// plan 型暂停
+// 确认方案 → 关闭计划模式 → 第 5 轮写入触发 save 审批。
+// 批准写入 → 组建成。
 func TestAgentPlanModeReadOnlySelfRescueE2E(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
-		{ // 第 1 轮：纯只读批 → 计划模式下放行
+		{
 			openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia source ls"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
-		{ // 第 2 轮：混合批（只读 + 门控 refresh）→ 整批拒绝，文案点名
+		{
 			openAIChunk("c2", toolCallDelta(0, "call_2", "elysia_cli", `{"command":"elysia model ls --source s1 ; elysia source refresh --source s1"}`), "", nil),
 			openAIChunk("c2", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
-		{ // 第 3 轮：按提示拆分，重发纯只读 → 成功
+		{
 			openAIChunk("c3", toolCallDelta(0, "call_3", "elysia_cli", `{"command":"elysia model ls --source s1"}`), "", nil),
 			openAIChunk("c3", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
-		{ // 第 4 轮：方案定稿 → plan 型暂停
+		{
 			openAIChunk("c4", toolCallDelta(0, "call_4", "update_plan", `{"analysis":"源与模型清单已确认","plan":[{"title":"建组 plan-e2e","status":"pending"}],"ready_for_approval":true}`), "", nil),
 			openAIChunk("c4", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
-		{ // 第 5 轮（方案确认后）：写入 → save 审批暂停
+		{
 			openAIChunk("c5", toolCallDelta(0, "call_5", "elysia_cli", `{"command":"elysia group create --name plan-e2e --models s1:fake-model"}`), "", nil),
 			openAIChunk("c5", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
-		{ // 终稿
+		{
 			openAIChunk("c6", map[string]any{"role": "assistant", "content": "已建成"}, "", nil),
 			openAIChunk("c6", map[string]any{}, "stop", nil),
 			openAIDone()},
 	})
 	seedAgentModel(t, s, fake.URL)
-
 	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
-	s.adminCreateAgentSession(c)
+	s.adminCreateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	sessionID := decodeAdminData(t, rec)["id"].(string)
-	// 开计划模式 + 配模型
-	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID,
-		`{"settings":{"modelSourceId":"s1","modelName":"fake-model","planMode":true}}`)
-	s.adminUpdateAgentSession(c)
-
-	// 第 1 轮：只读放行；第 2 轮：混合批拒绝 → 第 4 轮方案暂停（两次流）。
+	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID, `{"settings":{"modelSourceId":"s1","modelName":"fake-model","planMode":true}}`)
+	s.adminUpdateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"帮我建组"}`)
-	s.adminSendAgentMessage(c)
+	s.adminSendAgentMessage(contextForTest(c), c)
+	flushTestResponse(c)
 	events := parseSSEEvents(t, rec.Body.String())
-
 	results := ""
 	for _, event := range events {
 		if event.Type == "tool_result" {
@@ -791,7 +801,6 @@ func TestAgentPlanModeReadOnlySelfRescueE2E(t *testing.T) {
 	if !strings.Contains(results, "fake-model") {
 		t.Fatalf("resplit read-only batch must return models: %s", results)
 	}
-	// plan 型暂停
 	pausedForPlan := false
 	for _, event := range events {
 		if event.Type == "approval_required" && strings.Contains(string(event.Data), `"kind":"plan"`) {
@@ -801,10 +810,9 @@ func TestAgentPlanModeReadOnlySelfRescueE2E(t *testing.T) {
 	if !pausedForPlan {
 		t.Fatalf("ready_for_approval must pause with plan pending: %s", rec.Body.String())
 	}
-
-	// 确认方案 → 关闭计划模式 → 第 5 轮写入触发 save 审批。
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":true}`)
-	s.adminApproveAgentAction(c)
+	s.adminApproveAgentAction(contextForTest(c), c)
+	flushTestResponse(c)
 	events = parseSSEEvents(t, rec.Body.String())
 	if !hasAgentEvent(events, "approval_required") {
 		t.Fatalf("write after plan approval must pause on save: %s", rec.Body.String())
@@ -813,10 +821,9 @@ func TestAgentPlanModeReadOnlySelfRescueE2E(t *testing.T) {
 	if session.Settings.PlanMode {
 		t.Fatal("plan mode must be off after plan approval")
 	}
-
-	// 批准写入 → 组建成。
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":true}`)
-	s.adminApproveAgentAction(c)
+	s.adminApproveAgentAction(contextForTest(c), c)
+	flushTestResponse(c)
 	events = parseSSEEvents(t, rec.Body.String())
 	if !hasAgentEvent(events, "turn_done") {
 		t.Fatalf("turn must finish: %s", rec.Body.String())
@@ -836,35 +843,37 @@ func TestAgentPlanModeReadOnlySelfRescueE2E(t *testing.T) {
 // 停止链路 e2e（真 SQLite）：模型流式中 POST /stop → 后端同步收尾且
 // 落库成功（状态回 idle、「轮次已停止」系统消息可查）——收尾写库走
 // WithoutCancel，不再随轮次取消一起失败。
+// 伪模型：第一块响应后挂住不结束（模拟长流），靠 stop 的 ctx 取消断开。
+// 客户端断开（stop 取消出站请求）才结束
+// 异步发消息开轮次（SSE 流会挂住直到停止）。
+// 等轮次真正跑起来（DB 状态 running）。
+// 收尾落库成功：状态回 idle + 「轮次已停止」系统消息存在。
 func TestAgentStopTurnLandsIdleAndMessage(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
-	// 伪模型：第一块响应后挂住不结束（模拟长流），靠 stop 的 ctx 取消断开。
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher := w.(http.Flusher)
 		w.Header().Set("Content-Type", "text/event-stream")
 		payload := `{"choices":[{"delta":{"role":"assistant","content":"正在"}}]}`
 		fmt.Fprint(w, "data: "+payload+"\n\n")
 		flusher.Flush()
-		<-r.Context().Done() // 客户端断开（stop 取消出站请求）才结束
+		<-r.Context().Done()
 	}))
 	defer fake.Close()
 	seedAgentModel(t, s, fake.URL)
-
 	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
-	s.adminCreateAgentSession(c)
+	s.adminCreateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	sessionID := decodeAdminData(t, rec)["id"].(string)
-	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID,
-		`{"settings":{"modelSourceId":"s1","modelName":"fake-model"}}`)
-	s.adminUpdateAgentSession(c)
-
-	// 异步发消息开轮次（SSE 流会挂住直到停止）。
+	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID, `{"settings":{"modelSourceId":"s1","modelName":"fake-model"}}`)
+	s.adminUpdateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	go func() {
 		c, rec := agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"慢点答"}`)
-		s.adminSendAgentMessage(c)
+		s.adminSendAgentMessage(contextForTest(c), c)
+		flushTestResponse(c)
 		_ = rec
 	}()
-	// 等轮次真正跑起来（DB 状态 running）。
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		session, err := s.store.GetSession(t.Context(), sessionID)
@@ -876,14 +885,12 @@ func TestAgentStopTurnLandsIdleAndMessage(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/stop", sessionID, "")
-	s.adminStopAgentTurn(c)
+	s.adminStopAgentTurn(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("stop: %d %s", rec.Code, rec.Body.String())
 	}
-
-	// 收尾落库成功：状态回 idle + 「轮次已停止」系统消息存在。
 	deadline = time.Now().Add(5 * time.Second)
 	var session *agent.Session
 	for {
@@ -910,6 +917,11 @@ func TestAgentStopTurnLandsIdleAndMessage(t *testing.T) {
 
 // key create 的明文「仅此一次」：现场 tool_result 事件携带原值交付，落库的
 // 会话消息按值打码——明文不得永久进入会话历史并逐轮回传模型。
+// 发起建 Key（指定明文）→ 审批暂停
+// 终稿
+// 现场事件：明文原值交付一次。
+// 落库的 tool_result 消息：明文按值打码。（assistant 消息里模型自发的
+// 命令原文是既有语义——模型是命令作者，原文本就在其上下文中。）
 func TestAgentKeyCreateSecretOnlyInLiveEvent(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
@@ -919,40 +931,38 @@ func TestAgentKeyCreateSecretOnlyInLiveEvent(t *testing.T) {
 		t.Fatalf("seed s1: %v", err)
 	}
 	fake := newFakeAgentModelServer(t, [][]string{
-		{ // 发起建 Key（指定明文）→ 审批暂停
+		{
 			openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia key create --name smoke-key --secret sk-live-abc123"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
-		{ // 终稿
+		{
 			openAIChunk("c2", map[string]any{"role": "assistant", "content": "Key 已建好"}, "", nil),
 			openAIChunk("c2", map[string]any{}, "stop", nil),
 			openAIDone()},
 	})
 	seedAgentModel(t, s, fake.URL)
-
 	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
-	s.adminCreateAgentSession(c)
+	s.adminCreateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	sessionID := decodeAdminData(t, rec)["id"].(string)
-	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID,
-		`{"settings":{"modelSourceId":"s1","modelName":"fake-model"}}`)
-	s.adminUpdateAgentSession(c)
-
+	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID, `{"settings":{"modelSourceId":"s1","modelName":"fake-model"}}`)
+	s.adminUpdateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"帮我建个 Key"}`)
-	s.adminSendAgentMessage(c)
+	s.adminSendAgentMessage(contextForTest(c), c)
+	flushTestResponse(c)
 	if !hasAgentEvent(parseSSEEvents(t, rec.Body.String()), "approval_required") {
 		t.Fatalf("key create must pause for approval: %s", rec.Body.String())
 	}
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":true}`)
-	s.adminApproveAgentAction(c)
+	s.adminApproveAgentAction(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
 	}
-	// 现场事件：明文原值交付一次。
 	if !strings.Contains(rec.Body.String(), "sk-live-abc123") {
 		t.Fatalf("live tool_result must carry the secret once: %s", truncateForDisplay(rec.Body.String(), 800))
 	}
-	// 落库的 tool_result 消息：明文按值打码。（assistant 消息里模型自发的
-	// 命令原文是既有语义——模型是命令作者，原文本就在其上下文中。）
 	messages, err := s.store.ListMessages(ctx, sessionID)
 	if err != nil {
 		t.Fatalf("list messages: %v", err)

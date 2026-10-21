@@ -14,7 +14,8 @@ func TestCountTokensDoesNotRequireGenerationBudget(t *testing.T) {
 		`{"model":"m","system":"follow policy","messages":[{"role":"user","content":"hello"}],"tools":[{"name":"lookup","input_schema":{"type":"object"}}]}`,
 	} {
 		context, recorder := messagesRequestContext(body)
-		s.countTokens(context)
+		s.countTokens(contextForTest(context), context)
+		flushTestResponse(context)
 		var count struct {
 			InputTokens int `json:"input_tokens"`
 		}
@@ -22,7 +23,8 @@ func TestCountTokensDoesNotRequireGenerationBudget(t *testing.T) {
 			t.Fatal("input-only estimate includes a generation budget", recorder.Code, recorder.Body)
 		}
 		context, recorder = messagesRequestContext(body)
-		s.chatCompletions(context)
+		s.chatCompletions(contextForTest(context), context)
+		flushTestResponse(context)
 		if recorder.Code == http.StatusOK {
 			t.Fatal("generation accepted a missing budget")
 		}
@@ -32,7 +34,8 @@ func TestCountTokensDoesNotRequireGenerationBudget(t *testing.T) {
 func TestCountTokensRejectsUnboundScopedPayload(t *testing.T) {
 	s := newTestServer(t, nil)
 	context, recorder := messagesRequestContext(`{"model":"m","messages":[{"role":"assistant","content":[{"type":"redacted_thinking","data":"opaque"}]}]}`)
-	s.countTokens(context)
+	s.countTokens(contextForTest(context), context)
+	flushTestResponse(context)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatal("scoped encrypted payload accepted without provenance", recorder.Code, recorder.Body)
 	}

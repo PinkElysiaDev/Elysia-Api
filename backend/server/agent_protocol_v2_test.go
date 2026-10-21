@@ -72,7 +72,8 @@ func TestAgentProtocolV2SimulatedAuthorRepairAndEnable(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, rec := agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+session.ID+"/messages", session.ID, `{"content":"Create and enable the supplied text-only protocol; fix the wrong input path without changing its capability."}`)
-	s.adminSendAgentMessage(c)
+	s.adminSendAgentMessage(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != 200 {
 		t.Fatalf("%d: %s", rec.Code, rec.Body)
 	}
@@ -91,13 +92,18 @@ func TestAgentProtocolV2SimulatedAuthorRepairAndEnable(t *testing.T) {
 }
 
 func (ctx *protocolAuthorContext) Draft() json.RawMessage { return ctx.draft }
+
 func (ctx *protocolAuthorContext) SetDraft(raw json.RawMessage) error {
 	ctx.draft = append(json.RawMessage(nil), raw...)
 	return nil
 }
-func (ctx *protocolAuthorContext) EditProtocolID() string       { return ctx.edit }
-func (*protocolAuthorContext) ReportProgress(string)            {}
+
+func (ctx *protocolAuthorContext) EditProtocolID() string { return ctx.edit }
+
+func (*protocolAuthorContext) ReportProgress(string) {}
+
 func (ctx *protocolAuthorContext) TestTarget() (string, string) { return ctx.baseURL, ctx.key }
+
 func (ctx *protocolAuthorContext) SetTestTarget(url, key string) error {
 	ctx.baseURL, ctx.key = url, key
 	return nil

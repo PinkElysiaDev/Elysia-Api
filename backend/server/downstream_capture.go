@@ -1,35 +1,23 @@
 package server
 
 import (
-	"net/http"
+	"github.com/cloudwego/hertz/pkg/app"
+	hprotocol "github.com/cloudwego/hertz/pkg/protocol"
 
 	"github.com/elysia-api/backend/config"
-	"github.com/gin-gonic/gin"
 )
 
-// downstreamCaptureWriter 包裹 gin.ResponseWriter，把所有写回下游客户端的字节
-// tee 一份到封顶 buffer，用于 usage 日志的第四段「返回下游」内容捕获。
-//
-// 它内嵌 gin.ResponseWriter 接口，因此 Flush/Status/Header/Hijack 等方法自动透传，
-// 只覆盖 Write/WriteString 累积字节。buffer 封顶 limit（由日志配置决定：外置
-// 开启时给媒体内容留 8MiB 余量，物化后再外置+截断；limit<=0 时不捕获），
-// 超出仅丢弃多余部分并置 truncated（不影响实际写出给客户端的内容）。
-type downstreamCaptureWriter struct {
-	gin.ResponseWriter
+// Capture bounded downstream bytes. Buffered responses are read at settlement;
+// native streaming writes tee directly into this request-owned capture.
+type downstreamCapture struct {
+	response  *hprotocol.Response
+	streaming bool
 	buf       []byte
 	limit     int
 	truncated bool
 }
 
-func newDownstreamCaptureWriter(inner gin.ResponseWriter, limit int) *downstreamCaptureWriter {
-	return &downstreamCaptureWriter{ResponseWriter: inner, limit: limit}
-}
-
-func (w *downstreamCaptureWriter) Unwrap() http.ResponseWriter {
-	return w.ResponseWriter
-}
-
-func (w *downstreamCaptureWriter) capture(data []byte) {
+func (w *downstreamCapture) capture(data []byte) {
 	if w.limit <= 0 || w.truncated {
 		return
 	}
@@ -46,20 +34,14 @@ func (w *downstreamCaptureWriter) capture(data []byte) {
 	w.buf = append(w.buf, data...)
 }
 
-func (w *downstreamCaptureWriter) Write(data []byte) (int, error) {
-	w.capture(data)
-	return w.ResponseWriter.Write(data)
-}
-
-func (w *downstreamCaptureWriter) WriteString(s string) (int, error) {
-	w.capture([]byte(s))
-	return w.ResponseWriter.WriteString(s)
-}
-
 // downstreamBody 返回已捕获的下游响应体，作为 usageBody（content 已是最终写出的
 // 原始字节；这里不做 JSON 脱敏，因为下游响应通常不含上游密钥，且需保留原文供导出。
 // 媒体外置与最终截断在 recordUsage 物化后经 finalizeDownstreamBody 统一处理）。
-func (w *downstreamCaptureWriter) downstreamBody() usageBody {
+func (w *downstreamCapture) downstreamBody() usageBody {
+	if w.response != nil && !w.streaming {
+		w.buf, w.truncated = nil, false
+		w.capture(w.response.Body())
+	}
 	return usageBody{Content: string(w.buf), Truncated: w.truncated}
 }
 
@@ -80,19 +62,21 @@ func downstreamCaptureLimit(cfg config.UsageLogResolved) int {
 	return limit
 }
 
-// installDownstreamCapture 在 relay 入口处用 capture writer 包裹 gin 的 ResponseWriter，
-// 并把它登记到 usageRecord 上。后续 recordUsage 会统一回读捕获的下游响应体。
-// 返回的 writer 已替换 c.Writer；若已是 capture writer 则复用（幂等）。
-func installDownstreamCapture(c *gin.Context, record *usageRecord, limit int) *downstreamCaptureWriter {
+// installDownstreamCapture registers the request's capture with its usage record.
+func installDownstreamCapture(c *app.RequestContext, record *usageRecord, limit int) *downstreamCapture {
 	if record == nil {
 		return nil
 	}
-	if existing, ok := c.Writer.(*downstreamCaptureWriter); ok {
-		record.downstream = existing
-		return existing
+	if existing, ok := c.Get("downstreamCapture"); ok {
+		record.downstream = existing.(*downstreamCapture)
+		return record.downstream
 	}
-	capture := newDownstreamCaptureWriter(c.Writer, limit)
-	c.Writer = capture
+	capture := &downstreamCapture{response: &c.Response, limit: limit}
+	c.Set("downstreamCapture", capture)
+	if stream := currentResponseStream(c); stream != nil {
+		stream.capture = capture
+		capture.streaming = true
+	}
 	record.downstream = capture
 	return capture
 }

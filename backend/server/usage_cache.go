@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/url"
 	"slices"
@@ -10,7 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/maypok86/otter/v2"
 	"golang.org/x/sync/singleflight"
 )
@@ -59,19 +61,20 @@ func (c *usageResponseCache) cache() *otter.Cache[string, *usageCacheEntry] {
 	return c.entries.Load()
 }
 
-func (c *usageResponseCache) middleware() gin.HandlerFunc {
+func (c *usageResponseCache) middleware() app.HandlerFunc {
 	return c.handle
 }
 
-func (c *usageResponseCache) handle(gc *gin.Context) {
-	if gc.Request.Method != http.MethodGet {
-		gc.Next()
+func (c *usageResponseCache) handle(ctx context.Context, gc *app.RequestContext) {
+	if string(gc.Method()) != http.MethodGet {
+		gc.Next(ctx)
 		return
 	}
-	key := usageCacheKey(gc.Request.URL)
+	u, _ := url.Parse(string(gc.Request.URI().RequestURI()))
+	key := usageCacheKey(u)
 	entries := c.cache()
 	if entries == nil {
-		gc.Next()
+		gc.Next(ctx)
 		return
 	}
 	gen := c.gen.Load()
@@ -81,8 +84,7 @@ func (c *usageResponseCache) handle(gc *gin.Context) {
 		return
 	}
 
-	// Do runs the leader inline: Gin's context/writer stay on their request
-	// goroutine, and panics reach gin.Recovery for both leader and waiters.
+	// Run the leader inline; the request context stays on its owning goroutine.
 	handled := false
 	value, _, _ := c.flights.Do(strconv.FormatUint(gen, 10)+":"+key, func() (any, error) {
 		if c.gen.Load() != gen {
@@ -94,16 +96,12 @@ func (c *usageResponseCache) handle(gc *gin.Context) {
 		}
 
 		handled = true
-		rec := &usageCacheRecorder{ResponseWriter: gc.Writer}
-		rec.buf.Grow(512)
-		gc.Writer = rec
-		defer func() { gc.Writer = rec.ResponseWriter }()
-		gc.Next()
+		gc.Next(ctx)
 
 		entry := &usageCacheEntry{
-			body:        rec.buf.Bytes(),
-			contentType: rec.Header().Get("Content-Type"),
-			statusCode:  rec.Status(),
+			body:        bytes.Clone(gc.Response.Body()),
+			contentType: string(gc.Response.Header.ContentType()),
+			statusCode:  gc.Response.StatusCode(),
 		}
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -122,10 +120,10 @@ func (c *usageResponseCache) handle(gc *gin.Context) {
 		return
 	}
 	// Failed or invalidated flights are not replayed to other requests.
-	gc.Next()
+	gc.Next(ctx)
 }
 
-func serveUsageCacheEntry(gc *gin.Context, e *usageCacheEntry) {
+func serveUsageCacheEntry(gc *app.RequestContext, e *usageCacheEntry) {
 	gc.Data(e.statusCode, e.contentType, e.body)
 }
 
@@ -148,23 +146,6 @@ func (c *usageResponseCache) close() {
 	if entries != nil {
 		entries.StopAllGoroutines()
 	}
-}
-
-// usageCacheRecorder 捕获写入的响应字节，同时保持原 writer 行为（状态码、
-// header 均由内嵌 writer 维护）。
-type usageCacheRecorder struct {
-	gin.ResponseWriter
-	buf bytes.Buffer
-}
-
-func (r *usageCacheRecorder) Write(b []byte) (int, error) {
-	r.buf.Write(b)
-	return r.ResponseWriter.Write(b)
-}
-
-func (r *usageCacheRecorder) WriteString(s string) (int, error) {
-	r.buf.WriteString(s)
-	return r.ResponseWriter.WriteString(s)
 }
 
 // usageCacheKey 以 path + 排序后的 query 生成缓存键：参数顺序不同

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/internal/admission"
 )
@@ -30,6 +31,7 @@ type conversionHTTPAddress struct {
 	URL, Metrics string
 	PID          int
 }
+
 type conversionHTTPMetrics struct {
 	Preparation                                           admission.Stats
 	Allocated, Heap, PeakHeap, WorkingSet, PeakWorkingSet uint64
@@ -191,6 +193,11 @@ func startConversionHTTPChild(t *testing.T, role, upstream string) conversionHTT
 	return conversionHTTPAddress{}
 }
 
+// Test-only policy selection for same-binary admission/memory attribution.
+// The normal runner clears these fixture variables before every scenario.
+// Unlike drain, settle leaves the writer and its buffers alive. Memory
+// recovery measurements must observe the normal long-lived service.
+// A reset overtook this sample; do not mix windows.
 func TestConversionHTTPProcess(t *testing.T) {
 	role := os.Getenv("ELYSIA_CONVERSION_HTTP_ROLE")
 	if role == "" {
@@ -206,11 +213,16 @@ func TestConversionHTTPProcess(t *testing.T) {
 	var preparationStats func() admission.Stats
 	var completed atomic.Int64
 	var calls atomic.Int64
-	var gateway *httptest.Server
+	var gatewayURL string
+	var closeGateway func()
 	if role == "provider" {
+		var gateway *httptest.Server
 		if targetID := os.Getenv("ELYSIA_FLAME_TARGET"); targetID != "" {
 			handler := flameMatrixProvider(t, flameMatrixProtocol(t, targetID))
-			gateway = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); handler.ServeHTTP(w, r) }))
+			gateway = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				handler.ServeHTTP(w, r)
+			}))
 		} else {
 			gateway = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
@@ -271,21 +283,33 @@ func TestConversionHTTPProcess(t *testing.T) {
 				}
 			}))
 		}
+		gatewayURL, closeGateway = gateway.URL, gateway.Close
 	} else if role == "gateway" {
 		group := config.ModelGroupConfig{ID: "g", Name: "grp", Enabled: true, Strategy: "round-robin", Models: []config.ModelRef{{ID: "m", Name: "m", BaseURL: os.Getenv("ELYSIA_CONVERSION_HTTP_UPSTREAM"), Platform: "claude", APIKey: "synthetic", ToolsCapable: true, VisionCapable: true}}}
 		if targetID := os.Getenv("ELYSIA_FLAME_TARGET"); targetID != "" {
 			group.Models[0].Platform = "custom:" + targetID
 			group.Models[0].BaseURL = loadBase(group.Models[0].BaseURL, flameMatrixProtocol(t, targetID))
 		}
-
 		for index := 1; index < candidates; index++ {
 			model := group.Models[0]
 			model.ID = fmt.Sprintf("m%d", index)
 			group.Models = append(group.Models, model)
 		}
 		server := newTestServerWithStore(t, []config.ModelGroupConfig{group})
-		// Test-only policy selection for same-binary admission/memory attribution.
-		// The normal runner clears these fixture variables before every scenario.
+		// Include production request ownership and logging, not only the router.
+		server.engine.Use(server.requestLifecycle(), server.requestLogging())
+		server.engine.Use(func(ctx context.Context, c *app.RequestContext) {
+			if strings.HasPrefix(string(c.Path()), "/debug/pprof/") {
+				c.Next(ctx)
+				return
+			}
+			active.Add(1)
+			defer func() {
+				completed.Add(1)
+				active.Add(-1)
+			}()
+			c.Next(ctx)
+		})
 		if raw := os.Getenv("ELYSIA_CONVERSION_HTTP_PREPARATION"); raw != "" {
 			policy := config.PreparationConfig{}
 			if raw == "off" {
@@ -300,7 +324,9 @@ func TestConversionHTTPProcess(t *testing.T) {
 			}
 			server.config.SetPreparation(policy)
 		}
-		preparationStats = func() admission.Stats { return server.preparationLimiter().Snapshot() }
+		preparationStats = func() admission.Stats {
+			return server.preparationLimiter().Snapshot()
+		}
 		mode := os.Getenv("ELYSIA_CONVERSION_HTTP_LOG")
 		if mode != "" && mode != "off" && mode != "body" && mode != "media" {
 			t.Fatal("unknown log mode")
@@ -319,8 +345,6 @@ func TestConversionHTTPProcess(t *testing.T) {
 			server.invalidateRouteCache()
 			return nil
 		}
-		// Unlike drain, settle leaves the writer and its buffers alive. Memory
-		// recovery measurements must observe the normal long-lived service.
 		settle = func() error {
 			deadline := time.Now().Add(30 * time.Second)
 			for time.Now().Before(deadline) {
@@ -355,20 +379,12 @@ func TestConversionHTTPProcess(t *testing.T) {
 		} else {
 			server.engine.POST("/v1/messages", server.chatCompletions)
 		}
-		gateway = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasPrefix(r.URL.Path, "/debug/pprof/") {
-				server.engine.ServeHTTP(w, r)
-				return
-			}
-			active.Add(1)
-			defer func() { completed.Add(1); active.Add(-1) }()
-			server.engine.ServeHTTP(w, r)
-		}))
-
+		gateway := startTestServer(server.engine)
+		gatewayURL, closeGateway = gateway.URL, gateway.Close
 	} else {
 		t.Fatal("unknown child role")
 	}
-	defer gateway.Close()
+	defer closeGateway()
 	var mutex sync.Mutex
 	var startAlloc, peakHeap, peakWorkingSet uint64
 	var startMallocs, startPause uint64
@@ -396,7 +412,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 				mutex.Lock()
 				if sampledAt.Before(started) {
 					mutex.Unlock()
-					continue // A reset overtook this sample; do not mix windows.
+					continue
 				}
 				peakHeap = max(peakHeap, memory.HeapAlloc)
 				peakWorkingSet = max(peakWorkingSet, working)
@@ -411,7 +427,10 @@ func TestConversionHTTPProcess(t *testing.T) {
 			}
 		}
 	}()
-	defer func() { close(stop); <-done }()
+	defer func() {
+		close(stop)
+		<-done
+	}()
 	metrics := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		action := r.URL.Query().Get("action")
 		if action == "reload" && reload != nil {
@@ -467,7 +486,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 		sonic.ConfigStd.NewEncoder(w).Encode(result)
 	}))
 	defer metrics.Close()
-	address, _ := sonic.ConfigStd.Marshal(conversionHTTPAddress{URL: gateway.URL, Metrics: metrics.URL, PID: os.Getpid()})
+	address, _ := sonic.ConfigStd.Marshal(conversionHTTPAddress{URL: gatewayURL, Metrics: metrics.URL, PID: os.Getpid()})
 	if err := os.WriteFile(os.Getenv("ELYSIA_CONVERSION_HTTP_READY"), address, 0600); err != nil {
 		t.Fatal(err)
 	}

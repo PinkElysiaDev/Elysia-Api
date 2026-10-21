@@ -31,7 +31,8 @@ func TestTokenMutationConflictsAreAtomic(t *testing.T) {
 			}
 			if kind == "admin" {
 				c, r := adminProtocolContext(http.MethodPut, "/tokens/first", `{"name":"first","newName":"second","enabled":false}`)
-				s.adminUpsertToken(c)
+				s.adminUpsertToken(contextForTest(c), c)
+				flushTestResponse(c)
 				first, _, err := st.FindAPITokenByName(ctx, "first")
 				if err != nil || r.Code != 409 || !first.Enabled || s.routeSnapshot() != before {
 					t.Fatalf("partial mutation: code=%d enabled=%t err=%v", r.Code, first.Enabled, err)

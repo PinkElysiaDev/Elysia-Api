@@ -11,12 +11,11 @@ import (
 	"github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 func New(cfg *config.Config) *Server {
-	gin.SetMode(gin.ReleaseMode)
-	engine := gin.New()
+
+	engine := newHTTPEngine(cfg)
 	server := &Server{
 		config: cfg, engine: engine,
 		protocolTransport: relay.NewProtocolTransport(time.Duration(cfg.GetHTTPTimeout()) * time.Second),
@@ -31,7 +30,7 @@ func New(cfg *config.Config) *Server {
 	}
 	server.initLifecycle()
 	server.logger = logging.New(cfg.GetLoggingOptions(), nil)
-	engine.Use(server.requestLogging())
+	engine.Use(server.requestLifecycle(), server.requestLogging())
 	store, err := storage.OpenWithLogPath(cfg.GetDatabasePath(), cfg.GetLogDatabasePath(), cfg.GetDBEncryptionKey())
 	if err != nil {
 		server.startupErr = fmt.Errorf("open sqlite store: %w", err)
@@ -44,11 +43,8 @@ func New(cfg *config.Config) *Server {
 	} else if hasEncrypted && !decryptOK {
 		server.logEvent("error").Msg("encrypted secrets cannot be decrypted; restore the original .master-key or ELYSIA_API_MASTER_KEY. Routing and token/source administration are unavailable until repaired; rows are retained")
 	}
-	store.StartRollupBackfill()
 	protocolErr := server.initializeProtocolRuntime(context.Background())
-	// Only start background work after storage migrations have succeeded.
 	server.syncOutboundPolicy()
-	go server.catalog.runPeriodic()
 	if protocolErr != nil {
 		server.logEvent("error").Err(protocolErr).Msg("protocol runtime requires repair; generation is disabled")
 	}

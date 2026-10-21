@@ -14,6 +14,8 @@ import (
 // client speaks Chat. The bucket has no Chat representation, so the projection
 // keeps the creation total, omits the bucket, and records a warning instead of
 // failing a response the client can otherwise consume.
+// The omission is a diagnostic, never a silent drop, and the record
+// still carries the complete provider counters from the upstream.
 func TestCacheCreationBucketProjectionAcrossProtocols(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprintf("stream=%v", stream), func(t *testing.T) {
@@ -31,7 +33,8 @@ func TestCacheCreationBucketProjectionAcrossProtocols(t *testing.T) {
 			defer upstream.Close()
 			s := newTestServerWithStore(t, presetGroup(t, "custom:anthropic-messages", upstream.URL))
 			c, rec := chatRequestContext(fmt.Sprintf(`{"model":"grp","max_tokens":64,"stream":%v,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hello"}]}`, stream))
-			s.chatCompletions(c)
+			s.chatCompletions(contextForTest(c), c)
+			flushTestResponse(c)
 			if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
 				t.Fatalf("cross-protocol bucket must not fail: HTTP %d trailer=%q body=%s", rec.Code, rec.Result().Trailer.Get(gatewayStreamErrorTrailer), rec.Body.String())
 			}
@@ -53,8 +56,6 @@ func TestCacheCreationBucketProjectionAcrossProtocols(t *testing.T) {
 			if err := sonic.ConfigStd.Unmarshal(data, &record); err != nil {
 				t.Fatal(err)
 			}
-			// The omission is a diagnostic, never a silent drop, and the record
-			// still carries the complete provider counters from the upstream.
 			found := false
 			for _, issue := range record.ConversionIssues {
 				if strings.Contains(issue.Path, "ephemeral") && issue.Severity == "warning" {

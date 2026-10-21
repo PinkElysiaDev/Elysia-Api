@@ -17,6 +17,7 @@ import (
 	"github.com/elysia-api/backend/protocol"
 )
 
+// unknown length exercises chunked reading
 func TestGatewayLargeAnthropicRequest(t *testing.T) {
 	imageSize := 9 << 20
 	if os.Getenv("ELYSIA_RESOURCE_PROFILE") == "1" {
@@ -59,14 +60,14 @@ func TestGatewayLargeAnthropicRequest(t *testing.T) {
 	group := config.ModelGroupConfig{ID: "g", Name: "grp", Enabled: true, Strategy: "round-robin", Models: []config.ModelRef{{ID: "m", Name: "m", BaseURL: provider.URL, Platform: "claude", APIKey: "synthetic", ToolsCapable: true, VisionCapable: true}}}
 	s := newTestServerWithStore(t, []config.ModelGroupConfig{group})
 	s.engine.POST("/v1/messages", s.chatCompletions)
-	gateway := httptest.NewServer(s.engine)
+	gateway := startTestServer(s.engine)
 	defer gateway.Close()
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprint(stream), func(t *testing.T) {
 			body := fmt.Sprintf(`{"model":"grp","stream":%t,"max_tokens":64,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"%s"}}]}]}]}`, stream, strings.Repeat("A", imageSize))
 			before := calls.Load()
 			request, _ := http.NewRequest("POST", gateway.URL+"/v1/messages", io.NopCloser(strings.NewReader(body)))
-			request.Header.Set("Content-Type", "application/json") // unknown length exercises chunked reading
+			request.Header.Set("Content-Type", "application/json")
 			response, err := http.DefaultClient.Do(request)
 			if err != nil {
 				t.Fatal(err)
@@ -89,12 +90,13 @@ func TestGatewayConfiguredRequestLimit(t *testing.T) {
 	service, _ := s.protocolService()
 	compiled, _ := service.Pin(protocol.PresetAnthropicID)
 	ctx, recorder := adminProtocolContext("POST", "/v1/messages", strings.Repeat(" ", 1025))
-	pinned, err := protocol.WithRequestBodyLimit(ctx.Request.Context(), 1024)
+	pinned, err := protocol.WithRequestBodyLimit(contextForTest(ctx), 1024)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx.Request = ctx.Request.WithContext(pinned)
-	_, ok := s.readGatewayRequest(ctx, compiled)
+	ctx.Set("testContext", pinned)
+	_, ok := s.readGatewayRequest(contextForTest(ctx), ctx, compiled)
+	flushTestResponse(ctx)
 	if ok || recorder.Code != 413 {
 		t.Fatalf("%v %d %s", ok, recorder.Code, recorder.Body.String())
 	}
@@ -117,7 +119,10 @@ func TestGatewayConfiguredRequestLimit(t *testing.T) {
 
 func TestGatewayStructuralLimitsRejectBeforeSending(t *testing.T) {
 	var calls atomic.Int32
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(500) }))
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(500)
+	}))
 	defer provider.Close()
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
@@ -128,7 +133,7 @@ func TestGatewayStructuralLimitsRejectBeforeSending(t *testing.T) {
 		req := httptest.NewRequest("POST", "/gateway/openai-chat-completions/chat/completions", strings.NewReader(`{"model":"group","messages":[{"role":"user","content":"x"}],"extra":`+extra+`}`))
 		req.Header.Set("Authorization", "Bearer gateway-test-token")
 		rec := httptest.NewRecorder()
-		s.engine.ServeHTTP(rec, req)
+		serveTestHTTP(s.engine, rec, req)
 		if rec.Code != 400 || calls.Load() != 0 || !strings.Contains(rec.Body.String(), "limit_exceeded") {
 			t.Fatalf("status=%d calls=%d body=%s", rec.Code, calls.Load(), rec.Body.String())
 		}
@@ -145,7 +150,8 @@ func TestLargeRequestPreviewAndCollector(t *testing.T) {
 	definition, _ := protocol.EncodeValue(compiled.Definition())
 	envelope, _ := sonic.ConfigStd.Marshal(protocol.PreviewInput{Definition: definition, Direction: protocol.DecodeRequest, Input: input})
 	ctx, rec := adminProtocolContext("POST", "/api/admin/protocols/preview", string(envelope))
-	s.adminProtocolPreviewV2(ctx)
+	s.adminProtocolPreviewV2(contextForTest(ctx), ctx)
+	flushTestResponse(ctx)
 	if rec.Code != 200 {
 		t.Fatalf("preview status %d", rec.Code)
 	}

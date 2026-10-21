@@ -3,33 +3,30 @@ package server
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"net/http"
-	"net/http/pprof"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/utils"
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/webui"
-	"github.com/gin-gonic/gin"
 )
 
 func (s *Server) setupRoutes() {
 	if s.config.GetMaxBodyBytes() > 0 {
-		s.engine.Use(func(c *gin.Context) {
-			if !s.pinProtocolRequest(c) {
+		s.engine.Use(func(ctx context.Context, c *app.RequestContext) {
+			var budgetOK bool
+			ctx, budgetOK = s.pinProtocolRequest(ctx, c)
+			if !budgetOK {
 				c.Abort()
 				return
 			}
-			limit := int64(protocol.RequestBodyLimit(c.Request.Context()))
-			if protocolPreviewPath(c.Request.URL.Path) {
-				limit = int64(protocol.PreviewEnvelopeLimit(c.Request.Context()))
-			}
-			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
-			c.Next()
+			c.Next(ctx)
 		})
 	}
 	v1 := s.engine.Group("/v1")
@@ -44,7 +41,7 @@ func (s *Server) setupRoutes() {
 
 	// Gemini 原生 API 兼容路由
 	// /v1beta/models/MODEL:generateContent 和 /v1beta/models/MODEL:streamGenerateContent
-	// gin 不支持参数内含冒号，用通配符捕获整段路径
+	// 使用通配符保留模型名和动作后缀的完整路径
 	v1beta := s.engine.Group("/v1beta")
 	v1beta.Use(s.authMiddleware())
 	{
@@ -57,17 +54,8 @@ func (s *Server) setupRoutes() {
 	if s.config.EnablePprof {
 		debug := s.engine.Group("/debug/pprof")
 		debug.Use(s.dashboardAuthMiddleware())
-		debug.GET("/", gin.WrapF(pprof.Index))
-		debug.GET("/cmdline", gin.WrapF(pprof.Cmdline))
-		debug.GET("/profile", gin.WrapF(pprof.Profile))
-		debug.GET("/symbol", gin.WrapF(pprof.Symbol))
-		debug.GET("/trace", gin.WrapF(pprof.Trace))
-		debug.GET("/allocs", gin.WrapH(pprof.Handler("allocs")))
-		debug.GET("/block", gin.WrapH(pprof.Handler("block")))
-		debug.GET("/goroutine", gin.WrapH(pprof.Handler("goroutine")))
-		debug.GET("/heap", gin.WrapH(pprof.Handler("heap")))
-		debug.GET("/mutex", gin.WrapH(pprof.Handler("mutex")))
-		debug.GET("/threadcreate", gin.WrapH(pprof.Handler("threadcreate")))
+		debug.GET("/", serveProfileIndex)
+		debug.GET("/:profile", serveProfile)
 	}
 
 	admin := s.engine.Group("/api/admin")
@@ -89,8 +77,8 @@ func (s *Server) setupRoutes() {
 	s.engine.POST("/a2a", s.agentRemoteGate(), s.agentRemoteAuth(), s.handleA2A)
 
 	s.engine.GET("/health", s.healthCheck)
-	s.engine.POST("/__reload", s.loopbackOnly(s.reloadConfig))
-	s.engine.POST("/__shutdown", s.loopbackOnly(s.shutdown))
+	s.engine.POST("/__reload", s.loopbackOnly(), s.reloadConfig)
+	s.engine.POST("/__shutdown", s.loopbackOnly(), s.shutdown)
 }
 
 // mountWebUI 在 /ui 提供控制台静态资源，优先级：
@@ -110,15 +98,17 @@ func (s *Server) mountWebUI() {
 	if sub, ok := webui.FS(); ok {
 		// hashed 文件名的静态资源可永久强缓存；其余（index.html）必须每次
 		// 重新校验，避免升级二进制后旧 index 引用新 hash 资源 404 白屏。
-		// 子目录一律 404，阻止 http.FileServer 渲染目录列表页（文件名枚举）。
-		ui := s.engine.Group("/ui", func(c *gin.Context) {
-			if strings.HasPrefix(c.Request.URL.Path, "/ui/assets/") {
+		// 原生资源 handler 只读取文件，子目录返回 404。
+		ui := s.engine.Group("/ui", func(ctx context.Context, c *app.RequestContext) {
+			if strings.HasPrefix(string(c.Path()), "/ui/assets/") {
 				c.Header("Cache-Control", CacheHeaderImmutable)
 			} else {
 				c.Header("Cache-Control", "no-cache")
 			}
 		})
-		ui.StaticFS("/", http.FS(noDirectoryFS{inner: sub}))
+		assets := serveEmbeddedUI(sub)
+		ui.GET("/*filepath", assets)
+		ui.HEAD("/*filepath", assets)
 		s.logEvent("info").Msg("WebUI mounted from embedded assets at /ui")
 		return
 	}
@@ -126,25 +116,7 @@ func (s *Server) mountWebUI() {
 	s.logEvent("warn").Msg("WebUI is not available; /ui is disabled")
 }
 
-// noDirectoryFS 隐藏子目录：http.FileServer 对无 index.html 的目录会渲染
-// 目录列表页，泄露资源文件名；根目录（含 index.html）保持正常服务。
-type noDirectoryFS struct {
-	inner fs.FS
-}
-
-func (n noDirectoryFS) Open(name string) (fs.File, error) {
-	f, err := n.inner.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	if stat, statErr := f.Stat(); statErr == nil && stat.IsDir() && name != "." {
-		f.Close()
-		return nil, fs.ErrNotExist
-	}
-	return f, nil
-}
-
-func (s *Server) reloadConfig(c *gin.Context) {
+func (s *Server) reloadConfig(ctx context.Context, c *app.RequestContext) {
 	s.configUpdateMu.Lock()
 	defer s.configUpdateMu.Unlock()
 	oldServer := s.config.GetServer()
@@ -156,7 +128,7 @@ func (s *Server) reloadConfig(c *gin.Context) {
 
 	if err := s.config.Reload(); err != nil {
 		s.logSystemEvent("warn", "config reload failed", map[string]any{"error": err.Error()})
-		c.JSON(http.StatusInternalServerError, gin.H{
+		c.JSON(http.StatusInternalServerError, utils.H{
 			"reloaded": false,
 			"error":    err.Error(),
 		})
@@ -198,12 +170,12 @@ func (s *Server) reloadConfig(c *gin.Context) {
 		s.logEvent("info").Msg("config hot-reloaded successfully")
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusOK, utils.H{
 		"reloaded":                     true,
 		"debugMode":                    s.config.IsDebugMode(),
 		"verboseLog":                   s.config.IsVerboseLog(),
 		"serverChangedRequiresRestart": serverChanged,
-		"server": gin.H{
+		"server": utils.H{
 			"oldHost": oldHost,
 			"oldPort": oldPort,
 			"newHost": newServer.Host,
@@ -212,8 +184,12 @@ func (s *Server) reloadConfig(c *gin.Context) {
 	})
 }
 
-func (s *Server) chatCompletions(c *gin.Context) { s.serveVersionedPublicIngress(c) }
-func (s *Server) responses(c *gin.Context)       { s.serveVersionedPublicIngress(c) }
+func (s *Server) chatCompletions(ctx context.Context, c *app.RequestContext) {
+	s.serveVersionedPublicIngress(ctx, c)
+}
+func (s *Server) responses(ctx context.Context, c *app.RequestContext) {
+	s.serveVersionedPublicIngress(ctx, c)
+}
 
 // validateModelGroup 验证模型组配置,失败返回按稳定错误分类组织的核心错误
 // (各线制的状态码/type/code 由分类派生;消息不暴露内部「组」概念)。
@@ -239,18 +215,18 @@ func (s *Server) validateModelGroup(groupName string) (*config.ModelGroupConfig,
 	return group, nil
 }
 
-func (s *Server) listModels(c *gin.Context) {
+func (s *Server) listModels(ctx context.Context, c *app.RequestContext) {
 	groups := s.getGroups()
 
 	// 返回模型组名称作为模型 ID
 	// 客户端看到的是模型组名称，请求时使用模型组名称
 	// 后端根据配置的轮询策略将请求转发给组内的具体模型
-	var models []gin.H
+	var models []utils.H
 	for _, group := range groups {
 		if !group.Enabled {
 			continue
 		}
-		models = append(models, gin.H{
+		models = append(models, utils.H{
 			"id":       group.Name, // 使用模型组名称
 			"object":   "model",
 			"created":  0,
@@ -258,13 +234,13 @@ func (s *Server) listModels(c *gin.Context) {
 		})
 	}
 
-	c.JSON(200, gin.H{
+	c.JSON(200, utils.H{
 		"object": "list",
 		"data":   models,
 	})
 }
 
-func (s *Server) listGeminiModels(c *gin.Context) {
+func (s *Server) listGeminiModels(ctx context.Context, c *app.RequestContext) {
 	groups := s.getGroups()
 
 	// 返回 Gemini 原生格式：{ models: [{ name: "models/GROUP_NAME", ... }] }
@@ -296,43 +272,43 @@ func (s *Server) listGeminiModels(c *gin.Context) {
 		})
 	}
 
-	c.JSON(200, gin.H{"models": models})
+	c.JSON(200, utils.H{"models": models})
 }
 
-func (s *Server) countTokens(c *gin.Context) {
-	if !s.requireProtocolRuntime(c) {
+func (s *Server) countTokens(ctx context.Context, c *app.RequestContext) {
+	if !s.requireProtocolRuntime(ctx, c) {
 		return
 	}
 	service, err := s.protocolService()
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	compiled, exists := service.View().Pin(publicProtocolIDs[builtin.FormatClaude])
 	if !exists {
-		respondFail(c, http.StatusServiceUnavailable, "inactive_protocol", "Anthropic protocol is not enabled")
+		respondFail(ctx, c, http.StatusServiceUnavailable, "inactive_protocol", "Anthropic protocol is not enabled")
 		return
 	}
-	body, err := protocol.ReadBoundedBody(c.Request.Body, compiled.RequestLimits(c.Request.Context()).BufferBytes)
+	body, err := protocol.ReadBoundedBody(requestBody(c), compiled.RequestLimits(ctx).BufferBytes)
 	if err != nil {
-		writeProtocolError(c, builtin.FormatClaude, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: err.Error()})
+		writeProtocolError(ctx, c, builtin.FormatClaude, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: err.Error()})
 		return
 	}
-	request, err := compiled.DecodeRequest(c.Request.Context(), body, protocol.EvaluationContext{})
+	request, err := compiled.DecodeRequest(ctx, body, protocol.EvaluationContext{})
 	if err != nil {
-		writeProtocolError(c, builtin.FormatClaude, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: err.Error()})
+		writeProtocolError(ctx, c, builtin.FormatClaude, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"input_tokens": s.estimateProtocolInputTokens(request)})
+	c.JSON(http.StatusOK, utils.H{"input_tokens": s.estimateProtocolInputTokens(request)})
 }
 
-func (s *Server) healthCheck(c *gin.Context) {
+func (s *Server) healthCheck(ctx context.Context, c *app.RequestContext) {
 	// 公开（无鉴权）健康端点，供负载均衡 / k8s 探针使用。
 	// 深入探测数据库依赖：store 不可用或 Ping 失败时返回 503，
 	// 这样探针能据此摘除不健康实例。
 	dbOK, logDBOK := false, false
 	if s.store != nil {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
 		dbOK = s.store.Ping(ctx) == nil
 		logDBOK = s.store.LogStore.Ping(ctx) == nil
@@ -344,5 +320,5 @@ func (s *Server) healthCheck(c *gin.Context) {
 		status = "degraded"
 		code = http.StatusServiceUnavailable
 	}
-	c.JSON(code, gin.H{"status": status, "database": dbOK, "logDatabase": logDBOK, "version": AppVersion, "commit": AppCommit})
+	c.JSON(code, utils.H{"status": status, "database": dbOK, "logDatabase": logDBOK, "version": AppVersion, "commit": AppCommit})
 }

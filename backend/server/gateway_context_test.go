@@ -55,7 +55,7 @@ func TestGatewayResponsesContextBoundaries(t *testing.T) {
 			req.Header.Set("Authorization", "Bearer gateway-test-token")
 			before := calls
 			rec := httptest.NewRecorder()
-			s.engine.ServeHTTP(rec, req)
+			serveTestHTTP(s.engine, rec, req)
 			if tc.path != "" {
 				if rec.Code != 400 || before != calls || !strings.Contains(rec.Body.String(), tc.path) || !strings.Contains(rec.Body.String(), tc.code) {
 					t.Fatal(tc, rec.Code, calls-before, rec.Body.String())
@@ -121,7 +121,8 @@ func TestGatewayFailureKeepsEarlierDiagnostics(t *testing.T) {
 	c, _ := adminProtocolContext(http.MethodPost, "/gateway/test/generate", "{}")
 	record := &usageRecord{ConversionIssues: []protocol.ConversionIssue{earlier}}
 	s := &Server{}
-	s.failGateway(c, record, 502, &protocol.ConversionError{Issues: []protocol.ConversionIssue{late}})
+	s.failGateway(contextForTest(c), c, record, 502, &protocol.ConversionError{Issues: []protocol.ConversionIssue{late}})
+	flushTestResponse(c)
 	if len(record.ConversionIssues) != 2 {
 		t.Fatalf("diagnostics=%+v, lost previous stage", record.ConversionIssues)
 	}

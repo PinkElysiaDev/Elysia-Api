@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/route/param"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/gin-gonic/gin"
 )
 
 type cacheWireFixture struct{ id, platform, path, request, response, stream string }
@@ -144,10 +144,11 @@ func cacheWireFixtures() []cacheWireFixture {
 	}
 }
 
+// Native wiring plus one cross-family edge per client. Codec matrices own
+// exhaustive cache-field projection; HTTP tests own forwarding and storage.
+// Assert persisted normalized usage separately from the response wire.
 func TestCacheWireMatrix(t *testing.T) {
 	t.Parallel()
-	// Native wiring plus one cross-family edge per client. Codec matrices own
-	// exhaustive cache-field projection; HTTP tests own forwarding and storage.
 	crossTarget := map[string]string{"openai": "anthropic", "anthropic": "responses", "responses": "gemini", "gemini": "openai"}
 	for _, source := range cacheWireFixtures() {
 		for _, target := range cacheWireFixtures() {
@@ -196,12 +197,14 @@ func TestCacheWireMatrix(t *testing.T) {
 					encoded, _ := sonic.ConfigStd.Marshal(request)
 					c, rec := adminProtocolContext("POST", path, string(encoded))
 					if source.platform == "gemini" {
-						c.Params = gin.Params{{Key: "action", Value: strings.TrimPrefix(path, "/v1beta/models/")}}
+						c.Params = param.Params{{Key: "action", Value: strings.TrimPrefix(path, "/v1beta/models/")}}
 					}
 					if source.platform == "responses" {
-						s.responses(c)
+						s.responses(contextForTest(c), c)
+						flushTestResponse(c)
 					} else {
-						s.chatCompletions(c)
+						s.chatCompletions(contextForTest(c), c)
+						flushTestResponse(c)
 					}
 					isCompatible := source.platform != "gemini" || target.platform == "gemini"
 					if !isCompatible {
@@ -254,7 +257,6 @@ func TestCacheWireMatrix(t *testing.T) {
 							t.Fatalf("tool cache breakpoint lost: %s", outbound)
 						}
 					}
-					// Assert persisted normalized usage separately from the response wire.
 					items := latestUsageRecords(t, s)
 					if len(items) != 1 || items[0].StatusCode != http.StatusOK {
 						t.Fatalf("usage records: %d", len(items))
@@ -309,7 +311,8 @@ func TestCacheUsageCreationAndAbsentFields(t *testing.T) {
 				defer upstream.Close()
 				s := newTestServerWithStore(t, presetGroup(t, "custom:anthropic-messages", upstream.URL))
 				c, rec := chatRequestContext(fmt.Sprintf(`{"model":"grp","max_tokens":64,"stream":%v,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hello"}]}`, stream))
-				s.chatCompletions(c)
+				s.chatCompletions(contextForTest(c), c)
+				flushTestResponse(c)
 				if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
 					t.Fatalf("HTTP %d: %s", rec.Code, rec.Body.String())
 				}

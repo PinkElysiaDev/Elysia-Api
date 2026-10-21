@@ -8,9 +8,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 const protocolAdminMaxBodyBytes = 8 << 20
@@ -34,9 +35,8 @@ func findCustomProtocolTestModel(ctx context.Context, store *storage.Store, sour
 	return storage.Model{}, false
 }
 
-func bindAdminJSON(c *gin.Context, target any) error {
-	defer c.Request.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(c.Request.Body, protocolAdminMaxBodyBytes))
+func bindAdminJSON(c *app.RequestContext, target any) error {
+	body, err := io.ReadAll(io.LimitReader(requestBody(c), protocolAdminMaxBodyBytes))
 	if err != nil {
 		return err
 	}

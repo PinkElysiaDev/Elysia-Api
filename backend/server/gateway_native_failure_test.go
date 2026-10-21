@@ -15,7 +15,6 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/gin-gonic/gin"
 )
 
 // A late local failure must reach clients as an error event as well as a trailer.
@@ -25,12 +24,7 @@ func TestGatewayResponsesNativeFailureSequence(t *testing.T) {
 	for _, scenario := range []struct {
 		name, tail string
 		sequence   int64
-	}{
-		{"truncated", "", 51},
-		{"invalid-terminal", `data: {"type":"response.completed","sequence_number":80,"response":{"id":"r","object":"response","created_at":1,"model":"m","status":"completed","output":[]}}` + "\n\n", 51},
-		{"provider-nested", `data: {"type":"error","sequence_number":80,"error":{"type":"api_error","message":"synthetic provider failed","code":null,"param":null}}` + "\n\n", 80},
-		{"provider-flat", `data: {"type":"error","sequence_number":80,"message":"synthetic provider failed","code":null,"param":null}` + "\n\n", 80},
-	} {
+	}{{"truncated", "", 51}, {"invalid-terminal", `data: {"type":"response.completed","sequence_number":80,"response":{"id":"r","object":"response","created_at":1,"model":"m","status":"completed","output":[]}}` + "\n\n", 51}, {"provider-nested", `data: {"type":"error","sequence_number":80,"error":{"type":"api_error","message":"synthetic provider failed","code":null,"param":null}}` + "\n\n", 80}, {"provider-flat", `data: {"type":"error","sequence_number":80,"message":"synthetic provider failed","code":null,"param":null}` + "\n\n", 80}} {
 		t.Run(scenario.name, func(t *testing.T) {
 			prefix := []string{
 				`{"type":"response.created","sequence_number":41,"response":{"id":"r","object":"response","model":"m","created_at":1,"status":"in_progress","output":[]}}`,
@@ -52,7 +46,7 @@ func TestGatewayResponsesNativeFailureSequence(t *testing.T) {
 				Models: []config.ModelRef{{ID: "m", Name: "m", BaseURL: upstream.URL, Platform: "responses", APIKey: "synthetic"}}}
 			s := newTestServerWithStore(t, []config.ModelGroupConfig{group})
 			s.engine.POST("/v1/responses", s.responses)
-			gateway := httptest.NewServer(s.engine)
+			gateway := startTestServer(s.engine)
 			defer gateway.Close()
 			response, err := http.Post(gateway.URL+"/v1/responses", "application/json", strings.NewReader(`{"model":"grp","stream":true,"store":false,"input":"hi"}`))
 			if err != nil {
@@ -134,14 +128,22 @@ func TestGatewayFailureEncodingRetainsOriginalCause(t *testing.T) {
 		t.Fatal(err)
 	}
 	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest("POST", "/v1/responses", nil)
-	c.Writer.WriteHeaderNow()
+	c := newTestContext(recorder)
+	setTestRequest(c, httptest.NewRequest("POST", "/v1/responses", nil))
+	c.Header("Trailer", gatewayStreamErrorTrailer)
+	writer := startStream(c)
+	if _, err := writer.Write(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Flush(); err != nil {
+		t.Fatal(err)
+	}
 	cause := errors.New("original upstream failure")
-	err = emitFailureEvent(c, &gatewayResponsePlan{ingress: compiled}, options, func(protocol.Value) error {
+	err = emitFailureEvent(contextForTest(c), c, &gatewayResponsePlan{ingress: compiled}, options, func(protocol.Value) error {
 		t.Fatal("exhausted sequence produced a frame")
 		return nil
 	}, cause)
+	flushTestResponse(c)
 	if !errors.Is(err, cause) || !strings.Contains(err.Error(), "downstream error frame") || !strings.Contains(err.Error(), "/sequence_number") {
 		t.Fatal("encoding error was swallowed or replaced the original cause", err)
 	}

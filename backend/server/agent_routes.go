@@ -5,18 +5,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/utils"
+	"github.com/cloudwego/hertz/pkg/route"
+
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
-	"github.com/elysia-api/backend/internal/eventstream"
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 // 协议 Agent 的 HTTP/SSE 薄层：参数绑定 → 引擎调用 → agent.Event 编码为
@@ -35,7 +37,7 @@ const (
 	agentTurnTimeout     = 10 * time.Minute
 )
 
-func (s *Server) setupAgentRoutes(admin *gin.RouterGroup) {
+func (s *Server) setupAgentRoutes(admin *route.RouterGroup) {
 	admin.GET("/agent/models", s.adminAgentModels)
 	admin.POST("/agent/models/verify-tools", s.adminVerifyAgentTools)
 	// 列表与远程 REST 面共用带过滤分页的内核；面板不带参数即全量。
@@ -91,21 +93,21 @@ func (s *Server) protocolAgentEngine() *agent.Engine {
 	return s.agentEngineInst
 }
 
-func (s *Server) requireAgentEngine(c *gin.Context) (*agent.Engine, bool) {
-	if _, ok := s.requireStore(c); !ok {
+func (s *Server) requireAgentEngine(ctx context.Context, c *app.RequestContext) (*agent.Engine, bool) {
+	if _, ok := s.requireStore(ctx, c); !ok {
 		return nil, false
 	}
 	engine := s.protocolAgentEngine()
 	if engine == nil {
-		respondFail(c, http.StatusServiceUnavailable, "agent_unavailable", "Agent 引擎不可用（存储未就绪）")
+		respondFail(ctx, c, http.StatusServiceUnavailable, "agent_unavailable", "Agent 引擎不可用（存储未就绪）")
 		return nil, false
 	}
 	return engine, true
 }
 
 // agentSessionView 是对外（列表/详情）的会话视图：凭证只给布尔标记。
-func agentSessionView(session *agent.Session) gin.H {
-	return gin.H{
+func agentSessionView(session *agent.Session) utils.H {
+	return utils.H{
 		"id": session.ID, "title": session.Title, "mode": session.Mode, "protocolId": session.ProtocolID,
 		"seedConfig":     json.RawMessage(session.SeedConfig),
 		"draftConfig":    json.RawMessage(session.DraftConfig),
@@ -131,14 +133,14 @@ type agentSessionCreatePayload struct {
 	Settings   *agent.Settings `json:"settings,omitempty"`
 }
 
-func (s *Server) adminCreateAgentSession(c *gin.Context) {
-	store, ok := s.requireStore(c)
+func (s *Server) adminCreateAgentSession(ctx context.Context, c *app.RequestContext) {
+	store, ok := s.requireStore(ctx, c)
 	if !ok {
 		return
 	}
 	var payload agentSessionCreatePayload
 	if err := bindAdminJSON(c, &payload); err != nil {
-		respondFail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		respondFail(ctx, c, http.StatusBadRequest, "invalid_json", err.Error())
 		return
 	}
 	mode := strings.TrimSpace(payload.Mode)
@@ -149,17 +151,17 @@ func (s *Server) adminCreateAgentSession(c *gin.Context) {
 	protocolID := strings.TrimSpace(payload.ProtocolID)
 	if mode == agent.ModeEdit {
 		if protocolID == "" {
-			respondFail(c, http.StatusBadRequest, "missing_protocol", "编辑模式必须指定 protocolId")
+			respondFail(ctx, c, http.StatusBadRequest, "missing_protocol", "编辑模式必须指定 protocolId")
 			return
 		}
 		service, err := s.protocolService()
 		if err != nil {
-			respondProtocolError(c, err)
+			respondProtocolError(ctx, c, err)
 			return
 		}
-		draft, err := service.ReadDraft(c.Request.Context(), protocolID)
+		draft, err := service.ReadDraft(ctx, protocolID)
 		if err != nil {
-			respondProtocolError(c, err)
+			respondProtocolError(ctx, c, err)
 			return
 		}
 		seed = string(draft.Definition.Bytes())
@@ -174,28 +176,28 @@ func (s *Server) adminCreateAgentSession(c *gin.Context) {
 	if payload.Settings != nil {
 		upsert.Settings = *payload.Settings
 	}
-	session, err := store.CreateAgentSession(c.Request.Context(), upsert)
+	session, err := store.CreateAgentSession(ctx, upsert)
 	if err != nil {
-		respondFail(c, http.StatusInternalServerError, "create_failed", err.Error())
+		respondFail(ctx, c, http.StatusInternalServerError, "create_failed", err.Error())
 		return
 	}
-	respondOK(c, agentSessionView(session))
+	respondOK(ctx, c, agentSessionView(session))
 }
 
-func (s *Server) adminGetAgentSession(c *gin.Context) {
-	store, ok := s.requireStore(c)
+func (s *Server) adminGetAgentSession(ctx context.Context, c *app.RequestContext) {
+	store, ok := s.requireStore(ctx, c)
 	if !ok {
 		return
 	}
 	id := strings.TrimSpace(c.Param("id"))
-	session, err := store.GetAgentSession(c.Request.Context(), id)
+	session, err := store.GetAgentSession(ctx, id)
 	if err != nil {
-		respondAgentSessionReadError(c, id, err)
+		respondAgentSessionReadError(ctx, c, id, err)
 		return
 	}
-	messages, err := store.ListMessages(c.Request.Context(), id)
+	messages, err := store.ListMessages(ctx, id)
 	if err != nil {
-		respondFail(c, http.StatusInternalServerError, "list_failed", err.Error())
+		respondFail(ctx, c, http.StatusInternalServerError, "list_failed", err.Error())
 		return
 	}
 	view := agentSessionView(session)
@@ -208,17 +210,17 @@ func (s *Server) adminGetAgentSession(c *gin.Context) {
 			view["status"] = agent.StatusIdle
 		}
 	}
-	respondOK(c, gin.H{"session": view, "messages": messages})
+	respondOK(ctx, c, utils.H{"session": view, "messages": messages})
 }
 
 // respondAgentSessionReadError distinguishes missing rows from failed reads;
 // a cancelled or unavailable store does not prove that a session was deleted.
-func respondAgentSessionReadError(c *gin.Context, id string, err error) {
+func respondAgentSessionReadError(ctx context.Context, c *app.RequestContext, id string, err error) {
 	if errors.Is(err, agent.ErrSessionNotFound) {
-		respondFail(c, http.StatusNotFound, "not_found", fmt.Sprintf("会话 %q 不存在", id))
+		respondFail(ctx, c, http.StatusNotFound, "not_found", fmt.Sprintf("会话 %q 不存在", id))
 		return
 	}
-	respondFail(c, http.StatusInternalServerError, "session_read_failed", err.Error())
+	respondFail(ctx, c, http.StatusInternalServerError, "session_read_failed", err.Error())
 }
 
 type agentSessionUpdatePayload struct {
@@ -228,20 +230,20 @@ type agentSessionUpdatePayload struct {
 	ClearAPIKey bool                 `json:"clearApiKey,omitempty"`
 }
 
-func (s *Server) adminUpdateAgentSession(c *gin.Context) {
-	store, ok := s.requireStore(c)
+func (s *Server) adminUpdateAgentSession(ctx context.Context, c *app.RequestContext) {
+	store, ok := s.requireStore(ctx, c)
 	if !ok {
 		return
 	}
 	var payload agentSessionUpdatePayload
 	if err := bindAdminJSON(c, &payload); err != nil {
-		respondFail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		respondFail(ctx, c, http.StatusBadRequest, "invalid_json", err.Error())
 		return
 	}
 	if payload.Settings != nil && payload.Settings.MaxModelCalls != nil {
 		value := *payload.Settings.MaxModelCalls
 		if value < 0 || value > 100 {
-			respondFail(c, http.StatusBadRequest, "invalid_max_model_calls", "maxModelCalls 取值 0-100（0=默认）")
+			respondFail(ctx, c, http.StatusBadRequest, "invalid_max_model_calls", "maxModelCalls 取值 0-100（0=默认）")
 			return
 		}
 	}
@@ -251,53 +253,53 @@ func (s *Server) adminUpdateAgentSession(c *gin.Context) {
 		case "", "low", "medium", "high", "xhigh", "max", "adaptive":
 			*payload.Settings.ThinkingEffort = effort
 		default:
-			respondFail(c, http.StatusBadRequest, "invalid_effort", "thinkingEffort 可选值：low/medium/high/xhigh/max/adaptive")
+			respondFail(ctx, c, http.StatusBadRequest, "invalid_effort", "thinkingEffort 可选值：low/medium/high/xhigh/max/adaptive")
 			return
 		}
 	}
-	session, err := store.UpdateAgentSessionSettings(c.Request.Context(), strings.TrimSpace(c.Param("id")),
+	session, err := store.UpdateAgentSessionSettings(ctx, strings.TrimSpace(c.Param("id")),
 		payload.Title, payload.Settings, payload.APIKey, payload.ClearAPIKey)
 	if err != nil {
-		respondFail(c, http.StatusInternalServerError, "update_failed", err.Error())
+		respondFail(ctx, c, http.StatusInternalServerError, "update_failed", err.Error())
 		return
 	}
-	respondOK(c, agentSessionView(session))
+	respondOK(ctx, c, agentSessionView(session))
 }
 
 // adminRestoreAgentDraft 把草稿回滚到最近一轮修改前的还原点。
-func (s *Server) adminRestoreAgentDraft(c *gin.Context) {
-	store, ok := s.requireStore(c)
+func (s *Server) adminRestoreAgentDraft(ctx context.Context, c *app.RequestContext) {
+	store, ok := s.requireStore(ctx, c)
 	if !ok {
 		return
 	}
 	id := strings.TrimSpace(c.Param("id"))
 	if engine := s.protocolAgentEngine(); engine != nil && engine.IsRunning(id) {
-		respondFail(c, http.StatusConflict, "session_running", "会话轮次进行中，无法还原草稿")
+		respondFail(ctx, c, http.StatusConflict, "session_running", "会话轮次进行中，无法还原草稿")
 		return
 	}
-	session, err := store.GetAgentSession(c.Request.Context(), id)
+	session, err := store.GetAgentSession(ctx, id)
 	if err != nil {
-		respondAgentSessionReadError(c, id, err)
+		respondAgentSessionReadError(ctx, c, id, err)
 		return
 	}
 	if len(session.DraftRestore) == 0 {
-		respondFail(c, http.StatusConflict, "no_restore_point", "本会话还没有可用的草稿还原点")
+		respondFail(ctx, c, http.StatusConflict, "no_restore_point", "本会话还没有可用的草稿还原点")
 		return
 	}
-	if err := store.UpdateSessionState(c.Request.Context(), id, agent.SessionStateUpdate{DraftConfig: session.DraftRestore}); err != nil {
-		respondFail(c, http.StatusInternalServerError, "restore_failed", err.Error())
+	if err := store.UpdateSessionState(ctx, id, agent.SessionStateUpdate{DraftConfig: session.DraftRestore}); err != nil {
+		respondFail(ctx, c, http.StatusInternalServerError, "restore_failed", err.Error())
 		return
 	}
-	updated, err := store.GetAgentSession(c.Request.Context(), id)
+	updated, err := store.GetAgentSession(ctx, id)
 	if err != nil {
-		respondFail(c, http.StatusInternalServerError, "restore_failed", err.Error())
+		respondFail(ctx, c, http.StatusInternalServerError, "restore_failed", err.Error())
 		return
 	}
-	respondOK(c, agentSessionView(updated))
+	respondOK(ctx, c, agentSessionView(updated))
 }
 
-func (s *Server) adminDeleteAgentSession(c *gin.Context) {
-	store, ok := s.requireStore(c)
+func (s *Server) adminDeleteAgentSession(ctx context.Context, c *app.RequestContext) {
+	store, ok := s.requireStore(ctx, c)
 	if !ok {
 		return
 	}
@@ -305,52 +307,52 @@ func (s *Server) adminDeleteAgentSession(c *gin.Context) {
 	if engine := s.protocolAgentEngine(); engine != nil {
 		engine.Stop(id) // 删除前停轮次
 	}
-	deleted, err := store.DeleteAgentSession(c.Request.Context(), id)
+	deleted, err := store.DeleteAgentSession(ctx, id)
 	if err != nil {
-		respondFail(c, http.StatusInternalServerError, "delete_failed", err.Error())
+		respondFail(ctx, c, http.StatusInternalServerError, "delete_failed", err.Error())
 		return
 	}
 	if !deleted {
-		respondFail(c, http.StatusNotFound, "not_found", fmt.Sprintf("会话 %q 不存在", id))
+		respondFail(ctx, c, http.StatusNotFound, "not_found", fmt.Sprintf("会话 %q 不存在", id))
 		return
 	}
-	respondOK(c, gin.H{"deleted": true})
+	respondOK(ctx, c, utils.H{"deleted": true})
 }
 
 // adminClearAgentMessages 清空（默认）或截断会话消息：afterSeq=0 即全清，
 // 保留会话与草稿。
-func (s *Server) adminClearAgentMessages(c *gin.Context) {
-	store, ok := s.requireStore(c)
+func (s *Server) adminClearAgentMessages(ctx context.Context, c *app.RequestContext) {
+	store, ok := s.requireStore(ctx, c)
 	if !ok {
 		return
 	}
 	id := strings.TrimSpace(c.Param("id"))
 	afterSeq := 0
-	query, err := url.ParseQuery(c.Request.URL.RawQuery)
+	query, err := url.ParseQuery(string(c.URI().QueryString()))
 	if err != nil {
-		respondFail(c, http.StatusBadRequest, "invalid_after_seq", "afterSeq 必须是唯一的非负整数")
+		respondFail(ctx, c, http.StatusBadRequest, "invalid_after_seq", "afterSeq 必须是唯一的非负整数")
 		return
 	}
 	if values, exists := query["afterSeq"]; exists {
 		if len(values) != 1 {
-			respondFail(c, http.StatusBadRequest, "invalid_after_seq", "afterSeq 必须是唯一的非负整数")
+			respondFail(ctx, c, http.StatusBadRequest, "invalid_after_seq", "afterSeq 必须是唯一的非负整数")
 			return
 		}
 		afterSeq, err = strconv.Atoi(values[0])
 		if err != nil || afterSeq < 0 {
-			respondFail(c, http.StatusBadRequest, "invalid_after_seq", "afterSeq 必须是唯一的非负整数")
+			respondFail(ctx, c, http.StatusBadRequest, "invalid_after_seq", "afterSeq 必须是唯一的非负整数")
 			return
 		}
 	}
 	if engine := s.protocolAgentEngine(); engine != nil && engine.IsRunning(id) {
-		respondFail(c, http.StatusConflict, "session_running", "会话轮次进行中，请先停止")
+		respondFail(ctx, c, http.StatusConflict, "session_running", "会话轮次进行中，请先停止")
 		return
 	}
-	if err := store.TruncateMessages(c.Request.Context(), id, afterSeq); err != nil {
-		respondFail(c, http.StatusInternalServerError, "truncate_failed", err.Error())
+	if err := store.TruncateMessages(ctx, id, afterSeq); err != nil {
+		respondFail(ctx, c, http.StatusInternalServerError, "truncate_failed", err.Error())
 		return
 	}
-	respondOK(c, gin.H{"cleared": true})
+	respondOK(ctx, c, utils.H{"cleared": true})
 }
 
 type agentMessagePayload struct {
@@ -362,42 +364,42 @@ type agentMessagePayload struct {
 }
 
 // adminSendAgentMessage 发送用户消息并流式返回轮次事件（SSE）。
-func (s *Server) adminSendAgentMessage(c *gin.Context) {
-	engine, ok := s.requireAgentEngine(c)
+func (s *Server) adminSendAgentMessage(ctx context.Context, c *app.RequestContext) {
+	engine, ok := s.requireAgentEngine(ctx, c)
 	if !ok {
 		return
 	}
 	var payload agentMessagePayload
 	if err := bindAgentStreamJSON(c, &payload); err != nil {
-		respondFail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		respondFail(ctx, c, http.StatusBadRequest, "invalid_json", err.Error())
 		return
 	}
 	id := strings.TrimSpace(c.Param("id"))
 	if payload.AfterSeq != nil {
 		if *payload.AfterSeq < 0 {
-			respondFail(c, http.StatusBadRequest, "invalid_after_seq", "afterSeq 不能为负")
+			respondFail(ctx, c, http.StatusBadRequest, "invalid_after_seq", "afterSeq 不能为负")
 			return
 		}
 		if engine.IsRunning(id) {
-			respondFail(c, http.StatusConflict, "session_running", "会话轮次进行中，无法截断重发")
+			respondFail(ctx, c, http.StatusConflict, "session_running", "会话轮次进行中，无法截断重发")
 			return
 		}
-		if err := s.store.TruncateMessages(c.Request.Context(), id, *payload.AfterSeq); err != nil {
-			respondFail(c, http.StatusInternalServerError, "truncate_failed", err.Error())
+		if err := s.store.TruncateMessages(ctx, id, *payload.AfterSeq); err != nil {
+			respondFail(ctx, c, http.StatusInternalServerError, "truncate_failed", err.Error())
 			return
 		}
 	}
 	if payload.Content == "" && len(payload.Documents) == 0 && payload.AfterSeq == nil {
-		respondFail(c, http.StatusBadRequest, "empty_message", "消息内容不能为空")
+		respondFail(ctx, c, http.StatusBadRequest, "empty_message", "消息内容不能为空")
 		return
 	}
 	input := &agent.UserContent{Text: payload.Content, Documents: payload.Documents}
-	events, err := engine.RunTurn(c.Request.Context(), id, input)
+	events, err := engine.RunTurn(ctx, id, input)
 	if err != nil {
-		respondAgentTurnError(c, err)
+		respondAgentTurnError(ctx, c, err)
 		return
 	}
-	s.streamAgentEvents(c, id, events)
+	s.streamAgentEvents(ctx, c, events)
 }
 
 type agentApprovePayload struct {
@@ -410,40 +412,40 @@ type agentApprovePayload struct {
 }
 
 // adminApproveAgentAction 审批待定动作并流式返回续跑事件（SSE）。
-func (s *Server) adminApproveAgentAction(c *gin.Context) {
-	engine, ok := s.requireAgentEngine(c)
+func (s *Server) adminApproveAgentAction(ctx context.Context, c *app.RequestContext) {
+	engine, ok := s.requireAgentEngine(ctx, c)
 	if !ok {
 		return
 	}
 	var payload agentApprovePayload
 	if err := bindAgentStreamJSON(c, &payload); err != nil {
-		respondFail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		respondFail(ctx, c, http.StatusBadRequest, "invalid_json", err.Error())
 		return
 	}
 	id := strings.TrimSpace(c.Param("id"))
-	events, err := engine.ResumeApproval(c.Request.Context(), id, agent.ApprovalDecision{
+	events, err := engine.ResumeApproval(ctx, id, agent.ApprovalDecision{
 		Approved: payload.Approved, BaseURL: payload.BaseURL, APIKey: payload.APIKey, Note: payload.Note, Answer: payload.Answer,
 	})
 	if err != nil {
-		respondAgentTurnError(c, err)
+		respondAgentTurnError(ctx, c, err)
 		return
 	}
-	s.streamAgentEvents(c, id, events)
+	s.streamAgentEvents(ctx, c, events)
 }
 
-func (s *Server) adminStopAgentTurn(c *gin.Context) {
-	engine, ok := s.requireAgentEngine(c)
+func (s *Server) adminStopAgentTurn(ctx context.Context, c *app.RequestContext) {
+	engine, ok := s.requireAgentEngine(ctx, c)
 	if !ok {
 		return
 	}
 	id := strings.TrimSpace(c.Param("id"))
 	stopped := engine.Stop(id)
-	respondOK(c, gin.H{"stopped": stopped})
+	respondOK(ctx, c, utils.H{"stopped": stopped})
 }
 
-func respondAgentTurnError(c *gin.Context, err error) {
+func respondAgentTurnError(ctx context.Context, c *app.RequestContext, err error) {
 	status, code, message := agentTurnErrorInfo(err)
-	respondFail(c, status, code, message)
+	respondFail(ctx, c, status, code, message)
 }
 
 // agentTurnErrorInfo 把引擎轮次错误归一化为 (HTTP 状态码, 错误码, 文案)。
@@ -477,10 +479,8 @@ func agentTurnErrorInfo(err error) (int, string, string) {
 
 // bindAgentStreamJSON 消息/审批端点的请求体绑定（上限比普通管理端点大，
 // 容纳附件 data URL）。
-func bindAgentStreamJSON(c *gin.Context, target any) error {
-	defer c.Request.Body.Close()
-	reader := http.MaxBytesReader(c.Writer, c.Request.Body, agentMaxBodyBytes)
-	body, err := io.ReadAll(reader)
+func bindAgentStreamJSON(c *app.RequestContext, target any) error {
+	body, err := protocol.ReadBoundedBody(requestBody(c), agentMaxBodyBytes)
 	if err != nil {
 		return err
 	}
@@ -489,27 +489,17 @@ func bindAgentStreamJSON(c *gin.Context, target any) error {
 
 // streamAgentEvents 把引擎事件编码为 SSE 并转发。用量入账在模型调用层
 // （agentStreamCaller.Call，成功与失败各记一条）；转发层不再重复观察。
-func (s *Server) streamAgentEvents(c *gin.Context, sessionID string, events <-chan agent.Event) {
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	flusher, canFlush := c.Writer.(http.Flusher)
+func (s *Server) streamAgentEvents(ctx context.Context, c *app.RequestContext, events <-chan agent.Event) {
+	writer := startSSE(c)
 	write := func(event agent.Event) bool {
 		encoded, err := sonic.ConfigStd.Marshal(event)
 		if err != nil {
 			return true
 		}
-		if err := eventstream.Write(c.Writer, event.Type, string(encoded)); err != nil {
-			return false
-		}
-		if canFlush {
-			flusher.Flush()
-		}
-		return true
+		return writer.WriteEvent("", event.Type, encoded) == nil
 	}
 	// 连接断开即停止转发（轮次在引擎侧继续，刷新即可见结果）。空闲时
 	// 发 SSE 注释帧保活：注释行不以 event/data 开头，前端解析器直接忽略。
-	ctx := c.Request.Context()
 	keepalive := time.NewTicker(sseKeepaliveInterval)
 	defer keepalive.Stop()
 	for {
@@ -517,11 +507,8 @@ func (s *Server) streamAgentEvents(c *gin.Context, sessionID string, events <-ch
 		case <-ctx.Done():
 			return
 		case <-keepalive.C:
-			if err := eventstream.Comment(c.Writer, "keepalive"); err != nil {
+			if writer.WriteKeepAlive() != nil {
 				return
-			}
-			if canFlush {
-				flusher.Flush()
 			}
 		case event, ok := <-events:
 			if !ok {

@@ -75,7 +75,7 @@ func TestGatewayFourPublicEntrypointsUseActiveRuntime(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(strings.Replace(fixture.request, `"model":"m"`, `"model":"group"`, 1)))
 			request.Header.Set("Authorization", "Bearer gateway-test-token")
 			result := httptest.NewRecorder()
-			server.engine.ServeHTTP(result, request)
+			serveTestHTTP(server.engine, result, request)
 			if result.Code != 200 || !bytes.Contains(result.Body.Bytes(), []byte("world")) {
 				t.Fatalf("public ingress: %d %s", result.Code, result.Body)
 			}

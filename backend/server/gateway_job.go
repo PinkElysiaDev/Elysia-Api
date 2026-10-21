@@ -8,21 +8,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/elysia-api/backend/protocol"
-	"github.com/gin-gonic/gin"
 )
 
-func (s *Server) submitGatewayJob(c *gin.Context, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate) bool {
+func (s *Server) submitGatewayJob(ctx context.Context, c *app.RequestContext, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate) bool {
 	if !candidate.binding.Capabilities[protocol.AsyncJobsCapability] {
-		s.failGateway(c, record, 400, fmt.Errorf("model binding excludes asynchronous tasks"))
+		s.failGateway(ctx, c, record, 400, fmt.Errorf("model binding excludes asynchronous tasks"))
 		return false
 	}
 	if plan.operation.Kind != "submit" && candidate.binding.Wait == nil {
-		s.failGateway(c, record, 400, fmt.Errorf("synchronous bridging requires an explicit wait policy"))
+		s.failGateway(ctx, c, record, 400, fmt.Errorf("synchronous bridging requires an explicit wait policy"))
 		return false
 	}
 	if plan.operation.Task != nil && plan.operation.Task.Cancel != "" && candidate.operation.Task.Cancel == "" {
-		s.failGateway(c, record, 400, fmt.Errorf("upstream does not support the ingress cancellation contract"))
+		s.failGateway(ctx, c, record, 400, fmt.Errorf("upstream does not support the ingress cancellation contract"))
 		return false
 	}
 	ingressOperation := ""
@@ -36,47 +37,47 @@ func (s *Server) submitGatewayJob(c *gin.Context, record *usageRecord, plan *gat
 		OwnerHash: record.KeyHash, GroupID: plan.group.ID, GroupName: plan.group.Name, IngressID: plan.ingress.Identity().DefinitionID, IngressRevision: plan.ingress.Hash(), IngressOperation: ingressOperation,
 		UpstreamRevision: candidate.compiled.Hash(), SourceAccount: candidate.scope.Account, SourceBaseHash: jobBaseHash(candidate.model.BaseURL), ModelID: candidate.model.ID, Model: candidate.model.Name, Operation: candidate.operationName, Binding: candidate.binding,
 	}
-	job.DeduplicationHash = protocol.JobDeduplicationHash(job.OwnerHash, job.IngressID, c.GetHeader("Idempotency-Key"), job.Task.ID)
+	job.DeduplicationHash = protocol.JobDeduplicationHash(job.OwnerHash, job.IngressID, string(c.GetHeader("Idempotency-Key")), job.Task.ID)
 	coordinator, err := s.generationJobs()
 	if err != nil {
-		s.failGateway(c, record, 503, err)
+		s.failGateway(ctx, c, record, 503, err)
 		return false
 	}
 	release, err := s.limiter.Acquire(plan.group, s.estimateProtocolTokens(candidate.prepared))
 	if err != nil {
-		s.failGateway(c, record, 429, err)
+		s.failGateway(ctx, c, record, 429, err)
 		return false
 	}
 	defer release()
 	s.estimateGatewayAttempt(record, candidate.prepared)
-	job, _, err = coordinator.Submit(c.Request.Context(), job, candidate.prepared)
+	job, _, err = coordinator.Submit(ctx, job, candidate.prepared)
 	if errors.Is(err, protocol.ErrIdempotencyConflict) {
-		s.failGateway(c, record, 409, err)
+		s.failGateway(ctx, c, record, 409, err)
 		return false
 	}
 	if job.Revision == 0 {
-		s.failGateway(c, record, 502, err)
+		s.failGateway(ctx, c, record, 502, err)
 		return false
 	}
 	if err := s.startGatewayJobs(); err != nil {
-		s.failGateway(c, record, http.StatusServiceUnavailable, err)
+		s.failGateway(ctx, c, record, http.StatusServiceUnavailable, err)
 		return true
 	}
 	c.Header("Location", "/gateway/"+job.IngressID+"/_jobs/"+job.Task.ID)
 	if plan.operation.Kind == "submit" {
-		s.writeGatewayJobReceipt(c, plan.ingress, job, "submit", http.StatusAccepted)
+		s.writeGatewayJobReceipt(ctx, c, plan.ingress, job, "submit", http.StatusAccepted)
 		return true
 	}
 	if job.Phase == protocol.JobUncertain {
-		s.failGateway(c, record, http.StatusBadGateway, fmt.Errorf("generation submission outcome is uncertain; inspect its Location and do not resubmit"))
+		s.failGateway(ctx, c, record, http.StatusBadGateway, fmt.Errorf("generation submission outcome is uncertain; inspect its Location and do not resubmit"))
 		return true
 	}
-	s.waitGatewayJob(c, coordinator, plan.ingress, job, *candidate.binding.Wait, record)
+	s.waitGatewayJob(ctx, c, coordinator, plan.ingress, job, *candidate.binding.Wait, record)
 	return true
 }
 
-func (s *Server) waitGatewayJob(c *gin.Context, coordinator *protocol.JobCoordinator, ingress *protocol.Compiled, job protocol.GenerationJob, policy protocol.JobWait, record *usageRecord) {
-	ctx, stop := context.WithTimeout(c.Request.Context(), time.Duration(policy.TimeoutMillis)*time.Millisecond)
+func (s *Server) waitGatewayJob(ctx context.Context, c *app.RequestContext, coordinator *protocol.JobCoordinator, ingress *protocol.Compiled, job protocol.GenerationJob, policy protocol.JobWait, record *usageRecord) {
+	waitCtx, stop := context.WithTimeout(ctx, time.Duration(policy.TimeoutMillis)*time.Millisecond)
 	defer stop()
 	ticker := time.NewTicker(gatewayJobWaitInterval)
 	defer ticker.Stop()
@@ -86,30 +87,30 @@ func (s *Server) waitGatewayJob(c *gin.Context, coordinator *protocol.JobCoordin
 			_, err := coordinator.RequestCancel(deadline, job.Task.ID, job.OwnerHash)
 			cancel()
 			if err != nil {
-				s.failGateway(c, record, http.StatusBadGateway, err)
+				s.failGateway(ctx, c, record, http.StatusBadGateway, err)
 				return
 			}
 		}
-		s.failGateway(c, record, http.StatusGatewayTimeout, fmt.Errorf("generation wait ended; task %s follows the declared %s policy", job.Task.ID, policy.OnTimeout))
+		s.failGateway(ctx, c, record, http.StatusGatewayTimeout, fmt.Errorf("generation wait ended; task %s follows the declared %s policy", job.Task.ID, policy.OnTimeout))
 	}
 	for {
 		if job.Phase == protocol.JobTerminal {
-			s.writeGatewayJobResult(c, ingress, job)
+			s.writeGatewayJobResult(ctx, c, ingress, job)
 			return
 		}
 		select {
-		case <-ctx.Done():
+		case <-waitCtx.Done():
 			finishWait()
 			return
 		case <-ticker.C:
-			nextJob, err := coordinator.Read(ctx, job.Task.ID, job.OwnerHash)
+			nextJob, err := coordinator.Read(waitCtx, job.Task.ID, job.OwnerHash)
 			if err != nil {
-				if ctx.Err() != nil {
+				if waitCtx.Err() != nil {
 					// A read can outlive the wait budget. Apply the same policy as
 					// the timer branch, using the last valid task/owner identity.
 					finishWait()
 				} else {
-					s.failGateway(c, record, http.StatusBadGateway, err)
+					s.failGateway(ctx, c, record, http.StatusBadGateway, err)
 				}
 				return
 			}
@@ -118,19 +119,19 @@ func (s *Server) waitGatewayJob(c *gin.Context, coordinator *protocol.JobCoordin
 	}
 }
 
-func (s *Server) serveGatewayJobControl(c *gin.Context, service *protocol.Service, active *protocol.Compiled) bool {
-	path := c.Param("path")
+func (s *Server) serveGatewayJobControl(ctx context.Context, c *app.RequestContext, service *protocol.Service, active *protocol.Compiled) bool {
+	path := "/" + strings.TrimPrefix(c.Param("path"), "/")
 	id, purpose := "", ""
 	isReserved := strings.HasPrefix(path, "/_jobs/")
 	if isReserved {
 		parts := strings.Split(strings.TrimPrefix(path, "/_jobs/"), "/")
-		if len(parts) == 1 && c.Request.Method == http.MethodGet {
+		if len(parts) == 1 && string(c.Method()) == http.MethodGet {
 			id, purpose = parts[0], "status"
 		}
-		if len(parts) == 1 && c.Request.Method == http.MethodDelete {
+		if len(parts) == 1 && string(c.Method()) == http.MethodDelete {
 			id, purpose = parts[0], "cancel"
 		}
-		if len(parts) == 2 && parts[1] == "result" && c.Request.Method == http.MethodGet {
+		if len(parts) == 2 && parts[1] == "result" && string(c.Method()) == http.MethodGet {
 			id, purpose = parts[0], "result"
 		}
 	} else {
@@ -138,103 +139,103 @@ func (s *Server) serveGatewayJobControl(c *gin.Context, service *protocol.Servic
 			if operation.Kind != "status" && operation.Kind != "result" && operation.Kind != "cancel" {
 				continue
 			}
-			if parameters, matched := protocol.MatchOperationPath(operation.Path, path); matched && operation.Method == c.Request.Method {
+			if parameters, matched := protocol.MatchOperationPath(operation.Path, path); matched && operation.Method == string(c.Method()) {
 				id, purpose = parameters["taskId"], operation.Kind
 			}
 		}
 	}
 	if id == "" {
 		if isReserved {
-			respondFail(c, 404, "task_not_found", "unknown task path")
+			respondFail(ctx, c, 404, "task_not_found", "unknown task path")
 			return true
 		}
 		return false
 	}
 	coordinator, err := s.generationJobs()
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return true
 	}
-	job, err := coordinator.Read(c.Request.Context(), id, c.GetString("elysiaKeyHash"))
+	job, err := coordinator.Read(ctx, id, c.GetString("elysiaKeyHash"))
 	if err != nil || job.IngressID != active.Identity().DefinitionID {
-		respondFail(c, 404, "task_not_found", "generation job not found")
+		respondFail(ctx, c, 404, "task_not_found", "generation job not found")
 		return true
 	}
 	canAccessGroup := false
 	for _, group := range s.getGroups() {
-		if group.ID == job.GroupID && s.tokenAllowsGroup(c, group.Name) {
+		if group.ID == job.GroupID && s.tokenAllowsGroup(ctx, c, group.Name) {
 			canAccessGroup = true
 			break
 		}
 	}
 	if !canAccessGroup {
-		respondFail(c, 403, "forbidden", "API key is not allowed to access this job's model group")
+		respondFail(ctx, c, 403, "forbidden", "API key is not allowed to access this job's model group")
 		return true
 	}
-	ingress, err := service.LoadRevision(c.Request.Context(), job.IngressID, job.IngressRevision)
+	ingress, err := service.LoadRevision(ctx, job.IngressID, job.IngressRevision)
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return true
 	}
 	if !isReserved {
 		flow := ingress.Operations()[job.IngressOperation].Task
 		if flow == nil {
-			respondFail(c, 404, "task_not_found", "job has no native control operation")
+			respondFail(ctx, c, 404, "task_not_found", "job has no native control operation")
 			return true
 		}
 		name := map[string]string{"status": flow.Status, "result": flow.Result, "cancel": flow.Cancel}[purpose]
 		operation := ingress.Operations()[name]
-		if _, matched := protocol.MatchOperationPath(operation.Path, path); !matched || operation.Method != c.Request.Method {
-			respondFail(c, 409, "task_revision_mismatch", "use the job Location endpoint for its pinned revision")
+		if _, matched := protocol.MatchOperationPath(operation.Path, path); !matched || operation.Method != string(c.Method()) {
+			respondFail(ctx, c, 409, "task_revision_mismatch", "use the job Location endpoint for its pinned revision")
 			return true
 		}
 	}
 	if purpose == "cancel" {
-		job, err = coordinator.RequestCancel(c.Request.Context(), job.Task.ID, job.OwnerHash)
+		job, err = coordinator.RequestCancel(ctx, job.Task.ID, job.OwnerHash)
 		if err != nil {
-			respondProtocolError(c, err)
+			respondProtocolError(ctx, c, err)
 			return true
 		}
 	}
 	if purpose == "result" {
-		s.writeGatewayJobResult(c, ingress, job)
+		s.writeGatewayJobResult(ctx, c, ingress, job)
 	} else {
-		s.writeGatewayJobReceipt(c, ingress, job, purpose, http.StatusOK)
+		s.writeGatewayJobReceipt(ctx, c, ingress, job, purpose, http.StatusOK)
 	}
 	return true
 }
 
-func (s *Server) writeGatewayJobReceipt(c *gin.Context, ingress *protocol.Compiled, job protocol.GenerationJob, purpose string, status int) {
+func (s *Server) writeGatewayJobReceipt(ctx context.Context, c *app.RequestContext, ingress *protocol.Compiled, job protocol.GenerationJob, purpose string, status int) {
 	receipt := protocol.JobUpdate{UpstreamID: protocol.StringValue(job.Task.ID), Status: job.Task.Status, Usage: job.Usage, Error: job.ProviderError}
 	var wire protocol.Value
 	var err error
 	if ingress.Operations()[job.IngressOperation].Kind == "submit" {
-		wire, err = ingress.EncodeTaskReceipt(c.Request.Context(), job.IngressOperation, purpose, receipt)
+		wire, err = ingress.EncodeTaskReceipt(ctx, job.IngressOperation, purpose, receipt)
 	} else {
 		wire, err = protocol.EncodeValue(receipt)
 	}
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	c.Header("Location", "/gateway/"+job.IngressID+"/_jobs/"+job.Task.ID)
 	c.Data(status, "application/json", wire.Bytes())
 }
 
-func (s *Server) writeGatewayJobResult(c *gin.Context, ingress *protocol.Compiled, job protocol.GenerationJob) {
+func (s *Server) writeGatewayJobResult(ctx context.Context, c *app.RequestContext, ingress *protocol.Compiled, job protocol.GenerationJob) {
 	if job.Phase != protocol.JobTerminal {
-		s.writeGatewayJobReceipt(c, ingress, job, "result", http.StatusAccepted)
+		s.writeGatewayJobReceipt(ctx, c, ingress, job, "result", http.StatusAccepted)
 		return
 	}
 	if job.Task.Status != protocol.TaskCompleted {
-		s.writeGatewayJobReceipt(c, ingress, job, "result", http.StatusConflict)
+		s.writeGatewayJobReceipt(ctx, c, ingress, job, "result", http.StatusConflict)
 		return
 	}
 	response := *job.Task.Result
 	applyClientModelAlias(&response, protocol.StringValue(job.GroupName))
-	body, err := ingress.EncodeResponse(c.Request.Context(), &response, protocol.EvaluationContext{Scope: protocol.Scope{Provider: job.Task.ModelSourceID, Account: job.SourceAccount, Model: job.Model}})
+	body, err := ingress.EncodeResponse(ctx, &response, protocol.EvaluationContext{Scope: protocol.Scope{Provider: job.Task.ModelSourceID, Account: job.SourceAccount, Model: job.Model}})
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	c.Data(http.StatusOK, "application/json", body)

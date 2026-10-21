@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/route/param"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/gin-gonic/gin"
 )
 
 func declaredChatCacheDefinition(t *testing.T) protocol.Definition {
@@ -46,9 +46,10 @@ func TestDeclaredChatCacheExtensionReachesAnthropic(t *testing.T) {
 	server := newTestServer(t, presetGroup(t, "custom:anthropic-messages", upstream.URL), definition)
 	for attempt := 0; attempt < 2; attempt++ {
 		request, recorder := chatRequestContext(strings.ReplaceAll(string(wire.Bytes()), `"model":"m"`, `"model":"grp"`))
-		request.Request.URL.Path = "/gateway/" + definition.ID + "/chat/completions"
-		request.Params = gin.Params{{Key: "protocolId", Value: definition.ID}, {Key: "path", Value: "/chat/completions"}}
-		server.gatewayProtocol(request)
+		request.Request.URI().SetPath("/gateway/" + definition.ID + "/chat/completions")
+		request.Params = param.Params{{Key: "protocolId", Value: definition.ID}, {Key: "path", Value: "/chat/completions"}}
+		server.gatewayProtocol(contextForTest(request), request)
+		flushTestResponse(request)
 		if recorder.Code != http.StatusOK {
 			t.Fatal(recorder.Code, recorder.Body)
 		}
@@ -106,6 +107,8 @@ func cacheEnvelopeDefinition(t *testing.T) protocol.Definition {
 	return definition
 }
 
+// The author may omit cache only after removing that capability and its
+// witnesses. Leaving the promise in place must fail offline verification.
 func TestCacheNewCustomProtocolNestedHTTP(t *testing.T) {
 	definition := cacheEnvelopeDefinition(t)
 	var captured []byte
@@ -123,7 +126,8 @@ func TestCacheNewCustomProtocolNestedHTTP(t *testing.T) {
 	upstream, _ := service.Pin(definition.ID)
 	request := cacheWireFixtures()[1].request
 	c, rec := messagesRequestContext(request)
-	s.chatCompletions(c)
+	s.chatCompletions(contextForTest(c), c)
+	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
 		t.Fatal(rec.Code, rec.Body)
 	}
@@ -160,8 +164,6 @@ func TestCacheNewCustomProtocolNestedHTTP(t *testing.T) {
 	if !strings.Contains(stored, `"cacheCreationInputTokens":20`) {
 		t.Fatal("creation counter lost", stored)
 	}
-	// The author may omit cache only after removing that capability and its
-	// witnesses. Leaving the promise in place must fail offline verification.
 	mapping := definition.Directions[protocol.EncodeRequest]
 	payload := mapping.Transform.Fields["payload"]
 	delete(payload.Fields, "cache")

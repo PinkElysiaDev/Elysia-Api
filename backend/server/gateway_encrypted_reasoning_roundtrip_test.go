@@ -30,7 +30,9 @@ func TestGatewayResponsesEncryptedReasoningContinuation(t *testing.T) {
 			if openErr != nil {
 				t.Fatal(openErr)
 			}
-			t.Cleanup(func() { s.store.Close() })
+			t.Cleanup(func() {
+				s.store.Close()
+			})
 			activateDiscoveryPresets(t, s)
 			service, _ := s.protocolService()
 			upstream, _ := service.Pin(protocol.PresetResponsesID)
@@ -80,7 +82,7 @@ func TestGatewayResponsesEncryptedReasoningContinuation(t *testing.T) {
 				r.Header.Set("Authorization", "Bearer gateway-test-token")
 				r.Header.Set("x-elysia-session-id", "encrypted-reasoning")
 				rec := httptest.NewRecorder()
-				s.engine.ServeHTTP(rec, r)
+				serveTestHTTP(s.engine, rec, r)
 				return rec
 			}
 			first := call(fmt.Sprintf(`{"model":"group","max_tokens":64,"stream":%v,"messages":[{"role":"user","content":"hi"}]}`, stream))

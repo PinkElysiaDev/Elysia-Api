@@ -10,11 +10,12 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 type gatewayCandidate struct {
@@ -45,11 +46,11 @@ type gatewayPlan struct {
 	operationName string
 }
 
-func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, ingress *protocol.Compiled, path string, body []byte, record *usageRecord) (*gatewayPlan, error) {
+func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, view protocol.RegistryView, ingress *protocol.Compiled, path string, body []byte, record *usageRecord) (*gatewayPlan, error) {
 	if !ingress.Supports(protocol.DecodeRequest) {
 		return nil, gatewayIssue(ingress.Identity(), protocol.UnsupportedCapability, "/directions", "protocol is not a client ingress")
 	}
-	conversions, err := s.pinGatewayConversions(c.Request.Context())
+	conversions, err := s.pinGatewayConversions(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -59,11 +60,11 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		return nil, err
 	}
 	plan := &gatewayPlan{ingress: ingress, session: continuationSession(c, input), bodyBytes: len(body)}
-	input, plan.carriers, err = builtin.ExtractContinuationCarriersValue(input, ingress.Identity().Family, ingress.RequestLimits(c.Request.Context()).BufferBytes)
+	input, plan.carriers, err = builtin.ExtractContinuationCarriersValue(input, ingress.Identity().Family, ingress.RequestLimits(ctx).BufferBytes)
 	if err != nil {
 		return nil, err
 	}
-	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(protocol.Operation{Headers: map[string]string{"anthropic-beta": c.GetHeader("anthropic-beta")}}), Values: protocol.Object{"path": protocol.StringValue(path)}}
+	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(protocol.Operation{Headers: map[string]string{"anthropic-beta": string(c.GetHeader("anthropic-beta"))}}), Values: protocol.Object{"path": protocol.StringValue(path)}}
 	for _, operation := range ingress.OperationRoutes() {
 		if parameters, matches := protocol.MatchOperationPath(operation.Path, path); matches {
 			for name, value := range parameters {
@@ -72,14 +73,14 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		}
 	}
 	options.ResolveRequestScope = func(request *protocol.Request) (protocol.Scope, error) {
-		return s.bindGatewayRequest(c, view, bindings, plan, path, request, record)
+		return s.bindGatewayRequest(ctx, c, view, bindings, plan, path, request, record)
 	}
-	request, err := ingress.DecodeRequestValue(c.Request.Context(), input, options)
+	request, err := ingress.DecodeRequestValue(ctx, input, options)
 	if err != nil {
 		return nil, err
 	}
 	plan.request = request
-	if err := ingress.CheckOperationValueInput(c.Request.Context(), plan.operationName, input); err != nil {
+	if err := ingress.CheckOperationValueInput(ctx, plan.operationName, input); err != nil {
 		return nil, err
 	}
 	if plan.operation.Transport != protocol.WebSocket {
@@ -108,11 +109,11 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		if err != nil {
 			return nil, err
 		}
-		if err = s.loadProviderConversionEvidence(c.Request.Context(), candidate.conversion, candidate.model, candidate.compiled); err != nil {
+		if err = s.loadProviderConversionEvidence(ctx, candidate.conversion, candidate.model, candidate.compiled); err != nil {
 			return nil, err
 		}
 		sink := &protocol.DiagnosticSink{}
-		candidate.continuation, err = s.newGatewayContinuation(c, plan, candidate, sink)
+		candidate.continuation, err = s.newGatewayContinuation(extractAccessToken(c), plan, candidate, sink)
 		if err != nil {
 			return nil, err
 		}
@@ -122,10 +123,10 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		if candidate.continuation != nil {
 			restored = request.Clone()
 		}
-		if err = s.restoreGatewayContinuation(c, candidate.continuation, restored, plan.carriers); err != nil {
+		if err = s.restoreGatewayContinuation(ctx, candidate.continuation, restored, plan.carriers); err != nil {
 			return nil, err
 		}
-		candidate.prepared, err = candidate.conversion.Request(c.Request.Context(), restored, candidate.conversionContext(ingress, false), sink)
+		candidate.prepared, err = candidate.conversion.Request(ctx, restored, candidate.conversionContext(ingress, false), sink)
 		if err == nil && candidate.continuation != nil {
 			candidate.continuation.requireCarrier = candidate.prepared.ClientOutput.RequestsEncryptedReasoning()
 			candidate.continuation.conversion = candidate.conversion
@@ -154,13 +155,13 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		if canRetainEncoding {
 			probeOptions.Diagnostics = &protocol.DiagnosticSink{}
 		}
-		encoded, encodeErr := candidate.compiled.EncodeRequestValue(c.Request.Context(), probe, probeOptions)
+		encoded, encodeErr := candidate.compiled.EncodeRequestValue(ctx, probe, probeOptions)
 		if encodeErr == nil {
-			encodeErr = candidate.compiled.CheckOperationValueInput(c.Request.Context(), candidate.operationName, encoded)
+			encodeErr = candidate.compiled.CheckOperationValueInput(ctx, candidate.operationName, encoded)
 		}
 		if encodeErr != nil {
-			if c.Request.Context().Err() != nil {
-				return nil, c.Request.Context().Err()
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
 			}
 			var failure *protocol.ConversionError
 			if !errors.As(encodeErr, &failure) {
@@ -173,7 +174,7 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		candidate.binding = constrained
 		candidate.routeBinding = matched
 		if canRetainEncoding {
-			candidate.encoding = &gatewayRequestEncoding{value: encoded, request: probe, identity: candidate.compiled.Identity(), scope: probeOptions.Scope, limits: candidate.compiled.RequestLimits(c.Request.Context()), interleaved: probeOptions.InterleavedThinking, issues: probeOptions.Diagnostics.Issues()}
+			candidate.encoding = &gatewayRequestEncoding{value: encoded, request: probe, identity: candidate.compiled.Identity(), scope: probeOptions.Scope, limits: candidate.compiled.RequestLimits(ctx), interleaved: probeOptions.InterleavedThinking, issues: probeOptions.Diagnostics.Issues()}
 		}
 		eligible = append(eligible, candidate)
 	}
@@ -422,10 +423,10 @@ func selectGatewayIngressOperation(compiled *protocol.Compiled, method, path str
 	return name, operation, nil
 }
 
-func (s *Server) bindGatewayRequest(c *gin.Context, view protocol.RegistryView, bindings []storage.ProtocolBinding, plan *gatewayPlan, path string, request *protocol.Request, record *usageRecord) (protocol.Scope, error) {
+func (s *Server) bindGatewayRequest(ctx context.Context, c *app.RequestContext, view protocol.RegistryView, bindings []storage.ProtocolBinding, plan *gatewayPlan, path string, request *protocol.Request, record *usageRecord) (protocol.Scope, error) {
 	ingress := plan.ingress
 
-	name, operation, err := selectGatewayIngressOperation(ingress, c.Request.Method, path, request)
+	name, operation, err := selectGatewayIngressOperation(ingress, string(c.Method()), path, request)
 	if err != nil {
 		return protocol.Scope{}, err
 	}
@@ -437,7 +438,7 @@ func (s *Server) bindGatewayRequest(c *gin.Context, view protocol.RegistryView, 
 		return protocol.Scope{}, gatewayIssue(ingress.Identity(), protocol.InvalidInput, "/model", "request requires a model group")
 	}
 	record.RequestedModelGroup = groupName
-	if !s.tokenAllowsGroup(c, groupName) {
+	if !s.tokenAllowsGroup(ctx, c, groupName) {
 		return protocol.Scope{}, &gatewayFailure{http.StatusForbidden, fmt.Errorf("API key is not allowed to access this model group")}
 	}
 	group, failure := s.validateModelGroup(groupName)

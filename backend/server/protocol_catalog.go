@@ -1,8 +1,11 @@
 package server
 
 import (
+	"context"
+
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/utils"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/gin-gonic/gin"
 )
 
 // enabledProtocol describes the pinned executable revision, never an editable
@@ -19,8 +22,8 @@ type enabledProtocol struct {
 	HasAgentPolicy    bool                   `json:"hasAgentPolicy"`
 }
 
-func (s *Server) adminEnabledProtocols(c *gin.Context) {
-	service, ok := s.requireProtocolService(c)
+func (s *Server) adminEnabledProtocols(ctx context.Context, c *app.RequestContext) {
+	service, ok := s.requireProtocolService(ctx, c)
 	if !ok {
 		return
 	}
@@ -41,5 +44,5 @@ func (s *Server) adminEnabledProtocols(c *gin.Context) {
 		}
 		items = append(items, item)
 	}
-	respondOK(c, gin.H{"items": items})
+	respondOK(ctx, c, utils.H{"items": items})
 }

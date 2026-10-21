@@ -24,11 +24,17 @@ import (
 )
 
 const loadRequests = 128
+
 const loadRepeats = 3
+
 const loadDelay = 10 * time.Millisecond
+
 const loadFrameDelay = time.Millisecond
+
 const loadStreamBytes = 64 << 10
+
 const loadFrameBytes = 4 << 10
+
 const loadWarmupRequests = 32
 
 type loadMeasurement struct {
@@ -130,7 +136,7 @@ func TestProtocolLoad(t *testing.T) {
 			}
 			server.engine.POST("/v1/chat/completions", server.authMiddleware(), server.chatCompletions)
 			server.engine.Any("/gateway/:protocolId/*path", server.authMiddleware(), server.gatewayProtocol)
-			gateway := httptest.NewServer(server.engine)
+			gateway := startTestServer(server.engine)
 			t.Cleanup(gateway.Close)
 			client := &http.Client{Transport: &http.Transport{MaxIdleConns: 64, MaxIdleConnsPerHost: 64}, Timeout: time.Minute}
 			t.Cleanup(client.CloseIdleConnections)

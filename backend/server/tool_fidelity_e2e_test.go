@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
-	"github.com/gin-gonic/gin"
 )
 
 func TestResponsesToolFidelityHTTPPaths(t *testing.T) {
@@ -43,11 +42,12 @@ func TestResponsesToolFidelityHTTPPaths(t *testing.T) {
 				defer upstream.Close()
 				s := newTestServer(t, presetGroup(t, platform, upstream.URL), preset)
 				recorder := httptest.NewRecorder()
-				ctx, _ := gin.CreateTestContext(recorder)
+				ctx := newTestContext(recorder)
 				body := strings.Replace(requestBody, `"model":"grp"`, fmt.Sprintf(`"model":"grp","stream":%v`, isStream), 1)
-				ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
+				setTestRequest(ctx, httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body)))
 				ctx.Request.Header.Set("Content-Type", "application/json")
-				s.responses(ctx)
+				s.responses(contextForTest(ctx), ctx)
+				flushTestResponse(ctx)
 				if recorder.Code != http.StatusOK {
 					t.Fatalf("status %d: %s", recorder.Code, recorder.Body.String())
 				}

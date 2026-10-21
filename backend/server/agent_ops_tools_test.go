@@ -20,9 +20,6 @@ import (
 	"github.com/elysia-api/backend/storage"
 )
 
-// 运维工具单测：查询工具的返回形状、写工具的门控与落库、密钥脱敏、
-// SSRF 拒绝、成员增删。
-
 func newOpsTestServer(t *testing.T) *Server {
 	t.Helper()
 	s := newAgentIntegrationServer(t)
@@ -53,16 +50,44 @@ func opsExecute(t *testing.T, tool any, args string) testToolResult {
 // opsTestContext 最小 CLIContext 桩（ops 工具不依赖会话状态）。
 type opsTestContext struct{}
 
-func (c *opsTestContext) Draft() json.RawMessage                     { return nil }
-func (c *opsTestContext) SetDraft(draft json.RawMessage) error       { return nil }
-func (c *opsTestContext) TestTarget() (string, string)               { return "", "" }
-func (c *opsTestContext) SetTestTarget(baseURL, apiKey string) error { return nil }
-func (c *opsTestContext) EditProtocolID() string                     { return "" }
-func (c *opsTestContext) ReportProgress(string)                      {}
-func (c *opsTestContext) SessionMeta() agent.SessionMeta             { return agent.SessionMeta{} }
-func (c *opsTestContext) SetPlan([]agent.PlanStep) error             { return nil }
-func (c *opsTestContext) SetPlanSummary(string) error                { return nil }
-func (c *opsTestContext) SetTitle(string) error                      { return nil }
+func (c *opsTestContext) Draft() json.RawMessage {
+	return nil
+}
+
+func (c *opsTestContext) SetDraft(draft json.RawMessage) error {
+	return nil
+}
+
+func (c *opsTestContext) TestTarget() (string, string) {
+	return "", ""
+}
+
+func (c *opsTestContext) SetTestTarget(baseURL, apiKey string) error {
+	return nil
+}
+
+func (c *opsTestContext) EditProtocolID() string {
+	return ""
+}
+
+func (c *opsTestContext) ReportProgress(string) {
+}
+
+func (c *opsTestContext) SessionMeta() agent.SessionMeta {
+	return agent.SessionMeta{}
+}
+
+func (c *opsTestContext) SetPlan([]agent.PlanStep) error {
+	return nil
+}
+
+func (c *opsTestContext) SetPlanSummary(string) error {
+	return nil
+}
+
+func (c *opsTestContext) SetTitle(string) error {
+	return nil
+}
 
 func TestOpsSourceToolsCreateUpdateList(t *testing.T) {
 	t.Parallel()
@@ -300,11 +325,15 @@ type sessionToolContext struct {
 func (c *sessionToolContext) SessionMeta() agent.SessionMeta {
 	return agent.SessionMeta{ID: c.session.ID, Mode: c.session.Mode, Settings: c.session.Settings}
 }
-func (c *sessionToolContext) Draft() json.RawMessage               { return c.session.DraftConfig }
+
+func (c *sessionToolContext) Draft() json.RawMessage { return c.session.DraftConfig }
+
 func (c *sessionToolContext) SetDraft(draft json.RawMessage) error { return nil }
+
 func (c *sessionToolContext) TestTarget() (string, string) {
 	return c.session.TestBaseURL, c.session.TestAPIKey
 }
+
 func (c *sessionToolContext) SetTestTarget(baseURL, apiKey string) error {
 	update := agent.SessionStateUpdate{}
 	if strings.TrimSpace(baseURL) != "" {
@@ -320,13 +349,16 @@ func (c *sessionToolContext) SetTestTarget(baseURL, apiKey string) error {
 	}
 	return c.store.UpdateSessionState(c.ctx, c.session.ID, update)
 }
+
 func (c *sessionToolContext) EditProtocolID() string {
 	if c.session.Mode == agent.ModeEdit {
 		return c.session.ProtocolID
 	}
 	return ""
 }
+
 func (c *sessionToolContext) ReportProgress(string) {}
+
 func (c *sessionToolContext) SetTitle(title string) error {
 	if err := c.store.UpdateSessionState(c.ctx, c.session.ID, agent.SessionStateUpdate{Title: title}); err != nil {
 		return err
@@ -334,6 +366,7 @@ func (c *sessionToolContext) SetTitle(title string) error {
 	c.session.Title = title
 	return nil
 }
+
 func (c *sessionToolContext) SetPlan(steps []agent.PlanStep) error {
 	if err := c.store.UpdateSessionState(c.ctx, c.session.ID, agent.SessionStateUpdate{Plan: steps}); err != nil {
 		return err

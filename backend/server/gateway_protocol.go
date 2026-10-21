@@ -1,16 +1,19 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/utils"
+
 	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
-	"github.com/gin-gonic/gin"
 )
 
 type gatewayFailure struct {
@@ -36,53 +39,56 @@ func gatewayIssue(identity protocol.Identity, code protocol.IssueCode, path, rea
 	return &protocol.ConversionError{Issues: []protocol.ConversionIssue{{Code: code, Severity: protocol.SeverityError, Protocol: identity, Direction: protocol.EncodeRequest, Stage: "routing", Path: path, Reason: reason, Suggestion: "Correct the protocol/model binding or select a compatible model group."}}}
 }
 
-func (s *Server) gatewayProtocol(c *gin.Context) {
-	if !s.requireProtocolRuntime(c) {
+func (s *Server) gatewayProtocol(ctx context.Context, c *app.RequestContext) {
+	if !s.requireProtocolRuntime(ctx, c) {
 		return
 	}
 	service, err := s.protocolService()
 	if err != nil {
-		respondProtocolError(c, err)
+		respondProtocolError(ctx, c, err)
 		return
 	}
 	view := service.View()
 	ingress, exists := view.Pin(c.Param("protocolId"))
 	if !exists {
-		respondFail(c, http.StatusNotFound, "inactive_protocol", "protocol has no verified active revision")
+		respondFail(ctx, c, http.StatusNotFound, "inactive_protocol", "protocol has no verified active revision")
 		return
 	}
-	if s.serveGatewayJobControl(c, service, ingress) {
+	if s.serveGatewayJobControl(ctx, c, service, ingress) {
 		return
 	}
-	if operation, exists := gatewaySessionOperation(ingress, c.Request.Method, c.Param("path")); exists {
-		handshake, err := protocol.ReadSessionHandshake(c.Request, operation)
+	path := "/" + strings.TrimPrefix(c.Param("path"), "/")
+	if operation, exists := gatewaySessionOperation(ingress, string(c.Method()), path); exists {
+		handshake, err := readSessionHandshake(c, operation)
 		if err != nil {
-			respondProtocolError(c, err)
+			respondProtocolError(ctx, c, err)
 			return
 		}
-		s.serveGatewaySession(c, view, ingress, c.Param("path"), handshake.Bytes())
+		s.serveGatewaySession(ctx, c, view, ingress, path, handshake.Bytes())
 		return
 	}
 	defer s.releaseGatewayPreparation(c)
-	body, ok := s.readGatewayRequest(c, ingress)
+	body, ok := s.readGatewayRequest(ctx, c, ingress)
 	if !ok {
 		return
 	}
-	s.serveProtocolRequest(c, view, ingress, c.Param("path"), body)
+	s.serveProtocolRequest(ctx, c, view, ingress, path, body)
 }
 
-func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView, ingress *protocol.Compiled, path string, body []byte) {
-	if !s.pinProtocolRequest(c) {
+func (s *Server) serveProtocolRequest(ctx context.Context, c *app.RequestContext, view protocol.RegistryView, ingress *protocol.Compiled, path string, body []byte) {
+	var budgetOK bool
+	ctx, budgetOK = s.pinProtocolRequest(ctx, c)
+	if !budgetOK {
 		return
 	}
-	if err := s.acquireGatewayPreparation(c, int64(len(body))); err != nil {
-		s.rejectPreparation(c, ingress, err)
+	if err := s.acquireGatewayPreparation(ctx, c, int64(len(body))); err != nil {
+		s.rejectPreparation(ctx, c, ingress, err)
 		return
 	}
 	defer s.releaseGatewayPreparation(c)
 	start := time.Now()
-	record := s.initUsageRecord(c, start, body, builtin.FormatType(ingress.Identity().Family))
-	record.IngressRevision, record.SourceEndpoint, record.SourceFormat = ingress.Hash(), c.Request.URL.Path, ingress.Identity().DefinitionID
+	record := s.initUsageRecord(ctx, c, start, body, builtin.FormatType(ingress.Identity().Family))
+	record.IngressRevision, record.SourceEndpoint, record.SourceFormat = ingress.Hash(), string(c.Path()), ingress.Identity().DefinitionID
 	record.RelayMode = "protocol_v2"
 	installDownstreamCapture(c, record, downstreamCaptureLimit(s.usageLogConfig()))
 	isTaskOwned := false
@@ -91,14 +97,14 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 			s.recordUsage(record)
 		}
 	}()
-	plan, err := s.prepareGatewayPlan(c, view, ingress, path, body, record)
+	plan, err := s.prepareGatewayPlan(ctx, c, view, ingress, path, body, record)
 	if err != nil {
-		s.failGateway(c, record, http.StatusBadRequest, err)
+		s.failGateway(ctx, c, record, http.StatusBadRequest, err)
 		return
 	}
 	if plan.candidates[0].operation.Kind == "submit" {
 		s.releaseGatewayPreparation(c) // Task workers have their own lifetime/admission.
-		isTaskOwned = s.submitGatewayJob(c, record, plan, plan.candidates[0])
+		isTaskOwned = s.submitGatewayJob(ctx, c, record, plan, plan.candidates[0])
 		return
 	}
 	record.Stream = plan.operation.Transport != protocol.HTTPJSON
@@ -108,7 +114,7 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 	}
 	release, err := s.limiter.Acquire(plan.group, estimate)
 	if err != nil {
-		s.failGateway(c, record, http.StatusTooManyRequests, err)
+		s.failGateway(ctx, c, record, http.StatusTooManyRequests, err)
 		return
 	}
 	defer release()
@@ -132,39 +138,39 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 	attempts := routing.MaxAttempts(plan.group.MaxRetries, len(plan.candidates))
 	defer plan.releasePreparation()
 	for index := range attempts {
-		if err := c.Request.Context().Err(); err != nil {
-			s.failGateway(c, record, statusClientClosedRequest, err)
+		if err := ctx.Err(); err != nil {
+			s.failGateway(ctx, c, record, statusClientClosedRequest, err)
 			return
 		}
 		candidate := plan.takeCandidate(index, attempts)
 		modelName := candidate.model.Name
-		err := s.forwardGateway(c, record, plan, candidate)
+		err := s.forwardGateway(ctx, c, record, plan, candidate)
 		if err == nil {
 			s.affinity.set(record.KeyHash, plan.group.ID, modelName)
 			return
 		}
-		if c.Writer.Written() {
-			s.failGateway(c, record, http.StatusBadGateway, err)
+		if responseCommitted(c) {
+			s.failGateway(ctx, c, record, http.StatusBadGateway, err)
 			return
 		}
 		canRetry := canRetryGeneration(err)
 		isLast := index+1 == attempts
 		if !canRetry || isLast {
-			s.failGateway(c, record, http.StatusBadGateway, err)
+			s.failGateway(ctx, c, record, http.StatusBadGateway, err)
 			return
 		}
 		s.appendRetryEvent(record, index, modelName, err.Error())
-		if plan.group.RetryInterval > 0 && !waitForRetryOrCancel(c, plan.group.RetryInterval) {
-			s.failGateway(c, record, statusClientClosedRequest, c.Request.Context().Err())
+		if plan.group.RetryInterval > 0 && !waitForRetryOrCancel(ctx, plan.group.RetryInterval) {
+			s.failGateway(ctx, c, record, statusClientClosedRequest, ctx.Err())
 			return
 		}
 	}
 }
 
-func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate) error {
+func (s *Server) forwardGateway(ctx context.Context, c *app.RequestContext, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate) error {
 	// A retry reacquires preparation capacity; no lease spans provider I/O or
 	// retry backoff. The initial attempt reuses the ingress/preflight lease.
-	if err := s.acquireGatewayPreparation(c, int64(plan.bodyBytes)); err != nil {
+	if err := s.acquireGatewayPreparation(ctx, c, int64(plan.bodyBytes)); err != nil {
 		if preparationStatus(err) == http.StatusServiceUnavailable {
 			c.Header("Retry-After", "1")
 		}
@@ -199,20 +205,20 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	}
 	s.estimateGatewayAttempt(record, request)
 	record.SystemStructure.After = systemStructure(request)
-	wireValue, isPrepared := candidate.takeRequestValue(c.Request.Context(), request, options)
+	wireValue, isPrepared := candidate.takeRequestValue(ctx, request, options)
 	var err error
 	if !isPrepared {
-		wireValue, err = candidate.compiled.EncodeRequestValue(c.Request.Context(), request, options)
+		wireValue, err = candidate.compiled.EncodeRequestValue(ctx, request, options)
 		if err != nil {
 			return &gatewayFailure{http.StatusBadRequest, err}
 		}
 	}
 	if candidate.conversion.HasPhase(protocol.ConversionWire) {
-		wireValue, err = candidate.conversion.ApplyValue(c.Request.Context(), protocol.ConversionWire, wireValue, candidate.conversionContext(plan.ingress, false), options.Diagnostics)
+		wireValue, err = candidate.conversion.ApplyValue(ctx, protocol.ConversionWire, wireValue, candidate.conversionContext(plan.ingress, false), options.Diagnostics)
 		if err != nil {
 			return &gatewayFailure{http.StatusBadRequest, err}
 		}
-		decoded, e := candidate.compiled.DecodeRequestValue(c.Request.Context(), wireValue, options)
+		decoded, e := candidate.compiled.DecodeRequestValue(ctx, wireValue, options)
 		if e != nil {
 			return &gatewayFailure{http.StatusBadRequest, e}
 		}
@@ -220,12 +226,12 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 			return &gatewayFailure{http.StatusBadRequest, e}
 		}
 	}
-	if e := candidate.compiled.CheckRequestBody(c.Request.Context(), wireValue); e != nil {
+	if e := candidate.compiled.CheckRequestBody(ctx, wireValue); e != nil {
 		return &gatewayFailure{http.StatusBadRequest, e}
 	} else if e = candidate.compiled.ValidateWireOutput(protocol.EncodeRequest, wireValue); e != nil {
 		return e
 	}
-	if err := candidate.compiled.CheckOperationValueInput(c.Request.Context(), candidate.operationName, wireValue); err != nil {
+	if err := candidate.compiled.CheckOperationValueInput(ctx, candidate.operationName, wireValue); err != nil {
 		return &gatewayFailure{http.StatusBadRequest, err}
 	}
 	responseRoute, err := candidate.conversionContext(plan.ingress, true).WithRequestModelOrigin(plan.ingress, candidate.compiled, wireValue)
@@ -243,7 +249,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 		plan.releasePreparation()
 	}
 	s.releaseGatewayPreparation(c)
-	response, err := s.protocolTransport.SendProtocolRequest(c.Request.Context(), candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Identifier()})
+	response, err := s.protocolTransport.SendProtocolRequest(ctx, candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Identifier()})
 	if err != nil {
 		return err
 	}
@@ -256,18 +262,18 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 			return &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(fallbackHTTPFailure(response.StatusCode, nil)), protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response"))}}
 		}
 		record.ProviderResponse = record.sanitizeBody(body)
-		return mapGatewayHTTPFailure(c.Request.Context(), record, response.StatusCode, body, plan.ingress, candidate, options)
+		return mapGatewayHTTPFailure(ctx, record, response.StatusCode, body, plan.ingress, candidate, options)
 	}
 	// Successful provider headers close the retry lifetime even if later response
 	// conversion fails. Stream/response consumers receive only delivery metadata.
 	plan.releasePreparation()
 	if candidate.operation.Transport != protocol.HTTPJSON {
-		return s.forwardGatewayStream(c, record, delivery, candidate, response)
+		return s.forwardGatewayStream(ctx, c, record, delivery, candidate, response)
 	}
-	return s.forwardGatewayResponse(c, record, delivery, candidate, response, responseRoute, options)
+	return s.forwardGatewayResponse(ctx, c, record, delivery, candidate, response, responseRoute, options)
 }
 
-func (s *Server) failGateway(c *gin.Context, record *usageRecord, status int, err error) {
+func (s *Server) failGateway(ctx context.Context, c *app.RequestContext, record *usageRecord, status int, err error) {
 	var failure *gatewayFailure
 	if errors.As(err, &failure) {
 		status = failure.status
@@ -275,7 +281,7 @@ func (s *Server) failGateway(c *gin.Context, record *usageRecord, status int, er
 	if localStatus := localResourceStatus(record, err); localStatus != 0 {
 		status = localStatus
 	}
-	if c.Request.Context().Err() != nil {
+	if ctx.Err() != nil {
 		status = statusClientClosedRequest
 	}
 	record.StatusCode, record.Error, record.ErrorKind = status, err.Error(), ErrorKindUpstream
@@ -293,15 +299,16 @@ func (s *Server) failGateway(c *gin.Context, record *usageRecord, status int, er
 	if status == statusClientClosedRequest {
 		record.ErrorKind = ErrorKindClientCanceled
 	}
-	if c.Writer.Written() {
+	if responseCommitted(c) {
 		return
 	}
+	discardUncommittedStream(c)
 	var upstream *upstreamFailure
 	if status != statusClientClosedRequest && errors.As(err, &upstream) {
 		c.Data(status, "application/json", upstream.body)
 		return
 	}
-	if !strings.HasPrefix(c.Request.URL.Path, "/gateway/") {
+	if !strings.HasPrefix(string(c.Path()), "/gateway/") {
 		var wireError *builtin.GatewayError
 		if !errors.As(err, &wireError) {
 			wireError = &builtin.GatewayError{Class: builtin.ClassFromStatus(status), Status: status, Message: err.Error()}
@@ -309,8 +316,8 @@ func (s *Server) failGateway(c *gin.Context, record *usageRecord, status int, er
 				wireError.Class = class
 			}
 		}
-		writeProtocolError(c, inputFormatFromPath(c.Request.URL.Path), wireError)
+		writeProtocolError(ctx, c, inputFormatFromPath(string(c.Path())), wireError)
 		return
 	}
-	c.JSON(status, gin.H{"error": gin.H{"code": "protocol_gateway_error", "message": err.Error(), "issues": record.ConversionIssues}})
+	c.JSON(status, utils.H{"error": utils.H{"code": "protocol_gateway_error", "message": err.Error(), "issues": record.ConversionIssues}})
 }

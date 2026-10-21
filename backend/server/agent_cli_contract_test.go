@@ -8,9 +8,9 @@ import (
 	"testing"
 )
 
+// Permission semantics live in agent tests; this checks CLI approval/resume.
 func TestCLIApprovalAndResume(t *testing.T) {
 	t.Parallel()
-	// Permission semantics live in agent tests; this checks CLI approval/resume.
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
 		{openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia group create --name regression-group"}`), "", nil), openAIChunk("c1", map[string]any{}, "tool_calls", nil), openAIDone()},
@@ -18,16 +18,19 @@ func TestCLIApprovalAndResume(t *testing.T) {
 	})
 	seedAgentModel(t, s, fake.URL)
 	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create","settings":{"modelSourceId":"s1","modelName":"fake-model","allowSave":"ask"}}`)
-	s.adminCreateAgentSession(c)
+	s.adminCreateAgentSession(contextForTest(c), c)
+	flushTestResponse(c)
 	id := decodeAdminData(t, rec)["id"].(string)
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+id+"/messages", id, `{"content":"创建 regression-group"}`)
-	s.adminSendAgentMessage(c)
+	s.adminSendAgentMessage(contextForTest(c), c)
+	flushTestResponse(c)
 	groups, _ := s.store.ListGroups(t.Context())
 	if len(groups) != 0 || !hasAgentEvent(parseSSEEvents(t, rec.Body.String()), "approval_required") {
 		t.Fatalf("write must wait for approval: %s", rec.Body.String())
 	}
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+id+"/approve", id, `{"approved":true}`)
-	s.adminApproveAgentAction(c)
+	s.adminApproveAgentAction(contextForTest(c), c)
+	flushTestResponse(c)
 	groups, _ = s.store.ListGroups(t.Context())
 	if rec.Code != http.StatusOK || len(groups) != 1 {
 		t.Fatalf("CLI did not resume: %s", rec.Body.String())

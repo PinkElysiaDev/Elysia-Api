@@ -1,13 +1,16 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"github.com/elysia-api/backend/agent"
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/utils"
+	"github.com/cloudwego/hertz/pkg/route"
 
-	"github.com/gin-gonic/gin"
+	"github.com/elysia-api/backend/agent"
 )
 
 // AI 助手远程面之一：REST（/api/agent/*）。与 /api/admin/agent/* 共用同一
@@ -17,7 +20,7 @@ import (
 
 // setupAgentRemoteRoutes 注册 /api/agent 组（挂在 agentRemoteGate +
 // agentRemoteAuth 之后）。
-func (s *Server) setupAgentRemoteRoutes(group *gin.RouterGroup) {
+func (s *Server) setupAgentRemoteRoutes(group *route.RouterGroup) {
 	group.GET("/agent/sessions", s.listAgentSessionsFiltered)
 	group.POST("/agent/sessions", s.adminCreateAgentSession)
 	group.GET("/agent/sessions/:id", s.adminGetAgentSession)
@@ -33,36 +36,36 @@ func (s *Server) setupAgentRemoteRoutes(group *gin.RouterGroup) {
 // listAgentSessionsFiltered 会话列表（管理面板与 /api/agent 共用）：
 // 可选 status 过滤（引擎运行态口径，先叠加后过滤）与 limit/offset 分页；
 // 不带参数返回全量。total 恒为过滤后总数（分页前）。
-func (s *Server) listAgentSessionsFiltered(c *gin.Context) {
+func (s *Server) listAgentSessionsFiltered(ctx context.Context, c *app.RequestContext) {
 	filter := remoteAgentListFilter{Status: strings.TrimSpace(c.Query("status"))}
 	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
 		limit, err := strconv.Atoi(raw)
 		if err != nil || limit <= 0 {
-			respondFail(c, http.StatusBadRequest, "invalid_limit", "limit 必须是正整数")
+			respondFail(ctx, c, http.StatusBadRequest, "invalid_limit", "limit 必须是正整数")
 			return
 		}
 		filter.Limit = limit
 	}
 	if filter.Status != "" && filter.Status != agent.StatusIdle && filter.Status != agent.StatusRunning && filter.Status != agent.StatusWaitingApproval {
-		respondFail(c, http.StatusBadRequest, "invalid_status", "status 可选值：idle/running/waiting_approval")
+		respondFail(ctx, c, http.StatusBadRequest, "invalid_status", "status 可选值：idle/running/waiting_approval")
 		return
 	}
 	if raw := strings.TrimSpace(c.Query("offset")); raw != "" {
 		offset, err := strconv.Atoi(raw)
 		if err != nil || offset < 0 {
-			respondFail(c, http.StatusBadRequest, "invalid_offset", "offset 必须是非负整数")
+			respondFail(ctx, c, http.StatusBadRequest, "invalid_offset", "offset 必须是非负整数")
 			return
 		}
 		filter.Offset = offset
 	}
-	sessions, total, err := s.listRemoteAgentSessions(c.Request.Context(), filter)
+	sessions, total, err := s.listRemoteAgentSessions(ctx, filter)
 	if err != nil {
-		respondFail(c, http.StatusInternalServerError, "list_failed", err.Error())
+		respondFail(ctx, c, http.StatusInternalServerError, "list_failed", err.Error())
 		return
 	}
-	items := make([]gin.H, 0, len(sessions))
+	items := make([]utils.H, 0, len(sessions))
 	for i := range sessions {
 		items = append(items, agentSessionView(&sessions[i]))
 	}
-	respondOK(c, gin.H{"items": items, "total": total})
+	respondOK(ctx, c, utils.H{"items": items, "total": total})
 }

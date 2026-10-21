@@ -49,23 +49,6 @@ func checkHandshakeFields(config *SessionConfig) error {
 	return nil
 }
 
-// ReadSessionHandshake exposes only fields explicitly declared by the ingress.
-// Even an unrestricted object expression cannot read gateway credentials.
-func ReadSessionHandshake(request *http.Request, operation Operation) (Value, error) {
-	handshake := SessionHandshake{Query: map[string][]string{}, Headers: map[string][]string{}}
-	for _, name := range operation.Session.QueryFields {
-		if values, exists := request.URL.Query()[name]; exists {
-			handshake.Query[name] = slices.Clone(values)
-		}
-	}
-	for _, name := range operation.Session.HeaderFields {
-		if values := request.Header.Values(name); len(values) > 0 {
-			handshake.Headers[name] = slices.Clone(values)
-		}
-	}
-	return EncodeValue(handshake)
-}
-
 // BuildSessionHandshake applies declared mapped fields to the same secure HTTP
 // request contract as ordinary forwarding. A WebSocket library performs the
 // upgrade using this URL/header and the gateway's existing HTTP client.

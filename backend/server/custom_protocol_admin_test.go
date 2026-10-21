@@ -9,17 +9,16 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 )
 
 // newProtocolAdminTestServer constructs isolated configuration and protocol storage.
 func newProtocolAdminTestServer(t *testing.T) (*Server, string) {
 	t.Helper()
-
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")
 	if err := os.WriteFile(cfgPath, []byte(`{"host":"127.0.0.1","port":8765}`), 0o644); err != nil {
@@ -33,25 +32,20 @@ func newProtocolAdminTestServer(t *testing.T) (*Server, string) {
 	if err != nil {
 		t.Fatalf("storage.Open: %v", err)
 	}
-	t.Cleanup(func() { store.Close() })
-	s := &Server{
-		config:                 cfg,
-		engine:                 gin.New(),
-		protocolTransport:      relay.NewProtocolTransport(10 * time.Second),
-		affinity:               newAffinityCache(),
-		store:                  store,
-		skipOutboundValidation: true,
-	}
+	t.Cleanup(func() {
+		store.Close()
+	})
+	s := &Server{config: cfg, engine: newTestEngine(t), protocolTransport: relay.NewProtocolTransport(10 * time.Second), affinity: newAffinityCache(), store: store, skipOutboundValidation: true}
 	t.Cleanup(s.closeCaches)
 	return s, cfgPath
 }
 
-func adminProtocolContext(method, target, body string) (*gin.Context, *httptest.ResponseRecorder) {
+func adminProtocolContext(method, target, body string) (*app.RequestContext, *httptest.ResponseRecorder) {
 	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
+	c := newTestContext(rec)
 	req := httptest.NewRequest(method, target, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	c.Request = req
+	setTestRequest(c, req)
 	return c, rec
 }
 
