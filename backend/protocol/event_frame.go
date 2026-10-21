@@ -51,6 +51,19 @@ func (compiled *Compiled) EncodeFrames(ctx context.Context, event Event, options
 }
 
 func (compiled *Compiled) encodeFrames(ctx context.Context, direction Direction, event Event, options EvaluationContext) ([]Value, error) {
+	if event.Native == nil && compiled.mappings[direction].frameBatch && compiled.hasTypedMapping(direction) {
+		if err := IssuesError(CheckEvent(event, compiled.target(direction, options), compiled.limits)); err != nil {
+			return nil, compiled.runtimeError(direction, err)
+		}
+		output, err := compiled.encodeEventOutput(ctx, direction, event, options, true)
+		if err != nil {
+			return nil, compiled.runtimeError(direction, err)
+		}
+		if output.frames != nil {
+			return output.frames, nil
+		}
+		return readArray(output.value)
+	}
 	value, err := compiled.encodeEvent(ctx, direction, event, options)
 	if err != nil {
 		return nil, err

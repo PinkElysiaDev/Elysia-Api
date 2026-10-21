@@ -51,8 +51,25 @@ func EncodeValue(value any) (Value, error) {
 
 // StringValue constructs a JSON string; strings cannot fail JSON encoding.
 func StringValue(value string) Value {
+	// Frame metadata, item IDs and short text are usually plain ASCII. Build
+	// their exact owned representation instead of acquiring a generic encoder
+	// workspace for each scalar in the streaming pipeline. Complex/large text
+	// retains the codec's Unicode, invalid-byte and HTML-escaping behavior.
+	if len(value) <= 4096 && plainJSONString(value) {
+		return Value{raw: `"` + value + `"`}
+	}
 	raw, _ := sonic.ConfigStd.MarshalToString(value)
 	return Value{raw: ownEncodedString(raw)}
+}
+
+func plainJSONString(value string) bool {
+	for index := range len(value) {
+		character := value[index]
+		if character < 0x20 || character >= 0x80 || character == '"' || character == '\\' || character == '<' || character == '>' || character == '&' {
+			return false
+		}
+	}
+	return true
 }
 
 // IsString compares decoded string content without changing the stored wire bytes.

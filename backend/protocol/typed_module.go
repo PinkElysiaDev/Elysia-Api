@@ -33,21 +33,51 @@ type TypedEventEncoder interface {
 	EncodeEventValue(context.Context, Event, EvaluationContext) (Value, error)
 }
 
+// TypedFrameEncoder returns an owned frame slice without encoding an intermediate
+// JSON array. It must implement the same operation as EncodeEventValue exactly
+// once. Only schema-free typed batch mappings without per-event native replay
+// select this interface; authored JSON boundaries keep their normal execution.
+type TypedFrameEncoder interface {
+	TypedEventEncoder
+	EncodeEventFrames(context.Context, Event, EvaluationContext) ([]Value, error)
+}
+
+type eventOutput struct {
+	value  Value
+	frames []Value
+}
+
+func (output eventOutput) materialize() (Value, error) {
+	if output.frames != nil {
+		return EncodeValue(output.frames)
+	}
+	return output.value, nil
+}
+
 func (compiled *Compiled) encodeEventValue(ctx context.Context, direction Direction, event Event, options EvaluationContext) (Value, error) {
+	output, err := compiled.encodeEventOutput(ctx, direction, event, options, false)
+	if err != nil {
+		return Value{}, err
+	}
+	return output.materialize()
+}
+
+func (compiled *Compiled) encodeEventOutput(ctx context.Context, direction Direction, event Event, options EvaluationContext, batch bool) (eventOutput, error) {
 	if !compiled.hasTypedMapping(direction) {
 		input, err := EncodeSemantic(ctx, direction, event)
 		if err != nil {
-			return Value{}, err
+			return eventOutput{}, err
 		}
-		return compiled.executeMapping(ctx, direction, input, options)
+		value, err := compiled.executeMapping(ctx, direction, input, options)
+		return eventOutput{value: value}, err
 	}
 	// The original semantic boundary precedes executeMapping's cancellation check.
 	budget := semanticLimits(DefaultLimits())
 	if err := checkSemanticValue(event, budget); err != nil {
-		return Value{}, err
+		return eventOutput{}, err
 	}
 	input := normalizeMappingSemantic(&event, budget)
-	fail := func(err error) (Value, error) { return Value{}, compiled.mappingError(direction, err) }
+	fail := func(err error) (eventOutput, error) { return eventOutput{}, compiled.mappingError(direction, err) }
 	if err := ctx.Err(); err != nil {
 		return fail(err)
 	}
@@ -68,9 +98,21 @@ func (compiled *Compiled) encodeEventValue(ctx context.Context, direction Direct
 	if !ok {
 		value, err := EncodeSemantic(ctx, direction, event)
 		if err != nil {
-			return Value{}, err
+			return eventOutput{}, err
 		}
-		return compiled.executeMapping(ctx, direction, value, options)
+		value, err = compiled.executeMapping(ctx, direction, value, options)
+		return eventOutput{value: value}, err
+	}
+	if encoder, ok := encoder.(TypedFrameEncoder); ok && batch {
+		frames, err := encoder.EncodeEventFrames(ctx, *input, options)
+		if err != nil {
+			return fail(err)
+		}
+		frames, err = normalizeFrameBatch(frames, outputLimits)
+		if err != nil {
+			return fail(err)
+		}
+		return eventOutput{frames: frames}, nil
 	}
 	output, err := encoder.EncodeEventValue(ctx, *input, options)
 	if err != nil {
@@ -82,7 +124,7 @@ func (compiled *Compiled) encodeEventValue(ctx context.Context, direction Direct
 	if err := checkResourceValue(output, outputLimits, "mapping_output"); err != nil {
 		return fail(err)
 	}
-	return output, nil
+	return eventOutput{value: output}, nil
 }
 
 func (compiled *Compiled) hasTypedMapping(direction Direction) bool {
