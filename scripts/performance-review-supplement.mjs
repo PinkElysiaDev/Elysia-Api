@@ -12,6 +12,9 @@ const root = resolve(opt('output', '.tmp-dev/performance-review-2026-10-22'))
 const versions = opt('versions', 'release,current').split(',')
 const suffix = opt('suffix', 'supplement')
 if (!/^[a-z0-9-]+$/.test(suffix)) throw new Error('Invalid binary suffix')
+const reuseBase = args.includes('--reuse-base')
+const sourceDirectory = version => join(root, reuseBase ? 'sources' : `${suffix}-sources`, version, 'backend')
+const binaryPath = version => join(root, 'binaries', `${version}${reuseBase ? '' : '-' + suffix}.test.exe`)
 const env = { ...process.env, GOMAXPROCS: '4', GOGC: '100', GOMEMLIMIT: '2GiB', CGO_ENABLED: '0' }
 for (const key of Object.keys(env)) if (/^ELYSIA_(FLAME_|CONVERSION_HTTP_|REVIEW_)/.test(key)) delete env[key]
 const save = async (file, value) => { await mkdir(dirname(file), { recursive: true }); await writeFile(file, typeof value === 'string' ? value : JSON.stringify(value, null, 2)) }
@@ -34,6 +37,7 @@ async function run(name, command, argv, cwd, extra = {}) {
   return result
 }
 if (args[0] === 'build') {
+  if (reuseBase) throw new Error('--reuse-base runs existing fixtures; it cannot overwrite the captured binary')
   for (const version of versions) {
     const directory = join(root, `${suffix}-sources`, version, 'backend')
     await mkdir(dirname(directory), { recursive: true })
@@ -93,26 +97,27 @@ if (args[0] === 'build') {
     const name = `${opt('label', mode)}-${stream}-${pair}-${version}`, directory = join(root, 'runs', name)
     try { await readFile(join(directory, 'result.json')); continue } catch (e) { if (e.code !== 'ENOENT') throw e }
     await mkdir(directory, { recursive: true })
-    const held = mode === 'held', binary = join(root, 'binaries', `${version}-${suffix}.test.exe`)
+    const held = mode === 'held', binary = binaryPath(version)
     const settings = { ELYSIA_FLAME_OUTPUT: directory, ELYSIA_FLAME_WORKLOAD: held ? 'image' : 'small', ELYSIA_FLAME_STREAM: stream,
       ELYSIA_FLAME_SOURCE: held ? '' : 'openai-chat-completions', ELYSIA_FLAME_TARGET: held ? '' : 'openai-chat-completions',
       ELYSIA_REVIEW_TOOL: held ? '' : '1', ELYSIA_REVIEW_HELD: held ? '1' : '', ELYSIA_CONVERSION_HTTP_CANCEL: held ? '1' : '',
       ELYSIA_CONVERSION_HTTP_MIB: '2', ELYSIA_CONVERSION_HTTP_WORKERS: '4', ELYSIA_CONVERSION_HTTP_LOG: 'off' }
-    const result = await run(name, binary, [`-test.run=^TestReview${held ? 'HeldProfiles' : 'ToolRoundtrip'}$`, '-test.v', '-test.timeout=5m'], join(root, `${suffix}-sources`, version, 'backend'), settings)
-    await save(join(directory, 'result.json'), { ...result, version, revision: version === 'release' ? '8f50807c' : '760b54af', binary, pair })
+    const result = await run(name, binary, [`-test.run=^TestReview${held ? 'HeldProfiles' : 'ToolRoundtrip'}$`, '-test.v', '-test.timeout=5m'], sourceDirectory(version), settings)
+    const identity = JSON.parse(await readFile(join(root, 'identities', `${version}-binary.json`)))
+    await save(join(directory, 'result.json'), { ...result, version, revision: identity.revision, binary, pair })
   }
 } else if (args[0] === 'bench') {
   for (let pair = 0; pair < Number(opt('pairs', 5)); pair++) for (const version of pair % 2 ? [...versions].reverse() : versions) {
-    await run(`${opt('label', 'component')}-${pair}-${version}`, 'go', ['test', '-pgo=off', './protocol/builtin', '-run=^$', `-bench=${opt('protocol-bench', 'BenchmarkReview')}`, '-benchmem', `-benchtime=${opt('benchtime', '1s')}`, '-count=1'], join(root, `${suffix}-sources`, version, 'backend'))
-    await run(`${opt('label', 'storage')}-storage-${pair}-${version}`, 'go', ['test', '-pgo=off', './storage', '-run=^$', `-bench=${opt('storage-bench', 'BenchmarkListGroups')}`, '-benchmem', `-benchtime=${opt('benchtime', '1s')}`, '-count=1'], join(root, `${suffix}-sources`, version, 'backend'))
-    await run(`${opt('label', 'component')}-server-${pair}-${version}`, join(root, 'binaries', `${version}-${suffix}.test.exe`), ['-test.run=^$', `-test.bench=${opt('server-bench', '^BenchmarkReview(Cache|CLI)')}`, '-test.benchmem', `-test.benchtime=${opt('benchtime', '1s')}`, '-test.count=1'], join(root, `${suffix}-sources`, version, 'backend'))
+    await run(`${opt('label', 'component')}-${pair}-${version}`, 'go', ['test', '-pgo=off', './protocol/builtin', '-run=^$', `-bench=${opt('protocol-bench', 'BenchmarkReview')}`, '-benchmem', `-benchtime=${opt('benchtime', '1s')}`, '-count=1'], sourceDirectory(version))
+    await run(`${opt('label', 'storage')}-storage-${pair}-${version}`, 'go', ['test', '-pgo=off', './storage', '-run=^$', `-bench=${opt('storage-bench', 'BenchmarkListGroups')}`, '-benchmem', `-benchtime=${opt('benchtime', '1s')}`, '-count=1'], sourceDirectory(version))
+    await run(`${opt('label', 'component')}-server-${pair}-${version}`, binaryPath(version), ['-test.run=^$', `-test.bench=${opt('server-bench', '^BenchmarkReview(Cache|CLI)')}`, '-test.benchmem', `-test.benchtime=${opt('benchtime', '1s')}`, '-test.count=1'], sourceDirectory(version))
   }
 } else if (args[0] === 'scan') {
   for (const size of [2, 31]) for (let pair = 0; pair < Number(opt('pairs', 5)); pair++) for (const prefilter of pair % 2 ? [true, false] : [false, true]) {
-    await run(`scan-${size}-${pair}-${prefilter}-current`, join(root, 'binaries', `current-${suffix}.test.exe`), ['-test.run=^$', `-test.bench=^BenchmarkReviewTurnStateScan$/^MiB=${size}$/^prefilter=${prefilter}$`, '-test.benchmem', `-test.benchtime=${opt('benchtime', '1s')}`, '-test.count=1'], join(root, `${suffix}-sources`, 'current', 'backend'))
+    await run(`scan-${size}-${pair}-${prefilter}-current`, binaryPath('current'), ['-test.run=^$', `-test.bench=^BenchmarkReviewTurnStateScan$/^MiB=${size}$/^prefilter=${prefilter}$`, '-test.benchmem', `-test.benchtime=${opt('benchtime', '1s')}`, '-test.count=1'], sourceDirectory('current'))
   }
 } else if (args[0] === 'cli-hook') {
   for (let pair = 0; pair < Number(opt('pairs', 5)); pair++) for (const disabled of pair % 2 ? [true, false] : [false, true]) {
-    await run(`cli-hook-${pair}-${disabled}-current`, join(root, 'binaries', `current-${suffix}.test.exe`), ['-test.run=^$', `-test.bench=^BenchmarkReviewCLIWindowsHook$/^disabled=${disabled}$`, '-test.benchmem', `-test.benchtime=${opt('benchtime', '1s')}`, '-test.count=1'], join(root, `${suffix}-sources`, 'current', 'backend'))
+    await run(`cli-hook-${pair}-${disabled}-current`, binaryPath('current'), ['-test.run=^$', `-test.bench=^BenchmarkReviewCLIWindowsHook$/^disabled=${disabled}$`, '-test.benchmem', `-test.benchtime=${opt('benchtime', '1s')}`, '-test.count=1'], sourceDirectory('current'))
   }
 } else throw new Error('Usage: performance-review-supplement.mjs build|tools|held|bench|scan|cli-hook [--pairs=N]')

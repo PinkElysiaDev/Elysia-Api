@@ -32,7 +32,12 @@ if (process.argv[2] === 'historical') {
   const results = []
   const versions = { release: '8f50807c', merged: 'ba6f8563', normalized: '93509b13', current: '760b54af' }
   for (const file of (await readdir(join(root, 'identities'))).filter(x => x.endsWith('-binary.json'))) {
-    const name = file.slice(0, -'-binary.json'.length), version = name.split('-')[0], revision = versions[version]
+    const identity = JSON.parse(await readFile(join(root, 'identities', file)))
+    const name = file.slice(0, -'-binary.json'.length), version = name.split('-')[0]
+    // Older supplemental manifests omit the revision; prefer the captured base
+    // identity before falling back to the original fixed review versions.
+    const baseIdentity = identity.revision ? identity : JSON.parse(await readFile(join(root, 'identities', `${version}-binary.json`)))
+    const revision = identity.revision || baseIdentity.revision || versions[version]
     if (!revision) throw new Error(`Unknown binary version: ${name}`)
     const suffix = name.slice(version.length + 1)
     const source = suffix ? join(root, `${suffix}-sources`, version) : join(root, 'sources', version)
@@ -47,7 +52,6 @@ if (process.argv[2] === 'historical') {
         if (actual !== hash) differences.push({ path, expected: hash, actual })
       } catch (e) { missing.push({ path, error: e.code }) }
     }
-    const identity = JSON.parse(await readFile(join(root, 'identities', file)))
     const adapters = identity.adapters || JSON.parse(await readFile(join(root,'identities',`${version}-adapters.json`)))
     const adapterDifferences = []
     for(const adapter of new Map(adapters.map(a=>[a.file,a])).values()) {

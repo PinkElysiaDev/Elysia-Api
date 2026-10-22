@@ -12,9 +12,11 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
 const opt = (key, fallback) => args.find(a => a.startsWith(`--${key}=`))?.slice(key.length + 3) ?? fallback
 const output = resolve(opt('output', join(root, '.tmp-dev/performance-review-2026-10-22')))
-const revisions = { release: '8f50807c', merged: 'ba6f8563', normalized: '93509b13', current: '760b54af' }
+const revisions = { release: '8f50807c', merged: 'ba6f8563', normalized: '93509b13', current: opt('current', '760b54af') }
 const selectedVersions = opt('versions', 'release,current').split(',')
 for (const name of selectedVersions) if (!revisions[name]) throw new Error(`Unknown version ${name}`)
+const isCurrentOnly = selectedVersions.length === 1 && selectedVersions[0] === 'current' && !!opt('current', '')
+if (opt('current', '') && !isCurrentOnly) throw new Error('--current requires --versions=current; historical comparisons keep their original fixed revisions')
 const sha = value => createHash('sha256').update(value).digest('hex')
 const git = (...argv) => execFileSync('git', argv, { cwd: root, encoding: 'utf8', maxBuffer: 128 << 20, windowsHide: true })
 const show = (revision, path) => git('show', `${revision}:${path}`)
@@ -42,17 +44,19 @@ function memory() {
 async function prepare() {
   await mkdir(output, { recursive: true })
   if ((await readdir(output)).length) throw new Error(`Use a new empty output directory; preserved evidence exists: ${output}`)
-  await save(join(output, 'environment.json'), { date: '2026-10-22', created: new Date().toISOString(), baseline: revisions.release, target: revisions.current, go: execFileSync('go', ['version'], { encoding: 'utf8' }).trim(), cpu: cpus()[0].model, logicalCPUs: cpus().length, totalMemoryBytes: totalmem(), memory: memory(), settings: { GOMAXPROCS: 4, GOGC: 100, ordinaryMemoryLimit: '2GiB', largeMemoryLimit: '8GiB', pgo: 'off', cgo: 'off' } })
-  const commits = git('log', '--reverse', '--format=%H%x09%P%x09%s', 'v1.6.2..760b54af').trim().split('\n').map(line => {
-    const [hash, parents, subject] = line.split('\t')
-    const files = git('diff-tree', '--root', '--no-commit-id', '--name-status', '-r', `${hash}^1`, hash).trim().split('\n').filter(Boolean)
-    return { hash, parents: parents.split(' '), subject, merge: parents.includes(' '), files, review: 'inventory-only; individual findings recorded separately' }
-  })
-  await save(join(output, 'commits.json'), commits)
-  await save(join(output, 'net-paths.tsv'), git('diff', '--name-status', 'v1.6.2', '760b54af'))
-  await save(join(output, 'commit-graph.txt'), git('log', '--graph', '--oneline', '--date-order', 'v1.6.2..760b54af'))
-  const historical = git('ls-tree', '-r', '--name-only', '6a16292d', 'docs').trim().split('\n').filter(p => /^docs\/backend-performance.*\.md$/.test(p) || /^docs\/artifacts\/performance[^/]*\/(summary\.json|README\.md)$/.test(p))
-  for (const path of historical) await save(join(output, 'historical', path), show('6a16292d', path))
+  await save(join(output, 'environment.json'), { date: opt('date', '2026-10-22'), created: new Date().toISOString(), baseline: isCurrentOnly ? null : revisions.release, target: git('rev-parse', revisions.current).trim(), versions: selectedVersions, go: execFileSync('go', ['version'], { encoding: 'utf8' }).trim(), cpu: cpus()[0].model, logicalCPUs: cpus().length, totalMemoryBytes: totalmem(), memory: memory(), settings: { GOMAXPROCS: 4, GOGC: 100, ordinaryMemoryLimit: '2GiB', largeMemoryLimit: '8GiB', pgo: 'off', cgo: 'off' } })
+  if (!isCurrentOnly) {
+    const commits = git('log', '--reverse', '--format=%H%x09%P%x09%s', 'v1.6.2..760b54af').trim().split('\n').map(line => {
+      const [hash, parents, subject] = line.split('\t')
+      const files = git('diff-tree', '--root', '--no-commit-id', '--name-status', '-r', `${hash}^1`, hash).trim().split('\n').filter(Boolean)
+      return { hash, parents: parents.split(' '), subject, merge: parents.includes(' '), files, review: 'inventory-only; individual findings recorded separately' }
+    })
+    await save(join(output, 'commits.json'), commits)
+    await save(join(output, 'net-paths.tsv'), git('diff', '--name-status', 'v1.6.2', '760b54af'))
+    await save(join(output, 'commit-graph.txt'), git('log', '--graph', '--oneline', '--date-order', 'v1.6.2..760b54af'))
+    const historical = git('ls-tree', '-r', '--name-only', '6a16292d', 'docs').trim().split('\n').filter(p => /^docs\/backend-performance.*\.md$/.test(p) || /^docs\/artifacts\/performance[^/]*\/(summary\.json|README\.md)$/.test(p))
+    for (const path of historical) await save(join(output, 'historical', path), show('6a16292d', path))
+  }
   for (const name of selectedVersions) {
     const directory = join(output, 'sources', name)
     await mkdir(directory, { recursive: true })
@@ -64,7 +68,7 @@ async function prepare() {
     await save(join(output, 'identities', `${name}-git-tree.tsv`), original)
     // Use the historical Gin collector for historical HTTP frameworks. Common
     // client/provider fixture sources are identical across the four builds.
-    let http = show(name === 'release' ? '5a8115e7' : name === 'current' ? '760b54af' : '93509b13', 'backend/server/conversion_http_performance_test.go')
+    let http = show(name === 'release' ? '5a8115e7' : name === 'current' ? revisions.current : '93509b13', 'backend/server/conversion_http_performance_test.go')
     // Memory-only slow-provider observation is not part of formal timings.
     http = http.replaceAll('calls.Add(1)', 'calls.Add(1)\nif os.Getenv("ELYSIA_FLAME_MODE") == "memory" { time.Sleep(750 * time.Millisecond) }')
     if (name !== 'current') http = http.replaceAll('server.engine.ServeHTTP(w, r)', 'server.serveHTTP(w, r)')
@@ -74,8 +78,8 @@ async function prepare() {
       'conversion_flamegraph_test.go': await readFile(join(root, 'backend/server/conversion_flamegraph_test.go'), 'utf8'),
       'conversion_flamegraph_matrix_test.go': await readFile(join(root, 'backend/server/conversion_flamegraph_matrix_test.go'), 'utf8'),
       'performance_review_test.go': await readFile(join(root, 'backend/server/performance_review_test.go'), 'utf8'),
-      'conversion_memory_windows_test.go': show('760b54af', 'backend/server/conversion_memory_windows_test.go'),
-      'conversion_memory_other_test.go': show('760b54af', 'backend/server/conversion_memory_other_test.go'),
+      'conversion_memory_windows_test.go': show(revisions.current, 'backend/server/conversion_memory_windows_test.go'),
+      'conversion_memory_other_test.go': show(revisions.current, 'backend/server/conversion_memory_other_test.go'),
     }
     if (name === 'release') files['review_legacy_writer_test.go'] = show('6a16292d', 'docs/artifacts/performance-v1.6.2-vs-5a8115e/baseline/baseline-adapter.go.txt')
     const manifest = []
@@ -165,6 +169,13 @@ async function collect(mode) {
       await save(join(directory, 'result.json'), { ...result, status: result.code === 0 ? 'passed' : 'failed', binary, version, revision: revisions[version], fixture: c, preparation, pair })
     }
   }
+}
+// Resume with the captured source identity, never the historical default or a
+// moving branch name. Explicit conflicting revisions must not relabel evidence.
+if (args[0] !== 'prepare') {
+  const recorded = JSON.parse(await readFile(join(output, 'environment.json')))
+  if (opt('current', '') && git('rev-parse', revisions.current).trim() !== git('rev-parse', recorded.target).trim()) throw new Error('Requested revision differs from the captured source')
+  revisions.current = recorded.target
 }
 if (args[0] === 'prepare') await prepare()
 else if (args[0] === 'build') await build()
