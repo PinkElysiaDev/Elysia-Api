@@ -137,6 +137,9 @@ async function collect(mode) {
   for (const key of selection) {
     if (!cases[key]) throw new Error(`Unknown case ${key}`)
     const c = { source: 'chat', target: 'chat', request: 'short', workload: 'small', size: 2, workers: 1, candidates: 1, log: 'off', frames: 16, frameBytes: 256, ...cases[key] }
+    // Image/node fixtures use /v1/messages with an Anthropic provider and do
+    // not consume the small-workload source/target selectors. Record reality.
+    if (c.workload !== 'small') c.source = c.target = 'anthropic'
     for (let pair = 0; pair < pairs; pair++) for (const version of pair % 2 ? [...selectedVersions].reverse() : selectedVersions) {
       const name = `${label}-${key}-${pair}-${version}`
       const directory = join(output, 'runs', name)
