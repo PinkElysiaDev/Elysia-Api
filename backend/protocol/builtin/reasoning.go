@@ -27,12 +27,23 @@ func (adapter module) decodeReasoningItem(value p.Value, path string, direction 
 	}{
 		{"summary", "summary_text", &node.Children}, {"content", "reasoning_text", &node.ReasoningContent},
 	} {
-		if fields[entry.field].IsZero() {
+		field := fields[entry.field]
+		if field.IsZero() {
 			continue
 		}
-		values, err := readArray(fields[entry.field])
+		// Request history may carry null when no visible parts were returned.
+		// Keep nil distinct from [] and retain the original spelling in Native;
+		// response and stream items still require the declared array shape.
+		if direction == p.DecodeRequest && entry.field == "content" && field.IsNull() {
+			continue
+		}
+		values, err := readArray(field)
 		if err != nil {
-			return node, reasoningInputError(path+"/"+entry.field, "reasoning parts must be an array")
+			issue := p.ConversionIssue{Code: p.InvalidInput, Severity: p.SeverityError, Path: path + "/" + entry.field, Reason: "reasoning parts must be an array"}
+			if direction == p.DecodeRequest {
+				issue.Stage = string(p.DecodeRequest)
+			}
+			return node, p.IssuesError([]p.ConversionIssue{issue})
 		}
 		*entry.parts = make([]p.Node, 0, len(values))
 		for index, value := range values {

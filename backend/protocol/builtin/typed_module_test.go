@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/bytedance/sonic"
@@ -180,6 +181,73 @@ func TestRequestWireSchemaTypedParity(t *testing.T) {
 				t.Fatal("missing text request fixture")
 			})
 		}
+	}
+}
+
+func TestResponsesNullableHistoryRetainsAuthoredBoundaries(t *testing.T) {
+	const body = `{"model":"m","input":[` + nullableReasoningItem + `]}`
+	for _, mode := range []string{"custom", "generic-module", "semantic-schema", "after", "reject-input", "replace-output"} {
+		t.Run(mode, func(t *testing.T) {
+			definition := testCompiled(t, Responses).Definition()
+			definition.ID = "nullable-history-" + mode
+			decode, encode := definition.Directions[p.DecodeRequest], definition.Directions[p.EncodeRequest]
+			modules := Modules()
+			switch mode {
+			case "generic-module":
+				for i := range modules {
+					modules[i] = jsonOnlyModule{modules[i]}
+				}
+			case "semantic-schema":
+				decode.Output = &p.ValueSchema{Type: p.ObjectType, AllowUnknown: true}
+				encode.Input = &p.ValueSchema{Type: p.ObjectType, AllowUnknown: true}
+			case "after":
+				decode.After, encode.After = &p.Expression{Op: "read"}, &p.Expression{Op: "read"}
+			case "reject-input":
+				decode.Input = &p.ValueSchema{Type: p.ObjectType, AllowUnknown: true, Properties: map[string]p.ValueSchema{
+					"input": {Type: p.ArrayType, Items: &p.ValueSchema{Type: p.ObjectType, AllowUnknown: true, Properties: map[string]p.ValueSchema{"content": {Type: p.ArrayType}}}},
+				}}
+			case "replace-output":
+				encode.After = &p.Expression{Op: "literal", Value: testValue(t, strings.Replace(body, `"content":null`, `"content":{}`, 1))}
+			}
+			definition.Directions[p.DecodeRequest], definition.Directions[p.EncodeRequest] = decode, encode
+			raw, err := p.EncodeValue(definition)
+			if err != nil {
+				t.Fatal(err)
+			}
+			compiler, err := p.NewCompiler(p.DefaultLimits(), modules, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			compiled, issues := compiler.Compile(raw.Bytes())
+			if compiled == nil {
+				t.Fatal(issues)
+			}
+			options := p.EvaluationContext{Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}}
+			request, err := compiled.DecodeRequest(t.Context(), []byte(body), options)
+			if mode == "reject-input" {
+				if err == nil {
+					t.Fatal("nullable history bypassed the author's array-only input schema")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "replace-output" {
+				request.Native = nil // Check exactly what the authored encoder emits.
+			}
+			wire, err := compiled.EncodeRequest(t.Context(), request, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "replace-output" {
+				if err := compiled.ValidateWireOutput(p.EncodeRequest, testValue(t, string(wire))); err == nil {
+					t.Fatal("request compatibility hid a non-array authored output")
+				}
+				return
+			}
+			sameJSON(t, wire, body)
+		})
 	}
 }
 

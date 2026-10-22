@@ -1,7 +1,9 @@
 package builtin
 
 import (
+	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -28,6 +30,247 @@ func structuredReasoningSequence() []string {
 }
 
 const structuredReasoningFinal = `{"type":"reasoning","id":"rs","status":"completed","summary":[{"type":"summary_text","text":"brief"}],"content":[{"type":"reasoning_text","text":"first"},{"type":"reasoning_text","text":"second"}]}`
+
+const nullableReasoningItem = `{"type":"reasoning","id":"rs-synthetic","summary":[],"content":null,"encrypted_content":"synthetic-encrypted-state"}`
+
+func TestResponsesRequestReasoningContentPresence(t *testing.T) {
+	compiled := testCompiled(t, Responses)
+	options := p.EvaluationContext{Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}}
+	for _, tc := range []struct {
+		name, item string
+		form       p.ReasoningForm
+		text       string
+		summaries  int
+	}{
+		{"missing", strings.Replace(nullableReasoningItem, `,"content":null`, "", 1), p.SummaryReasoning, "", 0},
+		{"null", nullableReasoningItem, p.SummaryReasoning, "", 0},
+		{"empty", strings.Replace(nullableReasoningItem, `"content":null`, `"content":[]`, 1), "", "", 0},
+		{"visible", strings.Replace(nullableReasoningItem, `"content":null`, `"content":[{"type":"reasoning_text","text":"visible"}]`, 1), "", "visible", 0},
+		{"summary", strings.Replace(nullableReasoningItem, `"summary":[]`, `"summary":[{"type":"summary_text","text":"brief"}]`, 1), p.SummaryReasoning, "", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"model":"m","store":false,"input":[` + tc.item + `]}`
+			request, err := compiled.DecodeRequest(t.Context(), []byte(body), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			node := request.Content[0]
+			if node.ReasoningForm != tc.form || len(node.Children) != tc.summaries || len(node.Resources) != 1 || !node.Resources[0].ID.IsString("synthetic-encrypted-state") || node.Resources[0].Scope != options.Scope {
+				t.Fatal("reasoning shape or encrypted resource changed")
+			}
+			if tc.text == "" && !node.Payload.IsZero() || tc.text != "" && !node.Payload.IsString(tc.text) {
+				t.Fatal("visible reasoning was invented or lost")
+			}
+			before, _ := p.EncodeValue(request)
+			for _, mode := range []string{"compatible", "strict"} {
+				policy := p.DefaultConversionPolicy(compiled, compiled)
+				policy.Mode = mode
+				conversion, err := p.ResolveConversion(policy)
+				if err != nil {
+					t.Fatal(err)
+				}
+				converted, err := conversion.Request(t.Context(), request, p.ConversionContext{Source: compiled.Identity(), Target: compiled.Identity(), Scope: options.Scope}, nil)
+				if err != nil {
+					t.Fatal(mode, err)
+				}
+				for _, model := range []string{"m", "actual-model"} {
+					converted.Model = p.StringValue(model)
+					wire, err := compiled.EncodeRequest(t.Context(), converted, options)
+					if err != nil {
+						t.Fatal(err)
+					}
+					sameJSON(t, wire, strings.Replace(body, `"model":"m"`, `"model":"`+model+`"`, 1))
+					if err := compiled.ValidateWireOutput(p.EncodeRequest, testValue(t, string(wire))); err != nil {
+						t.Fatal("final request contract rejected retained history", err)
+					}
+				}
+			}
+			after, _ := p.EncodeValue(request)
+			if before != after {
+				t.Fatal("conversion changed the caller's request")
+			}
+		})
+	}
+}
+
+func TestResponsesRequestNullReasoningReconstruction(t *testing.T) {
+	compiled := testCompiled(t, Responses)
+	options := p.EvaluationContext{Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}}
+	const extension = `{"decimal":1.00,"integer":9007199254740993,"escaped":"\u0061\/\u003c\u003e\u0026"}`
+	item := strings.TrimSuffix(nullableReasoningItem, "}") + `,"vendor":` + extension + `}`
+	body := `{"model":"m","input":[` + item + `]}`
+	request, err := compiled.DecodeRequest(t.Context(), []byte(body), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range []string{"m", "actual-model"} {
+		request.Model = p.StringValue(model)
+		wire, err := compiled.EncodeRequest(t.Context(), request, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fields, err := testValue(t, string(wire)).ReadObject()
+		if err != nil {
+			t.Fatal(err)
+		}
+		items, err := readArray(fields["input"])
+		if err != nil || len(items) != 1 {
+			t.Fatal("history item changed", err)
+		}
+		fields, err = items[0].ReadObject()
+		if err != nil || !fields["content"].IsNull() || fields["vendor"].JSONString() != extension {
+			t.Fatalf("native null or unknown field spelling changed (model=%s): content=%s vendor=%q error=%v", model, fields["content"].JSONString(), fields["vendor"].JSONString(), err)
+		}
+	}
+	request.Model = p.StringValue("m")
+	// Removing root Native requests semantic reconstruction; absence stays nil,
+	// while the actual encrypted state and item identity remain semantic fields.
+	rebuilt := request.Clone()
+	rebuilt.Native = nil
+	wire, err := compiled.EncodeRequest(t.Context(), rebuilt, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameJSON(t, wire, strings.Replace(body, `,"content":null`, "", 1))
+	request.Content[0].ReasoningForm = p.StructuredReasoning
+	request.Content[0].ReasoningContent = []p.Node{{Kind: p.TextNode, Payload: p.StringValue("edited visible part")}}
+	wire, err = compiled.EncodeRequest(t.Context(), request, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameJSON(t, wire, strings.Replace(body, `"content":null`, `"content":[{"type":"reasoning_text","text":"edited visible part"}]`, 1))
+}
+
+func TestResponsesRequestNullReasoningRetainsLegacyHTMLNormalization(t *testing.T) {
+	compiled := testCompiled(t, Responses)
+	options := p.EvaluationContext{Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}}
+	const extension = `{"decimal":1.00,"integer":9007199254740993,"escaped":"\u0061\/<>&"}`
+	const normalized = `{"decimal":1.00,"integer":9007199254740993,"escaped":"\u0061\/\u003c\u003e\u0026"}`
+	for _, item := range []string{nullableReasoningItem, strings.Replace(nullableReasoningItem, `,"content":null`, "", 1)} {
+		item = strings.TrimSuffix(item, "}") + `,"vendor":` + extension + `}`
+		request, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","input":[`+item+`]}`), options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Model = p.StringValue("actual-model")
+		wire, err := compiled.EncodeRequest(t.Context(), request, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fields, _ := testValue(t, string(wire)).ReadObject()
+		items, err := readArray(fields["input"])
+		if err != nil || len(items) != 1 {
+			t.Fatal("history item changed", err)
+		}
+		fields, _ = items[0].ReadObject()
+		// Editing the root already applies the container encoder's HTML escapes;
+		// accepting null must behave like the existing missing-content path.
+		if fields["vendor"].JSONString() != normalized || request.Content[0].Native.Value.JSONString() != item {
+			t.Fatal("HTML normalization or the original node snapshot changed")
+		}
+	}
+}
+
+func TestResponsesRequestReasoningRejectsInvalidShapes(t *testing.T) {
+	compiled := testCompiled(t, Responses)
+	for _, tc := range []struct{ name, field, value, path string }{
+		{"summary-null", "summary", "null", "/input/0/summary"},
+		{"content-string", "content", `"visible"`, "/input/0/content"},
+		{"content-object", "content", `{}`, "/input/0/content"},
+		{"content-number", "content", `42`, "/input/0/content"},
+		{"content-bool", "content", `false`, "/input/0/content"},
+		{"part-null", "content", `[null]`, "/input/0/content/0"},
+		{"part-kind", "content", `[{"type":"summary_text","text":"wrong"}]`, "/input/0/content/0/type"},
+		{"part-text", "content", `[{"type":"reasoning_text","text":null}]`, "/input/0/content/0/text"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			field := `"content":null`
+			if tc.field == "summary" {
+				field = `"summary":[]`
+			}
+			item := strings.Replace(nullableReasoningItem, field, `"`+tc.field+`":`+tc.value, 1)
+			_, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","input":[`+item+`]}`), p.EvaluationContext{})
+			var conversion *p.ConversionError
+			if !errors.As(err, &conversion) || len(conversion.Issues) != 1 {
+				t.Fatal("missing structured failure", err)
+			}
+			issue := conversion.Issues[0]
+			if issue.Code != p.InvalidInput || issue.Path != tc.path || issue.Direction != p.DecodeRequest || issue.Protocol != compiled.Identity() {
+				t.Fatal(issue)
+			}
+			if !strings.HasPrefix(tc.value, "[") && issue.Stage != string(p.DecodeRequest) {
+				t.Fatal("array failure lost its request decode stage", issue)
+			}
+		})
+	}
+}
+
+func TestResponsesNullReasoningRemainsRequestOnly(t *testing.T) {
+	compiled := testCompiled(t, Responses)
+	_, err := compiled.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","status":"completed","output":[`+nullableReasoningItem+`]}`), p.EvaluationContext{})
+	if err == nil || !strings.Contains(err.Error(), "/output/0/content") {
+		t.Fatal("response null content became accepted", err)
+	}
+	for _, kind := range []string{"response.output_item.added", "response.output_item.done"} {
+		t.Run(kind, func(t *testing.T) {
+			options := p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}}
+			if _, err := compiled.DecodeFrame(t.Context(), testValue(t, `{"type":"response.created","response":{"id":"r","object":"response","model":"m","status":"in_progress","created_at":1,"output":[]}}`), options); err != nil {
+				t.Fatal(err)
+			}
+			if kind == "response.output_item.done" {
+				initial := strings.Replace(nullableReasoningItem, `,"content":null`, "", 1)
+				if _, err := compiled.DecodeFrame(t.Context(), testValue(t, `{"type":"response.output_item.added","output_index":0,"item":`+initial+`}`), options); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := compiled.DecodeFrame(t.Context(), testValue(t, `{"type":"`+kind+`","output_index":0,"item":`+nullableReasoningItem+`}`), options)
+			var conversion *p.ConversionError
+			if !errors.As(err, &conversion) || len(conversion.Issues) == 0 || conversion.Issues[0].Path != "/item/content" || conversion.Issues[0].Stage == string(p.DecodeRequest) {
+				t.Fatal("stream null content changed validation or ownership", err)
+			}
+		})
+	}
+}
+
+func TestResponsesRequestNullReasoningMatchesMissingAcrossProtocols(t *testing.T) {
+	from := testCompiled(t, Responses)
+	options := p.EvaluationContext{Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}}
+	for _, codec := range []string{Chat, Anthropic, Gemini} {
+		for _, mode := range []string{"compatible", "strict"} {
+			t.Run(codec+"/"+mode, func(t *testing.T) {
+				to := testCompiled(t, codec)
+				policy := p.DefaultConversionPolicy(from, to)
+				policy.Mode = mode
+				conversion, err := p.ResolveConversion(policy)
+				if err != nil {
+					t.Fatal(err)
+				}
+				type observation struct {
+					wire, failure string
+					issues        []p.ConversionIssue
+				}
+				observe := func(item string) observation {
+					request, err := from.DecodeRequest(t.Context(), []byte(`{"model":"m","store":false,"input":[`+item+`]}`), options)
+					if err != nil {
+						t.Fatal(err)
+					}
+					sink := &p.DiagnosticSink{}
+					projected, err := conversion.Request(t.Context(), request, p.ConversionContext{Source: from.Identity(), Target: to.Identity(), Scope: options.Scope}, sink)
+					var wire []byte
+					if err == nil {
+						wire, err = to.EncodeRequest(t.Context(), projected, options)
+					}
+					return observation{string(wire), fmt.Sprint(err), sink.Issues()}
+				}
+				missing := observe(strings.Replace(nullableReasoningItem, `,"content":null`, "", 1))
+				null := observe(nullableReasoningItem)
+				if !reflect.DeepEqual(missing, null) || null.failure == "<nil>" {
+					t.Fatalf("null history changed existing encrypted-summary protection: missing=%+v null=%+v", missing, null)
+				}
+			})
+		}
+	}
+}
 
 func TestStructuredReasoningJSONEditsKeepIndependentParts(t *testing.T) {
 	c := shippedProjectionProtocol(t, Responses)

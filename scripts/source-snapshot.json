@@ -568,6 +568,7 @@
     "backend/server/gateway_request_projection_test.go",
     "backend/server/gateway_response.go",
     "backend/server/gateway_response_model_test.go",
+    "backend/server/gateway_responses_null_history_test.go",
     "backend/server/gateway_route.go",
     "backend/server/gateway_session.go",
     "backend/server/gateway_session_test.go",
