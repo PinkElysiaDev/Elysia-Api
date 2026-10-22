@@ -20,6 +20,9 @@ func flameMatrixProtocol(t *testing.T, name string) *protocol.Compiled {
 }
 
 func flameMatrixProvider(t *testing.T, target *protocol.Compiled) http.Handler {
+	if os.Getenv("ELYSIA_REVIEW_TOOL") == "1" {
+		return reviewToolProvider(t)
+	}
 	frames, body := flameMatrixResponse(t, target)
 	var expected *protocol.Request
 	var expectedText string

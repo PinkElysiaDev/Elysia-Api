@@ -89,6 +89,7 @@ async function prepare() {
 async function build() {
   for (const name of selectedVersions) {
     const binary = join(output, 'binaries', `${name}.test.exe`)
+    try { await readFile(join(output, 'identities', `${name}-binary.json`)); throw new Error(`Preserved binary already exists: ${name}; use a new output directory`) } catch (e) { if (e.code !== 'ENOENT') throw e }
     await mkdir(dirname(binary), { recursive: true })
     const flags = ['test', '-pgo=off', ...(name === 'release' || name === 'current' ? [] : ['-tags=sonic']), '-c', '-o', binary, './server']
     const result = await run(`build-${name}`, 'go', flags, join(output, 'sources', name, 'backend'))
@@ -111,6 +112,7 @@ export const cases = {
   'image2-body': { workload: 'image', requests: 4, log: 'body' }, 'image31-body': { workload: 'image', size: 31, requests: 1, log: 'body' }, 'image31-media': { workload: 'image', size: 31, requests: 1, log: 'media' },
   candidates16: { candidates: 16 }, burst32: { workers: 32 }, 'large-frame': { stream: true, frames: 16, frameBytes: 4096 },
   logprobs: { stream: true, frames: 256, logprobs: true },
+  logprobs1024: { stream: true, frames: 1024, logprobs: true, requests: 32 },
 }
 async function collect(mode) {
   const selection = opt('cases', Object.keys(cases).slice(0, 20).join(',')).split(',')
@@ -135,13 +137,14 @@ async function collect(mode) {
         ELYSIA_FLAME_MODE: mode, ELYSIA_FLAME_OUTPUT: directory, ELYSIA_FLAME_WORKLOAD: c.workload,
         ELYSIA_FLAME_SOURCE: c.workload === 'small' ? protocols[c.source] : '', ELYSIA_FLAME_TARGET: c.workload === 'small' ? protocols[c.target] : '',
         ELYSIA_FLAME_REQUEST: c.request, ELYSIA_FLAME_STREAM: c.stream ? 'sse' : 'json', ELYSIA_FLAME_FRAMES: String(c.frames), ELYSIA_FLAME_FRAME_BYTES: String(c.frameBytes),
-        ELYSIA_FLAME_REQUESTS: String(c.requests ?? Number(opt('requests', 256))), ELYSIA_FLAME_REPEATS: '1', ELYSIA_FLAME_WARMUP: c.size === 31 ? '1' : '4', ELYSIA_FLAME_SECONDS: opt('seconds', '60'),
+        ELYSIA_FLAME_REQUESTS: String(c.requests ?? Number(opt('requests', 256))), ELYSIA_FLAME_REPEATS: opt('repeats', '1'), ELYSIA_FLAME_WARMUP: c.size === 31 ? '1' : '4', ELYSIA_FLAME_SECONDS: opt('seconds', '60'),
         ELYSIA_FLAME_COLD: mode === 'measure' ? '1' : '', ELYSIA_FLAME_TIMELINE: mode === 'measure' ? '1' : '', ELYSIA_FLAME_RECOVERY_MS: mode === 'measure' ? opt('idle-ms', '1000') : '', ELYSIA_FLAME_VERIFY_EXACT: '1', ELYSIA_FLAME_RELOAD: c.reload ? '1' : '',
         ELYSIA_CONVERSION_HTTP_MIB: String(c.size), ELYSIA_CONVERSION_HTTP_WORKERS: String(c.workers), ELYSIA_CONVERSION_HTTP_CANDIDATES: String(c.candidates), ELYSIA_CONVERSION_HTTP_LOG: c.log,
-        ELYSIA_CONVERSION_HTTP_PREPARATION: preparation === 'off' ? 'off' : '', ELYSIA_REVIEW_LOGPROBS: c.logprobs ? '1' : '',
+        ELYSIA_CONVERSION_HTTP_PREPARATION: preparation === 'off' ? 'off' : '', ELYSIA_REVIEW_LOGPROBS: c.logprobs ? '1' : '', ELYSIA_REVIEW_TRACE: opt('trace', ''),
       }
-      const result = await run(name, join(output, 'binaries', `${version}.test.exe`), ['-test.run=^TestConversionFlamegraph$', '-test.v', '-test.timeout=30m'], join(output, 'sources', version, 'backend'), settings)
-      await save(join(directory, 'result.json'), { ...result, status: result.code === 0 ? 'passed' : 'failed', version, revision: revisions[version], fixture: c, preparation, pair })
+      const binary = join(output, 'binaries', `${version}${opt('binary-suffix', '')}.test.exe`)
+      const result = await run(name, binary, ['-test.run=^TestConversionFlamegraph$', '-test.v', '-test.timeout=30m'], join(output, 'sources', version, 'backend'), settings)
+      await save(join(directory, 'result.json'), { ...result, status: result.code === 0 ? 'passed' : 'failed', binary, version, revision: revisions[version], fixture: c, preparation, pair })
     }
   }
 }

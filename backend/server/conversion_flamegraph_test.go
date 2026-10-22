@@ -317,7 +317,11 @@ func TestConversionFlamegraph(t *testing.T) {
 			var profileDone chan error
 			if mode == "cpu" {
 				profileDone = make(chan error, 1)
-				go func() { profileDone <- saveProfile("cpu.pprof", fmt.Sprintf("profile?seconds=%d", seconds)) }()
+				name, endpoint := "cpu.pprof", "profile"
+				if os.Getenv("ELYSIA_REVIEW_TRACE") == "1" {
+					name, endpoint = "execution.trace", "trace"
+				}
+				go func() { profileDone <- saveProfile(name, fmt.Sprintf("%s?seconds=%d", endpoint, seconds)) }()
 			} else if mode == "memory" {
 				if err := saveProfile("alloc-before.pprof", "allocs"); err != nil {
 					t.Fatal(err)

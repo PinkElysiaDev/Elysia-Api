@@ -47,6 +47,9 @@ type conversionHTTPMetrics struct {
 }
 
 type conversionMemorySample struct {
+	GCCycles                                     uint32
+	GCPauseNS                                    uint64
+	PreparationActive, PreparationQueued         int
 	ElapsedMS                                    float64
 	Heap, HeapInuse, HeapIdle, HeapReleased, RSS uint64
 	Goroutines, ActiveRequests                   int
@@ -418,7 +421,12 @@ func TestConversionHTTPProcess(t *testing.T) {
 				peakWorkingSet = max(peakWorkingSet, working)
 				if collectTimeline {
 					if len(timeline) < 9000 {
-						timeline = append(timeline, conversionMemorySample{ElapsedMS: float64(time.Since(started)) / float64(time.Millisecond), Heap: memory.HeapAlloc, HeapInuse: memory.HeapInuse, HeapIdle: memory.HeapIdle, HeapReleased: memory.HeapReleased, RSS: working, Goroutines: runtime.NumGoroutine(), ActiveRequests: int(active.Load())})
+						point := conversionMemorySample{ElapsedMS: float64(time.Since(started)) / float64(time.Millisecond), Heap: memory.HeapAlloc, HeapInuse: memory.HeapInuse, HeapIdle: memory.HeapIdle, HeapReleased: memory.HeapReleased, RSS: working, Goroutines: runtime.NumGoroutine(), ActiveRequests: int(active.Load()), GCCycles: memory.NumGC, GCPauseNS: memory.PauseTotalNs}
+						if preparationStats != nil {
+							stats := preparationStats()
+							point.PreparationActive, point.PreparationQueued = stats.Active, stats.Queued
+						}
+						timeline = append(timeline, point)
 					} else {
 						droppedSamples++
 					}
