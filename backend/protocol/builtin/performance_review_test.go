@@ -21,7 +21,7 @@ func BenchmarkReviewSchemaCatalog(b *testing.B) {
 // authored synchronization boundaries. Compilation and fixtures are outside the
 // measurement; all decode/conversion/encode checks remain inside each iteration.
 func BenchmarkReviewRequestBoundaries(b *testing.B) {
-	for _, variant := range []string{"default", "after", "json-rule"} {
+	for _, variant := range []string{"default", "after-decode", "after-encode", "after", "json-rule"} {
 		b.Run(variant, func(b *testing.B) {
 			definitions, err := Definitions()
 			if err != nil {
@@ -45,9 +45,12 @@ func BenchmarkReviewRequestBoundaries(b *testing.B) {
 			if compiled == nil {
 				b.Fatal("missing shipped Anthropic module")
 			}
-			if variant == "after" {
+			if variant == "after" || variant == "after-decode" || variant == "after-encode" {
 				definition := compiled.Definition()
 				for _, direction := range []p.Direction{p.DecodeRequest, p.EncodeRequest} {
+					if variant == "after-decode" && direction != p.DecodeRequest || variant == "after-encode" && direction != p.EncodeRequest {
+						continue
+					}
 					mapping := definition.Directions[direction]
 					mapping.After = &p.Expression{Op: "read", Path: ""}
 					definition.Directions[direction] = mapping

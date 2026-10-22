@@ -72,11 +72,14 @@ if (args[0] === 'build') {
     manifest.push({ file: 'server/conversion_flamegraph_matrix_test.go', sha256: sha(code) })
     const collector = join(directory, 'server/conversion_http_performance_test.go')
     let sampler = await readFile(collector, 'utf8')
-    sampler = sampler.replace('type conversionMemorySample struct {', 'type conversionMemorySample struct {\nGCCycles uint32\nGCPauseNS uint64\nPreparationActive, PreparationQueued int')
-    const original = 'timeline = append(timeline, conversionMemorySample{ElapsedMS: float64(time.Since(started)) / float64(time.Millisecond), Heap: memory.HeapAlloc, HeapInuse: memory.HeapInuse, HeapIdle: memory.HeapIdle, HeapReleased: memory.HeapReleased, RSS: working, Goroutines: runtime.NumGoroutine(), ActiveRequests: int(active.Load())})'
-    const observePreparation = sampler.includes('var preparationStats') ? 'if preparationStats != nil { stats:=preparationStats(); point.PreparationActive,point.PreparationQueued=stats.Active,stats.Queued }' : ''
-    if (!sampler.includes(original)) throw new Error('Timeline instrumentation site changed')
-    sampler = sampler.replace(original, 'point := conversionMemorySample{ElapsedMS: float64(time.Since(started)) / float64(time.Millisecond), Heap: memory.HeapAlloc, HeapInuse: memory.HeapInuse, HeapIdle: memory.HeapIdle, HeapReleased: memory.HeapReleased, RSS: working, Goroutines: runtime.NumGoroutine(), ActiveRequests: int(active.Load()), GCCycles: memory.NumGC, GCPauseNS: memory.PauseTotalNs}\n' + observePreparation + '\ntimeline=append(timeline,point)')
+    const hasGCTimeline = sampler.includes('GCCycles: memory.NumGC')
+    if (!hasGCTimeline) {
+      sampler = sampler.replace('type conversionMemorySample struct {', 'type conversionMemorySample struct {\nGCCycles uint32\nGCPauseNS uint64\nPreparationActive, PreparationQueued int')
+      const original = 'timeline = append(timeline, conversionMemorySample{ElapsedMS: float64(time.Since(started)) / float64(time.Millisecond), Heap: memory.HeapAlloc, HeapInuse: memory.HeapInuse, HeapIdle: memory.HeapIdle, HeapReleased: memory.HeapReleased, RSS: working, Goroutines: runtime.NumGoroutine(), ActiveRequests: int(active.Load())})'
+      const observePreparation = sampler.includes('var preparationStats') ? 'if preparationStats != nil { stats:=preparationStats(); point.PreparationActive,point.PreparationQueued=stats.Active,stats.Queued }' : ''
+      if (!sampler.includes(original)) throw new Error('Timeline instrumentation site changed')
+      sampler = sampler.replace(original, 'point := conversionMemorySample{ElapsedMS: float64(time.Since(started)) / float64(time.Millisecond), Heap: memory.HeapAlloc, HeapInuse: memory.HeapInuse, HeapIdle: memory.HeapIdle, HeapReleased: memory.HeapReleased, RSS: working, Goroutines: runtime.NumGoroutine(), ActiveRequests: int(active.Load()), GCCycles: memory.NumGC, GCPauseNS: memory.PauseTotalNs}\n' + observePreparation + '\ntimeline=append(timeline,point)')
+    }
     await writeFile(collector, sampler)
     manifest.push({ file: 'server/conversion_http_performance_test.go', sha256: sha(sampler) })
     const groupsSource = await readFile(join(repo, 'backend/storage/group_query_test.go'), 'utf8')

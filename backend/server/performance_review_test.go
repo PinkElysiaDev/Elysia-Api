@@ -24,7 +24,8 @@ func configureReviewMapping(t *testing.T, server *Server) {
 	if mode == "" {
 		return
 	}
-	if mode != "after" && mode != "json-rule" {
+	hasAfter := mode == "after" || mode == "after-decode" || mode == "after-encode"
+	if !hasAfter && mode != "json-rule" {
 		t.Fatal("invalid review mapping")
 	}
 	service, err := server.protocolService()
@@ -36,9 +37,12 @@ func configureReviewMapping(t *testing.T, server *Server) {
 		t.Fatal(err)
 	}
 	changed := 0
-	if mode == "after" {
+	if hasAfter {
 		definition := presetDefinition(t, "anthropic-messages")
 		for _, direction := range []protocol.Direction{protocol.DecodeRequest, protocol.EncodeRequest} {
+			if mode == "after-decode" && direction != protocol.DecodeRequest || mode == "after-encode" && direction != protocol.EncodeRequest {
+				continue
+			}
 			mapping := definition.Directions[direction]
 			mapping.After = &protocol.Expression{Op: "read", Path: ""}
 			definition.Directions[direction] = mapping
