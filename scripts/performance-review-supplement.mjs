@@ -1,5 +1,5 @@
 import { spawn, execFileSync } from 'node:child_process'
-import { readFile, writeFile, mkdir, cp } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, cp, readdir } from 'node:fs/promises'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
@@ -38,6 +38,7 @@ if (args[0] === 'build') {
     const directory = join(root, `${suffix}-sources`, version, 'backend')
     await mkdir(dirname(directory), { recursive: true })
     try { await readFile(join(root, 'identities', `${version}-${suffix}-binary.json`)); throw new Error(`Supplement already built: ${version}`) } catch (e) { if (e.code !== 'ENOENT') throw e }
+    try { if ((await readdir(directory)).length) throw new Error(`Supplement source already exists: ${version}-${suffix}; preserve failures and choose a new suffix`) } catch (e) { if (e.code !== 'ENOENT') throw e }
     await cp(join(root, 'sources', version, 'backend'), directory, { recursive: true })
     const files = ['server/performance_review_test.go', 'server/performance_review_component_test.go', 'server/conversion_flamegraph_test.go', 'server/conversion_flamegraph_matrix_test.go', 'protocol/builtin/performance_review_test.go']
     const manifest = []

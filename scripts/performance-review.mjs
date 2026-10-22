@@ -41,6 +41,7 @@ function memory() {
 }
 async function prepare() {
   await mkdir(output, { recursive: true })
+  if ((await readdir(output)).length) throw new Error(`Use a new empty output directory; preserved evidence exists: ${output}`)
   await save(join(output, 'environment.json'), { date: '2026-10-22', created: new Date().toISOString(), baseline: revisions.release, target: revisions.current, go: execFileSync('go', ['version'], { encoding: 'utf8' }).trim(), cpu: cpus()[0].model, logicalCPUs: cpus().length, totalMemoryBytes: totalmem(), memory: memory(), settings: { GOMAXPROCS: 4, GOGC: 100, ordinaryMemoryLimit: '2GiB', largeMemoryLimit: '8GiB', pgo: 'off', cgo: 'off' } })
   const commits = git('log', '--reverse', '--format=%H%x09%P%x09%s', 'v1.6.2..760b54af').trim().split('\n').map(line => {
     const [hash, parents, subject] = line.split('\t')
