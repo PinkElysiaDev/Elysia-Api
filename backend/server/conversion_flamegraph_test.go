@@ -54,6 +54,7 @@ func validFlameHistory(messages []json.RawMessage, workload string) bool {
 // providers and databases are local fixtures; no production config is loaded.
 func configureFlameGateway(t *testing.T, server *Server) {
 	t.Helper()
+	configureReviewMapping(t, server)
 	server.config.SetEnablePprof(true)
 	server.config.SetPanelAccessToken(flameToken)
 	if err := server.store.UpsertAPIToken(t.Context(), storage.APIToken{Name: "profile", Token: flameToken, Enabled: true, AllowedGroups: []string{"grp"}}); err != nil {
@@ -79,6 +80,7 @@ func flameRequestBody(size int, stream bool, workload string) string {
 }
 
 type flameMeasurement struct {
+	UpstreamCalls                      int64
 	Reload                             *conversionHTTPMetrics `json:",omitempty"`
 	ReloadMS                           float64                `json:",omitempty"`
 	Mode, Workload                     string
@@ -427,7 +429,7 @@ func TestConversionFlamegraph(t *testing.T) {
 			if after.Calls-before.Calls != int64(requests) {
 				t.Fatal("duplicate or missing generations")
 			}
-			measurement := flameMeasurement{Mode: mode, Workload: workload, Phase: "steady", SizeMiB: size, Workers: workers, Repeat: repeat, Requests: requests, Stream: stream, ElapsedMS: float64(elapsed) / float64(time.Millisecond), Before: initial, Metrics: sample, Observations: observations}
+			measurement := flameMeasurement{UpstreamCalls: after.Calls - before.Calls, Mode: mode, Workload: workload, Phase: "steady", SizeMiB: size, Workers: workers, Repeat: repeat, Requests: requests, Stream: stream, ElapsedMS: float64(elapsed) / float64(time.Millisecond), Before: initial, Metrics: sample, Observations: observations}
 			if workers > 1 {
 				measurement.Phase = "burst"
 			}

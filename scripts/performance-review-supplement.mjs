@@ -39,10 +39,15 @@ if (args[0] === 'build') {
     await mkdir(dirname(directory), { recursive: true })
     try { await readFile(join(root, 'identities', `${version}-${suffix}-binary.json`)); throw new Error(`Supplement already built: ${version}`) } catch (e) { if (e.code !== 'ENOENT') throw e }
     await cp(join(root, 'sources', version, 'backend'), directory, { recursive: true })
-    const files = ['server/performance_review_test.go', 'server/conversion_flamegraph_test.go', 'protocol/builtin/performance_review_test.go']
+    const files = ['server/performance_review_test.go', 'server/performance_review_component_test.go', 'server/conversion_flamegraph_test.go', 'protocol/builtin/performance_review_test.go']
     const manifest = []
     for (const file of files) {
       let content = await readFile(join(repo, 'backend', file), 'utf8')
+      if (version === 'release' && file === 'server/performance_review_component_test.go') {
+        content = content.replace('import (', 'import (\n"time"')
+          .replace('cache.get(key, "group")', 'cache.get(key, "group", time.Now())')
+          .replace('cache.set(key, "group", "model")', 'cache.set(key, "group", "model", time.Now())')
+      }
       if (version === 'release' && content.includes('sonic.ConfigStd.')) {
         content = content.replaceAll('sonic.ConfigStd.', 'json.').replace(/\s*"github.com\/bytedance\/sonic"\n/g, '\n')
         if (!content.includes('"encoding/json"')) content = content.replace('import (', 'import (\n"encoding/json"')
@@ -52,7 +57,7 @@ if (args[0] === 'build') {
     }
     const matrix = join(directory, 'server/conversion_flamegraph_matrix_test.go')
     let code = await readFile(matrix, 'utf8')
-    code = code.replace('func flameMatrixProvider(t *testing.T, target *protocol.Compiled) http.Handler {', 'func flameMatrixProvider(t *testing.T, target *protocol.Compiled) http.Handler {\nif os.Getenv("ELYSIA_REVIEW_TOOL") == "1" { return reviewToolProvider(t) }')
+    if (!code.includes('return reviewToolProvider(t)')) code = code.replace('func flameMatrixProvider(t *testing.T, target *protocol.Compiled) http.Handler {', 'func flameMatrixProvider(t *testing.T, target *protocol.Compiled) http.Handler {\nif os.Getenv("ELYSIA_REVIEW_TOOL") == "1" { return reviewToolProvider(t) }')
     await writeFile(matrix, code)
     manifest.push({ file: 'server/conversion_flamegraph_matrix_test.go', sha256: sha(code) })
     const collector = join(directory, 'server/conversion_http_performance_test.go')
@@ -94,5 +99,6 @@ if (args[0] === 'build') {
   for (let pair = 0; pair < Number(opt('pairs', 5)); pair++) for (const version of pair % 2 ? [...versions].reverse() : versions) {
     await run(`${opt('label', 'component')}-${pair}-${version}`, 'go', ['test', '-pgo=off', './protocol/builtin', '-run=^$', '-bench=BenchmarkReview', '-benchmem', `-benchtime=${opt('benchtime', '1s')}`, '-count=1'], join(root, `${suffix}-sources`, version, 'backend'))
     await run(`${opt('label', 'storage')}-storage-${pair}-${version}`, 'go', ['test', '-pgo=off', './storage', '-run=^$', '-bench=BenchmarkListGroups', '-benchmem', `-benchtime=${opt('benchtime', '1s')}`, '-count=1'], join(root, `${suffix}-sources`, version, 'backend'))
+    await run(`${opt('label', 'component')}-server-${pair}-${version}`, join(root, 'binaries', `${version}-${suffix}.test.exe`), ['-test.run=^$', '-test.bench=^BenchmarkReview(Cache|CLI)', '-test.benchmem', `-test.benchtime=${opt('benchtime', '1s')}`, '-test.count=1'], join(root, `${suffix}-sources`, version, 'backend'))
   }
 } else throw new Error('Usage: performance-review-supplement.mjs build|tools|held|bench [--pairs=N]')

@@ -72,6 +72,7 @@ async function prepare() {
       'conversion_http_performance_test.go': http,
       'conversion_flamegraph_test.go': await readFile(join(root, 'backend/server/conversion_flamegraph_test.go'), 'utf8'),
       'conversion_flamegraph_matrix_test.go': await readFile(join(root, 'backend/server/conversion_flamegraph_matrix_test.go'), 'utf8'),
+      'performance_review_test.go': await readFile(join(root, 'backend/server/performance_review_test.go'), 'utf8'),
       'conversion_memory_windows_test.go': show('760b54af', 'backend/server/conversion_memory_windows_test.go'),
       'conversion_memory_other_test.go': show('760b54af', 'backend/server/conversion_memory_other_test.go'),
     }
@@ -113,6 +114,15 @@ export const cases = {
   candidates16: { candidates: 16 }, burst32: { workers: 32 }, 'large-frame': { stream: true, frames: 16, frameBytes: 4096 },
   logprobs: { stream: true, frames: 256, logprobs: true },
   logprobs1024: { stream: true, frames: 1024, logprobs: true, requests: 32 },
+  'anthropic-stream16': { source: 'anthropic', target: 'anthropic', stream: true, frames: 16 },
+  'responses-stream16': { source: 'responses', target: 'responses', stream: true, frames: 16 },
+  'gemini-stream16': { source: 'gemini', target: 'gemini', stream: true, frames: 16 },
+  'image2-candidates4': { workload: 'image', requests: 4, candidates: 4 },
+  'image2-candidates16': { workload: 'image', requests: 4, candidates: 16 },
+  'image2-after': { workload: 'image', requests: 4, mapping: 'after' },
+  'image2-after-sse': { workload: 'image', requests: 4, mapping: 'after', stream: true },
+  'image2-json-rule': { workload: 'image', requests: 4, mapping: 'json-rule' },
+  'image2-json-rule-sse': { workload: 'image', requests: 4, mapping: 'json-rule', stream: true },
 }
 async function collect(mode) {
   const selection = opt('cases', Object.keys(cases).slice(0, 20).join(',')).split(',')
@@ -137,10 +147,10 @@ async function collect(mode) {
         ELYSIA_FLAME_MODE: mode, ELYSIA_FLAME_OUTPUT: directory, ELYSIA_FLAME_WORKLOAD: c.workload,
         ELYSIA_FLAME_SOURCE: c.workload === 'small' ? protocols[c.source] : '', ELYSIA_FLAME_TARGET: c.workload === 'small' ? protocols[c.target] : '',
         ELYSIA_FLAME_REQUEST: c.request, ELYSIA_FLAME_STREAM: c.stream ? 'sse' : 'json', ELYSIA_FLAME_FRAMES: String(c.frames), ELYSIA_FLAME_FRAME_BYTES: String(c.frameBytes),
-        ELYSIA_FLAME_REQUESTS: String(c.requests ?? Number(opt('requests', 256))), ELYSIA_FLAME_REPEATS: opt('repeats', '1'), ELYSIA_FLAME_WARMUP: c.size === 31 ? '1' : '4', ELYSIA_FLAME_SECONDS: opt('seconds', '60'),
+        ELYSIA_FLAME_REQUESTS: String(c.workload === 'image' ? opt('image-requests', c.requests) : c.requests ?? Number(opt('requests', 256))), ELYSIA_FLAME_REPEATS: opt('repeats', '1'), ELYSIA_FLAME_WARMUP: c.size === 31 ? '1' : '4', ELYSIA_FLAME_SECONDS: opt('seconds', '60'),
         ELYSIA_FLAME_COLD: mode === 'measure' ? '1' : '', ELYSIA_FLAME_TIMELINE: mode === 'measure' ? '1' : '', ELYSIA_FLAME_RECOVERY_MS: mode === 'measure' ? opt('idle-ms', '1000') : '', ELYSIA_FLAME_VERIFY_EXACT: '1', ELYSIA_FLAME_RELOAD: c.reload ? '1' : '',
         ELYSIA_CONVERSION_HTTP_MIB: String(c.size), ELYSIA_CONVERSION_HTTP_WORKERS: String(c.workers), ELYSIA_CONVERSION_HTTP_CANDIDATES: String(c.candidates), ELYSIA_CONVERSION_HTTP_LOG: c.log,
-        ELYSIA_CONVERSION_HTTP_PREPARATION: preparation === 'off' ? 'off' : '', ELYSIA_REVIEW_LOGPROBS: c.logprobs ? '1' : '', ELYSIA_REVIEW_TRACE: opt('trace', ''),
+        ELYSIA_CONVERSION_HTTP_PREPARATION: preparation === 'off' ? 'off' : '', ELYSIA_REVIEW_LOGPROBS: c.logprobs ? '1' : '', ELYSIA_REVIEW_TRACE: opt('trace', ''), ELYSIA_REVIEW_MAPPING: c.mapping || '',
       }
       const binary = join(output, 'binaries', `${version}${opt('binary-suffix', '')}.test.exe`)
       const result = await run(name, binary, ['-test.run=^TestConversionFlamegraph$', '-test.v', '-test.timeout=30m'], join(output, 'sources', version, 'backend'), settings)

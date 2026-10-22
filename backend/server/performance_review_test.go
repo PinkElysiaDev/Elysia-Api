@@ -17,6 +17,68 @@ import (
 	"github.com/elysia-api/backend/protocol"
 )
 
+// Authored mappings are installed and verified before measurement. These
+// fixtures use the real store/runtime binding boundary, not a bypass flag.
+func configureReviewMapping(t *testing.T, server *Server) {
+	mode := os.Getenv("ELYSIA_REVIEW_MAPPING")
+	if mode == "" {
+		return
+	}
+	if mode != "after" && mode != "json-rule" {
+		t.Fatal("invalid review mapping")
+	}
+	service, err := server.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindings, err := server.store.ListProtocolBindings(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := 0
+	if mode == "after" {
+		definition := presetDefinition(t, "anthropic-messages")
+		for _, direction := range []protocol.Direction{protocol.DecodeRequest, protocol.EncodeRequest} {
+			mapping := definition.Directions[direction]
+			mapping.After = &protocol.Expression{Op: "read", Path: ""}
+			definition.Directions[direction] = mapping
+		}
+		compiled := activateGatewayDefinition(t, server, definition)
+		for i := range bindings {
+			if bindings[i].Binding.ProtocolID == definition.ID {
+				bindings[i].Binding.RevisionHash = compiled.Hash()
+				changed++
+			}
+		}
+	} else {
+		present := true
+		for i := range bindings {
+			if bindings[i].Binding.ProtocolID != "anthropic-messages" {
+				continue
+			}
+			bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "review-json-boundary", Rules: []protocol.ConversionRule{{ID: "review-json-boundary", Order: 55, Enabled: true, Phase: protocol.ConversionRequest, Action: "set", Path: "/model", Value: protocol.StringValue("m"), Match: protocol.ConversionMatch{Path: "/model", Present: &present}}}}}
+			changed++
+		}
+	}
+	if changed == 0 {
+		t.Fatal("mapping fixture did not change a binding")
+	}
+	bindings, err = server.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, binding := range bindings {
+		if err := server.store.SaveProtocolBinding(t.Context(), binding); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server.invalidateRouteCache()
+	raw, _ := json.MarshalIndent(map[string]any{"mapping": mode, "bindings": bindings}, "", "  ")
+	if err := os.WriteFile(filepath.Join(os.Getenv("ELYSIA_FLAME_OUTPUT"), "mapping-proof.json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // The provider validates the actual second request, including call identity and
 // arguments. A tool definition alone is not a completed tool-roundtrip fixture.
 func reviewToolProvider(t *testing.T) http.Handler {
