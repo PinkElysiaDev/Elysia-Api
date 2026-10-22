@@ -14,7 +14,6 @@ import (
 	hconfig "github.com/cloudwego/hertz/pkg/common/config"
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/cloudwego/hertz/pkg/common/tracer/stats"
-	"github.com/cloudwego/hertz/pkg/network/standard"
 	"github.com/cloudwego/hertz/pkg/protocol/http1/ext"
 	"github.com/cloudwego/hertz/pkg/route"
 	"github.com/elysia-api/backend/config"
@@ -23,11 +22,11 @@ import (
 
 func newHTTPEngine(cfg *config.Config, extra ...hconfig.Option) *route.Engine {
 	hertzLoggingOnce.Do(func() { hlog.SetLogger(&hertzLogger{}) })
+	disconnect := newPlatformDisconnectMonitor()
 	options := []hconfig.Option{
-		// Large multimodal bodies need bounded streaming reads. The standard
-		// transporter also closes active sockets immediately on forced shutdown
-		// and provides the same disconnect semantics on all release platforms.
-		hserver.WithTransport(standard.NewTransporter),
+		// Large multimodal bodies need bounded streaming reads. Windows supplies
+		// its own socket observation because connstate does not support it.
+		hserver.WithTransport(disconnect.transport),
 		hserver.WithOnAccept(func(conn net.Conn) context.Context {
 			return context.WithValue(context.Background(), httpSocketKey{}, conn)
 		}),
@@ -40,7 +39,7 @@ func newHTTPEngine(cfg *config.Config, extra ...hconfig.Option) *route.Engine {
 		hserver.WithMaxRequestBodySize(1),
 		hserver.WithMaxKeepBodySize(64 << 10),
 		hserver.WithDisablePreParseMultipartForm(true),
-		hserver.WithSenseClientDisconnection(true),
+		hserver.WithSenseClientDisconnection(disconnect == nil),
 		hserver.WithDisablePrintRoute(true),
 	}
 	if cfg != nil {
@@ -48,6 +47,9 @@ func newHTTPEngine(cfg *config.Config, extra ...hconfig.Option) *route.Engine {
 		options = append(options, hserver.WithHostPorts(net.JoinHostPort(listen.Host, strconv.Itoa(listen.Port))))
 	}
 	engine := hserver.New(append(options, extra...)...).Engine
+	if disconnect != nil {
+		engine.Use(disconnect.middleware())
+	}
 	engine.Use(func(ctx context.Context, c *app.RequestContext) {
 		defer func() {
 			if !c.Request.IsBodyStream() || c.Hijacked() {
