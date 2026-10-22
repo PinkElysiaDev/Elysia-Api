@@ -2,8 +2,11 @@ package server
 
 import (
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // These wrappers are the only affinity API adaptation installed in the pinned
@@ -72,4 +75,49 @@ func BenchmarkReviewCLI(b *testing.B) {
 			}
 		}
 	})
+}
+
+// Explanatory lower-bound experiment, not a production redactor replacement.
+// The fallback regexp requires a literal quote. Nested JSON/SSE dispatch and
+// security differential coverage still belong to a future implementation.
+func BenchmarkReviewTurnStateScan(b *testing.B) {
+	for _, size := range []int{2, 31} {
+		text := strings.Repeat("A", size<<20)
+		for _, prefilter := range []bool{false, true} {
+			b.Run(fmt.Sprintf("MiB=%d/prefilter=%t", size, prefilter), func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64(len(text)))
+				for b.Loop() {
+					if prefilter && strings.IndexByte(text, '"') < 0 {
+						continue
+					}
+					if partialTurnStateKey.FindStringIndex(text) != nil {
+						b.Fatal("synthetic base64 unexpectedly matched")
+					}
+				}
+			})
+		}
+	}
+}
+
+// Current-only explanatory experiment. Each variant runs in its own benchmark
+// process; never toggle Cobra's process-global hook in a production request.
+func BenchmarkReviewCLIWindowsHook(b *testing.B) {
+	for _, disabled := range []bool{false, true} {
+		b.Run(fmt.Sprintf("disabled=%t", disabled), func(b *testing.B) {
+			original := cobra.MousetrapHelpText
+			b.Cleanup(func() { cobra.MousetrapHelpText = original })
+			if disabled {
+				cobra.MousetrapHelpText = ""
+			}
+			args := []string{"source", "ls"}
+			b.ReportAllocs()
+			for b.Loop() {
+				invocation, err := cliResolve(args)
+				if err != nil || invocation == nil {
+					b.Fatal("invalid invocation", err)
+				}
+			}
+		})
+	}
 }

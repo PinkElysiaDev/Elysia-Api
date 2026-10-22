@@ -272,9 +272,12 @@ func validateFlameOutput(ctx context.Context, source *protocol.Compiled, body []
 			for _, node := range nodes {
 				for _, metadata := range node.Metadata {
 					if metadata.Name == "logprobs" {
-						fields, _ := metadata.Value.ReadObject()
 						var entries []protocol.Value
-						if err := fields["content"].Decode(&entries); err == nil {
+						value := metadata.Value
+						if fields, err := value.ReadObject(); err == nil {
+							value = fields["content"]
+						}
+						if err := value.Decode(&entries); err == nil {
 							count += len(entries)
 						}
 					}

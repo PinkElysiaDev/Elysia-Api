@@ -39,11 +39,16 @@ if (args[0] === 'build') {
     await mkdir(dirname(directory), { recursive: true })
     try { await readFile(join(root, 'identities', `${version}-${suffix}-binary.json`)); throw new Error(`Supplement already built: ${version}`) } catch (e) { if (e.code !== 'ENOENT') throw e }
     await cp(join(root, 'sources', version, 'backend'), directory, { recursive: true })
-    const files = ['server/performance_review_test.go', 'server/performance_review_component_test.go', 'server/conversion_flamegraph_test.go', 'protocol/builtin/performance_review_test.go']
+    const files = ['server/performance_review_test.go', 'server/performance_review_component_test.go', 'server/conversion_flamegraph_test.go', 'server/conversion_flamegraph_matrix_test.go', 'protocol/builtin/performance_review_test.go']
     const manifest = []
     for (const file of files) {
       let content = await readFile(join(repo, 'backend', file), 'utf8')
       if (version === 'release' && file === 'server/performance_review_component_test.go') {
+        // The release does not depend on Cobra. Keep its original resolver and
+        // omit the current-only Windows-hook experiment instead of adding deps.
+        const marker = content.indexOf('// Current-only explanatory experiment.')
+        if (marker < 0) throw new Error('Current-only benchmark adapter marker changed')
+        content = content.slice(0, marker).replace(/\s*"github.com\/spf13\/cobra"\n/g, '\n')
         content = content.replace('import (', 'import (\n"time"')
           .replace('cache.get(key, "group")', 'cache.get(key, "group", time.Now())')
           .replace('cache.set(key, "group", "model")', 'cache.set(key, "group", "model", time.Now())')
@@ -77,7 +82,7 @@ if (args[0] === 'build') {
       manifest.push({ file: 'storage/review_groups_test.go', sha256: sha(groupBenchmark) })
     }
     const binary = join(root, 'binaries', `${version}-${suffix}.test.exe`)
-    const result = await run(`supplement-build-${version}`, 'go', ['test', '-pgo=off', '-c', '-o', binary, './server'], directory)
+    const result = await run(`supplement-build-${version}`, 'go', ['test', '-pgo=off', ...(['merged', 'normalized'].includes(version) ? ['-tags=sonic'] : []), '-c', '-o', binary, './server'], directory)
     if (result.code) throw new Error(`Supplement build failed: ${version}`)
     await save(join(root, 'identities', `${version}-${suffix}-binary.json`), { binary, sha256: sha(await readFile(binary)), adapters: manifest, build: result })
   }
@@ -97,8 +102,16 @@ if (args[0] === 'build') {
   }
 } else if (args[0] === 'bench') {
   for (let pair = 0; pair < Number(opt('pairs', 5)); pair++) for (const version of pair % 2 ? [...versions].reverse() : versions) {
-    await run(`${opt('label', 'component')}-${pair}-${version}`, 'go', ['test', '-pgo=off', './protocol/builtin', '-run=^$', '-bench=BenchmarkReview', '-benchmem', `-benchtime=${opt('benchtime', '1s')}`, '-count=1'], join(root, `${suffix}-sources`, version, 'backend'))
-    await run(`${opt('label', 'storage')}-storage-${pair}-${version}`, 'go', ['test', '-pgo=off', './storage', '-run=^$', '-bench=BenchmarkListGroups', '-benchmem', `-benchtime=${opt('benchtime', '1s')}`, '-count=1'], join(root, `${suffix}-sources`, version, 'backend'))
-    await run(`${opt('label', 'component')}-server-${pair}-${version}`, join(root, 'binaries', `${version}-${suffix}.test.exe`), ['-test.run=^$', '-test.bench=^BenchmarkReview(Cache|CLI)', '-test.benchmem', `-test.benchtime=${opt('benchtime', '1s')}`, '-test.count=1'], join(root, `${suffix}-sources`, version, 'backend'))
+    await run(`${opt('label', 'component')}-${pair}-${version}`, 'go', ['test', '-pgo=off', './protocol/builtin', '-run=^$', `-bench=${opt('protocol-bench', 'BenchmarkReview')}`, '-benchmem', `-benchtime=${opt('benchtime', '1s')}`, '-count=1'], join(root, `${suffix}-sources`, version, 'backend'))
+    await run(`${opt('label', 'storage')}-storage-${pair}-${version}`, 'go', ['test', '-pgo=off', './storage', '-run=^$', `-bench=${opt('storage-bench', 'BenchmarkListGroups')}`, '-benchmem', `-benchtime=${opt('benchtime', '1s')}`, '-count=1'], join(root, `${suffix}-sources`, version, 'backend'))
+    await run(`${opt('label', 'component')}-server-${pair}-${version}`, join(root, 'binaries', `${version}-${suffix}.test.exe`), ['-test.run=^$', `-test.bench=${opt('server-bench', '^BenchmarkReview(Cache|CLI)')}`, '-test.benchmem', `-test.benchtime=${opt('benchtime', '1s')}`, '-test.count=1'], join(root, `${suffix}-sources`, version, 'backend'))
   }
-} else throw new Error('Usage: performance-review-supplement.mjs build|tools|held|bench [--pairs=N]')
+} else if (args[0] === 'scan') {
+  for (const size of [2, 31]) for (let pair = 0; pair < Number(opt('pairs', 5)); pair++) for (const prefilter of pair % 2 ? [true, false] : [false, true]) {
+    await run(`scan-${size}-${pair}-${prefilter}-current`, join(root, 'binaries', `current-${suffix}.test.exe`), ['-test.run=^$', `-test.bench=^BenchmarkReviewTurnStateScan$/^MiB=${size}$/^prefilter=${prefilter}$`, '-test.benchmem', `-test.benchtime=${opt('benchtime', '1s')}`, '-test.count=1'], join(root, `${suffix}-sources`, 'current', 'backend'))
+  }
+} else if (args[0] === 'cli-hook') {
+  for (let pair = 0; pair < Number(opt('pairs', 5)); pair++) for (const disabled of pair % 2 ? [true, false] : [false, true]) {
+    await run(`cli-hook-${pair}-${disabled}-current`, join(root, 'binaries', `current-${suffix}.test.exe`), ['-test.run=^$', `-test.bench=^BenchmarkReviewCLIWindowsHook$/^disabled=${disabled}$`, '-test.benchmem', `-test.benchtime=${opt('benchtime', '1s')}`, '-test.count=1'], join(root, `${suffix}-sources`, 'current', 'backend'))
+  }
+} else throw new Error('Usage: performance-review-supplement.mjs build|tools|held|bench|scan|cli-hook [--pairs=N]')
