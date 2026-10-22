@@ -109,7 +109,11 @@ func flameMatrixResponse(t *testing.T, compiled *protocol.Compiled) ([][]byte, [
 		t.Fatal(err)
 	}
 	for range frameCount {
-		events = append(events, protocol.Event{SchemaVersion: 1, Type: protocol.ItemDelta, ItemID: protocol.StringValue("text"), Index: &index, Delta: protocol.StringValue(strings.Repeat("x", frameBytes))})
+		event := protocol.Event{SchemaVersion: 1, Type: protocol.ItemDelta, ItemID: protocol.StringValue("text"), Index: &index, Delta: protocol.StringValue(strings.Repeat("x", frameBytes))}
+		if os.Getenv("ELYSIA_REVIEW_LOGPROBS") == "1" {
+			event.Metadata = []protocol.ResponseMetadata{{Codec: "openai-chat", Location: "choice", Name: "logprobs", Value: mustProtocolValue(t, `{"content":[{"token":"x","logprob":-0.5,"bytes":[120],"top_logprobs":[]}]}`)}}
+		}
+		events = append(events, event)
 	}
 	events = append(events, protocol.Event{SchemaVersion: 1, Type: protocol.ItemFinished, ItemID: protocol.StringValue("text"), Index: &index}, protocol.Event{SchemaVersion: 1, Type: protocol.ResponseFinished, Response: &protocol.Response{SchemaVersion: 1, ID: response.ID, Model: response.Model, Status: protocol.StringValue("completed"), Content: []protocol.Node{}, Usage: usage, Attributes: attributes}}, protocol.Event{SchemaVersion: 1, Type: protocol.UsageUpdated, Usage: usage})
 	options := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
@@ -257,6 +261,29 @@ func validateFlameOutput(ctx context.Context, source *protocol.Compiled, body []
 	}
 	if text.String() != expected {
 		return fmt.Errorf("response text differs: received %d bytes, expected %d", text.Len(), len(expected))
+	}
+	if os.Getenv("ELYSIA_REVIEW_LOGPROBS") == "1" {
+		count := 0
+		var visit func([]protocol.Node)
+		visit = func(nodes []protocol.Node) {
+			for _, node := range nodes {
+				for _, metadata := range node.Metadata {
+					if metadata.Name == "logprobs" {
+						fields, _ := metadata.Value.ReadObject()
+						var entries []protocol.Value
+						if err := fields["content"].Decode(&entries); err == nil {
+							count += len(entries)
+						}
+					}
+				}
+				visit(node.Children)
+			}
+		}
+		visit(response.Content)
+		frames, _, _ := flameStreamShape()
+		if count != frames {
+			return fmt.Errorf("logprobs count differs: got %d, expected %d", count, frames)
+		}
 	}
 	return nil
 }

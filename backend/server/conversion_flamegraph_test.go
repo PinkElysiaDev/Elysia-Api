@@ -323,7 +323,43 @@ func TestConversionFlamegraph(t *testing.T) {
 					t.Fatal(err)
 				}
 				profileDone = make(chan error, 1)
-				go func() { time.Sleep(250 * time.Millisecond); profileDone <- saveProfile("heap-active.pprof", "heap") }()
+				go func() {
+					// A fixed delay can photograph an already idle gateway. Record
+					// activity on both sides of the snapshot instead of claiming peak.
+					deadline := time.Now().Add(10 * time.Second)
+					observe := func() (conversionHTTPMetrics, error) {
+						var state conversionHTTPMetrics
+						response, err := client.Get(gateway.Metrics)
+						if err != nil {
+							return state, err
+						}
+						defer response.Body.Close()
+						if response.StatusCode != http.StatusOK {
+							return state, fmt.Errorf("activity HTTP %d", response.StatusCode)
+						}
+						return state, sonic.ConfigStd.NewDecoder(response.Body).Decode(&state)
+					}
+					for time.Now().Before(deadline) {
+						before, err := observe()
+						if err != nil {
+							profileDone <- err
+							return
+						}
+						if before.ActiveRequests > 0 {
+							err = saveProfile("heap-active.pprof", "heap")
+							after, observationErr := observe()
+							if err == nil {
+								err = observationErr
+							}
+							raw, _ := sonic.ConfigStd.MarshalIndent(map[string]any{"before": before, "after": after, "activeOnBothSides": after.ActiveRequests > 0, "peakSnapshot": false}, "", "  ")
+							_ = os.WriteFile(filepath.Join(directory, "heap-active-observation.json"), raw, 0600)
+							profileDone <- err
+							return
+						}
+						time.Sleep(time.Millisecond)
+					}
+					profileDone <- fmt.Errorf("no active request observed for heap snapshot")
+				}()
 			}
 			started := time.Now()
 			requests := 0
