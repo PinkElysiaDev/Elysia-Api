@@ -209,7 +209,7 @@ func (r *usageRecord) sanitizeBodyText(input string) usageBody {
 		if r.bodyOpts.externalize {
 			r.assets.extractFromValue(value)
 		}
-		if sanitized, err := encodeUsageJSON(value); err == nil {
+		if sanitized, err := encodeBorrowedUsageJSON(value); err == nil {
 			return truncateUsageBody(sanitized, maxBytes)
 		}
 	}
@@ -237,7 +237,7 @@ func (r *usageRecord) finalizeDownstreamBody(body usageBody) (result usageBody) 
 			r.assets.extractFromValue(value)
 		}
 		if isChanged || r.bodyOpts.externalize {
-			if sanitized, err := encodeUsageJSON(value); err == nil {
+			if sanitized, err := encodeBorrowedUsageJSON(value); err == nil {
 				return truncateUsageBody(sanitized, maxBytes)
 			}
 		}

@@ -83,6 +83,59 @@ func TestUsageBorrowedDecoderPreservesOwnedAcceptance(t *testing.T) {
 	}
 }
 
+func TestUsageBorrowedEncodingDetachesPooledKeysAndClearsPrivateTrees(t *testing.T) {
+	input := `{"short":"value","nested":{"data":"` + strings.Repeat("A", 1<<20) + `"},"items":[{"text":"child"},"scalar"]}`
+	value, ok := decodeUsageJSONBorrowed(input)
+	if !ok {
+		t.Fatal("invalid fixture")
+	}
+	root := value.(map[string]any)
+	nested := root["nested"].(map[string]any)
+	items := root["items"].([]any)
+	child := items[0].(map[string]any)
+	detachUsageJSONKeys(value)
+	for _, object := range []map[string]any{root, nested, child} {
+		for key := range object {
+			if usageStringReferences(input, key) {
+				t.Fatal("a key copied into the encoder's iterator pool can retain the input")
+			}
+		}
+	}
+	expected, err := sonic.ConfigStd.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := encodeBorrowedUsageJSON(value)
+	if err != nil || encoded != string(expected) {
+		t.Fatal("releasing the cleaning tree changed encoded bytes", err)
+	}
+	if len(root) != 0 || len(nested) != 0 || len(child) != 0 || items[0] != nil || items[1] != nil {
+		t.Fatal("encoder-retained maps or arrays still contain borrowed values")
+	}
+	assertUsageStringsDetached(t, input, usageBody{Content: encoded}, assetSink{})
+	if !strings.Contains(input, strings.Repeat("A", 1<<20)) {
+		t.Fatal("releasing the private tree modified the original input")
+	}
+}
+
+func TestUsageBorrowedEncodingReleasesPrivateTreesOnError(t *testing.T) {
+	value, ok := decodeUsageJSONBorrowed(`{"nested":{"number":1}}`)
+	if !ok {
+		t.Fatal("invalid fixture")
+	}
+	root := value.(map[string]any)
+	nested := root["nested"].(map[string]any)
+	nested["number"] = make(chan int)
+	_, expectedErr := sonic.ConfigStd.Marshal(root)
+	_, err := encodeBorrowedUsageJSON(root)
+	if reflect.TypeOf(err) != reflect.TypeOf(expectedErr) || err.Error() != expectedErr.Error() {
+		t.Fatal("encoding error changed", err, expectedErr)
+	}
+	if len(root) != 0 || len(nested) != 0 {
+		t.Fatal("an encoding failure retained the private tree")
+	}
+}
+
 func TestUsageSanitizerTextAndBytesPreserveBodiesAndAssets(t *testing.T) {
 	media := strings.Repeat("A", 4096)
 	for index, input := range []string{

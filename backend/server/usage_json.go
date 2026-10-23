@@ -42,6 +42,53 @@ func encodeUsageJSON(value any) (string, error) {
 	return string(encoded), err
 }
 
+// Sonic's sorted-map iterator pool retains key strings and map element slots.
+// Detach its keys and empty the private cleaning tree before returning, so that
+// pooled iterators cannot extend the lifetime of a borrowed request body.
+func encodeBorrowedUsageJSON(value any) (string, error) {
+	detachUsageJSONKeys(value)
+	defer clearUsageJSON(value)
+	return encodeUsageJSON(value)
+}
+
+func detachUsageJSONKeys(value any) {
+	switch node := value.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(node))
+		for key := range node {
+			keys = append(keys, key)
+		}
+		for _, key := range keys {
+			child := node[key]
+			delete(node, key)
+			node[strings.Clone(key)] = child
+			detachUsageJSONKeys(child)
+		}
+	case []any:
+		for _, child := range node {
+			detachUsageJSONKeys(child)
+		}
+	}
+}
+
+func clearUsageJSON(value any) {
+	switch node := value.(type) {
+	case map[string]any:
+		for key, child := range node {
+			clearUsageJSON(child)
+			// Clear the slots that pooled iterators can still address before the
+			// map itself is reset; do not depend on a runtime's map-clear strategy.
+			node[key] = nil
+		}
+		clear(node)
+	case []any:
+		for _, child := range node {
+			clearUsageJSON(child)
+		}
+		clear(node)
+	}
+}
+
 // decodeUsageJSON constructs the sole mutable log tree without copying through
 // protocol.Value. Require EOF so a valid prefix never hides a trailing secret.
 func decodeUsageJSON(input string) (any, bool) {
