@@ -247,7 +247,26 @@ func equalNativeValues(left, right Value) bool {
 	if left.IsZero() || right.IsZero() {
 		return false
 	}
-	return equalNativeValuesWithin(left, right, requestValueReader(left), requestValueReader(right))
+	// Comparison returns no views. Borrow even small fragments for its duration;
+	// request decoding detaches them because its results can outlive the root.
+	reader := &valueReader{}
+	if left.IsObject() && right.IsObject() {
+		before, _ := left.readObjectWithin(reader)
+		after, _ := right.readObjectWithin(reader)
+		if len(before) != len(after) {
+			return false
+		}
+		// Preserve the original short-field precheck: a model change should not
+		// traverse unrelated history first just because map order changes.
+		for key, value := range before {
+			other, exists := after[key]
+			if !exists || len(value.raw) <= requestViewMinBytes && len(other.raw) <= requestViewMinBytes && !equalValues(value, other) {
+				return false
+			}
+		}
+		return equalNativeObjectFields(before, after, reader, reader)
+	}
+	return equalNativeValuesWithin(left, right, reader, reader)
 }
 
 func equalNativeValuesWithin(left, right Value, leftReader, rightReader *valueReader) bool {
@@ -259,16 +278,7 @@ func equalNativeValuesWithin(left, right Value, leftReader, rightReader *valueRe
 		}
 		before, _ := left.readObjectWithin(leftReader)
 		after, _ := right.readObjectWithin(rightReader)
-		if len(before) != len(after) {
-			return false
-		}
-		for key, value := range before {
-			other, exists := after[key]
-			if !exists || !equalNativeValuesWithin(value, other, leftReader, rightReader) {
-				return false
-			}
-		}
-		return true
+		return equalNativeObjectFields(before, after, leftReader, rightReader)
 	case '[':
 		if rightRaw[0] != '[' {
 			return false
@@ -306,4 +316,17 @@ func equalNativeValuesWithin(left, right Value, leftReader, rightReader *valueRe
 		after, ok := exactNumber(rightRaw)
 		return ok && before.Cmp(after) == 0
 	}
+}
+
+func equalNativeObjectFields(before, after Object, leftReader, rightReader *valueReader) bool {
+	if len(before) != len(after) {
+		return false
+	}
+	for key, value := range before {
+		other, exists := after[key]
+		if !exists || !equalNativeValuesWithin(value, other, leftReader, rightReader) {
+			return false
+		}
+	}
+	return true
 }
