@@ -140,7 +140,8 @@ type usageRecord struct {
 	assets assetSink `json:"-"`
 	// pendingStreamEvents 是流式请求捕获的上游事件（环形保留最后
 	// StreamEventsCacheMax 条），recordUsage 物化为 ProviderResponse。
-	pendingStreamEvents []json.RawMessage `json:"-"`
+	pendingStreamEvents    []json.RawMessage `json:"-"`
+	pendingStreamTruncated bool              `json:"-"`
 }
 
 // usageBodyOptions snapshots capture policy once per request; zero disables capture.
@@ -254,10 +255,15 @@ func truncateUsageBody(content string, maxBytes int) usageBody {
 // 序列化推迟到 recordUsage 一次性物化：旧实现每事件重编组整个数组并完整
 // 清洗，CPU 随事件数平方增长。
 func (r *usageRecord) appendStreamEvent(payload string) {
-	if r.bodyOpts.maxBytes == 0 || !jsonutil.Valid([]byte(payload)) {
+	if r.bodyOpts.maxBytes == 0 {
+		return
+	}
+	if !jsonutil.Valid([]byte(payload)) {
+		r.pendingStreamTruncated = true
 		return
 	}
 	if len(r.pendingStreamEvents) >= StreamEventsCacheMax {
+		r.pendingStreamTruncated = true
 		r.pendingStreamEvents = append(r.pendingStreamEvents[:0], r.pendingStreamEvents[1:]...)
 	}
 	r.pendingStreamEvents = append(r.pendingStreamEvents, json.RawMessage(payload))
@@ -266,12 +272,17 @@ func (r *usageRecord) appendStreamEvent(payload string) {
 // materializeStreamEvents 把捕获的流事件物化为 ProviderResponse（该记录
 // 未显式赋值过时）。非流式路径不受影响。
 func (r *usageRecord) materializeStreamEvents() {
-	defer func() { r.pendingStreamEvents = nil }()
-	if r.ProviderResponse.Content != "" || len(r.pendingStreamEvents) == 0 {
+	defer func() { r.pendingStreamEvents = nil; r.pendingStreamTruncated = false }()
+	if r.ProviderResponse.Content != "" {
+		return
+	}
+	if len(r.pendingStreamEvents) == 0 {
+		r.ProviderResponse.Truncated = r.ProviderResponse.Truncated || r.pendingStreamTruncated
 		return
 	}
 	if eventBytes, err := sonic.ConfigStd.Marshal(r.pendingStreamEvents); err == nil {
 		r.ProviderResponse = r.sanitizeBody(eventBytes)
+		r.ProviderResponse.Truncated = r.ProviderResponse.Truncated || r.pendingStreamTruncated
 	}
 }
 
