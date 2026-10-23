@@ -73,10 +73,12 @@ func (source *protocolSourceStream) decode(frame protocol.SourceFrame) error {
 		}
 	}
 	for _, event := range decoded.Events {
-		if _, err := source.replay.Consume(event); err != nil {
+		isAccepted, err := source.replay.Consume(event)
+		if err != nil {
 			return source.candidate.compiled.AnnotateSourceEventError(err)
 		}
-		if source.record != nil {
+		hasUsageUpdate := event.Usage != nil || event.Response != nil && event.Response.Usage != nil
+		if source.record != nil && isAccepted && hasUsageUpdate {
 			updateRecordProtocolUsage(source.record, source.replay.Usage())
 		}
 	}
