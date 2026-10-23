@@ -26,7 +26,7 @@ func redactTurnStateText(text string, depth int) string {
 	// through the decoder and therefore cannot bypass redaction.
 	trimmed := strings.TrimSpace(text)
 	if len(trimmed) > 0 && strings.ContainsRune("{[\"", rune(trimmed[0])) {
-		if value, ok := decodeUsageJSON(strings.NewReader(text)); ok {
+		if value, ok := decodeUsageJSON(text); ok {
 			if redactTurnStateValue(&value, depth+1) {
 				encoded, _ := sonic.ConfigStd.Marshal(value)
 				return string(encoded)

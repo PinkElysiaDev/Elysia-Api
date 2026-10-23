@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -195,7 +194,7 @@ func (r *usageRecord) sanitizeBody(data []byte) usageBody {
 		return usageBody{}
 	}
 
-	if value, ok := decodeUsageJSON(bytes.NewReader(data)); ok {
+	if value, ok := decodeUsageJSON(string(data)); ok {
 		redactTurnStateValue(&value, 1)
 		redactJSON(value)
 		if r.bodyOpts.externalize {
@@ -218,7 +217,7 @@ func (r *usageRecord) finalizeDownstreamBody(body usageBody) (result usageBody) 
 	}
 	defer func() { result.Truncated = result.Truncated || body.Truncated }()
 
-	if value, ok := decodeUsageJSON(strings.NewReader(body.Content)); ok {
+	if value, ok := decodeUsageJSON(body.Content); ok {
 		isChanged := redactTurnStateValue(&value, 1)
 		if r.bodyOpts.externalize {
 			r.assets.extractFromValue(value)
