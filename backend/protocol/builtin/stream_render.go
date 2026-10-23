@@ -145,6 +145,10 @@ func (stream *streamModule) encodeItem(event p.Event, options p.EvaluationContex
 	if item.parent != parent {
 		return nil, unsupported("/parentId", "target item parent changed")
 	}
+	isDeferred := stream.deferLogprobDelta(item, event)
+	if !isDeferred {
+		stream.materializeLogprob(item)
+	}
 	if event.Item != nil {
 		if err := checkResourceProtocol(*event.Item, options); err != nil {
 			return nil, err
@@ -175,7 +179,9 @@ func (stream *streamModule) encodeItem(event p.Event, options p.EvaluationContex
 			item.node.Resources = event.Item.Resources
 		}
 	}
-	item.node.Metadata = p.MergeNodeMetadata(item.node.Metadata, event.Metadata, event.Type == p.ItemDelta)
+	if !isDeferred {
+		item.node.Metadata = p.MergeNodeMetadata(item.node.Metadata, event.Metadata, event.Type == p.ItemDelta)
+	}
 	if !event.CallID.IsZero() {
 		item.node.CallID = event.CallID
 	}
@@ -419,6 +425,7 @@ func (stream *streamModule) encodeDelta(key string, item *streamItem, delta stri
 }
 
 func (stream *streamModule) materialize(item *streamItem) (p.Node, error) {
+	stream.materializeLogprob(item)
 	node := item.node
 	if node.Kind == p.MessageNode {
 		node.Children = nil
@@ -468,6 +475,7 @@ func (stream *streamModule) encodeItemEnd(key string, item *streamItem, options 
 			return nil, unsupported("/parentId", "target message finished before its content")
 		}
 	}
+	stream.materializeLogprob(item)
 	node := item.node
 	if stream.needsPayload(item) {
 		var err error
@@ -570,6 +578,7 @@ func (stream *streamModule) Finish(ctx context.Context, options p.EvaluationCont
 	if stream.pending == nil {
 		return nil, fmt.Errorf("stream ended without a semantic terminal")
 	}
+	stream.materializeLogprobs()
 	var frames []p.Value
 	content := []p.Node{}
 	for _, key := range stream.order {

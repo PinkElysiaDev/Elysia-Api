@@ -20,6 +20,7 @@ type streamItem struct {
 	signature            p.TextTracker
 	buffer               strings.Builder
 	metadataBytes        int
+	logprobs             *streamLogprobs
 	deliveredAnnotations p.Value
 	wireID               p.Value
 	hasEmittedStart      bool
@@ -64,6 +65,8 @@ type streamModule struct {
 	attributes       p.Object
 	sequence         int64
 	hasSequence      bool
+	logprobItems     int
+	logprobBytes     int
 }
 
 func (adapter module) NewStream(direction p.Direction, limits p.Limits) (p.Module, error) {
