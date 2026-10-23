@@ -3,8 +3,11 @@ package server
 import (
 	"context"
 	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"syscall"
 	"testing"
 	"time"
 
@@ -96,6 +99,31 @@ func TestHTTPCompletionFreezesBeforeCleanupCancellation(t *testing.T) {
 		}
 		if (state.result.Cause == deliveryShutdown) != cancelBefore {
 			t.Fatal("completion did not preserve the observed cancellation boundary", state.result)
+		}
+	}
+}
+
+func TestHTTPDeliveryLookupPreservesTrackedCause(t *testing.T) {
+	request := newTestContext(httptest.NewRecorder())
+	ctx, cancel := context.WithCancelCause(t.Context())
+	cancel(errHTTPServerShutdown)
+	state := trackHTTPDelivery(ctx, request)
+	if ensureHTTPDeliveryState(request) != state || state.ctx != ctx {
+		t.Fatal("state lookup replaced its cancellation context")
+	}
+	freezeHTTPDelivery(request)
+	trackHTTPDelivery(context.Background(), request)
+	if state.ctx != nil || state.result.Cause != deliveryShutdown {
+		t.Fatal("tracking after completion changed frozen evidence")
+	}
+}
+
+func TestDownstreamClosureWithoutPeerEvidenceRemainsUnknown(t *testing.T) {
+	for _, cause := range []error{io.EOF, io.ErrClosedPipe, syscall.EPIPE, net.ErrClosed} {
+		record := &usageRecord{StatusCode: 200}
+		setUsageError(record, t.Context(), wrapDownstreamError(cause, deliveryFlush))
+		if record.StatusCode != 502 || record.ErrorKind != deliveryTransport {
+			t.Fatal("an ambiguous closure became a peer disconnect", cause, record.StatusCode, record.ErrorKind)
 		}
 	}
 }

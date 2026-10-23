@@ -114,7 +114,7 @@ func discardUncommittedStream(c *app.RequestContext) {
 
 func recoverHTTPResponse(c *app.RequestContext) {
 	c.Abort()
-	state := trackHTTPDelivery(nil, c)
+	state := ensureHTTPDeliveryState(c)
 	state.applicationError = errResponseAborted
 	if w := currentResponseStream(c); w != nil && w.committed {
 		// Do not append a successful zero chunk after a panic or rewrite headers

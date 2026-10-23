@@ -260,7 +260,9 @@ func TestGatewayCanceledRequestDoesNotReachUpstream(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer gateway-test-token")
 	result := httptest.NewRecorder()
 	serveTestHTTP(server.engine, result, request)
-	if result.Code != 499 || calls.Load() != 0 {
+	// The caller supplied no disconnect observation; admission still stops
+	// before reading or forwarding the request.
+	if result.Code != http.StatusServiceUnavailable || calls.Load() != 0 {
 		t.Fatalf("cancel: %d calls=%d", result.Code, calls.Load())
 	}
 }

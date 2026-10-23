@@ -44,7 +44,7 @@ func probeWindowsTCPDisconnect(raw syscall.RawConn) (bool, error) {
 	}
 	if err != nil {
 		if isClosedWindowsSocket(err) {
-			if errors.Is(err, windows.WSAECONNRESET) {
+			if isPeerReset(err) {
 				return true, nil
 			}
 			return true, &downstreamObservationError{cause: err}
@@ -62,9 +62,11 @@ func probeWindowsTCPDisconnect(raw syscall.RawConn) (bool, error) {
 }
 
 func isClosedWindowsSocket(err error) bool {
-	return errors.Is(err, net.ErrClosed) || errors.Is(err, windows.WSAECONNRESET) ||
+	return errors.Is(err, net.ErrClosed) || isPeerReset(err) ||
 		errors.Is(err, windows.WSAECONNABORTED) || errors.Is(err, windows.WSAENOTCONN)
 }
+
+func isPeerReset(err error) bool { return errors.Is(err, windows.WSAECONNRESET) }
 
 func isClosedTCPState(state uint32) (bool, error) {
 	switch state {

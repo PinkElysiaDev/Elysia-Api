@@ -11,7 +11,7 @@ func (s *Server) recordHTTPUsage(c *app.RequestContext, record *usageRecord) {
 	if !shouldPersist {
 		return
 	}
-	state := trackHTTPDelivery(nil, c)
+	state := ensureHTTPDeliveryState(c)
 	onHTTPComplete(c, func() {
 		applyHTTPDelivery(record, state)
 		s.writePreparedUsage(record)

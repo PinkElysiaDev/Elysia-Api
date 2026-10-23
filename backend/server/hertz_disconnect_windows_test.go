@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"syscall"
 	"testing"
 	"time"
@@ -137,5 +138,53 @@ func TestWindowsAbortProbeAndWriteHaveSameUnknownOrigin(t *testing.T) {
 		}
 		finish()
 		monitor.close()
+	}
+}
+
+func TestWindowsResetProbeAndWriteHaveSamePeerEvidence(t *testing.T) {
+	closed, observedErr := probeWindowsTCPDisconnect(failedSocketObservation{windows.WSAECONNRESET})
+	if !closed || observedErr != nil {
+		t.Fatal("RESET probe did not establish peer evidence", closed, observedErr)
+	}
+	monitor := newHTTPDisconnectMonitor(func(syscall.RawConn) (bool, error) { return closed, observedErr })
+	t.Cleanup(monitor.close)
+	observed, finish := monitor.watch(t.Context(), disconnectTestConn{})
+	defer finish()
+	awaitDisconnectSignal(t, observed.Done())
+	unknown, cancelUnknown := context.WithCancelCause(t.Context())
+	cancelUnknown(&downstreamObservationError{cause: windows.WSAECONNABORTED})
+	for _, phase := range []string{deliveryWrite, deliveryFlush, deliveryFinalize} {
+		t.Run(phase, func(t *testing.T) {
+			for _, ctx := range []context.Context{t.Context(), observed, unknown} {
+				cause := &net.OpError{Op: "write", Net: "tcp", Err: &os.SyscallError{Syscall: "wsasend", Err: windows.WSAECONNRESET}}
+				record := &usageRecord{StatusCode: 200}
+				setUsageError(record, ctx, wrapDownstreamError(cause, phase))
+				if record.StatusCode != 499 || record.ErrorKind != ErrorKindClientCanceled {
+					t.Fatal("RESET attribution depended on probe timing", record.StatusCode, record.ErrorKind)
+				}
+			}
+		})
+	}
+	upstream := &net.OpError{Op: "read", Net: "tcp", Err: windows.WSAECONNRESET}
+	record := &usageRecord{StatusCode: 200}
+	setUsageError(record, t.Context(), upstream)
+	if record.StatusCode != 502 || record.ErrorKind != ErrorKindUpstream {
+		t.Fatal("an untagged upstream RESET became a downstream failure", record.StatusCode, record.ErrorKind)
+	}
+	for _, tc := range []struct {
+		cause  error
+		status int
+		kind   string
+	}{
+		{errHTTPServerShutdown, 503, deliveryShutdown},
+		{context.DeadlineExceeded, 504, "request_timeout"},
+	} {
+		ctx, cancel := context.WithCancelCause(t.Context())
+		cancel(tc.cause)
+		record := &usageRecord{StatusCode: 200}
+		setUsageError(record, ctx, wrapDownstreamError(windows.WSAECONNRESET, deliveryFlush))
+		if record.StatusCode != tc.status || record.ErrorKind != tc.kind {
+			t.Fatal("RESET replaced the established local cause", record.StatusCode, record.ErrorKind)
+		}
 	}
 }

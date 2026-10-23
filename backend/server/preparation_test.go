@@ -143,7 +143,7 @@ func TestPreparationStartupPolicyAndClose(t *testing.T) {
 
 func TestPreparationQueuedCancellationAndShutdown(t *testing.T) {
 	compiled := preparationProtocol(t)
-	for _, mode := range []string{"cancel", "close"} {
+	for _, mode := range []string{"cancel", "peer-disconnect", "close"} {
 		t.Run(mode, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				one := 1
@@ -152,8 +152,8 @@ func TestPreparationQueuedCancellationAndShutdown(t *testing.T) {
 				s := &Server{config: cfg}
 				hold, _ := s.preparationLimiter().Acquire(t.Context(), 64)
 				ctx, rec := adminProtocolContext("POST", "/v1/messages", `{}`)
-				requestContext, cancel := context.WithCancel(t.Context())
-				defer cancel()
+				requestContext, cancel := context.WithCancelCause(t.Context())
+				defer cancel(nil)
 				ctx.Set("testContext", requestContext)
 				body := &preparationBody{Reader: strings.NewReader(`{}`)}
 				ctx.Request.SetBodyStream(body, -1)
@@ -169,8 +169,11 @@ func TestPreparationQueuedCancellationAndShutdown(t *testing.T) {
 				}
 				want := 503
 				if mode == "cancel" {
+					// A bare cancellation does not establish a peer disconnect.
+					cancel(nil)
+				} else if mode == "peer-disconnect" {
 					want = 499
-					cancel()
+					cancel(errDownstreamDisconnected)
 				} else {
 					s.preparationLimiter().Close()
 				}

@@ -52,21 +52,25 @@ type httpDeliveryState struct {
 	bufferedErrorBody string
 }
 
-func trackHTTPDelivery(ctx context.Context, c *app.RequestContext) *httpDeliveryState {
+func ensureHTTPDeliveryState(c *app.RequestContext) *httpDeliveryState {
 	if value, ok := c.Get(httpDeliveryKey); ok {
-		state := value.(*httpDeliveryState)
-		if ctx != nil && state.result == nil {
-			state.ctx = ctx
-		}
-		return state
+		return value.(*httpDeliveryState)
 	}
-	state := &httpDeliveryState{ctx: ctx}
+	state := &httpDeliveryState{}
 	c.Set(httpDeliveryKey, state)
 	return state
 }
 
+func trackHTTPDelivery(ctx context.Context, c *app.RequestContext) *httpDeliveryState {
+	state := ensureHTTPDeliveryState(c)
+	if state.result == nil {
+		state.ctx = ctx
+	}
+	return state
+}
+
 func freezeHTTPDelivery(c *app.RequestContext) *httpDeliveryState {
-	state := trackHTTPDelivery(nil, c)
+	state := ensureHTTPDeliveryState(c)
 	if state.result != nil {
 		return state
 	}
@@ -146,6 +150,8 @@ func deliveryFailureCause(cause, err error) string {
 		return deliveryDeadline
 	case errors.Is(cause, errDownstreamDisconnected):
 		return deliveryDisconnected
+	case isDownstreamReset(err):
+		return deliveryDisconnected
 	case errors.Is(cause, context.Canceled):
 		return deliveryCanceled
 	}
@@ -161,6 +167,13 @@ func deliveryFailureCause(cause, err error) string {
 		return deliveryDeadline
 	}
 	return deliveryTransport
+}
+
+// Only the delivery owner may tag a write as downstream. The same socket
+// error on an upstream reader must not become evidence about our client.
+func isDownstreamReset(err error) bool {
+	var failure *downstreamWriteError
+	return errors.As(err, &failure) && isPeerReset(failure.cause)
 }
 
 func deliveryFailureStatus(cause string) (int, string) {
