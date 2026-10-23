@@ -141,6 +141,10 @@ export const cases = {
 async function collect(mode) {
   const selection = opt('cases', Object.keys(cases).slice(0, 20).join(',')).split(',')
   const pairs = Number(opt('pairs', mode === 'measure' ? 5 : mode === 'cpu' ? 3 : 1))
+  // Separate pinned captures can alternate one pair at a time without relabeling
+  // either binary or replacing measurements already collected.
+  const pairOffset = Number(opt('pair-offset', '0'))
+  if (!Number.isSafeInteger(pairOffset) || pairOffset < 0) throw new Error('Invalid pair offset')
   const label = opt('label', mode)
   const preparation = opt('preparation', 'default')
   for (const key of selection) {
@@ -149,7 +153,7 @@ async function collect(mode) {
     // Image/node fixtures use /v1/messages with an Anthropic provider and do
     // not consume the small-workload source/target selectors. Record reality.
     if (c.workload !== 'small') c.source = c.target = 'anthropic'
-    for (let pair = 0; pair < pairs; pair++) for (const version of pair % 2 ? [...selectedVersions].reverse() : selectedVersions) {
+    for (let pair = pairOffset; pair < pairOffset + pairs; pair++) for (const version of pair % 2 ? [...selectedVersions].reverse() : selectedVersions) {
       const name = `${label}-${key}-${pair}-${version}`
       const directory = join(output, 'runs', name)
       try { await readFile(join(directory, 'result.json')); console.log(`skip existing ${name}`); continue } catch (e) { if (e.code !== 'ENOENT') throw e }
