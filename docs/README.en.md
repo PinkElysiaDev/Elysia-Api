@@ -41,6 +41,7 @@ Deployment, protocols, APIs, and development for Elysia API. Start with [quick s
 | [Protocol validation and release](protocol-release-readiness.en.md) | Test layers, commands, provider checks, performance and upgrades |
 | [Development](development.en.md) | Environment, local development, tests, cross-compilation, and release artifacts |
 | [Backend performance](backend-performance.en.md) | Isolated allocation, resource reuse, burst-memory and idle-recovery measurements |
+| [Metadata and delivery fixes (Chinese)](metadata-delivery-fix-2026-10-23.md) | dev.77 compatibility, final delivery attribution, regression and performance results |
 | [WebUI development](../packages/webui/README.en.md) | Frontend commands, proxies, builds, and interaction conventions |
 | [macOS validation](macos-testing.en.md) | Native toolchain, automated checks, and device acceptance |
 | [Login assets](../scripts/login-trace/README.en.md) | Extraction, review, asset validation, and performance reproduction |
