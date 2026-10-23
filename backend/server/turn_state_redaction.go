@@ -53,6 +53,14 @@ func redactTurnStateText(text string, depth int) string {
 			return text
 		}
 	}
+	return redactTruncatedTurnState(text)
+}
+
+func redactTruncatedTurnState(text string) string {
+	// A literal quote is necessary for the fallback pattern to match.
+	if strings.IndexByte(text, '"') < 0 {
+		return text
+	}
 	if at := partialTurnStateKey.FindStringIndex(text); at != nil {
 		return text[:at[0]] + `"x-codex-turn-state":"[REDACTED]"`
 	}

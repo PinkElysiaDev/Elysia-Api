@@ -37,3 +37,27 @@ func TestTurnStateRedactionAcrossLogContainers(t *testing.T) {
 		t.Fatalf("capture leaked or changed delivery: %#v", logged)
 	}
 }
+
+func FuzzTurnStateFragmentRedaction(f *testing.F) {
+	for _, text := range []string{
+		"", strings.Repeat("A", 4096), "x-codex-turn-state: synthetic",
+		`prefix "x-codex-turn-state":"synthetic-truncated`,
+		`prefix \"X-CoDeX-TuRn-StAtE\" : \"synthetic`,
+		`{"unrelated":"quoted","x-codex-turn-state":"synthetic"}`,
+		`{"\u0078-codex-turn-state":"synthetic"}`,
+		"event: metadata\ndata: {\"x-codex-turn-state\":\"synthetic\"}\r\n",
+		"\x00\xff\"x-codex-turn-state\":null",
+	} {
+		f.Add(text)
+	}
+	f.Fuzz(func(t *testing.T, text string) {
+		// Keep the former fallback as an oracle, including malformed fragments.
+		expected := text
+		if at := partialTurnStateKey.FindStringIndex(text); at != nil {
+			expected = text[:at[0]] + `"x-codex-turn-state":"[REDACTED]"`
+		}
+		if actual := redactTruncatedTurnState(text); actual != expected {
+			t.Fatalf("fallback bytes changed: got %q, want %q", actual, expected)
+		}
+	})
+}
