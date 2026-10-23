@@ -16,11 +16,14 @@ const backendURL = `http://127.0.0.1:${backendPort}`
 const webURL = `http://127.0.0.1:${webPort}`
 const token = randomBytes(24).toString('hex')
 const config = join(runDirectory, 'config.json')
+const logDatabase = join(runDirectory, 'usage.sqlite3')
 const environment = {
   ...process.env,
   ELYSIA_DEV_PROXY: backendURL,
   PROTOCOL_E2E_URL: backendURL,
   PROTOCOL_E2E_TOKEN: token,
+  PROTOCOL_E2E_RUN_DIRECTORY: runDirectory,
+  PROTOCOL_E2E_LOG_DATABASE: logDatabase,
   PLAYWRIGHT_PORT: String(webPort),
   PLAYWRIGHT_EXTERNAL_SERVER: '1',
 }
@@ -57,7 +60,7 @@ async function waitReady(child, url) {
 
 try {
   await writeFile(config, JSON.stringify({
-    databasePath: join(runDirectory, 'gateway.sqlite3'), host: '127.0.0.1', port: backendPort,
+    databasePath: join(runDirectory, 'gateway.sqlite3'), logDatabasePath: logDatabase, host: '127.0.0.1', port: backendPort,
     panelAccessToken: token, logLifecycleVersion: 1, openBrowserOnStart: false,
     modelCatalog: { enabled: false, syncIntervalMinutes: 0 },
     outbound: { deniedIpRanges: [] }, // isolated mock providers listen on loopback

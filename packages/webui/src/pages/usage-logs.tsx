@@ -184,8 +184,8 @@ export function UsageLogsPage() {
             aria-label="状态码"
             className="w-[84px] rounded-full border-transparent bg-[var(--well)] text-xs font-mono"
             value={statusCodeInput}
-            placeholder="HTTP码"
-            title="精确状态码过滤（如 429、500；0 = 连接层失败）"
+            placeholder="结果码"
+            title="逻辑结果码过滤（如 429、500；实际 HTTP 与交付结果见详情）"
             onChange={(e) => {
               const value = e.target.value.replace(/[^0-9]/g, '')
               setStatusCodeInput(value)
@@ -213,7 +213,7 @@ export function UsageLogsPage() {
                       <TableHead className="py-3.5">调用凭证</TableHead>
                       <TableHead className="py-3.5">请求模型 / 路由</TableHead>
                       <TableHead className="py-3.5 text-center">流式</TableHead>
-                      <TableHead className="py-3.5 text-center">状态码</TableHead>
+                      <TableHead className="py-3.5 text-center">逻辑结果</TableHead>
                       <TableHead className="py-3.5 num">首字耗时</TableHead>
                       <TableHead className="py-3.5 num">总耗时</TableHead>
                       <TableHead className="py-3.5 pr-4 num">Tokens 输入 / 输出</TableHead>

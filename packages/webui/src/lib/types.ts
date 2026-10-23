@@ -437,6 +437,15 @@ export interface UsageRetryEvent {
   error?: string
 }
 
+/** 服务端观察到的下游交付结果；HTTP 状态不代表客户端已完整收到响应。 */
+export interface UsageDelivery {
+  httpStatus?: number
+  outcome: 'completed' | 'failed'
+  phase?: string
+  cause?: string
+  error?: string
+}
+
 /** GET /usage/logs/:id 返回的完整记录，含四段链路原文。 */
 export interface UsageLogDetail {
   ingressRevision?: string
@@ -470,6 +479,9 @@ export interface UsageLogDetail {
   requestWarnings?: string[]
   stream: boolean
   statusCode: number
+  upstreamHttpStatus?: number
+  delivery?: UsageDelivery
+  transportFailure?: { kind: string; phase: string }
   error?: string
   /** 错误归类：client_canceled=客户端取消、upstream=上游失败；空表示未归类。 */
   errorKind?: string

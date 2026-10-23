@@ -63,7 +63,59 @@ test('request resource failures show the local stage', async ({ page }) => {
   const dialog = page.getByRole('dialog', { name: '调用详情' })
   await expect(dialog.getByText('本地处理失败（400）', { exact: false })).toBeVisible()
   await expect(dialog.getByText('资源限制', { exact: false }).first()).toBeVisible()
-  await expect(dialog.getByText('decode_request / conversion.request', { exact: false })).toBeVisible()
+  await expect(dialog.getByRole('alert').getByText('decode_request / conversion.request', { exact: false })).toBeVisible()
+})
+
+test('delivery evidence separates HTTP from logical errors and does not infer who canceled', async ({ page }) => {
+  const record: UsageLogDetail = {
+    ...details[5], statusCode: 502, upstreamHttpStatus: 200,
+    error: 'synthetic delivery failure', errorKind: 'downstream_transport',
+    delivery: { httpStatus: 200, outcome: 'failed', phase: 'response_finalize', cause: 'downstream_transport', error: 'synthetic final write error' },
+  }
+  await page.route('**/api/admin/usage/logs/gemini', (route) => route.fulfill({ json: { ok: true, data: record } }))
+  await page.getByRole('button', { name: '查看请求 gemini 详情', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '调用详情' })
+  await expect(dialog.getByTestId('upstream-http-status')).toHaveText('200')
+  await expect(dialog.getByTestId('logical-status')).toHaveText('502')
+  await expect(dialog.getByTestId('downstream-http-status')).toHaveText('200')
+  await expect(dialog.getByTestId('delivery-outcome')).toHaveText('交付失败')
+  await expect(dialog.getByText('结束响应（response_finalize）')).toBeVisible()
+  const downloaded = page.waitForEvent('download')
+  await dialog.getByRole('button', { name: '导出完整日志' }).click()
+  const stream = await (await downloaded).createReadStream()
+  let exported = ''
+  for await (const chunk of stream!) exported += chunk.toString()
+  expect(JSON.parse(exported).overview).toMatchObject({ statusCode: 502, upstreamHttpStatus: 200, delivery: record.delivery })
+  await dialog.getByRole('button', { name: '关闭', exact: true }).last().click()
+
+  await page.route('**/api/admin/usage/logs/gemini', (route) => route.fulfill({ json: { ok: true, data: {
+    ...record, statusCode: 503, errorKind: 'request_canceled',
+    delivery: { ...record.delivery, cause: 'request_canceled' },
+  } } }))
+  await page.getByRole('button', { name: '查看请求 gemini 详情', exact: true }).click()
+  await expect(dialog.getByText('请求取消（来源未明）（503）', { exact: false })).toBeVisible()
+  await expect(dialog.getByText('客户端取消', { exact: false })).toHaveCount(0)
+})
+
+test('source metadata errors show upstream decoding and legacy records keep unknown delivery', async ({ page }) => {
+  await page.getByRole('button', { name: '查看请求 missing 详情', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '调用详情' })
+  await expect(dialog.getByTestId('upstream-http-status')).toHaveText('未记录')
+  await expect(dialog.getByTestId('downstream-http-status')).toHaveText('未记录')
+  await expect(dialog.getByTestId('delivery-outcome')).toHaveText('未记录交付结果')
+  await dialog.getByRole('button', { name: '关闭', exact: true }).last().click()
+
+  await page.route('**/api/admin/usage/logs/gemini', (route) => route.fulfill({ json: { ok: true, data: {
+    ...details[5], statusCode: 502, upstreamHttpStatus: 200, errorKind: 'unsupported_capability', error: 'unsupported response.metadata field',
+    delivery: { httpStatus: 200, outcome: 'completed', cause: 'request_canceled' },
+    conversionIssues: [{ code: 'unsupported_capability', severity: 'error', direction: 'decode_event', stage: 'decode_event', path: '/metadata', reason: 'unsupported response.metadata field', suggestion: '' }],
+  } } }))
+  await page.getByRole('button', { name: '查看请求 gemini 详情', exact: true }).click()
+  await expect(dialog.getByText('上游事件解码失败（502）', { exact: false })).toBeVisible()
+  await expect(dialog.getByText('协议能力不支持', { exact: false }).first()).toBeVisible()
+  await expect(dialog.getByTestId('delivery-outcome')).toHaveText('服务端交付完成')
+  await dialog.getByLabel('转换诊断').locator('summary').click()
+  await expect(dialog.getByText('阶段：decode_event', { exact: false })).toBeVisible()
 })
 
 test.beforeEach(async ({ page }) => {

@@ -58,6 +58,10 @@ export function buildExportPayload(detail: UsageLogDetail) {
       },
       stream: detail.stream,
       statusCode: detail.statusCode,
+      upstreamHttpStatus: detail.upstreamHttpStatus,
+      delivery: detail.delivery,
+      transportFailure: detail.transportFailure,
+      conversionIssues: detail.conversionIssues,
       error: detail.error ?? '',
       errorKind: detail.errorKind ?? '',
       retryCount: detail.retryCount,
@@ -87,8 +91,16 @@ export function errorKindLabel(kind: string): string {
       return '资源限制'
     case 'invalid_input':
       return '请求无效'
+    case 'unsupported_capability':
+      return '协议能力不支持'
     case 'client_canceled':
       return '客户端取消'
+    case 'request_canceled':
+      return '请求取消（来源未明）'
+    case 'server_shutdown':
+      return '服务关闭'
+    case 'downstream_transport':
+      return '下游传输故障'
     case 'conversion':
       return '协议转换失败' // 历史值域,现归入 invalid_request
     case 'invalid_request':
@@ -109,5 +121,27 @@ export function errorKindLabel(kind: string): string {
       return '服务内部错误'
     default:
       return kind
+  }
+}
+
+/** 按已有诊断定位失败阶段，不从逻辑状态码猜测故障来自请求还是上游。 */
+export function failureOriginLabel(detail: UsageLogDetail): string {
+  const issue = detail.conversionIssues?.find((item) => item.severity === 'error')
+  const direction = issue?.direction || issue?.stage
+  switch (direction) {
+    case 'decode_event':
+      return '上游事件解码失败'
+    case 'decode_response':
+      return '上游响应解码失败'
+    case 'decode_request':
+    case 'encode_request':
+      return '本地处理失败'
+    default:
+      if (detail.errorKind === 'request_canceled') return '请求取消（来源未明）'
+      if (detail.statusCode === 499) {
+        if (!detail.delivery) return '客户端取消'
+        return detail.delivery.cause === 'downstream_disconnected' ? '下游连接断开' : '请求取消（来源未明）'
+      }
+      return '调用失败'
   }
 }

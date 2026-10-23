@@ -15,7 +15,8 @@ import { protocolID } from '@/lib/protocol'
 import type { UsageLogDetail } from '@/lib/types'
 import { downloadJSON, formatDateTime, formatDuration } from '@/lib/utils'
 import { ChainBodies } from './log-detail/body-sections'
-import { buildExportPayload, errorKindLabel } from './log-detail/body-helpers'
+import { buildExportPayload, errorKindLabel, failureOriginLabel } from './log-detail/body-helpers'
+import { CallOutcome } from './log-detail/call-outcome'
 import { UsageTokens } from './log-detail/usage-tokens'
 
 export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: () => void }) {
@@ -74,8 +75,6 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
   )
   const conversionIssues = detail?.conversionIssues ?? []
   const resourceIssue = conversionIssues.find((issue) => issue.code === 'limit_exceeded')
-  const isLocalResourceFailure = detail?.errorKind === 'limit_exceeded' && resourceIssue
-    && (resourceIssue.direction === 'decode_request' || resourceIssue.direction === 'encode_request')
   const outputRate =
     detail && output != null && output > 0 && detail.durationMs > 0 ? (output / (detail.durationMs / 1000)).toFixed(1) : null
 
@@ -101,15 +100,17 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
           {!loading && !err && detail && (
             <>
               {detail.error && (
-                <div className="mb-5 flex items-start gap-2 rounded-[7px] border border-[color-mix(in_srgb,var(--ember)_35%,transparent)] bg-[color-mix(in_srgb,var(--ember)_7%,transparent)] p-3 text-sm text-ember">
+                <div role="alert" className="mb-5 flex items-start gap-2 rounded-[7px] border border-[color-mix(in_srgb,var(--ember)_35%,transparent)] bg-[color-mix(in_srgb,var(--ember)_7%,transparent)] p-3 text-sm text-ember">
                   <AlertTriangle className="mt-0.5 h-[15px] w-[15px] shrink-0" />
                   <span className="min-w-0 break-all">
-                    {detail.statusCode === 499 ? '客户端取消（499）' : `${isLocalResourceFailure ? '本地处理失败' : '调用失败'}（${detail.statusCode}）`}
+                    {failureOriginLabel(detail)}（{detail.statusCode}）
                     {resourceIssue && ` · ${resourceIssue.direction} / ${resourceIssue.stage}`}
-                    {detail.errorKind && detail.errorKind !== 'client_canceled' && ` · ${errorKindLabel(detail.errorKind)}`} · {detail.error}
+                    {detail.errorKind && detail.errorKind !== 'client_canceled' && detail.errorKind !== 'request_canceled' && ` · ${errorKindLabel(detail.errorKind)}`} · {detail.error}
                   </span>
                 </div>
               )}
+
+              <CallOutcome detail={detail} />
 
               <section className="mb-5">
                 <SheetSectionTitle>协议链路</SheetSectionTitle>
@@ -224,10 +225,10 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                       <li key={index} className="break-all rounded-md border p-3">
                         <p className={`flex items-center gap-1.5 ${issue.severity === 'error' ? 'text-destructive' : issue.severity === 'warning' ? 'text-amber' : 'text-muted-foreground'}`}>
                           {issue.severity === 'info' ? <Info className="h-3 w-3 shrink-0" aria-hidden /> : <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />}
-                          {issue.severity === 'info' ? '信息' : issue.severity === 'error' ? '错误' : '警告'} · {issue.code} · {issue.path}
+                          {issue.severity === 'info' ? '信息' : issue.severity === 'error' ? '错误' : '警告'} · {errorKindLabel(issue.code)}{errorKindLabel(issue.code) !== issue.code && `（${issue.code}）`} · {issue.path}
                         </p>
                         <p className="mt-1">{issue.reason}</p>
-                        <p className="mt-1 text-muted-foreground">阶段：{issue.stage ?? '—'} · 规则：{issue.ruleId ?? '—'} · 结果：{issue.fidelity ?? '—'}</p>
+                        <p className="mt-1 text-muted-foreground">阶段：{[issue.direction, issue.stage].filter((value, index, values) => value && values.indexOf(value) === index).join(' / ') || '—'} · 规则：{issue.ruleId ?? '—'} · 结果：{issue.fidelity ?? '—'}</p>
                         {issue.protocol?.definitionId && <p className="mt-1 text-muted-foreground">协议：{issue.protocol.definitionId} · 修订：{issue.protocol.revision}</p>}
                         {issue.policyHash && <p className="mt-1 text-muted-foreground">策略：{issue.policyHash}</p>}
                       </li>
