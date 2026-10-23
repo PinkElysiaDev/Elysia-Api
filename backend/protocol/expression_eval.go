@@ -20,6 +20,21 @@ type evaluationBudget struct {
 	limits    Limits
 }
 
+// A compiled identity leaf uses one step from a fresh positive budget. Keep
+// only its fallible checks, including the expression's original error location.
+func (expression *compiledExpression) checkIdentityAfter(ctx context.Context, bytes int, limits Limits) error {
+	if expression == nil {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return locateMappingError(expression.path, err)
+	}
+	if bytes > limits.BufferBytes {
+		return locateMappingError(expression.path, resourceFailure("evaluation", "bytes", limits.BufferBytes, bytes))
+	}
+	return nil
+}
+
 func (expression *compiledExpression) evaluate(state evaluation) (value Value, err error) {
 	defer func() { err = locateMappingError(expression.path, err) }()
 	state.budget.steps++

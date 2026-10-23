@@ -512,7 +512,7 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 	}
 
 	var before Value
-	if direction == EncodeRequest && replay.supportsRequestWorkspace() {
+	if direction == EncodeRequest && replay.hasTypedRequestMapping(EncodeRequest) {
 		before, err = encodeRequestMapping(ctx, &replay, baseline.(*Request), options, replay.mappings[direction].module.(TypedModule), func(module TypedModule, input *Request, options EvaluationContext) (Value, error) {
 			return module.EncodeRequest(ctx, input, options)
 		})

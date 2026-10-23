@@ -131,20 +131,14 @@ func (compiled *Compiled) hasTypedMapping(direction Direction) bool {
 	return mapping.module != nil && mapping.after == nil && mapping.initial == nil && mapping.input == nil && mapping.output == nil
 }
 
-// Only wire-side request schemas are eligible; event and response selection is
-// intentionally unchanged. Modules still own the same typed/JSON contract.
-func (compiled *Compiled) hasTypedRequestSchema(direction Direction) bool {
+// Only pure request mappings with wire-side schemas are eligible. An input-root
+// identity after does not require a semantic JSON copy; its checks still run.
+func (compiled *Compiled) hasTypedRequestMapping(direction Direction) bool {
 	mapping := compiled.mappings[direction]
-	if mapping.module == nil || mapping.after != nil || mapping.initial != nil {
+	if !compiled.hasPureRequestMapping(direction) {
 		return false
 	}
-	if _, isPureRequestModule := mapping.module.(RequestBaselineModule); !isPureRequestModule {
-		return false
-	}
-	if direction == DecodeRequest {
-		return mapping.input != nil && mapping.output == nil
-	}
-	return direction == EncodeRequest && mapping.input == nil && mapping.output != nil
+	return mapping.after == nil || direction == EncodeRequest && mapping.after.isInputIdentity()
 }
 
 func checkTypedLimits(value any, limits Limits) error {
@@ -187,7 +181,7 @@ func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 			return output, nil
 		}
 	}
-	if compiled.hasTypedRequestSchema(direction) {
+	if compiled.hasTypedRequestMapping(direction) {
 		if module, ok := compiled.mappings[direction].module.(TypedModule); ok {
 			fail := func(err error) (*T, error) { return nil, compiled.mappingError(direction, err) }
 			if err := ctx.Err(); err != nil {
@@ -254,7 +248,7 @@ func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 			return output, checkResourceValue(output, outputLimits, "wire_output")
 		}
 	}
-	if compiled.hasTypedRequestSchema(direction) {
+	if compiled.hasTypedRequestMapping(direction) {
 		if module, ok := compiled.mappings[direction].module.(TypedModule); ok {
 			return encodeRequestMapping(ctx, compiled, input, options, module, encode)
 		}
@@ -311,7 +305,7 @@ func (compiled *Compiled) decodeEventValues(ctx context.Context, direction Direc
 // native baseline rendering, including evaluate-stage errors and normalization.
 func encodeRequestMapping[T any](ctx context.Context, compiled *Compiled, input *T, options EvaluationContext, module TypedModule, encode func(TypedModule, *T, EvaluationContext) (Value, error)) (Value, error) {
 	direction := EncodeRequest
-	inputLimits, outputLimits, _ := compiled.mappingLimits(ctx, direction)
+	inputLimits, outputLimits, workLimits := compiled.mappingLimits(ctx, direction)
 	// This originally ran before executeMapping, including its context check.
 	semanticBudget := semanticLimits(requestLimits(ctx, DefaultLimits(), false))
 	if err := checkDocumentSemantic(ctx, input, semanticBudget); err != nil {
@@ -335,6 +329,9 @@ func encodeRequestMapping[T any](ctx context.Context, compiled *Compiled, input 
 	}
 	output, err := encode(module, input, options)
 	if err != nil {
+		return fail(err)
+	}
+	if err := compiled.mappings[direction].after.checkIdentityAfter(ctx, len(output.raw), workLimits); err != nil {
 		return fail(err)
 	}
 	if output.IsZero() {
