@@ -6,6 +6,7 @@ const deliveryPhases: Record<string, string> = {
   response_write: '写入响应',
   response_flush: '刷新响应',
   response_finalize: '结束响应',
+  response_abort: '中止响应',
 }
 
 const deliveryCauses: Record<string, string> = {

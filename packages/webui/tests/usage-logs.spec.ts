@@ -97,6 +97,21 @@ test('delivery evidence separates HTTP from logical errors and does not infer wh
   await expect(dialog.getByText('客户端取消', { exact: false })).toHaveCount(0)
 })
 
+test('an aborted response shows the server panic cause without rewriting committed HTTP status', async ({ page }) => {
+  await page.route('**/api/admin/usage/logs/gemini', (route) => route.fulfill({ json: { ok: true, data: {
+    ...details[5], statusCode: 500, upstreamHttpStatus: 200,
+    error: 'response aborted by request panic', errorKind: 'server_error',
+    delivery: { httpStatus: 200, outcome: 'failed', phase: 'response_abort', cause: 'server_panic', error: 'response aborted by request panic' },
+  } } }))
+  await page.getByRole('button', { name: '查看请求 gemini 详情', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '调用详情' })
+  await expect(dialog.getByTestId('logical-status')).toHaveText('500')
+  await expect(dialog.getByTestId('downstream-http-status')).toHaveText('200')
+  await expect(dialog.getByTestId('delivery-outcome')).toHaveText('交付失败')
+  await expect(dialog.getByText('中止响应（response_abort）', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('服务处理异常（server_panic）', { exact: true })).toBeVisible()
+})
+
 test('source metadata errors show upstream decoding and legacy records keep unknown delivery', async ({ page }) => {
   await page.getByRole('button', { name: '查看请求 missing 详情', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '调用详情' })
