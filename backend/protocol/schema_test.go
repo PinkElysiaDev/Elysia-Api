@@ -1,10 +1,14 @@
 package protocol
 
 import (
+	"bytes"
+	"context"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/bytedance/sonic"
+	"github.com/invopop/jsonschema"
 	validator "github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -116,8 +120,106 @@ func TestSchemaCatalogFreshResults(t *testing.T) {
 	first := DescribeSchema()
 	first.Definition["$defs"].(map[string]any)["Definition"].(map[string]any)["additionalProperties"] = true
 	first.Semantic["$defs"].(map[string]any)["Request"] = nil
+	first.Binding["$defs"].(map[string]any)["Binding"] = nil
+	first.Conversion["policy"].(map[string]any)["$defs"].(map[string]any)["ConversionPolicy"] = nil
 	second := DescribeSchema()
-	if second.Definition["$defs"].(map[string]any)["Definition"].(map[string]any)["additionalProperties"] != false || second.Semantic["$defs"].(map[string]any)["Request"] == nil {
+	if second.Definition["$defs"].(map[string]any)["Definition"].(map[string]any)["additionalProperties"] != false ||
+		second.Semantic["$defs"].(map[string]any)["Request"] == nil ||
+		second.Binding["$defs"].(map[string]any)["Binding"] == nil ||
+		second.Conversion["policy"].(map[string]any)["$defs"].(map[string]any)["ConversionPolicy"] == nil {
 		t.Fatal("catalog mutation leaked into another request")
 	}
+}
+
+func TestSchemaCatalogMatchesUncachedReflection(t *testing.T) {
+	t.Parallel()
+	expected := describeUncachedSchema()
+	actual := DescribeSchema()
+	if !reflect.DeepEqual(actual, expected) {
+		t.Fatal("schema caching changed Go values or catalog structure")
+	}
+	before, beforeErr := sonic.ConfigStd.Marshal(expected)
+	after, afterErr := sonic.ConfigStd.Marshal(actual)
+	if beforeErr != nil || afterErr != nil || !bytes.Equal(before, after) {
+		t.Fatalf("schema wire bytes changed: %v / %v", beforeErr, afterErr)
+	}
+}
+
+func TestSchemaCatalogKeepsCompilerStateIndependent(t *testing.T) {
+	t.Parallel()
+	limits := DefaultLimits()
+	limits.BufferBytes /= 2
+	first, err := NewCompiler(limits, []Module{schemaCatalogModule{}}, []string{"synthetic.schema.feature"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := NewCompiler(DefaultLimits(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := first.Schema()
+	if catalog.Limits != limits || len(catalog.Modules) != 1 {
+		t.Fatal("compiler state was not applied to catalog")
+	}
+	catalog.Modules[0].Directions[0] = EncodeResponse
+	catalog.EngineFeatures[0] = "changed"
+	catalog.Semantic["$defs"].(map[string]any)["Request"] = nil
+	fresh := first.Schema()
+	if fresh.Modules[0].Directions[0] != DecodeRequest || fresh.EngineFeatures[0] == "changed" || fresh.Semantic["$defs"].(map[string]any)["Request"] == nil {
+		t.Fatal("returned state mutated the compiler's next catalog")
+	}
+	other := second.Schema()
+	if other.Limits != DefaultLimits() || len(other.Modules) != 0 || strings.Contains(strings.Join(other.EngineFeatures, ","), "synthetic.schema.feature") {
+		t.Fatal("catalog retained another compiler's modules, features or limits")
+	}
+}
+
+type schemaCatalogModule struct{}
+
+func (schemaCatalogModule) Name() string            { return "schema-catalog-test" }
+func (schemaCatalogModule) Directions() []Direction { return []Direction{DecodeRequest} }
+func (schemaCatalogModule) Convert(context.Context, Direction, Value, EvaluationContext) (Value, error) {
+	return Value{}, nil
+}
+
+// Retain the pre-cache reflection path to compare both Go types and wire bytes.
+func describeUncachedSchema() SchemaCatalog {
+	root := reflectUncachedSchema(reflect.TypeFor[Definition]())
+	binding := reflectUncachedSchema(reflect.TypeFor[Binding]())
+	definitions := make(map[string]any)
+	semantic := map[string]any{"$schema": jsonschema.Version, "$defs": definitions}
+	for name, kind := range map[string]reflect.Type{
+		"request": reflect.TypeFor[Request](), "response": reflect.TypeFor[Response](),
+		"event": reflect.TypeFor[Event](), "task": reflect.TypeFor[Task](),
+		"models": reflect.TypeFor[ModelPage](), "agent": reflect.TypeFor[AgentPreferences](),
+	} {
+		schema := reflectUncachedSchema(kind)
+		for name, definition := range schema["$defs"].(map[string]any) {
+			definitions[name] = definition
+		}
+		delete(schema, "$schema")
+		delete(schema, "$defs")
+		semantic[name] = schema
+	}
+	conversionSchema := reflectUncachedSchema(reflect.TypeFor[ConversionPolicy]())
+	actionSchemas, actionNames := conversionActionSchemas()
+	return SchemaCatalog{Conversion: map[string]any{"actionSchemas": actionSchemas, "policy": conversionSchema, "phases": conversionPhases(), "actions": actionNames}, SchemaVersion: DefinitionSchemaVersion, CompilerVersion: CompilerVersion, Directions: DirectionCatalog(), Transports: TransportCatalog(), OperationKinds: OperationKindCatalog(), Capabilities: CapabilityCatalog(), Events: EventCatalog(), Diagnostics: DiagnosticCatalog(), Operations: ExpressionCatalog(), Definition: root, Semantic: semantic, Binding: binding, Limits: DefaultLimits()}
+}
+
+func reflectUncachedSchema(kind reflect.Type) map[string]any {
+	reflector := jsonschema.Reflector{Anonymous: true, Mapper: func(kind reflect.Type) *jsonschema.Schema {
+		if kind == reflect.TypeFor[Value]() {
+			return &jsonschema.Schema{}
+		}
+		return nil
+	}}
+	encoded, err := sonic.ConfigStd.Marshal(reflector.ReflectFromType(kind))
+	if err != nil {
+		panic(err)
+	}
+	var schema map[string]any
+	if err := sonic.ConfigStd.Unmarshal(encoded, &schema); err != nil {
+		panic(err)
+	}
+	return schema
 }

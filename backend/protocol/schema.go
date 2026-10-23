@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"reflect"
+	"sync"
 
 	"github.com/bytedance/sonic"
 	"github.com/invopop/jsonschema"
@@ -34,6 +35,16 @@ type ModuleSpec struct {
 	Directions []Direction `json:"directions"`
 }
 
+type schemaTemplates struct {
+	definition []byte
+	binding    []byte
+	conversion []byte
+	semantic   map[string][]byte
+}
+
+// Only fixed Go contracts are shared. Every caller decodes its own mutable maps.
+var loadSchemaTemplates = sync.OnceValue(buildSchemaTemplates)
+
 // Schema combines the language schema with this compiler's installed modules.
 func (compiler *Compiler) Schema() SchemaCatalog {
 	catalog := DescribeSchema()
@@ -47,18 +58,15 @@ func (compiler *Compiler) Schema() SchemaCatalog {
 
 // DescribeSchema returns fresh schema/catalog objects without registry state.
 func DescribeSchema() SchemaCatalog {
-	root := reflectSchema(reflect.TypeFor[Definition]())
-	binding := reflectSchema(reflect.TypeFor[Binding]())
+	templates := loadSchemaTemplates()
+	root := decodeSchemaTemplate(templates.definition)
+	binding := decodeSchemaTemplate(templates.binding)
 	// semanticSchema is a catalog of named roots, not a single object schema.
 	// Keep its existing envelope and shared local-reference namespace.
 	definitions := make(map[string]any)
 	semantic := map[string]any{"$schema": jsonschema.Version, "$defs": definitions}
-	for name, kind := range map[string]reflect.Type{
-		"request": reflect.TypeFor[Request](), "response": reflect.TypeFor[Response](),
-		"event": reflect.TypeFor[Event](), "task": reflect.TypeFor[Task](),
-		"models": reflect.TypeFor[ModelPage](), "agent": reflect.TypeFor[AgentPreferences](),
-	} {
-		schema := reflectSchema(kind)
+	for name, template := range templates.semantic {
+		schema := decodeSchemaTemplate(template)
 		for name, definition := range schema["$defs"].(map[string]any) {
 			definitions[name] = definition
 		}
@@ -66,12 +74,47 @@ func DescribeSchema() SchemaCatalog {
 		delete(schema, "$defs")
 		semantic[name] = schema
 	}
-	conversionSchema := reflectSchema(reflect.TypeFor[ConversionPolicy]())
+	conversionSchema := decodeSchemaTemplate(templates.conversion)
 	actionSchemas, actionNames := conversionActionSchemas()
-	return SchemaCatalog{Conversion: map[string]any{"actionSchemas": actionSchemas, "policy": conversionSchema, "phases": conversionPhases(), "actions": actionNames}, SchemaVersion: DefinitionSchemaVersion, CompilerVersion: CompilerVersion, Directions: DirectionCatalog(), Transports: TransportCatalog(), OperationKinds: OperationKindCatalog(), Capabilities: CapabilityCatalog(), Events: EventCatalog(), Diagnostics: DiagnosticCatalog(), Operations: ExpressionCatalog(), Definition: root, Semantic: semantic, Binding: binding, Limits: DefaultLimits()}
+	return SchemaCatalog{
+		Conversion: map[string]any{
+			"actionSchemas": actionSchemas, "policy": conversionSchema,
+			"phases": conversionPhases(), "actions": actionNames,
+		},
+		SchemaVersion:   DefinitionSchemaVersion,
+		CompilerVersion: CompilerVersion,
+		Directions:      DirectionCatalog(),
+		Transports:      TransportCatalog(),
+		OperationKinds:  OperationKindCatalog(),
+		Capabilities:    CapabilityCatalog(),
+		Events:          EventCatalog(),
+		Diagnostics:     DiagnosticCatalog(),
+		Operations:      ExpressionCatalog(),
+		Definition:      root,
+		Semantic:        semantic,
+		Binding:         binding,
+		Limits:          DefaultLimits(),
+	}
 }
 
-func reflectSchema(kind reflect.Type) map[string]any {
+func buildSchemaTemplates() schemaTemplates {
+	templates := schemaTemplates{
+		definition: encodeSchemaTemplate(reflect.TypeFor[Definition]()),
+		binding:    encodeSchemaTemplate(reflect.TypeFor[Binding]()),
+		semantic:   make(map[string][]byte),
+	}
+	for name, kind := range map[string]reflect.Type{
+		"request": reflect.TypeFor[Request](), "response": reflect.TypeFor[Response](),
+		"event": reflect.TypeFor[Event](), "task": reflect.TypeFor[Task](),
+		"models": reflect.TypeFor[ModelPage](), "agent": reflect.TypeFor[AgentPreferences](),
+	} {
+		templates.semantic[name] = encodeSchemaTemplate(kind)
+	}
+	templates.conversion = encodeSchemaTemplate(reflect.TypeFor[ConversionPolicy]())
+	return templates
+}
+
+func encodeSchemaTemplate(kind reflect.Type) []byte {
 	reflector := jsonschema.Reflector{
 		// Catalog consumers resolve local $defs references; don't introduce an
 		// automatic package-URL $id that would change the resolution base.
@@ -92,6 +135,10 @@ func reflectSchema(kind reflect.Type) map[string]any {
 	if err != nil {
 		panic("encode protocol schema: " + err.Error())
 	}
+	return encoded
+}
+
+func decodeSchemaTemplate(encoded []byte) map[string]any {
 	var schema map[string]any
 	if err := sonic.ConfigStd.Unmarshal(encoded, &schema); err != nil {
 		panic("decode protocol schema: " + err.Error())
