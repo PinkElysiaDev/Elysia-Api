@@ -149,18 +149,18 @@ func TestHTTPUsageSlowFinalizeRetention(t *testing.T) {
 		server.httpRequests.mu.Unlock()
 		samples = append(samples, finalizeRetentionSample{Batch: batch, Phase: phase, ForcedGC: forced, Heap: memory.HeapAlloc, HeapInuse: memory.HeapInuse, Allocated: memory.TotalAlloc, Goroutines: runtime.NumGoroutine(), ActiveRequests: active, QueueBytes: server.usageWriterStats().RetainedBytes, PreparedLogBytes: preparedBytes, CaptureBytes: captureBytes})
 	}
-	awaitDrain := func(shouldWaitHTTP bool) {
+	awaitDrain := func(shouldWaitHTTP bool, expectedWrites uint64) {
 		deadline := time.Now().Add(5 * time.Second)
 		for {
 			server.httpRequests.mu.Lock()
 			active := len(server.httpRequests.active)
 			server.httpRequests.mu.Unlock()
 			stats := server.usageWriterStats()
-			if (!shouldWaitHTTP || active == 0) && stats.Queued == 0 && stats.RetainedBytes == 0 {
+			if (!shouldWaitHTTP || active == 0) && stats.Queued == 0 && stats.RetainedBytes == 0 && stats.Written >= expectedWrites {
 				return
 			}
 			if time.Now().After(deadline) {
-				t.Fatal("HTTP or persistence owner did not drain", active, stats)
+				t.Fatal("HTTP or persistence owner did not drain", active, stats, "expected writes", expectedWrites)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -207,7 +207,12 @@ func TestHTTPUsageSlowFinalizeRetention(t *testing.T) {
 		}
 		// Baseline settlement may already be queued. Compare stable held
 		// owners after that queue drains, without releasing the HTTP gate.
-		awaitDrain(false)
+		expectedWrites := uint64((batch + 1) * workers)
+		heldWrites := expectedWrites
+		if hasCompletion {
+			heldWrites -= uint64(workers)
+		}
+		awaitDrain(false, heldWrites)
 		sample(batch, "held", false, preparedBytes, captureBytes)
 		sample(batch, "held", true, preparedBytes, captureBytes)
 		if shouldCancel {
@@ -227,7 +232,7 @@ func TestHTTPUsageSlowFinalizeRetention(t *testing.T) {
 				t.Fatal("client did not finish")
 			}
 		}
-		awaitDrain(true)
+		awaitDrain(true, expectedWrites)
 		if count, err := server.store.CountUsageRecords(t.Context()); err != nil || count != int64((batch+1)*workers) {
 			t.Fatal("missing or duplicated completion settlement", count, err)
 		}
