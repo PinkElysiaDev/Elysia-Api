@@ -148,6 +148,51 @@ func TestSemanticMeterRecordsNormalizationFacts(t *testing.T) {
 	}
 }
 
+func TestSemanticObjectNormalizationMatchesJSON(t *testing.T) {
+	for _, object := range []Object{
+		nil, {},
+		{"plain": StringValue(strings.Repeat("a", 1024)), "number": parseTestValue(t, `9007199254740993`)},
+		{"html": parseTestValue(t, ` { "x":"<>&" } `), "empty": parseTestValue(t, `null`)},
+		{"\xff": StringValue("first"), "\xfe": StringValue("second"), "�": StringValue("last")},
+	} {
+		input := &Request{Parameters: object}
+		encoded, err := EncodeValue(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var want Request
+		if err := decodeContract(encoded.Bytes(), &want); err != nil {
+			t.Fatal(err)
+		}
+		got := normalizeMappingSemantic(input, DefaultLimits())
+		if !reflect.DeepEqual(got, &want) {
+			t.Fatalf("object normalization differs: got %+v, want %+v", got.Parameters, want.Parameters)
+		}
+		unchanged, err := EncodeValue(input)
+		if err != nil || unchanged != encoded {
+			t.Fatal("normalization mutated caller", err)
+		}
+		if got.Parameters != nil {
+			got.Parameters["new"] = StringValue("isolated")
+			if _, exists := input.Parameters["new"]; exists {
+				t.Fatal("normalized object shares its mutable map")
+			}
+		}
+	}
+	// Missing map values remain missing so the established encoder error is
+	// preserved; normalizing them must not turn them into JSON null.
+	input := &Request{Parameters: Object{"absent": {}}}
+	got := normalizeMappingSemantic(input, DefaultLimits())
+	if value, exists := got.Parameters["absent"]; !exists || !value.IsZero() {
+		t.Fatal("absent map value changed")
+	}
+	_, wantErr := EncodeValue(input)
+	_, gotErr := EncodeValue(got)
+	if wantErr == nil || gotErr == nil || wantErr.Error() != gotErr.Error() {
+		t.Fatalf("missing value error differs: %v / %v", wantErr, gotErr)
+	}
+}
+
 func TestCanonicalToolTextMatchesLegacy(t *testing.T) {
 	for _, raw := range []string{`"plain"`, ` " a b " `, `"<>&"`, `"\u0061"`, `"line\n"`, `"\ud800"`, "\"\xff\"", `null`, `{}`, `17`} {
 		value, err := ParseValue([]byte(raw))

@@ -50,6 +50,10 @@ func (cache *semanticCache) normalizeDocument(value reflect.Value, plan *typedPl
 		}
 	case reflect.Map:
 		normalizeSemanticMapKeys(value)
+		if object, ok := value.Interface().(Object); ok {
+			cache.normalizeObject(object)
+			return
+		}
 		iter := value.MapRange()
 		for iter.Next() {
 			child := reflect.New(value.Type().Elem()).Elem()
@@ -67,11 +71,25 @@ func (cache *semanticCache) normalizeDocument(value reflect.Value, plan *typedPl
 	}
 }
 
+func (cache *semanticCache) normalizeObject(object Object) {
+	for key, value := range object {
+		if value.IsZero() {
+			continue
+		}
+		if normalized := cache.normalize(value); normalized != value {
+			object[key] = normalized
+		}
+	}
+}
+
 func normalizeSemanticMapKeys(value reflect.Value) {
 	hasInvalidKey := false
 	iter := value.MapRange()
 	for iter.Next() {
-		hasInvalidKey = hasInvalidKey || !utf8.ValidString(iter.Key().String())
+		if !utf8.ValidString(iter.Key().String()) {
+			hasInvalidKey = true
+			break
+		}
 	}
 	if !hasInvalidKey {
 		return
