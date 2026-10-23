@@ -29,6 +29,12 @@ type compiledExpression struct {
 	schema                              *ValueSchema
 }
 
+// isInputIdentity recognizes a compiled leaf, including an expanded reference.
+// Root is deliberately excluded: after keeps root bound to the module's input.
+func (expression *compiledExpression) isInputIdentity() bool {
+	return expression != nil && expression.op == "read" && expression.from == "input" && len(expression.pointer) == 0 && !expression.isRequired
+}
+
 type expressionCompiler struct {
 	limits            Limits
 	nodes             int

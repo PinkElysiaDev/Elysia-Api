@@ -31,20 +31,26 @@ type requestEncodingWorkspace struct {
 // can be reused with identical request, revision, scope, context and budgets.
 // It never authorizes skipping final wire or operation validation.
 func (compiled *Compiled) CanReuseRequestEncoding() bool {
-	return compiled.supportsRequestWorkspace()
-}
-
-func (compiled *Compiled) supportsRequestWorkspace() bool {
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
 		mapping := compiled.mappings[direction]
-		if _, ok := mapping.module.(RequestBaselineModule); !ok || mapping.after != nil || mapping.initial != nil {
-			return false
-		}
-		if direction == DecodeRequest && mapping.output != nil || direction == EncodeRequest && mapping.input != nil {
+		if !compiled.hasPureRequestMapping(direction) || mapping.after != nil && !mapping.after.isInputIdentity() {
 			return false
 		}
 	}
 	return true
+}
+
+func (compiled *Compiled) hasPureRequestMapping(direction Direction) bool {
+	mapping := compiled.mappings[direction]
+	if _, ok := mapping.module.(RequestBaselineModule); !ok || mapping.initial != nil {
+		return false
+	}
+	return direction == DecodeRequest && mapping.output == nil || direction == EncodeRequest && mapping.input == nil
+}
+
+func (compiled *Compiled) supportsRequestWorkspace() bool {
+	return compiled.hasPureRequestMapping(DecodeRequest) && compiled.mappings[DecodeRequest].after == nil &&
+		compiled.hasPureRequestMapping(EncodeRequest) && compiled.mappings[EncodeRequest].after == nil
 }
 
 func (compiled *Compiled) attachRequestWorkspace(ctx context.Context, request, baseline *Request) {
