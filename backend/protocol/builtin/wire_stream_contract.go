@@ -159,7 +159,7 @@ func (stream *streamModule) ValidateWireObjectEvent(frame p.Value, fields p.Obje
 			if s.terminal {
 				return wireStreamIssue("/type", "response metadata arrived after terminal")
 			}
-			if err := p.ValidateResponsesMetadataFrame(frame); err != nil {
+			if err := validateResponsesMetadataOutput(frame); err != nil {
 				return err
 			}
 		}

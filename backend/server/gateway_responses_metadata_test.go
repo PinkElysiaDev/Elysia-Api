@@ -69,6 +69,11 @@ func TestGatewayResponsesMetadataFullStreamsAndPreview(t *testing.T) {
 			t.Fatal(err)
 		}
 		frames := insertResponsesMetadata(t, input)
+		terminal, _ := frames[len(frames)-1].ReadObject()
+		response, _ := terminal["response"].ReadObject()
+		response["usage"] = mustProtocolValue(t, `{"input_tokens":20,"output_tokens":2,"total_tokens":22,"input_tokens_details":{"cached_tokens":15}}`)
+		terminal["response"], _ = p.EncodeValue(response)
+		frames[len(frames)-1], _ = p.EncodeValue(terminal)
 		active.Store(frames)
 		options := p.EvaluationContext{State: p.NewEvaluationState()}
 		var metadata p.Event
@@ -85,7 +90,7 @@ func TestGatewayResponsesMetadataFullStreamsAndPreview(t *testing.T) {
 		}
 		for _, ingress := range []struct{ id, path, body, tools string }{
 			{p.PresetResponsesID, "/responses", `{"model":"group","input":"hi","store":false,"stream":true}`, `[{"type":"function","name":"lookup","parameters":{"type":"object"}}]`},
-			{p.PresetChatCompletionsID, "/chat/completions", `{"model":"group","messages":[{"role":"user","content":"hi"}],"stream":true}`, `[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]`},
+			{p.PresetChatCompletionsID, "/chat/completions", `{"model":"group","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true}}`, `[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]`},
 			{p.PresetAnthropicID, "/v1/messages", `{"model":"group","max_tokens":32,"messages":[{"role":"user","content":"hi"}],"stream":true}`, `[{"name":"lookup","input_schema":{"type":"object"}}]`},
 			{p.PresetGeminiID, "/v1beta/models/group:streamGenerateContent", `{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`, `[{"functionDeclarations":[{"name":"lookup","parameters":{"type":"object"}}]}]`},
 		} {
@@ -106,6 +111,11 @@ func TestGatewayResponsesMetadataFullStreamsAndPreview(t *testing.T) {
 				}
 				target, _ := service.Pin(ingress.id)
 				validator, _ := target.NewWireStreamValidation(p.Scope{})
+				collector, err := p.NewResponseCollector(p.Target{Codec: target.Codec(p.DecodeEvent), Protocol: target.Identity(), Direction: p.EncodeEvent, Capabilities: target.Capabilities(p.EncodeEvent)}, target.ResourceLimits())
+				if err != nil {
+					t.Fatal(err)
+				}
+				decodeOptions := p.EvaluationContext{State: p.NewEvaluationState()}
 				for _, line := range strings.Split(out.Body.String(), "\n") {
 					if !strings.HasPrefix(line, "data:") {
 						continue
@@ -114,12 +124,47 @@ func TestGatewayResponsesMetadataFullStreamsAndPreview(t *testing.T) {
 					if !strings.HasPrefix(data, "{") {
 						continue
 					}
-					if err := validator.Consume(t.Context(), mustProtocolValue(t, data)); err != nil {
+					wire := mustProtocolValue(t, data)
+					if err := validator.Consume(t.Context(), wire); err != nil {
 						t.Fatal(err)
+					}
+					decoded, err := target.DecodeFrame(t.Context(), wire, decodeOptions)
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, event := range decoded.Events {
+						if _, _, err := collector.Consume(event); err != nil {
+							t.Fatal(err)
+						}
 					}
 				}
 				if err := validator.Finish(); err != nil {
 					t.Fatal(err)
+				}
+				result, err := collector.Finish()
+				if err != nil {
+					t.Fatal(err)
+				}
+				usage := result.Usage
+				if usage == nil || usage.Input == nil || usage.Input.Count != 20 || usage.Output == nil || usage.Output.Count != 2 || usage.Total == nil || usage.Total.Count != 22 {
+					t.Fatalf("generated usage changed: %+v", usage)
+				}
+				calls := liveCalls(result.Content)
+				if sample.ID == "stream-text-decode" {
+					if flameRequestText(result.Content) != "hi" || len(calls) != 0 {
+						t.Fatal("generated text changed", result.Content)
+					}
+				} else {
+					if flameRequestText(result.Content) != "" || len(calls) != 1 || !calls[0].Name.IsString("lookup") || calls[0].Input == nil || calls[0].Input.Kind != p.JSONInput {
+						t.Fatal("generated tool changed", result.Content)
+					}
+					arguments, err := calls[0].Input.Value.ReadObject()
+					if err != nil || arguments["n"].JSONString() != "9007199254740993" {
+						t.Fatal("tool argument precision changed", calls[0].Input, err)
+					}
+					if ingress.id != p.PresetGeminiID && !calls[0].CallID.IsString("call") {
+						t.Fatal("tool call identity changed", calls[0].CallID)
+					}
 				}
 				records := latestUsageRecords(t, s)
 				raw, _, err := s.store.GetUsageRecordJSON(t.Context(), records[0].RequestID)

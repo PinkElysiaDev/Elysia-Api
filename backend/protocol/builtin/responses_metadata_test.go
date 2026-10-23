@@ -424,6 +424,57 @@ func TestResponsesMetadataCustomMappingsAndLimits(t *testing.T) {
 	}
 }
 
+func TestResponsesMetadataAfterCannotEmitInvalidEnvelope(t *testing.T) {
+	definition := shippedProjectionProtocol(t, Responses).Definition()
+	definition.ID = "metadata-invalid-after"
+	invalid := testValue(t, `{"type":"response.metadata","metadata":null,"response_id":"r","sequence_number":2}`)
+	batch, _ := p.EncodeValue([]p.Value{invalid})
+	mapping := definition.Directions[p.EncodeEvent]
+	mapping.After = &p.Expression{Op: "literal", Value: batch}
+	definition.Directions[p.EncodeEvent] = mapping
+	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
+	raw, _ := p.EncodeValue(definition)
+	compiled, issues := compiler.Compile(raw.Bytes())
+	if compiled == nil {
+		t.Fatal(issues)
+	}
+	// A metadata no-op normally emits no frames. The authored after must really
+	// run here; a native replay hash rejection would not exercise final validation.
+	frames, err := compiled.EncodeFrames(t.Context(), p.Event{SchemaVersion: 1, Type: p.MetadataUpdated}, p.EvaluationContext{State: p.NewEvaluationState()})
+	if err != nil || len(frames) != 1 || frames[0] != invalid {
+		t.Fatal("destructive after did not execute", frames, err)
+	}
+	validator, err := compiled.NewWireStreamValidation(p.Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	startFrame := testValue(t, `{"type":"response.created","sequence_number":0,"response":{"id":"r","object":"response","created_at":1,"model":"m","status":"in_progress","output":[]}}`)
+	if err := validator.Consume(t.Context(), startFrame); err != nil {
+		t.Fatal(err)
+	}
+	err = validator.Consume(t.Context(), frames[0])
+	var failure *p.ConversionError
+	if !errors.As(err, &failure) || len(failure.Issues) != 1 {
+		t.Fatal("invalid after output passed final validation", err)
+	}
+	issue := failure.Issues[0]
+	if issue.Code != p.InvalidInput || issue.Path != "/metadata" || issue.Direction != p.EncodeEvent || issue.Stage != "wire.output" || issue.Protocol != compiled.Identity() {
+		t.Fatal("after failure lost its target field attribution", issue)
+	}
+	options := p.EvaluationContext{State: p.NewEvaluationState()}
+	if _, err := compiled.DecodeFrame(t.Context(), startFrame, options); err != nil {
+		t.Fatal(err)
+	}
+	_, err = compiled.DecodeFrame(t.Context(), invalid, options)
+	if !errors.As(err, &failure) || len(failure.Issues) != 1 {
+		t.Fatal("source accepted invalid metadata", err)
+	}
+	issue = failure.Issues[0]
+	if issue.Code != p.InvalidInput || issue.Path != "/metadata" || issue.Direction != p.DecodeEvent || issue.Stage != "stream" || issue.Protocol != compiled.Identity() {
+		t.Fatal("source failure lost its decode attribution", issue)
+	}
+}
+
 func TestResponsesMetadataRejectsPostTerminalFrames(t *testing.T) {
 	compiled := shippedProjectionProtocol(t, Responses)
 	for _, sample := range compiled.Definition().Samples {

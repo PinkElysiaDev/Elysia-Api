@@ -1,6 +1,25 @@
 package builtin
 
-import p "github.com/elysia-api/backend/protocol"
+import (
+	"errors"
+
+	p "github.com/elysia-api/backend/protocol"
+)
+
+// The shared envelope also serves source decoding. Final wire failures belong
+// to the target mapping, including frames synthesized or changed by after.
+func validateResponsesMetadataOutput(frame p.Value) error {
+	err := p.ValidateResponsesMetadataFrame(frame)
+	var failure *p.ConversionError
+	if errors.As(err, &failure) {
+		for i := range failure.Issues {
+			issue := &failure.Issues[i]
+			issue.Direction, issue.Stage = p.EncodeEvent, "wire.output"
+			issue.Suggestion = "Correct the metadata envelope produced by the target mapping."
+		}
+	}
+	return err
+}
 
 func (stream *streamModule) decodeResponsesMetadata(frame p.Value, fields p.Object) ([]p.Event, error) {
 	if err := p.ValidateResponsesMetadataFrame(frame); err != nil {
