@@ -141,21 +141,6 @@ func (compiled *Compiled) hasTypedRequestMapping(direction Direction) bool {
 	return mapping.after == nil || mapping.after.isInputIdentity()
 }
 
-func checkTypedLimits(value any, limits Limits) error {
-	if fitsTypedLimits(value, limits) {
-		return nil
-	}
-	encoded, isValue := value.(Value)
-	if !isValue {
-		var err error
-		encoded, err = EncodeValue(value)
-		if err != nil {
-			return err
-		}
-	}
-	return checkValueLimits(encoded, limits)
-}
-
 // decodeTyped retains the exact resource checks of Execute. Trusted typed
 // outputs need no strict JSON reparse; capability/provenance checks follow in
 // the caller exactly as they do for declarative mappings.

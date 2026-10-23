@@ -18,6 +18,23 @@ func referenceTypedLimits(value any, limits Limits) error {
 	return checkValueLimits(encoded, limits)
 }
 
+// Keep the former standalone check as a test boundary; production callers use
+// the semantic or mapping checks that preserve their own resource domains.
+func checkTypedLimits(value any, limits Limits) error {
+	if fitsTypedLimits(value, limits) {
+		return nil
+	}
+	encoded, isValue := value.(Value)
+	if !isValue {
+		var err error
+		encoded, err = EncodeValue(value)
+		if err != nil {
+			return err
+		}
+	}
+	return checkValueLimits(encoded, limits)
+}
+
 func checkMeterEquivalent(t *testing.T, value any) {
 	t.Helper()
 	encoded, err := EncodeValue(value)
