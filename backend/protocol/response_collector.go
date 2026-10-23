@@ -15,14 +15,16 @@ type ResponseCollector struct {
 	items    map[string]collectedPosition
 	// Prefix entries become immutable once preceding messages close. Advancing
 	// this frontier visits each top-level item once across the whole stream.
-	topKeys    []string
-	ordinals   []int
-	containers bool
-	texts      map[string]*collectedText
-	metadata   map[string]int
-	unmapped   []Value
-	bytes      int
-	limit      int
+	topKeys                                  []string
+	ordinals                                 []int
+	containers                               bool
+	texts                                    map[string]*collectedText
+	metadata                                 map[string]int
+	logprobs                                 map[string]*collectedLogprobs
+	logprobItems, logprobBytes, logprobLimit int
+	unmapped                                 []Value
+	bytes                                    int
+	limit                                    int
 }
 
 type collectedText struct {
@@ -90,6 +92,7 @@ func (collector *ResponseCollector) CompletedNode(event Event) (Node, int, bool)
 		ordinal += position.index
 	}
 	collector.materializeText(key)
+	collector.materializeLogprob(key)
 	return CanonicalReasoning(cloneNodes([]Node{*node})[0]), ordinal, true
 }
 
@@ -107,7 +110,7 @@ func NewResponseCollector(target Target, limits Limits) (*ResponseCollector, err
 	if err != nil {
 		return nil, err
 	}
-	return &ResponseCollector{replay: replay, response: Response{SchemaVersion: SemanticSchemaVersion, Source: target.Protocol}, items: map[string]collectedPosition{}, texts: map[string]*collectedText{}, metadata: map[string]int{}, limit: limits.BufferBytes}, nil
+	return &ResponseCollector{replay: replay, response: Response{SchemaVersion: SemanticSchemaVersion, Source: target.Protocol}, items: map[string]collectedPosition{}, texts: map[string]*collectedText{}, metadata: map[string]int{}, limit: limits.BufferBytes, logprobLimit: limits.StateItems}, nil
 }
 
 // Consume returns the newly appended text, if any. Snapshot prefixes and
@@ -134,6 +137,7 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 	switch event.Type {
 	case ResponseStarted:
 		if event.Response != nil {
+			collector.materializeLogprobs()
 			id, metadata := collector.response.ID, collector.response.Metadata
 			collector.response = *event.Response
 			if collector.response.ID.IsZero() {
@@ -148,6 +152,7 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 		return "", "", streamIssue(UpstreamContractViolation, "/type", "generation ended with "+string(event.Type))
 	case ResponseFinished:
 		collector.materializeTexts()
+		collector.materializeLogprobs()
 		if err := collector.finishTools(); err != nil {
 			return "", "", err
 		}
@@ -290,6 +295,10 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 		collector.texts[key] = &collectedText{}
 	}
 	item := collector.item(key)
+	isDeferred := collector.deferLogprobDelta(key, event)
+	if !isDeferred {
+		collector.materializeLogprob(key)
+	}
 	if event.Item != nil {
 		item.Metadata = MergeNodeMetadata(item.Metadata, event.Item.Metadata, false)
 		if !event.Item.Name.IsZero() {
@@ -323,7 +332,9 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 			}
 		}
 	}
-	item.Metadata = MergeNodeMetadata(item.Metadata, event.Metadata, event.Type == ItemDelta)
+	if !isDeferred {
+		item.Metadata = MergeNodeMetadata(item.Metadata, event.Metadata, event.Type == ItemDelta)
+	}
 	if !event.CallID.IsZero() {
 		item.CallID = event.CallID
 	}
@@ -417,6 +428,7 @@ func (collector *ResponseCollector) Finish() (*Response, error) {
 		return nil, err
 	}
 	collector.materializeTexts()
+	collector.materializeLogprobs()
 	collector.response.Usage = collector.replay.Usage()
 	for i := range collector.response.Content {
 		collector.response.Content[i] = CanonicalReasoning(collector.response.Content[i])
@@ -429,6 +441,7 @@ func (collector *ResponseCollector) Finish() (*Response, error) {
 // successful terminal and cannot authorize execution of incomplete tool calls.
 func (collector *ResponseCollector) Partial() (*Response, error) {
 	collector.materializeTexts()
+	collector.materializeLogprobs()
 	partial := collector.response
 	partial.Status = StringValue("incomplete")
 	partial.Usage = collector.replay.Usage()
