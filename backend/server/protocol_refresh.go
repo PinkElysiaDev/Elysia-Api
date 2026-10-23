@@ -23,6 +23,7 @@ func (s *Server) refreshProtocolRuntime(ctx context.Context, service *protocol.S
 // records; a changing plan is rebuilt under a baseline before it can commit.
 // Healthy restarts never fingerprint historical definitions or create backups.
 func (s *Server) refreshProtocolRuntimeScope(ctx context.Context, service *protocol.Service, presetsOnly bool) error {
+	started := time.Now()
 	_, _, changed, err := s.prepareProtocolRefresh(ctx, service, presetsOnly)
 	if err != nil || !changed {
 		return err
@@ -86,12 +87,41 @@ func (s *Server) refreshProtocolRuntimeScope(ctx context.Context, service *proto
 	if err := s.store.RefreshProtocolRuntime(ctx, plan); err != nil {
 		return fmt.Errorf("protocol recovery commit: %w", err)
 	}
+	s.logProtocolRefresh(plan, presetsOnly, started)
+	return nil
+}
+
+func (s *Server) logProtocolRefresh(plan storage.ProtocolUpgrade, presetsOnly bool, started time.Time) {
+	var refreshed, definitions, reports int
 	for _, entry := range plan.Revisions {
-		if protocol.IsPresetProtocolID(entry.Revision.ProtocolID) && entry.Refresh.Changed() {
-			s.logEvent("info").Str("protocol_id", entry.Revision.ProtocolID).Bool("revision", entry.Refresh.Revision || entry.Refresh.RepairPreset).Bool("evidence", entry.Refresh.Report).Bool("activation", entry.Refresh.Activation).Bool("draft", entry.Refresh.Draft).Msg("protocol restored")
+		if !entry.Refresh.Changed() {
+			continue
+		}
+		refreshed++
+		hasDefinitionChange := entry.Refresh.Revision || entry.Refresh.RepairPreset
+		message := "protocol state restored"
+		if entry.Refresh.Report {
+			reports++
+			message = "protocol evidence refreshed"
+		}
+		if hasDefinitionChange {
+			definitions++
+			message = "protocol definition restored"
+		}
+		if protocol.IsPresetProtocolID(entry.Revision.ProtocolID) {
+			s.logEvent("info").Str("protocol_id", entry.Revision.ProtocolID).Str("compiler", protocol.CompilerVersion).
+				Bool("revision", hasDefinitionChange).Bool("evidence", entry.Refresh.Report).
+				Bool("activation", entry.Refresh.Activation).Bool("draft", entry.Refresh.Draft).Msg(message)
 		}
 	}
-	return nil
+	stage := "runtime_refresh"
+	if presetsOnly {
+		stage = "preset_recovery"
+	}
+	s.logEvent("info").Str("stage", stage).Str("compiler", protocol.CompilerVersion).
+		Int("protocol_count", refreshed).Int("definition_count", definitions).Int("evidence_count", reports).
+		Int("binding_count", len(plan.Bindings)).Int("rejection_count", len(plan.Rejections)).
+		Int64("duration_ms", time.Since(started).Milliseconds()).Msg("protocol refresh completed")
 }
 
 func recoverableProtocolRead(err error) bool {

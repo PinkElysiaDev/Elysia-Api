@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
@@ -18,13 +19,24 @@ func (s *Server) initializeProtocolRuntime(ctx context.Context) (err error) {
 	s.protocolStartupMu.Lock()
 	defer s.protocolStartupMu.Unlock()
 	defer func() { s.recordProtocolRuntimeFailure(err) }()
+	started := time.Now()
 	if err := s.recoverRequiredPresets(ctx); err != nil {
 		return &protocolStartupError{Stage: "preset_recovery", Err: err}
 	}
+	s.logProtocolRuntimeStage("preset_recovery", started)
+	started = time.Now()
 	if err := s.reloadProtocolRuntime(ctx); err != nil {
 		return &protocolStartupError{Stage: "runtime_verification", Err: err}
 	}
+	s.logProtocolRuntimeStage("runtime_verification", started)
 	return nil
+}
+
+func (s *Server) logProtocolRuntimeStage(stage string, started time.Time) {
+	view := s.protocolServiceInst.View()
+	s.logEvent("info").Str("stage", stage).Str("compiler", protocol.CompilerVersion).
+		Int("protocol_count", len(view.IDs())).Int("unavailable_count", len(view.Failures())).
+		Int64("duration_ms", time.Since(started).Milliseconds()).Msg("protocol initialization stage completed")
 }
 
 // Recover required presets before publishing the full registry.

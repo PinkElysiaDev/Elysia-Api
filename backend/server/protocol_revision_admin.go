@@ -39,10 +39,20 @@ func (s *Server) protocolService() (*protocol.Service, error) {
 		if err := service.Reload(context.Background()); err != nil {
 			// The management service remains available to repair invalid/stale
 			// revisions; no invalid definition is published to the registry.
-			s.logEvent("error").Err(err).Msg("protocol registry requires repair")
+			if isMissingProtocolEvidence(err) {
+				s.logEvent("info").Str("compiler", protocol.CompilerVersion).Err(err).Msg("protocol evidence refresh required")
+			} else {
+				s.logEvent("error").Str("compiler", protocol.CompilerVersion).Err(err).Msg("protocol registry requires repair")
+			}
 		}
 	})
 	return s.protocolServiceInst, s.protocolServiceErr
+}
+
+func isMissingProtocolEvidence(err error) bool {
+	var failure *protocol.ConversionError
+	return errors.Is(err, protocol.ErrNotFound) && errors.As(err, &failure) &&
+		len(failure.Issues) == 1 && failure.Issues[0].Code == protocol.VerificationRequired && failure.Issues[0].Path == "/verification"
 }
 
 func (s *Server) requireProtocolService(ctx context.Context, c *app.RequestContext) (*protocol.Service, bool) {

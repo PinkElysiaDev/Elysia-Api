@@ -298,7 +298,10 @@ func (service *Service) loadVerifiedRevision(ctx context.Context, id, hash strin
 	report, err := service.repository.ReadProtocolReport(ctx, id, hash)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return nil, IssuesError([]ConversionIssue{verificationIssue(compiled, "", "/verification", VerificationRequired, "this revision has no offline report for the current compiler", "")})
+			return nil, &ConversionError{
+				Issues: []ConversionIssue{verificationIssue(compiled, "", "/verification", VerificationRequired, "this revision has no offline report for the current compiler", "")},
+				cause:  err,
+			}
 		}
 		return nil, err
 	}
