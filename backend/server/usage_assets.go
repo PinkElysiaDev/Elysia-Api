@@ -135,13 +135,13 @@ func (a *assetSink) extractFromSSE(content string) string {
 			continue
 		}
 		a.extractFromValue(value)
-		if replaced, err := sonic.ConfigStd.Marshal(value); err == nil {
+		if replaced, err := sonic.ConfigStd.MarshalToString(value); err == nil {
 			// 用定位而非 TrimSuffix 重建：payload 已经 TrimSpace，CRLF/尾空白行
 			// 不以 payload 结尾，TrimSuffix 不匹配会把原文与替换体拼在同一行
 			// （原文 base64 未外置 + 追加了第二份 JSON）。行尾的 \r 随替换丢弃，
 			// 对存储的日志内容无害。
 			if idx := strings.LastIndex(line, payload); idx >= 0 {
-				lines[i] = line[:idx] + string(replaced)
+				lines[i] = line[:idx] + replaced
 			}
 		}
 	}
