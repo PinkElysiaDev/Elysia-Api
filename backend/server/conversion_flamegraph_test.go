@@ -88,13 +88,17 @@ type flameMeasurement struct {
 	SizeMiB, Workers, Repeat, Requests int
 	Stream                             bool
 	ElapsedMS                          float64
-	Metrics                            conversionHTTPMetrics
-	Before                             conversionHTTPMetrics
-	LatencyP50P95P99NS                 [3]int64
-	FirstByteP50P95P99NS               [3]int64
-	FirstFrameP50P95P99NS              [3]int64
-	Observations                       []flameCallMeasurement
-	Recovery                           []flameRecoverySample `json:",omitempty"`
+	// Settlement includes the metrics round trip and confirmation that all
+	// completed requests have persisted; it is not the SQL commit timestamp.
+	SettledElapsedMS      float64 `json:",omitempty"`
+	SettlementWaitMS      float64 `json:",omitempty"`
+	Metrics               conversionHTTPMetrics
+	Before                conversionHTTPMetrics
+	LatencyP50P95P99NS    [3]int64
+	FirstByteP50P95P99NS  [3]int64
+	FirstFrameP50P95P99NS [3]int64
+	Observations          []flameCallMeasurement
+	Recovery              []flameRecoverySample `json:",omitempty"`
 }
 
 type flameCallMeasurement struct {
@@ -411,7 +415,9 @@ func TestConversionFlamegraph(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			settlementStarted := time.Now()
 			sample := metrics(gateway.Metrics, "settle")
+			settlementWait, settledElapsed := time.Since(settlementStarted), time.Since(started)
 			if mode == "memory" {
 				// Heap profiles can lag by two GC cycles. Only the memory run
 				// forces collection, after all measured requests and logs drain.
@@ -430,6 +436,10 @@ func TestConversionFlamegraph(t *testing.T) {
 				t.Fatal("duplicate or missing generations")
 			}
 			measurement := flameMeasurement{UpstreamCalls: after.Calls - before.Calls, Mode: mode, Workload: workload, Phase: "steady", SizeMiB: size, Workers: workers, Repeat: repeat, Requests: requests, Stream: stream, ElapsedMS: float64(elapsed) / float64(time.Millisecond), Before: initial, Metrics: sample, Observations: observations}
+			if mode == "measure" {
+				measurement.SettledElapsedMS = float64(settledElapsed) / float64(time.Millisecond)
+				measurement.SettlementWaitMS = float64(settlementWait) / float64(time.Millisecond)
+			}
 			if workers > 1 {
 				measurement.Phase = "burst"
 			}
