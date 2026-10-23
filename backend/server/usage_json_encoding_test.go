@@ -176,8 +176,12 @@ func TestUsageJSONEncodingMarshalerErrorsAndCalls(t *testing.T) {
 				expected, expectedErr := sonic.ConfigStd.Marshal(expectedValue)
 				actual, actualErr := marshalUsageJSON(actualValue)
 				assertUsageEncodingResult(t, actual, expected, actualErr, expectedErr)
-				if actualCalls() != 1 || expectedCalls() != 1 {
-					t.Fatalf("marshaler calls = %d, baseline %d; want exactly one", actualCalls(), expectedCalls())
+				// Sonic's race build also calls encoding/json.Marshal to expose
+				// races hidden by its JIT. The wrapper must add no invocations
+				// beyond this single ConfigStd.Marshal, in either build mode.
+				wantCalls, gotCalls := expectedCalls(), actualCalls()
+				if wantCalls == 0 || gotCalls != wantCalls {
+					t.Fatalf("marshaler calls = %d, want %d from one baseline encoding", gotCalls, wantCalls)
 				}
 				if errors.Is(actualErr, sentinel) != errors.Is(expectedErr, sentinel) {
 					t.Fatal("marshaler error chain changed")
