@@ -52,8 +52,10 @@ func (replay *EventReplay) Consume(event Event) (bool, error) {
 	if replay.isTerminal && event.Type != UsageUpdated {
 		return false, streamIssue(UpstreamContractViolation, "/type", "event arrived after terminal; only usage tails are permitted")
 	}
-	replay.usage = MergeUsage(replay.usage, event.Usage)
-	if event.Response != nil {
+	if event.Usage != nil {
+		replay.usage = MergeUsage(replay.usage, event.Usage)
+	}
+	if event.Response != nil && event.Response.Usage != nil {
 		replay.usage = MergeUsage(replay.usage, event.Response.Usage)
 	}
 	switch event.Type {

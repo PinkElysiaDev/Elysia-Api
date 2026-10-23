@@ -12,13 +12,17 @@ func (stream *streamModule) encodeEvent(event p.Event, options p.EvaluationConte
 	if event.Unmapped != nil {
 		return nil, unsupported("/unmapped", "unmapped wire fields require original frame preservation or an explicit mapping")
 	}
-	stream.usage = p.MergeUsage(stream.usage, event.Usage)
+	if event.Usage != nil {
+		stream.usage = p.MergeUsage(stream.usage, event.Usage)
+	}
 	if event.Response != nil {
 		if err := stream.module.preserveExtensions(p.Object{}, event.Response.Attributes); err != nil {
 			return nil, err
 		}
 		stream.attributes = mergeAttributes(stream.attributes, event.Response.Attributes)
-		stream.usage = p.MergeUsage(stream.usage, event.Response.Usage)
+		if event.Response.Usage != nil {
+			stream.usage = p.MergeUsage(stream.usage, event.Response.Usage)
+		}
 		if !event.Response.Model.IsZero() {
 			stream.model = event.Response.Model
 		}

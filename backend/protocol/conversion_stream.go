@@ -76,8 +76,10 @@ func (s *ConversionEventState) Push(event Event) ([]Event, error) {
 		}
 	}
 	if s.conversion.HasAnthropicEnvelope(ConversionEvent, s.route) {
-		s.usage = MergeUsage(s.usage, event.Usage)
-		if event.Response != nil {
+		if event.Usage != nil {
+			s.usage = MergeUsage(s.usage, event.Usage)
+		}
+		if event.Response != nil && event.Response.Usage != nil {
 			s.usage = MergeUsage(s.usage, event.Response.Usage)
 		}
 		if event.Type == ResponseStarted {
