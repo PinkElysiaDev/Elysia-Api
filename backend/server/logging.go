@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"runtime/debug"
 	"time"
 
@@ -43,22 +44,26 @@ func (s *Server) requestLogging() app.HandlerFunc {
 		c.Header("X-Elysia-Request-Id", id)
 		logger := s.Logger().Component("http").With().Str("request_id", id).Logger()
 		ctx = logger.WithContext(ctx)
+		trackHTTPDelivery(ctx, c)
 		// Middleware return only ends application dispatch. Hertz still owns
 		// BodyStream/hijack I/O; log from Finish before the lifecycle lease exits.
 		onHTTPComplete(c, func() {
-			var transportErr error
-			if trace := c.GetTraceInfo(); trace != nil {
-				transportErr = trace.Stats().Error()
-			}
+			delivery := freezeHTTPDelivery(c)
+			transportErr := delivery.err
 			level := zerolog.DebugLevel
 			if c.Response.StatusCode() >= 500 || transportErr != nil {
 				level = zerolog.ErrorLevel
 			}
 			if s.Logger().Enabled(level) {
 				logger.WithLevel(level).Err(transportErr).
+					Interface("delivery", delivery.result).
 					Str("method", string(c.Method())).Str("path", string(c.Path())).
 					Int("status_code", c.Response.StatusCode()).Int64("duration_ms", time.Since(started).Milliseconds()).
 					Msg("request completed")
+				var failure *downstreamWriteError
+				if errors.As(transportErr, &failure) {
+					failure.isReported = true
+				}
 			}
 		})
 		defer func() {

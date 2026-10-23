@@ -66,5 +66,5 @@ func (s *Server) rejectPreparation(ctx context.Context, c *app.RequestContext, c
 	record.IngressRevision, record.SourceFormat, record.RelayMode = compiled.Hash(), compiled.Identity().DefinitionID, "protocol_v2"
 	installDownstreamCapture(c, record, downstreamCaptureLimit(s.usageLogConfig()))
 	s.failGateway(ctx, c, record, status, err)
-	s.recordUsage(record)
+	s.recordHTTPUsage(c, record)
 }

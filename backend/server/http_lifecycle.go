@@ -68,11 +68,12 @@ func (s *Server) requestLifecycle() app.HandlerFunc {
 			c.AbortWithMsg("server is shutting down", http.StatusServiceUnavailable)
 			return
 		}
-		ctx, cancel := context.WithCancel(ctx)
-		stop := context.AfterFunc(s.lifecycleCtx, cancel)
-		onHTTPComplete(c, func() { stop(); cancel(); s.httpRequests.leave(c) })
+		ctx, cancel := context.WithCancelCause(ctx)
+		stop := context.AfterFunc(s.lifecycleCtx, func() { cancel(errHTTPServerShutdown) })
+		trackHTTPDelivery(ctx, c)
+		onHTTPComplete(c, func() { stop(); cancel(nil); s.httpRequests.leave(c) })
 		if s.lifecycleCtx.Err() != nil {
-			cancel()
+			cancel(errHTTPServerShutdown)
 		}
 		c.Next(ctx)
 	}
@@ -102,6 +103,7 @@ func onHTTPComplete(c *app.RequestContext, done func()) {
 }
 
 func finishHTTPRequest(c *app.RequestContext) {
+	freezeHTTPDelivery(c)
 	value, ok := c.Get(httpCompletionKey)
 	if !ok || value == nil {
 		return

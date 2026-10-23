@@ -31,6 +31,12 @@ func recordFailureEvidence(record *usageRecord, err error) {
 			record.ErrorKind = string(conversion.Issues[0].Code)
 		}
 	}
+	if issue := independentConversionIssue(err); issue != nil {
+		record.appendConversionIssues([]protocol.ConversionIssue{*issue})
+		if record.TransportFailure == nil {
+			record.ErrorKind = string(issue.Code)
+		}
+	}
 	if class := generationFailureClass(err); class != "" {
 		record.ErrorKind = string(class)
 	} else if record.UpstreamHTTPStatus >= 400 {

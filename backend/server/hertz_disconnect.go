@@ -23,7 +23,7 @@ const (
 
 type httpDisconnectWatch struct {
 	raw        syscall.RawConn
-	cancel     context.CancelFunc
+	cancel     context.CancelCauseFunc
 	isDisabled bool // protected by the monitor lock
 }
 
@@ -65,7 +65,7 @@ func (monitor *httpDisconnectMonitor) middleware() app.HandlerFunc {
 }
 
 func (monitor *httpDisconnectMonitor) watch(ctx context.Context, conn net.Conn) (context.Context, func()) {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 	watch := &httpDisconnectWatch{cancel: cancel}
 	var err error
 	if socket, ok := conn.(syscall.Conn); ok {
@@ -75,16 +75,11 @@ func (monitor *httpDisconnectMonitor) watch(ctx context.Context, conn net.Conn) 
 	}
 	if err != nil {
 		watch.isDisabled = true
-		if errors.Is(err, net.ErrClosed) {
-			cancel()
-		} else {
-			monitor.reportProbeFailure(err)
-		}
 	}
 	monitor.mu.Lock()
 	if monitor.isClosed {
 		monitor.mu.Unlock()
-		cancel()
+		cancel(errHTTPServerShutdown)
 		return ctx, func() {}
 	}
 	monitor.watches[watch] = struct{}{}
@@ -94,8 +89,15 @@ func (monitor *httpDisconnectMonitor) watch(ctx context.Context, conn net.Conn) 
 		go monitor.run()
 	}
 	monitor.mu.Unlock()
+	if err != nil {
+		if errors.Is(err, net.ErrClosed) {
+			cancel(&downstreamObservationError{cause: err})
+		} else {
+			monitor.reportProbeFailure(err)
+		}
+	}
 	return ctx, func() {
-		cancel()
+		cancel(nil)
 		monitor.mu.Lock()
 		delete(monitor.watches, watch)
 		isIdle := len(monitor.watches) == 0
@@ -144,7 +146,11 @@ func (monitor *httpDisconnectMonitor) run() {
 				continue
 			}
 			if isDisconnected {
-				watch.cancel()
+				cause := err
+				if cause == nil {
+					cause = errDownstreamDisconnected
+				}
+				watch.cancel(cause)
 			} else {
 				monitor.reportProbeFailure(err)
 			}
@@ -173,14 +179,14 @@ func (monitor *httpDisconnectMonitor) close() {
 		monitor.isClosed = true
 		close(monitor.stop)
 	}
-	cancels := make([]context.CancelFunc, 0, len(monitor.watches))
+	cancels := make([]context.CancelCauseFunc, 0, len(monitor.watches))
 	for watch := range monitor.watches {
 		cancels = append(cancels, watch.cancel)
 	}
 	clear(monitor.watches)
 	monitor.mu.Unlock()
 	for _, cancel := range cancels {
-		cancel()
+		cancel(errHTTPServerShutdown)
 	}
 	monitor.workers.Wait()
 }
@@ -193,9 +199,6 @@ type httpDisconnectTransport struct {
 }
 
 func (monitor *httpDisconnectMonitor) transport(options *hconfig.Options) network.Transporter {
-	if monitor == nil {
-		return standard.NewTransporter(options)
-	}
 	// Hertz applies this sentinel by the concrete transport's package name.
 	// The wrapper must preserve standard's unlimited keep-alive behavior.
 	if options.IdleTimeout == 0 {
@@ -209,11 +212,13 @@ func (transport *httpDisconnectTransport) ListenAndServe(onData network.OnData) 
 		transport.mu.Lock()
 		isGracefulClosing := transport.isGracefulClosing
 		transport.mu.Unlock()
-		if !isGracefulClosing {
+		if !isGracefulClosing && transport.monitor != nil {
 			transport.monitor.close()
 		}
 	}()
-	return transport.Transporter.ListenAndServe(onData)
+	return transport.Transporter.ListenAndServe(func(ctx context.Context, conn interface{}) error {
+		return onData(ctx, observeHTTPConnection(conn))
+	})
 }
 
 func (transport *httpDisconnectTransport) Shutdown(ctx context.Context) error {
@@ -222,13 +227,17 @@ func (transport *httpDisconnectTransport) Shutdown(ctx context.Context) error {
 	transport.mu.Unlock()
 	// Closing the listener makes ListenAndServe return before active handlers
 	// finish. Keep observing them until the graceful shutdown budget ends.
-	defer transport.monitor.close()
+	if transport.monitor != nil {
+		defer transport.monitor.close()
+	}
 	return transport.Transporter.Shutdown(ctx)
 }
 
 func (transport *httpDisconnectTransport) Close() error {
 	// Hertz's standard Close closes its listener, not all accepted sockets.
 	// Cancel handlers before delegating, including engines used without Server.
-	transport.monitor.close()
+	if transport.monitor != nil {
+		transport.monitor.close()
+	}
 	return transport.Transporter.Close()
 }

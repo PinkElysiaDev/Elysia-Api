@@ -94,7 +94,7 @@ func (s *Server) serveProtocolRequest(ctx context.Context, c *app.RequestContext
 	isTaskOwned := false
 	defer func() {
 		if !isTaskOwned {
-			s.recordUsage(record)
+			s.recordHTTPUsage(c, record)
 		}
 	}()
 	plan, err := s.prepareGatewayPlan(ctx, c, view, ingress, path, body, record)
@@ -137,8 +137,12 @@ func (s *Server) serveProtocolRequest(ctx context.Context, c *app.RequestContext
 	}()
 	attempts := routing.MaxAttempts(plan.group.MaxRetries, len(plan.candidates))
 	defer plan.releasePreparation()
+	var lastFailure error
 	for index := range attempts {
 		if err := ctx.Err(); err != nil {
+			if lastFailure != nil {
+				err = lastFailure
+			}
 			s.failGateway(ctx, c, record, statusClientClosedRequest, err)
 			return
 		}
@@ -149,6 +153,7 @@ func (s *Server) serveProtocolRequest(ctx context.Context, c *app.RequestContext
 			s.affinity.set(record.KeyHash, plan.group.ID, modelName)
 			return
 		}
+		lastFailure = err
 		if responseCommitted(c) {
 			s.failGateway(ctx, c, record, http.StatusBadGateway, err)
 			return
@@ -161,7 +166,7 @@ func (s *Server) serveProtocolRequest(ctx context.Context, c *app.RequestContext
 		}
 		s.appendRetryEvent(record, index, modelName, err.Error())
 		if plan.group.RetryInterval > 0 && !waitForRetryOrCancel(ctx, plan.group.RetryInterval) {
-			s.failGateway(ctx, c, record, statusClientClosedRequest, ctx.Err())
+			s.failGateway(ctx, c, record, statusClientClosedRequest, err)
 			return
 		}
 	}
@@ -281,9 +286,6 @@ func (s *Server) failGateway(ctx context.Context, c *app.RequestContext, record 
 	if localStatus := localResourceStatus(record, err); localStatus != 0 {
 		status = localStatus
 	}
-	if ctx.Err() != nil {
-		status = statusClientClosedRequest
-	}
 	record.StatusCode, record.Error, record.ErrorKind = status, err.Error(), ErrorKindUpstream
 	recordFailureEvidence(record, err)
 	if isPreparationFailure(err) && record.UpstreamHTTPStatus == 0 {
@@ -299,6 +301,8 @@ func (s *Server) failGateway(ctx context.Context, c *app.RequestContext, record 
 	if status == statusClientClosedRequest {
 		record.ErrorKind = ErrorKindClientCanceled
 	}
+	classifyRequestInterruption(record, ctx, err)
+	status = record.StatusCode
 	if responseCommitted(c) {
 		return
 	}

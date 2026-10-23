@@ -267,6 +267,10 @@ func (s *Server) enqueueUsageRecord(record *usageRecord) bool {
 	// 在入队后继续 append（RetryEvents 等）即与 writer goroutine 读取竞争。
 	// downstream 捕获器的内容已在 recordUsage 物化进 DownstreamResponse，置 nil 断开指针别名。
 	copied := *record
+	if record.Delivery != nil {
+		delivery := *record.Delivery
+		copied.Delivery = &delivery
+	}
 	copied.queuedPayloadBytes = payloadBytes
 	copied.RetryEvents = cloneSlice(record.RetryEvents)
 	copied.ConversionChain = cloneSlice(record.ConversionChain)

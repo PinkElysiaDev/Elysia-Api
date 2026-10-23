@@ -33,8 +33,8 @@ func (w *responseStream) Write(p []byte) (int, error) {
 	if w.capture != nil {
 		w.capture.capture(p[:n])
 	}
-	w.err = err
-	return n, err
+	w.err = wrapDownstreamError(err, deliveryWrite)
+	return n, w.err
 }
 
 func (w *responseStream) Flush() error {
@@ -48,7 +48,7 @@ func (w *responseStream) Flush() error {
 			return err
 		}
 	}
-	w.err = w.ExtWriter.Flush()
+	w.err = wrapDownstreamError(w.ExtWriter.Flush(), deliveryFlush)
 	return w.err
 }
 
@@ -56,7 +56,8 @@ func (w *responseStream) Finalize() error {
 	if w.err != nil {
 		return w.err
 	}
-	return w.ExtWriter.Finalize()
+	w.err = wrapDownstreamError(w.ExtWriter.Finalize(), deliveryFinalize)
+	return w.err
 }
 
 func currentResponseStream(c *app.RequestContext) *responseStream {
@@ -114,7 +115,7 @@ func recoverHTTPResponse(c *app.RequestContext) {
 	if w := currentResponseStream(c); w != nil && w.committed {
 		// Do not append a successful zero chunk after a panic or rewrite headers
 		// that are already on the wire. Returning an error closes the connection.
-		w.err = errResponseAborted
+		w.err = wrapDownstreamError(errResponseAborted, deliveryAbort)
 		c.SetConnectionClose()
 		return
 	}

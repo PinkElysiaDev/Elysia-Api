@@ -111,6 +111,7 @@ type usageRecord struct {
 	// of a logical generation failure carried inside a successful HTTP stream.
 	UpstreamHTTPStatus int               `json:"upstreamHttpStatus,omitempty"`
 	TransportFailure   *transportFailure `json:"transportFailure,omitempty"`
+	Delivery           *httpDelivery     `json:"delivery,omitempty"`
 	Error              string            `json:"error,omitempty"`
 	// ErrorKind 是错误归类（ErrorKind* 常量），供面板筛选/展示；空表示未归类。
 	ErrorKind          string           `json:"errorKind,omitempty"`
@@ -328,8 +329,16 @@ func reportMask(usage usageTokenUsage) int {
 	return mask
 }
 func (s *Server) recordUsage(record *usageRecord) {
+	if s.prepareUsageWrite(record) {
+		s.writePreparedUsage(record)
+	}
+}
+
+// Prepare at the original settlement boundary. In particular, a later HTTP
+// completion cannot adopt a generation created by reset in the meantime.
+func (s *Server) prepareUsageWrite(record *usageRecord) bool {
 	if record == nil {
-		return
+		return false
 	}
 	// 回读「返回下游」内容（第四段链路）：缓冲响应或流式写入的有界副本。
 	// 仅在还没显式设置过时回填，避免覆盖特殊路径手动赋的值。
@@ -341,7 +350,7 @@ func (s *Server) recordUsage(record *usageRecord) {
 	record.materializeStreamEvents()
 	// 日志持久化总开关（usageLog.persistEnabled，默认 true）：关闭后完全不落库。
 	if !s.usageLogConfig().PersistEnabled {
-		return
+		return false
 	}
 	if record.EndedAt.IsZero() {
 		record.EndedAt = time.Now()
@@ -352,9 +361,13 @@ func (s *Server) recordUsage(record *usageRecord) {
 
 	if s.store == nil {
 		// 无 store 的降级模式不再留存 usage（遗留面板已下线，无任何读取方）。
-		return
+		return false
 	}
 	record.writeGen = s.usageWriteGen.Load()
+	return true
+}
+
+func (s *Server) writePreparedUsage(record *usageRecord) {
 	// 优先异步落库，避免请求路径阻塞在 SQLite 写入上；
 	// 队列满或未启动时降级为同步写，保证不丢记录。
 	if s.enqueueUsageRecord(record) {

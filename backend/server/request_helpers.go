@@ -47,16 +47,12 @@ func setUsageError(record *usageRecord, ctx context.Context, err error) {
 	if localStatus := localResourceStatus(record, err); localStatus != 0 {
 		record.StatusCode = localStatus
 	}
-	if errors.Is(ctx.Err(), context.Canceled) {
-		record.StatusCode = statusClientClosedRequest
-		record.ErrorKind = ErrorKindClientCanceled
-	} else if failure := (*upstreamHTTPFailure)(nil); errors.As(err, &failure) {
+	if failure := (*upstreamHTTPFailure)(nil); errors.As(err, &failure) {
 		// A timeout while decoding an already rejected HTTP response is
 		// secondary evidence; retain the observed upstream status.
 		record.StatusCode = failure.status
-	} else if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
-		record.StatusCode = http.StatusGatewayTimeout
 	}
+	classifyRequestInterruption(record, ctx, err)
 }
 
 // waitForRetryOrCancel 等待重试间隔；客户端在等待期断开时返回 false

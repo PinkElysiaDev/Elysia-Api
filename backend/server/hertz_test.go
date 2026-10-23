@@ -157,6 +157,7 @@ func flushTestResponse(c *app.RequestContext) {
 	if !ok {
 		return
 	}
+	defer finishHTTPRequest(c)
 	rec := value.(*httptest.ResponseRecorder)
 	if w := c.Response.GetHijackWriter(); w != nil {
 		_ = w.Finalize()

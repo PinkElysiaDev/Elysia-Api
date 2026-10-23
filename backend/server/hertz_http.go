@@ -51,6 +51,7 @@ func newHTTPEngine(cfg *config.Config, extra ...hconfig.Option) *route.Engine {
 		engine.Use(disconnect.middleware())
 	}
 	engine.Use(func(ctx context.Context, c *app.RequestContext) {
+		trackHTTPDelivery(ctx, c)
 		defer func() {
 			if !c.Request.IsBodyStream() || c.Hijacked() {
 				return

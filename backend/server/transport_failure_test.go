@@ -78,7 +78,8 @@ func TestTransportFailureAttribution(t *testing.T) {
 			flushTestResponse(gateway)
 			wantKind := ErrorKindUpstreamIdleTimeout
 			if scenario == "cancel" {
-				wantKind = ErrorKindClientCanceled
+				// This is a caller cancellation without a socket observation.
+				wantKind = deliveryCanceled
 			}
 			if scenario == "http_failure" {
 				wantKind = "invalid_request"
@@ -91,7 +92,7 @@ func TestTransportFailureAttribution(t *testing.T) {
 					t.Fatalf("primary changed: %s, %v", observed.ErrorKind, err)
 				}
 				if scenario == "cancel" {
-					if observed.TransportFailure != nil || observed.StatusCode != 499 {
+					if observed.TransportFailure != nil || observed.StatusCode != http.StatusServiceUnavailable {
 						t.Fatal(observed)
 					}
 					continue

@@ -264,6 +264,12 @@ func (stream *gatewayStream) finish(err error) error {
 	}
 	if err != nil {
 		err = errors.Join(stream.terminalFailure, err)
+		var deliveryFailure *downstreamWriteError
+		if stream.ctx.Err() != nil || errors.As(err, &deliveryFailure) {
+			// The delivery owner will record this failure. A closed/cancelled
+			// stream cannot consume another projected terminal event.
+			return err
+		}
 		if stream.isFailureDelivered {
 			// A provider failure already ended the client's event lifecycle.
 			// Reject an invalid tail without replacing the original cause or

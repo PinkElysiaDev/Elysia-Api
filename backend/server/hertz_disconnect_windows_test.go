@@ -3,10 +3,12 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"syscall"
 	"testing"
 	"time"
 
@@ -84,7 +86,8 @@ func TestWindowsDisconnectProbePreservesUnreadData(t *testing.T) {
 			deadline := time.Now().Add(3 * time.Second)
 			for {
 				isClosed, err := probeWindowsTCPDisconnect(raw)
-				if err != nil {
+				var observation *downstreamObservationError
+				if err != nil && (!isClosed || !errors.As(err, &observation)) {
 					t.Fatal("Windows disconnect capability unavailable", err)
 				}
 				if isClosed {
@@ -103,9 +106,36 @@ func TestWindowsDisconnectProbePreservesUnreadData(t *testing.T) {
 				}
 			}
 			server.Close()
-			if isClosed, err := probeWindowsTCPDisconnect(raw); !isClosed || err != nil {
+			if isClosed, err := probeWindowsTCPDisconnect(raw); !isClosed || !errors.Is(err, net.ErrClosed) {
 				t.Fatalf("closed Go connection: closed=%v err=%v", isClosed, err)
 			}
 		})
+	}
+}
+
+type failedSocketObservation struct{ cause error }
+
+func (raw failedSocketObservation) Control(func(uintptr)) error    { return raw.cause }
+func (raw failedSocketObservation) Read(func(uintptr) bool) error  { return raw.cause }
+func (raw failedSocketObservation) Write(func(uintptr) bool) error { return raw.cause }
+
+func TestWindowsAbortProbeAndWriteHaveSameUnknownOrigin(t *testing.T) {
+	for _, socketErr := range []error{windows.WSAECONNABORTED, windows.WSAENOTCONN, net.ErrClosed} {
+		closed, observedErr := probeWindowsTCPDisconnect(failedSocketObservation{socketErr})
+		if !closed || !errors.Is(observedErr, socketErr) {
+			t.Fatal("socket closure lost its evidence", closed, observedErr)
+		}
+		monitor := newHTTPDisconnectMonitor(func(syscall.RawConn) (bool, error) { return closed, observedErr })
+		ctx, finish := monitor.watch(t.Context(), disconnectTestConn{})
+		awaitDisconnectSignal(t, ctx.Done())
+		for _, requestCtx := range []context.Context{t.Context(), ctx} {
+			record := &usageRecord{StatusCode: 200}
+			setUsageError(record, requestCtx, wrapDownstreamError(socketErr, deliveryFlush))
+			if record.StatusCode != 502 || record.ErrorKind != deliveryTransport {
+				t.Fatal("polling order attributed an unknown abort to the client", record.StatusCode, record.ErrorKind)
+			}
+		}
+		finish()
+		monitor.close()
 	}
 }

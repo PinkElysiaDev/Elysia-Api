@@ -39,6 +39,10 @@ func (disconnectTestRawConn) Write(callback func(uintptr) bool) error {
 
 type disconnectTestConn struct{ net.Conn }
 
+type closedDisconnectTestConn struct{ net.Conn }
+
+func (closedDisconnectTestConn) SyscallConn() (syscall.RawConn, error) { return nil, net.ErrClosed }
+
 func (disconnectTestConn) SyscallConn() (syscall.RawConn, error) {
 	return disconnectTestRawConn{}, nil
 }
@@ -93,6 +97,16 @@ func TestHTTPDisconnectMonitorCompletedRequestIsolation(t *testing.T) {
 	finishLate()
 	if late.Err() == nil || !monitor.snapshot().Closed || monitor.snapshot().Running {
 		t.Fatal("closed monitor admitted work")
+	}
+}
+
+func TestHTTPDisconnectClosedRegistrationKeepsShutdownCause(t *testing.T) {
+	monitor := newHTTPDisconnectMonitor(func(syscall.RawConn) (bool, error) { t.Error("closed monitor probed a socket"); return false, nil })
+	monitor.close()
+	ctx, finish := monitor.watch(t.Context(), closedDisconnectTestConn{})
+	defer finish()
+	if !errors.Is(context.Cause(ctx), errHTTPServerShutdown) || monitor.snapshot().Active != 0 {
+		t.Fatal("closed socket replaced the already closed monitor's cause", context.Cause(ctx))
 	}
 }
 

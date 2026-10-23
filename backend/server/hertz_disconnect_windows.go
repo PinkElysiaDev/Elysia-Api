@@ -44,14 +44,21 @@ func probeWindowsTCPDisconnect(raw syscall.RawConn) (bool, error) {
 	}
 	if err != nil {
 		if isClosedWindowsSocket(err) {
-			return true, nil
+			if errors.Is(err, windows.WSAECONNRESET) {
+				return true, nil
+			}
+			return true, &downstreamObservationError{cause: err}
 		}
 		return false, err
 	}
 	if returned != windowsTCPInfoSize {
 		return false, fmt.Errorf("SIO_TCP_INFO returned %d bytes, expected %d", returned, windowsTCPInfoSize)
 	}
-	return isClosedTCPState(binary.LittleEndian.Uint32(info[:4]))
+	state := binary.LittleEndian.Uint32(info[:4])
+	if state == tcpStateClosed {
+		return true, &downstreamObservationError{cause: errors.New("TCP socket is closed; closure source is unknown")}
+	}
+	return isClosedTCPState(state)
 }
 
 func isClosedWindowsSocket(err error) bool {

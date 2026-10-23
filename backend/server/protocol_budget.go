@@ -75,7 +75,7 @@ func (s *Server) readGatewayRequest(ctx context.Context, c *app.RequestContext, 
 	record.RelayMode = "protocol_v2"
 	installDownstreamCapture(c, record, downstreamCaptureLimit(s.usageLogConfig()))
 	s.failGateway(ctx, c, record, http.StatusBadRequest, err)
-	s.recordUsage(record)
+	s.recordHTTPUsage(c, record)
 	return nil, false
 }
 
