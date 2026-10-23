@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // reconcileNative applies semantic differences to the received wire document.
@@ -237,28 +238,72 @@ func nativeItemIdentity(item Value, key string) (string, error) {
 	return string(canonical.Bytes()), nil
 }
 
-// Most routing changes touch a small root field such as model. Prove inequality
-// before decoding unrelated large strings. Equal/ambiguous values still use the
-// original exact comparator, including its bounded numeric semantics.
+// Compare immutable subvalues without decoding unrelated large strings. Only
+// the root may bypass numeric validation when its complete spelling is equal.
 func equalNativeValues(left, right Value) bool {
 	if left.raw == right.raw {
 		return true
 	}
-	if left.IsObject() && right.IsObject() {
-		before, _ := left.readObjectWithin(requestValueReader(left))
-		after, _ := right.readObjectWithin(requestValueReader(right))
+	if left.IsZero() || right.IsZero() {
+		return false
+	}
+	return equalNativeValuesWithin(left, right, requestValueReader(left), requestValueReader(right))
+}
+
+func equalNativeValuesWithin(left, right Value, leftReader, rightReader *valueReader) bool {
+	leftRaw, rightRaw := strings.TrimSpace(left.raw), strings.TrimSpace(right.raw)
+	switch leftRaw[0] {
+	case '{':
+		if rightRaw[0] != '{' {
+			return false
+		}
+		before, _ := left.readObjectWithin(leftReader)
+		after, _ := right.readObjectWithin(rightReader)
 		if len(before) != len(after) {
 			return false
 		}
 		for key, value := range before {
 			other, exists := after[key]
-			if !exists {
-				return false
-			}
-			if len(value.raw) <= requestViewMinBytes && len(other.raw) <= requestViewMinBytes && !equalValues(value, other) {
+			if !exists || !equalNativeValuesWithin(value, other, leftReader, rightReader) {
 				return false
 			}
 		}
+		return true
+	case '[':
+		if rightRaw[0] != '[' {
+			return false
+		}
+		before, _ := left.readArrayWithin(leftReader)
+		after, _ := right.readArrayWithin(rightReader)
+		if len(before) != len(after) {
+			return false
+		}
+		for index, value := range before {
+			if !equalNativeValuesWithin(value, after[index], leftReader, rightReader) {
+				return false
+			}
+		}
+		return true
+	case '"':
+		if rightRaw[0] != '"' {
+			return false
+		}
+		if leftRaw == rightRaw {
+			return true
+		}
+		var before, after string
+		return left.Decode(&before) == nil && right.Decode(&after) == nil && before == after
+	case 'n', 't', 'f':
+		return leftRaw == rightRaw
+	default:
+		if rightRaw[0] != '-' && (rightRaw[0] < '0' || rightRaw[0] > '9') {
+			return false
+		}
+		before, ok := exactNumber(leftRaw)
+		if !ok {
+			return false
+		}
+		after, ok := exactNumber(rightRaw)
+		return ok && before.Cmp(after) == 0
 	}
-	return equalValues(left, right)
 }

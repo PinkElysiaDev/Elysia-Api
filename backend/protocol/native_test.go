@@ -111,3 +111,64 @@ func TestMutationTransactionAndLimits(t *testing.T) {
 		t.Fatal("buffer limit ignored")
 	}
 }
+
+func TestNativeValueComparisonMatchesDecodedValues(t *testing.T) {
+	payload := strings.Repeat("A", 128<<10)
+	for _, pair := range [][2]string{
+		{`null`, ` null `}, {`null`, `false`}, {`[]`, `{}`}, {`true`, `false`},
+		{`"a"`, `"\u0061"`}, {`"\ud800"`, `"�"`}, {"\"\xff\"", `"�"`},
+		{`1`, `1.0`}, {`-0`, `0e0`}, {`9007199254740993`, `9007199254740993.0`},
+		{`{"a":1,"a":2}`, `{"a":2}`}, {`{"a":1,"\u0061":2}`, `{"a":2}`},
+		{`{"a":1e9999,"a":1}`, `{"a":1}`}, {`{"a":null}`, `{}`},
+		{`{"a":[1,2],"b":false}`, `{"b":false,"a":[1.0,2e0]}`},
+		{`[1,2]`, `[2,1]`},
+		{`{"payload":"` + payload + `","n":1}`, `{"n":1.0,"payload":"` + payload + `"}`},
+		{`{"payload":"` + payload + `","n":1}`, `{"n":2,"payload":"` + payload + `"}`},
+	} {
+		left, right := parseTestValue(t, pair[0]), parseTestValue(t, pair[1])
+		if got, want := equalNativeValues(left, right), equalValues(left, right); got != want {
+			t.Fatalf("native comparison differs for %.100q / %.100q: got %t, want %t", pair[0], pair[1], got, want)
+		}
+	}
+	if !equalNativeValues(Value{}, Value{}) || equalNativeValues(Value{}, parseTestValue(t, `null`)) {
+		t.Fatal("absent and null comparison changed")
+	}
+}
+
+func TestNativeValueComparisonRetainsNestedNumericBounds(t *testing.T) {
+	for _, number := range []string{strings.Repeat("9", maxNumericConversionDigits), strings.Repeat("9", maxNumericConversionDigits+1), `1e4096`, `1e4097`, `1e-4097`} {
+		identical := parseTestValue(t, `{"nested":[`+number+`]}`)
+		if !equalNativeValues(identical, identical) {
+			t.Fatal("identical root no longer preserves its native spelling")
+		}
+		left := parseTestValue(t, `{"nested":[`+number+`],"n":0}`)
+		right := parseTestValue(t, `{"n":0.0,"nested":[`+number+`]}`)
+		if got, want := equalNativeValues(left, right), equalValues(left, right); got != want {
+			t.Fatalf("nested number bound differs for %.20q: got %t, want %t", number, got, want)
+		}
+	}
+}
+
+func FuzzNativeValueComparison(f *testing.F) {
+	for _, pair := range [][2]string{
+		{`{"a":1,"a":2}`, `{"a":2.0}`},
+		{`{"a":[1e4097],"b":0}`, `{"b":0.0,"a":[1e4097]}`},
+		{`["\ud800",null]`, `["�",null]`},
+		{"{\"\xff\":1}", `{"�":1}`},
+	} {
+		f.Add(pair[0], pair[1])
+	}
+	f.Fuzz(func(t *testing.T, before, after string) {
+		if len(before) > fuzzInputLimit || len(after) > fuzzInputLimit {
+			return
+		}
+		left, leftErr := ParseValue([]byte(before))
+		right, rightErr := ParseValue([]byte(after))
+		if leftErr != nil || rightErr != nil || checkValueLimits(left, DefaultLimits()) != nil || checkValueLimits(right, DefaultLimits()) != nil {
+			return
+		}
+		if got, want := equalNativeValues(left, right), equalValues(left, right); got != want {
+			t.Fatalf("native comparison differs: %q / %q: %t != %t", before, after, got, want)
+		}
+	})
+}
