@@ -21,7 +21,7 @@ type typedMeter struct {
 	bytes, nodes, depth int
 	maxDepth            int
 	cache               *semanticCache
-	needsNormalization  bool
+	shouldNormalize     bool
 }
 
 type typedField struct {
@@ -253,7 +253,7 @@ func (meter *typedMeter) raw(raw string) bool {
 		}
 		entry.metrics = semanticMetrics{bytes: local.bytes, nodes: local.nodes, depth: local.maxDepth}
 		entry.hasMetrics = true
-		if !local.needsNormalization && !entry.hasNormalized {
+		if !local.shouldNormalize && !entry.hasNormalized {
 			entry.normalized, entry.hasNormalized = value, true
 		}
 		meter.cache.store(value, entry)
@@ -275,7 +275,7 @@ func (meter *typedMeter) scanRaw(raw string) bool {
 	for offset := 0; offset < len(raw); {
 		switch raw[offset] {
 		case ' ', '\t', '\r', '\n':
-			meter.needsNormalization = true
+			meter.shouldNormalize = true
 			offset++
 		case ',', ':':
 			meter.bytes++
@@ -298,9 +298,9 @@ func (meter *typedMeter) scanRaw(raw string) bool {
 			// JSON; their escaped spellings contain no matching literal bytes.
 			escapedBytes := 5*(strings.Count(text, "<")+strings.Count(text, ">")+strings.Count(text, "&")) + 3*(strings.Count(text, "\u2028")+strings.Count(text, "\u2029"))
 			length += escapedBytes
-			meter.needsNormalization = meter.needsNormalization || escapedBytes != 0
+			meter.shouldNormalize = meter.shouldNormalize || escapedBytes != 0
 			if !utf8.ValidString(text) {
-				meter.needsNormalization = true
+				meter.shouldNormalize = true
 				for index := 0; index < len(text); {
 					_, width := utf8.DecodeRuneInString(text[index:])
 					if width == 1 && text[index] >= utf8.RuneSelf {
