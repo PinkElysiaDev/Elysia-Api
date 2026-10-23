@@ -22,6 +22,11 @@ func (adapter observedRequestModule) DecodeRequest(ctx context.Context, value p.
 }
 
 func TestRequestWorkspaceIsolationAndInvalidation(t *testing.T) {
+	t.Run("without-after", func(t *testing.T) { testRequestWorkspaceIsolationAndInvalidation(t, false) })
+	t.Run("identity-after", func(t *testing.T) { testRequestWorkspaceIsolationAndInvalidation(t, true) })
+}
+
+func testRequestWorkspaceIsolationAndInvalidation(t *testing.T, hasAfter bool) {
 	var decodes atomic.Int64
 	installed := Modules()
 	for index, entry := range installed {
@@ -33,6 +38,18 @@ func TestRequestWorkspaceIsolationAndInvalidation(t *testing.T) {
 	definitions, _ := Definitions()
 	var compiled *p.Compiled
 	for _, definition := range definitions {
+		if hasAfter {
+			var authored p.Definition
+			if err := definition.Decode(&authored); err != nil {
+				t.Fatal(err)
+			}
+			for _, direction := range []p.Direction{p.DecodeRequest, p.EncodeRequest} {
+				mapping := authored.Directions[direction]
+				mapping.After = &p.Expression{Op: "read"}
+				authored.Directions[direction] = mapping
+			}
+			definition, _ = p.EncodeValue(authored)
+		}
 		current, issues := compiler.Compile(definition.Bytes())
 		if current == nil {
 			t.Fatal(issues)

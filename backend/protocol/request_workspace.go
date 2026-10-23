@@ -49,8 +49,9 @@ func (compiled *Compiled) hasPureRequestMapping(direction Direction) bool {
 }
 
 func (compiled *Compiled) supportsRequestWorkspace() bool {
-	return compiled.hasPureRequestMapping(DecodeRequest) && compiled.mappings[DecodeRequest].after == nil &&
-		compiled.hasPureRequestMapping(EncodeRequest) && compiled.mappings[EncodeRequest].after == nil
+	// Both request boundaries now execute identity checks without a JSON round
+	// trip. Reuse still depends on the exact source, context and effective limits.
+	return compiled.hasTypedRequestMapping(DecodeRequest) && compiled.hasTypedRequestMapping(EncodeRequest)
 }
 
 func (compiled *Compiled) attachRequestWorkspace(ctx context.Context, request, baseline *Request) {
