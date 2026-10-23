@@ -109,6 +109,10 @@ func BenchmarkReviewCLIWindowsHook(b *testing.B) {
 			b.Cleanup(func() { cobra.MousetrapHelpText = original })
 			if disabled {
 				cobra.MousetrapHelpText = ""
+			} else {
+				// Explicitly restore the dependency hook for this isolated control;
+				// production initialization now disables it before any command runs.
+				cobra.MousetrapHelpText = "synthetic benchmark console hook"
 			}
 			args := []string{"source", "ls"}
 			b.ReportAllocs()
