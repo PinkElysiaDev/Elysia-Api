@@ -22,7 +22,7 @@ func (s *Server) prepareUsageRecord(record *usageRecord) (storage.UsageRecordInp
 	var assets []storage.UsageAsset
 	// bodyOnErrorOnly：成功请求的请求体没有排查价值，四段 body 与外置媒体
 	// 全部不落。错误在请求结束才确定，因此判定只能在持久化末端做——
-	// 捕获期仍照常提取占位符，这里直接清空，成功请求零磁盘写。
+	// 捕获期仍照常提取占位符；成功请求只写元数据，不保存正文或媒体资产。
 	if cfg.BodyOnErrorOnly && record.Error == "" {
 		record.IncomingBody = usageBody{}
 		record.OutgoingBody = usageBody{}

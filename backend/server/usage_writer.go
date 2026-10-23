@@ -18,6 +18,14 @@ const usageQueueCapacity = 1024
 // asynchronous retention, not active request memory or generation concurrency.
 const usageQueuePayloadBytes int64 = 128 << 20
 
+const (
+	usageBatchCapacity = 64
+	usageFlushInterval = 50 * time.Millisecond
+	usageWriteTimeout  = 5 * time.Second
+	usageWriteAttempts = 3
+	usageRetryInterval = 50 * time.Millisecond
+)
+
 // Admission and close share a lock. Shutdown first stops producers, then drains
 // the queue with a separate persistence budget before closing the database.
 type usageWriterState struct {
@@ -52,13 +60,13 @@ func (s *Server) startUsageWriter() {
 // callback shared with synchronous writes and job settlement.
 func (writer *usageWriterState) run(persist func([]*usageRecord)) {
 	defer writer.wg.Done()
-	var batchStorage [64]*usageRecord
+	var batchStorage [usageBatchCapacity]*usageRecord
 	timer := time.NewTimer(0)
 	timer.Stop()
 	defer timer.Stop()
 	for record := range writer.queue {
 		batch := append(batchStorage[:0], record)
-		timer.Reset(50 * time.Millisecond)
+		timer.Reset(usageFlushInterval)
 	collect:
 		for len(batch) < len(batchStorage) {
 			select {
@@ -156,7 +164,7 @@ func (s *Server) persistUsageBatch(records []*usageRecord) {
 func (s *Server) saveUsageBatchToStore(records []*usageRecord) (result error) {
 	s.initLifecycle()
 	started := time.Now()
-	ctx, cancel := context.WithTimeout(s.usageWriteCtx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(s.usageWriteCtx, usageWriteTimeout)
 	defer cancel()
 	batch := make([]storage.UsageRecordInput, 0, len(records))
 	var canceled int
@@ -185,14 +193,14 @@ func (s *Server) saveUsageBatchToStore(records []*usageRecord) (result error) {
 	}
 	// Request IDs make retry idempotent, including rollup and asset references.
 	var err error
-	for remaining := 3; remaining > 0; remaining-- {
+	for remaining := usageWriteAttempts; remaining > 0; remaining-- {
 		err = s.store.LogStore.SaveUsageBatch(ctx, batch)
 		if err == nil || ctx.Err() != nil || remaining == 1 {
 			break
 		}
 		select {
 		case <-ctx.Done():
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(usageRetryInterval):
 		}
 	}
 	s.usageStatsMu.Lock()
@@ -264,17 +272,12 @@ func (s *Server) enqueueUsageRecord(record *usageRecord) bool {
 	copied.ConversionChain = cloneSlice(record.ConversionChain)
 	copied.RequestWarnings = cloneSlice(record.RequestWarnings)
 	copied.pendingStreamEvents = cloneSlice(record.pendingStreamEvents)
-	// Media is immutable; only its metadata/index containers need a snapshot.
-	copied.assets = record.assets.clone()
+	copied.assets = record.assets.snapshotForPersistence()
 	copied.downstream = nil
 	w.retainedBytes += payloadBytes
-	select {
-	case w.queue <- &copied:
-		return true
-	default:
-		w.retainedBytes -= payloadBytes
-		return false // 队列满：降级同步写
-	}
+	// All senders and close hold w.mu; the checked slot cannot disappear.
+	w.queue <- &copied
+	return true
 }
 
 // cloneSlice 返回切片的浅副本（元素为值类型，足以断开底层数组别名）。nil 仍返回 nil。

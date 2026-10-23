@@ -436,18 +436,6 @@ func parsePositiveInt(raw string, fallback int) int {
 	return value
 }
 
-func sseDataPayload(line string) (string, bool) {
-	trimmed := strings.TrimLeft(line, " ")
-	if !strings.HasPrefix(trimmed, "data:") {
-		return "", false
-	}
-	payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
-	if payload == "" || payload == "[DONE]" {
-		return "", false
-	}
-	return payload, true
-}
-
 func setRecordGroup(record *usageRecord, group *config.ModelGroupConfig) {
 	record.GroupID = group.ID
 	record.GroupName = group.Name

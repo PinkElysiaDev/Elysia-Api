@@ -23,7 +23,7 @@ import (
 //   - 落库期（writer goroutine）：persistUsageRecord 判定该记录的 body 会被
 //     保留后，才把登记的资产写入 <DB目录>/usage-assets/。
 //
-// 这样 bodyOnErrorOnly 开启时，成功请求不产生任何磁盘写。
+// bodyOnErrorOnly 开启时，成功请求仍保存调用元数据，但不写正文或媒体资产。
 
 // AssetPlaceholderPrefix 是请求体内媒体占位符的前缀，完整格式：
 // __ELYSIA_ASSET__:<requestId>/<hash>.<ext>
@@ -70,23 +70,10 @@ func newAssetSink(requestID string) assetSink {
 	}
 }
 
-// clone owns metadata/maps while sharing the private immutable media payload.
-
-func (a *assetSink) clone() assetSink {
-	cloned := assetSink{
-		requestID: a.requestID,
-		items:     make([]mediaAsset, len(a.items)),
-		byHash:    make(map[string]int, len(a.byHash)),
-		memo:      make(map[string]string, len(a.memo)),
-	}
-	copy(cloned.items, a.items)
-	for k, v := range a.byHash {
-		cloned.byHash[k] = v
-	}
-	for k, v := range a.memo {
-		cloned.memo[k] = v
-	}
-	return cloned
+// Persistence owns asset metadata and shares immutable payloads. Capture-only
+// indexes and the placeholder context have no consumer after enqueue.
+func (a *assetSink) snapshotForPersistence() assetSink {
+	return assetSink{items: cloneSlice(a.items)}
 }
 
 // count 返回已登记（去重后）的媒体数。
@@ -140,12 +127,24 @@ func (a *assetSink) extractFromSSE(content string) string {
 			// 不以 payload 结尾，TrimSuffix 不匹配会把原文与替换体拼在同一行
 			// （原文 base64 未外置 + 追加了第二份 JSON）。行尾的 \r 随替换丢弃，
 			// 对存储的日志内容无害。
-			if idx := strings.LastIndex(line, payload); idx >= 0 {
-				lines[i] = line[:idx] + replaced
-			}
+			index := strings.LastIndex(line, payload)
+			lines[i] = line[:index] + replaced
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// A successful payload is a nonempty substring of the original line.
+func sseDataPayload(line string) (string, bool) {
+	trimmed := strings.TrimLeft(line, " ")
+	if !strings.HasPrefix(trimmed, "data:") {
+		return "", false
+	}
+	payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
+	if payload == "" || payload == "[DONE]" {
+		return "", false
+	}
+	return payload, true
 }
 
 // extractString 判断 map 中 key 处的字符串值是否为可外置媒体；命中则返回占位符。

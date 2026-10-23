@@ -264,12 +264,12 @@ func TestMediaExtFromMime(t *testing.T) {
 	}
 }
 
-func TestAssetSinkCloneSharesOnlyImmutablePayload(t *testing.T) {
+func TestAssetSinkSnapshotSharesOnlyImmutablePayload(t *testing.T) {
 	sink := newAssetSink("req_clone")
 	if _, ok := sink.register("image/png", "", base64Len(600)); !ok {
 		t.Fatal("register failed")
 	}
-	cloned := sink.clone()
+	cloned := sink.snapshotForPersistence()
 
 	if cloned.items[0].payload != sink.items[0].payload {
 		t.Fatal("clone copied immutable media")
@@ -278,9 +278,8 @@ func TestAssetSinkCloneSharesOnlyImmutablePayload(t *testing.T) {
 	if sink.items[0].Hash == "changed" {
 		t.Fatal("clone shared mutable metadata")
 	}
-	cloned.byHash["new"] = 0
-	if _, exists := sink.byHash["new"]; exists {
-		t.Fatal("clone shared mutable index")
+	if cloned.byHash != nil || cloned.memo != nil || cloned.requestID != "" {
+		t.Fatal("persistence snapshot retained capture state")
 	}
 
 	if cloned.count() != 1 {

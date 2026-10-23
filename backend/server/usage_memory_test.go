@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -95,6 +96,44 @@ func TestUsageQueuePayloadBudgetAndDrain(t *testing.T) {
 	writer.closed = true
 	if server.enqueueUsageRecord(record) {
 		t.Fatal("closed writer accepted payload")
+	}
+}
+
+func TestUsageQueueSnapshotIsolationAndFullFallback(t *testing.T) {
+	writer := &usageWriterState{queue: make(chan *usageRecord, 1)}
+	server := &Server{usageWriter: writer}
+	record := &usageRecord{
+		RequestID:           "synthetic",
+		RequestWarnings:     []string{"original warning"},
+		ConversionChain:     []string{"original chain"},
+		RetryEvents:         []retryEvent{{Model: "original model"}},
+		pendingStreamEvents: []json.RawMessage{json.RawMessage(`{"original":true}`)},
+		downstream:          &downstreamCapture{},
+		assets:              newAssetSink("synthetic"),
+	}
+	payload := strings.Repeat("A", 1024)
+	record.assets.registerMemo(payload, "image/png", "", payload)
+	if !server.enqueueUsageRecord(record) {
+		t.Fatal("available queue rejected the record")
+	}
+	reserved := writer.retainedBytes
+	if server.enqueueUsageRecord(record) || writer.retainedBytes != reserved || server.usageWriterStats().Synchronous != 1 {
+		t.Fatal("full queue did not preserve reservation and synchronous fallback")
+	}
+	record.RequestWarnings[0] = "changed"
+	record.ConversionChain[0] = "changed"
+	record.RetryEvents[0].Model = "changed"
+	record.pendingStreamEvents[0] = json.RawMessage(`{"changed":true}`)
+	record.assets.items[0].Hash = "changed"
+	queued := <-writer.queue
+	if queued.RequestWarnings[0] != "original warning" || queued.ConversionChain[0] != "original chain" || queued.RetryEvents[0].Model != "original model" || string(queued.pendingStreamEvents[0]) != `{"original":true}` || queued.assets.items[0].Hash == "changed" {
+		t.Fatal("queued metadata changed with the caller")
+	}
+	if queued.downstream != nil || queued.assets.byHash != nil || queued.assets.memo != nil || queued.assets.requestID != "" {
+		t.Fatal("queue retained capture-only state")
+	}
+	if queued.assets.items[0].payload != record.assets.items[0].payload {
+		t.Fatal("queue duplicated immutable media bytes")
 	}
 }
 
