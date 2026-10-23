@@ -138,7 +138,7 @@ func (compiled *Compiled) hasTypedRequestMapping(direction Direction) bool {
 	if !compiled.hasPureRequestMapping(direction) {
 		return false
 	}
-	return mapping.after == nil || direction == EncodeRequest && mapping.after.isInputIdentity()
+	return mapping.after == nil || mapping.after.isInputIdentity()
 }
 
 func checkTypedLimits(value any, limits Limits) error {
@@ -183,38 +183,7 @@ func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 	}
 	if compiled.hasTypedRequestMapping(direction) {
 		if module, ok := compiled.mappings[direction].module.(TypedModule); ok {
-			fail := func(err error) (*T, error) { return nil, compiled.mappingError(direction, err) }
-			if err := ctx.Err(); err != nil {
-				return fail(err)
-			}
-			if err := checkResourceValue(input, inputLimits, "mapping_input"); err != nil {
-				return fail(err)
-			}
-			if err := compiled.mappings[direction].input.validate(input, "/input", inputLimits); err != nil {
-				return fail(err)
-			}
-			if _, err := EncodeValue(options.Values); err != nil {
-				return fail(err)
-			}
-			options = options.forDefinition(compiled)
-			options.wireLimits = compiled.nativeLimits(ctx, direction)
-			if err := ctx.Err(); err != nil {
-				return fail(err)
-			}
-			output, err := decode(module, options)
-			if err != nil {
-				return fail(err)
-			}
-			// Module.Convert first calls EncodeSemantic with the call-wide budget.
-			semanticBudget := semanticLimits(requestLimits(ctx, DefaultLimits(), false))
-			if err := checkDocumentSemantic(ctx, output, semanticBudget); err != nil {
-				return fail(err)
-			}
-			output = normalizeMappingSemantic(output, semanticBudget)
-			if err := checkDocumentMapping(ctx, output, outputLimits, "mapping_output"); err != nil {
-				return fail(err)
-			}
-			return output, nil
+			return decodeRequestMapping(ctx, compiled, input, options, module, decode)
 		}
 	}
 
@@ -227,6 +196,89 @@ func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 		return nil, err
 	}
 	return &result, nil
+}
+
+func decodeRequestMapping[T any](ctx context.Context, compiled *Compiled, input Value, options EvaluationContext, module TypedModule, decode func(TypedModule, EvaluationContext) (*T, error)) (*T, error) {
+	direction := DecodeRequest
+	inputLimits, outputLimits, workLimits := compiled.mappingLimits(ctx, direction)
+	mapping := compiled.mappings[direction]
+	fail := func(err error) (*T, error) { return nil, compiled.mappingError(direction, err) }
+	if err := ctx.Err(); err != nil {
+		return fail(err)
+	}
+	if err := checkResourceValue(input, inputLimits, "mapping_input"); err != nil {
+		return fail(err)
+	}
+	if err := mapping.input.validate(input, "/input", inputLimits); err != nil {
+		return fail(err)
+	}
+	if _, err := EncodeValue(options.Values); err != nil {
+		return fail(err)
+	}
+	options = options.forDefinition(compiled)
+	options.wireLimits = compiled.nativeLimits(ctx, direction)
+	if err := ctx.Err(); err != nil {
+		return fail(err)
+	}
+	output, err := decode(module, options)
+	if err != nil {
+		return fail(err)
+	}
+	// Convert serializes against the call budget before after or output limits.
+	semanticBudget := semanticLimits(requestLimits(ctx, DefaultLimits(), false))
+	if mapping.after != nil {
+		return finishIdentityRequestDecode(ctx, compiled, output, semanticBudget, outputLimits, workLimits)
+	}
+	if err := checkDocumentSemantic(ctx, output, semanticBudget); err != nil {
+		return fail(err)
+	}
+	output = normalizeMappingSemantic(output, semanticBudget)
+	if err := checkDocumentMapping(ctx, output, outputLimits, "mapping_output"); err != nil {
+		return fail(err)
+	}
+	return output, nil
+}
+
+func finishIdentityRequestDecode[T any](ctx context.Context, compiled *Compiled, output *T, semanticBudget, outputLimits, workLimits Limits) (*T, error) {
+	after := compiled.mappings[DecodeRequest].after
+	fail := func(err error) (*T, error) { return nil, compiled.mappingError(DecodeRequest, err) }
+	metrics, fits := measureDocumentMetrics(ctx, output, semanticBudget)
+	if !fits {
+		// Preserve unsupported-value and over-limit errors using this module result,
+		// never by rerunning the module or replaying the request.
+		value, err := EncodeSemantic(ctx, DecodeRequest, output)
+		if err != nil {
+			return fail(err)
+		}
+		if err := after.checkIdentityAfter(ctx, len(value.raw), workLimits); err != nil {
+			return fail(err)
+		}
+		if err := checkResourceValue(value, outputLimits, "mapping_output"); err != nil {
+			return fail(err)
+		}
+		var result T
+		if err := decodeContract(value.Bytes(), &result); err != nil {
+			return nil, err
+		}
+		return &result, nil
+	}
+	if err := after.checkIdentityAfter(ctx, metrics.bytes, workLimits); err != nil {
+		return fail(err)
+	}
+	if metrics.bytes > outputLimits.BufferBytes || metrics.nodes > outputLimits.Nodes || metrics.depth > outputLimits.Depth {
+		value, err := EncodeValue(output)
+		if err != nil {
+			return fail(err)
+		}
+		if err := checkResourceValue(value, outputLimits, "mapping_output"); err != nil {
+			return fail(err)
+		}
+	}
+	if output == nil {
+		// JSON null decoded into the original value destination yields its zero value.
+		return new(T), nil
+	}
+	return normalizeMappingSemantic(output, semanticBudget), nil
 }
 
 func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direction, input *T, options EvaluationContext, encode func(TypedModule, *T, EvaluationContext) (Value, error)) (Value, error) {

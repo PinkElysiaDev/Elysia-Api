@@ -27,14 +27,24 @@ func withDocumentMetrics(ctx context.Context, size int) context.Context {
 }
 
 func fitsDocumentMetrics(ctx context.Context, value any, limits Limits) bool {
+	_, fits := measureDocumentMetrics(ctx, value, limits)
+	return fits
+}
+
+// Counts are usable only after a complete successful walk. In particular, an
+// identity after must not use a partial byte count from a tighter node budget.
+func measureDocumentMetrics(ctx context.Context, value any, limits Limits) (semanticMetrics, bool) {
 	owner, _ := ctx.Value(documentMetricsKey{}).(*documentMetrics)
-	if owner == nil {
-		return fitsTypedLimits(value, limits)
+	meter := typedMeter{limits: limits}
+	if owner != nil {
+		owner.mu.Lock()
+		defer owner.mu.Unlock()
+		meter.cache = &owner.cache
 	}
-	owner.mu.Lock()
-	defer owner.mu.Unlock()
-	meter := typedMeter{limits: limits, cache: &owner.cache}
-	return meter.visitSemantic(value) && meter.fits()
+	if !meter.visitSemantic(value) || !meter.fits() {
+		return semanticMetrics{}, false
+	}
+	return semanticMetrics{bytes: meter.bytes, nodes: meter.nodes, depth: meter.maxDepth}, true
 }
 
 func checkDocumentSemantic(ctx context.Context, value any, limits Limits) error {
