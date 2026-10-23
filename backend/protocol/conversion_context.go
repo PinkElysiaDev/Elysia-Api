@@ -40,17 +40,6 @@ func validateRequestContext(request *Request) error {
 	return ValidateResponsesContext(request.Parameters["responses_truncation"], request.Parameters["responses_previous_response_id"])
 }
 
-func validateContextValue(phase ConversionPhase, value Value) error {
-	if phase != ConversionIngress && phase != ConversionRequest {
-		return nil
-	}
-	var req Request
-	if err := value.Decode(&req); err != nil {
-		return err
-	}
-	return validateRequestContext(&req)
-}
-
 // Validate before routing so an unsupported native reference is not reported as
 // an ambiguous account or a generic resource capability error. This never adds
 // sessions capability to a definition or its model binding.
