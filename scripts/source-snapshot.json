@@ -333,6 +333,7 @@
     "backend/protocol/model_discovery_test.go",
     "backend/protocol/model_test.go",
     "backend/protocol/native.go",
+    "backend/protocol/native_comparison_performance_test.go",
     "backend/protocol/native_reconcile.go",
     "backend/protocol/native_test.go",
     "backend/protocol/operation_input.go",
