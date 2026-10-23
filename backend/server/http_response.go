@@ -11,6 +11,8 @@ import (
 
 const responseStreamKey = "elysia.responseStream"
 
+const httpPanicResponse = "internal server error"
+
 var errResponseAborted = errors.New("response aborted by request panic")
 
 // responseStream owns the native chunk writer and its commit boundary. All
@@ -112,6 +114,8 @@ func discardUncommittedStream(c *app.RequestContext) {
 
 func recoverHTTPResponse(c *app.RequestContext) {
 	c.Abort()
+	state := trackHTTPDelivery(nil, c)
+	state.applicationError = errResponseAborted
 	if w := currentResponseStream(c); w != nil && w.committed {
 		// Do not append a successful zero chunk after a panic or rewrite headers
 		// that are already on the wire. Returning an error closes the connection.
@@ -122,5 +126,6 @@ func recoverHTTPResponse(c *app.RequestContext) {
 	discardUncommittedStream(c)
 	c.Response.ResetBody()
 	c.Response.Header.Del("Content-Type")
-	c.String(500, "internal server error")
+	c.String(500, httpPanicResponse)
+	state.bufferedErrorBody = httpPanicResponse
 }

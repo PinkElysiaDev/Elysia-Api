@@ -297,12 +297,13 @@ func TestAgentCallerRetryAndCancelLogs(t *testing.T) {
 			} else {
 				want := 502
 				if scenario == "cancel" {
-					want = 499
+					// A caller context does not identify a disconnected client.
+					want = 503
 				}
 				if err == nil || result == nil || result.Text != "partial" || record.StatusCode != want || !strings.Contains(record.DownstreamResponse.Content, "partial") || !strings.Contains(record.DownstreamResponse.Content, `"error"`) {
 					t.Fatalf("partial log: %+v, err=%v", record, err)
 				}
-				if scenario == "cancel" && record.ErrorKind != ErrorKindClientCanceled {
+				if scenario == "cancel" && record.ErrorKind != deliveryCanceled {
 					t.Fatalf("errorKind=%q", record.ErrorKind)
 				}
 			}

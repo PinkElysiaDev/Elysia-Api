@@ -36,7 +36,18 @@ func releaseHTTPUsageCapture(c *app.RequestContext, record *usageRecord) {
 
 func applyHTTPDelivery(record *usageRecord, state *httpDeliveryState) {
 	record.Delivery = state.result
-	if state.result.Outcome != deliveryFailed || record.Error != "" || record.StatusCode >= 400 {
+	if record.Error != "" || record.StatusCode >= 400 {
+		return
+	}
+	if state.applicationError != nil {
+		record.StatusCode, record.ErrorKind = deliveryFailureStatus("server_panic")
+		record.Error = state.applicationError.Error()
+		if state.bufferedErrorBody != "" && record.bodyOpts.maxBytes > 0 {
+			record.DownstreamResponse = truncateUsageBody(state.bufferedErrorBody, record.bodyOpts.maxBytes)
+		}
+		return
+	}
+	if state.result.Outcome != deliveryFailed {
 		return
 	}
 	record.StatusCode, record.ErrorKind = deliveryFailureStatus(state.result.Cause)

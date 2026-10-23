@@ -227,14 +227,16 @@ func TestStreamCancellationUsage(t *testing.T) {
 					rec = httptest.NewRecorder()
 					c, _ = newResponsesContext(rec, `{"model":"grp","stream":true,"input":"hi"}`)
 				}
-				ctx, cancel := context.WithTimeout(contextForTest(c), time.Second)
-				defer cancel()
+				deadline, stop := context.WithTimeout(contextForTest(c), time.Second)
+				defer stop()
+				ctx, cancel := context.WithCancelCause(deadline)
+				defer cancel(nil)
 				c.Set("testContext", ctx)
 				if !completed {
 					marker = "partial"
 				}
 				observeTestFlush(c)
-				c.Response.HijackWriter(&cancelAfterFlushWriter{startStream(c), rec, marker, cancel, ctx})
+				c.Response.HijackWriter(&cancelAfterFlushWriter{startStream(c), rec, marker, func() { cancel(errDownstreamDisconnected) }, ctx})
 				if endpoint == "responses" {
 					s.responses(contextForTest(c), c)
 					flushTestResponse(c)
@@ -244,6 +246,16 @@ func TestStreamCancellationUsage(t *testing.T) {
 				}
 				logs := latestUsageRecords(t, s)
 				want := 499
+				wantKind := ErrorKindClientCanceled
+				if endpoint == "converted" && completed {
+					// The target terminal is held until source EOF. This fixture
+					// deliberately withholds EOF, so the timer, not the flush
+					// observer, terminates it.
+					want, wantKind = http.StatusGatewayTimeout, "request_timeout"
+					if ctx.Err() != context.DeadlineExceeded || strings.Contains(rec.Body.String(), marker) {
+						t.Fatal("fixture did not exercise the pending-terminal deadline")
+					}
+				}
 				if len(logs) != 1 || logs[0].StatusCode != want {
 					t.Fatalf("want %d: %+v", want, logs)
 				}
@@ -251,7 +263,7 @@ func TestStreamCancellationUsage(t *testing.T) {
 				if err := sonic.ConfigStd.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record); err != nil {
 					t.Fatal(err)
 				}
-				if record.ErrorKind != ErrorKindClientCanceled {
+				if record.ErrorKind != wantKind {
 					t.Fatalf("errorKind=%q", record.ErrorKind)
 				}
 				if completed && (record.ProtocolUsage == nil || record.ProtocolUsage.Total == nil || record.ProtocolUsage.Total.Count != 3) {
@@ -279,13 +291,13 @@ func TestToolOnlyStreamWithoutUsageSucceeds(t *testing.T) {
 }
 
 func TestCanceledConnectionDoesNotRetry(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(t.Context())
+	defer cancel(nil)
 	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		io.Copy(io.Discard, r.Body)
-		cancel()
+		cancel(errDownstreamDisconnected)
 		<-r.Context().Done()
 	}))
 	defer upstream.Close()

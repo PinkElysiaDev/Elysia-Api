@@ -93,7 +93,7 @@ func TestGatewayJobWaitReadOutcomes(t *testing.T) {
 					case scenario == "cancel-write-error" && policy == "cancel":
 						status, message, wantsCancel = http.StatusBadGateway, "cancel persistence unavailable", false
 					case scenario == "caller-canceled":
-						status = statusClientClosedRequest
+						status = http.StatusServiceUnavailable
 					}
 					if response.Code != status || !strings.Contains(response.Body.String(), message) {
 						t.Fatalf("response = %d %s; want %d containing %q", response.Code, response.Body, status, message)

@@ -18,9 +18,9 @@ func osWriteFile(path string, data []byte, perm os.FileMode) error {
 func TestGatewayFailureRecordsClientCancel(t *testing.T) {
 	s := &Server{}
 	c, rec := chatRequestContext(`{}`)
-	ctx, cancel := context.WithCancel(t.Context())
+	ctx, cancel := context.WithCancelCause(t.Context())
 	c.Set("testContext", ctx)
-	cancel()
+	cancel(errDownstreamDisconnected)
 	record := &usageRecord{RequestID: "cancel-probe"}
 	s.failGateway(contextForTest(c), c, record, 502, ctx.Err())
 	flushTestResponse(c)

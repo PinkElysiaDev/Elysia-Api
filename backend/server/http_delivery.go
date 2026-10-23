@@ -45,9 +45,11 @@ type httpDelivery struct {
 // The completion owner freezes evidence before any cleanup cancels contexts.
 // This state never holds a request body, route plan or a pooled context.
 type httpDeliveryState struct {
-	ctx    context.Context
-	result *httpDelivery
-	err    error
+	ctx               context.Context
+	result            *httpDelivery
+	err               error
+	applicationError  error
+	bufferedErrorBody string
 }
 
 func trackHTTPDelivery(ctx context.Context, c *app.RequestContext) *httpDeliveryState {
@@ -84,6 +86,9 @@ func freezeHTTPDelivery(c *app.RequestContext) *httpDeliveryState {
 	}
 	if cause != nil {
 		result.Cause = deliveryFailureCause(cause, nil)
+	}
+	if state.applicationError != nil {
+		result.Cause = "server_panic"
 	}
 	if state.err != nil {
 		result.Outcome = deliveryFailed

@@ -33,7 +33,7 @@ func TestResourceFailureEvidenceBoundaries(t *testing.T) {
 	cancel()
 	record = &usageRecord{StatusCode: http.StatusOK}
 	setUsageError(record, ctx, errors.Join(context.Canceled, local))
-	if record.StatusCode != 499 || record.ErrorKind != ErrorKindClientCanceled {
-		t.Fatal("cancel primary lost", record)
+	if record.StatusCode != 400 || record.ErrorKind != "limit_exceeded" {
+		t.Fatal("later cancellation replaced an independent resource failure", record)
 	}
 }

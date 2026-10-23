@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/network"
 	"github.com/cloudwego/hertz/pkg/network/standard"
+	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/logging"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
@@ -24,6 +26,8 @@ func TestGatewayFinalizeFailureSettlesOnce(t *testing.T) {
 	for _, shouldFail := range []bool{false, true} {
 		t.Run(map[bool]string{false: "success", true: "finalize-error"}[shouldFail], func(t *testing.T) {
 			server, _ := newProtocolAdminTestServer(t)
+			bodyLimit, errorsOnly := 1024, true
+			server.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: &bodyLimit, BodyOnErrorOnly: &errorsOnly})
 			events := make(requestLogEvents, 16)
 			server.logger = logging.New(logging.Options{Level: "debug", Format: "json"}, nil)
 			server.logger.SetOutput(events)
@@ -98,6 +102,81 @@ func TestGatewayFinalizeFailureSettlesOnce(t *testing.T) {
 			}
 			if shouldFail && (record.Delivery.Phase != deliveryFinalize || record.ErrorKind != deliveryTransport || record.Error == "") {
 				t.Fatal(record.Delivery, record.ErrorKind)
+			}
+			if shouldFail && !strings.Contains(record.DownstreamResponse.Content, "synthetic complete response") {
+				t.Fatal("error-only logging discarded the late delivery failure body")
+			}
+			if !shouldFail && record.DownstreamResponse.Content != "" {
+				t.Fatal("error-only logging retained a successful body")
+			}
+		})
+	}
+}
+
+func TestHTTPUsagePanicKeepsLogicalAndWireOutcomesDistinct(t *testing.T) {
+	for _, isCommitted := range []bool{false, true} {
+		t.Run(map[bool]string{false: "buffered", true: "committed"}[isCommitted], func(t *testing.T) {
+			server, _ := newProtocolAdminTestServer(t)
+			bodyLimit, errorsOnly := 1024, true
+			server.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: &bodyLimit, BodyOnErrorOnly: &errorsOnly})
+			events := make(requestLogEvents, 8)
+			server.logger = logging.New(logging.Options{Level: "debug", Format: "json"}, nil)
+			server.logger.SetOutput(events)
+			server.engine.Use(server.requestLifecycle(), server.requestLogging())
+			server.engine.GET("/panic", func(ctx context.Context, c *app.RequestContext) {
+				record := server.initUsageRecord(ctx, c, time.Now(), nil, "")
+				installDownstreamCapture(c, record, bodyLimit<<10)
+				defer server.recordHTTPUsage(c, record)
+				if isCommitted {
+					writer := startStream(c)
+					_, _ = writer.Write([]byte("synthetic partial response"))
+					_ = writer.Flush()
+				} else {
+					c.String(200, "synthetic uncommitted response")
+				}
+				panic("synthetic panic detail must not enter usage")
+			})
+			web := startTestServer(server.engine)
+			defer web.Close()
+			response, err := web.Client().Get(web.URL + "/panic")
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, readErr := io.ReadAll(response.Body)
+			response.Body.Close()
+			for {
+				select {
+				case encoded := <-events:
+					var event map[string]any
+					if err := sonic.ConfigStd.Unmarshal(encoded, &event); err != nil {
+						t.Fatal(err)
+					}
+					if event["message"] != "request completed" {
+						continue
+					}
+				case <-time.After(3 * time.Second):
+					t.Fatal("panic completion did not settle")
+				}
+				break
+			}
+			_, rows, err := server.store.QueryUsageLogs(t.Context(), storage.UsageQuery{})
+			if err != nil || len(rows) != 1 {
+				t.Fatal("panic settlement count", len(rows), err)
+			}
+			stored := storedRecordJSON(t, server.store, rows[0].RequestID)
+			var record usageRecord
+			if err := sonic.ConfigStd.Unmarshal([]byte(stored), &record); err != nil {
+				t.Fatal(err)
+			}
+			if record.StatusCode != 500 || record.ErrorKind != "server_error" || strings.Contains(stored, "synthetic panic detail") || strings.Contains(stored, "goroutine ") {
+				t.Fatal("unsafe or incorrect panic attribution", record.StatusCode, record.ErrorKind)
+			}
+			if isCommitted {
+				if response.StatusCode != 200 || !errors.Is(readErr, io.ErrUnexpectedEOF) || record.Delivery.Outcome != deliveryFailed || record.DownstreamResponse.Content != "synthetic partial response" {
+					t.Fatal("committed panic lost the wire boundary", record.Delivery, readErr)
+				}
+			} else if response.StatusCode != 500 || readErr != nil || string(body) != httpPanicResponse || record.Delivery.Outcome != deliveryCompleted || record.DownstreamResponse.Content != httpPanicResponse {
+				t.Fatal("buffered panic was recorded as generation success or delivery failure", record.Delivery, record.DownstreamResponse)
 			}
 		})
 	}
@@ -210,5 +289,114 @@ func TestHertzDeliveryLogHasOneOwner(t *testing.T) {
 				t.Fatal("delivery logging was duplicated or lost", requestLogs, frameworkLogs)
 			}
 		})
+	}
+}
+
+func TestGatewayRetryWaitCancellationKeepsLastHTTPFailure(t *testing.T) {
+	for _, status := range []int{http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			var firstCalls, secondCalls atomic.Int32
+			responded := make(chan struct{}, 1)
+			first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				firstCalls.Add(1)
+				_, _ = io.Copy(io.Discard, r.Body)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(status)
+				_, _ = io.WriteString(w, `{"error":{"type":"server_error","message":"synthetic first attempt rejection"}}`)
+				responded <- struct{}{}
+			}))
+			defer first.Close()
+			second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { secondCalls.Add(1); w.WriteHeader(500) }))
+			defer second.Close()
+			server := newTestServerWithStore(t, []config.ModelGroupConfig{{ID: "group", Name: "group", Enabled: true, Strategy: "sequential", MaxRetries: 2, RetryInterval: 3000, Models: []config.ModelRef{openAIModel("first", first.URL), openAIModel("second", second.URL)}}})
+			defer server.stopUsageWriter()
+			ctx, cancel := context.WithCancelCause(t.Context())
+			defer cancel(nil)
+			request, output := chatRequestContext(`{"model":"group","messages":[{"role":"user","content":"synthetic"}]}`)
+			done := make(chan struct{})
+			go func() { defer close(done); server.chatCompletions(ctx, request); flushTestResponse(request) }()
+			select {
+			case <-responded:
+			case <-time.After(5 * time.Second):
+				t.Fatal("first attempt was not observed")
+			}
+			// The long configured backoff leaves room for local error conversion;
+			// the assertion below also proves that retry admission was reached.
+			timer := time.AfterFunc(250*time.Millisecond, func() { cancel(errHTTPServerShutdown) })
+			defer timer.Stop()
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("backoff did not stop on cancellation")
+			}
+			logs := latestUsageRecords(t, server)
+			if len(logs) != 1 || firstCalls.Load() != 1 || secondCalls.Load() != 0 || output.Code != status {
+				t.Fatal("cancellation repeated or replaced an HTTP attempt", len(logs), firstCalls.Load(), secondCalls.Load(), output.Code)
+			}
+			var record usageRecord
+			if err := sonic.ConfigStd.Unmarshal([]byte(storedRecordJSON(t, server.store, logs[0].RequestID)), &record); err != nil {
+				t.Fatal(err)
+			}
+			if record.StatusCode != status || len(record.RetryEvents) != 1 || !strings.Contains(record.Error, "synthetic first attempt rejection") || record.ErrorKind == ErrorKindClientCanceled || record.ErrorKind == deliveryShutdown {
+				t.Fatal("backoff cancellation lost the established primary", record.StatusCode, record.ErrorKind, len(record.RetryEvents), record.Error)
+			}
+		})
+	}
+}
+
+func TestHTTPUsageFinalizationSettlesBeforeShutdownClosesWriter(t *testing.T) {
+	server, configPath := newProtocolAdminTestServer(t)
+	server.startUsageWriter()
+	server.engine.Use(server.requestLifecycle(), server.requestLogging())
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	server.engine.GET("/hold", func(ctx context.Context, c *app.RequestContext) {
+		record := server.initUsageRecord(ctx, c, time.Now(), nil, "")
+		defer server.recordHTTPUsage(c, record)
+		writer := startStream(c)
+		_, _ = writer.Write([]byte("synthetic response"))
+		_ = writer.Flush()
+		stream := currentResponseStream(c)
+		stream.ExtWriter = &heldFinalizeWriter{ExtWriter: stream.ExtWriter, ctx: ctx, entered: entered, release: release}
+	})
+	web := startTestServer(server.engine)
+	defer web.Close()
+	defer close(release)
+	response, err := web.Client().Get(web.URL + "/hold")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Finalize did not hold the response")
+	}
+	closed := make(chan struct{})
+	go func() { server.doShutdown(); close(closed) }()
+	_, _ = io.Copy(io.Discard, response.Body)
+	response.Body.Close()
+	select {
+	case <-closed:
+	case <-time.After(8 * time.Second):
+		t.Fatal("shutdown did not drain finalization")
+	}
+	if server.shutdownErr != nil {
+		t.Fatal(server.shutdownErr)
+	}
+	reopened, err := storage.Open(filepath.Join(filepath.Dir(configPath), "test.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	_, records, err := reopened.QueryUsageLogs(t.Context(), storage.UsageQuery{})
+	if err != nil || len(records) != 1 {
+		t.Fatal("shutdown lost or repeated completion settlement", len(records), err)
+	}
+	var record usageRecord
+	if err := sonic.ConfigStd.Unmarshal([]byte(storedRecordJSON(t, reopened, records[0].RequestID)), &record); err != nil {
+		t.Fatal(err)
+	}
+	if record.StatusCode != 503 || record.ErrorKind != deliveryShutdown || record.Delivery == nil || record.Delivery.HTTPStatus != 200 || record.Delivery.Outcome != deliveryFailed {
+		t.Fatal("shutdown was mislabeled or escaped the persistence barrier", record.StatusCode, record.ErrorKind, record.Delivery)
 	}
 }

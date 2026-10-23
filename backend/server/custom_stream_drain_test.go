@@ -56,11 +56,13 @@ func TestCustomProtocolStreamHangingAfterFinishCanBeCanceled(t *testing.T) {
 	c := newTestContext(rec)
 	setTestRequest(c, httptest.NewRequest(http.MethodPost, "/gateway/vendor-cumulative/v2/generate/grp", strings.NewReader(`{"deployment":"grp","turns":[{"actor":"user","segments":[{"text":"hi"}]}],"parameters":{"stream":true}}`)))
 	c.Params = param.Params{{Key: "protocolId", Value: definition.ID}, {Key: "path", Value: "/v2/generate/grp"}}
-	ctx, cancel := context.WithTimeout(contextForTest(c), 5*time.Second)
-	defer cancel()
+	deadline, stop := context.WithTimeout(contextForTest(c), 5*time.Second)
+	defer stop()
+	ctx, cancel := context.WithCancelCause(deadline)
+	defer cancel(nil)
 	c.Set("testContext", ctx)
 	observeTestFlush(c)
-	c.Response.HijackWriter(&cancelAfterFlushWriter{startStream(c), rec, `"count":1`, cancel, ctx})
+	c.Response.HijackWriter(&cancelAfterFlushWriter{startStream(c), rec, `"count":1`, func() { cancel(errDownstreamDisconnected) }, ctx})
 	s.gatewayProtocol(contextForTest(c), c)
 	flushTestResponse(c)
 	select {
