@@ -85,6 +85,14 @@ func TestUsageBorrowedDecoderPreservesOwnedAcceptance(t *testing.T) {
 
 func TestUsageBorrowedEncodingDetachesPooledKeysAndClearsPrivateTrees(t *testing.T) {
 	input := `{"short":"value","nested":{"data":"` + strings.Repeat("A", 1<<20) + `"},"items":[{"text":"child"},"scalar"]}`
+	owned, ok := decodeUsageJSON(input)
+	if !ok {
+		t.Fatal("invalid owning fixture")
+	}
+	expected, err := sonic.ConfigStd.Marshal(owned)
+	if err != nil {
+		t.Fatal(err)
+	}
 	value, ok := decodeUsageJSONBorrowed(input)
 	if !ok {
 		t.Fatal("invalid fixture")
@@ -101,10 +109,6 @@ func TestUsageBorrowedEncodingDetachesPooledKeysAndClearsPrivateTrees(t *testing
 			}
 		}
 	}
-	expected, err := sonic.ConfigStd.Marshal(value)
-	if err != nil {
-		t.Fatal(err)
-	}
 	encoded, err := encodeBorrowedUsageJSON(value)
 	if err != nil || encoded != string(expected) {
 		t.Fatal("releasing the cleaning tree changed encoded bytes", err)
@@ -118,6 +122,97 @@ func TestUsageBorrowedEncodingDetachesPooledKeysAndClearsPrivateTrees(t *testing
 	}
 }
 
+func TestUsageBorrowedEncodingClearsLargeThenSmallMaps(t *testing.T) {
+	const largeMapEntries = 32
+	type encodingFixture struct {
+		entries  int
+		input    string
+		expected string
+	}
+	var fixtures []encodingFixture
+	for _, entries := range []int{largeMapEntries, 1} {
+		fields := make([]string, entries)
+		for index := range fields {
+			fields[index] = fmt.Sprintf(`"field_%02d":"synthetic <>& \u2028 value %d"`, index, index)
+		}
+		objectFields := strings.Join(fields, ",")
+		payload := "small"
+		if entries == largeMapEntries {
+			payload = strings.Repeat("A", 1<<20)
+		}
+		input := fmt.Sprintf(`{"payload":%q,"nested":{%s},"items":[{%s},[{%s},"tail"]],%s}`, payload, objectFields, objectFields, objectFields, objectFields)
+		owned, ok := decodeUsageJSON(input)
+		if !ok {
+			t.Fatal("invalid owning fixture")
+		}
+		expected, err := sonic.ConfigStd.Marshal(owned)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fixtures = append(fixtures, encodingFixture{entries, input, string(expected)})
+	}
+	var consumedMaps []map[string]any
+	var consumedArrays [][]any
+	for _, fixture := range fixtures {
+		borrowed, ok := decodeUsageJSONBorrowed(fixture.input)
+		if !ok {
+			t.Fatal("invalid borrowed fixture")
+		}
+		root := borrowed.(map[string]any)
+		nested := root["nested"].(map[string]any)
+		items := root["items"].([]any)
+		inner := items[1].([]any)
+		consumedMaps = append(consumedMaps, root, nested, items[0].(map[string]any), inner[0].(map[string]any))
+		consumedArrays = append(consumedArrays, items, inner)
+		encoded, err := encodeBorrowedUsageJSON(borrowed)
+		if err != nil || encoded != fixture.expected {
+			t.Fatal("large-to-small encoding changed JSON bytes", fixture.entries, err)
+		}
+		for _, object := range consumedMaps {
+			if len(object) != 0 {
+				t.Fatal("consumed map retained entries after a later encoding", fixture.entries, len(object))
+			}
+		}
+		for _, array := range consumedArrays {
+			for _, value := range array {
+				if value != nil {
+					t.Fatal("consumed array retained an element after a later encoding", fixture.entries)
+				}
+			}
+		}
+		assertUsageStringsDetached(t, fixture.input, usageBody{Content: encoded}, assetSink{})
+	}
+}
+
+func TestUsageEncodingPreservesCallerTrees(t *testing.T) {
+	const input = `{"nested":{"text":"<>&","number":1.00},"items":[{"value":"keep"},"tail"]}`
+	for _, shouldFail := range []bool{false, true} {
+		t.Run(fmt.Sprintf("error=%t", shouldFail), func(t *testing.T) {
+			caller, callerOK := decodeUsageJSON(input)
+			expected, expectedOK := decodeUsageJSON(input)
+			if !callerOK || !expectedOK {
+				t.Fatal("invalid owning fixture")
+			}
+			if shouldFail {
+				unsupported := make(chan int)
+				caller.(map[string]any)["nested"].(map[string]any)["number"] = unsupported
+				expected.(map[string]any)["nested"].(map[string]any)["number"] = unsupported
+			}
+			expectedBytes, expectedErr := sonic.ConfigStd.Marshal(expected)
+			encoded, err := encodeUsageJSON(caller)
+			if encoded != string(expectedBytes) || reflect.TypeOf(err) != reflect.TypeOf(expectedErr) {
+				t.Fatal("owning encoder changed bytes or error type", err, expectedErr)
+			}
+			if err != nil && err.Error() != expectedErr.Error() {
+				t.Fatal("owning encoder changed the error", err, expectedErr)
+			}
+			if !reflect.DeepEqual(caller, expected) {
+				t.Fatal("ordinary encoding consumed or changed the caller's tree")
+			}
+		})
+	}
+}
+
 func TestUsageBorrowedEncodingReleasesPrivateTreesOnError(t *testing.T) {
 	value, ok := decodeUsageJSONBorrowed(`{"nested":{"number":1}}`)
 	if !ok {
@@ -126,9 +221,9 @@ func TestUsageBorrowedEncodingReleasesPrivateTreesOnError(t *testing.T) {
 	root := value.(map[string]any)
 	nested := root["nested"].(map[string]any)
 	nested["number"] = make(chan int)
-	_, expectedErr := sonic.ConfigStd.Marshal(root)
+	_, expectedErr := sonic.ConfigStd.Marshal(map[string]any{"nested": map[string]any{"number": make(chan int)}})
 	_, err := encodeBorrowedUsageJSON(root)
-	if reflect.TypeOf(err) != reflect.TypeOf(expectedErr) || err.Error() != expectedErr.Error() {
+	if err == nil || expectedErr == nil || reflect.TypeOf(err) != reflect.TypeOf(expectedErr) || err.Error() != expectedErr.Error() {
 		t.Fatal("encoding error changed", err, expectedErr)
 	}
 	if len(root) != 0 || len(nested) != 0 {

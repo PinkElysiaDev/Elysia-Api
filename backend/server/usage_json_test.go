@@ -55,6 +55,17 @@ func FuzzUsageJSONDecoderParity(f *testing.F) {
 		if borrowedOK != expectedOK || !reflect.DeepEqual(borrowed, expected) {
 			t.Fatalf("borrowed decoder contract changed for %q: got %#v/%t, want %#v/%t", input, borrowed, borrowedOK, expected, expectedOK)
 		}
+		if !expectedOK {
+			return
+		}
+		expectedBytes, expectedErr := sonic.ConfigStd.Marshal(expected)
+		encoded, encodeErr := encodeBorrowedUsageJSON(borrowed)
+		if encoded != string(expectedBytes) || reflect.TypeOf(encodeErr) != reflect.TypeOf(expectedErr) {
+			t.Fatalf("borrowed encoding changed for %q: got %q/%v, want %q/%v", input, encoded, encodeErr, expectedBytes, expectedErr)
+		}
+		if encodeErr != nil && encodeErr.Error() != expectedErr.Error() {
+			t.Fatalf("borrowed encoding error changed for %q: got %v, want %v", input, encodeErr, expectedErr)
+		}
 	})
 }
 

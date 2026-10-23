@@ -130,6 +130,9 @@ async function execute(binary, argv, cwd, settings, directory) {
 const results = []
 for (const name of selection) {
   const fixture = { workload: 'small', source: 'anthropic-messages', target: 'anthropic-messages', size: 2, workers: 1, image: 'repeat', stream: false, frames: 16, frameBytes: 256, requests: integer('requests', 256, 1, 10000), ...cases[name] }
+  if (fixture.workload === 'image' && option('image-requests')) {
+    fixture.requests = integer('image-requests', fixture.requests, fixture.workers, 10000)
+  }
   if (mode === 'finalize' && fixture.workload !== 'image') throw new Error('Finalize ownership diagnostic requires an image gateway fixture')
   for (let pair = pairOffset; pair < pairOffset + pairs; pair++) {
     const order = pair % 2 === 0 ? ['baseline', 'current'] : ['current', 'baseline']
