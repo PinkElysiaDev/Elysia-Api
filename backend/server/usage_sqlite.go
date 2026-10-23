@@ -3,7 +3,6 @@ package server
 import (
 	"fmt"
 
-	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/storage"
 )
@@ -39,7 +38,7 @@ func (s *Server) prepareUsageRecord(record *usageRecord) (storage.UsageRecordInp
 			record.RequestWarnings = append(record.RequestWarnings, fmt.Sprintf("%d media assets externalized", len(assets)))
 		}
 	}
-	payload, err := sonic.ConfigStd.Marshal(record)
+	payload, err := marshalUsageJSON(record)
 	if err != nil {
 		return storage.UsageRecordInput{}, err
 	}

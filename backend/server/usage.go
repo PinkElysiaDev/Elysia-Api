@@ -16,7 +16,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/common/utils"
 
-	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/internal/jsonutil"
 	"github.com/elysia-api/backend/protocol"
@@ -280,7 +279,7 @@ func (r *usageRecord) materializeStreamEvents() {
 		r.ProviderResponse.Truncated = r.ProviderResponse.Truncated || r.pendingStreamTruncated
 		return
 	}
-	if eventBytes, err := sonic.ConfigStd.Marshal(r.pendingStreamEvents); err == nil {
+	if eventBytes, err := marshalUsageJSON(r.pendingStreamEvents); err == nil {
 		r.ProviderResponse = r.sanitizeBody(eventBytes)
 		r.ProviderResponse.Truncated = r.ProviderResponse.Truncated || r.pendingStreamTruncated
 	}
