@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -77,5 +78,87 @@ func TestBufferedDownstreamCapture(t *testing.T) {
 	}
 	if got := record.downstream.downstreamBody().Content; got != "downstream-bytes" {
 		t.Fatalf("captured content mismatch via record, got %q", got)
+	}
+}
+
+func TestBufferedDownstreamCaptureBoundariesAndIndependentSnapshots(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		limit     int
+		content   string
+		expected  string
+		truncated bool
+	}{
+		{"disabled", 0, "synthetic", "", false},
+		{"exact", 4, "abcd", "abcd", false},
+		{"over", 4, "abcde", "abcd", true},
+		{"empty", 4, "", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := newTestContext(httptest.NewRecorder())
+			request.Response.SetBodyString(tc.content)
+			capture := installDownstreamCapture(request, &usageRecord{}, tc.limit)
+			original := bytes.Clone(request.Response.Body())
+			first := capture.downstreamBody()
+			if first != (usageBody{Content: tc.expected, Truncated: tc.truncated}) || !bytes.Equal(original, request.Response.Body()) {
+				t.Fatal("buffered capture changed its boundary or the real response", first)
+			}
+			if second := capture.downstreamBody(); second != first {
+				t.Fatal("repeated buffered capture changed the snapshot", second, first)
+			}
+			if len(capture.buf) != 0 {
+				t.Fatal("buffered capture retained an unnecessary second byte buffer")
+			}
+			for index := range request.Response.Body() {
+				request.Response.Body()[index] = 'z'
+			}
+			if first.Content != tc.expected {
+				t.Fatal("response buffer mutation changed an earlier capture")
+			}
+			request.Response.SetBodyString("next")
+			next := capture.downstreamBody()
+			wantNext := "next"
+			if tc.limit == 0 {
+				wantNext = ""
+			}
+			if next.Content != wantNext || next.Truncated {
+				t.Fatal("a new response inherited capture bytes or truncation", next)
+			}
+		})
+	}
+}
+
+func TestStreamDownstreamCaptureKeepsTeeAndSnapshotBoundaries(t *testing.T) {
+	for _, limit := range []int{0, 4} {
+		capture, writer, response := newTestStreamCapture(limit)
+		for _, chunk := range []string{"ab", "cd"} {
+			if _, err := io.WriteString(writer, chunk); err != nil {
+				t.Fatal(err)
+			}
+		}
+		exact := capture.downstreamBody()
+		expected := "abcd"
+		if limit == 0 {
+			expected = ""
+		}
+		if exact.Content != expected || exact.Truncated {
+			t.Fatal("exact stream boundary was truncated or changed", exact)
+		}
+		if _, err := io.WriteString(writer, "ef"); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		final := capture.downstreamBody()
+		if final.Content != expected || final.Truncated != (limit > 0) || response.Body.String() != "abcdef" {
+			t.Fatal("capture changed tee delivery or its bounded copy", final, response.Body.String())
+		}
+		if exact.Content != expected || exact.Truncated {
+			t.Fatal("later writes changed an earlier capture snapshot")
+		}
+		if repeated := capture.downstreamBody(); repeated != final {
+			t.Fatal("repeated stream capture changed the recorded tail")
+		}
 	}
 }

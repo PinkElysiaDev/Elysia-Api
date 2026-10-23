@@ -45,11 +45,23 @@ func encodeUsageJSON(value any) (string, error) {
 // decodeUsageJSON constructs the sole mutable log tree without copying through
 // protocol.Value. Require EOF so a valid prefix never hides a trailing secret.
 func decodeUsageJSON(input string) (any, bool) {
+	return decodeUsageJSONStrings(input, true)
+}
+
+// Borrowed fields are confined to synchronous cleaning. Only re-encoded text
+// and independently owned asset metadata may escape to the usage record.
+func decodeUsageJSONBorrowed(input string) (any, bool) {
+	return decodeUsageJSONStrings(input, false)
+}
+
+func decodeUsageJSONStrings(input string, shouldCopyStrings bool) (any, bool) {
 	trimmed := strings.TrimSpace(input)
 	if len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') {
 		reader := decoder.NewDecoder(input)
 		reader.UseNumber()
-		reader.CopyString()
+		if shouldCopyStrings {
+			reader.CopyString()
+		}
 		reader.ValidateString()
 		var value any
 		if reader.Decode(&value) == nil && reader.CheckTrailings() == nil {

@@ -244,9 +244,10 @@ func (s *Server) forwardGateway(ctx context.Context, c *app.RequestContext, reco
 		return err
 	}
 	setRecordModel(record, candidate.model, builtin.Platform("custom:"+candidate.binding.ProtocolID))
-	body := wireValue.Bytes() // Materialize mutable transport bytes once, after final checks.
 	record.UpstreamRevision, record.TargetEndpoint, record.TargetFormat = candidate.compiled.Hash(), candidate.operation.Path, candidate.binding.ProtocolID
-	record.OutgoingBody = record.sanitizeBody(body)
+	record.OutgoingBody = record.sanitizeBodyText(wireValue.JSONString())
+	// Keep transport storage out of the log cleaning lifetime.
+	body := wireValue.Bytes()
 	candidate.prepared = nil
 	candidate.releaseRequestEncoding()
 	candidate.encoding = nil

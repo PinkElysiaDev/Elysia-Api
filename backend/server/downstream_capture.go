@@ -40,7 +40,12 @@ func (w *downstreamCapture) capture(data []byte) {
 func (w *downstreamCapture) downstreamBody() usageBody {
 	if w.response != nil && !w.streaming {
 		w.buf, w.truncated = nil, false
-		w.capture(w.response.Body())
+		body := w.response.Body()
+		if w.limit <= 0 {
+			return usageBody{}
+		}
+		w.truncated = len(body) > w.limit
+		return usageBody{Content: string(body[:min(len(body), w.limit)]), Truncated: w.truncated}
 	}
 	return usageBody{Content: string(w.buf), Truncated: w.truncated}
 }

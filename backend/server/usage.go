@@ -190,12 +190,20 @@ func usageRequestID(start time.Time) string {
 // base64 媒体也永远提不出来。maxBytes 显式为 0（不保存请求体）时返回空体；
 // JSON 不可解析（非 JSON body）时退化为字节截断，保持历史语义。
 func (r *usageRecord) sanitizeBody(data []byte) usageBody {
-	maxBytes := r.bodyOpts.maxBytes
-	if maxBytes == 0 || len(data) == 0 {
+	if r.bodyOpts.maxBytes == 0 || len(data) == 0 {
 		return usageBody{}
 	}
+	return r.sanitizeBodyText(string(data))
+}
 
-	if value, ok := decodeUsageJSON(string(data)); ok {
+// sanitizeBodyText borrows immutable input only while cleaning; retained log
+// text and asset metadata own their storage before this call returns.
+func (r *usageRecord) sanitizeBodyText(input string) usageBody {
+	maxBytes := r.bodyOpts.maxBytes
+	if maxBytes == 0 || input == "" {
+		return usageBody{}
+	}
+	if value, ok := decodeUsageJSONBorrowed(input); ok {
 		redactTurnStateValue(&value, 1)
 		redactJSON(value)
 		if r.bodyOpts.externalize {
@@ -205,7 +213,12 @@ func (r *usageRecord) sanitizeBody(data []byte) usageBody {
 			return truncateUsageBody(sanitized, maxBytes)
 		}
 	}
-	return truncateUsageBody(redactUsageTurnState(string(data)), maxBytes)
+	body := truncateUsageBody(redactUsageTurnState(input), maxBytes)
+	if !body.Truncated {
+		// A non-JSON fragment can be a small view into a larger input as well.
+		body.Content = strings.Clone(body.Content)
+	}
+	return body
 }
 
 // finalizeDownstreamBody 处理第四段「返回下游」：tee 捕获的是流式原始字节，
@@ -218,7 +231,7 @@ func (r *usageRecord) finalizeDownstreamBody(body usageBody) (result usageBody) 
 	}
 	defer func() { result.Truncated = result.Truncated || body.Truncated }()
 
-	if value, ok := decodeUsageJSON(body.Content); ok {
+	if value, ok := decodeUsageJSONBorrowed(body.Content); ok {
 		isChanged := redactTurnStateValue(&value, 1)
 		if r.bodyOpts.externalize {
 			r.assets.extractFromValue(value)
