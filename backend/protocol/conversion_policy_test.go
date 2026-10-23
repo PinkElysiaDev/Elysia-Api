@@ -41,6 +41,61 @@ func TestConversionOrderOverridesAndProvenance(t *testing.T) {
 
 func boolPtr(v bool) *bool { return &v }
 
+func TestConversionValueChangeUsesWireBytes(t *testing.T) {
+	for _, test := range []struct {
+		name, before, after string
+		hasChange           bool
+	}{
+		{"same", `{"value":1}`, `{"value":1}`, false},
+		{"number spelling", `1`, `1.0`, true},
+		{"whitespace", `{ "value":1 }`, `{"value":1}`, true},
+		{"key order", `{"a":1,"b":2}`, `{"b":2,"a":1}`, true},
+		{"escaped string", `"a"`, `"\u0061"`, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			before := parseTestValue(t, test.before)
+			after := parseTestValue(t, strings.Clone(test.after))
+			policy := ConversionPolicy{SchemaVersion: 1, ID: "wire-change", Mode: "compatible", Rules: []ConversionRule{{
+				ID: "replace", Order: 1, Enabled: true, Phase: ConversionWire, Action: "transform",
+				Expression: &Expression{Op: "literal", Value: after},
+			}}}
+			compiled, err := CompileConversion(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sink := &DiagnosticSink{}
+			output, err := compiled.ApplyValue(t.Context(), ConversionWire, before, ConversionContext{}, sink)
+			if err != nil || output != after {
+				t.Fatalf("output %q, error %v", output.raw, err)
+			}
+			if hasIssue := len(sink.Issues()) != 0; hasIssue != test.hasChange {
+				t.Fatalf("byte-change diagnostic differs: %+v", sink.Issues())
+			}
+		})
+	}
+}
+
+func TestUnchangedConversionProvenanceDoesNotValidateScope(t *testing.T) {
+	values := []Value{{}}
+	for _, raw := range []string{`null`, `false`, `42`, `"text"`, `[]`, `{}`, `[{"scope":null}]`, `{"scope":{"account":"other"}}`, `{"resources":{"scope":false}}`} {
+		values = append(values, parseTestValue(t, raw))
+	}
+	for _, before := range values {
+		after := before
+		if !before.IsZero() {
+			after = parseTestValue(t, strings.Clone(before.raw))
+		}
+		if err := protectConversionProvenance(before, after); err != nil {
+			t.Fatalf("unchanged %q rejected: %v", before.raw, err)
+		}
+	}
+	before := parseTestValue(t, `{"scope":{"account":"original"}}`)
+	after := parseTestValue(t, `{"scope":{"account":"other"}}`)
+	if err := protectConversionProvenance(before, after); err == nil {
+		t.Fatal("changed protected scope was accepted")
+	}
+}
+
 func TestConversionNodeRulesAndLimits(t *testing.T) {
 	policy := ConversionPolicy{SchemaVersion: 1, ID: "node-policy", Rules: []ConversionRule{{ID: "text", Order: 1, Enabled: true, Phase: ConversionResponse, Match: ConversionMatch{NodeKind: TextNode}, Action: "set", Path: "/payload", Value: StringValue("changed")}}}
 	c, err := CompileConversion(policy)

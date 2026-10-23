@@ -261,13 +261,13 @@ func (c *CompiledConversion) applyRule(ctx context.Context, phase ConversionPhas
 			limits = requestLimits(ctx, c.limits, c.Policy.Limits != nil)
 		}
 		value, err = ApplyMutations(value, []Mutation{{Op: op, Path: rule.Path, Value: rule.Value}}, limits)
-		if err == nil && hashValue(value) != hashValue(input) {
+		if err == nil && value != input {
 			err = c.issue(rule, phase, route, rule.Path, "explicit field conversion: "+rule.Action, sink, true)
 		}
 	case "transform":
 		contextValue, _ := EncodeValue(route)
 		value, err = c.expressions[rule.ID].evaluate(evaluation{ctx: ctx, input: value, root: value, context: contextValue, budget: &evaluationBudget{limits: c.ruleLimits(ctx, phase, route), stepLimit: c.limits.Nodes}})
-		if err == nil && hashValue(value) != hashValue(input) {
+		if err == nil && value != input {
 			err = c.issue(rule, phase, route, rule.Path, "explicit expression conversion changed semantic or wire fields", sink, true)
 		}
 	}
@@ -415,6 +415,11 @@ func (c *CompiledConversion) applyNodeObject(ctx context.Context, phase Conversi
 }
 
 func protectConversionProvenance(before, after Value) error {
+	// This checks changes in protected ownership; validity and scope have their
+	// own boundaries. Identical bytes cannot introduce or rebind protected data.
+	if before == after {
+		return nil
+	}
 	allowed := map[string]int{}
 	var collect func(Value, bool) error
 	collect = func(v Value, checking bool) error {
