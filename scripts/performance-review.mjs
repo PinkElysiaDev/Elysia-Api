@@ -135,6 +135,12 @@ export const cases = {
   'image31-after-decode': { workload: 'image', size: 31, requests: 1, mapping: 'after-decode' },
   'image31-after-encode': { workload: 'image', size: 31, requests: 1, mapping: 'after-encode' },
   'image2-after-sse': { workload: 'image', requests: 4, mapping: 'after', stream: true },
+  'image2-sse': { workload: 'image', requests: 4, stream: true },
+  'image2-after-decode-sse': { workload: 'image', requests: 4, mapping: 'after-decode', stream: true },
+  'image2-after-encode-sse': { workload: 'image', requests: 4, mapping: 'after-encode', stream: true },
+  'image31-after-sse': { workload: 'image', size: 31, requests: 1, mapping: 'after', stream: true },
+  'image31-after-decode-sse': { workload: 'image', size: 31, requests: 1, mapping: 'after-decode', stream: true },
+  'image31-after-encode-sse': { workload: 'image', size: 31, requests: 1, mapping: 'after-encode', stream: true },
   'image2-json-rule': { workload: 'image', requests: 4, mapping: 'json-rule' },
   'image2-json-rule-sse': { workload: 'image', requests: 4, mapping: 'json-rule', stream: true },
 }
