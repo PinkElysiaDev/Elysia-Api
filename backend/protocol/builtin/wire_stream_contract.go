@@ -150,10 +150,18 @@ func (stream *streamModule) ValidateWireObjectEvent(frame p.Value, fields p.Obje
 	case Responses:
 		kind, _ := stringValue(fields["type"])
 		if kind == "response.metadata" {
-			if s.terminal {
-				return wireStreamIssue("/type", "turn-state control arrived after terminal")
+			if _, hasHeaders := fields["headers"]; hasHeaders {
+				if s.terminal {
+					return wireStreamIssue("/type", "turn-state control arrived after terminal")
+				}
+				return p.ValidateResponsesTurnStateFrame(frame)
 			}
-			return p.ValidateResponsesTurnStateFrame(frame)
+			if s.terminal {
+				return wireStreamIssue("/type", "response metadata arrived after terminal")
+			}
+			if err := p.ValidateResponsesMetadataFrame(frame); err != nil {
+				return err
+			}
 		}
 		if kind == "response.completed" || kind == "response.incomplete" || kind == "response.failed" {
 			s.terminal = true

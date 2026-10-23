@@ -125,6 +125,9 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 	if err != nil || !isAccepted {
 		return "", "", err
 	}
+	if isMetadata, err := isResponsesMetadataEvent(event); isMetadata || err != nil {
+		return "", "", err
+	}
 	collector.response.Metadata = mergeCollectedMetadata(collector.response.Metadata, event.Metadata)
 	if !event.ResponseID.IsZero() {
 		collector.response.ID = event.ResponseID

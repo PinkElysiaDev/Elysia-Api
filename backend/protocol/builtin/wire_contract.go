@@ -356,6 +356,9 @@ func (adapter module) validateResponsesWireContract(direction p.Direction, value
 	}
 	_ = fields["type"].Decode(&kind)
 	if kind == "response.metadata" {
+		if _, hasHeaders := fields["headers"]; !hasHeaders {
+			return p.ValidateResponsesMetadataFrame(value)
+		}
 		return p.ValidateResponsesTurnStateFrame(value)
 	}
 	if kind == "error" {

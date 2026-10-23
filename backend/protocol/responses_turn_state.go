@@ -23,7 +23,7 @@ type ResponsesTurnState struct {
 // Unknown payloads retain an explicit rejection boundary instead of being lost
 // with the known header during cross-protocol projection.
 func ValidateResponsesTurnStateFrame(frame Value) error {
-	fields, err := readTurnStateFields(frame, "")
+	fields, err := readControlFields(frame, "")
 	if err != nil || !fields["type"].IsString("response.metadata") {
 		return streamIssue(InvalidInput, "/type", "turn state requires response.metadata")
 	}
@@ -32,7 +32,7 @@ func ValidateResponsesTurnStateFrame(frame Value) error {
 			return streamIssue(UnsupportedCapability, "/"+escapePointer(key), "unrecognized turn-state control payload requires an explicit mapping")
 		}
 	}
-	headers, err := readTurnStateFields(fields["headers"], "/headers")
+	headers, err := readControlFields(fields["headers"], "/headers")
 	if err != nil || len(headers) != 1 {
 		return streamIssue(InvalidInput, "/headers", "turn-state control requires exactly one header without duplicate case aliases")
 	}
@@ -56,7 +56,7 @@ func ValidateResponsesTurnStateFrame(frame Value) error {
 
 // Duplicate keys would make raw replay ambiguous even if a map kept the last
 // value. Header aliases are compared case-insensitively before map decoding.
-func readTurnStateFields(value Value, path string) (Object, error) {
+func readControlFields(value Value, path string) (Object, error) {
 	if !value.IsObject() {
 		return nil, streamIssue(InvalidInput, path, "control fields require an object")
 	}

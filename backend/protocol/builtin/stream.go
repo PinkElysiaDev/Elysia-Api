@@ -151,6 +151,9 @@ func (stream *streamModule) DecodeObjectEvents(ctx context.Context, input p.Valu
 	var err error
 	if stream.name == Responses {
 		if fields["type"].IsString("response.metadata") {
+			if _, hasHeaders := fields["headers"]; !hasHeaders {
+				return stream.decodeResponsesMetadata(input, fields)
+			}
 			if err := p.ValidateResponsesTurnStateFrame(input); err != nil {
 				return nil, err
 			}

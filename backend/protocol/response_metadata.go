@@ -594,6 +594,9 @@ func (c *CompiledConversion) metadataObject(phase ConversionPhase, document any,
 	case *Response:
 		return response(subject)
 	case *Event:
+		if handled, err := c.projectResponsesMetadataEvent(subject, codec, route, rule, sink); handled || err != nil {
+			return err
+		}
 		var err error
 		subject.Metadata, err = c.projectMetadata(subject.Metadata, codec, phase, route, rule, sink)
 		if err != nil {

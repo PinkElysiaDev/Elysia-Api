@@ -241,6 +241,14 @@ func (compiled *Compiled) decodeEvents(ctx context.Context, direction Direction,
 		event.Native = nil
 		if compiled.native.Preserve && !*options.transportControl && (!options.compoundFrame || event.Type == NativeEvent) {
 			event.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: direction, Scope: options.Scope}, Value: frame}
+			// Only an installed Responses decoder can designate this native
+			// envelope as auxiliary metadata. Authored labels are insufficient.
+			if event.Type == NativeEvent && direction == DecodeEvent && compiled.Codec(direction) == "responses" {
+				kind, _ := readValuePointer(frame, []string{"type"})
+				if kind.IsString("response.metadata") && ValidateResponsesMetadataFrame(frame) == nil {
+					event.Native.Source.Path = responsesMetadataPath
+				}
+			}
 		}
 		target := compiled.target(direction, options)
 		target.Direction = eventEncoder(direction)
