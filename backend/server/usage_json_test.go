@@ -51,6 +51,10 @@ func FuzzUsageJSONDecoderParity(f *testing.F) {
 		if actualOK != expectedOK || !reflect.DeepEqual(actual, expected) {
 			t.Fatalf("decoder contract changed for %q: got %#v/%t, want %#v/%t", input, actual, actualOK, expected, expectedOK)
 		}
+		borrowed, borrowedOK := decodeUsageJSONBorrowed(input)
+		if borrowedOK != expectedOK || !reflect.DeepEqual(borrowed, expected) {
+			t.Fatalf("borrowed decoder contract changed for %q: got %#v/%t, want %#v/%t", input, borrowed, borrowedOK, expected, expectedOK)
+		}
 	})
 }
 

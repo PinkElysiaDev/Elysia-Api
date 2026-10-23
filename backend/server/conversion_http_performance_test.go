@@ -218,6 +218,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 	var calls atomic.Int64
 	var gatewayURL string
 	var closeGateway func()
+	var loggingReview *loggingReviewGateway
 	if role == "provider" {
 		var gateway *httptest.Server
 		if targetID := os.Getenv("ELYSIA_FLAME_TARGET"); targetID != "" {
@@ -227,6 +228,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 				handler.ServeHTTP(w, r)
 			}))
 		} else {
+			imagePayload := loggingReviewImagePayload(size)
 			gateway = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
 				var input struct {
@@ -243,7 +245,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 				for index := 1; index < candidates; index++ {
 					isCandidateModel = isCandidateModel || input.Model == fmt.Sprintf("m%d", index)
 				}
-				isHistoryValid := len(input.Messages) == 2 && bytes.Contains(input.Messages[1], []byte(strings.Repeat("A", size<<20)))
+				isHistoryValid := len(input.Messages) == 2 && bytes.Contains(input.Messages[1], []byte(imagePayload))
 				if workload := os.Getenv("ELYSIA_FLAME_WORKLOAD"); workload != "" && workload != "image" {
 					isHistoryValid = validFlameHistory(input.Messages, workload)
 				}
@@ -301,6 +303,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 		server := newTestServerWithStore(t, []config.ModelGroupConfig{group})
 		// Include production request ownership and logging, not only the router.
 		server.engine.Use(server.requestLifecycle(), server.requestLogging())
+		loggingReview = configureLoggingReviewGateway(t, server)
 		server.engine.Use(func(ctx context.Context, c *app.RequestContext) {
 			if strings.HasPrefix(string(c.Path()), "/debug/pprof/") {
 				c.Next(ctx)
@@ -440,6 +443,9 @@ func TestConversionHTTPProcess(t *testing.T) {
 		<-done
 	}()
 	metrics := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if loggingReview != nil && loggingReview.handleMetrics(w, r) {
+			return
+		}
 		action := r.URL.Query().Get("action")
 		if action == "reload" && reload != nil {
 			if err := reload(r.Context()); err != nil {

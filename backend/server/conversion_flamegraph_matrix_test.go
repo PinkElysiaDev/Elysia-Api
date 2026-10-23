@@ -93,9 +93,13 @@ func flameRequestText(nodes []protocol.Node) string {
 
 func flameMatrixResponse(t *testing.T, compiled *protocol.Compiled) ([][]byte, []byte) {
 	t.Helper()
+	responseText, err := loggingReviewResponseText()
+	if err != nil {
+		t.Fatal(err)
+	}
 	usage := &protocol.Usage{Input: &protocol.Counter{Count: 100, Origin: protocol.ObservedCount}, Output: &protocol.Counter{Count: 5, Origin: protocol.ObservedCount}, Total: &protocol.Counter{Count: 105, Origin: protocol.ObservedCount}}
 	attributes := protocol.Object{"created_at": mustProtocolValue(t, "1"), "finishReason": protocol.StringValue("stop")}
-	response := &protocol.Response{SchemaVersion: 1, ID: protocol.StringValue("r"), Model: protocol.StringValue("m"), Status: protocol.StringValue("completed"), Content: []protocol.Node{{Kind: protocol.MessageNode, ID: protocol.StringValue("msg"), Role: protocol.StringValue("assistant"), Status: protocol.StringValue("completed"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("ok")}}}}, Usage: usage, Attributes: attributes}
+	response := &protocol.Response{SchemaVersion: 1, ID: protocol.StringValue("r"), Model: protocol.StringValue("m"), Status: protocol.StringValue("completed"), Content: []protocol.Node{{Kind: protocol.MessageNode, ID: protocol.StringValue("msg"), Role: protocol.StringValue("assistant"), Status: protocol.StringValue("completed"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue(responseText)}}}}, Usage: usage, Attributes: attributes}
 	if compiled.Identity().DefinitionID != "openai-responses" {
 		response.Content[0].ID = protocol.Value{}
 		response.Content[0].Status = protocol.Value{}
@@ -184,7 +188,10 @@ func flameMatrixRequest(t *testing.T, source *protocol.Compiled, stream bool) (s
 }
 
 func validateFlameMatrixOutput(ctx context.Context, source *protocol.Compiled, body []byte, stream bool) error {
-	expected := "ok"
+	expected, err := loggingReviewResponseText()
+	if err != nil {
+		return err
+	}
 	if stream {
 		frames, width, err := flameStreamShape()
 		if err != nil {
@@ -200,7 +207,11 @@ func flameStreamShape() (int, int, error) {
 	for i, name := range []string{"ELYSIA_FLAME_FRAMES", "ELYSIA_FLAME_FRAME_BYTES"} {
 		if text := os.Getenv(name); text != "" {
 			value, err := strconv.Atoi(text)
-			if err != nil || value < 1 || value > 4096 {
+			maximum := 4096
+			if i == 1 {
+				maximum = loggingReviewResponseMaxBytes
+			}
+			if err != nil || value < 1 || value > maximum {
 				return 0, 0, fmt.Errorf("invalid %s", name)
 			}
 			values[i] = value
