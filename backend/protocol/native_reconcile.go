@@ -247,12 +247,22 @@ func equalNativeValues(left, right Value) bool {
 	if left.IsZero() || right.IsZero() {
 		return false
 	}
-	// Comparison returns no views. Borrow even small fragments for its duration;
-	// request decoding detaches them because its results can outlive the root.
-	reader := &valueReader{}
+	leftReader, rightReader := newNativeComparisonReader(left), newNativeComparisonReader(right)
+	return equalNativeRoots(left, right, leftReader, rightReader)
+}
+
+func newNativeComparisonReader(root Value) *valueReader {
+	// Comparison returns no views. Borrow even small fragments for its duration,
+	// retaining the root index so nested containers do not rescan large payloads.
+	reader := requestValueReader(root)
+	reader.minimumSharedBytes = 0
+	return reader
+}
+
+func equalNativeRoots(left, right Value, leftReader, rightReader *valueReader) bool {
 	if left.IsObject() && right.IsObject() {
-		before, _ := left.readObjectWithin(reader)
-		after, _ := right.readObjectWithin(reader)
+		before, _ := left.readObjectWithin(leftReader)
+		after, _ := right.readObjectWithin(rightReader)
 		if len(before) != len(after) {
 			return false
 		}
@@ -264,9 +274,9 @@ func equalNativeValues(left, right Value) bool {
 				return false
 			}
 		}
-		return equalNativeObjectFields(before, after, reader, reader)
+		return equalNativeObjectFields(before, after, leftReader, rightReader)
 	}
-	return equalNativeValuesWithin(left, right, reader, reader)
+	return equalNativeValuesWithin(left, right, leftReader, rightReader)
 }
 
 func equalNativeValuesWithin(left, right Value, leftReader, rightReader *valueReader) bool {

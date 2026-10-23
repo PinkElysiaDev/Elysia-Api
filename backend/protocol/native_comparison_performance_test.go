@@ -17,7 +17,7 @@ type nativeComparisonImplementation struct {
 
 func TestNativeComparisonBorrowedFragments(t *testing.T) {
 	root := parseTestValue(t, `{"items":[{"text":"small","number":9007199254740993}]}`)
-	reader := &valueReader{}
+	reader := newNativeComparisonReader(root)
 	fields, err := root.readObjectWithin(reader)
 	if err != nil {
 		t.Fatal(err)
@@ -43,6 +43,27 @@ func TestNativeComparisonBorrowedFragments(t *testing.T) {
 	delete(fields, "items")
 	if root.raw != `{"items":[{"text":"small","number":9007199254740993}]}` {
 		t.Fatal("comparison containers shared mutable ownership")
+	}
+}
+
+func TestNativeComparisonReaderIndexesBorrowedPayload(t *testing.T) {
+	root := parseTestValue(t, `{"nested":{"payload":"`+strings.Repeat("x", 2*requestViewMinBytes)+`","small":"value"}}`)
+	reader := newNativeComparisonReader(root)
+	fields, err := root.readObjectWithin(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nested, err := fields["nested"].readObjectWithin(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reader.index == nil || len(reader.index.ends) == 0 {
+		t.Fatal("large comparison payload was not indexed")
+	}
+	for _, value := range []Value{fields["nested"], nested["payload"], nested["small"]} {
+		if !sharesValueStorage(root, value) {
+			t.Fatal("indexed comparison copied a temporary fragment")
+		}
 	}
 }
 
@@ -108,7 +129,8 @@ func nativeComparisonImplementations() []nativeComparisonImplementation {
 	return []nativeComparisonImplementation{
 		{"decoded-baseline", equalNativeValuesDecodedBaseline},
 		{"request-reader", equalNativeValuesRequestReader},
-		{"borrow-all", equalNativeValues},
+		{"borrow-all-index", equalNativeValues},
+		{"borrow-all-no-index", equalNativeValuesWithoutIndex},
 	}
 }
 
@@ -145,4 +167,15 @@ func equalNativeValuesRequestReader(left, right Value) bool {
 		return false
 	}
 	return equalNativeValuesWithin(left, right, requestValueReader(left), requestValueReader(right))
+}
+
+func equalNativeValuesWithoutIndex(left, right Value) bool {
+	if left.raw == right.raw {
+		return true
+	}
+	if left.IsZero() || right.IsZero() {
+		return false
+	}
+	reader := &valueReader{}
+	return equalNativeRoots(left, right, reader, reader)
 }
