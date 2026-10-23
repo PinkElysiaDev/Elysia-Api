@@ -21,6 +21,7 @@ type typedMeter struct {
 	bytes, nodes, depth int
 	maxDepth            int
 	cache               *semanticCache
+	needsNormalization  bool
 }
 
 type typedField struct {
@@ -252,6 +253,9 @@ func (meter *typedMeter) raw(raw string) bool {
 		}
 		entry.metrics = semanticMetrics{bytes: local.bytes, nodes: local.nodes, depth: local.maxDepth}
 		entry.hasMetrics = true
+		if !local.needsNormalization && !entry.hasNormalized {
+			entry.normalized, entry.hasNormalized = value, true
+		}
 		meter.cache.store(value, entry)
 	}
 	metric := entry.metrics
@@ -271,6 +275,7 @@ func (meter *typedMeter) scanRaw(raw string) bool {
 	for offset := 0; offset < len(raw); {
 		switch raw[offset] {
 		case ' ', '\t', '\r', '\n':
+			meter.needsNormalization = true
 			offset++
 		case ',', ':':
 			meter.bytes++
@@ -291,9 +296,11 @@ func (meter *typedMeter) scanRaw(raw string) bool {
 			text := raw[offset+1 : end-1]
 			// Literal HTML and line separators are always unescaped in valid
 			// JSON; their escaped spellings contain no matching literal bytes.
-			length += 5 * (strings.Count(text, "<") + strings.Count(text, ">") + strings.Count(text, "&"))
-			length += 3 * (strings.Count(text, "\u2028") + strings.Count(text, "\u2029"))
+			escapedBytes := 5*(strings.Count(text, "<")+strings.Count(text, ">")+strings.Count(text, "&")) + 3*(strings.Count(text, "\u2028")+strings.Count(text, "\u2029"))
+			length += escapedBytes
+			meter.needsNormalization = meter.needsNormalization || escapedBytes != 0
 			if !utf8.ValidString(text) {
+				meter.needsNormalization = true
 				for index := 0; index < len(text); {
 					_, width := utf8.DecodeRuneInString(text[index:])
 					if width == 1 && text[index] >= utf8.RuneSelf {

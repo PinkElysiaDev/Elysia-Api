@@ -95,6 +95,59 @@ func TestSemanticCacheSpillAndUpdates(t *testing.T) {
 	}
 }
 
+func TestSemanticMeterRecordsNormalizationFacts(t *testing.T) {
+	padding := strings.Repeat("x", semanticCacheMinBytes)
+	for _, test := range []struct {
+		name, raw    string
+		isNormalized bool
+	}{
+		{"plain", `"` + padding + `"`, true},
+		{"string whitespace", `"a b ` + padding + `"`, true},
+		{"escaped HTML", `"\u003c` + padding + `"`, true},
+		{"escaped separator", `"\u2028` + padding + `"`, true},
+		{"outer whitespace", ` "` + padding + `" `, false},
+		{"literal HTML", `"<` + padding + `"`, false},
+		{"literal separator", "\"\u2028" + padding + "\"", false},
+		{"invalid UTF8", "\"\xff" + padding + "\"", false},
+		// Whitespace removal can cancel escape growth; equal lengths alone
+		// cannot prove that a value already has its normalized spelling.
+		{"balanced length", `     "<` + padding + `"`, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			value := parseTestValue(t, test.raw)
+			limits := DefaultLimits()
+			cache := &semanticCache{limits: limits}
+			meter := typedMeter{limits: limits, cache: cache}
+			if !meter.raw(value.raw) {
+				t.Fatal("valid value did not fit")
+			}
+			entry, exists := cache.lookup(value)
+			if !exists || !entry.hasMetrics || entry.hasNormalized != test.isNormalized {
+				t.Fatalf("normalization fact differs: %+v", entry)
+			}
+			want, err := EncodeValue(value)
+			if err != nil || cache.normalize(value) != want {
+				t.Fatalf("normalization changed: %v", err)
+			}
+			if meter.bytes != want.Len() {
+				t.Fatalf("byte count changed: %d != %d", meter.bytes, want.Len())
+			}
+		})
+	}
+
+	value := StringValue(padding)
+	limits := DefaultLimits()
+	limits.BufferBytes = value.Len() - 1
+	cache := &semanticCache{limits: DefaultLimits()}
+	meter := typedMeter{limits: limits, cache: cache}
+	if meter.raw(value.raw) {
+		t.Fatal("oversize value accepted")
+	}
+	if _, exists := cache.lookup(value); exists {
+		t.Fatal("incomplete measurement was cached")
+	}
+}
+
 func TestCanonicalToolTextMatchesLegacy(t *testing.T) {
 	for _, raw := range []string{`"plain"`, ` " a b " `, `"<>&"`, `"\u0061"`, `"line\n"`, `"\ud800"`, "\"\xff\"", `null`, `{}`, `17`} {
 		value, err := ParseValue([]byte(raw))
