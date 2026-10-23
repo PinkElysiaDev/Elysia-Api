@@ -16,13 +16,13 @@ function seedUsageRecords(records: UsageLogDetail[]) {
   try {
     database.exec('PRAGMA busy_timeout=5000')
     const insert = database.prepare(`INSERT INTO usage_records
-      (request_id,started_at,started_ms,ended_at,key_name,requested_model_group,model_name,platform,stream,status_code,error,record_json,content_bytes)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      (request_id,started_at,started_ms,ended_at,key_name,requested_model_group,model_name,platform,stream,status_code,error,response_truncated,record_json,content_bytes)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     for (const record of records) {
       const payload = JSON.stringify(record)
       insert.run(record.requestId, record.startedAt, Date.parse(record.startedAt), record.endedAt,
         record.keyName, record.requestedModelGroup, record.modelName, record.platform, Number(record.stream),
-        record.statusCode, record.error ?? '', payload, Buffer.byteLength(payload))
+        record.statusCode, record.error ?? '', Number(record.providerResponse.truncated), payload, Buffer.byteLength(payload))
     }
   } finally {
     database.close()
@@ -34,6 +34,7 @@ test('real usage details and exports preserve independent delivery evidence and 
   const suffix = Date.now()
   const timestamp = new Date().toISOString()
   const emptyBody = { content: '', truncated: false }
+  const retainedTail = Array.from({ length: 50 }, (_, index) => ({ sequence_number: index + 1, text: `synthetic retained frame ${index + 1}` }))
   const base: UsageLogDetail = {
     requestId: `delivery-legacy-${suffix}`, startedAt: timestamp, endedAt: timestamp,
     keyName: 'synthetic-delivery', keyHash: '', requestedModelGroup: 'synthetic-model', groupName: 'synthetic-model', modelName: 'synthetic-model',
@@ -59,6 +60,15 @@ test('real usage details and exports preserve independent delivery evidence and 
       error: 'context canceled', errorKind: 'request_canceled',
       delivery: { httpStatus: 200, outcome: 'failed', phase: 'response', cause: 'request_canceled', error: 'context canceled' },
     },
+    { ...base, requestId: `delivery-tail-${suffix}`, upstreamHttpStatus: 200,
+      delivery: { httpStatus: 200, outcome: 'completed' },
+      providerResponse: { content: JSON.stringify(retainedTail), truncated: true },
+    },
+    { ...base, requestId: `delivery-timeout-${suffix}`, statusCode: 502, upstreamHttpStatus: 200,
+      error: 'synthetic upstream body idle timeout', errorKind: 'upstream_idle_timeout',
+      delivery: { httpStatus: 200, outcome: 'completed' },
+      transportFailure: { kind: 'upstream_idle_timeout', phase: 'reading_body' },
+    },
   ]
   seedUsageRecords(records)
   const token = process.env.PROTOCOL_E2E_TOKEN!
@@ -69,7 +79,10 @@ test('real usage details and exports preserve independent delivery evidence and 
   for (const record of records) {
     const persisted = await request.get(`${process.env.PROTOCOL_E2E_URL}/api/admin/usage/logs/${record.requestId}`, { headers })
     expect(persisted.status()).toBe(200)
-    expect((await persisted.json()).data).toMatchObject(record)
+    const persistedRecord: UsageLogDetail = (await persisted.json()).data
+    expect(persistedRecord).toMatchObject(record)
+    expect(persistedRecord.providerResponse).toEqual(record.providerResponse)
+    expect(persistedRecord.transportFailure).toEqual(record.transportFailure)
     await page.getByRole('button', { name: `查看请求 ${record.requestId} 详情`, exact: true }).click()
     const dialog = page.getByRole('dialog', { name: '调用详情' })
     await expect(dialog.getByTestId('logical-status')).toHaveText(String(record.statusCode))
@@ -86,6 +99,17 @@ test('real usage details and exports preserve independent delivery evidence and 
       await expect(dialog.getByText('请求取消（来源未明）（503）', { exact: false })).toBeVisible()
       await expect(dialog.getByText('客户端取消', { exact: false })).toHaveCount(0)
     }
+    if (record.providerResponse.truncated) {
+      const providerBody = dialog.locator('#chain-trigger-provider')
+      await expect(providerBody.getByText('已截断', { exact: true })).toBeVisible()
+      await providerBody.click()
+      const displayedTail = await dialog.locator('#chain-body-provider pre').textContent()
+      expect(JSON.parse(displayedTail!)).toEqual(retainedTail)
+    }
+    if (record.transportFailure) {
+      await expect(dialog.getByText('传输诊断', { exact: true })).toBeVisible()
+      await expect(dialog.getByText('upstream_idle_timeout / reading_body', { exact: true })).toBeVisible()
+    }
     const download = page.waitForEvent('download')
     await dialog.getByRole('button', { name: '导出完整日志' }).click()
     const stream = await (await download).createReadStream()
@@ -96,7 +120,13 @@ test('real usage details and exports preserve independent delivery evidence and 
     expect(exported.overview.statusCode).toBe(record.statusCode)
     expect(exported.overview.upstreamHttpStatus).toBe(record.upstreamHttpStatus)
     expect(exported.overview.delivery).toEqual(record.delivery)
+    expect(exported.overview.transportFailure).toEqual(record.transportFailure)
     expect(exported.overview.conversionIssues).toEqual(record.conversionIssues)
+    expect(exported.chain.upstreamResponse.truncated).toBe(record.providerResponse.truncated)
+    if (record.providerResponse.truncated) {
+      expect(exported.raw.providerResponse).toEqual(record.providerResponse)
+      expect(exported.chain.upstreamResponse.content).toEqual(retainedTail)
+    }
     await dialog.getByRole('button', { name: '关闭', exact: true }).last().click()
   }
 })
