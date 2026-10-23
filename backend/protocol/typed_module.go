@@ -7,8 +7,9 @@ import (
 
 // TypedModule avoids serializing semantic documents between trusted Go
 // adapters and the runtime. It implements the same conversion as Module.
-// Request wire schemas still run at their original boundary. Semantic schemas,
-// post-mappings and initial events retain the generic execution path.
+// Request wire schemas and input-root identity after checks retain their original
+// boundaries. Semantic schemas, other post-mappings and initial events retain
+// the generic execution path.
 type TypedModule interface {
 	Module
 	DecodeRequest(context.Context, Value, EvaluationContext) (*Request, error)

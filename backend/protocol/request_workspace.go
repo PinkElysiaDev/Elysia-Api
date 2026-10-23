@@ -15,8 +15,9 @@ type RequestBaselineModule interface {
 }
 
 // requestEncodingWorkspace owns one immutable parsed baseline, never a set of
-// candidate projections. It is attached privately after successful decoding and
-// disappears across an authored JSON boundary. Nothing is cached globally.
+// candidate projections. Supported identity module after-mappings preserve it;
+// materializing a semantic JSON boundary drops it. It is attached privately
+// after successful decoding and is never cached globally.
 type requestEncodingWorkspace struct {
 	compiled *Compiled
 	identity Identity
