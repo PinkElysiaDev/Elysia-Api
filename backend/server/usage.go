@@ -200,7 +200,7 @@ func (r *usageRecord) sanitizeBody(data []byte) usageBody {
 		if r.bodyOpts.externalize {
 			r.assets.extractFromValue(value)
 		}
-		if sanitized, err := sonic.ConfigStd.MarshalToString(value); err == nil {
+		if sanitized, err := encodeUsageJSON(value); err == nil {
 			return truncateUsageBody(sanitized, maxBytes)
 		}
 	}
@@ -223,7 +223,7 @@ func (r *usageRecord) finalizeDownstreamBody(body usageBody) (result usageBody) 
 			r.assets.extractFromValue(value)
 		}
 		if isChanged || r.bodyOpts.externalize {
-			if sanitized, err := sonic.ConfigStd.MarshalToString(value); err == nil {
+			if sanitized, err := encodeUsageJSON(value); err == nil {
 				return truncateUsageBody(sanitized, maxBytes)
 			}
 		}

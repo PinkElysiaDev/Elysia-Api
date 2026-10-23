@@ -8,6 +8,13 @@ import (
 	"github.com/bytedance/sonic/decoder"
 )
 
+// Retained log text needs exact-sized storage: Sonic's zero-copy string result
+// can otherwise keep the larger HTML-escaping buffer alive in the log queue.
+func encodeUsageJSON(value any) (string, error) {
+	encoded, err := sonic.ConfigStd.Marshal(value)
+	return string(encoded), err
+}
+
 // decodeUsageJSON constructs the sole mutable log tree without copying through
 // protocol.Value. Require EOF so a valid prefix never hides a trailing secret.
 func decodeUsageJSON(input string) (any, bool) {
