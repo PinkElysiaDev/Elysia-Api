@@ -13,6 +13,9 @@ type ResponseCollector struct {
 	replay   *EventReplay
 	response Response
 	items    map[string]collectedPosition
+	// Auxiliary native frames cannot establish an identity or borrow one from
+	// an unrelated later event; bind them to the observed response start.
+	startedResponseID Value
 	// Prefix entries become immutable once preceding messages close. Advancing
 	// this frontier visits each top-level item once across the whole stream.
 	topKeys                                  []string
@@ -116,6 +119,13 @@ func NewResponseCollector(target Target, limits Limits) (*ResponseCollector, err
 // Consume returns the newly appended text, if any. Snapshot prefixes and
 // duplicate sequence frames never appear twice in a caller's output.
 func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, error) {
+	// Public callers can bypass frame decoding. Bound the auxiliary frame
+	// before sequence canonicalization or metadata validation copies its body.
+	if event.Type == NativeEvent && event.Native != nil && event.Native.Source.Path == responsesMetadataPath {
+		if err := checkResourceValue(event.Native.Value, collector.replay.limits, "wire_input"); err != nil {
+			return "", "", err
+		}
+	}
 	if event.Unmapped != nil {
 		if err := collector.collectUnmapped(event.Unmapped); err != nil {
 			return "", "", err
@@ -126,6 +136,9 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 		return "", "", err
 	}
 	if isMetadata, err := isResponsesMetadataEvent(event); isMetadata || err != nil {
+		if err == nil && (collector.startedResponseID.IsZero() || !equalValues(collector.startedResponseID, event.ResponseID)) {
+			err = streamIssue(InvalidAssociation, "/response_id", "auxiliary metadata requires the identity of an earlier response start")
+		}
 		return "", "", err
 	}
 	collector.response.Metadata = mergeCollectedMetadata(collector.response.Metadata, event.Metadata)
@@ -139,6 +152,7 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 	}
 	switch event.Type {
 	case ResponseStarted:
+		collector.startedResponseID = event.ResponseID
 		if event.Response != nil {
 			collector.materializeLogprobs()
 			id, metadata := collector.response.ID, collector.response.Metadata
@@ -147,6 +161,9 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 				collector.response.ID = id
 			}
 			collector.response.Metadata = mergeCollectedMetadata(metadata, event.Response.Metadata)
+			if !event.Response.ID.IsZero() {
+				collector.startedResponseID = event.Response.ID
+			}
 		}
 		return "", "", nil
 	case NativeEvent, MediaReceived:

@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -249,6 +250,73 @@ func TestResponsesMetadataRejectsSemanticContamination(t *testing.T) {
 	}
 	if _, err := to.EncodeFrames(t.Context(), projected, p.EvaluationContext{State: p.NewEvaluationState(), Scope: scope}); err == nil {
 		t.Fatal("unrecognized native event crossed protocols")
+	}
+}
+
+func TestResponsesMetadataCollectorRequiresStartedIdentity(t *testing.T) {
+	compiled := shippedProjectionProtocol(t, Responses)
+	event := decodeResponsesMetadataFixture(t, compiled, p.Scope{}).Events[0]
+	for _, test := range []struct {
+		name    string
+		startID p.Value
+		isValid bool
+	}{
+		{"before-start", p.Value{}, false},
+		{"other-response", p.StringValue("other"), false},
+		{"matching-response", event.ResponseID, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			collector, _ := p.NewResponseCollector(p.Target{Codec: Responses, Protocol: compiled.Identity(), Direction: p.EncodeEvent, Capabilities: compiled.Capabilities(p.EncodeEvent)}, compiled.ResourceLimits())
+			if !test.startID.IsZero() {
+				start := p.Event{SchemaVersion: 1, Type: p.ResponseStarted, ResponseID: test.startID}
+				if _, _, err := collector.Consume(start); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, _, err := collector.Consume(event); (err == nil) != test.isValid {
+				t.Fatalf("metadata acceptance = %v, want %t", err, test.isValid)
+			}
+		})
+	}
+}
+
+func TestResponsesMetadataCollectorFrameLimits(t *testing.T) {
+	compiled := shippedProjectionProtocol(t, Responses)
+	event := decodeResponsesMetadataFixture(t, compiled, p.Scope{}).Events[0]
+	event.Native.Value = testValue(t, fmt.Sprintf(`{"type":"response.metadata","metadata":{},"response_id":%s,"sequence_number":%s}`, event.ResponseID.JSONString(), event.Sequence.JSONString()))
+	frameBytes := len(event.Native.Value.JSONString())
+	for _, test := range []struct {
+		name                string
+		bytes, nodes, depth int
+		metric              string
+	}{
+		{"exact-limits", frameBytes, 11, 2, ""},
+		{"bytes", frameBytes - 1, 11, 2, "bytes"},
+		{"nodes", frameBytes, 10, 2, "nodes"},
+		{"depth", frameBytes, 11, 1, "depth"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			limits := compiled.ResourceLimits()
+			limits.BufferBytes, limits.Nodes, limits.Depth = test.bytes, test.nodes, test.depth
+			collector, err := p.NewResponseCollector(p.Target{Codec: Responses, Protocol: compiled.Identity(), Direction: p.EncodeEvent, Capabilities: compiled.Capabilities(p.EncodeEvent)}, limits)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := collector.Consume(p.Event{SchemaVersion: 1, Type: p.ResponseStarted, ResponseID: event.ResponseID}); err != nil {
+				t.Fatal(err)
+			}
+			_, _, err = collector.Consume(event)
+			if test.metric == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			var failure *p.ResourceLimitError
+			if !errors.As(err, &failure) || failure.Metric != test.metric || failure.Observed <= failure.Limit {
+				t.Fatalf("metadata resource failure = %v, want %s limit", err, test.metric)
+			}
+		})
 	}
 }
 
