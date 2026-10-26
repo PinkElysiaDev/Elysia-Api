@@ -15,15 +15,15 @@ const a2aRegistryLimit = 512
 // Bounded, process-local mapping of gateway turns to SDK tasks. Published SDK
 // events and their nested values are immutable; snapshots copy mutable slices.
 type a2aTaskEntry struct {
-	id        a2a.TaskID
-	contextID string
-	createdAt time.Time
-	execution sync.Mutex    // serializes approval resumption and cancellation
-	roundDone chan struct{} // guarded by execution once the entry is published
-	mu        sync.Mutex
-	task      a2a.Task
-	events    []a2a.Event
-	changed   chan struct{} // broadcast to every subscriber, not just one waiter
+	id                a2a.TaskID
+	contextID         string
+	registrationOrder uint64
+	execution         sync.Mutex    // serializes approval resumption and cancellation
+	roundDone         chan struct{} // guarded by execution once the entry is published
+	mu                sync.Mutex
+	task              a2a.Task
+	events            []a2a.Event
+	changed           chan struct{} // broadcast to every subscriber, not just one waiter
 }
 
 func (e *a2aTaskEntry) snapshot() *a2a.Task {
@@ -115,7 +115,7 @@ func (h *a2aService) register(id a2a.TaskID, contextID string, running bool) *a2
 			terminal := entry.task.Status.State.Terminal()
 			entry.mu.Unlock()
 			if oldest == nil || (terminal && !oldestTerminal) ||
-				(terminal == oldestTerminal && entry.createdAt.Before(oldest.createdAt)) {
+				(terminal == oldestTerminal && entry.registrationOrder < oldest.registrationOrder) {
 				oldest, oldestTerminal = entry, terminal
 			}
 		}
@@ -126,8 +126,11 @@ func (h *a2aService) register(id a2a.TaskID, contextID string, running bool) *a2
 			}
 		}
 	}
+	// Registration order is assigned under mu, independent of clock resolution
+	// and adjustments. Reusing a task must not renew its place in the registry.
+	h.nextTaskOrder++
 	now := time.Now().UTC()
-	entry := &a2aTaskEntry{id: id, contextID: contextID, createdAt: now, changed: make(chan struct{}), roundDone: make(chan struct{}),
+	entry := &a2aTaskEntry{id: id, contextID: contextID, registrationOrder: h.nextTaskOrder, changed: make(chan struct{}), roundDone: make(chan struct{}),
 		task: a2a.Task{ID: id, ContextID: contextID, Status: a2a.TaskStatus{State: a2a.TaskStateWorking, Timestamp: &now}}}
 	if !running {
 		close(entry.roundDone)

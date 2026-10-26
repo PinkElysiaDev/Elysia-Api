@@ -19,11 +19,12 @@ import (
 // SDK wire models and business interfaces are shared by the native Hertz
 // transport. This service owns session/turn/task and approval policy.
 type a2aService struct {
-	server   *Server
-	mu       sync.Mutex
-	tasks    map[a2a.TaskID]*a2aTaskEntry
-	messages map[string]a2aRun
-	flights  singleflight.Group
+	server        *Server
+	mu            sync.Mutex
+	nextTaskOrder uint64
+	tasks         map[a2a.TaskID]*a2aTaskEntry
+	messages      map[string]a2aRun
+	flights       singleflight.Group
 }
 
 var _ a2asrv.RequestHandler = (*a2aService)(nil)

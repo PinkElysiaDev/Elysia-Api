@@ -455,6 +455,7 @@
     "backend/relay/timeout_client.go",
     "backend/server/a2a_agent.go",
     "backend/server/a2a_card.go",
+    "backend/server/a2a_registry_bench_test.go",
     "backend/server/a2a_sdk_test.go",
     "backend/server/a2a_server.go",
     "backend/server/a2a_tasks.go",

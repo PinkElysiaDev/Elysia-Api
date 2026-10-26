@@ -176,6 +176,174 @@ func TestA2ARegistryEvictionAndPagination(t *testing.T) {
 	}
 }
 
+func TestA2ARegistryEvictionWithEqualTimestamps(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		firstState   a2a.TaskState
+		laterState   a2a.TaskState
+		evictedIndex int
+	}{
+		{"completed-first", a2a.TaskStateWorking, a2a.TaskStateCompleted, 1},
+		{"failed-first", a2a.TaskStateWorking, a2a.TaskStateFailed, 1},
+		{"canceled-first", a2a.TaskStateWorking, a2a.TaskStateCanceled, 1},
+		{"all-terminal", a2a.TaskStateCompleted, a2a.TaskStateCompleted, 0},
+		{"all-working", a2a.TaskStateWorking, a2a.TaskStateWorking, 0},
+		{"awaiting-input", a2a.TaskStateInputRequired, a2a.TaskStateWorking, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				h := (&Server{}).a2aService()
+				entries := make([]*a2aTaskEntry, a2aRegistryLimit)
+				for index := range entries {
+					// IDs deliberately run opposite to registration order.
+					entry := h.register(a2a.TaskID(fmt.Sprintf("task:%04d", a2aRegistryLimit-index)), "same-clock", true)
+					state := tc.laterState
+					if index == 0 {
+						state = tc.firstState
+					}
+					entry.setStatus(state, "")
+					entries[index] = entry
+					h.messages[string(entry.id)] = a2aRun{entry: entry}
+					if !entry.task.Status.Timestamp.Equal(*entries[0].task.Status.Timestamp) {
+						t.Fatal("fixture must give every task the same timestamp")
+					}
+				}
+				victim := entries[tc.evictedIndex]
+				h.messages["second-message-for-victim"] = a2aRun{entry: victim}
+				newEntry := h.register("new-task", "new", true)
+				if len(h.tasks) != a2aRegistryLimit || h.find(newEntry.id) != newEntry || h.find(victim.id) != nil {
+					t.Fatal("registry did not evict exactly the earliest eligible task")
+				}
+				for index, entry := range entries {
+					if index != tc.evictedIndex && h.find(entry.id) != entry {
+						t.Fatalf("unexpected eviction: %s", entry.id)
+					}
+				}
+				if len(h.messages) != a2aRegistryLimit-1 {
+					t.Fatal("eviction did not remove exactly the victim's message mappings")
+				}
+				for _, run := range h.messages {
+					if run.entry == victim || h.find(run.entry.id) != run.entry {
+						t.Fatal("orphaned message mapping after eviction")
+					}
+				}
+				wantState := tc.laterState
+				if tc.evictedIndex == 0 {
+					wantState = tc.firstState
+				}
+				if victim.snapshot().Status.State != wantState {
+					t.Fatal("eviction changed task execution state")
+				}
+				select {
+				case <-victim.roundDone:
+					t.Fatal("eviction completed or canceled an executing round")
+				default:
+				}
+			})
+		})
+	}
+}
+
+func TestA2ARegistryDuplicateAndReregistration(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := (&Server{}).a2aService()
+		oldest := h.register("oldest", "original", true)
+		for index := 1; index < a2aRegistryLimit; index++ {
+			h.register(a2a.TaskID(fmt.Sprintf("later:%04d", index)), "later", true)
+		}
+		if duplicate := h.register(oldest.id, "replacement", false); duplicate != oldest || duplicate.contextID != "original" {
+			t.Fatal("duplicate registration replaced the existing task")
+		}
+		if h.nextTaskOrder != a2aRegistryLimit || len(h.tasks) != a2aRegistryLimit {
+			t.Fatal("duplicate registration consumed an order or evicted another task")
+		}
+		select {
+		case <-oldest.roundDone:
+			t.Fatal("duplicate registration changed the running round")
+		default:
+		}
+		h.register("trigger", "new", true)
+		if h.find(oldest.id) != nil {
+			t.Fatal("duplicate lookup renewed the oldest task's eviction priority")
+		}
+		recreated := h.register(oldest.id, "recreated", true)
+		if recreated == oldest || h.find("later:0001") != nil {
+			t.Fatal("re-registration did not create a new task at the end")
+		}
+		h.register("next-trigger", "new", true)
+		if h.find(recreated.id) != recreated || h.find("later:0002") != nil {
+			t.Fatal("recreated task inherited its former eviction priority")
+		}
+	})
+}
+
+func TestA2ARegistryConcurrentRegistration(t *testing.T) {
+	const taskCount, duplicates = 128, 4
+	h := (&Server{}).a2aService()
+	var entries [taskCount][duplicates]*a2aTaskEntry
+	var group sync.WaitGroup
+	for index := range entries {
+		for repeat := range entries[index] {
+			group.Go(func() {
+				entries[index][repeat] = h.register(a2a.TaskID(fmt.Sprintf("shared:%04d", index)), "shared", true)
+			})
+		}
+	}
+	group.Wait()
+	orders := make(map[uint64]bool, taskCount)
+	for _, registrations := range entries {
+		entry := registrations[0]
+		for _, duplicate := range registrations[1:] {
+			if duplicate != entry {
+				t.Fatal("concurrent duplicate created a second task")
+			}
+		}
+		if entry.registrationOrder == 0 || entry.registrationOrder > taskCount || orders[entry.registrationOrder] {
+			t.Fatal("first registrations did not receive distinct consecutive orders")
+		}
+		orders[entry.registrationOrder] = true
+	}
+	if h.nextTaskOrder != taskCount {
+		t.Fatal("duplicate registrations advanced the order counter")
+	}
+	for index := range a2aRegistryLimit {
+		group.Go(func() {
+			h.register(a2a.TaskID(fmt.Sprintf("overflow:%04d", index)), "overflow", true)
+		})
+	}
+	group.Wait()
+	if len(h.tasks) != a2aRegistryLimit || h.nextTaskOrder != taskCount+a2aRegistryLimit {
+		t.Fatal("concurrent overflow broke capacity or first-registration accounting")
+	}
+	for _, entry := range h.tasks {
+		if entry.registrationOrder <= taskCount {
+			t.Fatal("concurrent eviction retained an older task over a newer task")
+		}
+	}
+}
+
+func TestA2ARegistryPaginationKeepsStatusTimestampOrder(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := (&Server{}).a2aService()
+		oldest := h.register("z-first", "session", false)
+		newest := h.register("a-second", "session", false)
+		page, err := h.ListTasks(t.Context(), &a2a.ListTasksRequest{PageSize: 1})
+		if err != nil || len(page.Tasks) != 1 || page.Tasks[0].ID != newest.id {
+			t.Fatalf("equal status timestamps lost the ID tiebreaker: %+v %v", page, err)
+		}
+		time.Sleep(time.Second) // Advance only the synctest clock.
+		oldest.setStatus(a2a.TaskStateCompleted, "")
+		page, err = h.ListTasks(t.Context(), &a2a.ListTasksRequest{PageSize: 1})
+		if err != nil || len(page.Tasks) != 1 || page.Tasks[0].ID != oldest.id {
+			t.Fatalf("pagination no longer follows status timestamps: %+v %v", page, err)
+		}
+		page, err = h.ListTasks(t.Context(), &a2a.ListTasksRequest{PageSize: 1, PageToken: page.NextPageToken})
+		if err != nil || len(page.Tasks) != 1 || page.Tasks[0].ID != newest.id || page.NextPageToken != "" {
+			t.Fatalf("pagination cursor changed: %+v %v", page, err)
+		}
+	})
+}
+
 func TestA2AHTTPBodyLimitAndVersionRouting(t *testing.T) {
 	s := &Server{}
 	for _, version := range []string{"0.3", "1.0"} {
