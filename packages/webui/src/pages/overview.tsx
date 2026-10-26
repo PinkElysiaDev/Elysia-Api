@@ -306,7 +306,7 @@ export function OverviewPage() {
       to: new Date(toMs).toISOString(),
     }
   }, [minuteTick])
-  const { data: lastMinuteData, error: lastMinuteError } = useUsageStats(lastMinuteParams)
+  const { data: lastMinuteData, error: lastMinuteError, isLoading: lastMinuteLoading, mutate: retryLastMinute } = useUsageStats(lastMinuteParams, { keepPreviousData: false })
   const lastMinute = lastMinuteError ? undefined : lastMinuteData
 
   const {
@@ -500,7 +500,13 @@ export function OverviewPage() {
           </KpiGrid>
         </section>
 
-        <PulseSection minuteTick={minuteTick} />
+        <PulseSection minuteTick={minuteTick} lastMinute={{
+          ...lastMinuteParams,
+          totalTokens: lastMinute?.totalTokens,
+          isLoading: lastMinuteLoading,
+          hasError: Boolean(lastMinuteError),
+          onRetry: () => { void retryLastMinute() },
+        }} />
 
         {/* 时序透视中枢：智能整合请求趋势与模型分流 */}
         <TemporalTrendSection minuteTick={minuteTick} />

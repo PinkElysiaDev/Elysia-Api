@@ -145,8 +145,8 @@ export function useUsageLive() {
 }
 
 /** Usage KPI 汇总（params 见 serializeUsage）。 */
-export function useUsageStats(params: UsageQueryParams) {
-  return useSWR(['usage-stats', params], () => api.usageStats(params), usageConfig)
+export function useUsageStats(params: UsageQueryParams, options?: Pick<SWRConfiguration, 'keepPreviousData'>) {
+  return useSWR(['usage-stats', params], () => api.usageStats(params), options ? { ...usageConfig, ...options } : usageConfig)
 }
 
 /**
@@ -162,8 +162,9 @@ export function useUsageByModel(params: UsageQueryParams) {
   return useSWR(['usage-by-model', params], () => api.usageByModel(params), usageConfig)
 }
 
-export function useUsagePulse(params: UsageQueryParams & { utcOffsetMinutes: number; bucketMinutes: number }) {
-  return useSWR(['usage-pulse', params], () => api.usagePulse(params), usageConfig)
+/** Retained chart data carries its own window, including while another query loads or fails. */
+export function useUsagePulse(params: UsageQueryParams & { from: string; to: string; utcOffsetMinutes: number; bucketMinutes: number }) {
+  return useSWR(['usage-pulse', params], async () => ({ query: params, result: await api.usagePulse(params) }), usageConfig)
 }
 
 export function useUsageByModelDaily(params: UsageQueryParams & { utcOffsetMinutes: number; top?: number }) {

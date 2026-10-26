@@ -60,6 +60,11 @@ export function formatPulseCaption(ms: number, nowMs: number): string {
   return `${day} ${hm}`
 }
 
+/** Include both boundaries so cross-day and partial buckets have an unambiguous denominator. */
+export function formatPulseInterval(fromMs: number, toMs: number, nowMs: number): string {
+  return `${formatPulseCaption(fromMs, nowMs)}–${formatPulseCaption(toMs, nowMs)}`
+}
+
 /** 与 CHART_TICK 等宽字体对齐的刻度宽估算（CJK 1em，ASCII ~0.64em）。 */
 function estimatePulseTickWidth(label: string, fontPx = readChartTickSizePx()): number {
   const cjk = fontPx

@@ -2,12 +2,14 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Area, AreaChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts'
 import { AudioLines, HeartPulse } from 'lucide-react'
 import { ChartFrame } from '@/components/usage-charts'
-import { CHART_ENTER_MS, evenIndexTicks, niceTicks, useChartTickSize, useCommittedRange, useEnterAnimation } from '@/components/usage-chart-model'
+import { CHART_ENTER_MS, evenIndexTicks, niceTicks, useChartTickSize, useEnterAnimation } from '@/components/usage-chart-model'
 import { Seg } from '@/components/ui/seg'
 import { ErrorState } from '@/components/ui/states'
 import { useUsagePulse } from '@/lib/hooks'
 import { cn, CHART_TICK, compactNumber, formatNumber } from '@/lib/utils'
-import { formatPulseCaption, PULSE_OPTIONS, pulseWindow, pulseXTicksFit, type PulseRange } from './overview-time'
+import { formatPulseCaption, formatPulseInterval, PULSE_OPTIONS, pulseWindow, pulseXTicksFit, type PulseRange } from './overview-time'
+
+const MINUTE_MS = 60_000
 
 const SINGLE_PULSE_CHART = {
   height: 188,
@@ -81,7 +83,8 @@ function PulseXTick({
   )
 }
 
-function durationParts(ms: number): { value: string; unit: string } {
+function durationParts(ms: number | undefined): { value: string; unit: string } {
+  if (ms == null) return { value: '—', unit: '' }
   if (!(ms > 0)) return { value: '0', unit: 'ms' }
   if (ms < 1000) return { value: String(Math.round(ms)), unit: 'ms' }
   return { value: (ms / 1000).toFixed(2), unit: 's' }
@@ -113,18 +116,23 @@ function PulseStat({
   )
 }
 
-/**
- * 实时脉搏区（优雅大气画卷版）：
- * - 左侧：大字号瞬时 RPM 核心指标 + 最近一分钟统计 + 平均时延 / P95 时延 / 瞬时吞吐
- * - 右侧：宽幅大气的请求/分钟 (RPM) 灵动波浪折线/面积图
- */
-export function PulseSection({ minuteTick }: { minuteTick: number }) {
+interface MinuteUsage {
+  from: string
+  to: string
+  totalTokens: number | undefined
+  isLoading: boolean
+  hasError: boolean
+  onRetry: () => void
+}
+
+/** Historical rates use their query window; idle token throughput uses the last complete minute. */
+export function PulseSection({ minuteTick, lastMinute }: { minuteTick: number; lastMinute: MinuteUsage }) {
   const [range, setRange] = useState<PulseRange>('60m')
   const { spanMs, bucketMinutes } = pulseWindow(range)
 
   // 脉搏序列参数
   const pulseParams = useMemo(() => {
-    const toMs = minuteTick * 60_000
+    const toMs = minuteTick * MINUTE_MS
     const now = new Date(toMs)
     return {
       from: new Date(toMs - spanMs).toISOString(),
@@ -133,50 +141,58 @@ export function PulseSection({ minuteTick }: { minuteTick: number }) {
       bucketMinutes,
     }
   }, [minuteTick, spanMs, bucketMinutes])
-  const { data: pulseData, isLoading, error, isValidating, mutate } = useUsagePulse(pulseParams)
-
-  const chartRange = useCommittedRange(range, !isValidating)
-  const animate = useEnterAnimation(chartRange)
-  const { spanMs: chartSpanMs, bucketMinutes: chartBucketMinutes } = pulseWindow(chartRange)
-  const rangeLabel = PULSE_OPTIONS.find((o) => o.value === chartRange)?.label ?? '当前窗口'
+  const { data: snapshot, isLoading, error, isValidating, mutate } = useUsagePulse(pulseParams)
+  const pulseData = error ? undefined : snapshot
+  const chartQuery = pulseData?.query ?? pulseParams
+  const chartSpanMs = Date.parse(chartQuery.to) - Date.parse(chartQuery.from)
+  const animate = useEnterAnimation(chartQuery.bucketMinutes)
+  const rangeLabel = PULSE_OPTIONS.find((option) => pulseWindow(option.value).spanMs === chartSpanMs)?.label ?? '当前窗口'
+  const requestKey = `${range}:${minuteTick}:${pulseParams.utcOffsetMinutes}`
+  const chartKey = `${chartQuery.from}/${chartQuery.to}/${chartQuery.bucketMinutes}/${chartQuery.utcOffsetMinutes}`
 
   const series = useMemo(() => {
-    const toMs = minuteTick * 60_000
-    const fromMs = toMs - chartSpanMs
-    const offsetMs = -new Date(toMs).getTimezoneOffset() * 60_000
-    const bucketMs = chartBucketMinutes * 60_000
-    const byT = new Map((pulseData?.points ?? []).map((p) => [p.t, p]))
+    if (!pulseData) return []
+    const { query, result } = pulseData
+    const fromMs = Date.parse(query.from)
+    const toMs = Date.parse(query.to)
+    const offsetMs = query.utcOffsetMinutes * MINUTE_MS
+    const bucketMs = query.bucketMinutes * MINUTE_MS
+    const byT = new Map((result.points ?? []).map((p) => [p.t, p]))
     let t = Math.floor((fromMs + offsetMs) / bucketMs) * bucketMs - offsetMs
-    const out: { t: number; rpm: number; avgMs: number; p95Ms: number; requests: number; tokens: number; tpm: number }[] = []
+    const out: { t: number; fromMs: number; toMs: number; minutes: number; rpm: number; avgMs: number; p95Ms: number; requests: number; tpm: number }[] = []
     while (t < toMs) {
       const p = byT.get(t)
       const requests = p?.requests ?? 0
       const tokens = p?.totalTokens ?? 0
+      const startMs = Math.max(t, fromMs)
+      const endMs = Math.min(t + bucketMs, toMs)
+      const minutes = (endMs - startMs) / MINUTE_MS
       out.push({
         t,
-        rpm: requests / chartBucketMinutes,
+        fromMs: startMs,
+        toMs: endMs,
+        minutes,
+        rpm: requests / minutes,
         avgMs: p?.avgDurationMs ?? 0,
         p95Ms: p?.p95DurationMs ?? 0,
         requests,
-        tokens,
-        tpm: tokens / chartBucketMinutes,
+        tpm: tokens / minutes,
       })
       t += bucketMs
     }
     return out
-  }, [pulseData, minuteTick, chartSpanMs, chartBucketMinutes])
+  }, [pulseData])
 
   const windowStats = useMemo(() => {
-    const minutes = Math.max(chartSpanMs / 60_000, 1)
-    const w = pulseData?.window
-    const requests = w?.requests ?? 0
-    const tokens = w?.totalTokens ?? 0
+    if (!pulseData?.result.window) return null
+    const minutes = chartSpanMs / MINUTE_MS
+    const w = pulseData.result.window
     return {
-      rpm: requests / minutes,
-      requests,
-      avgMs: w?.avgDurationMs ?? 0,
-      p95Ms: w?.p95DurationMs ?? 0,
-      tpm: tokens / minutes,
+      rpm: w.requests / minutes,
+      requests: w.requests,
+      avgMs: w.avgDurationMs,
+      p95Ms: w.p95DurationMs,
+      caption: null,
     }
   }, [pulseData, chartSpanMs])
 
@@ -184,7 +200,7 @@ export function PulseSection({ minuteTick }: { minuteTick: number }) {
   const [chartBoxRef, chartWidth] = useElementWidth<HTMLDivElement>()
   const tickSpan = Math.max(0, chartWidth - PULSE_X_CHROME)
   const tickFontPx = useChartTickSize()
-  const nowMs = minuteTick * 60_000
+  const nowMs = minuteTick * MINUTE_MS
   const xTicks = useMemo(() => {
     if (series.length === 0) return []
     const maxN = Math.min(PULSE_X_MAX_TICKS, series.length)
@@ -197,28 +213,30 @@ export function PulseSection({ minuteTick }: { minuteTick: number }) {
     }
     return evenIndexTicks(series, 2, pick)
   }, [series, nowMs, tickSpan, tickFontPx])
-  const [hoverT, setHoverT] = useState<number | null>(null)
+  const [hover, setHover] = useState<{ t: number; requestKey: string; chartKey: string } | null>(null)
   useEffect(() => {
-    setHoverT(null)
-  }, [chartRange])
-  const hoverPoint = hoverT == null ? null : (series.find((p) => p.t === hoverT) ?? null)
+    setHover(null)
+  }, [requestKey, chartKey, error])
+  // Invalidate on the render that changes windows, before the effect clears state.
+  const hoverPoint = !error && hover?.requestKey === requestKey && hover.chartKey === chartKey
+    ? series.find((point) => point.t === hover.t)
+    : undefined
   const shown = hoverPoint
     ? {
         rpm: hoverPoint.rpm,
         requests: hoverPoint.requests,
         avgMs: hoverPoint.avgMs,
         p95Ms: hoverPoint.p95Ms,
-        tpm: hoverPoint.tpm,
-        caption: formatPulseCaption(hoverPoint.t, nowMs),
+        caption: formatPulseInterval(hoverPoint.fromMs, hoverPoint.toMs, nowMs),
       }
-    : {
-        rpm: windowStats.rpm,
-        requests: windowStats.requests,
-        avgMs: windowStats.avgMs,
-        p95Ms: windowStats.p95Ms,
-        tpm: windowStats.tpm,
-        caption: null as string | null,
-      }
+    : windowStats
+  const minuteTokens = lastMinute.hasError || lastMinute.isLoading ? undefined : lastMinute.totalTokens
+  const tpm = hoverPoint?.tpm ?? minuteTokens
+  const tpmInterval = hoverPoint
+    ? formatPulseInterval(hoverPoint.fromMs, hoverPoint.toMs, nowMs)
+    : formatPulseInterval(Date.parse(lastMinute.from), Date.parse(lastMinute.to), nowMs)
+  const tpmMinutes = hoverPoint?.minutes ?? 1
+  const historyCaption = shown ? shown.caption ?? `${rangeLabel}内` : error ? '加载失败' : '加载中'
 
   const firstT = xTicks[0]
   const lastT = xTicks[xTicks.length - 1]
@@ -246,45 +264,47 @@ export function PulseSection({ minuteTick }: { minuteTick: number }) {
           <div>
             <div className="flex items-baseline gap-1.5">
               <span className="tnum font-display text-[length:clamp(1.5rem,0.875rem+0.78125vw,1.875rem)] font-medium leading-none tracking-tight text-foreground">
-                {shown.rpm.toFixed(1)}
+                {shown ? shown.rpm.toFixed(1) : '—'}
               </span>
               <span className="font-mono text-xs font-semibold text-muted-foreground/80">
                 RPM
               </span>
             </div>
             <p className="mt-2 font-mono text-xs text-muted-foreground">
-              {shown.caption ? (
-                <>
-                  <span className="font-semibold text-rose">{shown.caption} 时</span>
-                  {' '}
-                </>
-              ) : (
-                <>{rangeLabel}内 </>
-              )}
-              {formatNumber(shown.requests)} 次请求
+              <span className={shown?.caption ? 'font-semibold text-rose' : undefined}>{historyCaption}</span>
+              {shown && <> {formatNumber(shown.requests)} 次请求</>}
             </p>
           </div>
 
           <div className="space-y-2.5">
             <PulseStat
               label="平均时延"
-              {...durationParts(shown.avgMs)}
+              {...durationParts(shown?.avgMs)}
               dotClass="bg-jade"
               valueClass="text-jade"
             />
             <PulseStat
               label="P95 时延"
-              {...durationParts(shown.p95Ms)}
+              {...durationParts(shown?.p95Ms)}
               dotClass="bg-orchid"
               valueClass="text-orchid"
             />
-            <PulseStat
-              label="瞬时吞吐"
-              value={shown.tpm > 0 ? compactNumber(shown.tpm) : '0'}
-              unit="tpm"
-              dotClass="bg-amber"
-              valueClass="text-amber"
-            />
+            <div role="group" aria-label="Token 吞吐">
+              <PulseStat
+                label={hoverPoint ? '时段平均吞吐' : '上一分钟吞吐'}
+                value={tpm == null ? '—' : compactNumber(tpm)}
+                unit="tpm"
+                dotClass="bg-amber"
+                valueClass="text-amber"
+              />
+              <p aria-label="吞吐时间范围" className="mt-1 text-xs text-muted-foreground">
+                {tpmInterval} · {tpmMinutes}分钟平均
+                {!hoverPoint && lastMinute.isLoading && ' · 加载中'}
+                {!hoverPoint && lastMinute.hasError && (
+                  <> · 加载失败 <button type="button" className="underline underline-offset-2" aria-label="重试上一分钟统计" onClick={lastMinute.onRetry}>重试</button></>
+                )}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -296,6 +316,7 @@ export function PulseSection({ minuteTick }: { minuteTick: number }) {
               <AudioLines className="h-3.5 w-3.5 text-rose" />
               请求 / 分钟
             </span>
+            {isValidating && pulseData && <span role="status">更新中</span>}
           </div>
 
           {error ? (
@@ -303,15 +324,19 @@ export function PulseSection({ minuteTick }: { minuteTick: number }) {
           ) : isLoading && !pulseData ? (
             <div className="skeleton h-[188px] w-full rounded-md" />
           ) : (
-            <ChartFrame key={chartRange} height={SINGLE_PULSE_CHART.height}>
+            <ChartFrame key={chartQuery.bucketMinutes} height={SINGLE_PULSE_CHART.height}>
               <AreaChart
                 data={series}
                 margin={SINGLE_PULSE_CHART.margin}
                 onMouseMove={(state) => {
                   const t = state?.activePayload?.[0]?.payload?.t
-                  if (typeof t === 'number') setHoverT((prev) => (prev === t ? prev : t))
+                  if (typeof t !== 'number') {
+                    setHover(null)
+                    return
+                  }
+                  setHover((prev) => prev?.t === t && prev.requestKey === requestKey && prev.chartKey === chartKey ? prev : { t, requestKey, chartKey })
                 }}
-                onMouseLeave={() => setHoverT(null)}
+                onMouseLeave={() => setHover(null)}
               >
                 <defs>
                   <linearGradient id="pulseSingleFill" x1="0" y1="0" x2="0" y2="1">
