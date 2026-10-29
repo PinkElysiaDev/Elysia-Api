@@ -13,6 +13,8 @@ type evaluation struct {
 	input, item, root, context Value
 	budget                     *evaluationBudget
 	valueReader                *valueReader
+	inputReader, rootReader    func([]string) (JSONOutput, error)
+	itemOutput                 *JSONOutput
 }
 
 type evaluationBudget struct {
@@ -38,15 +40,7 @@ func (expression *compiledExpression) checkIdentityAfter(ctx context.Context, by
 
 func (expression *compiledExpression) evaluate(state evaluation) (value Value, err error) {
 	defer func() { err = locateMappingError(expression.path, err) }()
-	state.budget.steps++
-	stepLimit := state.budget.stepLimit
-	if stepLimit == 0 {
-		stepLimit = state.budget.limits.Nodes
-	}
-	if state.budget.steps > stepLimit {
-		return Value{}, resourceFailure("evaluation", "steps", stepLimit, state.budget.steps)
-	}
-	if err := state.ctx.Err(); err != nil {
+	if err := state.advance(); err != nil {
 		return Value{}, err
 	}
 	defer func() {
@@ -55,12 +49,34 @@ func (expression *compiledExpression) evaluate(state evaluation) (value Value, e
 			value = Value{}
 		}
 	}()
+	return expression.evaluateValue(state)
+}
+
+func (state evaluation) advance() error {
+	state.budget.steps++
+	stepLimit := state.budget.stepLimit
+	if stepLimit == 0 {
+		stepLimit = state.budget.limits.Nodes
+	}
+	if state.budget.steps > stepLimit {
+		return resourceFailure("evaluation", "steps", stepLimit, state.budget.steps)
+	}
+	return state.ctx.Err()
+}
+
+func (expression *compiledExpression) evaluateValue(state evaluation) (Value, error) {
 	switch expression.op {
 	case "omit":
 		return Value{}, nil
 	case "literal":
 		return expression.value, nil
 	case "read":
+		if output, handled, err := expression.readOutput(state); handled {
+			if err != nil || output.IsZero() {
+				return Value{}, err
+			}
+			return output.Encode(context.WithoutCancel(state.ctx))
+		}
 		root := state.input
 		switch expression.from {
 		case "root":

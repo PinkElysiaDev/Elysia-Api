@@ -34,7 +34,7 @@ func (compiled *Compiled) decodeRequestValue(ctx context.Context, input Value, o
 	if input.IsZero() {
 		return nil, fmt.Errorf("invalid JSON value")
 	}
-	if compiled.native.Preserve {
+	if compiled.native.Preserve || compiled.mappings[DecodeRequest].hasCoreOutputPlan {
 		options.valueReader = requestValueReader(input)
 	}
 	request, err := decodeTyped(ctx, compiled, DecodeRequest, input, options, func(module TypedModule, options EvaluationContext) (*Request, error) {
@@ -169,6 +169,9 @@ func (compiled *Compiled) DecodeResponse(ctx context.Context, body []byte, optio
 	}
 	response.SchemaVersion = SemanticSchemaVersion
 	response.Source = compiled.identity
+	if compiled.mappings[DecodeResponse].hasCoreOutputPlan {
+		detachNodeResources(response.Content)
+	}
 	response.Native = nil
 	if compiled.native.Preserve {
 		response.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: DecodeResponse, Scope: options.Scope}, Value: input}

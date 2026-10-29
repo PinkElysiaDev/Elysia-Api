@@ -52,34 +52,36 @@ func (options EvaluationContext) ReadArray(value Value) ([]Value, error) {
 // Resource IDs can survive in continuation storage. Even a large signature
 // must own its bytes instead of pinning the original request behind a slice.
 func detachRequestResources(request *Request) {
-	detach := func(resources []Resource) {
-		for index := range resources {
-			resources[index].ID.raw = strings.Clone(resources[index].ID.raw)
-		}
-	}
-	cache := func(intents []CacheIntent) {
-		for index := range intents {
-			intent := &intents[index]
-			intent.Value.raw = strings.Clone(intent.Value.raw)
-			intent.TTL.raw = strings.Clone(intent.TTL.raw)
-			if intent.Resource != nil {
-				intent.Resource.ID.raw = strings.Clone(intent.Resource.ID.raw)
-			}
-		}
-	}
-	var nodes func([]Node)
-	nodes = func(items []Node) {
-		for index := range items {
-			detach(items[index].Resources)
-			cache(items[index].Cache)
-			nodes(items[index].Children)
-			nodes(items[index].ReasoningContent)
-		}
-	}
-	detach(request.Resources)
-	cache(request.Cache)
-	nodes(request.Content)
+	detachResourceIDs(request.Resources)
+	detachCacheValues(request.Cache)
+	detachNodeResources(request.Content)
 	for index := range request.Tools {
-		cache(request.Tools[index].Cache)
+		detachCacheValues(request.Tools[index].Cache)
+	}
+}
+
+func detachResourceIDs(resources []Resource) {
+	for index := range resources {
+		resources[index].ID.raw = strings.Clone(resources[index].ID.raw)
+	}
+}
+
+func detachCacheValues(intents []CacheIntent) {
+	for index := range intents {
+		intent := &intents[index]
+		intent.Value.raw = strings.Clone(intent.Value.raw)
+		intent.TTL.raw = strings.Clone(intent.TTL.raw)
+		if intent.Resource != nil {
+			intent.Resource.ID.raw = strings.Clone(intent.Resource.ID.raw)
+		}
+	}
+}
+
+func detachNodeResources(nodes []Node) {
+	for index := range nodes {
+		detachResourceIDs(nodes[index].Resources)
+		detachCacheValues(nodes[index].Cache)
+		detachNodeResources(nodes[index].Children)
+		detachNodeResources(nodes[index].ReasoningContent)
 	}
 }

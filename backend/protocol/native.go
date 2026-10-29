@@ -164,29 +164,51 @@ func checkValueLimits(value Value, limits Limits) error {
 	if len(value.raw) > limits.BufferBytes {
 		return resourceFailure("wire", "bytes", limits.BufferBytes, len(value.raw))
 	}
-	depth, nodes := 0, 0
+	meter := valueTokenMeter{limits: limits, domain: "wire"}
+	return meter.scan(value.raw)
+}
+
+type valueTokenMeter struct {
+	limits Limits
+	domain string
+	depth  int
+	nodes  int
+}
+
+func (meter *valueTokenMeter) scan(raw string) error {
 	// Value is already valid JSON. Count the same tokens as Decoder.Token
 	// without allocating decoded keys/scalars or reparsing nested snapshots.
-	for offset := 0; offset < len(value.raw); offset++ {
-		switch value.raw[offset] {
+	for offset := 0; offset < len(raw); offset++ {
+		token := raw[offset]
+		switch token {
 		case ' ', '\t', '\r', '\n', ',', ':':
 			continue
-		case '{', '[':
-			depth++
-			if depth > limits.Depth {
-				return resourceFailure("wire", "depth", limits.Depth, depth)
-			}
-		case '}', ']':
-			depth--
+		case '{', '[', '}', ']':
 		case '"':
-			offset = jsonStringEnd(value.raw, offset) - 1
+			offset = jsonStringEnd(raw, offset) - 1
 		default:
-			offset = jsonValueEnd(value.raw, offset) - 1
+			offset = jsonValueEnd(raw, offset) - 1
 		}
-		nodes++
-		if nodes > limits.Nodes {
-			return resourceFailure("wire", "nodes", limits.Nodes, nodes)
+		if err := meter.consume(token); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+func (meter *valueTokenMeter) consume(token byte) error {
+	switch token {
+	case '{', '[':
+		meter.depth++
+		if meter.depth > meter.limits.Depth {
+			return resourceFailure(meter.domain, "depth", meter.limits.Depth, meter.depth)
+		}
+	case '}', ']':
+		meter.depth--
+	}
+	meter.nodes++
+	if meter.nodes > meter.limits.Nodes {
+		return resourceFailure(meter.domain, "nodes", meter.limits.Nodes, meter.nodes)
 	}
 	return nil
 }

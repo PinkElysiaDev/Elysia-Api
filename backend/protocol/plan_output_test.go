@@ -127,7 +127,7 @@ func TestOutputPlanSelectsBeforeExecution(t *testing.T) {
 	read := readExpression("input", "")
 	for _, expression := range []Expression{
 		{Op: "sort", Source: &read, Key: "/id"},
-		{Op: "map", Source: expressionPointer(Expression{Op: "array"}), Body: &read},
+		{Op: "map", Source: expressionPointer(Expression{Op: "sort", Source: &read, Key: "/id"}), Body: &read},
 		{Op: "if", When: expressionPointer(literalExpression(false)), Then: expressionPointer(Expression{Op: "sort", Source: &read, Key: "/id"}), Otherwise: expressionPointer(Expression{Op: "object"})},
 	} {
 		if _, ok := compileOutputPlan(compileTestOutputExpression(t, expression)); ok {

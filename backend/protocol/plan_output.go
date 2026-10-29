@@ -11,6 +11,7 @@ type compiledOutputPlan struct {
 	expression *compiledExpression
 	fields     []outputPlanField
 	items      []*compiledOutputPlan
+	source     *compiledOutputPlan
 	body       *compiledOutputPlan
 	then       *compiledOutputPlan
 	otherwise  *compiledOutputPlan
@@ -51,7 +52,9 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			plan.items = append(plan.items, child)
 		}
 	case "map", "flatmap", "filter":
-		if !isOutputLeafExpression(expression.source) {
+		var ok bool
+		plan.source, ok = compileOutputPlan(expression.source)
+		if !ok {
 			return nil, false
 		}
 		if expression.op == "filter" {
@@ -60,7 +63,6 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			}
 			return plan, true
 		}
-		var ok bool
 		plan.body, ok = compileOutputPlan(expression.body)
 		if !ok {
 			return nil, false
@@ -135,20 +137,15 @@ func (plan *compiledOutputPlan) evaluate(state evaluation) (Value, error) {
 
 func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, err error) {
 	if plan.isLeaf {
+		if plan.expression.op == "read" && state.hasOutputReader(plan.expression.from) {
+			return plan.expression.buildReadOutput(state)
+		}
 		leaf, err := plan.expression.evaluate(state)
 		return plannedOutput{JSONLeaf(leaf), leaf.Len()}, err
 	}
 	expression := plan.expression
 	defer func() { err = locateMappingError(expression.path, err) }()
-	state.budget.steps++
-	stepLimit := state.budget.stepLimit
-	if stepLimit == 0 {
-		stepLimit = state.budget.limits.Nodes
-	}
-	if state.budget.steps > stepLimit {
-		return plannedOutput{}, resourceFailure("evaluation", "steps", stepLimit, state.budget.steps)
-	}
-	if err := state.ctx.Err(); err != nil {
+	if err := state.advance(); err != nil {
 		return plannedOutput{}, err
 	}
 	defer func() {
@@ -254,25 +251,26 @@ func (plan *compiledOutputPlan) buildArray(state evaluation) (plannedOutput, err
 
 func (plan *compiledOutputPlan) buildIteration(state evaluation) (plannedOutput, error) {
 	expression := plan.expression
-	source, err := expression.source.evaluate(state)
+	source, err := plan.source.build(state)
 	if err != nil {
 		return plannedOutput{}, err
-	}
-	if !source.IsArray() {
-		return plannedOutput{}, fmt.Errorf("%s/source: expected an array", expression.path)
 	}
 	// Iteration owns its containers but borrows raw items until final encoding.
 	// Returned Value storage is still independent of these temporary views.
 	reader := &valueReader{}
-	items, err := source.readArrayWithin(reader)
+	items, err := plannedArrayItems(source.output)
 	if err != nil {
-		return plannedOutput{}, err
+		return plannedOutput{}, fmt.Errorf("%s/source: %w", expression.path, err)
 	}
 	node := &jsonOutputNode{items: make([]JSONOutput, 0, len(items))}
 	logicalBytes, encodedBytes := 0, 2
 	for _, item := range items {
 		child := state
-		child.item = item
+		child.item = item.value
+		child.itemOutput = nil
+		if item.node != nil {
+			child.itemOutput = &item
+		}
 		value, err := plan.body.build(child)
 		if err != nil {
 			return plannedOutput{}, err

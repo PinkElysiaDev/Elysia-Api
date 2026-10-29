@@ -52,7 +52,14 @@ func plannedObjectFields(output JSONOutput) ([]jsonOutputField, error) {
 		if !output.node.object {
 			return nil, fmt.Errorf("expected JSON object")
 		}
-		return output.node.fields, nil
+		// Reading an encoded object folds repeated decoded keys before merge's
+		// collision policy runs. Core maps may contain distinct invalid UTF-8
+		// keys that encode to the same spelling; preserve last-wins and order.
+		fields := make(map[string]JSONOutput, len(output.node.fields))
+		for _, field := range output.node.fields {
+			fields[coreJSONKey(field.key)] = field.value
+		}
+		return JSONObject(fields).node.fields, nil
 	}
 	fields, err := output.value.readObjectWithin(&valueReader{})
 	if err != nil {
@@ -83,7 +90,6 @@ func plannedArrayItems(output JSONOutput) ([]JSONOutput, error) {
 	}
 	items := make([]JSONOutput, len(values))
 	for index, value := range values {
-		value.raw = compactValueString(value.raw)
 		items[index] = JSONLeaf(value)
 	}
 	return items, nil
@@ -91,18 +97,21 @@ func plannedArrayItems(output JSONOutput) ([]JSONOutput, error) {
 
 func concatPlannedArrays(operands []plannedOutput, nodeLimit int) (plannedOutput, error) {
 	node := &jsonOutputNode{items: []JSONOutput{}}
+	bytes := 2
 	for _, operand := range operands {
 		items, err := plannedArrayItems(operand.output)
 		if err != nil {
 			return plannedOutput{}, err
 		}
-		node.items = append(node.items, items...)
+		for _, item := range items {
+			bytes += appendPlannedItem(node, plannedOutput{item, normalizedOutputBytes(item)})
+		}
 		if len(node.items) > nodeLimit {
 			return plannedOutput{}, resourceFailure("evaluation", "nodes", nodeLimit, len(node.items))
 		}
 	}
 	output := JSONOutput{node: node}
-	return plannedOutput{output, normalizedOutputBytes(output)}, nil
+	return plannedOutput{output, bytes}, nil
 }
 
 // Intermediate logical sizes remain observable through resource limits even
@@ -128,22 +137,23 @@ func normalizedOutputBytes(output JSONOutput) int {
 
 func (plan *compiledOutputPlan) buildFilter(state evaluation) (plannedOutput, error) {
 	expression := plan.expression
-	source, err := expression.source.evaluate(state)
+	source, err := plan.source.build(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	if !source.IsArray() {
-		return plannedOutput{}, fmt.Errorf("%s/source: expected an array", expression.path)
-	}
-	items, err := source.readArrayWithin(&valueReader{})
+	items, err := plannedArrayItems(source.output)
 	if err != nil {
-		return plannedOutput{}, err
+		return plannedOutput{}, fmt.Errorf("%s/source: %w", expression.path, err)
 	}
 	node := &jsonOutputNode{items: make([]JSONOutput, 0, len(items))}
 	bytes := 2
 	for _, item := range items {
 		child := state
-		child.item = item
+		child.item = item.value
+		child.itemOutput = nil
+		if item.node != nil {
+			child.itemOutput = &item
+		}
 		value, err := expression.when.evaluate(child)
 		if err != nil {
 			return plannedOutput{}, err
@@ -153,7 +163,7 @@ func (plan *compiledOutputPlan) buildFilter(state evaluation) (plannedOutput, er
 			return plannedOutput{}, err
 		}
 		if isMatch {
-			bytes += appendPlannedItem(node, plannedOutput{JSONLeaf(item), item.Len()})
+			bytes += appendPlannedItem(node, plannedOutput{item, normalizedOutputBytes(item)})
 		}
 	}
 	return plannedOutput{JSONOutput{node: node}, bytes}, nil
