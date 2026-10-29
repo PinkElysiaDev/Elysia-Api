@@ -2,42 +2,13 @@ package protocol
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 )
 
-type evaluation struct {
-	ctx                        context.Context
-	input, item, root, context Value
-	budget                     *evaluationBudget
-	valueReader                *valueReader
-	inputReader, rootReader    func([]string) (JSONOutput, error)
-	itemOutput                 *JSONOutput
-}
-
-type evaluationBudget struct {
-	stepLimit int
-	steps     int
-	limits    Limits
-}
-
-// A compiled identity leaf uses one step from a fresh positive budget. Keep
-// only its fallible checks, including the expression's original error location.
-func (expression *compiledExpression) checkIdentityAfter(ctx context.Context, bytes int, limits Limits) error {
-	if expression == nil {
-		return nil
-	}
-	if err := ctx.Err(); err != nil {
-		return locateMappingError(expression.path, err)
-	}
-	if bytes > limits.BufferBytes {
-		return locateMappingError(expression.path, resourceFailure("evaluation", "bytes", limits.BufferBytes, bytes))
-	}
-	return nil
-}
-
+// Reference evaluator retained from 6e7d3434 for byte, budget and error-order
+// differentials. Production builds contain only the compiled output-plan backend.
 func (expression *compiledExpression) evaluate(state evaluation) (value Value, err error) {
 	defer func() { err = locateMappingError(expression.path, err) }()
 	if err := state.advance(); err != nil {
@@ -50,18 +21,6 @@ func (expression *compiledExpression) evaluate(state evaluation) (value Value, e
 		}
 	}()
 	return expression.evaluateValue(state)
-}
-
-func (state evaluation) advance() error {
-	state.budget.steps++
-	stepLimit := state.budget.stepLimit
-	if stepLimit == 0 {
-		stepLimit = state.budget.limits.Nodes
-	}
-	if state.budget.steps > stepLimit {
-		return resourceFailure("evaluation", "steps", stepLimit, state.budget.steps)
-	}
-	return state.ctx.Err()
 }
 
 func (expression *compiledExpression) evaluateValue(state evaluation) (Value, error) {
@@ -434,92 +393,4 @@ func (expression *compiledExpression) evaluateKeyedArray(source Value) (Value, e
 		result[index] = items[sourceIndex]
 	}
 	return EncodeValue(result)
-}
-
-func readArray(value Value) ([]Value, error) {
-	if valueType(value) != ArrayType {
-		return nil, fmt.Errorf("expected an array")
-	}
-	var items []Value
-	err := value.Decode(&items)
-	return items, err
-}
-
-func readBoolean(value Value) (bool, error) {
-	if valueType(value) != BooleanType {
-		return false, fmt.Errorf("expected a boolean")
-	}
-	var result bool
-	err := value.Decode(&result)
-	return result, err
-}
-
-func readString(value Value) (string, error) {
-	if valueType(value) != StringType {
-		return "", fmt.Errorf("expected a string")
-	}
-	var result string
-	err := value.Decode(&result)
-	return result, err
-}
-
-func castValue(value Value, target JSONType) (Value, error) {
-	kind := valueType(value)
-	if value.IsZero() || value.IsNull() {
-		return Value{}, fmt.Errorf("cannot cast absent or null scalar")
-	}
-	if kind == target || (kind == IntegerType && target == NumberType) {
-		return value, nil
-	}
-	if target == StringType && (kind == NumberType || kind == IntegerType || kind == BooleanType) {
-		return StringValue(value.raw), nil
-	}
-	if kind == StringType {
-		text, _ := readString(value)
-		if target == BooleanType {
-			if text == "true" {
-				return EncodeValue(true)
-			}
-			if text == "false" {
-				return EncodeValue(false)
-			}
-			return Value{}, fmt.Errorf("boolean strings must be true or false")
-		}
-		parsed, err := ParseValue([]byte(text))
-		if err != nil {
-			return Value{}, err
-		}
-		actual := valueType(parsed)
-		if (target == IntegerType && actual == IntegerType) || (target == NumberType && (actual == IntegerType || actual == NumberType)) {
-			return parsed, nil
-		}
-	}
-	return Value{}, fmt.Errorf("unsupported or lossy scalar conversion to %s", target)
-}
-
-func compareValues(left, right Value) (int, error) {
-	var a, b any
-	if err := left.Decode(&a); err != nil {
-		return 0, err
-	}
-	if err := right.Decode(&b); err != nil {
-		return 0, err
-	}
-	switch x := a.(type) {
-	case string:
-		y, ok := b.(string)
-		if ok {
-			return strings.Compare(x, y), nil
-		}
-	case json.Number:
-		y, ok := b.(json.Number)
-		if ok {
-			first, firstOK := exactNumber(x.String())
-			second, secondOK := exactNumber(y.String())
-			if firstOK && secondOK {
-				return first.Cmp(second), nil
-			}
-		}
-	}
-	return 0, fmt.Errorf("sort keys must have matching string or number types")
 }

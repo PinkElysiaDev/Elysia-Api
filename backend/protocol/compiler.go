@@ -124,19 +124,18 @@ func NewCompiler(limits Limits, modules []Module, features []string) (*Compiler,
 type compiledMapping struct {
 	capabilities      CapabilitySet
 	module            Module
-	transform         *compiledExpression
 	outputPlan        *compiledOutputPlan
 	hasCoreInputPlan  bool
 	hasCoreOutputPlan bool
-	after             *compiledExpression
-	initial           *compiledExpression
+	after             *compiledOutputPlan
+	initial           *compiledOutputPlan
 	input, output     *runtimeValueSchema
 	rules             []compiledEventRule
 	frameBatch        bool
 	definitionHash    string
 }
 
-type compiledEventRule struct{ when, emit *compiledExpression }
+type compiledEventRule struct{ when, emit *compiledOutputPlan }
 
 // Compiled is an immutable protocol revision; mutable event state belongs to a
 // request/session, never to this registry object.
@@ -310,11 +309,11 @@ func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction
 		if mapping.Module == "" {
 			return entry, fmt.Errorf("after requires an installed module")
 		}
-		after, err := expressions.compile(*mapping.After, path+"/after", expressionScope{}, 1)
+		after, err := expressions.compilePlan(*mapping.After, path+"/after", expressionScope{}, 1)
 		if err != nil {
 			return entry, err
 		}
-		if err := checkExpressionOutput(after, mapping.Output, expressions.limits); err != nil {
+		if err := checkExpressionOutput(after.expression, mapping.Output, expressions.limits); err != nil {
 			return entry, err
 		}
 		entry.after = after
@@ -324,25 +323,24 @@ func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction
 		if !isEventDecoder(direction) || mapping.Module != "" {
 			return entry, fmt.Errorf("initial requires a declarative event decoder")
 		}
-		initial, err := expressions.compile(*mapping.Initial, path+"/initial", scope, 1)
+		initial, err := expressions.compilePlan(*mapping.Initial, path+"/initial", scope, 1)
 		if err != nil {
 			return entry, err
 		}
-		if !isAssignable(initial.result, ObjectType) && !isAssignable(initial.result, ArrayType) {
+		if !isAssignable(initial.expression.result, ObjectType) && !isAssignable(initial.expression.result, ArrayType) {
 			return entry, fmt.Errorf("initial must produce an event or ordered event array")
 		}
 		entry.initial = initial
 	}
 	if mapping.Transform != nil {
-		expression, err := expressions.compile(*mapping.Transform, path+"/transform", scope, 1)
+		plan, err := expressions.compilePlan(*mapping.Transform, path+"/transform", scope, 1)
 		if err != nil {
 			return entry, err
 		}
-		if err := checkExpressionOutput(expression, mapping.Output, expressions.limits); err != nil {
+		if err := checkExpressionOutput(plan.expression, mapping.Output, expressions.limits); err != nil {
 			return entry, err
 		}
-		entry.transform = expression
-		entry.outputPlan, _ = compileOutputPlan(expression)
+		entry.outputPlan = plan
 	}
 	if len(mapping.Rules) > 0 {
 		if !isEventDirection(direction) {
@@ -353,14 +351,14 @@ func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction
 		}
 		for index, rule := range mapping.Rules {
 			rulePath := fmt.Sprintf("%s/rules/%d", path, index)
-			when, err := expressions.compile(rule.When, rulePath+"/when", scope, 1)
+			when, err := expressions.compilePlan(rule.When, rulePath+"/when", scope, 1)
 			if err != nil {
 				return entry, err
 			}
-			if !isAssignable(when.result, BooleanType) {
+			if !isAssignable(when.expression.result, BooleanType) {
 				return entry, fmt.Errorf("%s condition must be boolean", rulePath)
 			}
-			emit, err := expressions.compile(rule.Emit, rulePath+"/emit", scope, 1)
+			emit, err := expressions.compilePlan(rule.Emit, rulePath+"/emit", scope, 1)
 			if err != nil {
 				return entry, err
 			}
@@ -797,8 +795,6 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 		output, err = instance.Convert(ctx, direction, input, options)
 	case mapping.outputPlan != nil:
 		output, err = mapping.outputPlan.evaluate(state)
-	case mapping.transform != nil:
-		output, err = mapping.transform.evaluate(state)
 	default:
 		output, err = evaluateEventRules(mapping, state)
 	}

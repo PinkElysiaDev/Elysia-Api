@@ -50,6 +50,18 @@ type expressionScope struct {
 	isIteration bool
 }
 
+func (compiler *expressionCompiler) compilePlan(expression Expression, path string, scope expressionScope, depth int) (*compiledOutputPlan, error) {
+	compiled, err := compiler.compile(expression, path, scope, depth)
+	if err != nil {
+		return nil, err
+	}
+	plan, ok := compileOutputPlan(compiled)
+	if !ok {
+		return nil, fmt.Errorf("%s: expression has no compiled execution plan", path)
+	}
+	return plan, nil
+}
+
 func (compiler *expressionCompiler) compile(expression Expression, path string, scope expressionScope, depth int) (result *compiledExpression, err error) {
 	defer func() { err = locateMappingError(path, err) }()
 	compiler.nodes++

@@ -109,7 +109,7 @@ type CompiledConversion struct {
 	Hash                  string             `json:"hash"`
 	Origins               map[string]string  `json:"origins"`
 	RuleRevisions         map[string]string  `json:"ruleRevisions"`
-	expressions           map[string]*compiledExpression
+	expressions           map[string]*compiledOutputPlan
 	limits                Limits
 }
 
@@ -206,7 +206,7 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 	if s := p.Continuation; s != nil && (s.RetentionSeconds <= 0 || s.RetentionSeconds > 365*24*3600 || s.TurnsPerSession <= 0 || s.MaxBytes <= 0 || s.RecordBytes <= 0 || s.RecordBytes > limits.BufferBytes) {
 		return nil, fmt.Errorf("invalid continuation retention or limits")
 	}
-	c := &CompiledConversion{options: map[string]conversionOption{}, Policy: p, limits: limits, expressions: map[string]*compiledExpression{}, Origins: map[string]string{}}
+	c := &CompiledConversion{options: map[string]conversionOption{}, Policy: p, limits: limits, expressions: map[string]*compiledOutputPlan{}, Origins: map[string]string{}}
 	compiler := &expressionCompiler{limits: limits, references: map[string]Expression{}, resolving: map[string]bool{}, used: map[string]bool{}}
 	actions := map[string]conversionAction{}
 	for _, action := range conversionActionCatalog() {
@@ -268,7 +268,7 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 			if r.Expression == nil {
 				return nil, fmt.Errorf("transform rule %s requires expression", r.ID)
 			}
-			e, err := compiler.compile(*r.Expression, "/rules/"+r.ID+"/expression", expressionScope{}, 1)
+			e, err := compiler.compilePlan(*r.Expression, "/rules/"+r.ID+"/expression", expressionScope{}, 1)
 			if err != nil {
 				return nil, err
 			}

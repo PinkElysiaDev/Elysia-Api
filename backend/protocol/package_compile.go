@@ -64,7 +64,7 @@ func (compiler *Compiler) CompilePackage(raw []byte) (*Compiled, []ConversionIss
 				if isPackageDecodeDirection(direction) {
 					input, output = output, input
 				}
-				if !provesPackageEmission(compiled.mappings[direction].transform, output, input) {
+				if !provesPackageEmission(compiled.mappings[direction].outputPlan.expression, output, input) {
 					path := fmt.Sprintf("/mapping/directions/%s/effects/%d", direction, index)
 					return nil, definitionIssues(compiled.identity, path, fmt.Errorf("emit effect %q requires a provable read of its declared input field", effect.id))
 				}
@@ -189,11 +189,14 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	if err != nil {
 		return compiledMapping{}, nil, err
 	}
-	plan, _ := compileOutputPlan(program)
+	plan, hasPlan := compileOutputPlan(program)
+	if !hasPlan {
+		return compiledMapping{}, nil, fmt.Errorf("%s/program: expression has no compiled execution plan", path)
+	}
 	return compiledMapping{
-		transform: program, outputPlan: plan, definitionHash: hashValue(identity),
-		hasCoreOutputPlan: plan != nil && (direction == DecodeRequest || direction == DecodeResponse),
-		hasCoreInputPlan:  plan != nil && (direction == EncodeRequest || direction == EncodeResponse),
+		outputPlan: plan, definitionHash: hashValue(identity),
+		hasCoreOutputPlan: direction == DecodeRequest || direction == DecodeResponse,
+		hasCoreInputPlan:  direction == EncodeRequest || direction == EncodeResponse,
 	}, effects, nil
 }
 

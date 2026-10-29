@@ -31,7 +31,7 @@ func TestProjectObjectFields(t *testing.T) {
 			}
 			// after and event rules also use the direct expression entrypoint.
 			state := evaluation{ctx: t.Context(), input: input, budget: &evaluationBudget{limits: DefaultLimits()}}
-			output, err := compiled.mappings[EncodeRequest].transform.evaluate(state)
+			output, err := compiled.mappings[EncodeRequest].outputPlan.expression.evaluate(state)
 			if err != nil || output.raw != test.expected {
 				t.Fatalf("expression: got %s / %v, want %s", output.raw, err, test.expected)
 			}

@@ -71,7 +71,7 @@ func NewEvaluationState() *EvaluationState {
 	return &EvaluationState{modules: map[moduleStateKey]*streamModuleState{}, initialized: map[moduleStateKey]bool{}}
 }
 
-func (state *EvaluationState) prependInitial(compiled *Compiled, direction Direction, initial *compiledExpression, evaluation evaluation, output Value) (Value, bool, error) {
+func (state *EvaluationState) prependInitial(compiled *Compiled, direction Direction, initial *compiledOutputPlan, evaluation evaluation, output Value) (Value, bool, error) {
 	if state == nil {
 		return Value{}, false, fmt.Errorf("initial events require one EvaluationState per stream")
 	}

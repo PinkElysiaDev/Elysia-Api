@@ -25,6 +25,17 @@ type outputPlanField struct {
 	expression *compiledOutputPlan
 }
 
+func (plan *compiledOutputPlan) isInputIdentity() bool {
+	return plan != nil && plan.expression.isInputIdentity()
+}
+
+func (plan *compiledOutputPlan) checkIdentityAfter(ctx context.Context, bytes int, limits Limits) error {
+	if plan == nil {
+		return nil
+	}
+	return plan.expression.checkIdentityAfter(ctx, bytes, limits)
+}
+
 func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, bool) {
 	if expression == nil {
 		return nil, true
