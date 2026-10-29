@@ -243,6 +243,7 @@ type Expression struct {
 	Values    map[string]Value      `json:"values,omitempty"`
 	To        JSONType              `json:"to,omitempty"`
 	Key       string                `json:"key,omitempty"`
+	Keys      []string              `json:"keys,omitzero"`
 	Policy    string                `json:"policy,omitempty"`
 	Ref       string                `json:"ref,omitempty"`
 	Required  bool                  `json:"required,omitempty"`

@@ -3,6 +3,17 @@ package protocol
 import "fmt"
 
 func (plan *compiledOutputPlan) buildOperands(state evaluation) (plannedOutput, error) {
+	operands, err := plan.buildOperandValues(state)
+	if err != nil {
+		return plannedOutput{}, err
+	}
+	if plan.expression.op == "merge" {
+		return plan.mergeObjects(operands)
+	}
+	return concatPlannedArrays(operands, state.budget.limits.Nodes)
+}
+
+func (plan *compiledOutputPlan) buildOperandValues(state evaluation) ([]plannedOutput, error) {
 	operands := make([]plannedOutput, 0, len(plan.items))
 	logicalBytes := 0
 	// Evaluate all operands before checking their container types or collisions,
@@ -10,18 +21,15 @@ func (plan *compiledOutputPlan) buildOperands(state evaluation) (plannedOutput, 
 	for _, item := range plan.items {
 		value, err := item.build(state)
 		if err != nil {
-			return plannedOutput{}, err
+			return nil, err
 		}
 		logicalBytes += value.bytes + 1
 		if logicalBytes > state.budget.limits.BufferBytes {
-			return plannedOutput{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, logicalBytes)
+			return nil, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, logicalBytes)
 		}
 		operands = append(operands, value)
 	}
-	if plan.expression.op == "merge" {
-		return plan.mergeObjects(operands)
-	}
-	return concatPlannedArrays(operands, state.budget.limits.Nodes)
+	return operands, nil
 }
 
 func (plan *compiledOutputPlan) mergeObjects(operands []plannedOutput) (plannedOutput, error) {
@@ -154,11 +162,11 @@ func (plan *compiledOutputPlan) buildFilter(state evaluation) (plannedOutput, er
 		if item.node != nil {
 			child.itemOutput = &item
 		}
-		value, err := expression.when.evaluate(child)
+		value, err := plan.when.build(child)
 		if err != nil {
 			return plannedOutput{}, err
 		}
-		isMatch, err := readBoolean(value)
+		isMatch, err := readPlannedBoolean(value.output)
 		if err != nil {
 			return plannedOutput{}, err
 		}

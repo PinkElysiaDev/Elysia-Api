@@ -64,6 +64,48 @@ func TestOutputPlanParity(t *testing.T) {
 		{"filter", Expression{Op: "filter", Source: &read, When: expressionPointer(readExpression("item", "/keep"))}, `[{"keep":false},{"keep":true,"value":"<"}]`},
 		{"filter-empty", Expression{Op: "filter", Source: &read, When: expressionPointer(literalExpression(false))}, `[null,1]`},
 		{"filter-type", Expression{Op: "filter", Source: &read, When: expressionPointer(readExpression("item", "/keep"))}, `[{"keep":null}]`},
+		{"sort-stable", Expression{Op: "sort", Source: &read, Key: "/id"}, `[{"id":2,"value":"first"},{"id":1},{"id":2,"value":"last"}]`},
+		{"sort-exact", Expression{Op: "sort", Source: &read, Key: "/id"}, `[{"id":9007199254740993},{"id":9007199254740992},{"id":1e+3}]`},
+		{"sort-constructed", Expression{Op: "sort", Source: expressionPointer(Expression{Op: "array", Items: []Expression{read, read}}), Key: "/id"}, `{"id":"a","body": [ 1e+3 ]}`},
+		{"sort-missing-priority", Expression{Op: "sort", Source: &read, Key: "/id"}, `[{"id":{}},{"id":1},{}]`},
+		{"sort-single-container", Expression{Op: "sort", Source: &read, Key: "/id"}, `[{"id":{}}]`},
+		{"sort-type", Expression{Op: "sort", Source: &read, Key: "/id"}, `[{"id":{}},{"id":1}]`},
+		{"associate", Expression{Op: "associate", Source: &read, Key: "/id"}, `[ {"id":"b","value": [ 1e+3 ]}, {"id":"a","value":"<"} ]`},
+		{"associate-duplicate", Expression{Op: "associate", Source: &read, Key: "/id"}, `[{"id":"a"},{"id":"a"}]`},
+		{"associate-empty", Expression{Op: "associate", Source: &read, Key: "/id"}, `[{"id":""}]`},
+		{"associate-missing-priority", Expression{Op: "associate", Source: &read, Key: "/id"}, `[{"id":1},{}]`},
+		{"join-items", Expression{Op: "join", Items: []Expression{literalExpression("<"), read, literalExpression("尾")}}, `" & "`},
+		{"join-source", Expression{Op: "join", Source: expressionPointer(Expression{Op: "map", Source: &read, Body: &text})}, `[{"text":"a"},{"text":"<"}]`},
+		{"join-source-type", Expression{Op: "join", Source: &read}, `["a",null]`},
+		{"join-evaluate-first", Expression{Op: "join", Items: []Expression{readExpression("input", "/bad"), {Op: "read", Path: "/missing", Required: true}}}, `{"bad":1}`},
+		{"parse-json", Expression{Op: "parse_json", Source: &read}, `" {\"a\":9007199254740993,\"a\":1e+3} "`},
+		{"parse-invalid", Expression{Op: "parse_json", Source: &read}, `"{"`},
+		{"parse-type", Expression{Op: "parse_json", Source: &read}, `{}`},
+		{"stringify-raw", Expression{Op: "stringify_json", Source: &read}, ` { "a":1e+3,"a":"<" } `},
+		{"stringify-constructed", Expression{Op: "stringify_json", Source: expressionPointer(objectExpression(map[string]Expression{"array": {Op: "array", Items: []Expression{read}}, "missing": {Op: "omit"}}))}, `{"a":"<"}`},
+		{"stringify-absent", Expression{Op: "stringify_json", Source: expressionPointer(Expression{Op: "omit"})}, `null`},
+		{"exists-constructed", Expression{Op: "exists", Source: expressionPointer(Expression{Op: "array", Items: []Expression{read}})}, `null`},
+		{"present-null", Expression{Op: "present", Source: expressionPointer(Expression{Op: "parse_json", Source: &read})}, `" null "`},
+		{"present-constructed", Expression{Op: "present", Source: expressionPointer(Expression{Op: "object"})}, `null`},
+		{"not-constructed", Expression{Op: "not", Source: expressionPointer(Expression{Op: "equal", Items: []Expression{Expression{Op: "array", Items: []Expression{read}}, literalExpression([]int{1})}})}, `1`},
+		{"enum-constructed", Expression{Op: "enum", Source: expressionPointer(Expression{Op: "join", Items: []Expression{literalExpression("pre-"), read}}), Values: map[string]Value{"pre-value": StringValue("mapped")}}, `"value"`},
+		{"enum-unmapped", Expression{Op: "enum", Source: &read, Values: map[string]Value{"known": StringValue("mapped")}}, `"unknown"`},
+		{"cast-constructed", Expression{Op: "cast", Source: expressionPointer(Expression{Op: "stringify_json", Source: &read}), To: NumberType}, `9007199254740993`},
+		{"cast-container", Expression{Op: "cast", Source: expressionPointer(Expression{Op: "array", Items: []Expression{read}}), To: StringType}, `1`},
+		{"strip-constructed", Expression{Op: "strip_prefix", Source: expressionPointer(Expression{Op: "join", Items: []Expression{literalExpression("prefix:"), read}}), Value: StringValue("prefix:")}, `"text"`},
+		{"strip-missing", Expression{Op: "strip_prefix", Source: &read, Value: StringValue("prefix:")}, `"text"`},
+		{"trim-missing", Expression{Op: "trim_prefix", Source: &read, Value: StringValue("prefix:")}, `"text"`},
+		{"equal-constructed-exact", Expression{Op: "equal", Items: []Expression{objectExpression(map[string]Expression{"n": literalExpression(1)}), read}}, `{"n":1.0,"n":1e0}`},
+		{"equal-normalized-keys", Expression{Op: "equal", Items: []Expression{objectExpression(map[string]Expression{"bad\xff": literalExpression(1), "bad�": literalExpression(2)}), read}}, `{"bad�":1}`},
+		{"equal-absent", Expression{Op: "equal", Items: []Expression{{Op: "omit"}, readExpression("input", "/missing")}}, `{}`},
+		{"equal-null", Expression{Op: "equal", Items: []Expression{{Op: "array"}, read}}, `null`},
+		{"all-constructed", Expression{Op: "all", Items: []Expression{{Op: "exists", Source: expressionPointer(Expression{Op: "object"})}, {Op: "not", Source: &read}}}, `false`},
+		{"all-evaluate-first", Expression{Op: "all", Items: []Expression{readExpression("input", "/bad"), {Op: "read", Path: "/missing", Required: true}}}, `{"bad":1}`},
+		{"any-no-short-circuit", Expression{Op: "any", Items: []Expression{literalExpression(true), read}}, `1`},
+		{"if-constructed-condition", Expression{Op: "if", When: expressionPointer(Expression{Op: "equal", Items: []Expression{Expression{Op: "array", Items: []Expression{read}}, literalExpression([]int{1})}}), Then: expressionPointer(literalExpression("matched"))}, `1`},
+		{"choose-constructed", Expression{Op: "choose", Source: expressionPointer(Expression{Op: "stringify_json", Source: &read}), Cases: map[string]Expression{"null": literalExpression("matched")}}, `null`},
+		{"filter-constructed-condition", Expression{Op: "filter", Source: &read, When: expressionPointer(Expression{Op: "equal", Items: []Expression{objectExpression(map[string]Expression{"id": readExpression("item", "/id")}), literalExpression(map[string]int{"id": 1})}})}, `[{"id":1},{"id":2}]`},
+		{"scope-constructed", Expression{Op: "map", Source: &read, Body: expressionPointer(Expression{Op: "join", Items: []Expression{text, readExpression("root", "/0/text"), readExpression("context", "")}})}, `[{"text":"first"},{"text":"second"}]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			compiled := compileTestOutputExpression(t, tc.expression)
@@ -96,7 +138,7 @@ func compareOutputPlan(t *testing.T, expression *compiledExpression, plan *compi
 		if cancelAt != 0 {
 			ctx = &outputPlanCancelContext{Context: ctx, remaining: cancelAt}
 		}
-		return evaluation{ctx: ctx, input: input, root: input, budget: &evaluationBudget{limits: limits, stepLimit: stepLimit}}
+		return evaluation{ctx: ctx, input: input, root: input, context: StringValue("context"), budget: &evaluationBudget{limits: limits, stepLimit: stepLimit}}
 	}
 	originalState, plannedState := state(), state()
 	want, wantErr := expression.evaluate(originalState)
@@ -124,14 +166,25 @@ func (ctx *outputPlanCancelContext) Err() error {
 }
 
 func TestOutputPlanSelectsBeforeExecution(t *testing.T) {
-	read := readExpression("input", "")
-	for _, expression := range []Expression{
-		{Op: "sort", Source: &read, Key: "/id"},
-		{Op: "map", Source: expressionPointer(Expression{Op: "sort", Source: &read, Key: "/id"}), Body: &read},
-		{Op: "if", When: expressionPointer(literalExpression(false)), Then: expressionPointer(Expression{Op: "sort", Source: &read, Key: "/id"}), Otherwise: expressionPointer(Expression{Op: "object"})},
+	unknown := &compiledExpression{op: "future_operation"}
+	for _, expression := range []*compiledExpression{
+		unknown,
+		{op: "map", source: unknown, body: &compiledExpression{op: "literal"}},
+		{op: "if", when: &compiledExpression{op: "literal"}, then: unknown, otherwise: &compiledExpression{op: "object"}},
 	} {
-		if _, ok := compileOutputPlan(compileTestOutputExpression(t, expression)); ok {
-			t.Fatal("unsupported construction selected", expression.Op)
+		if _, ok := compileOutputPlan(expression); ok {
+			t.Fatal("unsupported construction selected", expression.op)
+		}
+	}
+}
+
+func TestOutputPlanCoversCatalog(t *testing.T) {
+	for _, operation := range expressionOperations {
+		if operation.Name == "ref" {
+			continue // References are expanded before plan compilation.
+		}
+		if _, ok := compileOutputPlan(&compiledExpression{op: operation.Name}); !ok {
+			t.Fatal("catalog operation has no compiled plan", operation.Name)
 		}
 	}
 }

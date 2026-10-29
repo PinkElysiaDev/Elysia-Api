@@ -13,10 +13,10 @@ type compiledOutputPlan struct {
 	items      []*compiledOutputPlan
 	source     *compiledOutputPlan
 	body       *compiledOutputPlan
+	when       *compiledOutputPlan
 	then       *compiledOutputPlan
 	otherwise  *compiledOutputPlan
 	cases      map[string]*compiledOutputPlan
-	isLeaf     bool
 }
 
 type outputPlanField struct {
@@ -30,12 +30,24 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 		return nil, true
 	}
 	plan := &compiledOutputPlan{expression: expression}
-	if isOutputLeafExpression(expression) {
-		plan.isLeaf = true
-		return plan, true
-	}
 	switch expression.op {
-	case "object":
+	case "omit", "literal", "read", "object", "project", "array", "map", "flatmap", "filter", "if", "choose",
+		"merge", "concat", "join", "sort", "associate", "parse_json", "stringify_json",
+		"exists", "present", "not", "enum", "cast", "strip_prefix", "trim_prefix", "equal", "all", "any":
+	default:
+		return nil, false
+	}
+	for _, child := range []struct {
+		source *compiledExpression
+		target **compiledOutputPlan
+	}{{expression.source, &plan.source}, {expression.body, &plan.body}, {expression.when, &plan.when}, {expression.then, &plan.then}, {expression.otherwise, &plan.otherwise}} {
+		compiled, ok := compileOutputPlan(child.source)
+		if !ok {
+			return nil, false
+		}
+		*child.target = compiled
+	}
+	if expression.op == "object" {
 		for _, key := range expression.keys {
 			child, ok := compileOutputPlan(expression.fields[key])
 			if !ok {
@@ -43,47 +55,15 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			}
 			plan.fields = append(plan.fields, outputPlanField{key, jsonStringBytes(key), child})
 		}
-	case "array", "merge", "concat":
-		for _, item := range expression.items {
-			child, ok := compileOutputPlan(item)
-			if !ok {
-				return nil, false
-			}
-			plan.items = append(plan.items, child)
-		}
-	case "map", "flatmap", "filter":
-		var ok bool
-		plan.source, ok = compileOutputPlan(expression.source)
+	}
+	for _, item := range expression.items {
+		child, ok := compileOutputPlan(item)
 		if !ok {
 			return nil, false
 		}
-		if expression.op == "filter" {
-			if !isOutputLeafExpression(expression.when) {
-				return nil, false
-			}
-			return plan, true
-		}
-		plan.body, ok = compileOutputPlan(expression.body)
-		if !ok {
-			return nil, false
-		}
-	case "if", "choose":
-		condition := expression.when
-		if expression.op == "choose" {
-			condition = expression.source
-		}
-		if !isOutputLeafExpression(condition) {
-			return nil, false
-		}
-		var ok bool
-		plan.then, ok = compileOutputPlan(expression.then)
-		if !ok {
-			return nil, false
-		}
-		plan.otherwise, ok = compileOutputPlan(expression.otherwise)
-		if !ok {
-			return nil, false
-		}
+		plan.items = append(plan.items, child)
+	}
+	if len(expression.cases) != 0 {
 		plan.cases = make(map[string]*compiledOutputPlan, len(expression.cases))
 		for key, branch := range expression.cases {
 			child, ok := compileOutputPlan(branch)
@@ -92,32 +72,8 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			}
 			plan.cases[key] = child
 		}
-	default:
-		return nil, false
 	}
 	return plan, true
-}
-
-// Scalar operations retain their evaluator, including exact numbers and error
-// priority. No container constructor may hide beneath a leaf operation.
-func isOutputLeafExpression(expression *compiledExpression) bool {
-	if expression == nil {
-		return false
-	}
-	switch expression.op {
-	case "omit", "literal", "read":
-		return true
-	case "exists", "present", "not", "enum", "cast", "strip_prefix", "trim_prefix":
-		return isOutputLeafExpression(expression.source)
-	case "equal", "all", "any":
-		for _, item := range expression.items {
-			if !isOutputLeafExpression(item) {
-				return false
-			}
-		}
-		return true
-	}
-	return false
 }
 
 type plannedOutput struct {
@@ -136,12 +92,8 @@ func (plan *compiledOutputPlan) evaluate(state evaluation) (Value, error) {
 }
 
 func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, err error) {
-	if plan.isLeaf {
-		if plan.expression.op == "read" && state.hasOutputReader(plan.expression.from) {
-			return plan.expression.buildReadOutput(state)
-		}
-		leaf, err := plan.expression.evaluate(state)
-		return plannedOutput{JSONLeaf(leaf), leaf.Len()}, err
+	if plan.expression.op == "read" && state.hasOutputReader(plan.expression.from) {
+		return plan.expression.buildReadOutput(state)
 	}
 	expression := plan.expression
 	defer func() { err = locateMappingError(expression.path, err) }()
@@ -155,22 +107,40 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		}
 	}()
 	switch expression.op {
+	case "omit":
+		return plannedOutput{}, nil
+	case "literal":
+		return plannedLeaf(expression.value), nil
+	case "read":
+		return plan.buildReadValue(state)
 	case "object":
 		return plan.buildObject(state)
+	case "project":
+		return plan.buildProjection(state)
 	case "array":
 		return plan.buildArray(state)
 	case "merge", "concat":
 		return plan.buildOperands(state)
+	case "join":
+		return plan.buildJoin(state)
+	case "sort", "associate":
+		return plan.buildKeyedArray(state)
+	case "parse_json", "stringify_json":
+		return plan.buildJSONScalar(state)
+	case "exists", "present", "not", "enum", "cast", "strip_prefix", "trim_prefix":
+		return plan.buildScalar(state)
+	case "equal", "all", "any":
+		return plan.buildScalarOperands(state)
 	case "map", "flatmap":
 		return plan.buildIteration(state)
 	case "filter":
 		return plan.buildFilter(state)
 	case "if":
-		condition, err := expression.when.evaluate(state)
+		condition, err := plan.when.build(state)
 		if err != nil {
 			return plannedOutput{}, err
 		}
-		isTrue, err := readBoolean(condition)
+		isTrue, err := readPlannedBoolean(condition.output)
 		if err != nil {
 			return plannedOutput{}, fmt.Errorf("%s/when: %w", expression.path, err)
 		}
@@ -183,11 +153,11 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		}
 		return branch.build(state)
 	case "choose":
-		discriminator, err := expression.source.evaluate(state)
+		discriminator, err := plan.source.build(state)
 		if err != nil {
 			return plannedOutput{}, err
 		}
-		key, err := readString(discriminator)
+		key, err := readPlannedString(discriminator.output)
 		if err != nil {
 			return plannedOutput{}, fmt.Errorf("%s/source: %w", expression.path, err)
 		}

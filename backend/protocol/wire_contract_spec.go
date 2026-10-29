@@ -29,7 +29,7 @@ type WireAssertion struct {
 type compiledWireAssertion struct {
 	path    string
 	pointer []string
-	when    *compiledExpression
+	when    *compiledOutputPlan
 	schema  *wireSchemaPlan
 	code    IssueCode
 	reason  string
@@ -68,12 +68,17 @@ func compileWireContractSpec(spec WireContractSpec, path string, limits Limits) 
 		}
 		check := compiledWireAssertion{path: assertion.Path, pointer: pointer, code: assertion.Code, reason: assertion.Reason}
 		if assertion.When != nil {
-			check.when, err = expressions.compile(*assertion.When, at+"/when", expressionScope{input: spec.Schema}, 1)
+			condition, err := expressions.compile(*assertion.When, at+"/when", expressionScope{input: spec.Schema}, 1)
 			if err != nil {
 				return compiledWireContract{}, err
 			}
-			if !isAssignable(check.when.result, BooleanType) {
+			if !isAssignable(condition.result, BooleanType) {
 				return compiledWireContract{}, fmt.Errorf("%s/when: condition must produce a boolean", at)
+			}
+			var hasPlan bool
+			check.when, hasPlan = compileOutputPlan(condition)
+			if !hasPlan {
+				return compiledWireContract{}, fmt.Errorf("%s/when: condition requires a compiled execution plan", at)
 			}
 		}
 		check.schema, err = compileWireSchemaPlan(&assertion.Schema, limits)

@@ -111,6 +111,16 @@ func (expression *compiledExpression) evaluateValue(state evaluation) (Value, er
 			}
 		}
 		return EncodeValue(object)
+	case "project":
+		source, err := expression.source.evaluate(state)
+		if err != nil {
+			return Value{}, err
+		}
+		output, err := expression.projectObject(JSONLeaf(source))
+		if err != nil {
+			return Value{}, err
+		}
+		return output.output.Encode(context.WithoutCancel(state.ctx))
 	case "array", "concat", "join", "merge", "equal", "all", "any":
 		return expression.evaluateOperands(state)
 	case "map", "flatmap", "filter":

@@ -271,6 +271,23 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 				return fail("merge inputs must be objects")
 			}
 		}
+	case "project":
+		if !isAssignable(expression.source.result, ObjectType) {
+			return fail("project source must be an object")
+		}
+		if !slices.Contains([]string{"include", "exclude"}, expression.policy) {
+			return fail("project requires include or exclude policy")
+		}
+		expression.keys = slices.Clone(source.Keys)
+		for index, key := range expression.keys {
+			expression.keys[index] = coreJSONKey(key)
+		}
+		slices.Sort(expression.keys)
+		for index := 1; index < len(expression.keys); index++ {
+			if expression.keys[index] == expression.keys[index-1] {
+				return fail("project keys must be unique")
+			}
+		}
 	case "concat":
 		for _, item := range expression.items {
 			if !isAssignable(item.result, ArrayType) {

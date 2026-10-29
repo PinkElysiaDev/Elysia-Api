@@ -24,6 +24,7 @@ var expressionOperations = []OperationInfo{
 	{"enum", []string{"source", "values"}, []string{"source", "values"}, AnyType, "Map an explicit enum; an unmapped input is an error."},
 	{"cast", []string{"source", "to"}, []string{"source", "to"}, AnyType, "Perform a lossless scalar conversion; never truncate numbers."},
 	{"merge", []string{"items", "policy"}, []string{"items", "policy"}, ObjectType, "Explicitly merge objects with reject, first or last collision policy."},
+	{"project", []string{"source", "keys", "policy"}, []string{"source", "keys", "policy"}, ObjectType, "Include or exclude declared object keys; retain present null values and never create missing fields."},
 	{"concat", []string{"items"}, []string{"items"}, ArrayType, "Concatenate ordered arrays."},
 	{"join", []string{"items", "source"}, nil, StringType, "Concatenate either string expressions in items or a source array of strings, without implicit coercion."},
 	{"sort", []string{"source", "key"}, []string{"source", "key"}, ArrayType, "Stable sort by a declared scalar JSON pointer."},
