@@ -4297,6 +4297,77 @@
             }
           }
         }
+      },
+      "encode-system-envelope": {
+        "op": "let",
+        "name": "mapped-system",
+        "source": {
+          "op": "ref",
+          "ref": "encode-system"
+        },
+        "body": {
+          "op": "let",
+          "name": "system-extension",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/parameters/wire:gemini/systemInstruction"
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "system-extension"
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "mapped-system"
+                }
+              },
+              "then": {
+                "op": "merge",
+                "policy": "reject",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "mapped-system"
+                  },
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "system-extension"
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "system-extension"
+              }
+            },
+            "otherwise": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "mapped-system"
+            }
+          }
+        }
       }
     },
     "directions": {
@@ -4490,7 +4561,7 @@
                 },
                 "systemInstruction": {
                   "op": "ref",
-                  "ref": "encode-system"
+                  "ref": "encode-system-envelope"
                 },
                 "tools": {
                   "op": "ref",
@@ -4569,9 +4640,16 @@
                 }
               },
               "then": {
-                "op": "read",
-                "from": "input",
-                "path": "/parameters/wire:gemini"
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/wire:gemini"
+                },
+                "keys": [
+                  "systemInstruction"
+                ],
+                "policy": "exclude"
               },
               "otherwise": {
                 "op": "object",

@@ -100,6 +100,27 @@ func TestGeminiPackageDraftMigration(t *testing.T) {
 			compareGeminiMigration(t, legacy, draft, sample, options)
 		})
 	}
+	for _, edit := range []string{"unchanged", "current-text", "removed-extension"} {
+		t.Run("system-wrapper-render/"+edit, func(t *testing.T) {
+			options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
+			request, err := legacy.DecodeRequest(t.Context(), []byte(`{"systemInstruction":{"role":"user","parts":[{"text":"prefix"}],"vendor":{"n":9007199254740993,"empty":null}},"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Native = nil
+			switch edit {
+			case "current-text":
+				request.Content[0].Children[0].Payload = p.StringValue("edited prefix")
+			case "removed-extension":
+				delete(request.Parameters, "wire:gemini")
+			}
+			input, err := p.EncodeValue(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			compareGeminiMigration(t, legacy, draft, p.Sample{Direction: p.EncodeRequest, Input: input}, options)
+		})
+	}
 }
 
 var geminiMigrationGaps = map[string]packageMigrationGap{

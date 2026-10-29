@@ -41,9 +41,10 @@ output，保留 inferred 与 observed 的区别。加减使用现有 int64 原�
 | 删除根 Native 后的编码 | 14 | 14 | 0 |
 | Scope/context 模型边界 | 5 | 5 | 0 |
 | 无 ID、system、响应 role、混合工具边界 | 5 | 0 | 5 |
-| 合计 | 52 | 33 | 19 |
+| 无根 Native 的 system 包装扩展渲染 | 3 | 3 | 0 |
+| 合计 | 55 | 36 | 19 |
 
-52 次检查的台账测试通过，不表示 19 项差异已经等价。比较保留所有公开核心字段、来源、
+55 次检查的台账测试通过，不表示 19 项差异已经等价。比较保留所有公开核心字段、来源、
 Native、完整输出字节及完整错误树，唯一显式适配是核心 schemaVersion 1→2。
 
 19 项实际差异追加在共享静态账本 `../testdata/package-migration-gaps.json`，没有更改既有
@@ -75,6 +76,18 @@ Anthropic/Chat 条目。新增证据采自 `a977ea98` 工作区中的本候选�
 旧实现返回 `unsupported_capability`，路径 `/functionResponse`，原因是无 ID 结果无法唯一关联。
 候选的唯一计数分支拒绝歧义，但返回 Mapping 的 `invalid_input`、声明路径及不同错误链。
 两边的完整错误树已固定；不是仅检查“双方都失败”，也不是已完成诊断迁移。
+
+### 已闭合：system 包装扩展与当前正文同时渲染
+
+初稿直接在根对象合并 `parameters["wire:gemini"]`，当其中包含 systemInstruction 的未知
+包装字段时，会与当前 system parts 产生同名字段冲突。去掉根 Native 后，旧 renderer 成功，
+草案失败；修改当前 system 文本时也能复现。
+
+现在先在 systemInstruction 内合并当前 parts 和该包装的未知字段，再合并剩余根扩展。
+三次无根 Native 比较全部相等，分别覆盖未修改、修改当前 system 文本、显式删除扩展。
+未知嵌套对象中的大整数与 null 保持原值；删除扩展不会从节点快照恢复旧包装字段。
+旧来源路径与原生快照差异仍保持原静态记录，未通过改写捕获来源或放宽比较消除。
+这不是通用深层扩展合并的完整验收；冲突诊断、非对象扩展等边界仍需单独闭合。
 
 ## 尚未完成的边界
 
