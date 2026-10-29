@@ -67,6 +67,40 @@
 
 捕获只提供来源证据，不自动授权原生重放。作用域、数组身份、映射指纹、未知字段和最终 wire 校验仍需通过。节点级重建、丢弃语义后的 Native 删除证明及完整预置映射仍在迁移中。
 
+## 在编码声明中使用原生信息
+
+`replay_native` 的 source 是核心 Native 对象；运行时将实际目标的协议、方向、scope
+及有效预算交给现有 `ReplayNative`，声明不能用正文或 Values 替换目标身份。
+缺少 Native、跨 wire、scope 不符及预算错误保持各自错误，不自动改走语义重建。
+
+```json
+{"op":"replay_native","source":{"op":"read","from":"item","path":"/native"}}
+```
+
+输出是当前 DSL 输入中可观察的 Native.Value。typed 核心读取仍遵守原来的 JSON 规范化，
+不能据此宣称恢复了规范化前的空白或转义拼写；后续 project/merge 也会按既有容器规则编码。
+整请求的原始字节保留、workspace 与数组协调继续由原生协调层负责。
+
+`native_matches` 的 source 是 Provenance，不读取整份快照。它判断来源是否与实际目标
+具有兼容的 family、wireVersion、方向，以及来源位置是否为指定数组下的直接成员：
+
+```json
+{
+  "op":"native_matches",
+  "source":{"op":"read","from":"item","path":"/native/source"},
+  "operation":"array_item",
+  "path":"/messages"
+}
+```
+
+这是位置分类，不是重放授权：不检查 scope，不要求原位置等于当前索引；真正取回载荷的
+`replay_native` 仍检查 scope。数字部分沿用现有 Atoi 的非负整数规则，包括 `+1`、`01`。
+原快照 role 等协议条件仍由声明组合 read/equal 检查，核心原语不认识供应商字段。
+
+两种原语只允许用于 v3 编码 program；Mapping effects、Spec 断言、v2 和解码 program 不开放。
+未使用它们的计划不创建原生目标上下文。操作数使用闭合 Native/Provenance 核心形状；
+这不能等同于旧 raw 接口对任意含未知核心字段 JSON 的宽松解码。
+
 ## 类型、整数与 wire 断言
 
 v3 program 与普通 effect 条件还可读取唯一运行时事实：

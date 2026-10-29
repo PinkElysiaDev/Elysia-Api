@@ -111,3 +111,19 @@ v3 样例已接入既有 Verify 和组合验证。统一样例读取直接取真
 `cebe28cd` 恢复 v3 raw 编码的核心 reasoning 检查，复用现有 ValidateReasoningIntent；
 typed 入口不重复执行。按顶层原顺序读取别名和重复 reasoning，保留对象合并及早期类型错误。
 没有顺带给旧 raw 本不具备的 hints、能力或未知字段添加严格检查。
+
+`349c2e2c` 完成 Anthropic 草案的 thinking/output_config 双向声明：空/null、effort:null、
+未知余项及可信 interleaved 上下文保持。14 组正例双向比较相等；新增负例的诊断差异
+仍登记为未闭合，不把同为拒绝当作全部保真。草案仍不进入生产加载。
+
+`8d7381e6` 提供编码声明可用的 replay_native 与 native_matches；它们只复用通用原生
+授权和位置分类，供应商字段取舍留在 JSON。旧完整模块没有被包装为新原语。
+typed 的既有 JSON 规范化与原请求原字节协调分开处理；操作数闭合形状与旧 raw 宽松
+解码的差异单独记录。具体契约见[原语说明](protocol-dsl-primitives.md)。
+
+`d8a01ce6` 固定 checkout 的工程检查：Go 全量（约 103 秒）、vet、protocol/builtin race
+通过；staticcheck v0.8.2 返回原有 45 条诊断，去除源码行号位移后内容与条数一致。
+审计自测首次因独立 checkout 未安装依赖而失败并跳过 SDK 项；复用锁文件相同的本地依赖后，
+161 项全部通过、无跳过。原失败输出保留，不计为生产回归。日志位于
+`.tmp-dev/protocol-dsl-2026-10-29/checks/encoding-*`。
+后续原语和草案提交的定向检查不能替代最终稳定提交的全工程验收。
