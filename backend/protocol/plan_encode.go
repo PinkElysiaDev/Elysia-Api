@@ -12,7 +12,8 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 	}
 	// This is EncodeSemantic's original boundary, before execution cancellation
 	// or the target mapping's potentially smaller request budget.
-	if err := checkSemanticValue(input, semanticLimits(semanticBudget)); err != nil {
+	size, err := measureSemanticValue(input, semanticLimits(semanticBudget))
+	if err != nil {
 		return Value{}, err
 	}
 	fail := func(err error) (Value, error) { return Value{}, compiled.mappingError(direction, err) }
@@ -39,7 +40,8 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 			return JSONOutput{}, fmt.Errorf("core input plan requires a request, response or event")
 		}
 	}
-	state := evaluation{ctx: ctx, context: contextValue, runtime: bindEvaluationRuntime(options), inputReader: read, rootReader: read, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	reader := valueReader{minimumSharedBytes: minimumSharedValueBytes(size.maxRawBytes), canGrowThreshold: true}
+	state := evaluation{ctx: ctx, context: contextValue, runtime: bindEvaluationRuntime(options), inputReader: read, rootReader: read, valueReader: &reader, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	state.coreRequest, _ = input.(*Request)
 	if compiled.packagePlan != nil {
 		if err := compiled.preparePackageState(direction, state, inputLimits); err != nil {

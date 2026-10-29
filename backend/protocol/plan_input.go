@@ -64,7 +64,7 @@ func (expression *compiledExpression) buildReadOutput(state evaluation) (value p
 func readOutputPointer(output JSONOutput, pointer []string, reader *valueReader) (JSONOutput, error) {
 	for index, key := range pointer {
 		if output.node == nil {
-			value, err := readValuePointerWithin(output.value, pointer[index:], reader)
+			value, err := readValuePointerWithin(output.value, pointer[index:], reader.forParent(output.value))
 			return JSONLeaf(value), err
 		}
 		if output.node.object {

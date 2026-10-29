@@ -238,7 +238,8 @@ func readCoreLeaf(value Value, pointer []string) (JSONOutput, error) {
 	if value.IsZero() {
 		return JSONOutput{}, fmt.Errorf("absent JSON value requires omission")
 	}
-	selected, err := readValuePointerWithin(value, pointer, &valueReader{})
+	reader := valueReader{minimumSharedBytes: minimumSharedValueBytes(value.Len())}
+	selected, err := readValuePointerWithin(value, pointer, &reader)
 	if err != nil || selected.IsZero() {
 		return JSONOutput{}, err
 	}

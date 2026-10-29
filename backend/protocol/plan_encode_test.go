@@ -59,6 +59,102 @@ func TestPlannedCoreEncodingMatchesJSONBoundary(t *testing.T) {
 	}
 }
 
+func TestPlannedCoreReadsShareLargeValuesAndDetachSmallResults(t *testing.T) {
+	payload := Value{raw: `{"data":"` + strings.Repeat("A", 2<<20) + `","fragment":"` + strings.Repeat("b", 90<<10) + `","name":"small"}`}
+	request := &Request{SchemaVersion: SemanticSchemaVersion, Content: []Node{{Kind: ImageNode, Payload: payload}}}
+	size, err := measureSemanticValue(request, semanticLimits(DefaultLimits()))
+	if err != nil || size.maxRawBytes != payload.Len() {
+		t.Fatal("semantic measurement lost the largest raw owner", size, err)
+	}
+	for _, tc := range []struct {
+		name, field string
+		isBinding   bool
+		shouldShare bool
+	}{
+		{"direct-large", "data", false, true},
+		{"direct-small", "name", false, false},
+		{"direct-small-fraction", "fragment", false, false},
+		{"binding-large", "data", true, true},
+		{"binding-small", "name", true, false},
+		{"binding-small-fraction", "fragment", true, false},
+		{"whole-value", "", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := "/content/0/payload"
+			if tc.field != "" {
+				path += "/" + tc.field
+			}
+			program := readExpression("input", path)
+			if tc.isBinding {
+				read := bindingTestRead("node", "/payload/"+tc.field)
+				program = Expression{Op: "let", Name: "node", Source: expressionPointer(readExpression("input", "/content/0")), Body: &Expression{Op: "if", When: &Expression{Op: "exists", Source: &read}, Then: &read}}
+			}
+			definition := testDefinition("planned-read-ownership", "m", "h", "t", "r")
+			definition.Directions[EncodeRequest] = Mapping{Transform: &program}
+			compiled := compileTestDefinition(t, definition)
+			output, err := encodePlannedCore(t.Context(), compiled, EncodeRequest, request, EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := payload
+			if tc.field != "" {
+				want, err = readValuePointer(payload, []string{tc.field})
+			}
+			if err != nil || output != want || sharesValueStorage(payload, output) != tc.shouldShare {
+				t.Fatal("planned read changed bytes or retained the wrong storage", err)
+			}
+		})
+	}
+}
+
+func TestPlannedCoreConstructedParentDetachesRootSelection(t *testing.T) {
+	fragment := StringValue(strings.Repeat("b", 90<<10))
+	payload := Value{raw: `{"fragment":` + fragment.raw + `,"data":"` + strings.Repeat("A", 2<<20) + `"}`}
+	for _, isIteration := range []bool{false, true} {
+		source := Expression{Op: "literal", Value: payload}
+		body := bindingTestRead("selected", "/fragment")
+		if isIteration {
+			source = Expression{Op: "map", Source: &Expression{Op: "literal", Value: Value{raw: "[" + payload.raw + "]"}}, Body: expressionPointer(readExpression("item", "/fragment"))}
+			body = bindingTestRead("selected", "/0")
+		}
+		program := Expression{Op: "let", Name: "selected", Source: &source, Body: &body}
+		definition := testDefinition("constructed-parent", "m", "h", "t", "r")
+		definition.Directions[EncodeRequest] = Mapping{Transform: &program}
+		compiled := compileTestDefinition(t, definition)
+		parent := compiled.mappings[EncodeRequest].outputPlan.source
+		if isIteration {
+			parent = parent.source
+		}
+		output, err := encodePlannedCore(t.Context(), compiled, EncodeRequest, &Request{SchemaVersion: SemanticSchemaVersion}, EvaluationContext{})
+		if err != nil || output != fragment || sharesValueStorage(parent.expression.value, output) {
+			t.Fatal("a small root retained a large parent created after input measurement", isIteration, err)
+		}
+	}
+}
+
+func TestPlannedCoreReadKeepsAncestorThresholdAcrossBindings(t *testing.T) {
+	fragment := StringValue(strings.Repeat("f", 90<<10))
+	child := Value{raw: `{"fragment":` + fragment.raw + `,"padding":"` + strings.Repeat("c", 210<<10) + `"}`}
+	parent := Value{raw: `{"child":` + child.raw + `,"padding":"` + strings.Repeat("p", 800<<10) + `"}`}
+	program := Expression{Op: "let", Name: "parent", Source: &Expression{Op: "literal", Value: parent}, Body: &Expression{
+		Op: "let", Name: "child", Source: expressionPointer(bindingTestRead("parent", "/child")), Body: expressionPointer(bindingTestRead("child", "/fragment")),
+	}}
+	definition := testDefinition("ancestor-ownership", "m", "h", "t", "r")
+	definition.Directions[EncodeRequest] = Mapping{Transform: &program}
+	compiled := compileTestDefinition(t, definition)
+	output, err := encodePlannedCore(t.Context(), compiled, EncodeRequest, &Request{SchemaVersion: SemanticSchemaVersion}, EvaluationContext{})
+	original := compiled.mappings[EncodeRequest].outputPlan.source.expression.value
+	if err != nil || output != fragment || sharesValueStorage(original, output) {
+		t.Fatal("a small root retained a larger ancestor across bindings", err)
+	}
+	external := requestValueReader(StringValue("small"))
+	minimum := external.minimumSharedBytes
+	selected, err := readOutputPointer(JSONLeaf(original), []string{"child", "fragment"}, external)
+	if err != nil || external.minimumSharedBytes != minimum || selected.value != fragment || sharesValueStorage(original, selected.value) {
+		t.Fatal("a temporary parent read changed an external reader", err)
+	}
+}
+
 func BenchmarkPlannedCoreEncoding(b *testing.B) {
 	definition := testDefinition("planned-bench", "m", "h", "t", "r")
 	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)

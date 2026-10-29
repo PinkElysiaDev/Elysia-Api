@@ -144,34 +144,38 @@ func checkSemanticValue(value any, limits Limits) error {
 	return err
 }
 
-func measureSemanticValue(value any, limits Limits) (int, error) {
+type semanticSize struct {
+	bytes, maxRawBytes int
+}
+
+func measureSemanticValue(value any, limits Limits) (semanticSize, error) {
 	fast := typedMeter{limits: limits}
 	if ok, supported := fast.visitTyped(value); supported && ok && fast.fits() {
-		return fast.bytes, nil
+		return semanticSize{bytes: fast.bytes, maxRawBytes: fast.maxRawBytes}, nil
 	}
 	// The reflective failure path preserves the previous error precedence and
 	// observed counts, including map traversal and unsupported/cyclic values.
 	if plan := typedLimitPlans[reflect.TypeOf(value)]; plan != nil {
 		meter := typedMeter{limits: limits}
 		if meter.visit(plan, reflect.ValueOf(value)) && meter.fits() {
-			return meter.bytes, nil
+			return semanticSize{bytes: meter.bytes, maxRawBytes: meter.maxRawBytes}, nil
 		}
 		if meter.bytes > limits.BufferBytes {
-			return 0, resourceFailure("semantic", "bytes", limits.BufferBytes, meter.bytes)
+			return semanticSize{}, resourceFailure("semantic", "bytes", limits.BufferBytes, meter.bytes)
 		}
 		if meter.nodes > limits.Nodes {
-			return 0, resourceFailure("semantic", "nodes", limits.Nodes, meter.nodes)
+			return semanticSize{}, resourceFailure("semantic", "nodes", limits.Nodes, meter.nodes)
 		}
 		if meter.depth > min(limits.Depth, typedMeterTraversalDepth) {
-			return 0, resourceFailure("semantic", "depth", min(limits.Depth, typedMeterTraversalDepth), meter.depth)
+			return semanticSize{}, resourceFailure("semantic", "depth", min(limits.Depth, typedMeterTraversalDepth), meter.depth)
 		}
 	}
 	// Invalid/unsupported Go values still use the encoder's precise error.
 	encoded, err := EncodeValue(value)
 	if err != nil {
-		return 0, err
+		return semanticSize{}, err
 	}
-	return encoded.Len(), checkResourceValue(encoded, limits, "semantic")
+	return semanticSize{bytes: encoded.Len(), maxRawBytes: encoded.Len()}, checkResourceValue(encoded, limits, "semantic")
 }
 
 // EncodeSemantic checks trusted semantic values before allocating their JSON form.
@@ -221,11 +225,11 @@ func (compiled *Compiled) nativeLimits(ctx context.Context, direction Direction)
 }
 
 func encodeSemanticWithin(value any, limits Limits) (Value, error) {
-	length, err := measureSemanticValue(value, limits)
+	size, err := measureSemanticValue(value, limits)
 	if err != nil {
 		return Value{}, err
 	}
-	if length < plannedRequestEncodeMinBytes {
+	if size.bytes < plannedRequestEncodeMinBytes {
 		return EncodeValue(value)
 	}
 	// Build only after validation has bounded traversal and preserved the

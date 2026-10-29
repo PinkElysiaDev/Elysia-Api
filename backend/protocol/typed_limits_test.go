@@ -73,7 +73,7 @@ func checkMeterEquivalent(t *testing.T, value any) {
 		t.Fatalf("meter (%d,%d,%d) != encoding (%d,%d,0)", meter.bytes, meter.nodes, meter.depth, len(encoded.raw), nodes)
 	}
 	generated := typedMeter{limits: limits}
-	if ok, supported := generated.visitTyped(value); supported && (!ok || generated.bytes != meter.bytes || generated.nodes != meter.nodes || generated.depth != meter.depth || generated.maxDepth != meter.maxDepth) {
+	if ok, supported := generated.visitTyped(value); supported && (!ok || generated.bytes != meter.bytes || generated.nodes != meter.nodes || generated.depth != meter.depth || generated.maxDepth != meter.maxDepth || generated.maxRawBytes != meter.maxRawBytes) {
 		t.Fatalf("generated meter differs from reflective/JSON oracle: %+v / %+v", generated, meter)
 	}
 	limits.Nodes, limits.Depth = nodes, maxDepth

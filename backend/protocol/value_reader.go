@@ -11,10 +11,32 @@ type valueReader struct {
 	minimumSharedBytes     int
 	index                  *valueIndex
 	requireCapturedOrigins bool
+	canGrowThreshold       bool
+}
+
+func minimumSharedValueBytes(parentBytes int) int {
+	return max(requestViewMinBytes, parentBytes/4)
+}
+
+// Constructed raw containers can exceed the original input's largest Value.
+// An encoder's private reader retains the largest threshold across bindings;
+// borrowed decoder readers receive only a local adjustment.
+func (reader *valueReader) forParent(value Value) *valueReader {
+	minimum := minimumSharedValueBytes(value.Len())
+	if reader == nil || minimum <= reader.minimumSharedBytes {
+		return reader
+	}
+	if reader.canGrowThreshold {
+		reader.minimumSharedBytes = minimum
+		return reader
+	}
+	parent := *reader
+	parent.minimumSharedBytes = minimum
+	return &parent
 }
 
 func requestValueReader(root Value) *valueReader {
-	reader := &valueReader{minimumSharedBytes: max(requestViewMinBytes, len(root.raw)/4)}
+	reader := &valueReader{minimumSharedBytes: minimumSharedValueBytes(root.Len())}
 	if len(root.raw) >= requestViewMinBytes {
 		reader.index = &valueIndex{root: root.raw, minimumBytes: reader.minimumSharedBytes}
 	}
