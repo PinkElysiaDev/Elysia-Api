@@ -380,6 +380,8 @@
     "backend/protocol/plan_core.go",
     "backend/protocol/plan_core_bootstrap.go",
     "backend/protocol/plan_core_generated.go",
+    "backend/protocol/plan_core_origin.go",
+    "backend/protocol/plan_core_origin_test.go",
     "backend/protocol/plan_core_test.go",
     "backend/protocol/plan_data_uri.go",
     "backend/protocol/plan_data_uri_test.go",

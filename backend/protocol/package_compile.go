@@ -143,6 +143,8 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	scope := expressionScope{canReadRuntime: true}
 	if isDecode {
 		scope.input = wire.Schema
+	} else {
+		scope.coreInput = packageCoreInputType(direction)
 	}
 	references := map[string]Expression{}
 	compiler.mappingReferences = references

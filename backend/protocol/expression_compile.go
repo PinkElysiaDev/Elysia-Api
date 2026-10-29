@@ -3,6 +3,7 @@ package protocol
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ type compiledExpression struct {
 	isRequired                          bool
 	result                              JSONType
 	schema                              *ValueSchema
+	coreType                            reflect.Type
 }
 
 // isInputIdentity recognizes a compiled leaf, including an expanded reference.
@@ -52,6 +54,8 @@ type expressionScope struct {
 	input          *ValueSchema
 	root           *ValueSchema
 	item           *ValueSchema
+	coreInput      reflect.Type
+	coreItem       reflect.Type
 	isIteration    bool
 	isWalk         bool
 	wireCapture    bool
@@ -64,9 +68,10 @@ type expressionScope struct {
 }
 
 type expressionBinding struct {
-	slot   int
-	result JSONType
-	schema *ValueSchema
+	slot     int
+	result   JSONType
+	schema   *ValueSchema
+	coreType reflect.Type
 }
 
 func (compiler *expressionCompiler) compilePlan(expression Expression, path string, scope expressionScope, depth int) (*compiledOutputPlan, error) {
@@ -133,16 +138,16 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		if compiled.from == "item" && !scope.isIteration {
 			return nil, fmt.Errorf("%s/from: item requires an array iteration", path)
 		}
-		schema := scope.input
+		schema, coreType := scope.input, scope.coreInput
 		switch compiled.from {
 		case "root":
 			if scope.root != nil {
 				schema = scope.root
 			}
 		case "item":
-			schema = scope.item
+			schema, coreType = scope.item, scope.coreItem
 		case "context":
-			schema = nil
+			schema, coreType = nil, nil
 		case "runtime":
 			if !scope.canReadRuntime {
 				return nil, fmt.Errorf("%s/from: runtime metadata requires a package mapping program or effect", path)
@@ -151,12 +156,14 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 				return nil, fmt.Errorf("%s/path: unknown runtime metadata field", path)
 			}
 			compiled.result, schema = BooleanType, nil
+			coreType = nil
 		case "binding":
 			binding, exists := scope.bindings[expression.Name]
 			if !exists {
 				return nil, fmt.Errorf("%s/name: binding is not declared in this scope", path)
 			}
 			compiled.bindingSlot, schema = binding.slot, binding.schema
+			coreType = binding.coreType
 			if len(pointer) == 0 {
 				compiled.result = binding.result
 			}
@@ -173,6 +180,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			compiled.result = fieldSchema.Type
 			compiled.schema = fieldSchema
 		}
+		compiled.coreType = coreTypeAtPointer(coreType, pointer)
 	}
 	if compiled.op == "literal" {
 		compiled.result = valueType(expression.Value)
@@ -229,7 +237,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		for name, binding := range scope.bindings {
 			childScope.bindings[name] = binding
 		}
-		childScope.bindings[expression.Name] = expressionBinding{compiled.bindingSlot, compiled.source.result, compiled.source.schema}
+		childScope.bindings[expression.Name] = expressionBinding{slot: compiled.bindingSlot, result: compiled.source.result, schema: compiled.source.schema, coreType: compiled.source.coreType}
 	}
 	if slices.Contains([]string{"map", "flatmap", "filter", "walk"}, compiled.op) {
 		if !isAssignable(compiled.source.result, ArrayType) {
@@ -237,6 +245,10 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		}
 		childScope.isIteration = true
 		childScope.item = nil
+		childScope.coreItem = nil
+		if compiled.op != "walk" {
+			childScope.coreItem = coreArrayElement(compiled.source.coreType)
+		}
 		if expression.Source.Op == "read" {
 			arraySchema := compiled.source.schema
 			if arraySchema != nil {
@@ -290,6 +302,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	if err := checkCompiledExpression(compiled, expression); err != nil {
 		return nil, err
 	}
+	compiled.inheritCoreType()
 	return compiled, nil
 }
 
@@ -329,6 +342,13 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 	case "replay_native", "native_matches":
 		if !isAssignable(expression.source.result, ObjectType) {
 			return fail("native source must produce an object")
+		}
+		originalType := reflect.TypeFor[Native]()
+		if expression.op == "native_matches" {
+			originalType = reflect.TypeFor[Provenance]()
+		}
+		if expression.source.coreType != originalType {
+			return fail("native target source requires an unchanged core " + originalType.Name() + " read")
 		}
 		if expression.op == "native_matches" {
 			if expression.operation != "array_item" {

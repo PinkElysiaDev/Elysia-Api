@@ -7,6 +7,35 @@ import (
 	"testing"
 )
 
+func TestNativeReplayRejectsRebuiltScope(t *testing.T) {
+	document := textProtocolPackage(t)
+	const nativePath = "/content/0/children/0/native"
+	document.Mapping.Directions[EncodeRequest].Program.Fields["extension"] = Expression{Op: "replay_native", Source: expressionPointer(readExpression("input", nativePath))}
+	document.Spec.WireContracts[EncodeRequest].Schema.AllowUnknown = true
+	compiled := compilePackageForTest(t, document)
+	options := EvaluationContext{Scope: Scope{Provider: "local", Account: "selected"}}
+	request, err := compiled.DecodeRequestValue(t.Context(), Value{raw: `{"model":"m","prompt":"hello"}`}, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin := Provenance{Protocol: compiled.Identity(), Direction: DecodeRequest, Scope: Scope{Provider: "local", Account: "foreign"}, Path: "/items/0"}
+	request.Content[0].Children[0].Native = &Native{Source: origin, Value: StringValue("synthetic native data")}
+	_, err = compiled.EncodeRequestValue(t.Context(), request, options)
+	assertPackageRuntimeIssue(t, err, ResourceScopeMismatch, origin.Path)
+	_, issues := compiled.Execute(t.Context(), EncodeRequest, fixtureValue(t, request), options)
+	assertPackageRuntimeIssue(t, IssuesError(issues), ResourceScopeMismatch, origin.Path)
+	origin.Scope = options.Scope
+	document.Mapping.Directions[EncodeRequest].Program.Fields["extension"] = Expression{Op: "replay_native", Source: expressionPointer(objectExpression(map[string]Expression{
+		"source": literalExpression(origin),
+		"value":  readExpression("input", nativePath+"/value"),
+	}))}
+	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+	rebuilt, issues := compiler.CompilePackage(fixtureValue(t, document).Bytes())
+	if err := IssuesError(issues); rebuilt != nil || err == nil || !strings.Contains(err.Error(), "unchanged core Native") {
+		t.Fatal("rebuilding scope authorized a foreign original Native", err)
+	}
+}
+
 func TestPackageNativeTargetOperations(t *testing.T) {
 	document := textProtocolPackage(t)
 	const nativePath = "/content/0/children/0/native"
@@ -54,7 +83,7 @@ func TestPackageNativeTargetOperations(t *testing.T) {
 
 func TestNativeReplayRetainsValueAndErrors(t *testing.T) {
 	compiler := expressionCompiler{limits: DefaultLimits()}
-	plan, err := compiler.compilePlan(Expression{Op: "replay_native", Source: expressionPointer(readExpression("input", ""))}, "/replay", expressionScope{canReadNative: true}, 1)
+	plan, err := compiler.compilePlan(Expression{Op: "replay_native", Source: expressionPointer(readExpression("input", ""))}, "/replay", expressionScope{canReadNative: true, coreInput: reflect.TypeFor[Native]()}, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +144,7 @@ func TestNativeReplayRetainsValueAndErrors(t *testing.T) {
 
 func TestNativeMatchesClassifiesLocations(t *testing.T) {
 	compiler := expressionCompiler{limits: DefaultLimits()}
-	plan, err := compiler.compilePlan(Expression{Op: "native_matches", Operation: "array_item", Path: "/items", Source: expressionPointer(readExpression("input", ""))}, "/match", expressionScope{canReadNative: true}, 1)
+	plan, err := compiler.compilePlan(Expression{Op: "native_matches", Operation: "array_item", Path: "/items", Source: expressionPointer(readExpression("input", ""))}, "/match", expressionScope{canReadNative: true, coreInput: reflect.TypeFor[Provenance]()}, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +183,7 @@ func TestNativeMatchesClassifiesLocations(t *testing.T) {
 
 func TestNativeReplayUsesMappingNormalization(t *testing.T) {
 	compiler := expressionCompiler{limits: DefaultLimits()}
-	plan, err := compiler.compilePlan(Expression{Op: "replay_native", Source: expressionPointer(readExpression("input", ""))}, "/replay", expressionScope{canReadNative: true}, 1)
+	plan, err := compiler.compilePlan(Expression{Op: "replay_native", Source: expressionPointer(readExpression("input", ""))}, "/replay", expressionScope{canReadNative: true, coreInput: reflect.TypeFor[Native]()}, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +220,11 @@ func TestNativeTargetOperationsRequireEncodeProgram(t *testing.T) {
 			}
 		}
 		compiler := expressionCompiler{limits: DefaultLimits()}
-		plan, err := compiler.compilePlan(expression, "/program", expressionScope{canReadNative: true}, 1)
+		inputType := reflect.TypeFor[Native]()
+		if operation == "native_matches" {
+			inputType = reflect.TypeFor[Provenance]()
+		}
+		plan, err := compiler.compilePlan(expression, "/program", expressionScope{canReadNative: true, coreInput: inputType}, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
