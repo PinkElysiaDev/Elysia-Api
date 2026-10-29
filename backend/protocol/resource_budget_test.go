@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -73,6 +74,39 @@ func TestSemanticBudgetPreflightAndExpansion(t *testing.T) {
 	var conversion *ConversionError
 	if !errors.As(err, &conversion) || conversion.Issues[0].RuleID != "expand" || conversion.Issues[0].PolicyHash != c.Hash || conversion.Issues[0].Direction != DecodeRequest {
 		t.Fatal("resource provenance lost", err)
+	}
+}
+
+func TestLargeSemanticEncodingChecksBeforePlanning(t *testing.T) {
+	request := &Request{
+		Content:    []Node{{Kind: TextNode, Payload: StringValue(strings.Repeat("x", 2*plannedRequestEncodeMinBytes))}},
+		Parameters: Object{"absent": {}},
+	}
+	cyclic := &Request{Content: make([]Node, 1)}
+	cyclic.Content[0].Children = cyclic.Content
+	for _, tc := range []struct {
+		name    string
+		request *Request
+		bytes   int
+	}{
+		{"byte limit precedes invalid value", request, plannedRequestEncodeMinBytes},
+		{"invalid value keeps encoder error", request, DefaultLimits().BufferBytes},
+		{"cycle bounded before planning", cyclic, DefaultLimits().BufferBytes},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := DefaultLimits()
+			limits.BufferBytes = tc.bytes
+			want := checkSemanticValue(tc.request, limits)
+			got, err := encodeSemanticWithin(tc.request, limits)
+			if want == nil || err == nil || !got.IsZero() {
+				t.Fatalf("invalid input encoded: %v; expected %v", err, want)
+			}
+			for ; want != nil || err != nil; want, err = errors.Unwrap(want), errors.Unwrap(err) {
+				if reflect.TypeOf(want) != reflect.TypeOf(err) || want.Error() != err.Error() {
+					t.Fatalf("error chain changed: %T %v / %T %v", err, err, want, want)
+				}
+			}
+		})
 	}
 }
 

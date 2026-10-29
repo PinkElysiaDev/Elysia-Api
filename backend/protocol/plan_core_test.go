@@ -206,6 +206,43 @@ func TestCoreReaderMapKeysAndPresence(t *testing.T) {
 	}
 }
 
+func TestLargeCoreRequestEncodingParityAndOwnership(t *testing.T) {
+	payload := parseTestValue(t, ` { "body":"`+strings.Repeat("A", 2*plannedRequestEncodeMinBytes)+`<>&", "n":1e+03, "n":1.0 } `)
+	request := &Request{
+		SchemaVersion: 1,
+		Content: []Node{{Kind: MessageNode, Children: []Node{
+			{Kind: ImageNode, Payload: payload, Native: &Native{Value: payload}},
+			{Kind: ReasoningNode, ReasoningContent: []Node{}},
+		}}},
+		Parameters: Object{"bad\xff": StringValue("invalid"), "bad\ufffd": StringValue("valid"), "null": Value{raw: "null"}},
+		Native:     &Native{Value: payload},
+	}
+	assertCoreReaderParity(t, request, func(pointer []string) (JSONOutput, error) {
+		return readCoreRequestOutput(request, pointer)
+	})
+	want, err := EncodeValue(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, input := range []any{request, *request} {
+		for _, encode := range []func(any) (Value, error){
+			func(value any) (Value, error) { return EncodeSemantic(t.Context(), DecodeRequest, value) },
+			func(value any) (Value, error) { return encodeSemanticWithin(value, semanticLimits(DefaultLimits())) },
+		} {
+			got, err := encode(input)
+			if err != nil || got != want {
+				t.Fatalf("large semantic encoding differs: %v", err)
+			}
+			if sharesValueStorage(payload, got) || sharesValueStorage(got, payload) {
+				t.Fatal("encoded request retained the input payload storage")
+			}
+		}
+	}
+	if after, err := EncodeValue(request); err != nil || after != want {
+		t.Fatal("encoding changed the input", err)
+	}
+}
+
 func assertCoreOutputParity[T any](t *testing.T, output JSONOutput, decode func(JSONOutput) (*T, error)) *T {
 	t.Helper()
 	wire, err := output.Encode(context.Background())

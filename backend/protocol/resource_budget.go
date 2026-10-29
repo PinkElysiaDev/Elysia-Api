@@ -10,10 +10,11 @@ import (
 const (
 	// DefaultRequestBodyBytes is the request transport default, independent of
 	// response frames, definition files and internal semantic representations.
-	DefaultRequestBodyBytes = 32 << 20
-	semanticByteMultiplier  = 8
-	semanticNodeMultiplier  = 16
-	semanticDepthMultiplier = 4
+	DefaultRequestBodyBytes      = 32 << 20
+	semanticByteMultiplier       = 8
+	semanticNodeMultiplier       = 16
+	semanticDepthMultiplier      = 4
+	plannedRequestEncodeMinBytes = 64 << 10
 )
 
 type requestBudgetKey struct{}
@@ -139,33 +140,38 @@ func checkResourceValue(value Value, limits Limits, domain string) error {
 
 // checkSemanticValue bounds the serialization before making a JSON copy.
 func checkSemanticValue(value any, limits Limits) error {
+	_, err := measureSemanticValue(value, limits)
+	return err
+}
+
+func measureSemanticValue(value any, limits Limits) (int, error) {
 	fast := typedMeter{limits: limits}
 	if ok, supported := fast.visitTyped(value); supported && ok && fast.fits() {
-		return nil
+		return fast.bytes, nil
 	}
 	// The reflective failure path preserves the previous error precedence and
 	// observed counts, including map traversal and unsupported/cyclic values.
 	if plan := typedLimitPlans[reflect.TypeOf(value)]; plan != nil {
 		meter := typedMeter{limits: limits}
 		if meter.visit(plan, reflect.ValueOf(value)) && meter.fits() {
-			return nil
+			return meter.bytes, nil
 		}
 		if meter.bytes > limits.BufferBytes {
-			return resourceFailure("semantic", "bytes", limits.BufferBytes, meter.bytes)
+			return 0, resourceFailure("semantic", "bytes", limits.BufferBytes, meter.bytes)
 		}
 		if meter.nodes > limits.Nodes {
-			return resourceFailure("semantic", "nodes", limits.Nodes, meter.nodes)
+			return 0, resourceFailure("semantic", "nodes", limits.Nodes, meter.nodes)
 		}
 		if meter.depth > min(limits.Depth, typedMeterTraversalDepth) {
-			return resourceFailure("semantic", "depth", min(limits.Depth, typedMeterTraversalDepth), meter.depth)
+			return 0, resourceFailure("semantic", "depth", min(limits.Depth, typedMeterTraversalDepth), meter.depth)
 		}
 	}
 	// Invalid/unsupported Go values still use the encoder's precise error.
 	encoded, err := EncodeValue(value)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return checkResourceValue(encoded, limits, "semantic")
+	return encoded.Len(), checkResourceValue(encoded, limits, "semantic")
 }
 
 // EncodeSemantic checks trusted semantic values before allocating their JSON form.
@@ -174,10 +180,7 @@ func EncodeSemantic(ctx context.Context, direction Direction, value any) (Value,
 	if isRequestDirection(direction) {
 		limits = requestLimits(ctx, limits, false)
 	}
-	if err := checkSemanticValue(value, semanticLimits(limits)); err != nil {
-		return Value{}, err
-	}
-	return EncodeValue(value)
+	return encodeSemanticWithin(value, semanticLimits(limits))
 }
 
 func resourceIssue(err error, identity Identity, direction Direction, stage string) error {
@@ -218,10 +221,28 @@ func (compiled *Compiled) nativeLimits(ctx context.Context, direction Direction)
 }
 
 func encodeSemanticWithin(value any, limits Limits) (Value, error) {
-	if err := checkSemanticValue(value, limits); err != nil {
+	length, err := measureSemanticValue(value, limits)
+	if err != nil {
 		return Value{}, err
 	}
-	return EncodeValue(value)
+	if length < plannedRequestEncodeMinBytes {
+		return EncodeValue(value)
+	}
+	// Build only after validation has bounded traversal and preserved the
+	// encoder's errors. Large request snapshots need no intermediate JSON copies.
+	var output JSONOutput
+	switch request := value.(type) {
+	case *Request:
+		output, err = readCoreRequestOutput(request, nil)
+	case Request:
+		output, err = readCoreRequestOutput(&request, nil)
+	default:
+		return EncodeValue(value)
+	}
+	if err != nil {
+		return Value{}, err
+	}
+	return output.Encode(context.Background())
 }
 
 // ValidateRequestBodyLimit rejects configurations whose derived budgets overflow.
