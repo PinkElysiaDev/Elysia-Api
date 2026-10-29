@@ -13,6 +13,7 @@ function isSnapshotSource(path) {
   return /^backend\/.*\.go$/.test(path)
     || /^backend\/storage\/sql\/.*\.sql$/.test(path)
     || /^backend\/(?:.*\/(?:testdata|definitions|presets)\/.*|server\/model_catalog_snapshot)\.json$/.test(path)
+    || /^backend\/protocol\/builtin\/packages\/.*\.json$/.test(path)
     || /^packages\/webui\/src\/.*\.(?:ts|tsx|css|json)$/.test(path)
     || documentation.test(path)
     || /^docs\/examples\/.*\.(?:md|json|go|ts)$/.test(path)
