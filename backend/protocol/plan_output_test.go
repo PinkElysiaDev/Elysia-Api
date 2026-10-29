@@ -54,6 +54,16 @@ func TestOutputPlanParity(t *testing.T) {
 		{"choose-missing", Expression{Op: "choose", Source: &read, Cases: map[string]Expression{"text": {Op: "object"}}}, `"unknown"`},
 		{"choose-type", Expression{Op: "choose", Source: &read, Cases: map[string]Expression{"text": {Op: "object"}}}, `true`},
 		{"required-order", objectExpression(map[string]Expression{"z": {Op: "read", Path: "/z"}, "a": {Op: "read", Path: "/a", Required: true}}), `{}`},
+		{"merge-last", Expression{Op: "merge", Policy: "last", Items: []Expression{read, objectExpression(map[string]Expression{"a": literalExpression("<&"), "c": {Op: "array", Items: []Expression{read}}})}}, `{"a":1,"b": [ 1e+3 ],"a":2}`},
+		{"merge-first", Expression{Op: "merge", Policy: "first", Items: []Expression{read, objectExpression(map[string]Expression{"a": literalExpression("new")})}}, `{"a":1}`},
+		{"merge-collision", Expression{Op: "merge", Policy: "reject", Items: []Expression{read, read}}, `{"z":1,"a":2}`},
+		{"merge-type", Expression{Op: "merge", Policy: "last", Items: []Expression{read}}, `null`},
+		{"merge-priority", Expression{Op: "merge", Policy: "reject", Items: []Expression{read, {Op: "read", Path: "/missing", Required: true}}}, `{"a":1}`},
+		{"concat", Expression{Op: "concat", Items: []Expression{read, {Op: "array", Items: []Expression{read}}, read}}, `[ {"k":"<"}, [ 1, 2 ], null ]`},
+		{"concat-null", Expression{Op: "concat", Items: []Expression{read}}, `null`},
+		{"filter", Expression{Op: "filter", Source: &read, When: expressionPointer(readExpression("item", "/keep"))}, `[{"keep":false},{"keep":true,"value":"<"}]`},
+		{"filter-empty", Expression{Op: "filter", Source: &read, When: expressionPointer(literalExpression(false))}, `[null,1]`},
+		{"filter-type", Expression{Op: "filter", Source: &read, When: expressionPointer(readExpression("item", "/keep"))}, `[{"keep":null}]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			compiled := compileTestOutputExpression(t, tc.expression)
@@ -116,9 +126,9 @@ func (ctx *outputPlanCancelContext) Err() error {
 func TestOutputPlanSelectsBeforeExecution(t *testing.T) {
 	read := readExpression("input", "")
 	for _, expression := range []Expression{
-		{Op: "merge", Policy: "last", Items: []Expression{read}},
+		{Op: "sort", Source: &read, Key: "/id"},
 		{Op: "map", Source: expressionPointer(Expression{Op: "array"}), Body: &read},
-		{Op: "if", When: expressionPointer(literalExpression(false)), Then: expressionPointer(Expression{Op: "merge", Policy: "last", Items: []Expression{read}}), Otherwise: expressionPointer(Expression{Op: "object"})},
+		{Op: "if", When: expressionPointer(literalExpression(false)), Then: expressionPointer(Expression{Op: "sort", Source: &read, Key: "/id"}), Otherwise: expressionPointer(Expression{Op: "object"})},
 	} {
 		if _, ok := compileOutputPlan(compileTestOutputExpression(t, expression)); ok {
 			t.Fatal("unsupported construction selected", expression.Op)

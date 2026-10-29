@@ -42,7 +42,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			}
 			plan.fields = append(plan.fields, outputPlanField{key, jsonStringBytes(key), child})
 		}
-	case "array":
+	case "array", "merge", "concat":
 		for _, item := range expression.items {
 			child, ok := compileOutputPlan(item)
 			if !ok {
@@ -50,9 +50,15 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			}
 			plan.items = append(plan.items, child)
 		}
-	case "map", "flatmap":
+	case "map", "flatmap", "filter":
 		if !isOutputLeafExpression(expression.source) {
 			return nil, false
+		}
+		if expression.op == "filter" {
+			if !isOutputLeafExpression(expression.when) {
+				return nil, false
+			}
+			return plan, true
 		}
 		var ok bool
 		plan.body, ok = compileOutputPlan(expression.body)
@@ -156,8 +162,12 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.buildObject(state)
 	case "array":
 		return plan.buildArray(state)
+	case "merge", "concat":
+		return plan.buildOperands(state)
 	case "map", "flatmap":
 		return plan.buildIteration(state)
+	case "filter":
+		return plan.buildFilter(state)
 	case "if":
 		condition, err := expression.when.evaluate(state)
 		if err != nil {

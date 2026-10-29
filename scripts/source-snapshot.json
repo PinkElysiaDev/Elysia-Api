@@ -341,6 +341,7 @@
     "backend/protocol/operation_input.go",
     "backend/protocol/operation_input_test.go",
     "backend/protocol/ownership_performance_test.go",
+    "backend/protocol/plan_container.go",
     "backend/protocol/plan_output.go",
     "backend/protocol/plan_output_test.go",
     "backend/protocol/profiling_workspace_bench_test.go",
