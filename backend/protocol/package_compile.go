@@ -8,9 +8,10 @@ import (
 )
 
 type compiledPackagePlan struct {
-	coreVersion int
-	dslVersion  int
-	effects     map[Direction][]compiledSemanticEffect
+	coreVersion       int
+	dslVersion        int
+	effects           map[Direction][]compiledSemanticEffect
+	requestProjection Value
 }
 
 type compiledSemanticEffect struct {
@@ -18,6 +19,9 @@ type compiledSemanticEffect struct {
 	corePointer, wirePointer       []string
 	when                           *compiledOutputPlan
 	layout                         *ProtocolAggregateLayout
+	scope                          string
+	severity                       Severity
+	conditionReferences            map[string]Expression
 }
 
 // DecodeProtocolPackage parses and validates a package without activating it.
@@ -56,7 +60,7 @@ func (compiler *Compiler) CompilePackage(raw []byte) (*Compiled, []ConversionIss
 			return nil, definitionIssues(compiled.identity, "/mapping/directions/"+string(direction)+"/program", fmt.Errorf("program requires a compiled output plan"))
 		}
 		for index, effect := range compiled.packagePlan.effects[direction] {
-			if effect.kind != "emit" && effect.kind != "reject" && effect.kind != "aggregate" {
+			if effect.kind != "emit" && effect.kind != "reject" && effect.kind != "aggregate" && effect.scope != cacheIntentScope {
 				path := fmt.Sprintf("/mapping/directions/%s/effects/%d/kind", direction, index)
 				return nil, definitionIssues(compiled.identity, path, fmt.Errorf("semantic effect %q is not executable in this runtime", effect.kind))
 			}
@@ -80,6 +84,9 @@ func (compiler *Compiler) CompilePackage(raw []byte) (*Compiled, []ConversionIss
 				}
 			}
 		}
+	}
+	if err := compiled.bindCacheProjection(document); err != nil {
+		return nil, definitionIssues(compiled.identity, "/mapping/directions/encode_request/effects", err)
 	}
 	return compiled, nil
 }
@@ -162,7 +169,10 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		if (effect.Kind == "default" || effect.Kind == "drop" || effect.Kind == "reject") && strings.TrimSpace(effect.Reason) == "" {
 			return compiledMapping{}, nil, fmt.Errorf("%s/reason: semantic disposition requires a reason", at)
 		}
-		entry := compiledSemanticEffect{id: effect.ID, kind: effect.Kind, path: effect.Path, target: effect.Target, reason: effect.Reason}
+		if err := validateCacheDisposition(direction, effect); err != nil {
+			return compiledMapping{}, nil, fmt.Errorf("%s: %w", at, err)
+		}
+		entry := compiledSemanticEffect{id: effect.ID, kind: effect.Kind, path: effect.Path, target: effect.Target, reason: effect.Reason, scope: effect.Scope, severity: effect.Severity}
 		entry.corePointer, err = parsePointer(effect.Path)
 		if err != nil {
 			return compiledMapping{}, nil, fmt.Errorf("%s/path: %w", at, err)
@@ -180,7 +190,17 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 			return compiledMapping{}, nil, fmt.Errorf("%s/layout: only aggregate effects have an object layout", at)
 		}
 		if effect.When != nil {
-			condition, err := compiler.compile(*effect.When, at+"/when", scope, 1)
+			conditionScope := scope
+			if effect.Scope == cacheIntentScope {
+				conditionScope = expressionScope{}
+				entry.conditionReferences = map[string]Expression{}
+				compiler.mappingReferences = entry.conditionReferences
+			}
+			condition, err := compiler.compile(*effect.When, at+"/when", conditionScope, 1)
+			compiler.mappingReferences = references
+			for name, expression := range entry.conditionReferences {
+				references[name] = expression
+			}
 			if err != nil {
 				return compiledMapping{}, nil, err
 			}
@@ -191,6 +211,9 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 			entry.when, hasPlan = compileOutputPlan(condition)
 			if !hasPlan {
 				return compiledMapping{}, nil, fmt.Errorf("%s/when: condition requires a compiled output plan", at)
+			}
+			if effect.Scope == cacheIntentScope && !localCacheCondition(entry.when) {
+				return compiledMapping{}, nil, fmt.Errorf("%s/when: cache conditions may read only their local input or root", at)
 			}
 		}
 		effects = append(effects, entry)

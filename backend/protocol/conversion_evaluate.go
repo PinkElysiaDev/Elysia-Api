@@ -168,7 +168,7 @@ func (c *CompiledConversion) applyRequestAction(ctx context.Context, value Value
 	if err := decodeContract(value.Bytes(), &request); err != nil {
 		return Value{}, "", err
 	}
-	target, err := c.applyRequestObject(&request, route, rule, sink)
+	target, err := c.applyRequestObject(ctx, &request, route, rule, sink)
 	if err != nil {
 		return Value{}, "", err
 	}
@@ -176,7 +176,7 @@ func (c *CompiledConversion) applyRequestAction(ctx context.Context, value Value
 	return value, target, err
 }
 
-func (c *CompiledConversion) applyRequestObject(request *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (string, error) {
+func (c *CompiledConversion) applyRequestObject(ctx context.Context, request *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (string, error) {
 	var err error
 	var reasoningTarget string
 	switch rule.Action {
@@ -198,7 +198,7 @@ func (c *CompiledConversion) applyRequestObject(request *Request, route Conversi
 	case "gemini_safety_settings":
 		err = c.geminiSafetySettings(request, route, rule, sink)
 	case "request_projection":
-		err = c.requestProjection(request, route, rule, sink)
+		err = c.requestProjection(ctx, request, route, rule, sink)
 	case "responses_context":
 		err = c.responsesContext(request, route, rule, sink)
 	case "stream_options":

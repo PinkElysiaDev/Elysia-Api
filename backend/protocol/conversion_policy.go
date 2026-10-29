@@ -235,7 +235,13 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if err := action.validate(r); err != nil {
 			return nil, err
 		}
-		if action.parseOption != nil {
+		if r.Action == "request_projection" {
+			option, err := compileRequestProjectionOption(r.Value, limits)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
+		} else if action.parseOption != nil {
 			c.options[r.ID] = action.parseOption(r.Value)
 		} else if action.codecValue != "" {
 			c.options[r.ID] = parseConversionOption[string](r.Value)

@@ -62,15 +62,19 @@ type ProtocolDirectionMapping struct {
 
 // ProtocolSemanticEffect declares how a program handles a core semantic location.
 // Path always addresses core data and Target addresses wire data. When observes
-// the direction's program input. Declarations alone do not prove fidelity.
+// the direction's program input, or one CacheIntent for cache_intents scope.
+// Declarations alone do not prove fidelity.
 type ProtocolSemanticEffect struct {
-	ID     string                   `json:"id"`
-	Kind   string                   `json:"kind"`
-	Path   string                   `json:"path"`
-	Target string                   `json:"target,omitempty"`
-	When   *Expression              `json:"when,omitempty"`
-	Reason string                   `json:"reason,omitempty"`
-	Layout *ProtocolAggregateLayout `json:"layout,omitempty"`
+	ID       string                   `json:"id"`
+	Kind     string                   `json:"kind"`
+	Path     string                   `json:"path"`
+	Target   string                   `json:"target,omitempty"`
+	When     *Expression              `json:"when,omitempty"`
+	Reason   string                   `json:"reason,omitempty"`
+	Layout   *ProtocolAggregateLayout `json:"layout,omitempty"`
+	Scope    string                   `json:"scope,omitempty"`
+	Default  Value                    `json:"default,omitzero"`
+	Severity Severity                 `json:"severity,omitempty"`
 }
 
 // ProtocolAggregateLayout partitions one wire object into a core owner.

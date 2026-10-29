@@ -3,6 +3,7 @@ package protocol
 import "context"
 
 type evaluation struct {
+	coreRequest                *Request
 	ctx                        context.Context
 	input, item, root, context Value
 	budget                     *evaluationBudget

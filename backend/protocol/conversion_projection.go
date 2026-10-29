@@ -52,6 +52,9 @@ func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 	if chatResponseModelPair(ingress, upstream) {
 		p.Rules = append(p.Rules, ConversionRule{ID: "chat-response-model", Order: 205, Enabled: true, Phase: ConversionResponse, Action: "chat_response_model"})
 	}
+	if upstream != nil && upstream.packagePlan != nil && !upstream.packagePlan.requestProjection.IsZero() {
+		p.Rules = append(p.Rules, ConversionRule{ID: "request-projection", Order: 130, Enabled: true, Phase: ConversionRequest, Action: "request_projection", Value: upstream.packagePlan.requestProjection})
+	}
 	if upstream.Codec(DecodeEvent) == "openai-chat" && knownConversionCodec(ingress.Codec(EncodeEvent)) {
 		p.Rules = append(p.Rules, ConversionRule{ID: "chat-stream-identity", Order: 100, Enabled: true, Phase: ConversionSourceEvent, Action: "chat_stream_identity"})
 	}

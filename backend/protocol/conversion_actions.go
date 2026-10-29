@@ -30,7 +30,7 @@ func conversionActionCatalog() []conversionAction {
 		{name: "reject", phases: valueConversionPhases()},
 		{name: "signatures", phases: []ConversionPhase{ConversionRequest, ConversionResponse, ConversionEvent}, description: "将外协议 signature 与 encrypted_content 纳入认证续传；成功封装后诊断为可恢复，恢复仍校验身份、账号、模型及原节点。不转换文件或会话引用，不将加密内容冒充供应商签名。"},
 		{name: "stream_options", phases: []ConversionPhase{ConversionRequest}, valueSchema: map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}, description: "处理客户端用量输出和工具输入分片偏好。value 指定实际目标编码器时，对无法表达的工具流式时序偏好进行信息级有损诊断，严格模式拒绝；非流式或默认空值按无效果规范化。未知扩展仍需明确映射。", codecValue: "optional", isWholeValue: true},
-		{name: "request_projection", parseOption: parseConversionOption[requestProjectionOptions], phases: []ConversionPhase{ConversionRequest}, valueSchema: map[string]any{"type": "object", "required": []string{"targetCodec"}, "default": map[string]any{"targetCodec": "responses"}, "properties": map[string]any{"sourceCodec": map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}, "targetCodec": map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}}}, description: "保留可映射的缓存提示、跟踪元数据和工具 strict；源编码器用于保持工具默认语义，未知来源不推断。兼容模式信息级省略无法映射的已知提示，工具 strict 损失保留警告；严格模式拒绝实际损失。Anthropic 单项 clear_thinking_20251015 的 keep-all 设置映射为 Gemini 不清理已提供历史的默认行为，两种模式均按无损规范化。其他上下文编辑、未知缓存策略、扩展和资源不作省略。", isWholeValue: true},
+		{name: "request_projection", phases: []ConversionPhase{ConversionRequest}, valueSchema: requestProjectionSchema(), description: "保留可映射的缓存提示、跟踪元数据和工具 strict；源编码器用于保持工具默认语义，未知来源不推断。兼容模式信息级省略无法映射的已知提示，工具 strict 损失保留警告；严格模式拒绝实际损失。Anthropic 单项 clear_thinking_20251015 的 keep-all 设置映射为 Gemini 不清理已提供历史的默认行为，两种模式均按无损规范化。其他上下文编辑、未知缓存策略、扩展和资源不作省略。", isWholeValue: true},
 		{name: "tool_result_object", parseOption: parseConversionOption[string], phases: []ConversionPhase{ConversionRequest}, valueSchema: map[string]any{"type": "string", "minLength": 1}, description: "将文本工具结果包装到 value 指定字段（默认 result），合并纯文本结果块，类型或块边界变化时警告并在严格模式拒绝。true 错误状态映射到 error 字段，false 规范化为普通结果；保护正文中的同名字段，保留调用关联，未处理媒体、扩展及资源明确拒绝。"},
 		{name: "tool_result_text", phases: []ConversionPhase{ConversionRequest}, valueSchema: map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}, description: "将对象工具结果序列化为 JSON 文本，保留数值精度及调用关联。value 可指定实际目标编码器；Chat／Responses 的 false 错误标记无效果规范化，true 转为明确错误文本并警告，严格模式拒绝该降级。未指定目标时保留错误状态；对象文本化仍按类型变化诊断。", codecValue: "optional"},
 		{name: "system_instruction_hoist", phases: []ConversionPhase{ConversionRequest}, description: "按原顺序将 system/developer 上提为顶层系统要求。作用范围或角色优先级变化时记录降级；严格模式拒绝。"},
@@ -105,7 +105,14 @@ func (action conversionAction) validate(rule ConversionRule) error {
 		}
 	case "request_projection":
 		var options requestProjectionOptions
-		if rule.Value.Decode(&options) != nil || !knownConversionCodec(options.TargetCodec) || (options.SourceCodec != "" && !knownConversionCodec(options.SourceCodec)) {
+		if rule.Value.Decode(&options) != nil {
+			return fmt.Errorf("request_projection requires a codec or core projection configuration")
+		}
+		if options.Core != nil {
+			if options.TargetCodec != "" || options.SourceCodec != "" {
+				return fmt.Errorf("request_projection cannot combine codec and core projection configurations")
+			}
+		} else if !knownConversionCodec(options.TargetCodec) || (options.SourceCodec != "" && !knownConversionCodec(options.SourceCodec)) {
 			return fmt.Errorf("request_projection requires targetCodec and an optional known sourceCodec")
 		}
 	case "reasoning_controls":

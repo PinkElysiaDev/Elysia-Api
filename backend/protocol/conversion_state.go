@@ -102,7 +102,7 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 	} else if rule.Action == "response_metadata" {
 		err = c.metadataObject(phase, state.document, route, rule, sink)
 	} else if phase == ConversionRequest {
-		target, err = c.applyRequestObject(state.document.(*Request), route, rule, sink)
+		target, err = c.applyRequestObject(ctx, state.document.(*Request), route, rule, sink)
 	} else {
 		shouldEncode, err = c.applyResponseObject(phase, state.document, route, rule, sink)
 	}

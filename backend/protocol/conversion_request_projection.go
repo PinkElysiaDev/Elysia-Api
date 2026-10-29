@@ -1,10 +1,15 @@
 package protocol
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 type requestProjectionOptions struct {
-	SourceCodec string `json:"sourceCodec,omitempty"`
-	TargetCodec string `json:"targetCodec"`
+	SourceCodec string               `json:"sourceCodec,omitempty"`
+	TargetCodec string               `json:"targetCodec,omitempty"`
+	Core        *cacheProjectionSpec `json:"core,omitempty"`
+	cachePlan   *compiledCacheProjection
 }
 
 // Hint validation runs before authored rules and projection can remove fields.
@@ -122,10 +127,13 @@ func requestCaches(req *Request, visit func(*[]CacheIntent, string) error) error
 	return walk(req.Content, "/content")
 }
 
-func (c *CompiledConversion) requestProjection(req *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
+func (c *CompiledConversion) requestProjection(ctx context.Context, req *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
 	opts, optionErr := readConversionOption[requestProjectionOptions](c, rule)
 	if err := optionErr; err != nil {
 		return err
+	}
+	if opts.Core != nil {
+		return c.projectCacheIntents(ctx, req, route, rule, opts.cachePlan, sink)
 	}
 	codec := opts.TargetCodec
 	openAI := codec == "openai-chat" || codec == "responses"

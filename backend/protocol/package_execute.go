@@ -33,7 +33,15 @@ func (compiled *Compiled) preparePackageState(direction Direction, state evaluat
 		}
 	}
 	var conditions *evaluation
+	if direction == EncodeRequest && !compiled.packagePlan.requestProjection.IsZero() {
+		if err := compiled.checkCacheDispositions(state, limits); err != nil {
+			return err
+		}
+	}
 	for _, effect := range compiled.packagePlan.effects[direction] {
+		if effect.scope == cacheIntentScope {
+			continue // Projection belongs to the overridable conversion rule.
+		}
 		if err := state.ctx.Err(); err != nil {
 			return err
 		}
