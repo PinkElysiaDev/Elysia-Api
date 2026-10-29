@@ -1728,6 +1728,629 @@
         ]
       },
       "values": null
+    },
+    "TestGeminiPackageDraftMigration/text-decode": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/history-decode": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        },
+        {
+          "path": "/content/1/children/0/native/source/path",
+          "legacy": "\"/contents/1/content/0\"",
+          "draft": "\"/contents/1/parts/0\""
+        },
+        {
+          "path": "/content/1/children/0/source/path",
+          "legacy": "\"/contents/1/content/0\"",
+          "draft": "\"/contents/1/parts/0\""
+        },
+        {
+          "path": "/content/2/children/0/native/source/path",
+          "legacy": "\"/contents/2/content/0\"",
+          "draft": "\"/contents/2/parts/0\""
+        },
+        {
+          "path": "/content/2/children/0/source/path",
+          "legacy": "\"/contents/2/content/0\"",
+          "draft": "\"/contents/2/parts/0\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/text-decode-response": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/candidates/0/content/0/content/0\"",
+          "draft": "\"/candidates/0/content/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/candidates/0/content/0/content/0\"",
+          "draft": "\"/candidates/0/content/parts/0\""
+        },
+        {
+          "path": "/content/0/native/source/path",
+          "legacy": "\"/candidates/0/content/0\"",
+          "draft": "\"/candidates/0/content\""
+        },
+        {
+          "path": "/content/0/native/value",
+          "legacy": "{\"parts\":[{\"text\":\"hi\"}],\"role\":\"model\"}",
+          "draft": "{\"role\":\"model\",\"parts\":[{\"text\":\"hi\"}]}"
+        },
+        {
+          "path": "/content/0/source/path",
+          "legacy": "\"/candidates/0/content/0\"",
+          "draft": "\"/candidates/0/content\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/tool-decode-response": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/candidates/0/content/0/content/0\"",
+          "draft": "\"/candidates/0/content/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/candidates/0/content/0/content/0\"",
+          "draft": "\"/candidates/0/content/parts/0\""
+        },
+        {
+          "path": "/content/0/native/source/path",
+          "legacy": "\"/candidates/0/content/0\"",
+          "draft": "\"/candidates/0/content\""
+        },
+        {
+          "path": "/content/0/native/value",
+          "legacy": "{\"parts\":[{\"functionCall\":{\"id\":\"call\",\"name\":\"lookup\",\"args\":{\"n\":9007199254740993}}}],\"role\":\"model\"}",
+          "draft": "{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"id\":\"call\",\"name\":\"lookup\",\"args\":{\"n\":9007199254740993}}}]}"
+        },
+        {
+          "path": "/content/0/source/path",
+          "legacy": "\"/candidates/0/content/0\"",
+          "draft": "\"/candidates/0/content\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/cache-policy-decode": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/image-decode": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/audio-decode": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/video-decode": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/document-decode": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/hosted-tool-decode": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/reasoning-history-decode": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        },
+        {
+          "path": "/content/1/children/0/native/source/path",
+          "legacy": "\"/contents/1/content/0\"",
+          "draft": "\"/contents/1/parts/0\""
+        },
+        {
+          "path": "/content/1/children/0/source/path",
+          "legacy": "\"/contents/1/content/0\"",
+          "draft": "\"/contents/1/parts/0\""
+        },
+        {
+          "path": "/content/1/children/1/native/source/path",
+          "legacy": "\"/contents/1/content/1\"",
+          "draft": "\"/contents/1/parts/1\""
+        },
+        {
+          "path": "/content/1/children/1/source/path",
+          "legacy": "\"/contents/1/content/1\"",
+          "draft": "\"/contents/1/parts/1\""
+        },
+        {
+          "path": "/content/2/children/0/native/source/path",
+          "legacy": "\"/contents/2/content/0\"",
+          "draft": "\"/contents/2/parts/0\""
+        },
+        {
+          "path": "/content/2/children/0/source/path",
+          "legacy": "\"/contents/2/content/0\"",
+          "draft": "\"/contents/2/parts/0\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/reasoning-response-decode": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/candidates/0/content/0/content/0\"",
+          "draft": "\"/candidates/0/content/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/candidates/0/content/0/content/0\"",
+          "draft": "\"/candidates/0/content/parts/0\""
+        },
+        {
+          "path": "/content/0/children/1/native/source/path",
+          "legacy": "\"/candidates/0/content/0/content/1\"",
+          "draft": "\"/candidates/0/content/parts/1\""
+        },
+        {
+          "path": "/content/0/children/1/source/path",
+          "legacy": "\"/candidates/0/content/0/content/1\"",
+          "draft": "\"/candidates/0/content/parts/1\""
+        },
+        {
+          "path": "/content/0/native/source/path",
+          "legacy": "\"/candidates/0/content/0\"",
+          "draft": "\"/candidates/0/content\""
+        },
+        {
+          "path": "/content/0/native/value",
+          "legacy": "{\"parts\":[{\"text\":\"consider\",\"thought\":true},{\"text\":\"hi\"}],\"role\":\"model\"}",
+          "draft": "{\"role\":\"model\",\"parts\":[{\"text\":\"consider\",\"thought\":true},{\"text\":\"hi\"}]}"
+        },
+        {
+          "path": "/content/0/source/path",
+          "legacy": "\"/candidates/0/content/0\"",
+          "draft": "\"/candidates/0/content\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/signature-reasoning-history-decode": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        },
+        {
+          "path": "/content/1/children/0/native/source/path",
+          "legacy": "\"/contents/1/content/0\"",
+          "draft": "\"/contents/1/parts/0\""
+        },
+        {
+          "path": "/content/1/children/0/source/path",
+          "legacy": "\"/contents/1/content/0\"",
+          "draft": "\"/contents/1/parts/0\""
+        },
+        {
+          "path": "/content/1/children/1/native/source/path",
+          "legacy": "\"/contents/1/content/1\"",
+          "draft": "\"/contents/1/parts/1\""
+        },
+        {
+          "path": "/content/1/children/1/source/path",
+          "legacy": "\"/contents/1/content/1\"",
+          "draft": "\"/contents/1/parts/1\""
+        },
+        {
+          "path": "/content/2/children/0/native/source/path",
+          "legacy": "\"/contents/2/content/0\"",
+          "draft": "\"/contents/2/parts/0\""
+        },
+        {
+          "path": "/content/2/children/0/source/path",
+          "legacy": "\"/contents/2/content/0\"",
+          "draft": "\"/contents/2/parts/0\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/signature-reasoning-response-decode": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/candidates/0/content/0/content/0\"",
+          "draft": "\"/candidates/0/content/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/candidates/0/content/0/content/0\"",
+          "draft": "\"/candidates/0/content/parts/0\""
+        },
+        {
+          "path": "/content/0/children/1/native/source/path",
+          "legacy": "\"/candidates/0/content/0/content/1\"",
+          "draft": "\"/candidates/0/content/parts/1\""
+        },
+        {
+          "path": "/content/0/children/1/source/path",
+          "legacy": "\"/candidates/0/content/0/content/1\"",
+          "draft": "\"/candidates/0/content/parts/1\""
+        },
+        {
+          "path": "/content/0/native/source/path",
+          "legacy": "\"/candidates/0/content/0\"",
+          "draft": "\"/candidates/0/content\""
+        },
+        {
+          "path": "/content/0/native/value",
+          "legacy": "{\"parts\":[{\"text\":\"consider\",\"thought\":true,\"thoughtSignature\":\"signed\"},{\"text\":\"hi\"}],\"role\":\"model\"}",
+          "draft": "{\"role\":\"model\",\"parts\":[{\"text\":\"consider\",\"thought\":true,\"thoughtSignature\":\"signed\"},{\"text\":\"hi\"}]}"
+        },
+        {
+          "path": "/content/0/source/path",
+          "legacy": "\"/candidates/0/content/0\"",
+          "draft": "\"/candidates/0/content\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/boundary/idless-reuse": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/contents/0/content/0\"",
+          "draft": "\"/contents/0/parts/0\""
+        },
+        {
+          "path": "/content/1/children/0/native/source/path",
+          "legacy": "\"/contents/1/content/0\"",
+          "draft": "\"/contents/1/parts/0\""
+        },
+        {
+          "path": "/content/1/children/0/source/path",
+          "legacy": "\"/contents/1/content/0\"",
+          "draft": "\"/contents/1/parts/0\""
+        },
+        {
+          "path": "/content/2/children/0/native/source/path",
+          "legacy": "\"/contents/2/content/0\"",
+          "draft": "\"/contents/2/parts/0\""
+        },
+        {
+          "path": "/content/2/children/0/source/path",
+          "legacy": "\"/contents/2/content/0\"",
+          "draft": "\"/contents/2/parts/0\""
+        },
+        {
+          "path": "/content/3/children/0/native/source/path",
+          "legacy": "\"/contents/3/content/0\"",
+          "draft": "\"/contents/3/parts/0\""
+        },
+        {
+          "path": "/content/3/children/0/source/path",
+          "legacy": "\"/contents/3/content/0\"",
+          "draft": "\"/contents/3/parts/0\""
+        },
+        {
+          "path": "/content/4/children/0/native/source/path",
+          "legacy": "\"/contents/4/content/0\"",
+          "draft": "\"/contents/4/parts/0\""
+        },
+        {
+          "path": "/content/4/children/0/source/path",
+          "legacy": "\"/contents/4/content/0\"",
+          "draft": "\"/contents/4/parts/0\""
+        },
+        {
+          "path": "/content/5/children/0/native/source/path",
+          "legacy": "\"/contents/5/content/0\"",
+          "draft": "\"/contents/5/parts/0\""
+        },
+        {
+          "path": "/content/5/children/0/source/path",
+          "legacy": "\"/contents/5/content/0\"",
+          "draft": "\"/contents/5/parts/0\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/boundary/idless-ambiguous": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "unsupported_capability at /functionResponse: result without id cannot be associated unambiguously",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "unsupported_capability",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/functionResponse",
+              "reason": "result without id cannot be associated unambiguously",
+              "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "unsupported_capability at /functionResponse: result without id cannot be associated unambiguously",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "unsupported_capability",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "",
+                  "stage": "wire",
+                  "path": "/functionResponse",
+                  "reason": "result without id cannot be associated unambiguously",
+                  "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /mapping/directions/decode_request/program/body/body/body/fields/content/items/1/@decode-messages/then/body/fields/children/then/otherwise/body/@decode-part/items/1/otherwise/otherwise/then/items/0/body/source/otherwise: /mapping/directions/decode_request/program/body/body/body/fields/content/items/1/@decode-messages/then/body/fields/children/then/otherwise/body/@decode-part/items/1/otherwise/otherwise/then/items/0/body/source/otherwise/cases: no branch for discriminator",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "decode_request",
+              "stage": "evaluate",
+              "path": "/mapping/directions/decode_request/program/body/body/body/fields/content/items/1/@decode-messages/then/body/fields/children/then/otherwise/body/@decode-part/items/1/otherwise/otherwise/then/items/0/body/source/otherwise",
+              "reason": "/mapping/directions/decode_request/program/body/body/body/fields/content/items/1/@decode-messages/then/body/fields/children/then/otherwise/body/@decode-part/items/1/otherwise/otherwise/then/items/0/body/source/otherwise/cases: no branch for discriminator",
+              "suggestion": "Correct the input or declared mapping and verify the revision again."
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /mapping/directions/decode_request/program/body/body/body/fields/content/items/1/@decode-messages/then/body/fields/children/then/otherwise/body/@decode-part/items/1/otherwise/otherwise/then/items/0/body/source/otherwise: /mapping/directions/decode_request/program/body/body/body/fields/content/items/1/@decode-messages/then/body/fields/children/then/otherwise/body/@decode-part/items/1/otherwise/otherwise/then/items/0/body/source/otherwise/cases: no branch for discriminator",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "gemini",
+                    "wireVersion": "v2",
+                    "definitionId": "google-generate-content",
+                    "revision": "2.1.6"
+                  },
+                  "direction": "decode_request",
+                  "stage": "evaluate",
+                  "path": "/mapping/directions/decode_request/program/body/body/body/fields/content/items/1/@decode-messages/then/body/fields/children/then/otherwise/body/@decode-part/items/1/otherwise/otherwise/then/items/0/body/source/otherwise",
+                  "reason": "/mapping/directions/decode_request/program/body/body/body/fields/content/items/1/@decode-messages/then/body/fields/children/then/otherwise/body/@decode-part/items/1/otherwise/otherwise/then/items/0/body/source/otherwise/cases: no branch for discriminator",
+                  "suggestion": "Correct the input or declared mapping and verify the revision again."
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.mappingError",
+                "text": "/mapping/directions/decode_request/program/body/body/body/fields/content/items/1/@decode-messages/then/body/fields/children/then/otherwise/body/@decode-part/items/1/otherwise/otherwise/then/items/0/body/source/otherwise/cases: no branch for discriminator",
+                "children": [
+                  {
+                    "type": "*errors.errorString",
+                    "text": "/mapping/directions/decode_request/program/body/body/body/fields/content/items/1/@decode-messages/then/body/fields/children/then/otherwise/body/@decode-part/items/1/otherwise/otherwise/then/items/0/body/source/otherwise/cases: no branch for discriminator"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestGeminiPackageDraftMigration/boundary/system-wrapper": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/system/0\"",
+          "draft": "\"/systemInstruction/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/system/0\"",
+          "draft": "\"/systemInstruction/parts/0\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/boundary/response-omitted-role": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/candidates/0/content/0/content/0\"",
+          "draft": "\"/candidates/0/content/parts/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/candidates/0/content/0/content/0\"",
+          "draft": "\"/candidates/0/content/parts/0\""
+        },
+        {
+          "path": "/content/0/native/source/path",
+          "legacy": "\"/candidates/0/content/0\"",
+          "draft": "\"/candidates/0/content\""
+        },
+        {
+          "path": "/content/0/native/value/role",
+          "legacy": "\"model\"",
+          "draft": null
+        },
+        {
+          "path": "/content/0/source/path",
+          "legacy": "\"/candidates/0/content/0\"",
+          "draft": "\"/candidates/0/content\""
+        }
+      ]
+    },
+    "TestGeminiPackageDraftMigration/boundary/mixed-tool-envelope": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/tools/1/native/value/functionDeclarations",
+          "legacy": null,
+          "draft": "[{\"name\":\"lookup\",\"parameters\":{\"type\":\"object\"}}]"
+        }
+      ]
     }
   }
 }
