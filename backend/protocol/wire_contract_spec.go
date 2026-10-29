@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -17,13 +18,18 @@ type WireContractSpec struct {
 
 // WireAssertion checks one wire location when its optional condition is true.
 // An empty path selects the document; a missing selection fails validation.
-// Optional fields use an explicit exists condition. Reason is static text.
+// When observes the containing document, Check observes the selected value,
+// and root always observes the original document. Each checks array members in
+// source order, keeping diagnostic paths tied to the wire rather than output
+// positions. Optional fields use an explicit exists condition.
 type WireAssertion struct {
-	Path   string      `json:"path"`
-	When   *Expression `json:"when,omitempty"`
-	Schema ValueSchema `json:"schema"`
-	Code   IssueCode   `json:"code"`
-	Reason string      `json:"reason"`
+	Path   string          `json:"path"`
+	When   *Expression     `json:"when,omitempty"`
+	Schema ValueSchema     `json:"schema"`
+	Code   IssueCode       `json:"code"`
+	Reason string          `json:"reason"`
+	Check  *Expression     `json:"check,omitempty"`
+	Each   []WireAssertion `json:"each,omitempty"`
 }
 
 type compiledWireAssertion struct {
@@ -33,6 +39,8 @@ type compiledWireAssertion struct {
 	schema  *wireSchemaPlan
 	code    IssueCode
 	reason  string
+	check   *compiledOutputPlan
+	each    []compiledWireAssertion
 }
 
 type specWireValidator struct {
@@ -50,44 +58,72 @@ func compileWireContractSpec(spec WireContractSpec, path string, limits Limits) 
 		return compiledWireContract{}, locateMappingError(path+"/schema", err)
 	}
 	validator := &specWireValidator{schema: schema, limits: limits}
-	if len(spec.Assertions) > limits.Nodes {
-		return compiledWireContract{}, fmt.Errorf("%s/assertions: exceeds node limit", path)
-	}
 	expressions := &expressionCompiler{limits: limits}
-	for index, assertion := range spec.Assertions {
-		at := fmt.Sprintf("%s/assertions/%d", path, index)
-		pointer, err := parsePointer(assertion.Path)
-		if err != nil {
-			return compiledWireContract{}, locateMappingError(at+"/path", err)
-		}
-		if !slices.Contains([]IssueCode{InvalidInput, UnsupportedCapability, UpstreamContractViolation, InvalidAssociation, ConversionRejected}, assertion.Code) {
-			return compiledWireContract{}, fmt.Errorf("%s/code: expected an input, capability, association or wire-contract diagnostic", at)
-		}
-		if strings.TrimSpace(assertion.Reason) == "" {
-			return compiledWireContract{}, fmt.Errorf("%s/reason: static diagnostic text is required", at)
-		}
-		check := compiledWireAssertion{path: assertion.Path, pointer: pointer, code: assertion.Code, reason: assertion.Reason}
-		if assertion.When != nil {
-			condition, err := expressions.compile(*assertion.When, at+"/when", expressionScope{input: spec.Schema}, 1)
-			if err != nil {
-				return compiledWireContract{}, err
-			}
-			if !isAssignable(condition.result, BooleanType) {
-				return compiledWireContract{}, fmt.Errorf("%s/when: condition must produce a boolean", at)
-			}
-			var hasPlan bool
-			check.when, hasPlan = compileOutputPlan(condition)
-			if !hasPlan {
-				return compiledWireContract{}, fmt.Errorf("%s/when: condition requires a compiled execution plan", at)
-			}
-		}
-		check.schema, err = compileWireSchemaPlan(&assertion.Schema, limits)
-		if err != nil {
-			return compiledWireContract{}, locateMappingError(at+"/schema", err)
-		}
-		validator.assertions = append(validator.assertions, check)
+	validator.assertions, err = compileWireAssertions(spec.Assertions, path+"/assertions", spec.Schema, spec.Schema, expressions, 1)
+	if err != nil {
+		return compiledWireContract{}, err
 	}
 	return compiledWireContract{validator: validator, contextValidator: validator}, nil
+}
+
+func compileWireAssertions(assertions []WireAssertion, path string, input, root *ValueSchema, expressions *expressionCompiler, depth int) ([]compiledWireAssertion, error) {
+	if len(assertions) == 0 {
+		return nil, nil
+	}
+	if depth > expressions.limits.Depth || len(assertions) > expressions.limits.Nodes-expressions.nodes {
+		return nil, fmt.Errorf("%s: exceeds assertion depth or node limit", path)
+	}
+	expressions.nodes += len(assertions)
+	checks := make([]compiledWireAssertion, 0, len(assertions))
+	for index, assertion := range assertions {
+		at := fmt.Sprintf("%s/%d", path, index)
+		pointer, err := parsePointer(assertion.Path)
+		if err != nil {
+			return nil, locateMappingError(at+"/path", err)
+		}
+		if !slices.Contains([]IssueCode{InvalidInput, UnsupportedCapability, UpstreamContractViolation, InvalidAssociation, ConversionRejected}, assertion.Code) {
+			return nil, fmt.Errorf("%s/code: expected an input, capability, association or wire-contract diagnostic", at)
+		}
+		if strings.TrimSpace(assertion.Reason) == "" {
+			return nil, fmt.Errorf("%s/reason: static diagnostic text is required", at)
+		}
+		check := compiledWireAssertion{path: assertion.Path, pointer: pointer, code: assertion.Code, reason: assertion.Reason}
+		check.when, err = compileWirePredicate(assertion.When, at+"/when", input, root, expressions, depth)
+		if err != nil {
+			return nil, err
+		}
+		check.schema, err = compileWireSchemaPlan(&assertion.Schema, expressions.limits)
+		if err != nil {
+			return nil, locateMappingError(at+"/schema", err)
+		}
+		check.check, err = compileWirePredicate(assertion.Check, at+"/check", &assertion.Schema, root, expressions, depth)
+		if err != nil {
+			return nil, err
+		}
+		if len(assertion.Each) != 0 && (assertion.Schema.Type != ArrayType || assertion.Schema.Nullable) {
+			return nil, fmt.Errorf("%s/each: requires a non-nullable array schema", at)
+		}
+		check.each, err = compileWireAssertions(assertion.Each, at+"/each", assertion.Schema.Items, root, expressions, depth+1)
+		if err != nil {
+			return nil, err
+		}
+		checks = append(checks, check)
+	}
+	return checks, nil
+}
+
+func compileWirePredicate(expression *Expression, path string, input, root *ValueSchema, compiler *expressionCompiler, depth int) (*compiledOutputPlan, error) {
+	if expression == nil {
+		return nil, nil
+	}
+	plan, err := compiler.compilePlan(*expression, path, expressionScope{input: input, root: root}, depth)
+	if err != nil {
+		return nil, err
+	}
+	if !isAssignable(plan.expression.result, BooleanType) {
+		return nil, fmt.Errorf("%s: condition must produce a boolean", path)
+	}
+	return plan, nil
 }
 
 func (validator *specWireValidator) ValidateWireOutput(direction Direction, value Value) error {
@@ -107,12 +143,18 @@ func (validator *specWireValidator) validate(ctx context.Context, direction Dire
 		}
 		return wireAssertionError(code, mappingErrorPath("", err), "wire document does not match its declared schema", err)
 	}
-	reader := requestValueReader(value)
+	reader := newNativeComparisonReader(value)
 	state := evaluation{ctx: ctx, input: value, root: value, valueReader: reader, budget: &evaluationBudget{limits: effectiveLimits, stepLimit: effectiveLimits.Nodes}}
-	for _, assertion := range validator.assertions {
-		if err := ctx.Err(); err != nil {
+	return validateWireAssertions(validator.assertions, state, "")
+}
+
+func validateWireAssertions(assertions []compiledWireAssertion, state evaluation, parentPath string) error {
+	for _, assertion := range assertions {
+		ctx := state.ctx
+		if err := state.advance(); err != nil {
 			return err
 		}
+		path := parentPath + assertion.path
 		if assertion.when != nil {
 			condition, err := assertion.when.evaluate(state)
 			if err != nil {
@@ -120,21 +162,46 @@ func (validator *specWireValidator) validate(ctx context.Context, direction Dire
 			}
 			isApplicable, err := readBoolean(condition)
 			if err != nil {
-				return wireAssertionError(InvalidInput, assertion.path, "wire assertion condition must produce a boolean", err)
+				return wireAssertionError(InvalidInput, path, "wire assertion condition must produce a boolean", err)
 			}
 			if !isApplicable {
 				continue
 			}
 		}
-		selected, err := readValuePointerWithin(value, assertion.pointer, reader)
+		selected, err := readValuePointerWithin(state.input, assertion.pointer, state.valueReader)
 		if err == nil {
-			err = assertion.schema.validate(ctx, selected, assertion.path, effectiveLimits)
+			err = assertion.schema.validate(ctx, selected, path, state.budget.limits)
 		}
 		if err != nil {
-			return wireAssertionError(assertion.code, assertion.path, assertion.reason, err)
+			return wireAssertionError(assertion.code, path, assertion.reason, err)
+		}
+		if assertion.check != nil {
+			selection := state
+			selection.input = selected
+			value, err := assertion.check.evaluate(selection)
+			isValid := false
+			if err == nil {
+				isValid, err = readBoolean(value)
+			}
+			if err != nil || !isValid {
+				return wireAssertionError(assertion.code, path, assertion.reason, err)
+			}
+		}
+		if len(assertion.each) != 0 {
+			items, err := selected.readArrayWithin(state.valueReader)
+			if err != nil {
+				return err
+			}
+			for index, item := range items {
+				child := state
+				child.input = item
+				if err := validateWireAssertions(assertion.each, child, path+"/"+strconv.Itoa(index)); err != nil {
+					return err
+				}
+			}
 		}
 	}
-	return ctx.Err()
+	return state.ctx.Err()
 }
 
 func wireAssertionError(code IssueCode, path, reason string, cause error) error {

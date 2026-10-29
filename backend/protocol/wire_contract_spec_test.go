@@ -145,3 +145,98 @@ func TestWireContractSpecUsesRequestContextAndBudget(t *testing.T) {
 		t.Fatal("declarative contract lost request cancellation", err)
 	}
 }
+
+func TestWireContractSpecChecksSourceArrayLocations(t *testing.T) {
+	rootSchema := &ValueSchema{Type: ObjectType, Properties: map[string]ValueSchema{
+		"id": {Type: StringType}, "messages": {Type: ArrayType},
+	}, Required: []string{"id", "messages"}}
+	contentCheck := WireAssertion{
+		Path: "/content", Schema: ValueSchema{Type: ArrayType}, Code: InvalidInput, Reason: "content must be an array",
+		Each: []WireAssertion{
+			{Path: "/response_id", Schema: ValueSchema{Type: StringType}, Code: InvalidAssociation, Reason: "content belongs to another response",
+				Check: expressionPointer(Expression{Op: "equal", Items: []Expression{readExpression("input", ""), readExpression("root", "/id")}})},
+			{Path: "/text", Schema: ValueSchema{Type: StringType}, Code: InvalidInput, Reason: "text must be a string"},
+		},
+	}
+	spec := WireContractSpec{Schema: rootSchema, Assertions: []WireAssertion{
+		{Path: "/messages", Schema: ValueSchema{Type: ArrayType}, Code: InvalidInput, Reason: "messages must be an array", Each: []WireAssertion{contentCheck}},
+	}}
+	contract, err := compileWireContractSpec(spec, "/spec/wireContracts/decode_response", DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		raw, path string
+		code      IssueCode
+	}{
+		{`{"id":"r","messages":[{"content":[]},{"content":[{"response_id":"r","text":"ok"}]}]}`, "", ""},
+		{`{"id":"r","messages":[{"content":[]},{"content":[{"response_id":"private","text":false}]}]}`, "/messages/1/content/0/response_id", InvalidAssociation},
+		{`{"id":"r","messages":[{"content":[]},{"content":[{"response_id":"r","text":false}]}]}`, "/messages/1/content/0/text", InvalidInput},
+		{`{"id":"r","messages":[{"content":null}]}`, "/messages/0/content", InvalidInput},
+	} {
+		value, err := ParseValue([]byte(test.raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = contract.validator.ValidateWireOutput(DecodeResponse, value)
+		if test.code == "" {
+			if err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		var failure *ConversionError
+		if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Code != test.code || failure.Issues[0].Path != test.path || strings.Contains(err.Error(), "private") {
+			t.Fatal("nested assertion lost source position, order or privacy", err)
+		}
+	}
+	// The same immutable plan is reusable; failure cannot retain per-document state.
+	if err := contract.validator.ValidateWireOutput(DecodeResponse, Value{raw: `{"id":"next","messages":[{"content":[{"response_id":"next","text":"ok"}]}]}`}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWireContractSpecRejectsUnboundedOrUntypedChecks(t *testing.T) {
+	base := WireAssertion{Path: "", Schema: ValueSchema{Type: ArrayType}, Code: InvalidInput, Reason: "expected an array"}
+	for _, test := range []struct {
+		name   string
+		change func(*WireAssertion)
+	}{
+		{"nonboolean-check", func(check *WireAssertion) { check.Check = expressionPointer(literalExpression("yes")) }},
+		{"nullable-each", func(check *WireAssertion) { check.Schema.Nullable = true; check.Each = []WireAssertion{base} }},
+		{"nonarray-each", func(check *WireAssertion) { check.Schema.Type = ObjectType; check.Each = []WireAssertion{base} }},
+		{"deep-each", func(check *WireAssertion) {
+			for range DefaultLimits().Depth {
+				child := *check
+				check.Each = []WireAssertion{child}
+			}
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			check := base
+			test.change(&check)
+			_, err := compileWireContractSpec(WireContractSpec{Schema: &ValueSchema{Type: ArrayType}, Assertions: []WireAssertion{check}}, "/wire", DefaultLimits())
+			if err == nil {
+				t.Fatal("invalid predicate or iteration accepted")
+			}
+		})
+	}
+}
+
+func TestWireContractSpecBoundsRepeatedItemWork(t *testing.T) {
+	limits := DefaultLimits()
+	limits.Nodes = 32
+	check := WireAssertion{Path: "", Schema: ValueSchema{Type: IntegerType}, Code: InvalidInput, Reason: "integer required", Check: expressionPointer(literalExpression(true))}
+	contract, err := compileWireContractSpec(WireContractSpec{
+		Schema:     &ValueSchema{Type: ArrayType},
+		Assertions: []WireAssertion{{Path: "", Schema: ValueSchema{Type: ArrayType}, Code: InvalidInput, Reason: "array required", Each: []WireAssertion{check, check}}},
+	}, "/wire", limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var limit *ResourceLimitError
+	err = contract.validator.ValidateWireOutput(DecodeRequest, Value{raw: `[1,2,3,4,5,6,7,8,9,10]`})
+	if !errors.As(err, &limit) || limit.Domain != "evaluation" || limit.Metric != "steps" {
+		t.Fatal("iteration escaped the shared work budget", err)
+	}
+}
