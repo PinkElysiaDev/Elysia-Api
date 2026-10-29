@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -244,59 +245,86 @@ func parsePointer(pointer string) ([]string, error) {
 }
 
 func mutateValue(current Value, path []string, mutation Mutation) (Value, error) {
-	if len(path) == 0 {
-		if mutation.Op == DeleteValue {
-			return Value{}, fmt.Errorf("cannot delete the document root")
-		}
-		return mutation.Value, nil
-	}
-	trimmed := strings.TrimSpace(current.raw)
-	if strings.HasPrefix(trimmed, "{") {
-		return mutateObject(current, path, mutation)
-	}
-	if strings.HasPrefix(trimmed, "[") {
-		return mutateArray(current, path, mutation)
-	}
-	return Value{}, fmt.Errorf("path traverses a scalar")
-}
-
-func mutateObject(current Value, path []string, mutation Mutation) (Value, error) {
-	object, err := current.ReadObject()
+	// Temporary fragments remain borrowed until the root owns its encoded bytes.
+	// Each mutation still materializes before its original output-budget check.
+	output, err := planValueMutation(current, path, mutation, &valueReader{})
 	if err != nil {
 		return Value{}, err
+	}
+	return output.Encode(context.Background())
+}
+
+func planValueMutation(current Value, path []string, mutation Mutation, reader *valueReader) (JSONOutput, error) {
+	if len(path) == 0 {
+		if mutation.Op == DeleteValue {
+			return JSONOutput{}, fmt.Errorf("cannot delete the document root")
+		}
+		return JSONLeaf(mutation.Value), nil
+	}
+	if current.IsObject() {
+		return planObjectMutation(current, path, mutation, reader)
+	}
+	if current.IsArray() {
+		return planArrayMutation(current, path, mutation, reader)
+	}
+	return JSONOutput{}, fmt.Errorf("path traverses a scalar")
+}
+
+func planObjectMutation(current Value, path []string, mutation Mutation, reader *valueReader) (JSONOutput, error) {
+	object, err := current.readObjectWithin(reader)
+	if err != nil {
+		return JSONOutput{}, err
 	}
 	key := path[0]
 	child, hasChild := object[key]
 	if !hasChild && (len(path) > 1 || mutation.Op != SetValue) {
-		return Value{}, fmt.Errorf("target does not exist")
+		return JSONOutput{}, fmt.Errorf("target does not exist")
 	}
-	if len(path) == 1 && mutation.Op == DeleteValue {
+	isDelete := len(path) == 1 && mutation.Op == DeleteValue
+	var replacement JSONOutput
+	if isDelete {
 		delete(object, key)
 	} else {
-		object[key], err = mutateValue(child, path[1:], mutation)
+		replacement, err = planValueMutation(child, path[1:], mutation, reader)
 		if err != nil {
-			return Value{}, err
+			return JSONOutput{}, err
 		}
 	}
-	return EncodeValue(object)
+	fields := make(map[string]JSONOutput, len(object))
+	for key, value := range object {
+		fields[key] = JSONLeaf(value)
+	}
+	if !isDelete {
+		fields[key] = replacement
+	}
+	return JSONObject(fields), nil
 }
 
-func mutateArray(current Value, path []string, mutation Mutation) (Value, error) {
-	var array []Value
-	if err := current.Decode(&array); err != nil {
-		return Value{}, err
+func planArrayMutation(current Value, path []string, mutation Mutation, reader *valueReader) (JSONOutput, error) {
+	array, err := current.readArrayWithin(reader)
+	if err != nil {
+		return JSONOutput{}, err
 	}
 	index, err := strconv.Atoi(path[0])
 	if err != nil || index < 0 || index >= len(array) || strconv.Itoa(index) != path[0] {
-		return Value{}, fmt.Errorf("array index is invalid or outside the array")
+		return JSONOutput{}, fmt.Errorf("array index is invalid or outside the array")
 	}
-	if len(path) == 1 && mutation.Op == DeleteValue {
+	isDelete := len(path) == 1 && mutation.Op == DeleteValue
+	var replacement JSONOutput
+	if isDelete {
 		array = append(array[:index], array[index+1:]...)
 	} else {
-		array[index], err = mutateValue(array[index], path[1:], mutation)
+		replacement, err = planValueMutation(array[index], path[1:], mutation, reader)
 		if err != nil {
-			return Value{}, err
+			return JSONOutput{}, err
 		}
 	}
-	return EncodeValue(array)
+	items := make([]JSONOutput, len(array))
+	for index, value := range array {
+		items[index] = JSONLeaf(value)
+	}
+	if !isDelete {
+		items[index] = replacement
+	}
+	return JSONArray(items), nil
 }
