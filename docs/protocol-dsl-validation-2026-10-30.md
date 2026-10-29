@@ -63,3 +63,24 @@ staticcheck 对照排除源码行号位移，但保留诊断正文与出现次�
 `.tmp-dev/protocol-dsl-2026-10-29/`，未覆盖此前失败、未达标或历史样本。
 
 后续成功计量复用等修改必须另行验证，不能沿用本阶段结果宣称新代码已通过。
+
+## 后续请求 owner 阶段（54d54b45）
+
+独立完成通用keys、深合并及条件字段证明，四份草案的请求foreign owner保护，以及Responses
+自身未知根字段／缓存选项保留。原生产预置没有切换，新能力不作为v3生产激活完成。
+
+在固定 `54d54b45` 上重新执行：
+
+| 检查 | 结果 | 原始证据 |
+|---|---|---|
+| Go全量 | 通过，约103秒 | `checks/owner-stage-go-all.*` |
+| vet | 通过 | `checks/owner-stage-vet.*` |
+| staticcheck v0.8.2 | 命令失败，仍45条；去行号后新增0、移除0 | `checks/owner-stage-staticcheck.*`、`owner-stage-staticcheck-comparison.json` |
+| 相关protocol/builtin race | 通过 | `checks/owner-stage-race.*` |
+
+新增命名字段、未知数字及原生字节的成功比较通过。8项Responses拒绝边界和外族守卫诊断
+仍与旧模块不同，未通过放宽静态gap或组合验证掩盖。后续 `05cf4117` 事件版本传播仅另行
+跑了定向回归：`checks/event-envelope-core-version.*`；不能直接套用上表的全工程结果。
+
+本阶段没有重跑前端、审计全套或六目标；`dist/standalone` 和已归档六目标仍属于24618cc0，
+不能当作54d54b45或后续代码的二进制。最终稳定提交仍需完整工程和平台验收。
