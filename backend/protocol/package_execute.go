@@ -66,6 +66,11 @@ func (compiled *Compiled) preparePackageState(direction Direction, state evaluat
 		if err != nil || value.IsZero() {
 			return compiled.packageEffectError(direction, effect, "declared emit input is absent or inaccessible", err)
 		}
+		if effect.kind == "aggregate" && !isDecode {
+			if err := checkPackageAggregateInput(state, value); err != nil {
+				return compiled.packageEffectError(direction, effect, "aggregate input violates its core owner contract", err)
+			}
+		}
 	}
 	return nil
 }

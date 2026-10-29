@@ -17,6 +17,7 @@ type compiledSemanticEffect struct {
 	id, kind, path, target, reason string
 	corePointer, wirePointer       []string
 	when                           *compiledOutputPlan
+	layout                         *ProtocolAggregateLayout
 }
 
 // DecodeProtocolPackage parses and validates a package without activating it.
@@ -55,9 +56,18 @@ func (compiler *Compiler) CompilePackage(raw []byte) (*Compiled, []ConversionIss
 			return nil, definitionIssues(compiled.identity, "/mapping/directions/"+string(direction)+"/program", fmt.Errorf("program requires a compiled output plan"))
 		}
 		for index, effect := range compiled.packagePlan.effects[direction] {
-			if effect.kind != "emit" && effect.kind != "reject" {
+			if effect.kind != "emit" && effect.kind != "reject" && effect.kind != "aggregate" {
 				path := fmt.Sprintf("/mapping/directions/%s/effects/%d/kind", direction, index)
 				return nil, definitionIssues(compiled.identity, path, fmt.Errorf("semantic effect %q is not executable in this runtime", effect.kind))
+			}
+			if effect.kind == "aggregate" {
+				path := fmt.Sprintf("/mapping/directions/%s/effects/%d", direction, index)
+				if !compiled.mappings[direction].capabilities[CacheBreakpointsCapability] {
+					return nil, definitionIssues(compiled.identity, path, fmt.Errorf("cache aggregate requires the declared cache.breakpoints capability"))
+				}
+				if !provesPackageAggregate(compiled.mappings[direction].outputPlan.expression, direction, effect) {
+					return nil, definitionIssues(compiled.identity, path, fmt.Errorf("aggregate requires a provable object partition or reconstruction"))
+				}
 			}
 			if effect.kind == "emit" {
 				input, output := effect.corePointer, effect.wirePointer
@@ -160,6 +170,14 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		entry.wirePointer, err = parsePointer(effect.Target)
 		if err != nil {
 			return compiledMapping{}, nil, fmt.Errorf("%s/target: %w", at, err)
+		}
+		if effect.Kind == "aggregate" {
+			if err := validatePackageAggregateLayout(direction, entry.corePointer, effect.Layout); err != nil {
+				return compiledMapping{}, nil, fmt.Errorf("%s/layout: %w", at, err)
+			}
+			entry.layout = effect.Layout
+		} else if effect.Layout != nil {
+			return compiledMapping{}, nil, fmt.Errorf("%s/layout: only aggregate effects have an object layout", at)
 		}
 		if effect.When != nil {
 			condition, err := compiler.compile(*effect.When, at+"/when", scope, 1)

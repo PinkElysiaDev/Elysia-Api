@@ -64,12 +64,22 @@ type ProtocolDirectionMapping struct {
 // Path always addresses core data and Target addresses wire data. When observes
 // the direction's program input. Declarations alone do not prove fidelity.
 type ProtocolSemanticEffect struct {
-	ID     string      `json:"id"`
-	Kind   string      `json:"kind"`
-	Path   string      `json:"path"`
-	Target string      `json:"target,omitempty"`
-	When   *Expression `json:"when,omitempty"`
-	Reason string      `json:"reason,omitempty"`
+	ID     string                   `json:"id"`
+	Kind   string                   `json:"kind"`
+	Path   string                   `json:"path"`
+	Target string                   `json:"target,omitempty"`
+	When   *Expression              `json:"when,omitempty"`
+	Reason string                   `json:"reason,omitempty"`
+	Layout *ProtocolAggregateLayout `json:"layout,omitempty"`
+}
+
+// ProtocolAggregateLayout partitions one wire object into a core owner.
+// Fields maps wire member names to independent core member names; Remainder
+// retains every other wire member. Labels identifies the closed core variant.
+type ProtocolAggregateLayout struct {
+	Remainder string            `json:"remainder"`
+	Fields    map[string]string `json:"fields"`
+	Labels    Object            `json:"labels"`
 }
 
 // Parsing is separate so CompilePackage can retain the single compilation's

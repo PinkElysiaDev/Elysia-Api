@@ -97,7 +97,7 @@ func TestCompilePackageRejectsUnprovedEffects(t *testing.T) {
 			entry.Effects[1].Path = "/content/1/children/0/payload"
 			p.Mapping.Directions[DecodeRequest] = entry
 		}},
-		{"aggregate", "not executable", func(p *ProtocolPackage) { p.Mapping.Directions[EncodeRequest].Effects[1].Kind = "aggregate" }},
+		{"aggregate", "layout", func(p *ProtocolPackage) { p.Mapping.Directions[EncodeRequest].Effects[1].Kind = "aggregate" }},
 		{"default", "not executable", func(p *ProtocolPackage) {
 			p.Mapping.Directions[EncodeRequest].Effects[1].Kind = "default"
 			p.Mapping.Directions[EncodeRequest].Effects[1].Reason = "synthetic default"
