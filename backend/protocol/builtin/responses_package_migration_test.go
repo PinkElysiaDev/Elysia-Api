@@ -94,5 +94,24 @@ func TestResponsesPackageDraftMigration(t *testing.T) {
 			})
 		}
 	}
+	// Compare the decoded owner directly: root Native can conceal an omitted
+	// extension when the unchanged request is encoded back to its source.
+	for _, fixture := range []struct{ name, wire string }{
+		{"root-and-cache", `{"model":"m","input":"hi","future":{"count":9007199254740993,"empty":null},"prompt_cache_options":{"mode":"explicit","ttl":"30m","future":{"items":[null,1e2,"value"]}}}`},
+		{"cache-only", `{"model":"m","input":"hi","prompt_cache_options":{"future":null}}`},
+		{"empty-cache", `{"model":"m","input":"hi","prompt_cache_options":{}}`},
+		{"null-cache", `{"model":"m","input":"hi","prompt_cache_options":null}`},
+	} {
+		t.Run("owner-decode/"+fixture.name, func(t *testing.T) {
+			options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
+			sample := p.Sample{Direction: p.DecodeRequest, Input: testValue(t, fixture.wire)}
+			want, wantErr := executePackageMigrationSample(t, legacy, sample, options, false)
+			if wantErr != nil {
+				t.Fatal(wantErr)
+			}
+			got, gotErr := executePackageMigrationSample(t, draft, sample, options, true)
+			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+		})
+	}
 	checkPackageMediaURIs(t, legacy, draft, definition)
 }
