@@ -25,7 +25,203 @@
         "schema": {
           "type": "object",
           "allowUnknown": true
-        }
+        },
+        "assertions": [
+          {
+            "path": "/generationConfig/thinkingConfig",
+            "schema": {
+              "type": "object",
+              "allowUnknown": true
+            },
+            "code": "invalid_input",
+            "reason": "thinking controls must be an object or null",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/generationConfig/thinkingConfig"
+              }
+            }
+          },
+          {
+            "path": "/generationConfig/thinkingConfig",
+            "schema": {
+              "type": "any"
+            },
+            "code": "invalid_input",
+            "reason": "thinkingLevel and thinkingBudget cannot coexist",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig"
+                }
+              },
+              "then": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/generationConfig/thinkingConfig/thinkingLevel"
+                    }
+                  },
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/generationConfig/thinkingConfig/thinkingBudget"
+                    }
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "check": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          {
+            "path": "/generationConfig/thinkingConfig/includeThoughts",
+            "schema": {
+              "type": "boolean"
+            },
+            "code": "invalid_input",
+            "reason": "includeThoughts must be a boolean",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig/includeThoughts"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            }
+          },
+          {
+            "path": "/generationConfig/thinkingConfig/thinkingLevel",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "minimal",
+                "low",
+                "medium",
+                "high"
+              ]
+            },
+            "code": "invalid_input",
+            "reason": "invalid thinking level",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig"
+                }
+              },
+              "then": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig/thinkingLevel"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            }
+          },
+          {
+            "path": "/generationConfig/thinkingConfig/thinkingBudget",
+            "schema": {
+              "type": "any"
+            },
+            "code": "invalid_input",
+            "reason": "budget must be an integer >= -1 without overflow",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig"
+                }
+              },
+              "then": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig/thinkingBudget"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "check": {
+              "op": "if",
+              "when": {
+                "op": "is_integer",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                }
+              },
+              "then": {
+                "op": "integer",
+                "operation": "gte",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": -1
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            }
+          }
+        ]
       },
       "encode_request": {
         "schema": {
@@ -1788,9 +1984,61 @@
                 "path": "/generationConfig/responseSchema"
               },
               "gemini_thinking": {
-                "op": "read",
-                "from": "input",
-                "path": "/generationConfig/thinkingConfig"
+                "op": "if",
+                "when": {
+                  "op": "ref",
+                  "ref": "has-reasoning-controls"
+                },
+                "then": {
+                  "op": "let",
+                  "name": "thinking-remainder",
+                  "source": {
+                    "op": "project",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/generationConfig/thinkingConfig"
+                    },
+                    "keys": [
+                      "thinkingLevel",
+                      "thinkingBudget",
+                      "includeThoughts"
+                    ],
+                    "policy": "exclude"
+                  },
+                  "body": {
+                    "op": "if",
+                    "when": {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "thinking-remainder"
+                          },
+                          {
+                            "op": "object",
+                            "fields": {}
+                          }
+                        ]
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "thinking-remainder"
+                    }
+                  }
+                },
+                "otherwise": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig"
+                }
               },
               "gemini_generation_extensions": {
                 "op": "let",
@@ -3039,9 +3287,8 @@
                   "path": "/parameters/gemini_response_schema"
                 },
                 "thinkingConfig": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/gemini_thinking"
+                  "op": "ref",
+                  "ref": "encode-thinking"
                 }
               }
             },
@@ -4368,6 +4615,316 @@
             }
           }
         }
+      },
+      "has-reasoning-controls": {
+        "op": "if",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/generationConfig/thinkingConfig"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "object"
+            }
+          ]
+        },
+        "then": {
+          "op": "any",
+          "items": [
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/generationConfig/thinkingConfig/thinkingLevel"
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/generationConfig/thinkingConfig/thinkingBudget"
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/generationConfig/thinkingConfig/includeThoughts"
+              }
+            }
+          ]
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "decode-reasoning": {
+        "op": "if",
+        "when": {
+          "op": "ref",
+          "ref": "has-reasoning-controls"
+        },
+        "then": {
+          "op": "object",
+          "fields": {
+            "mode": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig/thinkingBudget"
+                }
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/generationConfig/thinkingConfig/thinkingBudget"
+                    },
+                    {
+                      "op": "literal",
+                      "value": -1
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "literal",
+                  "value": "auto"
+                },
+                "otherwise": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/generationConfig/thinkingConfig/thinkingBudget"
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": "disabled"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": "enabled"
+                  }
+                }
+              },
+              "otherwise": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/generationConfig/thinkingConfig/thinkingLevel"
+                  }
+                },
+                "then": {
+                  "op": "literal",
+                  "value": "enabled"
+                }
+              }
+            },
+            "effort": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig/thinkingLevel"
+            },
+            "effortScope": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig/thinkingLevel"
+                }
+              },
+              "then": {
+                "op": "literal",
+                "value": "reasoning"
+              }
+            },
+            "budget": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig/thinkingBudget"
+            },
+            "summary": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig/includeThoughts"
+                }
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig/includeThoughts"
+                },
+                "then": {
+                  "op": "literal",
+                  "value": "auto"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": "omitted"
+                }
+              }
+            }
+          }
+        }
+      },
+      "encode-thinking": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/reasoning"
+          }
+        },
+        "then": {
+          "op": "let",
+          "name": "thinking",
+          "source": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/gemini_thinking"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/gemini_thinking"
+                },
+                "otherwise": {
+                  "op": "object",
+                  "fields": {}
+                }
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "thinkingLevel": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/effort"
+                  },
+                  "thinkingBudget": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/budget"
+                  },
+                  "includeThoughts": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/reasoning/summary"
+                      }
+                    },
+                    "then": {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/reasoning/summary"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "omitted"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "thinking"
+                  },
+                  {
+                    "op": "object",
+                    "fields": {}
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "thinking"
+            },
+            "otherwise": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/gemini_thinking"
+            }
+          }
+        },
+        "otherwise": {
+          "op": "read",
+          "from": "input",
+          "path": "/parameters/gemini_thinking"
+        }
       }
     },
     "directions": {
@@ -4488,6 +5045,10 @@
                   "cache": {
                     "op": "ref",
                     "ref": "decode-cache"
+                  },
+                  "reasoning": {
+                    "op": "ref",
+                    "ref": "decode-reasoning"
                   }
                 }
               }
@@ -4696,6 +5257,49 @@
               }
             },
             "reason": "request references require their original protocol and an equivalent resource field"
+          },
+          {
+            "id": "reasoning-level-or-budget",
+            "kind": "reject",
+            "path": "/reasoning",
+            "target": "/generationConfig/thinkingConfig",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                }
+              },
+              "then": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/effort"
+                    }
+                  },
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/budget"
+                    }
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "reason": "Gemini cannot encode both level and budget"
           }
         ],
         "capabilities": {

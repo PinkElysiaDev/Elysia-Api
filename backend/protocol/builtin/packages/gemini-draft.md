@@ -12,6 +12,7 @@
   inlineData/fileData 逐字段映射，不解码媒体字节。包装 role 不改变 system 权限。
 - 文本、可见 thought、thoughtSignature、函数调用和结果；函数声明与独立 hosted 工具。
 - 响应 ID/model、单 candidate、已知与原生未知 finish reason，以及基础 usage 和 thinking 计量。
+- thinkingConfig 的 level、budget、includeThoughts 到 ReasoningIntent，以及保留未知余项的反向重建。
 - 所有 Native 捕获直接来自原始 read 锚点，不添加旧实现的虚构路径或改写捕获对象。
 
 模型不是从 Gemini 正文读取。候选先读可信 `runtime /scope/model`，当 context.model 非缺失时
@@ -42,13 +43,16 @@ output，保留 inferred 与 observed 的区别。加减使用现有 int64 原�
 | Scope/context 模型边界 | 5 | 5 | 0 |
 | 无 ID、system、响应 role、混合工具边界 | 5 | 0 | 5 |
 | 无根 Native 的 system 包装扩展渲染 | 3 | 3 | 0 |
-| 合计 | 55 | 36 | 19 |
+| thinkingConfig 正例的解码与无根 Native 编码 | 22 | 22 | 0 |
+| 当前 thinking 编辑与删除 | 2 | 2 | 0 |
+| thinking 来源与编码冲突负例 | 7 | 0 | 7 |
+| 合计 | 86 | 60 | 26 |
 
-55 次检查的台账测试通过，不表示 19 项差异已经等价。比较保留所有公开核心字段、来源、
+86 次检查的台账测试通过，不表示 26 项差异已经等价。比较保留所有公开核心字段、来源、
 Native、完整输出字节及完整错误树，唯一显式适配是核心 schemaVersion 1→2。
 
-19 项实际差异追加在共享静态账本 `../testdata/package-migration-gaps.json`，没有更改既有
-Anthropic/Chat 条目。新增证据采自 `a977ea98` 工作区中的本候选；原始合成测试输出位于忽略目录
+最初 19 项实际差异追加在共享静态账本 `../testdata/package-migration-gaps.json`，没有更改既有
+Anthropic/Chat 条目。这批证据采自 `a977ea98` 工作区中的本候选；原始合成测试输出位于忽略目录
 `.tmp-dev/protocol-dsl-2026-10-29/gemini-migration-observed.log`。账本顶部的 sourceCommit 仍指向
 其最早一批记录，不代表本次 Gemini 的采集版本。正常测试只读取固定快照，不生成期望值。
 
@@ -89,10 +93,34 @@ Anthropic/Chat 条目。新增证据采自 `a977ea98` 工作区中的本候选�
 旧来源路径与原生快照差异仍保持原静态记录，未通过改写捕获来源或放宽比较消除。
 这不是通用深层扩展合并的完整验收；冲突诊断、非对象扩展等边界仍需单独闭合。
 
+### 已迁移的 thinkingConfig 正常行为与未闭合诊断
+
+thinkingLevel 对应 effort，非 null 时指定 reasoning scope；thinkingBudget 的 -1、0、正数分别
+对应 auto、disabled、enabled；includeThoughts 的 true/false 对应 summary 的 auto/omitted。
+显式 null 的 level/budget 保留为核心 null。空对象、null 桶和仅含未知字段的桶遵循旧实现的早退，
+不会因没有生成 ReasoningIntent 而丢掉原参数。生成意图后，已知控制从参数桶移除，未知字段保留。
+
+反向合并参数余项与当前意图，不根据 mode 猜造缺失预算；删除当前控制不会复活旧值。
+同名 typed/legacy 控制以及同时指定非 null level 和 budget 继续拒绝。协议约束写在 JSON，
+未增加 Go 供应商分支；通用 ReasoningIntent 校验继续使用既有核心逻辑。
+
+11 个正例各比较解码和无根 Native 编码，另两项比较当前 level 编辑及删除，24 次完整相等。
+正例使用空 contents，避免将已有来源位置差异混入本次参数比较。
+
+7 个负例双方均拒绝，但完整诊断未等价：非对象桶、level 与 budget 并存、includeThoughts:null、
+非法来源 level、过小 budget、typed/legacy 冲突，以及 canonical level/budget 并存。
+旧实现全部报告 `decode_event / stream`；草案分别在 `decode_request / wire`、
+`encode_request / evaluate` 或 `encode_request / mapping.effects` 报告，部分路径、错误码、建议及
+包装树也不同。旧诊断方向未修改，不能将草案的较准确归因算作等价迁移。
+
+这 7 项追加快照采自 `9794e509` 工作区，证据为忽略目录中的
+`.tmp-dev/protocol-dsl-2026-10-29/gemini-thinking-observed.log`。原 19 项 Gemini 及其他协议的快照
+保持不变，正常测试没有生成或自动更新账本的代码。多个同时错误时的首错顺序仍未证明。
+
 ## 尚未完成的边界
 
 - 完整输入/输出 wire 类型契约、错误链与首错顺序；当前少数 effects 不是完整字段覆盖证明。
-- thinkingConfig 到 ReasoningIntent 的规范化与反向重建、safetySettings 验证和完整参数拒绝。
+- thinkingConfig 的完整错误树和多故障顺序、safetySettings 验证及其他参数拒绝。
 - toolConfig 的大小写兼容、单元素 allowedFunctionNames 规范化、非法值与名称空白规则。
 - 非原生 system 位置、注解拒绝、独立 assistant 历史分组，以及逐 owner 的缓存/资源/未映射字段保护。
 - 多候选、错误响应、响应分组、候选 metadata、usage modality 明细与未知 usage 扩展。

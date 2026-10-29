@@ -2351,6 +2351,929 @@
           "draft": "[{\"name\":\"lookup\",\"parameters\":{\"type\":\"object\"}}]"
         }
       ]
+    },
+    "TestGeminiPackageDraftMigration/thinking/reject-scalar": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /parameters/gemini_thinking: thinking controls must be an object or null",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "decode_event",
+              "stage": "stream",
+              "path": "/parameters/gemini_thinking",
+              "reason": "thinking controls must be an object or null",
+              "suggestion": "correct the upstream stream or declared /parameters/gemini_thinking rule"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /parameters/gemini_thinking: thinking controls must be an object or null",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "decode_event",
+                  "stage": "stream",
+                  "path": "/parameters/gemini_thinking",
+                  "reason": "thinking controls must be an object or null",
+                  "suggestion": "correct the upstream stream or declared /parameters/gemini_thinking rule"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /generationConfig/thinkingConfig: thinking controls must be an object or null",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/generationConfig/thinkingConfig",
+              "reason": "thinking controls must be an object or null",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /generationConfig/thinkingConfig: thinking controls must be an object or null",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "gemini",
+                    "wireVersion": "v2",
+                    "definitionId": "google-generate-content",
+                    "revision": "2.1.6"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/generationConfig/thinkingConfig",
+                  "reason": "thinking controls must be an object or null",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /generationConfig/thinkingConfig: thinking controls must be an object or null",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/generationConfig/thinkingConfig",
+                      "reason": "thinking controls must be an object or null",
+                      "suggestion": ""
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "type": "*protocol.mappingError",
+                    "text": "/generationConfig/thinkingConfig: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': got boolean, want object",
+                    "children": [
+                      {
+                        "type": "*fmt.wrapError",
+                        "text": "/generationConfig/thinkingConfig: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': got boolean, want object",
+                        "children": [
+                          {
+                            "type": "*jsonschema.ValidationError",
+                            "text": "jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': got boolean, want object"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestGeminiPackageDraftMigration/thinking/reject-level-and-budget": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /generationConfig/thinkingConfig: thinkingLevel and thinkingBudget cannot coexist",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "decode_event",
+              "stage": "stream",
+              "path": "/generationConfig/thinkingConfig",
+              "reason": "thinkingLevel and thinkingBudget cannot coexist",
+              "suggestion": "correct the upstream stream or declared /generationConfig/thinkingConfig rule"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /generationConfig/thinkingConfig: thinkingLevel and thinkingBudget cannot coexist",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "decode_event",
+                  "stage": "stream",
+                  "path": "/generationConfig/thinkingConfig",
+                  "reason": "thinkingLevel and thinkingBudget cannot coexist",
+                  "suggestion": "correct the upstream stream or declared /generationConfig/thinkingConfig rule"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /generationConfig/thinkingConfig: thinkingLevel and thinkingBudget cannot coexist",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/generationConfig/thinkingConfig",
+              "reason": "thinkingLevel and thinkingBudget cannot coexist",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /generationConfig/thinkingConfig: thinkingLevel and thinkingBudget cannot coexist",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "gemini",
+                    "wireVersion": "v2",
+                    "definitionId": "google-generate-content",
+                    "revision": "2.1.6"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/generationConfig/thinkingConfig",
+                  "reason": "thinkingLevel and thinkingBudget cannot coexist",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /generationConfig/thinkingConfig: thinkingLevel and thinkingBudget cannot coexist",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/generationConfig/thinkingConfig",
+                      "reason": "thinkingLevel and thinkingBudget cannot coexist",
+                      "suggestion": ""
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestGeminiPackageDraftMigration/thinking/reject-null-include": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /generationConfig/thinkingConfig/includeThoughts: includeThoughts must be a boolean",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "decode_event",
+              "stage": "stream",
+              "path": "/generationConfig/thinkingConfig/includeThoughts",
+              "reason": "includeThoughts must be a boolean",
+              "suggestion": "correct the upstream stream or declared /generationConfig/thinkingConfig/includeThoughts rule"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /generationConfig/thinkingConfig/includeThoughts: includeThoughts must be a boolean",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "decode_event",
+                  "stage": "stream",
+                  "path": "/generationConfig/thinkingConfig/includeThoughts",
+                  "reason": "includeThoughts must be a boolean",
+                  "suggestion": "correct the upstream stream or declared /generationConfig/thinkingConfig/includeThoughts rule"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /generationConfig/thinkingConfig/includeThoughts: includeThoughts must be a boolean",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/generationConfig/thinkingConfig/includeThoughts",
+              "reason": "includeThoughts must be a boolean",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /generationConfig/thinkingConfig/includeThoughts: includeThoughts must be a boolean",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "gemini",
+                    "wireVersion": "v2",
+                    "definitionId": "google-generate-content",
+                    "revision": "2.1.6"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/generationConfig/thinkingConfig/includeThoughts",
+                  "reason": "includeThoughts must be a boolean",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /generationConfig/thinkingConfig/includeThoughts: includeThoughts must be a boolean",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/generationConfig/thinkingConfig/includeThoughts",
+                      "reason": "includeThoughts must be a boolean",
+                      "suggestion": ""
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "type": "*protocol.mappingError",
+                    "text": "/generationConfig/thinkingConfig/includeThoughts: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': got null, want boolean",
+                    "children": [
+                      {
+                        "type": "*fmt.wrapError",
+                        "text": "/generationConfig/thinkingConfig/includeThoughts: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': got null, want boolean",
+                        "children": [
+                          {
+                            "type": "*jsonschema.ValidationError",
+                            "text": "jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': got null, want boolean"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestGeminiPackageDraftMigration/thinking/reject-unsupported-level": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /generationConfig/thinkingConfig/thinkingLevel: invalid thinking level",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "decode_event",
+              "stage": "stream",
+              "path": "/generationConfig/thinkingConfig/thinkingLevel",
+              "reason": "invalid thinking level",
+              "suggestion": "correct the upstream stream or declared /generationConfig/thinkingConfig/thinkingLevel rule"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /generationConfig/thinkingConfig/thinkingLevel: invalid thinking level",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "decode_event",
+                  "stage": "stream",
+                  "path": "/generationConfig/thinkingConfig/thinkingLevel",
+                  "reason": "invalid thinking level",
+                  "suggestion": "correct the upstream stream or declared /generationConfig/thinkingConfig/thinkingLevel rule"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /generationConfig/thinkingConfig/thinkingLevel: invalid thinking level",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/generationConfig/thinkingConfig/thinkingLevel",
+              "reason": "invalid thinking level",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /generationConfig/thinkingConfig/thinkingLevel: invalid thinking level",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "gemini",
+                    "wireVersion": "v2",
+                    "definitionId": "google-generate-content",
+                    "revision": "2.1.6"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/generationConfig/thinkingConfig/thinkingLevel",
+                  "reason": "invalid thinking level",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /generationConfig/thinkingConfig/thinkingLevel: invalid thinking level",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/generationConfig/thinkingConfig/thinkingLevel",
+                      "reason": "invalid thinking level",
+                      "suggestion": ""
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "type": "*protocol.mappingError",
+                    "text": "/generationConfig/thinkingConfig/thinkingLevel: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': value must be one of 'minimal', 'low', 'medium', 'high'",
+                    "children": [
+                      {
+                        "type": "*fmt.wrapError",
+                        "text": "/generationConfig/thinkingConfig/thinkingLevel: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': value must be one of 'minimal', 'low', 'medium', 'high'",
+                        "children": [
+                          {
+                            "type": "*jsonschema.ValidationError",
+                            "text": "jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': value must be one of 'minimal', 'low', 'medium', 'high'"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestGeminiPackageDraftMigration/thinking/reject-negative-budget": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /reasoning/budget: budget must be an integer >= -1 without overflow",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "decode_event",
+              "stage": "stream",
+              "path": "/reasoning/budget",
+              "reason": "budget must be an integer >= -1 without overflow",
+              "suggestion": "correct the upstream stream or declared /reasoning/budget rule"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /reasoning/budget: budget must be an integer >= -1 without overflow",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "decode_event",
+                  "stage": "stream",
+                  "path": "/reasoning/budget",
+                  "reason": "budget must be an integer >= -1 without overflow",
+                  "suggestion": "correct the upstream stream or declared /reasoning/budget rule"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /generationConfig/thinkingConfig/thinkingBudget: budget must be an integer >= -1 without overflow",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/generationConfig/thinkingConfig/thinkingBudget",
+              "reason": "budget must be an integer >= -1 without overflow",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /generationConfig/thinkingConfig/thinkingBudget: budget must be an integer >= -1 without overflow",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "gemini",
+                    "wireVersion": "v2",
+                    "definitionId": "google-generate-content",
+                    "revision": "2.1.6"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/generationConfig/thinkingConfig/thinkingBudget",
+                  "reason": "budget must be an integer >= -1 without overflow",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /generationConfig/thinkingConfig/thinkingBudget: budget must be an integer >= -1 without overflow",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/generationConfig/thinkingConfig/thinkingBudget",
+                      "reason": "budget must be an integer >= -1 without overflow",
+                      "suggestion": ""
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestGeminiPackageDraftMigration/thinking/reject-canonical-conflict": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /parameters/gemini_thinking/thinkingLevel: conflicting typed and legacy reasoning controls",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "decode_event",
+              "stage": "stream",
+              "path": "/parameters/gemini_thinking/thinkingLevel",
+              "reason": "conflicting typed and legacy reasoning controls",
+              "suggestion": "correct the upstream stream or declared /parameters/gemini_thinking/thinkingLevel rule"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /parameters/gemini_thinking/thinkingLevel: conflicting typed and legacy reasoning controls",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "decode_event",
+                  "stage": "stream",
+                  "path": "/parameters/gemini_thinking/thinkingLevel",
+                  "reason": "conflicting typed and legacy reasoning controls",
+                  "suggestion": "correct the upstream stream or declared /parameters/gemini_thinking/thinkingLevel rule"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /mapping/directions/encode_request/program/items/0/fields/generationConfig/@encode-generation-config/source/items/0/fields/thinkingConfig/@encode-thinking/then/source: /mapping/directions/encode_request/program/items/0/fields/generationConfig/@encode-generation-config/source/items/0/fields/thinkingConfig/@encode-thinking/then/source: conflicting merge field \"thinkingLevel\"",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "encode_request",
+              "stage": "evaluate",
+              "path": "/mapping/directions/encode_request/program/items/0/fields/generationConfig/@encode-generation-config/source/items/0/fields/thinkingConfig/@encode-thinking/then/source",
+              "reason": "/mapping/directions/encode_request/program/items/0/fields/generationConfig/@encode-generation-config/source/items/0/fields/thinkingConfig/@encode-thinking/then/source: conflicting merge field \"thinkingLevel\"",
+              "suggestion": "Correct the input or declared mapping and verify the revision again."
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /mapping/directions/encode_request/program/items/0/fields/generationConfig/@encode-generation-config/source/items/0/fields/thinkingConfig/@encode-thinking/then/source: /mapping/directions/encode_request/program/items/0/fields/generationConfig/@encode-generation-config/source/items/0/fields/thinkingConfig/@encode-thinking/then/source: conflicting merge field \"thinkingLevel\"",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "gemini",
+                    "wireVersion": "v2",
+                    "definitionId": "google-generate-content",
+                    "revision": "2.1.6"
+                  },
+                  "direction": "encode_request",
+                  "stage": "evaluate",
+                  "path": "/mapping/directions/encode_request/program/items/0/fields/generationConfig/@encode-generation-config/source/items/0/fields/thinkingConfig/@encode-thinking/then/source",
+                  "reason": "/mapping/directions/encode_request/program/items/0/fields/generationConfig/@encode-generation-config/source/items/0/fields/thinkingConfig/@encode-thinking/then/source: conflicting merge field \"thinkingLevel\"",
+                  "suggestion": "Correct the input or declared mapping and verify the revision again."
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.mappingError",
+                "text": "/mapping/directions/encode_request/program/items/0/fields/generationConfig/@encode-generation-config/source/items/0/fields/thinkingConfig/@encode-thinking/then/source: conflicting merge field \"thinkingLevel\"",
+                "children": [
+                  {
+                    "type": "*errors.errorString",
+                    "text": "/mapping/directions/encode_request/program/items/0/fields/generationConfig/@encode-generation-config/source/items/0/fields/thinkingConfig/@encode-thinking/then/source: conflicting merge field \"thinkingLevel\""
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestGeminiPackageDraftMigration/thinking/reject-canonical-level-and-budget": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "unsupported_capability at /reasoning: Gemini cannot encode both level and budget",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "unsupported_capability",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "decode_event",
+              "stage": "stream",
+              "path": "/reasoning",
+              "reason": "Gemini cannot encode both level and budget",
+              "suggestion": "correct the upstream stream or declared /reasoning rule"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "unsupported_capability at /reasoning: Gemini cannot encode both level and budget",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "unsupported_capability",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "decode_event",
+                  "stage": "stream",
+                  "path": "/reasoning",
+                  "reason": "Gemini cannot encode both level and budget",
+                  "suggestion": "correct the upstream stream or declared /reasoning rule"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "conversion_rejected at /reasoning: Gemini cannot encode both level and budget",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "fidelity": "rejected",
+              "ruleId": "reasoning-level-or-budget",
+              "code": "conversion_rejected",
+              "severity": "error",
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.1.6"
+              },
+              "direction": "encode_request",
+              "stage": "mapping.effects",
+              "path": "/reasoning",
+              "reason": "Gemini cannot encode both level and budget",
+              "suggestion": "",
+              "evidence": "protocol-mapping"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "conversion_rejected at /reasoning: Gemini cannot encode both level and budget",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "fidelity": "rejected",
+                  "ruleId": "reasoning-level-or-budget",
+                  "code": "conversion_rejected",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "gemini",
+                    "wireVersion": "v2",
+                    "definitionId": "google-generate-content",
+                    "revision": "2.1.6"
+                  },
+                  "direction": "encode_request",
+                  "stage": "mapping.effects",
+                  "path": "/reasoning",
+                  "reason": "Gemini cannot encode both level and budget",
+                  "suggestion": "",
+                  "evidence": "protocol-mapping"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "values": null
     }
   }
 }

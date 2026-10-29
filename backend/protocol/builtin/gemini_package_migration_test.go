@@ -121,6 +121,93 @@ func TestGeminiPackageDraftMigration(t *testing.T) {
 			compareGeminiMigration(t, legacy, draft, p.Sample{Direction: p.EncodeRequest, Input: input}, options)
 		})
 	}
+	checkGeminiReasoningMigration(t, legacy, draft)
+}
+
+func checkGeminiReasoningMigration(t *testing.T, legacy, draft *p.Compiled) {
+	t.Helper()
+	options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
+	for _, fixture := range []struct{ name, config string }{
+		{"level-with-remainder", `{"thinkingLevel":"medium","includeThoughts":true,"future":{"n":9007199254740993}}`},
+		{"automatic-budget", `{"thinkingBudget":-1,"includeThoughts":false}`},
+		{"disabled-budget", `{"thinkingBudget":0}`},
+		{"manual-budget", `{"thinkingBudget":4096}`},
+		{"include-only", `{"includeThoughts":true}`},
+		{"empty", `{}`},
+		{"null", `null`},
+		{"unknown-only", `{"future":null}`},
+		{"null-level", `{"thinkingLevel":null}`},
+		{"null-budget", `{"thinkingBudget":null}`},
+		{"null-level-manual-budget", `{"thinkingLevel":null,"thinkingBudget":2048}`},
+	} {
+		wire := testValue(t, `{"contents":[],"generationConfig":{"thinkingConfig":`+fixture.config+`}}`)
+		request, err := legacy.DecodeRequest(t.Context(), wire.Bytes(), options)
+		if err != nil {
+			t.Fatal("valid reasoning fixture rejected by baseline", fixture.name, err)
+		}
+		request.Native = nil
+		core, err := p.EncodeValue(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, direction := range []p.Direction{p.DecodeRequest, p.EncodeRequest} {
+			t.Run("thinking/"+fixture.name+"/"+string(direction), func(t *testing.T) {
+				input := wire
+				if direction == p.EncodeRequest {
+					input = core
+				}
+				compareGeminiMigration(t, legacy, draft, p.Sample{Direction: direction, Input: input}, options)
+			})
+		}
+	}
+	for _, edit := range []string{"current-level", "removed-controls"} {
+		t.Run("thinking/"+edit, func(t *testing.T) {
+			request, err := legacy.DecodeRequest(t.Context(), []byte(`{"contents":[],"generationConfig":{"thinkingConfig":{"thinkingLevel":"high","future":{"n":9007199254740993}}}}`), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Native = nil
+			if edit == "current-level" {
+				request.Reasoning.Effort = p.StringValue("low")
+			} else {
+				request.Reasoning = &p.ReasoningIntent{}
+			}
+			input, err := p.EncodeValue(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			compareGeminiMigration(t, legacy, draft, p.Sample{Direction: p.EncodeRequest, Input: input}, options)
+		})
+	}
+	for _, fixture := range []struct{ name, config string }{
+		{"scalar", `false`},
+		{"level-and-budget", `{"thinkingLevel":"high","thinkingBudget":1024}`},
+		{"null-include", `{"includeThoughts":null}`},
+		{"unsupported-level", `{"thinkingLevel":"xhigh"}`},
+		{"negative-budget", `{"thinkingBudget":-2}`},
+	} {
+		t.Run("thinking/reject-"+fixture.name, func(t *testing.T) {
+			wire := testValue(t, `{"contents":[],"generationConfig":{"thinkingConfig":`+fixture.config+`}}`)
+			compareGeminiMigration(t, legacy, draft, p.Sample{Direction: p.DecodeRequest, Input: wire}, options)
+		})
+	}
+	for _, fixture := range []struct {
+		name       string
+		reasoning  *p.ReasoningIntent
+		parameters p.Object
+	}{
+		{"canonical-conflict", &p.ReasoningIntent{Mode: "enabled", Effort: p.StringValue("high"), EffortScope: "reasoning"}, p.Object{"gemini_thinking": testValue(t, `{"thinkingLevel":"low"}`)}},
+		{"canonical-level-and-budget", &p.ReasoningIntent{Mode: "enabled", Effort: p.StringValue("high"), EffortScope: "reasoning", Budget: testValue(t, `1024`)}, nil},
+	} {
+		t.Run("thinking/reject-"+fixture.name, func(t *testing.T) {
+			request := p.Request{SchemaVersion: p.SemanticSchemaVersion, Model: p.StringValue("m"), Content: []p.Node{}, Reasoning: fixture.reasoning, Parameters: fixture.parameters}
+			input, err := p.EncodeValue(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			compareGeminiMigration(t, legacy, draft, p.Sample{Direction: p.EncodeRequest, Input: input}, options)
+		})
+	}
 }
 
 var geminiMigrationGaps = map[string]packageMigrationGap{
@@ -297,6 +384,34 @@ var geminiMigrationGaps = map[string]packageMigrationGap{
 		paths: []string{
 			"/tools/1/native/value/functionDeclarations",
 		},
+	},
+	"TestGeminiPackageDraftMigration/thinking/reject-scalar": {
+		reason:    "Gemini reasoning rejection retains acceptance but has different wire/mapping diagnostics",
+		rejection: true,
+	},
+	"TestGeminiPackageDraftMigration/thinking/reject-level-and-budget": {
+		reason:    "Gemini reasoning rejection retains acceptance but has different wire/mapping diagnostics",
+		rejection: true,
+	},
+	"TestGeminiPackageDraftMigration/thinking/reject-null-include": {
+		reason:    "Gemini reasoning rejection retains acceptance but has different wire/mapping diagnostics",
+		rejection: true,
+	},
+	"TestGeminiPackageDraftMigration/thinking/reject-unsupported-level": {
+		reason:    "Gemini reasoning rejection retains acceptance but has different wire/mapping diagnostics",
+		rejection: true,
+	},
+	"TestGeminiPackageDraftMigration/thinking/reject-negative-budget": {
+		reason:    "Gemini reasoning rejection retains acceptance but has different wire/mapping diagnostics",
+		rejection: true,
+	},
+	"TestGeminiPackageDraftMigration/thinking/reject-canonical-conflict": {
+		reason:    "Gemini reasoning rejection retains acceptance but has different wire/mapping diagnostics",
+		rejection: true,
+	},
+	"TestGeminiPackageDraftMigration/thinking/reject-canonical-level-and-budget": {
+		reason:    "Gemini reasoning rejection retains acceptance but has different wire/mapping diagnostics",
+		rejection: true,
 	},
 }
 
