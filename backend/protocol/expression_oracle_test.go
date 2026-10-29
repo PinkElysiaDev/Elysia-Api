@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -75,7 +76,7 @@ func (expression *compiledExpression) evaluateValue(state evaluation) (Value, er
 		if err != nil {
 			return Value{}, err
 		}
-		output, err := expression.projectObject(JSONLeaf(source))
+		output, err := expression.projectObjectOracle(JSONLeaf(source))
 		if err != nil {
 			return Value{}, err
 		}
@@ -208,6 +209,29 @@ func (expression *compiledExpression) evaluateValue(state evaluation) (Value, er
 		return expression.evaluateKeyedArray(source)
 	}
 	return Value{}, fmt.Errorf("%s: unimplemented compiled operation", expression.path)
+}
+
+// Freeze projection before selection pushdown: normalize every raw member first.
+// Sharing the production selector would hide dropped-field regressions.
+func (expression *compiledExpression) projectObjectOracle(source JSONOutput) (plannedOutput, error) {
+	fields, err := plannedObjectFields(source)
+	if err != nil {
+		return plannedOutput{}, fmt.Errorf("%s/source: %w", expression.path, err)
+	}
+	isInclude := expression.policy == "include"
+	capacity := len(fields)
+	if isInclude {
+		capacity = min(capacity, len(expression.keys))
+	}
+	node := &jsonOutputNode{object: true, fields: make([]jsonOutputField, 0, capacity)}
+	for _, field := range fields {
+		_, isSelected := slices.BinarySearch(expression.keys, field.key)
+		if isSelected == isInclude {
+			node.fields = append(node.fields, field)
+		}
+	}
+	output := JSONOutput{node: node}
+	return plannedOutput{output, normalizedOutputBytes(output)}, nil
 }
 
 func (expression *compiledExpression) evaluateArray(state evaluation) (Value, error) {

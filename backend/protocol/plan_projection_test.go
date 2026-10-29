@@ -14,6 +14,8 @@ func TestProjectObjectFields(t *testing.T) {
 		{"exclude", "exclude", `{"ttl":"1h","type":"ephemeral","future":{"n":9007199254740993}}`, `{"future":{"n":9007199254740993},"type":"ephemeral"}`, []string{"ttl"}},
 		{"include", "include", `{"z":0,"a":null,"b":false}`, `{"a":null,"z":0}`, []string{"z", "missing", "a"}},
 		{"duplicates", "exclude", `{"b":1e+03,"a":1,"a":2}`, `{"a":2,"b":1e+03}`, []string{"missing"}},
+		{"escaped-duplicates", "include", `{"keep":1,"\u006beep":2,"drop":"<>&"}`, `{"keep":2}`, []string{"keep"}},
+		{"retained-escaping", "include", "{\"keep\":\"<>&\u2028\u2029\",\"drop\":null}", `{"keep":"\u003c\u003e\u0026\u2028\u2029"}`, []string{"keep"}},
 		{"exclude-empty", "exclude", `{"b":null,"a":false}`, `{"a":false,"b":null}`, []string{}},
 		{"include-empty", "include", `{"a":null}`, `{}`, []string{}},
 		{"missing-member", "include", `{}`, `{}`, []string{"a"}},
@@ -36,6 +38,40 @@ func TestProjectObjectFields(t *testing.T) {
 				t.Fatalf("expression: got %s / %v, want %s", output.raw, err, test.expected)
 			}
 		})
+	}
+}
+
+func TestProjectRawNormalizationParity(t *testing.T) {
+	for _, input := range []string{
+		"{\"keep\":\"\xff\",\"drop\": { \"text\":\"<&\" }}",
+		"{\"bad\xff\":1,\"bad\ufffd\":2,\"drop\":\"\xff\"}",
+	} {
+		expression := compileTestOutputExpression(t, Expression{Op: "project", Source: expressionPointer(readExpression("input", "")), Keys: []string{"drop"}, Policy: "exclude"})
+		plan, _ := compileOutputPlan(expression)
+		value := parseTestValue(t, input)
+		compareOutputPlan(t, expression, plan, value, DefaultLimits(), 0, 0)
+		for cancelAt := 1; cancelAt <= 3; cancelAt++ {
+			compareOutputPlan(t, expression, plan, value, DefaultLimits(), 0, cancelAt)
+		}
+	}
+}
+
+func TestProjectCannotHideInvalidInput(t *testing.T) {
+	document := textProtocolPackage(t)
+	document.Spec.WireContracts[DecodeRequest].Schema.AllowUnknown = true
+	document.Mapping.Directions[DecodeRequest].Program.Fields["parameters"] = Expression{Op: "project", Source: expressionPointer(readExpression("input", "")), Keys: []string{"model", "prompt", "drop"}, Policy: "exclude"}
+	compiled := compilePackageForTest(t, document)
+	if _, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","prompt":"hi","drop":[1]}`), EvaluationContext{}); err != nil {
+		t.Fatal("valid projected request rejected", err)
+	}
+	for _, raw := range []string{
+		`{"model":"m","prompt":"hi","drop":[1,]}`,
+		`{"model":"m","prompt":"hi","drop":"\q"}`,
+		`{"model":"m","prompt":"hi","drop":1} {"extra":true}`,
+	} {
+		if _, err := compiled.DecodeRequest(t.Context(), []byte(raw), EvaluationContext{}); err == nil {
+			t.Fatal("projection hid invalid input", raw)
+		}
 	}
 }
 
@@ -119,6 +155,60 @@ func TestProjectBudgetAndSharedValues(t *testing.T) {
 		var failure *ResourceLimitError
 		if !errors.As(err, &failure) || failure.Metric != "bytes" {
 			t.Fatal("projection bypassed source or final output budget", err)
+		}
+	}
+	input := Value{raw: `{"content":"` + strings.Repeat("A", payloadBytes) + `","keep":"small"}`}
+	rawExpression := compileTestOutputExpression(t, Expression{Op: "project", Source: expressionPointer(readExpression("input", "")), Keys: []string{"keep"}, Policy: "include"})
+	rawPlan, _ := compileOutputPlan(rawExpression)
+	projected, err = rawPlan.build(evaluation{ctx: t.Context(), input: input, budget: &evaluationBudget{limits: DefaultLimits()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := projected.output.Encode(t.Context())
+	if err != nil || encoded.raw != `{"keep":"small"}` || sharesValueStorage(input, encoded) {
+		t.Fatal("small materialized projection retains the input", encoded, err)
+	}
+	var retained Value
+	if err := assignCoreValue(projected.output.node.fields[0].value, &retained, nil); err != nil || !retained.IsString("small") || sharesValueStorage(input, retained) {
+		t.Fatal("small core value retains the excluded body", retained, err)
+	}
+}
+
+func BenchmarkProjectLargeRawField(b *testing.B) {
+	input := Value{raw: `{"content":"` + strings.Repeat("A", 2<<20) + `","keep":true}`}
+	for _, selection := range []struct {
+		name, policy string
+		keys         []string
+		retainsBody  bool
+	}{{"retain", "include", []string{"content", "keep"}, true}, {"exclude", "exclude", []string{"content"}, false}} {
+		expression := compileTestOutputExpression(b, Expression{Op: "project", Source: expressionPointer(readExpression("input", "")), Keys: selection.keys, Policy: selection.policy})
+		plan, _ := compileOutputPlan(expression)
+		state := func() evaluation {
+			return evaluation{ctx: b.Context(), input: input, budget: &evaluationBudget{limits: DefaultLimits()}}
+		}
+		want, wantErr := expression.evaluate(state())
+		got, gotErr := plan.evaluate(state())
+		if wantErr != nil || gotErr != nil || got != want {
+			b.Fatal("projection preflight differs", wantErr, gotErr)
+		}
+		for _, implementation := range []string{"oracle", "plan"} {
+			b.Run(selection.name+"/"+implementation, func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64(input.Len()))
+				for b.Loop() {
+					state := evaluation{ctx: b.Context(), input: input, budget: &evaluationBudget{limits: DefaultLimits()}}
+					var output Value
+					var err error
+					if implementation == "oracle" {
+						output, err = expression.evaluate(state)
+					} else {
+						output, err = plan.evaluate(state)
+					}
+					if err != nil || (output.Len() > 2<<20) != selection.retainsBody {
+						b.Fatal("incomplete projection", output.Len(), err)
+					}
+				}
+			})
 		}
 	}
 }
