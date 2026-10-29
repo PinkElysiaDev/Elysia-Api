@@ -11,7 +11,9 @@ type OperationInfo struct {
 }
 
 var expressionOperations = []OperationInfo{
-	{"read", []string{"from", "path", "required"}, nil, AnyType, "Read an RFC 6901 pointer from input, item, root or context; preserve missing and null."},
+	{"read", []string{"from", "name", "path", "required"}, nil, AnyType, "Read an RFC 6901 pointer from input, item, root, context or a named binding; preserve missing and null."},
+	{"let", []string{"name", "source", "body"}, []string{"name", "source", "body"}, AnyType, "Evaluate source once and bind its immutable value by name within body; nested bindings may shadow outer names."},
+	{"index", nil, nil, IntegerType, "Read the zero-based position in the immediate iteration source array, not an original wire location."},
 	{"literal", []string{"value"}, []string{"value"}, AnyType, "Return declared JSON without number coercion."},
 	{"omit", nil, nil, AnyType, "Explicitly omit an object field or array-map result."},
 	{"object", []string{"fields"}, nil, ObjectType, "Construct an object; omit only missing expression values."},

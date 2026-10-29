@@ -14,8 +14,11 @@ func (plan *compiledOutputPlan) buildTypeQuery(state evaluation) (plannedOutput,
 	if plan.expression.op == "type" {
 		return plannedLeaf(StringValue(plannedJSONType(source.output))), nil
 	}
-	_, err = readPlannedInteger(source.output)
-	return plannedLeaf(coreBoolean(err == nil)), nil
+	if plannedJSONType(source.output) != "number" {
+		return plannedLeaf(coreBoolean(false)), nil
+	}
+	var number int64
+	return plannedLeaf(coreBoolean(source.output.value.Decode(&number) == nil)), nil
 }
 
 // Values are already valid JSON. The leading token identifies their kind;

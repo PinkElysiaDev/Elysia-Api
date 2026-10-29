@@ -16,6 +16,7 @@ type compiledExpression struct {
 	path                                string
 	pointer                             []string
 	from                                string
+	bindingSlot                         int
 	value                               Value
 	fields                              map[string]*compiledExpression
 	keys                                []string
@@ -46,9 +47,18 @@ type expressionCompiler struct {
 }
 
 type expressionScope struct {
-	input       *ValueSchema
-	item        *ValueSchema
-	isIteration bool
+	input        *ValueSchema
+	root         *ValueSchema
+	item         *ValueSchema
+	isIteration  bool
+	bindings     map[string]expressionBinding
+	bindingDepth int
+}
+
+type expressionBinding struct {
+	slot   int
+	result JSONType
+	schema *ValueSchema
 }
 
 func (compiler *expressionCompiler) compilePlan(expression Expression, path string, scope expressionScope, depth int) (*compiledOutputPlan, error) {
@@ -109,18 +119,35 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		if compiled.from == "" {
 			compiled.from = "input"
 		}
-		if !slices.Contains([]string{"input", "root", "item", "context"}, compiled.from) {
+		if !slices.Contains([]string{"input", "root", "item", "context", "binding"}, compiled.from) {
 			return nil, fmt.Errorf("%s/from: unknown input scope", path)
 		}
 		if compiled.from == "item" && !scope.isIteration {
 			return nil, fmt.Errorf("%s/from: item requires an array iteration", path)
 		}
 		schema := scope.input
-		if compiled.from == "item" {
+		switch compiled.from {
+		case "root":
+			if scope.root != nil {
+				schema = scope.root
+			}
+		case "item":
 			schema = scope.item
-		}
-		if compiled.from == "context" {
+		case "context":
 			schema = nil
+		case "binding":
+			binding, exists := scope.bindings[expression.Name]
+			if !exists {
+				return nil, fmt.Errorf("%s/name: binding is not declared in this scope", path)
+			}
+			compiled.bindingSlot, schema = binding.slot, binding.schema
+			if len(pointer) == 0 {
+				compiled.result = binding.result
+			}
+		}
+		_, hasName := expression.present["name"]
+		if compiled.from != "binding" && (expression.Name != "" || hasName) {
+			return nil, fmt.Errorf("%s/name: name requires the binding scope", path)
 		}
 		fieldSchema, err := schemaAtPointer(schema, pointer)
 		if err != nil {
@@ -134,6 +161,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	if compiled.op == "literal" {
 		compiled.result = valueType(expression.Value)
 	}
+	if compiled.op == "index" && !scope.isIteration {
+		return nil, fmt.Errorf("%s: index requires an array iteration", path)
+	}
 	if expression.Source != nil {
 		child, err := compiler.compile(*expression.Source, path+"/source", scope, depth+1)
 		if err != nil {
@@ -142,6 +172,18 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		compiled.source = child
 	}
 	childScope := scope
+	if compiled.op == "let" {
+		if !definitionIdentifier.MatchString(expression.Name) {
+			return nil, fmt.Errorf("%s/name: expected a binding identifier", path)
+		}
+		compiled.bindingSlot = scope.bindingDepth
+		childScope.bindingDepth++
+		childScope.bindings = make(map[string]expressionBinding, len(scope.bindings)+1)
+		for name, binding := range scope.bindings {
+			childScope.bindings[name] = binding
+		}
+		childScope.bindings[expression.Name] = expressionBinding{compiled.bindingSlot, compiled.source.result, compiled.source.schema}
+	}
 	if slices.Contains([]string{"map", "flatmap", "filter"}, compiled.op) {
 		if !isAssignable(compiled.source.result, ArrayType) {
 			return nil, fmt.Errorf("%s/source must produce an array", path)
@@ -149,14 +191,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		childScope.isIteration = true
 		childScope.item = nil
 		if expression.Source.Op == "read" {
-			base := scope.input
-			if expression.Source.From == "item" {
-				base = scope.item
-			}
-			if expression.Source.From == "context" {
-				base = nil
-			}
-			arraySchema, _ := schemaAtPointer(base, compiled.source.pointer)
+			arraySchema := compiled.source.schema
 			if arraySchema != nil {
 				childScope.item = arraySchema.Items
 			}
@@ -244,6 +279,8 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		return fail("condition must produce a boolean")
 	}
 	switch expression.op {
+	case "let":
+		expression.result, expression.schema = expression.body.result, expression.body.schema
 	case "strip_prefix", "trim_prefix":
 		prefix, err := readString(expression.value)
 		if err != nil || prefix == "" || !isAssignable(expression.source.result, StringType) {

@@ -155,8 +155,9 @@ func (plan *compiledOutputPlan) buildFilter(state evaluation) (plannedOutput, er
 	}
 	node := &jsonOutputNode{items: make([]JSONOutput, 0, len(items))}
 	bytes := 2
-	for _, item := range items {
+	for index, item := range items {
 		child := state
+		child.itemIndex = index
 		child.item = item.value
 		child.itemOutput = nil
 		if item.node != nil {

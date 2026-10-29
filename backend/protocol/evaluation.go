@@ -10,6 +10,8 @@ type evaluation struct {
 	valueReader                *valueReader
 	inputReader, rootReader    func([]string) (JSONOutput, error)
 	itemOutput                 *JSONOutput
+	itemIndex                  int
+	bindings                   []JSONOutput
 }
 
 type evaluationBudget struct {

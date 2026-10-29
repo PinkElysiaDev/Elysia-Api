@@ -13,6 +13,8 @@ func (state evaluation) hasOutputReader(from string) bool {
 		return state.rootReader != nil
 	case "item":
 		return state.itemOutput != nil
+	case "binding":
+		return true
 	}
 	return false
 }
@@ -29,6 +31,8 @@ func (expression *compiledExpression) readOutput(state evaluation) (JSONOutput, 
 		output, err = state.rootReader(expression.pointer)
 	case expression.from == "item" && state.itemOutput != nil:
 		output, err = readOutputPointer(*state.itemOutput, expression.pointer, state.valueReader)
+	case expression.from == "binding":
+		output, err = readOutputPointer(state.bindings[expression.bindingSlot], expression.pointer, state.valueReader)
 	default:
 		return JSONOutput{}, false, nil
 	}
