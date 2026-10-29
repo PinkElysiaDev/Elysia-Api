@@ -97,6 +97,9 @@ func (plan *compiledOutputPlan) evaluate(state evaluation) (Value, error) {
 	if err != nil || value.output.IsZero() {
 		return Value{}, err
 	}
+	if value.output.node == nil {
+		return value.output.value, nil
+	}
 	// Cancellation belongs to the same expression boundaries as the original
 	// evaluator. Final materialization must not change its error precedence.
 	return value.output.Encode(context.WithoutCancel(state.ctx))

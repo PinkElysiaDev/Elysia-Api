@@ -12,11 +12,22 @@ import (
 
 //go:generate go run -tags=coreplan_bootstrap ../internal/coreplan
 
+const coreDirectDecodeBytes = 4 << 10
+
 // decodeCoreOutput writes a completed plan directly into the closed core model.
 // A rejected write may materialize once to recover the contract decoder's exact
 // diagnostic. That result can never turn failure into success or rerun a mapping.
 func decodeCoreOutput[T any](output JSONOutput, write func(JSONOutput, *T, *valueReader) error) (*T, error) {
 	var result T
+	// A small raw leaf already has JSON bytes. The contract decoder consumes it
+	// once without building the temporary field/index views needed by the large
+	// borrowed writer. Constructed plans still write directly into the core.
+	if output.node == nil && output.value.Len() > 0 && output.value.Len() <= coreDirectDecodeBytes {
+		if err := decodeContract(output.value.Bytes(), &result); err != nil {
+			return nil, err
+		}
+		return &result, nil
+	}
 	if err := write(output, &result, nil); err != nil {
 		value, encodingErr := output.Encode(context.Background())
 		if encodingErr != nil {
