@@ -146,24 +146,47 @@ func (compiled *Compiled) checkCacheDispositions(state evaluation, limits Limits
 	// Rule values are editable. The target's native policy is the authority for
 	// replay, including after a conversion rule has already removed the intent.
 	if compiled.native.Preserve && request.Native != nil && CanPreserveNative(request.Native.Source, compiled.target(EncodeRequest, EvaluationContext{})) {
-		return streamIssue(UnsupportedNative, "/native", "cache dispositions have no proven deletion contract for same-wire native replay")
+		baseline := compiled.requestReplayBaseline(request.Native, compiled.wireLimits(state.ctx, DecodeRequest))
+		if baseline == nil {
+			return streamIssue(UnsupportedNative, "/native", "cache dispositions require a matching private baseline for same-wire native replay")
+		}
+		if err := compiled.checkCacheDispositionMatches(state.ctx, baseline, limits, &request.Native.Source.Scope, func(string) error {
+			return streamIssue(UnsupportedNative, "/native", "original cache intent has no proven deletion contract for same-wire native replay")
+		}); err != nil {
+			return err
+		}
 	}
+	return compiled.checkCacheDispositionMatches(state.ctx, request, limits, nil, func(path string) error {
+		return streamIssue(UnsupportedCapability, path, "cache intent requires the selected request-projection policy before encoding")
+	})
+}
+
+func (compiled *Compiled) checkCacheDispositionMatches(ctx context.Context, request *Request, limits Limits, sourceScope *Scope, reject func(string) error) error {
 	if !hasRequestCacheIntents(request) {
 		return nil
 	}
 	budget := &evaluationBudget{limits: limits, stepLimit: limits.Nodes}
 	return requestCaches(request, func(intents *[]CacheIntent, at string) error {
 		for index, intent := range *intents {
+			if sourceScope != nil && intent.Resource != nil {
+				// Workspaces precede scope stamping. Evaluate the finalized
+				// resource view without mutating their immutable baseline.
+				resource := *intent.Resource
+				if err := stampResourceScope(&resource, *sourceScope); err != nil {
+					return err
+				}
+				intent.Resource = &resource
+			}
 			for _, effect := range compiled.packagePlan.effects[EncodeRequest] {
 				if effect.scope != cacheIntentScope {
 					continue
 				}
-				isMatch, err := matchCacheDisposition(state.ctx, intent, effect, budget)
+				isMatch, err := matchCacheDisposition(ctx, intent, effect, budget)
 				if err != nil {
 					return err
 				}
 				if isMatch {
-					return streamIssue(UnsupportedCapability, fmt.Sprintf("%s/%d", at, index), "cache intent requires the selected request-projection policy before encoding")
+					return reject(fmt.Sprintf("%s/%d", at, index))
 				}
 			}
 		}

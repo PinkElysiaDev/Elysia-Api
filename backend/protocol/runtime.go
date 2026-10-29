@@ -495,8 +495,14 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 		if request == nil {
 			request, err = replay.decodeRequestValue(ctx, original, options, &native.Source.Scope)
 		} else {
+			decoded := request
 			if err = ctx.Err(); err == nil {
 				request, err = replay.finishDecodedRequest(ctx, original, cloneRequestSemantic(request), options, &native.Source.Scope)
+			}
+			if err == nil && replay.packagePlan != nil {
+				// The replay view owns its effective budget. Retain the same
+				// immutable pre-finalization baseline under that exact identity.
+				replay.attachRequestWorkspace(ctx, request, decoded)
 			}
 			err = replay.runtimeError(DecodeRequest, err)
 		}

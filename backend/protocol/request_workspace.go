@@ -15,9 +15,9 @@ type RequestBaselineModule interface {
 }
 
 // requestEncodingWorkspace owns one immutable parsed baseline, never a set of
-// candidate projections. Supported identity module after-mappings preserve it;
-// materializing a semantic JSON boundary drops it. It is attached privately
-// after successful decoding and is never cached globally.
+// candidate projections. Pure package plans and supported identity module
+// after-mappings preserve it; a semantic JSON boundary drops it. It is attached
+// privately after successful decoding and is never cached globally.
 type requestEncodingWorkspace struct {
 	compiled *Compiled
 	identity Identity
@@ -50,6 +50,9 @@ func (compiled *Compiled) hasPureRequestMapping(direction Direction) bool {
 }
 
 func (compiled *Compiled) supportsRequestWorkspace() bool {
+	if compiled.packagePlan != nil {
+		return compiled.mappings[DecodeRequest].hasCoreOutputPlan && compiled.mappings[EncodeRequest].hasCoreInputPlan
+	}
 	// Both request boundaries now execute identity checks without a JSON round
 	// trip. Reuse still depends on the exact source, context and effective limits.
 	return compiled.hasTypedRequestMapping(DecodeRequest) && compiled.hasTypedRequestMapping(EncodeRequest)
