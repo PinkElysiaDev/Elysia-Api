@@ -11,7 +11,7 @@ import (
 // Tool input and usage validation share the same rules as request and event paths.
 func CheckResponse(response *Response, target Target, limits Limits) []ConversionIssue {
 	check := capabilityCheck{target: target, limits: limits, calls: map[string]struct{}{}, results: map[string]struct{}{}}
-	if response == nil || response.SchemaVersion != SemanticSchemaVersion {
+	if response == nil || response.SchemaVersion != target.coreSchemaVersion() {
 		check.add(InvalidInput, "/schemaVersion", "", "missing response or unsupported semantic version")
 		return check.issues
 	}

@@ -16,7 +16,7 @@ type compiledPackagePlan struct {
 type compiledSemanticEffect struct {
 	id, kind, path, target, reason string
 	corePointer, wirePointer       []string
-	when                           *compiledExpression
+	when                           *compiledOutputPlan
 }
 
 // DecodeProtocolPackage parses and validates a package without activating it.
@@ -50,6 +50,9 @@ func (compiler *Compiler) CompilePackage(raw []byte) (*Compiled, []ConversionIss
 	for _, direction := range sortedKeys(compiled.packagePlan.effects) {
 		if isEventDirection(direction) {
 			return nil, definitionIssues(compiled.identity, "/mapping/directions/"+string(direction), fmt.Errorf("event programs require the core event runtime and are not executable yet"))
+		}
+		if compiled.mappings[direction].outputPlan == nil {
+			return nil, definitionIssues(compiled.identity, "/mapping/directions/"+string(direction)+"/program", fmt.Errorf("program requires a compiled output plan"))
 		}
 		for index, effect := range compiled.packagePlan.effects[direction] {
 			if effect.kind != "emit" && effect.kind != "reject" {
@@ -159,12 +162,17 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 			return compiledMapping{}, nil, fmt.Errorf("%s/target: %w", at, err)
 		}
 		if effect.When != nil {
-			entry.when, err = compiler.compile(*effect.When, at+"/when", scope, 1)
+			condition, err := compiler.compile(*effect.When, at+"/when", scope, 1)
 			if err != nil {
 				return compiledMapping{}, nil, err
 			}
-			if !isAssignable(entry.when.result, BooleanType) {
+			if !isAssignable(condition.result, BooleanType) {
 				return compiledMapping{}, nil, fmt.Errorf("%s/when: expected a boolean expression", at)
+			}
+			var hasPlan bool
+			entry.when, hasPlan = compileOutputPlan(condition)
+			if !hasPlan {
+				return compiledMapping{}, nil, fmt.Errorf("%s/when: condition requires a compiled output plan", at)
 			}
 		}
 		effects = append(effects, entry)
@@ -182,7 +190,11 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		return compiledMapping{}, nil, err
 	}
 	plan, _ := compileOutputPlan(program)
-	return compiledMapping{transform: program, outputPlan: plan, definitionHash: hashValue(identity)}, effects, nil
+	return compiledMapping{
+		transform: program, outputPlan: plan, definitionHash: hashValue(identity),
+		hasCoreOutputPlan: plan != nil && (direction == DecodeRequest || direction == DecodeResponse),
+		hasCoreInputPlan:  plan != nil && (direction == EncodeRequest || direction == EncodeResponse),
+	}, effects, nil
 }
 
 func isPackageDecodeDirection(direction Direction) bool {

@@ -192,7 +192,7 @@ func bindingTarget(compiled *Compiled, binding Binding, direction Direction, sco
 	for capability := range capabilities {
 		capabilities[capability] = capabilities[capability] && binding.Capabilities[capability]
 	}
-	return Target{Codec: compiled.Codec(direction), Protocol: compiled.Identity(), Direction: direction, Scope: scope, Capabilities: capabilities}
+	return Target{Codec: compiled.Codec(direction), Protocol: compiled.Identity(), Direction: direction, Scope: scope, Capabilities: capabilities, coreVersion: compiled.CoreVersion()}
 }
 
 func upstreamBindingIssues(issues []ConversionIssue) []ConversionIssue {

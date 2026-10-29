@@ -38,6 +38,11 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 		}
 	}
 	state := evaluation{ctx: ctx, context: contextValue, inputReader: read, rootReader: read, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	if compiled.packagePlan != nil {
+		if err := compiled.preparePackageState(direction, state, inputLimits); err != nil {
+			return fail(err)
+		}
+	}
 	mapping := compiled.mappings[direction]
 	output, err := mapping.outputPlan.evaluate(state)
 	if err != nil {
@@ -51,6 +56,11 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 	}
 	if err := mapping.output.validate(output, "/output", outputLimits); err != nil {
 		return fail(err)
+	}
+	if compiled.packagePlan != nil {
+		if err := compiled.finishPackageExecution(ctx, direction, output, outputLimits); err != nil {
+			return fail(err)
+		}
 	}
 	return output, nil
 }

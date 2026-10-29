@@ -57,6 +57,7 @@ type Target struct {
 	Direction    Direction
 	Scope        Scope
 	Capabilities CapabilitySet
+	coreVersion  int
 }
 
 // CanPreserveNative requires an explicit family and wire-version match. A

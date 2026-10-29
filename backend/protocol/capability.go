@@ -91,7 +91,7 @@ func CheckRequest(request *Request, target Target, limits Limits) []ConversionIs
 		check.add(InvalidDefinition, "", "", err.Error())
 		return check.issues
 	}
-	if request == nil || request.SchemaVersion != SemanticSchemaVersion {
+	if request == nil || request.SchemaVersion != target.coreSchemaVersion() {
 		check.add(InvalidInput, "/schemaVersion", "", "missing request or unsupported semantic contract version")
 		return check.issues
 	}

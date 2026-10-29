@@ -26,6 +26,14 @@ func decodePlannedCore[T any](ctx context.Context, compiled *Compiled, direction
 		return fail(err)
 	}
 	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, valueReader: options.valueReader, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	if compiled.packagePlan != nil {
+		if state.valueReader == nil {
+			state.valueReader = requestValueReader(input)
+		}
+		if err := compiled.preparePackageState(direction, state, inputLimits); err != nil {
+			return fail(err)
+		}
+	}
 	output, err := mapping.outputPlan.build(state)
 	if err != nil {
 		return fail(err)
@@ -35,6 +43,11 @@ func decodePlannedCore[T any](ctx context.Context, compiled *Compiled, direction
 	}
 	if err := checkPlannedOutputLimits(output, outputLimits, "mapping_output"); err != nil {
 		return fail(err)
+	}
+	if compiled.packagePlan != nil {
+		if err := compiled.finishPackageCoreOutput(ctx, direction, output.output, state.valueReader); err != nil {
+			return fail(err)
+		}
 	}
 	// Contract-decoding errors retain their original unwrapped boundary.
 	var target *T

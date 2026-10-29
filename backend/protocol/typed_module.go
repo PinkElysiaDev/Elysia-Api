@@ -146,7 +146,7 @@ func (compiled *Compiled) hasTypedRequestMapping(direction Direction) bool {
 // outputs need no strict JSON reparse; capability/provenance checks follow in
 // the caller exactly as they do for declarative mappings.
 func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direction, input Value, options EvaluationContext, decode func(TypedModule, EvaluationContext) (*T, error)) (*T, error) {
-	if compiled.packagePlan == nil && compiled.mappings[direction].hasCoreOutputPlan {
+	if compiled.mappings[direction].hasCoreOutputPlan {
 		return decodePlannedCore[T](ctx, compiled, direction, input, options)
 	}
 	inputLimits, outputLimits, _ := compiled.mappingLimits(ctx, direction)
@@ -271,7 +271,7 @@ func finishIdentityRequestDecode[T any](ctx context.Context, compiled *Compiled,
 }
 
 func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direction, input *T, options EvaluationContext, encode func(TypedModule, *T, EvaluationContext) (Value, error)) (Value, error) {
-	if compiled.packagePlan == nil && compiled.mappings[direction].hasCoreInputPlan {
+	if compiled.mappings[direction].hasCoreInputPlan {
 		return encodePlannedCore(ctx, compiled, direction, input, options)
 	}
 	inputLimits, outputLimits, _ := compiled.mappingLimits(ctx, direction)

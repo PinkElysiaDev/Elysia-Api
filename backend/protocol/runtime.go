@@ -57,7 +57,9 @@ func (compiled *Compiled) decodeRequestValue(ctx context.Context, input Value, o
 
 func (compiled *Compiled) finishDecodedRequest(ctx context.Context, input Value, request *Request, options EvaluationContext, boundScope *Scope) (*Request, error) {
 	sourceContext := &NativeRequestContext{Scope: options.Scope, Values: maps.Clone(options.Values), InterleavedThinking: options.InterleavedThinking}
-	request.SchemaVersion = SemanticSchemaVersion
+	if compiled.packagePlan == nil {
+		request.SchemaVersion = SemanticSchemaVersion
+	}
 	if options.valueReader != nil {
 		detachRequestResources(request)
 	}
@@ -167,7 +169,9 @@ func (compiled *Compiled) DecodeResponse(ctx context.Context, body []byte, optio
 	if err != nil {
 		return nil, err
 	}
-	response.SchemaVersion = SemanticSchemaVersion
+	if compiled.packagePlan == nil {
+		response.SchemaVersion = SemanticSchemaVersion
+	}
 	response.Source = compiled.identity
 	if compiled.mappings[DecodeResponse].hasCoreOutputPlan {
 		detachNodeResources(response.Content)
@@ -455,7 +459,7 @@ func stampResourceScope(resource *Resource, scope Scope) error {
 }
 
 func (compiled *Compiled) target(direction Direction, options EvaluationContext) Target {
-	return Target{Codec: compiled.Codec(direction), Protocol: compiled.identity, Direction: direction, Scope: options.Scope, Capabilities: compiled.mappings[direction].capabilities}
+	return Target{Codec: compiled.Codec(direction), Protocol: compiled.identity, Direction: direction, Scope: options.Scope, Capabilities: compiled.mappings[direction].capabilities, coreVersion: compiled.CoreVersion()}
 }
 
 func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Direction, native *Native, output Value, options EvaluationContext) (Value, error) {
@@ -523,7 +527,9 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 	}
 
 	var before Value
-	if direction == EncodeRequest && replay.hasTypedRequestMapping(EncodeRequest) {
+	if replay.packagePlan != nil {
+		before, err = encodePlannedCore(ctx, &replay, direction, baseline, options)
+	} else if direction == EncodeRequest && replay.hasTypedRequestMapping(EncodeRequest) {
 		before, err = encodeRequestMapping(ctx, &replay, baseline.(*Request), options, replay.mappings[direction].module.(TypedModule), func(module TypedModule, input *Request, options EvaluationContext) (Value, error) {
 			return module.EncodeRequest(ctx, input, options)
 		})
@@ -545,6 +551,11 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 			return Value{}, resourceIssue(err, compiled.identity, direction, "preserve")
 		}
 		return Value{}, IssuesError([]ConversionIssue{{Code: InvalidMutation, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "preserve", Path: native.Source.Path, Reason: err.Error(), Suggestion: "Declare stable array identities or apply an explicit native replacement."}})
+	}
+	if compiled.packagePlan != nil {
+		if err := compiled.ValidateWireOutputContext(ctx, direction, result); err != nil {
+			return Value{}, err
+		}
 	}
 	return result, nil
 }
