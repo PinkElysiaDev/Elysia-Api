@@ -305,6 +305,20 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 }
 
 func (m ConversionMatch) matches(ctx ConversionContext, input Value) bool {
+	if !m.matchesRoute(ctx) {
+		return false
+	}
+	if m.Present != nil {
+		ptr, _ := parsePointer(m.Path)
+		v, err := readValuePointer(input, ptr)
+		if err != nil || (!v.IsZero()) != *m.Present {
+			return false
+		}
+	}
+	return true
+}
+
+func (m ConversionMatch) matchesRoute(ctx ConversionContext) bool {
 	for _, pair := range [][2]string{{m.SourceID, ctx.Source.DefinitionID}, {m.TargetID, ctx.Target.DefinitionID}, {m.SourceFamily, ctx.Source.Family}, {m.TargetFamily, ctx.Target.Family}, {m.SourceWire, ctx.Source.WireVersion}, {m.TargetWire, ctx.Target.WireVersion}, {m.Operation, ctx.Operation}, {string(m.Transport), string(ctx.Transport)}} {
 		if pair[0] != "" && pair[0] != pair[1] {
 			return false
@@ -316,14 +330,37 @@ func (m ConversionMatch) matches(ctx ConversionContext, input Value) bool {
 			return false
 		}
 	}
-	if m.Present != nil {
-		ptr, _ := parsePointer(m.Path)
-		v, err := readValuePointer(input, ptr)
-		if err != nil || (!v.IsZero()) != *m.Present {
-			return false
-		}
-	}
 	return true
+}
+
+func (m ConversionMatch) matchesSemantic(ctx ConversionContext, document any) bool {
+	if !m.matchesRoute(ctx) {
+		return false
+	}
+	if m.Present == nil {
+		return true
+	}
+	if m.Path == "" {
+		return *m.Present
+	}
+	pointer, _ := parsePointer(m.Path)
+	var selected JSONOutput
+	var err error
+	switch value := document.(type) {
+	case *Request:
+		selected, err = readCoreRequestOutput(value, pointer)
+	case *Response:
+		selected, err = readCoreResponseOutput(value, pointer)
+	case *Event:
+		selected, err = readCoreEventOutput(value, pointer)
+	case *Node:
+		selected, err = readCoreNode(*value, pointer)
+	default:
+		panic("presence requires a semantic document")
+	}
+	// Traversal errors mean no match, including for Present=false, just as in
+	// the wire matcher. Explicit null remains a present value.
+	return err == nil && !selected.IsZero() == *m.Present
 }
 
 func (m ConversionMatch) MatchesContext(ctx ConversionContext) bool { return m.matches(ctx, Value{}) }

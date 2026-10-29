@@ -313,14 +313,20 @@ func (c *CompiledConversion) applyNodeObject(ctx context.Context, phase Conversi
 			}
 			var v Value
 			isBuiltin := rule.Action == "signatures" || rule.Action == "provider_signature" || rule.Action == "tool_result_text" || rule.Action == "tool_result_object"
-			if (rule.Match.NodeKind == "" || rule.Match.NodeKind == n.Kind) && (rule.Match.Present != nil || !isBuiltin) {
-				var err error
-				v, err = EncodeValue(n)
-				if err != nil {
-					return err
+			isMatch := false
+			if rule.Match.NodeKind == "" || rule.Match.NodeKind == n.Kind {
+				if isBuiltin {
+					isMatch = rule.Match.matchesSemantic(route, n)
+				} else {
+					var err error
+					v, err = EncodeValue(n)
+					if err != nil {
+						return err
+					}
+					isMatch = rule.Match.matches(route, v)
 				}
 			}
-			if (rule.Match.NodeKind == "" || rule.Match.NodeKind == n.Kind) && rule.Match.matches(route, v) {
+			if isMatch {
 				if rule.Action == "signatures" {
 					foreign := route.Source.Family != route.Target.Family || route.Source.WireVersion != route.Target.WireVersion
 					restored := n.Source != nil && n.Source.Protocol.Family == route.Target.Family && n.Source.Protocol.WireVersion == route.Target.WireVersion

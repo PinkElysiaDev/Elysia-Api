@@ -30,9 +30,6 @@ func (state *conversionState) validateContext(phase ConversionPhase) error {
 }
 
 func (state *conversionState) accepts(phase ConversionPhase, rule ConversionRule) bool {
-	if rule.Match.Present != nil || rule.Match.Path != "" {
-		return false
-	}
 	if phase == ConversionResponse || phase == ConversionEvent {
 		switch rule.Action {
 		case "chat_response_model", "responses_turn_state", "anthropic_usage_envelope", "response_shape", "response_envelope", "response_metadata", "error_metadata", "usage_projection", "signatures":
@@ -79,7 +76,7 @@ func (state *conversionState) load(phase ConversionPhase, strict bool) error {
 
 func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, phase ConversionPhase, rule ConversionRule, route ConversionContext, sink *DiagnosticSink) (string, error) {
 	isNodeRule := rule.Action == "signatures" || rule.Action == "tool_result_text" || rule.Action == "tool_result_object"
-	if !isNodeRule && !rule.Match.matches(route, Value{}) {
+	if !isNodeRule && !state.matches(rule.Match, route) {
 		return "", nil
 	}
 	isStrict := isNodeRule || rule.Action == "responses_turn_state" || (phase == ConversionRequest && rule.Action != "response_metadata")
@@ -127,6 +124,15 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 	state.needsEncoding, state.isStrict = true, true
 	state.wire = Value{} // The owned document now contains the complete current value.
 	return target, nil
+}
+
+func (state *conversionState) matches(match ConversionMatch, route ConversionContext) bool {
+	if !state.needsEncoding {
+		// A validation-only decode may have discarded unknown fields. Until a
+		// typed action replaces the wire, presence still observes that wire.
+		return match.matches(route, state.wire)
+	}
+	return match.matchesSemantic(route, state.document)
 }
 
 func (c *CompiledConversion) applyResponseObject(phase ConversionPhase, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (bool, error) {
