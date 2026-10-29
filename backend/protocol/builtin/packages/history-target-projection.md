@@ -59,6 +59,7 @@ for native replay`。
 这项基础设施修复没有把供应商策略移入 Go：Gemini 默认满足以及 Chat/Responses 拒绝仍由
 三个目标 JSON 声明决定。
 
-此外，三个目标草案尚未完整拒绝未映射的其他族 `wire:*` 字段。没有被来源完整值声明识别的
-context_management 不能借此 default 获得删除授权。源侧未匹配值仍完整保留，目标侧未映射
-owner 保护仍是后续独立工作，本切片不作为生产激活证据。
+请求参数中的其他族 `wire:*` owner 现在由[独立目标声明](foreign-wire-owner-guards.md)拒绝，
+包括没有预置名称的家族。没有被来源完整值声明识别的 context_management 仍留在原参数 owner，
+不能借此 default 获得删除授权。节点、工具和响应等其他 owner 的保护仍需独立完成，
+根参数守卫与本切片均不作为完整协议的生产激活证据。

@@ -7819,6 +7819,97 @@
             }
           }
         }
+      },
+      "has-foreign-wire-owner": {
+        "op": "if",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "object"
+            }
+          ]
+        },
+        "then": {
+          "op": "not",
+          "source": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "filter",
+                "source": {
+                  "op": "keys",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters"
+                  }
+                },
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "trim_prefix",
+                            "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": ""
+                            },
+                            "value": "wire:"
+                          },
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": ""
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": ""
+                          },
+                          {
+                            "op": "literal",
+                            "value": "wire:claude"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "array",
+                "items": []
+              }
+            ]
+          }
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
       }
     },
     "directions": {
@@ -8207,6 +8298,16 @@
               ],
               "unmatched": "/parameters/wire:claude/context_management"
             }
+          },
+          {
+            "id": "foreign-wire-owner",
+            "kind": "reject",
+            "path": "/parameters",
+            "when": {
+              "op": "ref",
+              "ref": "has-foreign-wire-owner"
+            },
+            "reason": "foreign protocol-specific owner requires an explicit mapping"
           }
         ],
         "capabilities": {
