@@ -95,6 +95,34 @@ func TestAnthropicPackageDraftMigration(t *testing.T) {
 	}
 	checkAnthropicReasoningMigration(t, legacy, draft)
 	checkAnthropicNativeEdits(t, legacy, draft)
+	for _, scale := range []struct {
+		name          string
+		bytes, blocks int
+	}{{"large-payload", 3 << 20, 0}, {"many-nodes", 4, 1800}} {
+		t.Run("scale/"+scale.name, func(t *testing.T) {
+			input, err := p.ParseValue(largeAnthropicRequest(scale.bytes, scale.blocks))
+			if err != nil {
+				t.Fatal(err)
+			}
+			sample := p.Sample{Direction: p.DecodeRequest, Input: input}
+			want, wantErr := executePackageMigrationSample(t, legacy, sample, p.EvaluationContext{}, false)
+			got, gotErr := executePackageMigrationSample(t, draft, sample, p.EvaluationContext{}, true)
+			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+			request, err := legacy.DecodeRequestValue(t.Context(), input, p.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Native = nil
+			sample.Input, err = p.EncodeValue(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sample.Direction = p.EncodeRequest
+			want, wantErr = executePackageMigrationSample(t, legacy, sample, p.EvaluationContext{}, false)
+			got, gotErr = executePackageMigrationSample(t, draft, sample, p.EvaluationContext{}, true)
+			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+		})
+	}
 }
 
 func checkAnthropicNativeEdits(t *testing.T, legacy, draft *p.Compiled) {
