@@ -59,10 +59,10 @@ func (output JSONOutput) IsZero() bool { return output.node == nil && output.val
 // then writes one owned result. No payload-sized intermediate container strings
 // are built. Plans contain no public mutable nodes and cannot form cycles.
 func (output JSONOutput) Encode(ctx context.Context) (Value, error) {
-	if err := ctx.Err(); err != nil {
-		return Value{}, err
-	}
 	if output.node == nil {
+		if err := ctx.Err(); err != nil {
+			return Value{}, err
+		}
 		if output.value.IsZero() {
 			return Value{}, fmt.Errorf("absent JSON value requires omission")
 		}
@@ -70,9 +70,48 @@ func (output JSONOutput) Encode(ctx context.Context) (Value, error) {
 	}
 	var storage [64]string
 	parts := jsonOutputParts{parts: storage[:0]}
-	if err := parts.collect(ctx, output); err != nil {
+	if err := parts.prepare(ctx, output); err != nil {
 		return Value{}, err
 	}
+	return parts.encode(ctx)
+}
+
+// equalJSONOutputBytes compares complete encoded roots. Byte equality does not
+// establish provenance or authorize native replay.
+func equalJSONOutputBytes(ctx context.Context, left, right JSONOutput) (bool, error) {
+	var leftStorage, rightStorage [64]string
+	leftParts := jsonOutputParts{parts: leftStorage[:0]}
+	rightParts := jsonOutputParts{parts: rightStorage[:0]}
+	if err := leftParts.prepare(ctx, left); err != nil {
+		return false, err
+	}
+	if err := rightParts.prepare(ctx, right); err != nil {
+		return false, err
+	}
+	return leftParts.equalBytes(ctx, rightParts)
+}
+
+type jsonOutputParts struct {
+	parts []string
+	bytes int
+}
+
+// prepare borrows exact root spelling; only leaves embedded in containers are
+// compacted. Parts are local to the operation that encodes or compares them.
+func (parts *jsonOutputParts) prepare(ctx context.Context, output JSONOutput) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if output.node == nil {
+		if output.value.IsZero() {
+			return fmt.Errorf("absent JSON value requires omission")
+		}
+		return parts.add(output.value.raw)
+	}
+	return parts.collect(ctx, output)
+}
+
+func (parts jsonOutputParts) encode(ctx context.Context) (Value, error) {
 	var builder strings.Builder
 	builder.Grow(parts.bytes)
 	for _, part := range parts.parts {
@@ -87,9 +126,39 @@ func (output JSONOutput) Encode(ctx context.Context) (Value, error) {
 	return Value{raw: builder.String()}, nil
 }
 
-type jsonOutputParts struct {
-	parts []string
-	bytes int
+func (parts jsonOutputParts) equalBytes(ctx context.Context, other jsonOutputParts) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if parts.bytes != other.bytes {
+		return false, nil
+	}
+	leftIndex, rightIndex := 0, 0
+	leftOffset, rightOffset := 0, 0
+	for leftIndex < len(parts.parts) && rightIndex < len(other.parts) {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		left, right := parts.parts[leftIndex][leftOffset:], other.parts[rightIndex][rightOffset:]
+		length := min(len(left), len(right))
+		if left[:length] != right[:length] {
+			return false, ctx.Err()
+		}
+		leftOffset += length
+		rightOffset += length
+		if leftOffset == len(parts.parts[leftIndex]) {
+			leftIndex++
+			leftOffset = 0
+		}
+		if rightOffset == len(other.parts[rightIndex]) {
+			rightIndex++
+			rightOffset = 0
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (parts *jsonOutputParts) add(raw string) error {
