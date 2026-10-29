@@ -20,6 +20,9 @@ func decodeRequestContract(raw []byte, coreVersion int) (*Request, error) {
 	if request.SchemaVersion != coreVersion {
 		return nil, fmt.Errorf("unsupported semantic schemaVersion %d", request.SchemaVersion)
 	}
+	if coreVersion != ProtocolCoreVersion && request.Reasoning != nil && !request.Reasoning.HistoryRetention.IsZero() {
+		return nil, fmt.Errorf("/reasoning/historyRetention requires core schemaVersion %d", ProtocolCoreVersion)
+	}
 	return &request, nil
 }
 

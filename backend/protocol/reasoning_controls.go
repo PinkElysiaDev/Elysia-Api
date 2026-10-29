@@ -17,6 +17,8 @@ type ReasoningIntent struct {
 	Budget      Value  `json:"budget,omitzero"`
 	Summary     Value  `json:"summary,omitzero"`
 	Interleaved bool   `json:"interleaved,omitempty"`
+	// HistoryRetention controls supplied history independently of new generation.
+	HistoryRetention Value `json:"historyRetention,omitzero"`
 }
 
 func controlPresent(v Value) bool { return !v.IsZero() && !v.IsNull() }
@@ -40,6 +42,9 @@ func validateAnthropicDisplay(mode string, display Value) error {
 func ValidateReasoningIntent(r *ReasoningIntent) error {
 	if r == nil {
 		return nil
+	}
+	if !r.HistoryRetention.IsZero() && !r.HistoryRetention.IsString("all") {
+		return streamIssue(InvalidInput, "/reasoning/historyRetention", "history retention must be all when present")
 	}
 	if !slices.Contains([]string{"", "enabled", "disabled", "auto", "between_tools"}, r.Mode) {
 		return streamIssue(InvalidInput, "/reasoning/mode", "unknown thinking mode")
@@ -83,7 +88,8 @@ func ValidateReasoningIntent(r *ReasoningIntent) error {
 // NormalizeReasoningParameters is also used at the existing Agent/legacy
 // parameter boundary. Unknown object members remain in their original bucket.
 func NormalizeReasoningParameters(req *Request, codec string, interleaved bool) error {
-	if req.Reasoning != nil {
+	hasOnlyHistory := req.Reasoning != nil && !req.Reasoning.HistoryRetention.IsZero() && !req.Reasoning.hasGenerationControls()
+	if req.Reasoning != nil && !hasOnlyHistory {
 		for key, names := range map[string][]string{"reasoning_effort": nil, "responses_reasoning": {"effort", "summary"}, "anthropic_thinking": {"type", "budget_tokens", "display"}, "anthropic_output_config": {"effort"}, "gemini_thinking": {"thinkingLevel", "thinkingBudget", "includeThoughts"}} {
 			v := req.Parameters[key]
 			if !controlPresent(v) {
@@ -105,6 +111,9 @@ func NormalizeReasoningParameters(req *Request, codec string, interleaved bool) 
 		return ValidateReasoningIntent(req.Reasoning)
 	}
 	r := &ReasoningIntent{}
+	if hasOnlyHistory {
+		r.HistoryRetention = req.Reasoning.HistoryRetention
+	}
 	params := maps.Clone(req.Parameters)
 	take := func(key string, names ...string) (Object, error) {
 		v := params[key]
@@ -207,7 +216,7 @@ func NormalizeReasoningParameters(req *Request, codec string, interleaved bool) 
 			}
 		}
 	}
-	if r.Mode == "" && r.Effort.IsZero() && r.Budget.IsZero() && r.Summary.IsZero() {
+	if r.Mode == "" && r.Effort.IsZero() && r.Budget.IsZero() && r.Summary.IsZero() && r.HistoryRetention.IsZero() {
 		return nil
 	}
 	if !controlPresent(r.Effort) {
@@ -218,6 +227,10 @@ func NormalizeReasoningParameters(req *Request, codec string, interleaved bool) 
 	}
 	req.Parameters, req.Reasoning = params, r
 	return nil
+}
+
+func (r *ReasoningIntent) hasGenerationControls() bool {
+	return r.Mode != "" || !r.Effort.IsZero() || r.EffortScope != "" || !r.Budget.IsZero() || !r.Summary.IsZero() || r.Interleaved
 }
 
 // The ingress model is a group name; only the selected candidate supplies capabilities.
@@ -313,6 +326,9 @@ func ReasoningParameters(req *Request, codec string) (Object, error) {
 	r := req.Reasoning
 	if err := ValidateReasoningIntent(r); err != nil {
 		return nil, err
+	}
+	if !r.HistoryRetention.IsZero() {
+		return nil, streamIssue(UnsupportedCapability, "/reasoning/historyRetention", "generation parameter rendering cannot consume unresolved history retention")
 	}
 	out := maps.Clone(req.Parameters)
 	if out == nil {

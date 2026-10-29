@@ -6,22 +6,23 @@ import "fmt"
 type Capability string
 
 const (
-	TextCapability               Capability = "text"
-	FunctionToolsCapability      Capability = "tools.function"
-	FreeTextToolsCapability      Capability = "tools.free_text"
-	ServerToolsCapability        Capability = "tools.server"
-	NativeExtensionsCapability   Capability = "native_extensions"
-	ImagesCapability             Capability = "images"
-	AudioCapability              Capability = "audio"
-	VideoCapability              Capability = "video"
-	DocumentsCapability          Capability = "documents"
-	ReasoningCapability          Capability = "reasoning"
-	SignaturesCapability         Capability = "reasoning.signatures"
-	EncryptedReasoningCapability Capability = "reasoning.encrypted"
-	CacheBreakpointsCapability   Capability = "cache.breakpoints"
-	CacheKeysCapability          Capability = "cache.keys"
-	CacheRetentionCapability     Capability = "cache.retention"
-	CacheResourcesCapability     Capability = "cache.resources"
+	TextCapability                      Capability = "text"
+	FunctionToolsCapability             Capability = "tools.function"
+	FreeTextToolsCapability             Capability = "tools.free_text"
+	ServerToolsCapability               Capability = "tools.server"
+	NativeExtensionsCapability          Capability = "native_extensions"
+	ImagesCapability                    Capability = "images"
+	AudioCapability                     Capability = "audio"
+	VideoCapability                     Capability = "video"
+	DocumentsCapability                 Capability = "documents"
+	ReasoningCapability                 Capability = "reasoning"
+	ReasoningHistoryRetentionCapability Capability = "reasoning.history_retention"
+	SignaturesCapability                Capability = "reasoning.signatures"
+	EncryptedReasoningCapability        Capability = "reasoning.encrypted"
+	CacheBreakpointsCapability          Capability = "cache.breakpoints"
+	CacheKeysCapability                 Capability = "cache.keys"
+	CacheRetentionCapability            Capability = "cache.retention"
+	CacheResourcesCapability            Capability = "cache.resources"
 	// CacheOptionsCapability covers the declared mode and minimum-lifetime knobs
 	// that some providers expose separately from the maximum-retention setting.
 	CacheOptionsCapability Capability = "cache.options"
@@ -94,6 +95,16 @@ func CheckRequest(request *Request, target Target, limits Limits) []ConversionIs
 	if request == nil || request.SchemaVersion != target.coreSchemaVersion() {
 		check.add(InvalidInput, "/schemaVersion", "", "missing request or unsupported semantic contract version")
 		return check.issues
+	}
+	if request.Reasoning != nil && !request.Reasoning.HistoryRetention.IsZero() {
+		const path = "/reasoning/historyRetention"
+		if request.SchemaVersion != ProtocolCoreVersion {
+			check.add(InvalidInput, path, ReasoningHistoryRetentionCapability, "history retention requires core schemaVersion 2")
+		} else if !request.Reasoning.HistoryRetention.IsString("all") {
+			check.add(InvalidInput, path, ReasoningHistoryRetentionCapability, "history retention must be all when present")
+		} else {
+			check.require(ReasoningHistoryRetentionCapability, path)
+		}
 	}
 	for index, tool := range request.Tools {
 		path := fmt.Sprintf("/tools/%d", index)

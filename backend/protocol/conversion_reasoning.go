@@ -124,7 +124,7 @@ func (c *CompiledConversion) reasoningControls(req *Request, route ConversionCon
 	if err := projectReasoningSummary(r, opts, loss); err != nil {
 		return err
 	}
-	if r.Mode == "" && r.Effort.IsZero() && r.Budget.IsZero() && r.Summary.IsZero() {
+	if r.Mode == "" && r.Effort.IsZero() && r.Budget.IsZero() && r.Summary.IsZero() && r.HistoryRetention.IsZero() {
 		req.Reasoning = nil
 		return nil
 	}

@@ -1081,6 +1081,16 @@ func (meter *typedMeter) measure29(value ReasoningIntent) bool {
 			return false
 		}
 	}
+	if !value.HistoryRetention.IsZero() {
+		if count > 0 {
+			meter.bytes++
+		}
+		count++
+		meter.bytes++
+		if !meter.scalar(18) || !meter.measure10(value.HistoryRetention) {
+			return false
+		}
+	}
 	return meter.close()
 }
 func (meter *typedMeter) measure30(value CacheIntent) bool {

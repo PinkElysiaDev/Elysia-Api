@@ -1740,8 +1740,10 @@ func writeCoreReasoningIntentField(field jsonOutputField, value *ReasoningIntent
 		return writeCoreValue(field.value, &value.Summary, reader)
 	case "interleaved":
 		return writeCoreBool(field.value, &value.Interleaved, reader)
+	case "historyRetention":
+		return writeCoreValue(field.value, &value.HistoryRetention, reader)
 	default:
-		key := foldedCoreField(field.key, []string{"mode", "effort", "effortScope", "budget", "summary", "interleaved"})
+		key := foldedCoreField(field.key, []string{"mode", "effort", "effortScope", "budget", "summary", "interleaved", "historyRetention"})
 		if key == "" {
 			return unknownCoreField(field.key)
 		}
@@ -1782,11 +1784,16 @@ func readCoreReasoningIntent(value ReasoningIntent, pointer []string) (JSONOutpu
 				return readCoreBool(value.Interleaved, pointer[1:])
 			}
 			return JSONOutput{}, nil
+		case "historyRetention":
+			if !value.HistoryRetention.IsZero() {
+				return readCoreValue(value.HistoryRetention, pointer[1:])
+			}
+			return JSONOutput{}, nil
 		default:
 			return JSONOutput{}, nil
 		}
 	}
-	fields := make([]jsonOutputField, 0, 6)
+	fields := make([]jsonOutputField, 0, 7)
 	var output JSONOutput
 	var err error
 	if len(value.Mode) != 0 {
@@ -1830,6 +1837,13 @@ func readCoreReasoningIntent(value ReasoningIntent, pointer []string) (JSONOutpu
 			return JSONOutput{}, err
 		}
 		fields = append(fields, jsonOutputField{"interleaved", output})
+	}
+	if !value.HistoryRetention.IsZero() {
+		output, err = readCoreValue(value.HistoryRetention, nil)
+		if err != nil {
+			return JSONOutput{}, err
+		}
+		fields = append(fields, jsonOutputField{"historyRetention", output})
 	}
 	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
 }

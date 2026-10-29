@@ -93,6 +93,9 @@ func observeCapabilities(value any) capabilityEvidence {
 	evidence := capabilityEvidence{observed: CapabilitySet{}}
 	switch semantic := value.(type) {
 	case *Request:
+		if semantic.SchemaVersion == ProtocolCoreVersion && semantic.Reasoning != nil && semantic.Reasoning.HistoryRetention.IsString("all") {
+			evidence.observed[ReasoningHistoryRetentionCapability] = true
+		}
 		evidence.nodes(semantic.Content)
 		evidence.cache(semantic.Cache)
 		evidence.resources(semantic.Resources)
