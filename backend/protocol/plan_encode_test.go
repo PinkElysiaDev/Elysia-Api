@@ -12,11 +12,12 @@ import (
 func TestPlannedCoreEncodingMatchesJSONBoundary(t *testing.T) {
 	request := &Request{SchemaVersion: SemanticSchemaVersion, Model: StringValue("model"), Content: []Node{{Kind: MessageNode, Role: StringValue("user"), Children: []Node{{Kind: TextNode, Payload: StringValue("hello <world>")}}}}, Tools: []Tool{}, Parameters: Object{"large": {raw: "9007199254740993"}, "null": {raw: "null"}, "invalid\xff": StringValue("replacement"), "invalid�": StringValue("last"), "spaced": {raw: ` { "a" : 1e+3 } `}}}
 	response := &Response{SchemaVersion: SemanticSchemaVersion, ID: StringValue("r"), Content: request.Content, Usage: &Usage{Input: &Counter{Count: 0, Origin: ObservedCount}}}
+	event := &Event{SchemaVersion: SemanticSchemaVersion, Type: ItemDelta, ItemID: StringValue("text"), Delta: request.Content[0].Children[0].Payload, Usage: response.Usage}
 	for _, document := range []struct {
 		direction Direction
 		input     any
 	}{
-		{EncodeRequest, request}, {EncodeRequest, (*Request)(nil)}, {EncodeResponse, response},
+		{EncodeRequest, request}, {EncodeRequest, (*Request)(nil)}, {EncodeResponse, response}, {EncodeEvent, event},
 	} {
 		for _, expression := range []*Expression{
 			nil,
@@ -27,6 +28,9 @@ func TestPlannedCoreEncodingMatchesJSONBoundary(t *testing.T) {
 			expressionPointer(Expression{Op: "merge", Policy: "first", Items: []Expression{readExpression("input", "/parameters"), literalExpression(map[string]string{"invalid�": "other"})}}),
 		} {
 			definition := testDefinition("planned-core", "m", "h", "t", "r")
+			if document.direction == EncodeEvent && expression == nil {
+				expression = expressionPointer(objectExpression(map[string]Expression{"type": readExpression("input", "/type"), "text": readExpression("input", "/delta")}))
+			}
 			if expression != nil {
 				definition.Directions[document.direction] = Mapping{Transform: expression}
 			}

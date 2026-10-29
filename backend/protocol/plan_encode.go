@@ -33,8 +33,10 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 			return readCoreRequestOutput(document, pointer)
 		case *Response:
 			return readCoreResponseOutput(document, pointer)
+		case *Event:
+			return readCoreEventOutput(document, pointer)
 		default:
-			return JSONOutput{}, fmt.Errorf("core input plan requires a request or response")
+			return JSONOutput{}, fmt.Errorf("core input plan requires a request, response or event")
 		}
 	}
 	state := evaluation{ctx: ctx, context: contextValue, inputReader: read, rootReader: read, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}

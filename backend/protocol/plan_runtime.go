@@ -9,7 +9,26 @@ import (
 // the completed plan is written into the core. Measuring the decoded struct
 // would lose unknown fields and explicit empty values before they are checked.
 func decodePlannedCore[T any](ctx context.Context, compiled *Compiled, direction Direction, input Value, options EvaluationContext) (*T, error) {
-	fail := func(err error) (*T, error) { return nil, compiled.mappingError(direction, err) }
+	output, err := evaluateCoreOutput(ctx, compiled, direction, input, options)
+	if err != nil {
+		return nil, err
+	}
+	// Contract-decoding errors retain their original unwrapped boundary.
+	var target *T
+	switch any(target).(type) {
+	case *Request:
+		result, err := decodeCoreRequestOutput(output)
+		return any(result).(*T), err
+	case *Response:
+		result, err := decodeCoreResponseOutput(output)
+		return any(result).(*T), err
+	default:
+		panic("core output plan requires a request or response destination")
+	}
+}
+
+func evaluateCoreOutput(ctx context.Context, compiled *Compiled, direction Direction, input Value, options EvaluationContext) (JSONOutput, error) {
+	fail := func(err error) (JSONOutput, error) { return JSONOutput{}, compiled.mappingError(direction, err) }
 	if err := ctx.Err(); err != nil {
 		return fail(err)
 	}
@@ -49,18 +68,7 @@ func decodePlannedCore[T any](ctx context.Context, compiled *Compiled, direction
 			return fail(err)
 		}
 	}
-	// Contract-decoding errors retain their original unwrapped boundary.
-	var target *T
-	switch any(target).(type) {
-	case *Request:
-		result, err := decodeCoreRequestOutput(output.output)
-		return any(result).(*T), err
-	case *Response:
-		result, err := decodeCoreResponseOutput(output.output)
-		return any(result).(*T), err
-	default:
-		panic("core output plan requires a request or response destination")
-	}
+	return output.output, nil
 }
 
 func checkPlannedOutputLimits(output plannedOutput, limits Limits, domain string) error {

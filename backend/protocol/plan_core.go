@@ -18,6 +18,10 @@ const coreDirectDecodeBytes = 4 << 10
 // A rejected write may materialize once to recover the contract decoder's exact
 // diagnostic. That result can never turn failure into success or rerun a mapping.
 func decodeCoreOutput[T any](output JSONOutput, write func(JSONOutput, *T, *valueReader) error) (*T, error) {
+	return decodeCoreOutputWithin(output, write, nil)
+}
+
+func decodeCoreOutputWithin[T any](output JSONOutput, write func(JSONOutput, *T, *valueReader) error, reader *valueReader) (*T, error) {
 	var result T
 	// A small raw leaf already has JSON bytes. The contract decoder consumes it
 	// once without building the temporary field/index views needed by the large
@@ -28,7 +32,7 @@ func decodeCoreOutput[T any](output JSONOutput, write func(JSONOutput, *T, *valu
 		}
 		return &result, nil
 	}
-	if err := write(output, &result, nil); err != nil {
+	if err := write(output, &result, reader); err != nil {
 		value, encodingErr := output.Encode(context.Background())
 		if encodingErr != nil {
 			return nil, encodingErr

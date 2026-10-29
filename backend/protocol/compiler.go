@@ -378,8 +378,8 @@ func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction
 		entry.definitionHash = hashValue(identity)
 	}
 	if entry.outputPlan != nil && entry.module == nil && entry.after == nil && entry.initial == nil {
-		entry.hasCoreOutputPlan = entry.output == nil && (direction == DecodeRequest || direction == DecodeResponse)
-		entry.hasCoreInputPlan = entry.input == nil && (direction == EncodeRequest || direction == EncodeResponse)
+		entry.hasCoreOutputPlan = entry.output == nil && (direction == DecodeRequest || direction == DecodeResponse || isEventDecoder(direction))
+		entry.hasCoreInputPlan = entry.input == nil && (direction == EncodeRequest || direction == EncodeResponse || direction == EncodeEvent || direction == EncodeUpstreamEvent)
 	}
 	return entry, nil
 }

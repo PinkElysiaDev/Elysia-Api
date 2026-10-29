@@ -63,6 +63,10 @@ func (compiled *Compiled) encodeEventValue(ctx context.Context, direction Direct
 }
 
 func (compiled *Compiled) encodeEventOutput(ctx context.Context, direction Direction, event Event, options EvaluationContext, batch bool) (eventOutput, error) {
+	if compiled.mappings[direction].hasCoreInputPlan {
+		value, err := encodePlannedCore(ctx, compiled, direction, &event, options)
+		return eventOutput{value: value}, err
+	}
 	if !compiled.hasTypedMapping(direction) {
 		input, err := EncodeSemantic(ctx, direction, event)
 		if err != nil {
@@ -306,6 +310,9 @@ func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 }
 
 func (compiled *Compiled) decodeEventValues(ctx context.Context, direction Direction, frame Value, options EvaluationContext) ([]Event, error) {
+	if compiled.mappings[direction].hasCoreOutputPlan {
+		return decodePlannedEvents(ctx, compiled, direction, frame, options)
+	}
 	inputLimits, outputLimits, _ := compiled.mappingLimits(ctx, direction)
 	if compiled.hasTypedMapping(direction) {
 		instance, err := options.State.resolve(compiled, direction, compiled.mappings[direction].module)
