@@ -265,7 +265,7 @@ func (c *CompiledConversion) responseObject(action string, phase ConversionPhase
 	}
 	if e.Type == ResponseStarted || e.Type == ResponseFinished {
 		if e.Response == nil {
-			e.Response = &Response{SchemaVersion: SemanticSchemaVersion, ID: e.ResponseID}
+			e.Response = &Response{SchemaVersion: eventResponseVersion(e.SchemaVersion), ID: e.ResponseID}
 		}
 		if err := apply(e.Response); err != nil {
 			return false, err

@@ -27,6 +27,15 @@ func NewConversionEventState(c *CompiledConversion, route ConversionContext) *Co
 	return &ConversionEventState{conversion: c, route: route, open: map[string]bool{}}
 }
 
+// Standalone projection helpers accept unversioned events; newly synthesized
+// responses retain core1 for those legacy calls without correcting other versions.
+func eventResponseVersion(version int) int {
+	if version == 0 {
+		return SemanticSchemaVersion
+	}
+	return version
+}
+
 func (s *ConversionEventState) Push(event Event) ([]Event, error) {
 	if s.conversion == nil {
 		return []Event{event}, nil
@@ -43,7 +52,7 @@ func (s *ConversionEventState) Push(event Event) ([]Event, error) {
 	if event.Type == ResponseStarted && s.conversion.hasDeliveryRule(s.route) {
 		s.started = true
 		if event.Response == nil {
-			event.Response = &Response{SchemaVersion: SemanticSchemaVersion, ID: event.ResponseID}
+			event.Response = &Response{SchemaVersion: eventResponseVersion(event.SchemaVersion), ID: event.ResponseID}
 		} else {
 			copy := *event.Response
 			copy.Attributes = copyObject(event.Response.Attributes)
@@ -84,7 +93,7 @@ func (s *ConversionEventState) Push(event Event) ([]Event, error) {
 		}
 		if event.Type == ResponseStarted {
 			if event.Response == nil {
-				event.Response = &Response{SchemaVersion: SemanticSchemaVersion, ID: event.ResponseID}
+				event.Response = &Response{SchemaVersion: eventResponseVersion(event.SchemaVersion), ID: event.ResponseID}
 			} else {
 				copy := *event.Response
 				event.Response = &copy
@@ -181,7 +190,7 @@ func (s *ConversionEventState) Drain() ([]Event, error) {
 	event := *s.terminal
 	s.terminal = nil
 	if event.Response == nil {
-		event.Response = &Response{SchemaVersion: SemanticSchemaVersion}
+		event.Response = &Response{SchemaVersion: eventResponseVersion(event.SchemaVersion)}
 	} else {
 		copy := *event.Response
 		event.Response = &copy
@@ -226,7 +235,7 @@ func DeliveryFrameEvents(events []Event) []Event {
 			if counts == nil {
 				continue
 			}
-			response := Response{SchemaVersion: SemanticSchemaVersion}
+			response := Response{SchemaVersion: eventResponseVersion(copy[i].SchemaVersion)}
 			if copy[i].Response != nil {
 				response = *copy[i].Response
 			}
