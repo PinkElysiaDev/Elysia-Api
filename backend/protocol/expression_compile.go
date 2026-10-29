@@ -48,16 +48,17 @@ type expressionCompiler struct {
 }
 
 type expressionScope struct {
-	input        *ValueSchema
-	root         *ValueSchema
-	item         *ValueSchema
-	isIteration  bool
-	isWalk       bool
-	wireCapture  bool
-	bindings     map[string]expressionBinding
-	bindingDepth int
-	indexes      map[string]int
-	indexDepth   int
+	input          *ValueSchema
+	root           *ValueSchema
+	item           *ValueSchema
+	isIteration    bool
+	isWalk         bool
+	wireCapture    bool
+	canReadRuntime bool
+	bindings       map[string]expressionBinding
+	bindingDepth   int
+	indexes        map[string]int
+	indexDepth     int
 }
 
 type expressionBinding struct {
@@ -124,7 +125,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		if compiled.from == "" {
 			compiled.from = "input"
 		}
-		if !slices.Contains([]string{"input", "root", "item", "context", "binding"}, compiled.from) {
+		if !slices.Contains([]string{"input", "root", "item", "context", "binding", "runtime"}, compiled.from) {
 			return nil, fmt.Errorf("%s/from: unknown input scope", path)
 		}
 		if compiled.from == "item" && !scope.isIteration {
@@ -140,6 +141,14 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			schema = scope.item
 		case "context":
 			schema = nil
+		case "runtime":
+			if !scope.canReadRuntime {
+				return nil, fmt.Errorf("%s/from: runtime metadata requires a package mapping program or effect", path)
+			}
+			if len(pointer) != 1 || pointer[0] != "interleavedThinking" {
+				return nil, fmt.Errorf("%s/path: unknown runtime metadata field", path)
+			}
+			compiled.result, schema = BooleanType, nil
 		case "binding":
 			binding, exists := scope.bindings[expression.Name]
 			if !exists {

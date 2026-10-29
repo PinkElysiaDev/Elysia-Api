@@ -69,6 +69,12 @@
 
 ## 类型、整数与 wire 断言
 
+v3 program 与普通 effect 条件还可读取唯一运行时事实：
+`{"op":"read","from":"runtime","path":"/interleavedThinking"}`。
+它直接来自网关传入的 EvaluationContext，不读取正文或 Values 中的同名字段；
+真实 false 保持布尔 false，遗漏内部绑定会报错。Spec 断言、局部处置条件与 v2
+不能使用此入口。来源身份及 scope 仍由 capture_native 处理，不在 runtime 中开放。
+
 `type` 区分 missing/null/string/array/object/boolean/number，不解码大正文。`is_integer` 按现有 int64 解码契约判断。`integer` 支持 add/subtract/lt/lte/gt/gte，先按顺序计算所有操作数，再验证类型及溢出，不使用浮点数或默认零掩盖错误。
 
 Spec 的 `WireAssertion.check` 在 schema 通过后检查选中值，`when` 检查所在对象，root 保持原始文档。`each` 只对明确声明的非 nullable 数组逐项应用子断言，诊断路径按原始索引追加。断言按声明顺序返回首错，错误原因使用静态说明，不把正文带进日志。

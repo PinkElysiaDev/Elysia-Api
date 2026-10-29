@@ -35,6 +35,11 @@ func (plan *compiledOutputPlan) buildReadValue(state evaluation) (plannedOutput,
 		root = state.item
 	case "context":
 		root = state.context
+	case "runtime":
+		if !state.runtime.isBound {
+			return plannedOutput{}, fmt.Errorf("runtime metadata is not bound")
+		}
+		return plannedLeaf(coreBoolean(state.runtime.isInterleavedThinking)), nil
 	}
 	value, err := readValuePointerWithin(root, expression.pointer, state.valueReader)
 	if err != nil {

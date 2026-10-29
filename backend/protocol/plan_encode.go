@@ -39,7 +39,7 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 			return JSONOutput{}, fmt.Errorf("core input plan requires a request, response or event")
 		}
 	}
-	state := evaluation{ctx: ctx, context: contextValue, inputReader: read, rootReader: read, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	state := evaluation{ctx: ctx, context: contextValue, runtime: bindEvaluationRuntime(options), inputReader: read, rootReader: read, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	state.coreRequest, _ = input.(*Request)
 	if compiled.packagePlan != nil {
 		if err := compiled.preparePackageState(direction, state, inputLimits); err != nil {

@@ -772,10 +772,10 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	if err != nil {
 		return fail(err)
 	}
-	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, runtime: bindEvaluationRuntime(options), budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	var packageState *packageExecution
 	if compiled.packagePlan != nil {
-		packageState, err = compiled.preparePackageExecution(ctx, direction, input, contextValue, inputLimits)
+		packageState, err = compiled.preparePackageExecution(direction, state, inputLimits)
 		if err != nil {
 			return fail(err)
 		}

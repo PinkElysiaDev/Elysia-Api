@@ -140,7 +140,7 @@ func (compiled *Compiled) bindPackageIdentity(document ProtocolPackage) error {
 func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Direction, wire WireContractSpec, compiler *expressionCompiler, coreVersion, dslVersion int) (compiledMapping, []compiledSemanticEffect, error) {
 	path := "/mapping/directions/" + string(direction)
 	isDecode := isPackageDecodeDirection(direction)
-	scope := expressionScope{}
+	scope := expressionScope{canReadRuntime: true}
 	if isDecode {
 		scope.input = wire.Schema
 	}

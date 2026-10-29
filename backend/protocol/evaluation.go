@@ -16,6 +16,16 @@ type evaluation struct {
 	walkDepth                  int
 	capture                    *nativeCaptureState
 	indexes                    *indexEvaluationState
+	runtime                    evaluationRuntime
+}
+
+type evaluationRuntime struct {
+	isBound               bool
+	isInterleavedThinking bool
+}
+
+func bindEvaluationRuntime(options EvaluationContext) evaluationRuntime {
+	return evaluationRuntime{isBound: true, isInterleavedThinking: options.InterleavedThinking}
 }
 
 type evaluationBudget struct {

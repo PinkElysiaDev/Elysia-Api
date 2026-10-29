@@ -11,9 +11,9 @@ type packageExecution struct {
 	reader *valueReader
 }
 
-func (compiled *Compiled) preparePackageExecution(ctx context.Context, direction Direction, input, contextValue Value, limits Limits) (*packageExecution, error) {
-	execution := &packageExecution{reader: requestValueReader(input)}
-	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, valueReader: execution.reader}
+func (compiled *Compiled) preparePackageExecution(direction Direction, state evaluation, limits Limits) (*packageExecution, error) {
+	execution := &packageExecution{reader: requestValueReader(state.input)}
+	state.valueReader = execution.reader
 	if err := compiled.preparePackageState(direction, state, limits); err != nil {
 		return nil, err
 	}
