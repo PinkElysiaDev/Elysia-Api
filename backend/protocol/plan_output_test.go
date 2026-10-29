@@ -65,6 +65,10 @@ func TestOutputPlanParity(t *testing.T) {
 		{"merge-collision", Expression{Op: "merge", Policy: "reject", Items: []Expression{read, read}}, `{"z":1,"a":2}`},
 		{"merge-type", Expression{Op: "merge", Policy: "last", Items: []Expression{read}}, `null`},
 		{"merge-priority", Expression{Op: "merge", Policy: "reject", Items: []Expression{read, {Op: "read", Path: "/missing", Required: true}}}, `{"a":1}`},
+		{"keys-raw", Expression{Op: "keys", Source: &read}, `{"z":1,"a":null,"\u0061":false,"<":{},"\u2028":[]}`},
+		{"keys-constructed", Expression{Op: "keys", Source: expressionPointer(objectExpression(map[string]Expression{"bad\xff": read, "bad\ufffd": literalExpression(1), "<": read}))}, `"body"`},
+		{"keys-null", Expression{Op: "keys", Source: &read}, `null`},
+		{"keys-missing", Expression{Op: "keys", Source: expressionPointer(readExpression("input", "/missing"))}, `{}`},
 		{"concat", Expression{Op: "concat", Items: []Expression{read, {Op: "array", Items: []Expression{read}}, read}}, `[ {"k":"<"}, [ 1, 2 ], null ]`},
 		{"concat-null", Expression{Op: "concat", Items: []Expression{read}}, `null`},
 		{"filter", Expression{Op: "filter", Source: &read, When: expressionPointer(readExpression("item", "/keep"))}, `[{"keep":false},{"keep":true,"value":"<"}]`},
@@ -197,7 +201,7 @@ func TestOutputPlanCoversCatalog(t *testing.T) {
 		}
 		group := "historical"
 		switch operation.Name {
-		case "type", "is_integer", "integer", "let", "index", "walk", "recur", "capture_native", "replay_native", "native_matches", "split_data_uri", "with_index", "remember", "recall":
+		case "type", "is_integer", "integer", "let", "index", "walk", "recur", "capture_native", "replay_native", "native_matches", "split_data_uri", "with_index", "remember", "recall", "keys":
 			group = "plan-only"
 		}
 		t.Run(group+"/"+operation.Name, func(t *testing.T) {

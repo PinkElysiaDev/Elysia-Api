@@ -75,6 +75,10 @@ func TestExpressionOperationsAndFailureBoundaries(t *testing.T) {
 		{"if", Expression{Op: "if", When: expressionPointer(Expression{Op: "exists", Source: expressionPointer(readExpression("input", "/a"))}), Then: expressionPointer(readExpression("input", "/a")), Otherwise: expressionPointer(literalExpression(3))}, `{"a":false}`, `false`, false},
 		{"flatmap", Expression{Op: "flatmap", Source: &read, Body: expressionPointer(readExpression("item", ""))}, `[[1,2],[3]]`, `[1,2,3]`, false},
 		{"filter", Expression{Op: "filter", Source: &read, When: expressionPointer(readExpression("item", "/keep"))}, `[{"keep":true},{"keep":false}]`, `[{"keep":true}]`, false},
+		{"keys decoded and sorted", Expression{Op: "keys", Source: &read}, `{"z":null,"a":false,"\u0061":{}}`, `["a","z"]`, false},
+		{"keys empty", Expression{Op: "keys", Source: &read}, `{}`, `[]`, false},
+		{"keys null", Expression{Op: "keys", Source: &read}, `null`, "", true},
+		{"keys missing", Expression{Op: "keys", Source: expressionPointer(readExpression("input", "/missing"))}, `{}`, "", true},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {

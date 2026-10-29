@@ -124,6 +124,26 @@ func (expression *compiledExpression) evaluateValue(state evaluation) (Value, er
 		return Value{}, err
 	}
 	switch expression.op {
+	case "keys":
+		fields, err := source.ReadObject()
+		if err != nil {
+			return Value{}, err
+		}
+		keys := sortedKeys(fields)
+		values := make([]Value, 0, len(keys))
+		bytes := 2
+		for index, key := range keys {
+			value := StringValue(key)
+			if index != 0 {
+				bytes++
+			}
+			bytes += value.Len()
+			if bytes > state.budget.limits.BufferBytes {
+				return Value{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, bytes)
+			}
+			values = append(values, value)
+		}
+		return EncodeValue(values)
 	case "exists":
 		return EncodeValue(!source.IsZero())
 	case "present":

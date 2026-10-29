@@ -253,7 +253,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		if compiled.op != "walk" {
 			childScope.coreItem = coreArrayElement(compiled.source.coreType)
 		}
-		if expression.Source.Op == "read" {
+		if expression.Source.Op == "read" || compiled.source.op == "keys" {
 			arraySchema := compiled.source.schema
 			if arraySchema != nil {
 				childScope.item = arraySchema.Items
@@ -426,6 +426,11 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 				return fail("merge inputs must be objects")
 			}
 		}
+	case "keys":
+		if !isAssignable(expression.source.result, ObjectType) {
+			return fail("keys source must be an object")
+		}
+		expression.schema = &ValueSchema{Type: ArrayType, Items: &ValueSchema{Type: StringType}}
 	case "project":
 		if !isAssignable(expression.source.result, ObjectType) {
 			return fail("project source must be an object")
@@ -598,6 +603,9 @@ func checkExpressionOutput(expression *compiledExpression, schema *ValueSchema, 
 		}
 	}
 	if schema.Type == ArrayType && schema.Items != nil {
+		if expression.op == "keys" && !isAssignable(StringType, schema.Items.Type) {
+			return fmt.Errorf("%s: keys result items are strings", expression.path)
+		}
 		if expression.op == "map" {
 			return checkExpressionOutput(expression.body, schema.Items, limits)
 		}

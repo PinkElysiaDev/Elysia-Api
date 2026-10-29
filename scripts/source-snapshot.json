@@ -404,6 +404,8 @@
     "backend/protocol/plan_index_test.go",
     "backend/protocol/plan_input.go",
     "backend/protocol/plan_input_test.go",
+    "backend/protocol/plan_keys.go",
+    "backend/protocol/plan_keys_test.go",
     "backend/protocol/plan_native_capture.go",
     "backend/protocol/plan_native_capture_test.go",
     "backend/protocol/plan_native_origin_test.go",

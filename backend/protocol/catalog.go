@@ -35,6 +35,7 @@ var expressionOperations = []OperationInfo{
 	{"cast", []string{"source", "to"}, []string{"source", "to"}, AnyType, "Perform a lossless scalar conversion; never truncate numbers."},
 	{"merge", []string{"items", "policy"}, []string{"items", "policy"}, ObjectType, "Explicitly merge objects with reject, first or last collision policy."},
 	{"project", []string{"source", "keys", "policy"}, []string{"source", "keys", "policy"}, ObjectType, "Include or exclude declared object keys; retain present null values and never create missing fields."},
+	{"keys", []string{"source"}, []string{"source"}, ArrayType, "Return an object's sorted, unique decoded key strings after JSON key normalization, without materializing member values or granting native provenance. Missing, null and non-object sources are errors."},
 	{"concat", []string{"items"}, []string{"items"}, ArrayType, "Concatenate ordered arrays."},
 	{"join", []string{"items", "source"}, nil, StringType, "Concatenate either string expressions in items or a source array of strings, without implicit coercion."},
 	{"sort", []string{"source", "key"}, []string{"source", "key"}, ArrayType, "Stable sort by a declared scalar JSON pointer."},
