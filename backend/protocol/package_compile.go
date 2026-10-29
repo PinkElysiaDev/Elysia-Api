@@ -8,10 +8,12 @@ import (
 )
 
 type compiledPackagePlan struct {
-	coreVersion       int
-	dslVersion        int
-	effects           map[Direction][]compiledSemanticEffect
-	requestProjection Value
+	coreVersion          int
+	dslVersion           int
+	effects              map[Direction][]compiledSemanticEffect
+	requestProjection    Value
+	hasCacheProjection   bool
+	hasHistoryProjection bool
 }
 
 type compiledSemanticEffect struct {
@@ -19,6 +21,8 @@ type compiledSemanticEffect struct {
 	corePointer, wirePointer       []string
 	when                           *compiledOutputPlan
 	layout                         *ProtocolAggregateLayout
+	valueMapping                   *ProtocolValueMapping
+	valueUnmatched                 []string
 	scope                          string
 	severity                       Severity
 	conditionReferences            map[string]Expression
@@ -60,12 +64,18 @@ func (compiler *Compiler) CompilePackage(raw []byte) (*Compiled, []ConversionIss
 			return nil, definitionIssues(compiled.identity, "/mapping/directions/"+string(direction)+"/program", fmt.Errorf("program requires a compiled output plan"))
 		}
 		for index, effect := range compiled.packagePlan.effects[direction] {
-			if effect.kind != "emit" && effect.kind != "reject" && effect.kind != "aggregate" && effect.scope != cacheIntentScope {
+			if effect.kind != "emit" && effect.kind != "reject" && effect.kind != "aggregate" && !isRequestProjectionScope(effect.scope) {
 				path := fmt.Sprintf("/mapping/directions/%s/effects/%d/kind", direction, index)
 				return nil, definitionIssues(compiled.identity, path, fmt.Errorf("semantic effect %q is not executable in this runtime", effect.kind))
 			}
 			if effect.kind == "aggregate" {
 				path := fmt.Sprintf("/mapping/directions/%s/effects/%d", direction, index)
+				if effect.valueMapping != nil {
+					if !compiled.mappings[direction].capabilities[ReasoningHistoryRetentionCapability] || !provesHistoryValueMapping(compiled.mappings[direction].outputPlan.expression, direction, effect) {
+						return nil, definitionIssues(compiled.identity, path, fmt.Errorf("history value mapping requires declared capability and a provable whole-value partition or reconstruction"))
+					}
+					continue
+				}
 				if !compiled.mappings[direction].capabilities[CacheBreakpointsCapability] {
 					return nil, definitionIssues(compiled.identity, path, fmt.Errorf("cache aggregate requires the declared cache.breakpoints capability"))
 				}
@@ -85,7 +95,7 @@ func (compiler *Compiler) CompilePackage(raw []byte) (*Compiled, []ConversionIss
 			}
 		}
 	}
-	if err := compiled.bindCacheProjection(document); err != nil {
+	if err := compiled.bindRequestProjection(document); err != nil {
 		return nil, definitionIssues(compiled.identity, "/mapping/directions/encode_request/effects", err)
 	}
 	return compiled, nil
@@ -169,7 +179,7 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		if (effect.Kind == "default" || effect.Kind == "drop" || effect.Kind == "reject") && strings.TrimSpace(effect.Reason) == "" {
 			return compiledMapping{}, nil, fmt.Errorf("%s/reason: semantic disposition requires a reason", at)
 		}
-		if err := validateCacheDisposition(direction, effect); err != nil {
+		if err := validateRequestProjectionEffect(direction, effect); err != nil {
 			return compiledMapping{}, nil, fmt.Errorf("%s: %w", at, err)
 		}
 		entry := compiledSemanticEffect{id: effect.ID, kind: effect.Kind, path: effect.Path, target: effect.Target, reason: effect.Reason, scope: effect.Scope, severity: effect.Severity}
@@ -182,16 +192,25 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 			return compiledMapping{}, nil, fmt.Errorf("%s/target: %w", at, err)
 		}
 		if effect.Kind == "aggregate" {
-			if err := validatePackageAggregateLayout(direction, entry.corePointer, effect.Layout); err != nil {
+			if effect.ValueMapping != nil {
+				if effect.Layout != nil {
+					return compiledMapping{}, nil, fmt.Errorf("%s: aggregate cannot combine object and value mappings", at)
+				}
+				if err := validateHistoryValueMapping(direction, effect.Path, effect.ValueMapping, compiler.limits); err != nil {
+					return compiledMapping{}, nil, fmt.Errorf("%s/valueMapping: %w", at, err)
+				}
+				entry.valueMapping = effect.ValueMapping
+				entry.valueUnmatched, _ = parsePointer(effect.ValueMapping.Unmatched)
+			} else if err := validatePackageAggregateLayout(direction, entry.corePointer, effect.Layout); err != nil {
 				return compiledMapping{}, nil, fmt.Errorf("%s/layout: %w", at, err)
 			}
 			entry.layout = effect.Layout
-		} else if effect.Layout != nil {
-			return compiledMapping{}, nil, fmt.Errorf("%s/layout: only aggregate effects have an object layout", at)
+		} else if effect.Layout != nil || effect.ValueMapping != nil {
+			return compiledMapping{}, nil, fmt.Errorf("%s: only aggregate effects have an object or value mapping", at)
 		}
 		if effect.When != nil {
 			conditionScope := scope
-			if effect.Scope == cacheIntentScope {
+			if isRequestProjectionScope(effect.Scope) {
 				conditionScope = expressionScope{}
 				entry.conditionReferences = map[string]Expression{}
 				compiler.mappingReferences = entry.conditionReferences
@@ -212,8 +231,8 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 			if !hasPlan {
 				return compiledMapping{}, nil, fmt.Errorf("%s/when: condition requires a compiled output plan", at)
 			}
-			if effect.Scope == cacheIntentScope && !localCacheCondition(entry.when) {
-				return compiledMapping{}, nil, fmt.Errorf("%s/when: cache conditions may read only their local input or root", at)
+			if isRequestProjectionScope(effect.Scope) && !localProjectionCondition(entry.when) {
+				return compiledMapping{}, nil, fmt.Errorf("%s/when: projection conditions may read only their local input or root", at)
 			}
 		}
 		effects = append(effects, entry)

@@ -1,0 +1,921 @@
+{
+  "schemaVersion": 3,
+  "spec": {
+    "id": "history-prototype-anthropic",
+    "name": "History control prototype: anthropic",
+    "version": "1",
+    "family": "history-prototype-anthropic",
+    "wireVersion": "1",
+    "operations": {
+      "generate": {
+        "kind": "generate",
+        "method": "POST",
+        "path": "/prototype",
+        "transport": "http_json",
+        "request": "encode_request",
+        "response": "decode_response",
+        "auth": {
+          "location": "none"
+        }
+      }
+    },
+    "wireContracts": {
+      "decode_request": {
+        "schema": {
+          "type": "object",
+          "allowUnknown": true,
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "max_tokens": {
+              "type": "number"
+            },
+            "messages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "role",
+                  "content"
+                ],
+                "properties": {
+                  "role": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "required": [
+            "model",
+            "max_tokens",
+            "messages"
+          ]
+        }
+      },
+      "encode_request": {
+        "schema": {
+          "type": "object",
+          "allowUnknown": true,
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "max_tokens": {
+              "type": "number"
+            },
+            "messages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "role",
+                  "content"
+                ],
+                "properties": {
+                  "role": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "required": [
+            "model",
+            "max_tokens",
+            "messages"
+          ]
+        }
+      },
+      "decode_response": {
+        "schema": {
+          "type": "object",
+          "required": [
+            "reply"
+          ],
+          "properties": {
+            "reply": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "encode_response": {
+        "schema": {
+          "type": "object",
+          "required": [
+            "reply"
+          ],
+          "properties": {
+            "reply": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "mapping": {
+    "coreVersion": 2,
+    "dslVersion": 1,
+    "capabilities": {
+      "text": true,
+      "reasoning.history_retention": true
+    },
+    "native": {
+      "preserve": true
+    },
+    "directions": {
+      "decode_response": {
+        "program": {
+          "op": "object",
+          "fields": {
+            "schemaVersion": {
+              "op": "literal",
+              "value": 2
+            },
+            "status": {
+              "op": "literal",
+              "value": "completed"
+            },
+            "content": {
+              "op": "array",
+              "items": [
+                {
+                  "op": "object",
+                  "fields": {
+                    "kind": {
+                      "op": "literal",
+                      "value": "message"
+                    },
+                    "role": {
+                      "op": "literal",
+                      "value": "assistant"
+                    },
+                    "children": {
+                      "op": "array",
+                      "items": [
+                        {
+                          "op": "object",
+                          "fields": {
+                            "kind": {
+                              "op": "literal",
+                              "value": "text"
+                            },
+                            "payload": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/reply"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "effects": [
+          {
+            "id": "reply",
+            "kind": "emit",
+            "path": "/content/0/children/0/payload",
+            "target": "/reply"
+          }
+        ],
+        "capabilities": {
+          "text": true
+        }
+      },
+      "encode_response": {
+        "program": {
+          "op": "object",
+          "fields": {
+            "reply": {
+              "op": "read",
+              "from": "input",
+              "path": "/content/0/children/0/payload"
+            }
+          }
+        },
+        "effects": [
+          {
+            "id": "reply",
+            "kind": "emit",
+            "path": "/content/0/children/0/payload",
+            "target": "/reply"
+          }
+        ],
+        "capabilities": {
+          "text": true
+        }
+      },
+      "decode_request": {
+        "program": {
+          "op": "if",
+          "when": {
+            "op": "any",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/context_management"
+                  },
+                  {
+                    "op": "literal",
+                    "value": {
+                      "edits": [
+                        {
+                          "type": "clear_thinking_20251015",
+                          "keep": "all"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/context_management"
+                  },
+                  {
+                    "op": "literal",
+                    "value": {
+                      "edits": [
+                        {
+                          "type": "clear_thinking_20251015",
+                          "keep": {
+                            "type": "all"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "then": {
+            "op": "object",
+            "fields": {
+              "schemaVersion": {
+                "op": "literal",
+                "value": 2
+              },
+              "model": {
+                "op": "read",
+                "from": "input",
+                "path": "/model"
+              },
+              "content": {
+                "op": "map",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/messages"
+                },
+                "body": {
+                  "op": "object",
+                  "fields": {
+                    "kind": {
+                      "op": "literal",
+                      "value": "message"
+                    },
+                    "role": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/role"
+                    },
+                    "children": {
+                      "op": "array",
+                      "items": [
+                        {
+                          "op": "object",
+                          "fields": {
+                            "kind": {
+                              "op": "literal",
+                              "value": "text"
+                            },
+                            "payload": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/content"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "parameters": {
+                "op": "object",
+                "fields": {
+                  "max_output_tokens": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/max_tokens"
+                  },
+                  "wire:claude": {
+                    "op": "project",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": ""
+                    },
+                    "keys": [
+                      "model",
+                      "max_tokens",
+                      "messages",
+                      "context_management"
+                    ],
+                    "policy": "exclude"
+                  }
+                }
+              },
+              "reasoning": {
+                "op": "object",
+                "fields": {
+                  "historyRetention": {
+                    "op": "literal",
+                    "value": "all"
+                  }
+                }
+              }
+            }
+          },
+          "otherwise": {
+            "op": "object",
+            "fields": {
+              "schemaVersion": {
+                "op": "literal",
+                "value": 2
+              },
+              "model": {
+                "op": "read",
+                "from": "input",
+                "path": "/model"
+              },
+              "content": {
+                "op": "map",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/messages"
+                },
+                "body": {
+                  "op": "object",
+                  "fields": {
+                    "kind": {
+                      "op": "literal",
+                      "value": "message"
+                    },
+                    "role": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/role"
+                    },
+                    "children": {
+                      "op": "array",
+                      "items": [
+                        {
+                          "op": "object",
+                          "fields": {
+                            "kind": {
+                              "op": "literal",
+                              "value": "text"
+                            },
+                            "payload": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/content"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "parameters": {
+                "op": "object",
+                "fields": {
+                  "max_output_tokens": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/max_tokens"
+                  },
+                  "wire:claude": {
+                    "op": "project",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": ""
+                    },
+                    "keys": [
+                      "model",
+                      "max_tokens",
+                      "messages"
+                    ],
+                    "policy": "exclude"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "effects": [
+          {
+            "id": "model",
+            "kind": "emit",
+            "path": "/model",
+            "target": "/model"
+          },
+          {
+            "id": "history-retention",
+            "kind": "aggregate",
+            "path": "/reasoning/historyRetention",
+            "target": "/context_management",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/context_management"
+              }
+            },
+            "valueMapping": {
+              "value": "all",
+              "variants": [
+                {
+                  "edits": [
+                    {
+                      "type": "clear_thinking_20251015",
+                      "keep": "all"
+                    }
+                  ]
+                },
+                {
+                  "edits": [
+                    {
+                      "type": "clear_thinking_20251015",
+                      "keep": {
+                        "type": "all"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "unmatched": "/parameters/wire:claude/context_management"
+            }
+          }
+        ]
+      },
+      "encode_request": {
+        "program": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/reasoning/historyRetention"
+            }
+          },
+          "then": {
+            "op": "merge",
+            "policy": "last",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/wire:claude"
+                  }
+                },
+                "then": {
+                  "op": "project",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/wire:claude"
+                  },
+                  "keys": [
+                    "context_management"
+                  ],
+                  "policy": "exclude"
+                },
+                "otherwise": {
+                  "op": "object",
+                  "fields": {}
+                }
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "model": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/model"
+                  },
+                  "max_tokens": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/max_output_tokens"
+                  },
+                  "messages": {
+                    "op": "map",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/content"
+                    },
+                    "body": {
+                      "op": "object",
+                      "fields": {
+                        "role": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/role"
+                        },
+                        "content": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/children/0/payload"
+                        }
+                      }
+                    }
+                  },
+                  "context_management": {
+                    "op": "literal",
+                    "value": {
+                      "edits": [
+                        {
+                          "type": "clear_thinking_20251015",
+                          "keep": "all"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "merge",
+            "policy": "last",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/wire:claude"
+                  }
+                },
+                "then": {
+                  "op": "project",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/wire:claude"
+                  },
+                  "keys": [
+                    "context_management"
+                  ],
+                  "policy": "exclude"
+                },
+                "otherwise": {
+                  "op": "object",
+                  "fields": {}
+                }
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "model": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/model"
+                  },
+                  "max_tokens": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/max_output_tokens"
+                  },
+                  "messages": {
+                    "op": "map",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/content"
+                    },
+                    "body": {
+                      "op": "object",
+                      "fields": {
+                        "role": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/role"
+                        },
+                        "content": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/children/0/payload"
+                        }
+                      }
+                    }
+                  },
+                  "context_management": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/wire:claude/context_management"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "effects": [
+          {
+            "id": "history-retention",
+            "kind": "aggregate",
+            "path": "/reasoning/historyRetention",
+            "target": "/context_management",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/historyRetention"
+              }
+            },
+            "valueMapping": {
+              "value": "all",
+              "variants": [
+                {
+                  "edits": [
+                    {
+                      "type": "clear_thinking_20251015",
+                      "keep": "all"
+                    }
+                  ]
+                },
+                {
+                  "edits": [
+                    {
+                      "type": "clear_thinking_20251015",
+                      "keep": {
+                        "type": "all"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "unmatched": "/parameters/wire:claude/context_management"
+            }
+          }
+        ]
+      }
+    },
+    "samples": [
+      {
+        "id": "request.decode",
+        "direction": "decode_request",
+        "input": {
+          "model": "m",
+          "max_tokens": 64,
+          "messages": [
+            {
+              "role": "user",
+              "content": "hi"
+            }
+          ]
+        },
+        "expected": {
+          "schemaVersion": 2,
+          "source": {},
+          "model": "m",
+          "content": [
+            {
+              "kind": "message",
+              "role": "user",
+              "children": [
+                {
+                  "kind": "text",
+                  "payload": "hi"
+                }
+              ]
+            }
+          ],
+          "parameters": {
+            "max_output_tokens": 64,
+            "wire:claude": {}
+          }
+        }
+      },
+      {
+        "id": "request.encode",
+        "direction": "encode_request",
+        "input": {
+          "schemaVersion": 2,
+          "source": {},
+          "model": "m",
+          "content": [
+            {
+              "kind": "message",
+              "role": "user",
+              "children": [
+                {
+                  "kind": "text",
+                  "payload": "hi"
+                }
+              ]
+            }
+          ],
+          "parameters": {
+            "max_output_tokens": 64,
+            "wire:claude": {}
+          }
+        },
+        "expected": {
+          "model": "m",
+          "max_tokens": 64,
+          "messages": [
+            {
+              "role": "user",
+              "content": "hi"
+            }
+          ]
+        }
+      },
+      {
+        "id": "response.decode",
+        "direction": "decode_response",
+        "input": {
+          "reply": "ok"
+        },
+        "expected": {
+          "schemaVersion": 2,
+          "source": {},
+          "status": "completed",
+          "content": [
+            {
+              "kind": "message",
+              "role": "assistant",
+              "children": [
+                {
+                  "kind": "text",
+                  "payload": "ok"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "response.encode",
+        "direction": "encode_response",
+        "input": {
+          "schemaVersion": 2,
+          "source": {},
+          "status": "completed",
+          "content": [
+            {
+              "kind": "message",
+              "role": "assistant",
+              "children": [
+                {
+                  "kind": "text",
+                  "payload": "ok"
+                }
+              ]
+            }
+          ]
+        },
+        "expected": {
+          "reply": "ok"
+        }
+      },
+      {
+        "id": "history.decode",
+        "direction": "decode_request",
+        "input": {
+          "model": "m",
+          "max_tokens": 64,
+          "messages": [
+            {
+              "role": "user",
+              "content": "hi"
+            }
+          ],
+          "context_management": {
+            "edits": [
+              {
+                "type": "clear_thinking_20251015",
+                "keep": "all"
+              }
+            ]
+          }
+        },
+        "expected": {
+          "schemaVersion": 2,
+          "source": {},
+          "model": "m",
+          "content": [
+            {
+              "kind": "message",
+              "role": "user",
+              "children": [
+                {
+                  "kind": "text",
+                  "payload": "hi"
+                }
+              ]
+            }
+          ],
+          "parameters": {
+            "max_output_tokens": 64,
+            "wire:claude": {}
+          },
+          "reasoning": {
+            "historyRetention": "all"
+          }
+        },
+        "capabilities": [
+          "reasoning.history_retention"
+        ]
+      },
+      {
+        "id": "history.encode",
+        "direction": "encode_request",
+        "input": {
+          "schemaVersion": 2,
+          "source": {},
+          "model": "m",
+          "content": [
+            {
+              "kind": "message",
+              "role": "user",
+              "children": [
+                {
+                  "kind": "text",
+                  "payload": "hi"
+                }
+              ]
+            }
+          ],
+          "parameters": {
+            "max_output_tokens": 64,
+            "wire:claude": {}
+          },
+          "reasoning": {
+            "historyRetention": "all"
+          }
+        },
+        "expected": {
+          "model": "m",
+          "max_tokens": 64,
+          "messages": [
+            {
+              "role": "user",
+              "content": "hi"
+            }
+          ],
+          "context_management": {
+            "edits": [
+              {
+                "type": "clear_thinking_20251015",
+                "keep": "all"
+              }
+            ]
+          }
+        },
+        "capabilities": [
+          "reasoning.history_retention"
+        ]
+      }
+    ]
+  }
+}

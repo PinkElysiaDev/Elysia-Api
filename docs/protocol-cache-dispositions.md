@@ -1,6 +1,6 @@
 # 声明式缓存意图处置
 
-此能力仅接入独立编译的 v3 包。四个现有预置、生产加载入口及编译器版本未改变。`historyRetention` 核心字段已独立接入，本文的缓存处置不处理该语义。
+此能力仅接入独立编译的 v3 包。四个现有预置与生产加载入口未改变。历史保留字段的声明原型另见[请求历史保留说明](protocol-history-declarations.md)。
 
 目标 `encode_request` 可以声明 `scope: "cache_intents"` 的 `drop` 或 `default` effect。`path`、`target` 必须为空，不接受 aggregate layout。`when` 必须存在，使用当前 `CacheIntent` 作为 `input`／`root`；不能读取请求上下文。引用表达式在编译时解析，运行时不重新编译。
 

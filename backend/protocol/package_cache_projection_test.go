@@ -168,7 +168,7 @@ func TestPackageCacheProjectionVisitsOnlyCoreOwners(t *testing.T) {
 	rule := conversion.Policy.Rules[0]
 	options, _ := readConversionOption[requestProjectionOptions](conversion, rule)
 	allocations := testing.AllocsPerRun(20, func() {
-		if err := conversion.projectCacheIntents(t.Context(), empty, route, rule, options.cachePlan, nil); err != nil {
+		if err := conversion.projectRequestIntents(t.Context(), empty, route, rule, options.corePlan, nil); err != nil {
 			panic(err)
 		}
 	})

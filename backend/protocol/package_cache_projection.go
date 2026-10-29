@@ -8,15 +8,6 @@ import (
 
 const cacheIntentScope = "cache_intents"
 
-type cacheProjectionSpec struct {
-	CoreVersion int                      `json:"coreVersion"`
-	Target      Identity                 `json:"target"`
-	MappingHash string                   `json:"mappingHash"`
-	Native      bool                     `json:"native"`
-	Effects     []ProtocolSemanticEffect `json:"effects"`
-	Expressions map[string]Expression    `json:"expressions,omitempty"`
-}
-
 func validateCacheDisposition(direction Direction, effect ProtocolSemanticEffect) error {
 	if effect.Kind != "drop" && effect.Kind != "default" {
 		if effect.Scope != "" || !effect.Default.IsZero() || effect.Severity != "" {
@@ -27,7 +18,7 @@ func validateCacheDisposition(direction Direction, effect ProtocolSemanticEffect
 	if direction != EncodeRequest || effect.Scope != cacheIntentScope {
 		return fmt.Errorf("semantic effect %q is not executable without encode_request scope cache_intents", effect.Kind)
 	}
-	if effect.Path != "" || effect.Target != "" || effect.Layout != nil || effect.When == nil || strings.TrimSpace(effect.Reason) == "" {
+	if effect.Path != "" || effect.Target != "" || effect.Layout != nil || effect.ValueMapping != nil || effect.When == nil || strings.TrimSpace(effect.Reason) == "" {
 		return fmt.Errorf("cache disposition requires a local when and reason, without path, target or layout")
 	}
 	if effect.Kind == "default" {
@@ -38,58 +29,6 @@ func validateCacheDisposition(direction Direction, effect ProtocolSemanticEffect
 		return fmt.Errorf("cache drop requires severity info or warning and no default")
 	}
 	return nil
-}
-
-func localCacheCondition(plan *compiledOutputPlan) bool {
-	if plan == nil {
-		return true
-	}
-	if plan.expression.op == "read" && plan.expression.from != "input" && plan.expression.from != "root" && plan.expression.from != "item" {
-		return false
-	}
-	for _, child := range []*compiledOutputPlan{plan.source, plan.body, plan.when, plan.then, plan.otherwise} {
-		if !localCacheCondition(child) {
-			return false
-		}
-	}
-	for _, child := range plan.items {
-		if !localCacheCondition(child) {
-			return false
-		}
-	}
-	for _, field := range plan.fields {
-		if !localCacheCondition(field.expression) {
-			return false
-		}
-	}
-	for _, child := range plan.cases {
-		if !localCacheCondition(child) {
-			return false
-		}
-	}
-	return true
-}
-
-func (compiled *Compiled) bindCacheProjection(document ProtocolPackage) error {
-	spec := cacheProjectionSpec{CoreVersion: compiled.CoreVersion(), Target: compiled.identity, MappingHash: compiled.mappings[EncodeRequest].definitionHash, Native: compiled.native.Preserve, Expressions: map[string]Expression{}}
-	for index, effect := range compiled.packagePlan.effects[EncodeRequest] {
-		if effect.scope != cacheIntentScope {
-			continue
-		}
-		spec.Effects = append(spec.Effects, document.Mapping.Directions[EncodeRequest].Effects[index])
-		for name, expression := range effect.conditionReferences {
-			spec.Expressions[name] = expression
-		}
-	}
-	if len(spec.Effects) == 0 {
-		return nil
-	}
-	value, err := EncodeValue(requestProjectionOptions{Core: &spec})
-	compiled.packagePlan.requestProjection = value
-	for index := range compiled.packagePlan.effects[EncodeRequest] {
-		compiled.packagePlan.effects[EncodeRequest][index].conditionReferences = nil
-	}
-	return err
 }
 
 func emptyCacheDefault(intent CacheIntent) bool {

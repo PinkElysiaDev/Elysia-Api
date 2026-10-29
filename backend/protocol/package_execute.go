@@ -33,13 +33,18 @@ func (compiled *Compiled) preparePackageState(direction Direction, state evaluat
 		}
 	}
 	var conditions *evaluation
-	if direction == EncodeRequest && !compiled.packagePlan.requestProjection.IsZero() {
+	if direction == EncodeRequest && compiled.packagePlan.hasCacheProjection {
 		if err := compiled.checkCacheDispositions(state, limits); err != nil {
 			return err
 		}
 	}
+	if direction == EncodeRequest && compiled.packagePlan.hasHistoryProjection {
+		if err := compiled.checkHistoryDispositions(state, limits); err != nil {
+			return err
+		}
+	}
 	for _, effect := range compiled.packagePlan.effects[direction] {
-		if effect.scope == cacheIntentScope {
+		if isRequestProjectionScope(effect.scope) {
 			continue // Projection belongs to the overridable conversion rule.
 		}
 		if err := state.ctx.Err(); err != nil {
@@ -75,6 +80,12 @@ func (compiled *Compiled) preparePackageState(direction Direction, state evaluat
 			return compiled.packageEffectError(direction, effect, "declared emit input is absent or inaccessible", err)
 		}
 		if effect.kind == "aggregate" && !isDecode {
+			if effect.valueMapping != nil {
+				if err := checkHistoryValueInput(state, effect, value); err != nil {
+					return compiled.packageEffectError(direction, effect, "value mapping input violates its core owner contract", err)
+				}
+				continue
+			}
 			if err := checkPackageAggregateInput(state, value); err != nil {
 				return compiled.packageEffectError(direction, effect, "aggregate input violates its core owner contract", err)
 			}

@@ -6,10 +6,10 @@ import (
 )
 
 type requestProjectionOptions struct {
-	SourceCodec string               `json:"sourceCodec,omitempty"`
-	TargetCodec string               `json:"targetCodec,omitempty"`
-	Core        *cacheProjectionSpec `json:"core,omitempty"`
-	cachePlan   *compiledCacheProjection
+	SourceCodec string                 `json:"sourceCodec,omitempty"`
+	TargetCodec string                 `json:"targetCodec,omitempty"`
+	Core        *requestProjectionSpec `json:"core,omitempty"`
+	corePlan    *compiledRequestProjection
 }
 
 // Hint validation runs before authored rules and projection can remove fields.
@@ -133,7 +133,7 @@ func (c *CompiledConversion) requestProjection(ctx context.Context, req *Request
 		return err
 	}
 	if opts.Core != nil {
-		return c.projectCacheIntents(ctx, req, route, rule, opts.cachePlan, sink)
+		return c.projectRequestIntents(ctx, req, route, rule, opts.corePlan, sink)
 	}
 	codec := opts.TargetCodec
 	openAI := codec == "openai-chat" || codec == "responses"
