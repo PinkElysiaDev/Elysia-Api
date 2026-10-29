@@ -52,18 +52,30 @@ func (state *conversionState) load(phase ConversionPhase, strict bool) error {
 		return nil
 	}
 	var document any
-	switch phase {
-	case ConversionIngress, ConversionRequest:
-		document = &Request{}
-	case ConversionResponse:
-		document = &Response{}
-	case ConversionEvent:
-		document = &Event{}
-	}
 	var err error
 	if strict {
-		err = decodeContract(state.wire.Bytes(), document)
+		// The wire is already validated JSON. Direct writers retain the root's
+		// borrowing threshold and recover the contract decoder's exact errors.
+		output := JSONLeaf(state.wire)
+		switch phase {
+		case ConversionIngress, ConversionRequest:
+			document, err = decodeCoreRequestOutput(output)
+		case ConversionResponse:
+			document, err = decodeCoreResponseOutput(output)
+		case ConversionEvent:
+			document, err = decodeCoreEventOutput(output)
+		default:
+			panic("strict conversion requires a semantic phase")
+		}
 	} else {
+		switch phase {
+		case ConversionIngress, ConversionRequest:
+			document = &Request{}
+		case ConversionResponse:
+			document = &Response{}
+		case ConversionEvent:
+			document = &Event{}
+		}
 		err = state.wire.Decode(document)
 	}
 	if err != nil {
