@@ -152,11 +152,15 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			if !scope.canReadRuntime {
 				return nil, fmt.Errorf("%s/from: runtime metadata requires a package mapping program or effect", path)
 			}
-			if len(pointer) != 1 || pointer[0] != "interleavedThinking" {
+			switch {
+			case len(pointer) == 1 && pointer[0] == "interleavedThinking":
+				compiled.result = BooleanType
+			case len(pointer) == 2 && pointer[0] == "scope" && pointer[1] == "model":
+				compiled.result = StringType
+			default:
 				return nil, fmt.Errorf("%s/path: unknown runtime metadata field", path)
 			}
-			compiled.result, schema = BooleanType, nil
-			coreType = nil
+			schema, coreType = nil, nil
 		case "binding":
 			binding, exists := scope.bindings[expression.Name]
 			if !exists {

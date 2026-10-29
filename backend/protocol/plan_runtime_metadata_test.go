@@ -59,6 +59,61 @@ func TestPackageRuntimeMetadataAcrossBoundaries(t *testing.T) {
 	}
 }
 
+func TestPackageRuntimeScopeModel(t *testing.T) {
+	document := textProtocolPackage(t)
+	model := readExpression("runtime", "/scope/model")
+	contextModel := readExpression("context", "/model")
+	document.Mapping.Directions[DecodeRequest].Program.Fields["parameters"] = objectExpression(map[string]Expression{
+		"scopeModel":   model,
+		"contextFirst": {Op: "if", When: &Expression{Op: "exists", Source: &contextModel}, Then: &contextModel, Otherwise: &model},
+	})
+	document.Mapping.Directions[EncodeRequest].Program.Fields["scopeModel"] = model
+	document.Spec.WireContracts[DecodeRequest].Schema.AllowUnknown = true
+	compiled := compilePackageForTest(t, document)
+	for _, tc := range []struct {
+		name, scopeModel string
+		contextModel     Value
+	}{
+		{name: "missing-context", scopeModel: "bound-model"},
+		{name: "explicit-context", scopeModel: "bound-model", contextModel: StringValue("declared-priority")},
+		{name: "null-context", scopeModel: "bound-model", contextModel: Value{raw: "null"}},
+		{name: "empty-context", scopeModel: "bound-model", contextModel: StringValue("")},
+		{name: "empty-scope"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			options := EvaluationContext{Scope: Scope{Model: tc.scopeModel}, Values: Object{
+				"scope": fixtureValue(t, Scope{Model: "spoofed-values-model"}),
+			}}
+			wantContext := StringValue(tc.scopeModel)
+			if !tc.contextModel.IsZero() {
+				options.Values["model"], wantContext = tc.contextModel, tc.contextModel
+			}
+			input := Value{raw: `{"model":"m","prompt":"hello","scope":{"model":"spoofed-wire-model"}}`}
+			core, issues := compiled.Execute(t.Context(), DecodeRequest, input, options)
+			request, err := compiled.DecodeRequestValue(t.Context(), input, options)
+			if err != nil || IssuesError(issues) != nil {
+				t.Fatal("runtime model decoding failed", issues, err)
+			}
+			for key, want := range map[string]Value{"scopeModel": StringValue(tc.scopeModel), "contextFirst": wantContext} {
+				actual, err := readValuePointer(core, []string{"parameters", key})
+				if err != nil || actual != want || request.Parameters[key] != want {
+					t.Fatal("runtime model or declared context priority changed", key, actual, err)
+				}
+			}
+			options.Scope.Model = "encoding-model"
+			raw, issues := compiled.Execute(t.Context(), EncodeRequest, core, options)
+			typed, err := compiled.EncodeRequestValue(t.Context(), request, options)
+			if err != nil || IssuesError(issues) != nil || raw != typed {
+				t.Fatal("runtime model encoding differs", issues, err)
+			}
+			actual, err := readValuePointer(raw, []string{"scopeModel"})
+			if err != nil || actual != StringValue("encoding-model") {
+				t.Fatal("encoding did not use its own bound model", actual, err)
+			}
+		})
+	}
+}
+
 func TestPackageRuntimeMetadataEffectConditions(t *testing.T) {
 	document := textProtocolPackage(t)
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
@@ -138,7 +193,7 @@ func TestRuntimeMetadataRejectsInvalidScopesAndFields(t *testing.T) {
 			}
 		})
 	}
-	for _, path := range []string{"", "/headers", "/scope", "/identity", "/interleavedThinking/value"} {
+	for _, path := range []string{"", "/headers", "/scope", "/scope/account", "/scope/model/value", "/identity", "/interleavedThinking/value"} {
 		compiler := expressionCompiler{limits: DefaultLimits()}
 		if _, err := compiler.compilePlan(readExpression("runtime", path), "/program", expressionScope{canReadRuntime: true}, 1); err == nil || !strings.Contains(err.Error(), "unknown runtime metadata field") {
 			t.Fatal("undeclared runtime field compiled", path, err)
@@ -147,13 +202,15 @@ func TestRuntimeMetadataRejectsInvalidScopesAndFields(t *testing.T) {
 }
 
 func TestRuntimeMetadataRequiresExecutionBinding(t *testing.T) {
-	compiler := expressionCompiler{limits: DefaultLimits()}
-	plan, err := compiler.compilePlan(readExpression("runtime", "/interleavedThinking"), "/program", expressionScope{canReadRuntime: true}, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	state := evaluation{ctx: t.Context(), budget: &evaluationBudget{limits: DefaultLimits()}}
-	if _, err := plan.evaluate(state); err == nil || !strings.Contains(err.Error(), "runtime metadata is not bound") {
-		t.Fatal("an unbound evaluation silently returned false", err)
+	for _, path := range []string{"/interleavedThinking", "/scope/model"} {
+		compiler := expressionCompiler{limits: DefaultLimits()}
+		plan, err := compiler.compilePlan(readExpression("runtime", path), "/program", expressionScope{canReadRuntime: true}, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		state := evaluation{ctx: t.Context(), budget: &evaluationBudget{limits: DefaultLimits()}}
+		if _, err := plan.evaluate(state); err == nil || !strings.Contains(err.Error(), "runtime metadata is not bound") {
+			t.Fatal("an unbound evaluation silently returned a zero value", path, err)
+		}
 	}
 }

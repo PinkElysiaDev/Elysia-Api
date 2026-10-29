@@ -23,10 +23,11 @@ type evaluation struct {
 type evaluationRuntime struct {
 	isBound               bool
 	isInterleavedThinking bool
+	scopeModel            string
 }
 
 func bindEvaluationRuntime(options EvaluationContext) evaluationRuntime {
-	return evaluationRuntime{isBound: true, isInterleavedThinking: options.InterleavedThinking}
+	return evaluationRuntime{isBound: true, isInterleavedThinking: options.InterleavedThinking, scopeModel: options.Scope.Model}
 }
 
 type evaluationBudget struct {
