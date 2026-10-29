@@ -61,6 +61,7 @@ func main() {
 		typeOf reflect.Type
 	}{{"Request", reflect.TypeFor[p.Request]()}, {"Response", reflect.TypeFor[p.Response]()}, {"Event", reflect.TypeFor[p.Event]()}} {
 		g.line("func decodeCore%sOutput(output JSONOutput) (*%s,error) { return decodeCoreOutput(output, writeCore%s) }", entry.name, local(entry.typeOf), g.name(entry.typeOf))
+		g.line("func decodeCore%sOutputWithin(output JSONOutput,reader *valueReader) (*%s,error) { return decodeCoreOutputWithin(output, writeCore%s,reader) }", entry.name, local(entry.typeOf), g.name(entry.typeOf))
 		g.line("func readCore%sOutput(value *%s,pointer []string) (JSONOutput,error) {return readCore%s(value,pointer)}", entry.name, local(entry.typeOf), g.name(reflect.PointerTo(entry.typeOf)))
 	}
 	g.line("func decodeCoreEventsOutput(output JSONOutput) ([]Event,error) { value,err:=decodeCoreOutput(output,writeCore%s);if err!=nil{return nil,err};return *value,nil }", g.name(reflect.TypeFor[[]p.Event]()))
@@ -159,6 +160,13 @@ func (g *generator) emitWriter(name string, t reflect.Type) {
 		}
 		g.line("if coreOutputIsNull(output){*value=nil;return nil};reader=coreOutputReader(output,reader);fields,err:=coreObjectFields(output);if err!=nil{return err};if *value==nil{*value=make(%s,len(fields))};for _,field:=range fields {key:=ownCoreMapKey(field.key);child:=(*value)[key];if err:=writeCore%s(field.value,&child,reader);err!=nil{return err};(*value)[key]=child};return nil", local(t), g.name(t.Elem()))
 	case reflect.Struct:
+		if t == reflect.TypeFor[p.Native]() || t == reflect.TypeFor[p.Provenance]() {
+			origin := "capturedNativeOrigin"
+			if t == reflect.TypeFor[p.Provenance]() {
+				origin = "capturedProvenanceOrigin"
+			}
+			g.line("if !coreOutputIsNull(output){if err:=requireCoreOrigin(output,reader,%s);err!=nil{return err}}", origin)
+		}
 		g.line("if coreOutputIsNull(output){return nil};reader=coreOutputReader(output,reader);fields,err:=coreObjectFields(output);if err!=nil{return err};for _,field:=range fields {if err:=writeCore%sField(field,value,reader);err!=nil{return err}};return nil\n}", name)
 		g.line("func writeCore%sField(field jsonOutputField,value *%s,reader *valueReader) error {switch field.key {", name, local(t))
 		var names []string

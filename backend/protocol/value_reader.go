@@ -8,8 +8,9 @@ const requestViewMinBytes = 64 << 10
 // sharing is useful only for payloads that account for a substantial part of the
 // root. Public ReadObject/Decode continue to return independent child storage.
 type valueReader struct {
-	minimumSharedBytes int
-	index              *valueIndex
+	minimumSharedBytes     int
+	index                  *valueIndex
+	requireCapturedOrigins bool
 }
 
 func requestValueReader(root Value) *valueReader {

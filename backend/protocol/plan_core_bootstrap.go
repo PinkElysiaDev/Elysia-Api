@@ -4,7 +4,16 @@ package protocol
 
 // Generation excludes stale direct field references before importing the model.
 // These entrypoints are never executed by the generator or a production build.
-func decodeCoreRequestOutput(JSONOutput) (*Request, error)           { panic("coreplan generation") }
+func decodeCoreRequestOutput(JSONOutput) (*Request, error) { panic("coreplan generation") }
+func decodeCoreRequestOutputWithin(JSONOutput, *valueReader) (*Request, error) {
+	panic("coreplan generation")
+}
+func decodeCoreResponseOutputWithin(JSONOutput, *valueReader) (*Response, error) {
+	panic("coreplan generation")
+}
+func decodeCoreEventOutputWithin(JSONOutput, *valueReader) (*Event, error) {
+	panic("coreplan generation")
+}
 func decodeCoreResponseOutput(JSONOutput) (*Response, error)         { panic("coreplan generation") }
 func decodeCoreEventOutput(JSONOutput) (*Event, error)               { panic("coreplan generation") }
 func decodeCoreEventsOutput(JSONOutput) ([]Event, error)             { panic("coreplan generation") }

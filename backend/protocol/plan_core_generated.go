@@ -6,17 +6,26 @@ package protocol
 func decodeCoreRequestOutput(output JSONOutput) (*Request, error) {
 	return decodeCoreOutput(output, writeCoreRequest)
 }
+func decodeCoreRequestOutputWithin(output JSONOutput, reader *valueReader) (*Request, error) {
+	return decodeCoreOutputWithin(output, writeCoreRequest, reader)
+}
 func readCoreRequestOutput(value *Request, pointer []string) (JSONOutput, error) {
 	return readCoreRequestPointer(value, pointer)
 }
 func decodeCoreResponseOutput(output JSONOutput) (*Response, error) {
 	return decodeCoreOutput(output, writeCoreResponse)
 }
+func decodeCoreResponseOutputWithin(output JSONOutput, reader *valueReader) (*Response, error) {
+	return decodeCoreOutputWithin(output, writeCoreResponse, reader)
+}
 func readCoreResponseOutput(value *Response, pointer []string) (JSONOutput, error) {
 	return readCoreResponsePointer(value, pointer)
 }
 func decodeCoreEventOutput(output JSONOutput) (*Event, error) {
 	return decodeCoreOutput(output, writeCoreEvent)
+}
+func decodeCoreEventOutputWithin(output JSONOutput, reader *valueReader) (*Event, error) {
+	return decodeCoreOutputWithin(output, writeCoreEvent, reader)
 }
 func readCoreEventOutput(value *Event, pointer []string) (JSONOutput, error) {
 	return readCoreEventPointer(value, pointer)
@@ -2013,6 +2022,11 @@ func readCoreResource(value Resource, pointer []string) (JSONOutput, error) {
 	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
 }
 func writeCoreNative(output JSONOutput, value *Native, reader *valueReader) error {
+	if !coreOutputIsNull(output) {
+		if err := requireCoreOrigin(output, reader, capturedNativeOrigin); err != nil {
+			return err
+		}
+	}
 	if coreOutputIsNull(output) {
 		return nil
 	}
@@ -2758,6 +2772,11 @@ func readCoreScope(value Scope, pointer []string) (JSONOutput, error) {
 	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
 }
 func writeCoreProvenance(output JSONOutput, value *Provenance, reader *valueReader) error {
+	if !coreOutputIsNull(output) {
+		if err := requireCoreOrigin(output, reader, capturedProvenanceOrigin); err != nil {
+			return err
+		}
+	}
 	if coreOutputIsNull(output) {
 		return nil
 	}

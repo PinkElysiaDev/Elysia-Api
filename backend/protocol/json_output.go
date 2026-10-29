@@ -18,6 +18,7 @@ type JSONOutput struct {
 
 type jsonOutputNode struct {
 	object bool
+	origin coreOriginTag
 	fields []jsonOutputField
 	items  []JSONOutput
 }

@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,6 +14,41 @@ import (
 //go:generate go run -tags=coreplan_bootstrap ../internal/coreplan
 
 const coreDirectDecodeBytes = 4 << 10
+
+// Origin tags survive immutable reads but not JSON serialization or object
+// reconstruction. Only capture_native can authorize stamped semantic provenance.
+type coreOriginTag uint8
+
+const (
+	capturedNativeOrigin coreOriginTag = iota + 1
+	capturedProvenanceOrigin
+)
+
+type untrustedCoreOriginError struct{ kind string }
+
+func (err *untrustedCoreOriginError) Error() string {
+	return err.kind + " in a package decoder must come from capture_native"
+}
+
+func requireCoreOrigin(output JSONOutput, reader *valueReader, origin coreOriginTag) error {
+	if reader == nil || !reader.requireCapturedOrigins || output.node != nil && output.node.origin == origin {
+		return nil
+	}
+	kind := "Native"
+	if origin == capturedProvenanceOrigin {
+		kind = "Provenance"
+	}
+	return &untrustedCoreOriginError{kind: kind}
+}
+
+func capturedCoreReader(output JSONOutput) *valueReader {
+	reader := coreOutputReader(output, nil)
+	if reader == nil {
+		reader = &valueReader{minimumSharedBytes: requestViewMinBytes}
+	}
+	reader.requireCapturedOrigins = true
+	return reader
+}
 
 // decodeCoreOutput writes a completed plan directly into the closed core model.
 // A rejected write may materialize once to recover the contract decoder's exact
@@ -26,13 +62,17 @@ func decodeCoreOutputWithin[T any](output JSONOutput, write func(JSONOutput, *T,
 	// A small raw leaf already has JSON bytes. The contract decoder consumes it
 	// once without building the temporary field/index views needed by the large
 	// borrowed writer. Constructed plans still write directly into the core.
-	if output.node == nil && output.value.Len() > 0 && output.value.Len() <= coreDirectDecodeBytes {
+	if (reader == nil || !reader.requireCapturedOrigins) && output.node == nil && output.value.Len() > 0 && output.value.Len() <= coreDirectDecodeBytes {
 		if err := decodeContract(output.value.Bytes(), &result); err != nil {
 			return nil, err
 		}
 		return &result, nil
 	}
 	if err := write(output, &result, reader); err != nil {
+		var originError *untrustedCoreOriginError
+		if errors.As(err, &originError) {
+			return nil, err
+		}
 		value, encodingErr := output.Encode(context.Background())
 		if encodingErr != nil {
 			return nil, encodingErr
@@ -52,6 +92,13 @@ func decodeCoreOutputWithin[T any](output JSONOutput, write func(JSONOutput, *T,
 func coreOutputReader(output JSONOutput, reader *valueReader) *valueReader {
 	if reader == nil && output.node == nil {
 		return requestValueReader(output.value)
+	}
+	// The provenance context starts on a constructed plan. Preserve the original
+	// ownership threshold when a later raw subtree introduces a large root.
+	if output.node == nil && reader != nil && reader.requireCapturedOrigins && reader.index == nil && output.value.Len() >= requestViewMinBytes {
+		root := requestValueReader(output.value)
+		root.requireCapturedOrigins = true
+		return root
 	}
 	return reader
 }

@@ -26,6 +26,9 @@ func decodePlannedEvents(ctx context.Context, compiled *Compiled, direction Dire
 	}
 	events := make([]Event, len(items))
 	reader := coreOutputReader(output, nil)
+	if compiled.packagePlan != nil {
+		reader = capturedCoreReader(output)
+	}
 	for index, item := range items {
 		event, err := decodeCoreOutputWithin(item, writeCoreEvent, reader)
 		if err != nil {

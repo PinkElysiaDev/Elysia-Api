@@ -14,13 +14,17 @@ func decodePlannedCore[T any](ctx context.Context, compiled *Compiled, direction
 		return nil, err
 	}
 	// Contract-decoding errors retain their original unwrapped boundary.
+	var reader *valueReader
+	if compiled.packagePlan != nil {
+		reader = capturedCoreReader(output)
+	}
 	var target *T
 	switch any(target).(type) {
 	case *Request:
-		result, err := decodeCoreRequestOutput(output)
+		result, err := decodeCoreRequestOutputWithin(output, reader)
 		return any(result).(*T), err
 	case *Response:
-		result, err := decodeCoreResponseOutput(output)
+		result, err := decodeCoreResponseOutputWithin(output, reader)
 		return any(result).(*T), err
 	default:
 		panic("core output plan requires a request or response destination")

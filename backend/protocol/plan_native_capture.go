@@ -77,6 +77,8 @@ func (plan *compiledOutputPlan) captureNative(state evaluation) (plannedOutput, 
 	if err != nil {
 		return plannedOutput{}, err
 	}
+	source.node.origin = capturedProvenanceOrigin
 	output := JSONObject(map[string]JSONOutput{"source": source, "value": selected.output})
+	output.node.origin = capturedNativeOrigin
 	return plannedOutput{output: output, bytes: normalizedOutputBytes(output)}, nil
 }
