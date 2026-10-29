@@ -57,6 +57,21 @@ func TestPlannedCoreEncodingMatchesJSONBoundary(t *testing.T) {
 	if _, err := encodePlannedCore(cancelled, compiled, EncodeRequest, request, EvaluationContext{}); !errors.Is(err, context.Canceled) {
 		t.Fatal("core input plan lost cancellation", err)
 	}
+	compiled.limits.Depth = 1
+	options := EvaluationContext{Values: Object{"invalid": {}}}
+	encoded, err := EncodeSemantic(t.Context(), EncodeResponse, response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, wantErr := compiled.executeMapping(t.Context(), EncodeResponse, encoded, options)
+	_, gotErr := encodePlannedCore(t.Context(), compiled, EncodeResponse, response, options)
+	var before, after *ResourceLimitError
+	if !errors.As(wantErr, &before) || !errors.As(gotErr, &after) || !reflect.DeepEqual(before, after) || after.Domain != "mapping_input" || fmt.Sprint(gotErr) != fmt.Sprint(wantErr) {
+		t.Fatal("tighter mapping budget lost precedence over invalid context encoding", gotErr, wantErr)
+	}
+	if _, err := encodePlannedCore(cancelled, compiled, EncodeResponse, response, options); !errors.Is(err, context.Canceled) {
+		t.Fatal("mapping budget preceded cancellation", err)
+	}
 }
 
 func TestPlannedCoreReadsShareLargeValuesAndDetachSmallResults(t *testing.T) {

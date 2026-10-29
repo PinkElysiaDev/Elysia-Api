@@ -145,20 +145,28 @@ func checkSemanticValue(value any, limits Limits) error {
 }
 
 type semanticSize struct {
-	bytes, maxRawBytes int
+	semanticMetrics
+	maxRawBytes int
+	hasMetrics  bool
+}
+
+// Only a complete successful generated walk can prove another budget fits.
+// Failed or unsupported walks retain their original mapping error path.
+func (size semanticSize) fits(limits Limits) bool {
+	return size.hasMetrics && size.bytes <= limits.BufferBytes && size.nodes <= limits.Nodes && size.depth <= min(limits.Depth, typedMeterTraversalDepth)
 }
 
 func measureSemanticValue(value any, limits Limits) (semanticSize, error) {
 	fast := typedMeter{limits: limits}
 	if ok, supported := fast.visitTyped(value); supported && ok && fast.fits() {
-		return semanticSize{bytes: fast.bytes, maxRawBytes: fast.maxRawBytes}, nil
+		return semanticSize{semanticMetrics: semanticMetrics{bytes: fast.bytes, nodes: fast.nodes, depth: fast.maxDepth}, maxRawBytes: fast.maxRawBytes, hasMetrics: true}, nil
 	}
 	// The reflective failure path preserves the previous error precedence and
 	// observed counts, including map traversal and unsupported/cyclic values.
 	if plan := typedLimitPlans[reflect.TypeOf(value)]; plan != nil {
 		meter := typedMeter{limits: limits}
 		if meter.visit(plan, reflect.ValueOf(value)) && meter.fits() {
-			return semanticSize{bytes: meter.bytes, maxRawBytes: meter.maxRawBytes}, nil
+			return semanticSize{semanticMetrics: semanticMetrics{bytes: meter.bytes}, maxRawBytes: meter.maxRawBytes}, nil
 		}
 		if meter.bytes > limits.BufferBytes {
 			return semanticSize{}, resourceFailure("semantic", "bytes", limits.BufferBytes, meter.bytes)
@@ -175,7 +183,7 @@ func measureSemanticValue(value any, limits Limits) (semanticSize, error) {
 	if err != nil {
 		return semanticSize{}, err
 	}
-	return semanticSize{bytes: encoded.Len(), maxRawBytes: encoded.Len()}, checkResourceValue(encoded, limits, "semantic")
+	return semanticSize{semanticMetrics: semanticMetrics{bytes: encoded.Len()}, maxRawBytes: encoded.Len()}, checkResourceValue(encoded, limits, "semantic")
 }
 
 // EncodeSemantic checks trusted semantic values before allocating their JSON form.

@@ -21,8 +21,12 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 		return fail(err)
 	}
 	inputLimits, outputLimits, workLimits := compiled.mappingLimits(ctx, direction)
-	if err := checkDocumentMapping(ctx, input, inputLimits, "mapping_input"); err != nil {
-		return fail(err)
+	// The caller owns input throughout this synchronous encode; no mapping has
+	// run yet. Reuse complete counts only to prove that the next budget fits.
+	if !size.fits(inputLimits) {
+		if err := checkDocumentMapping(ctx, input, inputLimits, "mapping_input"); err != nil {
+			return fail(err)
+		}
 	}
 	contextValue, err := EncodeValue(options.Values)
 	if err != nil {
