@@ -4,7 +4,7 @@ import "context"
 
 // WireEventValidator checks cross-frame wire requirements that are not part of
 // the semantic event model (for example an explicit Chat assistant role).
-// It runs on the installed codec's request-owned instance, after wire mappings.
+// It runs on the wire contract's request-owned instance, after wire mappings.
 type WireEventValidator interface {
 	ValidateWireEvent(Value) error
 }
@@ -20,8 +20,8 @@ type TypedObjectEventModule interface {
 }
 
 // WireStreamValidation checks the bytes after after-mappings, wire rules and
-// carrier insertion. It uses the installed target codec, not a user-authored
-// decode mapping that could hide a malformed wire frame.
+// carrier insertion. Its contract is independent of a user-authored decode
+// mapping that could hide a malformed wire frame.
 type WireStreamValidation struct {
 	compiled *Compiled
 	decoder  Module
@@ -31,25 +31,22 @@ type WireStreamValidation struct {
 
 func (c *Compiled) NewWireStreamValidation(scope Scope) (*WireStreamValidation, error) {
 	v := &WireStreamValidation{compiled: c, options: EvaluationContext{Scope: scope, identity: c.identity}}
-	if !knownConversionCodec(c.Codec(EncodeEvent)) {
-		return v, nil
-	}
-	factory, ok := c.mappings[EncodeEvent].module.(StreamModule)
-	if !ok {
+	contract := c.wireContracts[EncodeEvent]
+	if contract.streamFactory == nil {
 		return v, nil
 	}
 	var err error
-	v.decoder, err = factory.NewStream(DecodeEvent, c.limits)
+	v.decoder, err = contract.streamFactory.NewStream(DecodeEvent, c.limits)
 	if err != nil {
 		return nil, err
 	}
-	v.replay, err = NewEventReplay(Target{Codec: c.Codec(EncodeEvent), Protocol: c.identity, Direction: EncodeEvent, Scope: scope, Capabilities: c.Capabilities(EncodeEvent)}, c.limits)
+	v.replay, err = NewEventReplay(Target{Codec: contract.codec, Protocol: c.identity, Direction: EncodeEvent, Scope: scope, Capabilities: c.Capabilities(EncodeEvent)}, c.limits)
 	return v, err
 }
 
 func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 	var fields Object
-	if _, ok := v.compiled.mappings[EncodeEvent].module.(WireObjectOutputValidator); ok && frame.IsObject() {
+	if v.compiled.wireContracts[EncodeEvent].objectValidator != nil && frame.IsObject() {
 		var err error
 		fields, err = (EvaluationContext{}).WithValueReader(frame).ReadObject(frame)
 		if err != nil {

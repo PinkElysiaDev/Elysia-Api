@@ -147,6 +147,7 @@ type Compiled struct {
 	capabilities       CapabilitySet
 	native             NativePolicy
 	mappings           map[Direction]compiledMapping
+	wireContracts      map[Direction]compiledWireContract
 	operations         map[string]Operation
 	operationSchemas   map[string]*runtimeValueSchema
 	modelPageValidator *runtimeValueSchema
@@ -185,7 +186,7 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 	if definition.Limits != nil {
 		limits = *definition.Limits
 	}
-	compiled := &Compiled{explicitLimits: definition.Limits != nil || compiler.limits.BufferBytes != DefaultLimits().BufferBytes, identity: identity, definition: value, limits: limits, native: definition.Native, capabilities: make(CapabilitySet), mappings: make(map[Direction]compiledMapping), operations: definition.Operations}
+	compiled := &Compiled{explicitLimits: definition.Limits != nil || compiler.limits.BufferBytes != DefaultLimits().BufferBytes, identity: identity, definition: value, limits: limits, native: definition.Native, capabilities: make(CapabilitySet), mappings: make(map[Direction]compiledMapping), wireContracts: make(map[Direction]compiledWireContract), operations: definition.Operations}
 	compiled.operationSchemas = make(map[string]*runtimeValueSchema)
 	for _, name := range sortedKeys(definition.Operations) {
 		input := definition.Operations[name].Input
@@ -223,6 +224,7 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 			}
 		}
 		compiled.mappings[direction] = entry
+		compiled.wireContracts[direction] = bindModuleWireContract(entry.module)
 	}
 	if err := compiler.compileTaskMappings(compiled, definition, expressions); err != nil {
 		return fail("/operations", err)

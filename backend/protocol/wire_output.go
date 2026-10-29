@@ -16,12 +16,12 @@ func (c *Compiled) ValidateWireOutput(direction Direction, value Value) error {
 }
 
 func (c *Compiled) validateWireOutput(direction Direction, value Value, fields Object) error {
-	module := c.mappings[direction].module
-	if validator, ok := module.(WireObjectOutputValidator); ok && fields != nil {
-		return c.runtimeError(direction, validator.ValidateWireObjectOutput(direction, value, fields))
+	contract := c.wireContracts[direction]
+	if contract.objectValidator != nil && fields != nil {
+		return c.runtimeError(direction, contract.objectValidator.ValidateWireObjectOutput(direction, value, fields))
 	}
-	if validator, ok := module.(WireOutputValidator); ok {
-		if err := validator.ValidateWireOutput(direction, value); err != nil {
+	if contract.validator != nil {
+		if err := contract.validator.ValidateWireOutput(direction, value); err != nil {
 			return c.runtimeError(direction, err)
 		}
 	}
