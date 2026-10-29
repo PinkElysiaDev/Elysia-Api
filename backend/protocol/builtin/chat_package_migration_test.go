@@ -103,4 +103,25 @@ func TestChatPackageDraftMigration(t *testing.T) {
 		})
 	}
 	checkPackageMediaURIs(t, legacy, draft, definition)
+	wire := testValue(t, `{"model":"m","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{"q":{"type":"string"}}}}}],"tool_choice":{"type":"function","function":{"name":"lookup"}}}`)
+	for _, direction := range []p.Direction{p.DecodeRequest, p.EncodeRequest} {
+		t.Run("named-tool-choice/"+string(direction), func(t *testing.T) {
+			options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
+			sample := p.Sample{Direction: direction, Input: wire}
+			if direction == p.EncodeRequest {
+				request, err := legacy.DecodeRequest(t.Context(), wire.Bytes(), options)
+				if err != nil {
+					t.Fatal(err)
+				}
+				request.Native = nil
+				sample.Input, err = p.EncodeValue(request)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			want, wantErr := executePackageMigrationSample(t, legacy, sample, options, false)
+			got, gotErr := executePackageMigrationSample(t, draft, sample, options, true)
+			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+		})
+	}
 }

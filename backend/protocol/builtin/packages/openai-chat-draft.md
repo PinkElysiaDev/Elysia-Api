@@ -8,6 +8,7 @@
 
 - 请求常规参数逐字段映射，`max_tokens`／`max_completion_tokens` 对应 `max_output_tokens`；可见 reasoning effort 与 client stream options 分开保存。
 - 消息标量与数组内容、工具调用、JSON arguments、工具结果、普通 thinking/refusal。工具名称关联使用现有 `with_index`，原始 JSON 调用 ID 在容器转义前进入调用独享索引。
+- 工具选择使用实际核心 `{mode,name}`；具名函数反向输出 Chat 的 `{type:"function",function:{name}}`，不把核心对象直接当作 wire 对象。
 - URL/data URI 图片、wav/mp3 与未知格式音频、文件容器；不解码或转码媒体字节。图片、工具调用和工具声明的嵌套未知字段进入对应 `wire:openai_chat` 扩展。
 - 请求缓存 key、retention、options、prewarm，以及原生内容中的缓存意图读取。
 - 基础 usage、缓存读写计数、已知输入/输出 details 和缺失 total 的精确 int64 加法。没有将大整数转换为浮点数。
@@ -22,7 +23,9 @@
 
 另在既有图片请求形状上验证 5 个 URI 边界：空 MIME、非法 marker、含逗号正文、null、缺失；没有展开所有方向的组合。
 
-共 **45 次比较：38 次完整相等，7 次未闭合**。原 document 差异已闭合；本批新明确了一项 null 拒绝诊断差异。台账检查通过不等于这 7 次行为等价通过。
+再加入一个实际具名工具选择请求，比较解码及移除根 Native 后重编码。
+
+共 **47 次比较：40 次完整相等，7 次未闭合**。原 document 差异已闭合；null 拒绝诊断仍未闭合。台账检查通过不等于这 7 次行为等价通过。
 
 | 比较组 | 数量 | 当前结果 |
 |---|---:|---|
@@ -31,6 +34,7 @@
 | 新增请求边界 | 3 | 全部相等 |
 | 新增 response usage/details | 1 | 业务字段相等，来源位置未闭合 |
 | 图片 URI 边界 | 5 | 4 相等，null 拒绝诊断未闭合 |
+| 具名工具选择解码与无根 Native 编码 | 2 | 全部相等 |
 
 所有登记差异都固定到完整的差异路径集合，并在[静态账本](../testdata/package-migration-gaps.json)中固定各路径的旧／新原始 JSON 值。缺失与显式 null 分开记录；不会仅因差异仍发生在同一路径就接受内容变化。
 
@@ -39,6 +43,12 @@
 首次静态账本来自 `c86b9d14` 上旧 codec 与未修改草案的实际输出；一次性采集保留在仓库忽略目录 `.tmp-dev/protocol-dsl-2026-10-29/migration-gap-evidence.jsonl`。正常测试只读取账本，不生成或更新期望。
 
 旧 helper 没有比较完整错误链，对 Anthropic 的已知拒绝项也只要求两边拒绝。增强检查揭示了额外 ConversionError 包装层和 schema cause，具体见本目录 README；没有在 Chat 原先相等的比较中发现新差异。固定快照只锁定既有未闭合状态，不构成错误链等价或激活证据。
+
+### 已修正：具名工具选择的核心字段
+
+初稿把具名选择写成 `{type,name}`，而实际核心契约是 `{mode,name}`。定向差分先复现了解码的 `/toolChoice/mode`、`/toolChoice/type` 差异，以及反向把核心对象直接写入 `tool_choice` 的错误。
+
+现在两向声明对齐 `builtin/tool_choice.go`，新增的同一请求在解码和无根 Native 编码中均完整相等，原有 45 次比较未改变。此修正只作用于未启用草案；生产 codec 原本使用正确字段。没有扩展全模式矩阵，工具选择的完整拒绝与诊断仍需后续验证。
 
 ### 未闭合 1：Chat 响应中的旧来源位置
 
@@ -60,9 +70,10 @@
 
 ## 尚未完成的生产边界
 
-以下不是上述 45 次比较已证明的能力：
+以下不是上述 47 次比较已证明的能力：
 
 - 请求 wire 的完整类型拒绝、冲突 token 上限、旧 functions/function_call 拒绝、n 范围、非法参数的首错顺序和诊断归因。
+- 工具选择全部模式及 names/disableParallel 等组合的拒绝边界；具名函数两向相等不代表这些规则已经闭合。
 - 完整消息顺序、工具结果紧邻约束、混合工具结果的有序拆分、多段 thinking 的历史投影、节点资源与异协议扩展保护。
 - 模型、scope、映射指纹变化后的原生节点重放；服务端/opaque 工具及任意未映射核心字段的逐 owner 保护。
 - 文件 ID 与引用、媒体 metadata、完整 cache TTL/owner 校验和所有缓存反向布局。多个同类缓存意图不能把第一项选择当成完整聚合证明。

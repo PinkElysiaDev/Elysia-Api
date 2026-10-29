@@ -3327,31 +3327,39 @@
             }
           },
           "cases": {
+            "null": {
+              "op": "literal",
+              "value": null
+            },
             "string": {
-              "op": "read",
-              "from": "input",
-              "path": "/tool_choice"
+              "op": "object",
+              "fields": {
+                "mode": {
+                  "op": "join",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/tool_choice"
+                    }
+                  ]
+                }
+              }
             },
             "object": {
               "op": "if",
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/tool_choice/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "function"
-                  }
-                ]
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_choice/function"
+                }
               },
               "then": {
                 "op": "object",
                 "fields": {
-                  "type": {
+                  "mode": {
                     "op": "literal",
                     "value": "function"
                   },
@@ -3363,14 +3371,96 @@
                 }
               },
               "otherwise": {
-                "op": "read",
-                "from": "input",
-                "path": "/tool_choice"
+                "op": "choose",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "not",
+                        "source": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/tool_choice/type"
+                          }
+                        }
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/tool_choice/type"
+                          },
+                          {
+                            "op": "literal",
+                            "value": ""
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/tool_choice/name"
+                      }
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": "function"
+                    },
+                    "otherwise": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/tool_choice/type"
+                    }
+                  },
+                  "otherwise": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/tool_choice/type"
+                  }
+                },
+                "cases": {
+                  "function": {
+                    "op": "object",
+                    "fields": {
+                      "mode": {
+                        "op": "literal",
+                        "value": "function"
+                      },
+                      "name": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/tool_choice/name"
+                      }
+                    }
+                  },
+                  "custom": {
+                    "op": "object",
+                    "fields": {
+                      "mode": {
+                        "op": "literal",
+                        "value": "custom"
+                      },
+                      "name": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/tool_choice/name"
+                      }
+                    }
+                  }
+                }
               }
-            },
-            "null": {
-              "op": "literal",
-              "value": null
             }
           }
         }
@@ -4537,7 +4627,7 @@
       "encode-tool-choice": {
         "op": "if",
         "when": {
-          "op": "exists",
+          "op": "present",
           "source": {
             "op": "read",
             "from": "input",
@@ -4547,65 +4637,48 @@
         "then": {
           "op": "choose",
           "source": {
-            "op": "type",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/toolChoice"
-            }
+            "op": "read",
+            "from": "input",
+            "path": "/toolChoice/mode"
           },
           "cases": {
-            "string": {
-              "op": "read",
-              "from": "input",
-              "path": "/toolChoice"
-            },
-            "null": {
+            "auto": {
               "op": "literal",
-              "value": null
+              "value": "auto"
             },
-            "object": {
-              "op": "if",
-              "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/toolChoice/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "function"
-                  }
-                ]
-              },
-              "then": {
-                "op": "object",
-                "fields": {
-                  "type": {
-                    "op": "literal",
-                    "value": "function"
-                  },
-                  "function": {
-                    "op": "object",
-                    "fields": {
-                      "name": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/toolChoice/name"
-                      }
+            "none": {
+              "op": "literal",
+              "value": "none"
+            },
+            "required": {
+              "op": "literal",
+              "value": "required"
+            },
+            "function": {
+              "op": "object",
+              "fields": {
+                "type": {
+                  "op": "literal",
+                  "value": "function"
+                },
+                "function": {
+                  "op": "object",
+                  "fields": {
+                    "name": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/toolChoice/name"
                     }
                   }
                 }
-              },
-              "otherwise": {
-                "op": "read",
-                "from": "input",
-                "path": "/toolChoice"
               }
             }
           }
+        },
+        "otherwise": {
+          "op": "read",
+          "from": "input",
+          "path": "/toolChoice"
         }
       },
       "encode-cache": {
