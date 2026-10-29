@@ -185,7 +185,7 @@ func TestOutputPlanCoversCatalog(t *testing.T) {
 		}
 		group := "historical"
 		switch operation.Name {
-		case "type", "is_integer", "integer", "let", "index", "walk", "recur":
+		case "type", "is_integer", "integer", "let", "index", "walk", "recur", "capture_native":
 			group = "plan-only"
 		}
 		t.Run(group+"/"+operation.Name, func(t *testing.T) {

@@ -52,6 +52,7 @@ type expressionScope struct {
 	item         *ValueSchema
 	isIteration  bool
 	isWalk       bool
+	wireCapture  bool
 	bindings     map[string]expressionBinding
 	bindingDepth int
 }
@@ -167,6 +168,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	}
 	if compiled.op == "recur" && !scope.isWalk {
 		return nil, fmt.Errorf("%s: recur requires an enclosing walk body", path)
+	}
+	if compiled.op == "capture_native" && !scope.wireCapture {
+		return nil, fmt.Errorf("%s: native capture requires a package wire decoder", path)
 	}
 	if expression.Source != nil {
 		child, err := compiler.compile(*expression.Source, path+"/source", scope, depth+1)
@@ -286,6 +290,10 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		return fail("condition must produce a boolean")
 	}
 	switch expression.op {
+	case "capture_native":
+		if expression.source.op != "read" || !slices.Contains([]string{"input", "root", "item", "binding"}, expression.source.from) {
+			return fail("native capture requires a read from the original wire")
+		}
 	case "let":
 		expression.result, expression.schema = expression.body.result, expression.body.schema
 	case "recur":

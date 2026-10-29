@@ -14,6 +14,7 @@ type evaluation struct {
 	bindings                   []JSONOutput
 	walkBody                   *compiledOutputPlan
 	walkDepth                  int
+	capture                    *nativeCaptureState
 }
 
 type evaluationBudget struct {

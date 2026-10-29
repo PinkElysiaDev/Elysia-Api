@@ -147,7 +147,9 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	references := map[string]Expression{}
 	compiler.mappingReferences = references
 	defer func() { compiler.mappingReferences = nil }()
-	program, err := compiler.compile(mapping.Program, path+"/program", scope, 1)
+	programScope := scope
+	programScope.wireCapture = isDecode
+	program, err := compiler.compile(mapping.Program, path+"/program", programScope, 1)
 	if err != nil {
 		return compiledMapping{}, nil, err
 	}

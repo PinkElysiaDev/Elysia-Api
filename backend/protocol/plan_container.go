@@ -157,6 +157,9 @@ func (plan *compiledOutputPlan) buildFilter(state evaluation) (plannedOutput, er
 	bytes := 2
 	for index, item := range items {
 		child := state
+		if state.capture != nil {
+			child.capture = state.capture.forItem(plan.source.expression, index)
+		}
 		child.itemIndex = index
 		child.item = item.value
 		child.itemOutput = nil

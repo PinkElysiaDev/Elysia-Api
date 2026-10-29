@@ -18,6 +18,7 @@ type compiledOutputPlan struct {
 	otherwise    *compiledOutputPlan
 	cases        map[string]*compiledOutputPlan
 	bindingSlots int
+	hasCapture   bool
 }
 
 type outputPlanField struct {
@@ -43,7 +44,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	}
 	plan := &compiledOutputPlan{expression: expression}
 	switch expression.op {
-	case "omit", "literal", "read", "let", "index", "object", "project", "array", "map", "walk", "recur", "flatmap", "filter", "if", "choose",
+	case "omit", "literal", "read", "let", "index", "capture_native", "object", "project", "array", "map", "walk", "recur", "flatmap", "filter", "if", "choose",
 		"merge", "concat", "join", "sort", "associate", "parse_json", "stringify_json",
 		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "equal", "all", "any":
 	default:
@@ -52,6 +53,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	if expression.op == "let" || expression.op == "read" && expression.from == "binding" {
 		plan.bindingSlots = expression.bindingSlot + 1
 	}
+	plan.hasCapture = expression.op == "capture_native"
 	for _, child := range []struct {
 		source *compiledExpression
 		target **compiledOutputPlan
@@ -63,6 +65,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 		*child.target = compiled
 		if compiled != nil {
 			plan.bindingSlots = max(plan.bindingSlots, compiled.bindingSlots)
+			plan.hasCapture = plan.hasCapture || compiled.hasCapture
 		}
 	}
 	if expression.op == "object" {
@@ -73,6 +76,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			}
 			plan.fields = append(plan.fields, outputPlanField{key, jsonStringBytes(key), child})
 			plan.bindingSlots = max(plan.bindingSlots, child.bindingSlots)
+			plan.hasCapture = plan.hasCapture || child.hasCapture
 		}
 	}
 	for _, item := range expression.items {
@@ -82,6 +86,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 		}
 		plan.items = append(plan.items, child)
 		plan.bindingSlots = max(plan.bindingSlots, child.bindingSlots)
+		plan.hasCapture = plan.hasCapture || child.hasCapture
 	}
 	if len(expression.cases) != 0 {
 		plan.cases = make(map[string]*compiledOutputPlan, len(expression.cases))
@@ -92,6 +97,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			}
 			plan.cases[key] = child
 			plan.bindingSlots = max(plan.bindingSlots, child.bindingSlots)
+			plan.hasCapture = plan.hasCapture || child.hasCapture
 		}
 	}
 	return plan, true
@@ -118,6 +124,9 @@ func (plan *compiledOutputPlan) evaluate(state evaluation) (Value, error) {
 func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, err error) {
 	if plan.bindingSlots != 0 && state.bindings == nil {
 		state.bindings = make([]JSONOutput, plan.bindingSlots)
+		if state.capture != nil {
+			state.capture.bindings = make([]nativeLocation, plan.bindingSlots)
+		}
 	}
 	if plan.expression.op == "read" && state.hasOutputReader(plan.expression.from) {
 		return plan.expression.buildReadOutput(state)
@@ -144,6 +153,8 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.buildBinding(state)
 	case "index":
 		return plannedLeaf(coreInteger(int64(state.itemIndex))), nil
+	case "capture_native":
+		return plan.captureNative(state)
 	case "object":
 		return plan.buildObject(state)
 	case "project":
@@ -284,6 +295,9 @@ func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source pl
 			}
 		}
 		child := state
+		if state.capture != nil {
+			child.capture = state.capture.forItem(plan.source.expression, index)
+		}
 		child.itemIndex = index
 		child.item = item.value
 		child.itemOutput = nil

@@ -14,6 +14,7 @@ func readCoreEventOutput(*Event, []string) (JSONOutput, error)       { panic("co
 func readCoreEventsOutput([]Event, []string) (JSONOutput, error)     { panic("coreplan generation") }
 func readCoreCacheIntent(CacheIntent, []string) (JSONOutput, error)  { panic("coreplan generation") }
 func readCoreNode(Node, []string) (JSONOutput, error)                { panic("coreplan generation") }
+func readCoreProvenance(Provenance, []string) (JSONOutput, error)    { panic("coreplan generation") }
 func writeCoreCacheIntentField(jsonOutputField, *CacheIntent, *valueReader) error {
 	panic("coreplan generation")
 }
