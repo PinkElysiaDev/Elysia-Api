@@ -6613,18 +6613,8 @@
           "when": {
             "op": "not",
             "source": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "item",
-                  "path": "/role"
-                },
-                {
-                  "op": "literal",
-                  "value": "system"
-                }
-              ]
+              "op": "ref",
+              "ref": "is-top-level-system"
             }
           }
         },
@@ -6761,6 +6751,117 @@
           ]
         }
       },
+      "encode-native-tool": {
+        "op": "let",
+        "name": "tool-wire",
+        "source": {
+          "op": "replay_native",
+          "source": {
+            "op": "read",
+            "from": "item",
+            "path": "/native"
+          }
+        },
+        "body": {
+          "op": "merge",
+          "policy": "reject",
+          "items": [
+            {
+              "op": "project",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "name": "tool-wire",
+                "path": ""
+              },
+              "keys": [
+                "name",
+                "cache_control"
+              ],
+              "policy": "exclude"
+            },
+            {
+              "op": "object",
+              "fields": {
+                "name": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/name"
+                }
+              }
+            },
+            {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/cache/0"
+                }
+              },
+              "then": {
+                "op": "object",
+                "fields": {
+                  "cache_control": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/cache/0/value"
+                        },
+                        {
+                          "op": "literal",
+                          "value": null
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": null
+                    },
+                    "otherwise": {
+                      "op": "merge",
+                      "policy": "reject",
+                      "items": [
+                        {
+                          "op": "project",
+                          "source": {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/cache/0/value"
+                          },
+                          "keys": [
+                            "ttl"
+                          ],
+                          "policy": "exclude"
+                        },
+                        {
+                          "op": "object",
+                          "fields": {
+                            "ttl": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/cache/0/ttl"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "otherwise": {
+                "op": "object",
+                "fields": {}
+              }
+            }
+          ]
+        }
+      },
       "encode-output-config": {
         "op": "if",
         "when": {
@@ -6871,18 +6972,8 @@
               "path": "/content"
             },
             "when": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "item",
-                  "path": "/role"
-                },
-                {
-                  "op": "literal",
-                  "value": "system"
-                }
-              ]
+              "op": "ref",
+              "ref": "is-top-level-system"
             }
           },
           "body": {
@@ -7290,6 +7381,14 @@
                     }
                   }
                 ]
+              },
+              "server": {
+                "op": "ref",
+                "ref": "encode-native-tool"
+              },
+              "opaque": {
+                "op": "ref",
+                "ref": "encode-native-tool"
               }
             }
           }
@@ -7459,6 +7558,104 @@
               }
             }
           }
+        }
+      },
+      "is-top-level-system": {
+        "op": "if",
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/kind"
+                },
+                {
+                  "op": "literal",
+                  "value": "message"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/role"
+                },
+                {
+                  "op": "literal",
+                  "value": "system"
+                }
+              ]
+            }
+          ]
+        },
+        "then": {
+          "op": "not",
+          "source": {
+            "op": "if",
+            "when": {
+              "op": "native_matches",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/native/source"
+              },
+              "operation": "array_item",
+              "path": "/messages"
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "type",
+                    "source": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/native/value"
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "object"
+                  }
+                ]
+              },
+              "then": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/native/value/role"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "system"
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
         }
       }
     },

@@ -49,9 +49,6 @@ func TestAnthropicPackageDraftMigration(t *testing.T) {
 	if err := p.IssuesError(issues); err != nil {
 		t.Fatal(err)
 	}
-	open := map[string]anthropicMigrationGap{
-		"hosted-tool-encode": {reason: "trusted server-tool replay", errorText: "no branch for discriminator"},
-	}
 	for _, sample := range definition.Samples {
 		if sample.Direction == p.DecodeEvent || sample.Direction == p.EncodeEvent {
 			continue
@@ -60,7 +57,7 @@ func TestAnthropicPackageDraftMigration(t *testing.T) {
 			options := p.EvaluationContext{Scope: sample.Scope, Values: sample.Context}
 			want, wantErr := executeAnthropicMigrationSample(t, legacy, sample, options, false)
 			got, gotErr := executeAnthropicMigrationSample(t, draft, sample, options, true)
-			checkAnthropicMigration(t, want, got, wantErr, gotErr, open[sample.ID])
+			checkAnthropicMigration(t, want, got, wantErr, gotErr, anthropicMigrationGap{})
 		})
 	}
 	for _, fixture := range []struct {
@@ -79,7 +76,7 @@ func TestAnthropicPackageDraftMigration(t *testing.T) {
 		{"invalid-caller", `{"model":"m","max_tokens":10,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{},"caller":"invalid"}]}]}`, false, anthropicMigrationGap{reason: "structured rejection diagnostic parity", rejection: true}},
 		{"invalid-tool-error", `{"model":"m","max_tokens":10,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c","content":"done","is_error":"invalid"}]}]}`, false, anthropicMigrationGap{reason: "structured rejection diagnostic parity", rejection: true}},
 		{"thinking-controls", `{"model":"m","max_tokens":2048,"thinking":{"type":"enabled","budget_tokens":1024},"messages":[{"role":"user","content":"hello"}]}`, false, anthropicMigrationGap{}},
-		{"inline-system-without-root-native", `{"model":"m","max_tokens":10,"messages":[{"role":"user","content":"hello"},{"role":"system","content":"inline instruction"}]}`, true, anthropicMigrationGap{reason: "native inline-system position", paths: []string{"/messages", "/system"}}},
+		{"inline-system-without-root-native", `{"model":"m","max_tokens":10,"messages":[{"role":"user","content":"hello"},{"role":"system","content":"inline instruction"}]}`, true, anthropicMigrationGap{}},
 	} {
 		t.Run("boundary/"+fixture.name, func(t *testing.T) {
 			options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
@@ -102,6 +99,51 @@ func TestAnthropicPackageDraftMigration(t *testing.T) {
 		})
 	}
 	checkAnthropicReasoningMigration(t, legacy, draft)
+	checkAnthropicNativeEdits(t, legacy, draft)
+}
+
+func checkAnthropicNativeEdits(t *testing.T, legacy, draft *p.Compiled) {
+	t.Helper()
+	const hostedWire = `{"model":"m","max_tokens":10,"messages":[{"role":"user","content":"hello"}],"tools":[{"type":"web_search_20250305","name":"original","max_uses":2,"vendor":{"n":9007199254740993},"cache_control":{"type":"ephemeral","ttl":"1h","future":true}}]}`
+	for _, fixture := range []struct {
+		name, wire string
+		edit       func(*p.Request)
+	}{
+		{"hosted-current-name-remove-cache", hostedWire, func(request *p.Request) {
+			request.Tools[0].Name = p.StringValue("renamed")
+			request.Tools[0].Cache = nil
+		}},
+		{"opaque-remove-name-null-cache", hostedWire, func(request *p.Request) {
+			request.Tools[0].Kind = p.OpaqueTool
+			request.Tools[0].Name = p.Value{}
+			request.Tools[0].Cache = []p.CacheIntent{{Kind: "breakpoint", Location: "tool", Value: nullValue()}}
+		}},
+		{"inline-system-current-position-and-content", `{"model":"m","max_tokens":10,"messages":[{"role":"user","content":"hello"},{"role":"system","content":"inline instruction","output_config":{"effort":"high"}}]}`, func(request *p.Request) {
+			request.Content[1].Children[0].Payload = p.StringValue("edited instruction")
+			request.Content[0], request.Content[1] = request.Content[1], request.Content[0]
+		}},
+	} {
+		t.Run("native-edit/"+fixture.name, func(t *testing.T) {
+			options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
+			request, err := legacy.DecodeRequest(t.Context(), []byte(fixture.wire), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Native = nil
+			fixture.edit(request)
+			input, err := p.EncodeValue(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sample := p.Sample{Direction: p.EncodeRequest, Input: input}
+			want, wantErr := executeAnthropicMigrationSample(t, legacy, sample, options, false)
+			got, gotErr := executeAnthropicMigrationSample(t, draft, sample, options, true)
+			if wantErr != nil || gotErr != nil {
+				t.Fatalf("native edit rejected: old=%v, draft=%v", wantErr, gotErr)
+			}
+			checkAnthropicMigration(t, want, got, wantErr, gotErr, anthropicMigrationGap{})
+		})
+	}
 }
 
 func checkAnthropicReasoningMigration(t *testing.T, legacy, draft *p.Compiled) {

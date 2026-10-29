@@ -19,6 +19,8 @@
 - thinking/output_config 已声明映射到 ReasoningIntent 并反向渲染；空/null 桶按旧早退规则保留，
   effort:null 仍产生 Reasoning，未知余项保留在原参数桶。
   interleaved 只读取可信 runtime 元信息，普通 context Values 不能覆盖。
+- server/opaque 工具通过 `replay_native` 回放原生字段，再用当前 name/cache_control 重建可编辑字段；
+  `native_matches` 识别原生 inline system 的消息位置，渲染保留当前数组顺序及子内容。
 - 请求渲染的对应字段，以及响应主体、终止原因、精确 int64 usage 加减的初稿。
 
 这些内容尚不能组成一个完整替代协议。不得把文件存在、编译通过或部分样例通过写成迁移完成。
@@ -28,11 +30,11 @@
 | 范围 | 当前阻塞 |
 |---|---|
 | 请求解码 | 完整负例诊断及多处输入错误的首错顺序 |
-| 请求渲染 | server/opaque 原生节点回放；带标注及原生 inline system 的位置规则；独立 assistant 历史分组 |
+| 请求渲染 | 非原生 system 位置、完整 system 历史约束、注解拒绝及独立 assistant 历史分组 |
 | 节点保护 | metadata/citations、scope、结构化拒绝及告警；多缓存、多资源和未映射核心字段的逐 owner 拒绝 |
 | 扩展 | 递归冲突合并、跨族扩展拒绝及稳定诊断；媒体 data URI 的无转码解析 |
 | 响应 | 错误包络、metadata、完整未知 finish reason 与 fallback；输出分组、完整 usage 扩展与反向校验 |
-| 原生保真 | 移除根 Native 后的节点回放；原生保存禁用时独立的来源证据；映射变更、scope 和修订矩阵 |
+| 原生保真 | 完整节点回放矩阵；原生保存禁用时独立的来源证据；映射变更、scope 和修订矩阵 |
 | 声明证据 | 动态 owner 的 emit/aggregate 证明尚未完成；现有效果声明不代表完整字段覆盖 |
 | 其他能力 | SSE、模型发现、WebSocket、任务和 Agent 能力没有在本草案中迁移 |
 
@@ -42,28 +44,31 @@
 ## 当前差分记录
 
 `TestAnthropicPackageDraftMigration` 直接编译并执行候选文件，无测试分支或供应商回调。
-30 个既有 JSON 样例中，29 个完整比较相等；另有 12 个边界场景，9 个相等。
+30 个既有 JSON 样例全部完整比较相等；另有 12 个边界场景，10 个相等。
 比较包含所有公开核心字段、Native、输出字节及完整诊断对象；仅显式适配核心 schemaVersion。
 
 工具历史和数组形式工具结果的 name 差异已闭合。新增原始 `"<"` 与 `"\u003c"`
 引用键差分，确认没有在容器规范化后错误匹配；递归内容和 Native 仍完整比较。
 
-原 thinking-controls 差异也已闭合，因此该主矩阵目前为 42 个场景中 38 个相等。
+原 thinking-controls、hosted-tool-encode 和移除根 Native 后的 inline system 差异已闭合，
+因此该主矩阵目前为 42 个场景中 40 个相等。
 新增 14 组 reasoning 正例分别比较解码和移除根 Native 后的反向渲染，28 次比较均相等；
 覆盖 enabled/disabled/adaptive/between_tools、display、未知余项、空/null 桶、effort:null、
 可信 interleaved 及普通 Values 同名伪造。另有 9 组 reasoning 负例均保持拒绝，但诊断未等价。
 
-主矩阵以下 4 个场景仍未闭合，测试打印 `NOT CLOSED`，不是跳过：
+新增 3 个原生编辑场景全部相等：移除根 Native 后，修改 hosted 工具名称并删除缓存、
+将工具改为 opaque 后删除名称并设置 null 缓存，以及移动 inline system 并修改当前子内容。
+这些比较确认可编辑字段来自当前语义对象，原生快照不会恢复已删除值；
+inline system 的原始位置只用于分类，不要求当前数组下标相同。
 
-- `hosted-tool-encode`：尚无可信 server-tool 回放，当前明确拒绝。
-- 非法 caller、非法 is_error：两边均拒绝，但阶段／归因等诊断尚未等价。
-- 移除根 Native 后的 inline system：候选错误地提到顶层，原生位置规则待迁移。
+主矩阵仍有非法 caller、非法 is_error 两个场景未闭合：
+两边均拒绝，但阶段／归因等诊断尚未等价。测试打印 `NOT CLOSED`，不是跳过。
 
 9 组新增负例是缺失 mode、缺失/null/过小 manual budget、adaptive 携带 null budget、
 未知/数组 display、effort:none 和非对象 output_config。差异主要在 wire 阶段与旧阶段、
 诊断路径、原因或建议；不把两边都拒绝称为完整诊断保真。
 
-台账检查通过只表示没有出现未登记差异；**不表示上述 13 个未闭合场景通过了行为等价验收**。
+台账检查通过只表示没有出现未登记差异；**不表示上述 11 个未闭合场景通过了行为等价验收**。
 任何新增差异都会失败，已登记差异消失也要求显式更新台账。未运行本草案的性能验收。
 
 后续先完成请求方向的关联、保护和原生边界，再补全响应及其 wire contract。
