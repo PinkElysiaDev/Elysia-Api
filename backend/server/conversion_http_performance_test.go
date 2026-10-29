@@ -232,13 +232,19 @@ func TestConversionHTTPProcess(t *testing.T) {
 			gateway = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
 				var input struct {
-					Model    string
-					Stream   bool
-					Messages []json.RawMessage
+					Model       string
+					Stream      bool
+					Messages    []json.RawMessage
+					Temperature *float64
 				}
 				if err := sonic.ConfigStd.NewDecoder(r.Body).Decode(&input); err != nil {
 					t.Error(err)
 					w.WriteHeader(500)
+					return
+				}
+				if os.Getenv("ELYSIA_REVIEW_MAPPING") == "json-rule-edit" && (input.Temperature == nil || *input.Temperature != reviewEditTemperature) {
+					t.Error("local edit did not reach the upstream wire")
+					w.WriteHeader(http.StatusBadRequest)
 					return
 				}
 				isCandidateModel := input.Model == "m"

@@ -96,6 +96,10 @@ const cases = {
   'stream256-body': { workload: 'small', log: 'body', stream: true, frames: 256 },
   'response4-body': { workload: 'small', log: 'body', responseBytes: 4 << 20, requests: 4 },
   'frame4-body': { workload: 'small', log: 'body', stream: true, frames: 1, frameBytes: 4 << 20, requests: 4 },
+  'image2-after': { workload: 'image', log: 'off', mapping: 'after', requests: 4 },
+  'image2-json-rule': { workload: 'image', log: 'off', mapping: 'json-rule', requests: 4 },
+  'image2-local-edit': { workload: 'image', log: 'off', mapping: 'json-rule-edit', requests: 4 },
+  'image2-local-edit-sse': { workload: 'image', log: 'off', mapping: 'json-rule-edit', requests: 4, stream: true },
 }
 for (const size of [2, 8, 16, 31]) for (const log of ['off', 'body', 'media']) for (const image of ['repeat', 'png']) for (const workers of [1, 4]) {
   const name = `image${size}-${log}${image === 'png' ? '-png' : ''}${workers === 4 ? '-four' : ''}`
@@ -165,6 +169,7 @@ for (const name of selection) {
         ELYSIA_CONVERSION_HTTP_MIB: String(fixture.size), ELYSIA_CONVERSION_HTTP_WORKERS: String(fixture.workers), ELYSIA_CONVERSION_HTTP_CANDIDATES: '1', ELYSIA_CONVERSION_HTTP_LOG: fixture.log,
         ELYSIA_LOGGING_IMAGE: fixture.image, ELYSIA_LOGGING_RESPONSE_BYTES: fixture.responseBytes ? String(fixture.responseBytes) : '',
         ELYSIA_LOGGING_FINALIZE: mode === 'finalize' ? '1' : '', ELYSIA_LOGGING_CANCEL: option('cancel') === '1' ? '1' : '', ELYSIA_LOGGING_BATCHES: String(integer('batches', 5, 1, 20)),
+        ELYSIA_REVIEW_MAPPING: fixture.mapping || '',
       }
       const test = mode === 'finalize' ? 'TestLoggingReviewGatewayFinalize' : 'TestConversionFlamegraph'
       console.log(`${new Date().toISOString()} ${runName}`)
