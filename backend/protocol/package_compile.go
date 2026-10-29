@@ -149,6 +149,7 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	defer func() { compiler.mappingReferences = nil }()
 	programScope := scope
 	programScope.wireCapture = isDecode
+	programScope.canReadNative = !isDecode
 	program, err := compiler.compile(mapping.Program, path+"/program", programScope, 1)
 	if err != nil {
 		return compiledMapping{}, nil, err

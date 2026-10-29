@@ -27,4 +27,6 @@ func readCoreProvenance(Provenance, []string) (JSONOutput, error)    { panic("co
 func writeCoreCacheIntentField(jsonOutputField, *CacheIntent, *valueReader) error {
 	panic("coreplan generation")
 }
-func writeCoreEvent(JSONOutput, *Event, *valueReader) error { panic("coreplan generation") }
+func writeCoreEvent(JSONOutput, *Event, *valueReader) error           { panic("coreplan generation") }
+func writeCoreNative(JSONOutput, *Native, *valueReader) error         { panic("coreplan generation") }
+func writeCoreProvenance(JSONOutput, *Provenance, *valueReader) error { panic("coreplan generation") }

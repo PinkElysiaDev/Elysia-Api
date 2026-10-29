@@ -25,6 +25,8 @@ var expressionOperations = []OperationInfo{
 	{"walk", []string{"source", "body"}, []string{"source", "body"}, ArrayType, "Map an array with a bounded recursive body; recurse only through explicitly selected child arrays."},
 	{"recur", []string{"source"}, []string{"source"}, ArrayType, "Apply the nearest lexical walk body to a selected array, retaining input and root; requires an enclosing walk body."},
 	{"capture_native", []string{"source"}, []string{"source"}, ObjectType, "Capture a read from the original wire with runtime provenance; decode programs only, omitted when native preservation is disabled."},
+	{"replay_native", []string{"source"}, []string{"source"}, AnyType, "Replay a Native value against the bound target, scope and native budget; package encode programs only."},
+	{"native_matches", []string{"source", "path", "operation"}, []string{"source", "operation"}, BooleanType, "Classify native provenance as an array_item below a declared parent pointer and a compatible target wire; this does not authorize replay or check resource scope."},
 	{"flatmap", []string{"source", "body"}, []string{"source", "body"}, ArrayType, "Map each element to an array and flatten one level."},
 	{"filter", []string{"source", "when"}, []string{"source", "when"}, ArrayType, "Select elements with a strictly boolean predicate."},
 	{"choose", []string{"source", "cases", "otherwise"}, []string{"source", "cases"}, AnyType, "Select a required branch by string discriminator; no implicit fallback."},

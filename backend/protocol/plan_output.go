@@ -8,18 +8,19 @@ import (
 // compiledOutputPlan keeps construction nodes unencoded until the mapping
 // returns. Eligibility is decided before execution; a failed plan is never rerun.
 type compiledOutputPlan struct {
-	expression   *compiledExpression
-	fields       []outputPlanField
-	items        []*compiledOutputPlan
-	source       *compiledOutputPlan
-	body         *compiledOutputPlan
-	when         *compiledOutputPlan
-	then         *compiledOutputPlan
-	otherwise    *compiledOutputPlan
-	cases        map[string]*compiledOutputPlan
-	bindingSlots int
-	indexSlots   int
-	hasCapture   bool
+	expression      *compiledExpression
+	fields          []outputPlanField
+	items           []*compiledOutputPlan
+	source          *compiledOutputPlan
+	body            *compiledOutputPlan
+	when            *compiledOutputPlan
+	then            *compiledOutputPlan
+	otherwise       *compiledOutputPlan
+	cases           map[string]*compiledOutputPlan
+	bindingSlots    int
+	indexSlots      int
+	hasCapture      bool
+	hasNativeTarget bool
 }
 
 type outputPlanField struct {
@@ -45,7 +46,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	}
 	plan := &compiledOutputPlan{expression: expression}
 	switch expression.op {
-	case "omit", "literal", "read", "let", "with_index", "remember", "recall", "index", "capture_native", "object", "project", "array", "map", "walk", "recur", "flatmap", "filter", "if", "choose",
+	case "omit", "literal", "read", "let", "with_index", "remember", "recall", "index", "capture_native", "replay_native", "native_matches", "object", "project", "array", "map", "walk", "recur", "flatmap", "filter", "if", "choose",
 		"merge", "concat", "join", "sort", "associate", "parse_json", "stringify_json",
 		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "equal", "all", "any":
 	default:
@@ -58,6 +59,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 		plan.indexSlots = expression.indexSlot + 1
 	}
 	plan.hasCapture = expression.op == "capture_native"
+	plan.hasNativeTarget = expression.op == "replay_native" || expression.op == "native_matches"
 	for _, child := range []struct {
 		source *compiledExpression
 		target **compiledOutputPlan
@@ -67,11 +69,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			return nil, false
 		}
 		*child.target = compiled
-		if compiled != nil {
-			plan.bindingSlots = max(plan.bindingSlots, compiled.bindingSlots)
-			plan.indexSlots = max(plan.indexSlots, compiled.indexSlots)
-			plan.hasCapture = plan.hasCapture || compiled.hasCapture
-		}
+		plan.mergeRequirements(compiled)
 	}
 	if expression.op == "object" {
 		for _, key := range expression.keys {
@@ -80,9 +78,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 				return nil, false
 			}
 			plan.fields = append(plan.fields, outputPlanField{key, jsonStringBytes(key), child})
-			plan.bindingSlots = max(plan.bindingSlots, child.bindingSlots)
-			plan.indexSlots = max(plan.indexSlots, child.indexSlots)
-			plan.hasCapture = plan.hasCapture || child.hasCapture
+			plan.mergeRequirements(child)
 		}
 	}
 	for _, item := range expression.items {
@@ -91,9 +87,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			return nil, false
 		}
 		plan.items = append(plan.items, child)
-		plan.bindingSlots = max(plan.bindingSlots, child.bindingSlots)
-		plan.indexSlots = max(plan.indexSlots, child.indexSlots)
-		plan.hasCapture = plan.hasCapture || child.hasCapture
+		plan.mergeRequirements(child)
 	}
 	if len(expression.cases) != 0 {
 		plan.cases = make(map[string]*compiledOutputPlan, len(expression.cases))
@@ -103,12 +97,20 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 				return nil, false
 			}
 			plan.cases[key] = child
-			plan.bindingSlots = max(plan.bindingSlots, child.bindingSlots)
-			plan.indexSlots = max(plan.indexSlots, child.indexSlots)
-			plan.hasCapture = plan.hasCapture || child.hasCapture
+			plan.mergeRequirements(child)
 		}
 	}
 	return plan, true
+}
+
+func (plan *compiledOutputPlan) mergeRequirements(child *compiledOutputPlan) {
+	if child == nil {
+		return
+	}
+	plan.bindingSlots = max(plan.bindingSlots, child.bindingSlots)
+	plan.indexSlots = max(plan.indexSlots, child.indexSlots)
+	plan.hasCapture = plan.hasCapture || child.hasCapture
+	plan.hasNativeTarget = plan.hasNativeTarget || child.hasNativeTarget
 }
 
 type plannedOutput struct {
@@ -169,6 +171,8 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plannedLeaf(coreInteger(int64(state.itemIndex))), nil
 	case "capture_native":
 		return plan.captureNative(state)
+	case "replay_native", "native_matches":
+		return plan.buildNativeTarget(state)
 	case "object":
 		return plan.buildObject(state)
 	case "project":

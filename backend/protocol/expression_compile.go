@@ -14,6 +14,7 @@ type compiledExpression struct {
 	op                                  string
 	operation                           string
 	path                                string
+	pathPrefix                          string
 	pointer                             []string
 	from                                string
 	bindingSlot                         int
@@ -55,6 +56,7 @@ type expressionScope struct {
 	isWalk         bool
 	wireCapture    bool
 	canReadRuntime bool
+	canReadNative  bool
 	bindings       map[string]expressionBinding
 	bindingDepth   int
 	indexes        map[string]int
@@ -183,6 +185,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	}
 	if compiled.op == "capture_native" && !scope.wireCapture {
 		return nil, fmt.Errorf("%s: native capture requires a package wire decoder", path)
+	}
+	if (compiled.op == "replay_native" || compiled.op == "native_matches") && !scope.canReadNative {
+		return nil, fmt.Errorf("%s: native target operations require a package encode program", path)
 	}
 	if compiled.op == "remember" || compiled.op == "recall" {
 		slot, exists := scope.indexes[expression.Name]
@@ -321,6 +326,19 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		return fail("condition must produce a boolean")
 	}
 	switch expression.op {
+	case "replay_native", "native_matches":
+		if !isAssignable(expression.source.result, ObjectType) {
+			return fail("native source must produce an object")
+		}
+		if expression.op == "native_matches" {
+			if expression.operation != "array_item" {
+				return fail("native_matches requires array_item operation")
+			}
+			if _, err := parsePointer(source.Path); err != nil {
+				return fail("native_matches path must be a parent JSON pointer")
+			}
+			expression.pathPrefix = source.Path + "/"
+		}
 	case "capture_native":
 		if expression.source.op != "read" || !slices.Contains([]string{"input", "root", "item", "binding"}, expression.source.from) {
 			return fail("native capture requires a read from the original wire")

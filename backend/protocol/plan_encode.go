@@ -45,6 +45,7 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 		if err := compiled.preparePackageState(direction, state, inputLimits); err != nil {
 			return fail(err)
 		}
+		state.native = compiled.newNativeEvaluation(ctx, direction, options)
 	}
 	mapping := compiled.mappings[direction]
 	output, err := mapping.outputPlan.evaluate(state)

@@ -15,6 +15,7 @@ type evaluation struct {
 	walkBody                   *compiledOutputPlan
 	walkDepth                  int
 	capture                    *nativeCaptureState
+	native                     *nativeEvaluation
 	indexes                    *indexEvaluationState
 	runtime                    evaluationRuntime
 }

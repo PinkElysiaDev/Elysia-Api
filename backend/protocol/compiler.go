@@ -781,6 +781,7 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 		}
 		state.valueReader = packageState.reader
 		state.capture = compiled.newNativeCapture(direction, options)
+		state.native = compiled.newNativeEvaluation(ctx, direction, options)
 	}
 	var output Value
 	switch {
