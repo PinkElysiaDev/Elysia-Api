@@ -73,3 +73,45 @@ func TestPlannedEventArrayDoesNotRetainLargeSibling(t *testing.T) {
 		t.Fatal("small event retained its large sibling frame")
 	}
 }
+
+func TestPlannedEventResourcesOwnStorage(t *testing.T) {
+	definition := textVerificationDefinition(t, "event-resource-ownership")
+	definition.Native.Preserve = false
+	definition.Capabilities[DocumentsCapability] = true
+	definition.Capabilities[RealtimeMediaCapability] = true
+	definition.Directions[DecodeEvent] = Mapping{Transform: expressionPointer(readExpression("input", ""))}
+	compiled := compileTestDefinition(t, definition)
+	options := EvaluationContext{Scope: Scope{Provider: "provider", Account: "account"}}
+	resourceID := `"` + strings.Repeat("r", 256<<10) + `"`
+	// Each ID exceeds the view-sharing threshold. Retaining either identifier
+	// must not retain the other event payloads in this compound frame.
+	input := Value{raw: `[{"type":"item.started","itemId":"resource","item":{"kind":"text","payload":"text","resources":[{"kind":"file","id":` + resourceID + `}]}},{"type":"media.received","media":{"type":"audio","format":"pcm","reference":{"kind":"file","id":` + resourceID + `}}},{"type":"item.delta","itemId":"sibling","delta":"` + strings.Repeat("x", 256<<10) + `"}]`}
+	borrowed, err := compiled.decodeEventValues(t.Context(), DecodeEvent, input, options)
+	if err != nil || len(borrowed) != 3 {
+		t.Fatal("event fixture failed", err)
+	}
+	if !sharesValueStorage(input, borrowed[0].Item.Resources[0].ID) || !sharesValueStorage(input, borrowed[1].Media.Reference.ID) {
+		t.Fatal("fixture did not borrow large resource identifiers")
+	}
+	events, err := compiled.DecodeEvents(t.Context(), input, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := compiled.target(DecodeEvent, options)
+	target.Direction = EncodeEvent
+	collector, err := NewResponseCollector(target, compiled.limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := collector.Consume(events[0]); err != nil {
+		t.Fatal(err)
+	}
+	for name, identifier := range map[string]Value{
+		"collected resource": collector.response.Content[0].Resources[0].ID,
+		"media reference":    events[1].Media.Reference.ID,
+	} {
+		if identifier.raw != resourceID || sharesValueStorage(input, identifier) {
+			t.Errorf("%s must own independent, identical bytes", name)
+		}
+	}
+}

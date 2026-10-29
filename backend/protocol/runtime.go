@@ -242,6 +242,9 @@ func (compiled *Compiled) decodeEvents(ctx context.Context, direction Direction,
 		event := &events[index]
 		event.SchemaVersion = SemanticSchemaVersion
 		event.Source = compiled.identity
+		if compiled.mappings[direction].hasCoreOutputPlan {
+			detachEventResources(event)
+		}
 		if err := compiled.stampEventProvenance(event, direction, options.Scope); err != nil {
 			return nil, err
 		}

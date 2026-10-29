@@ -61,6 +61,21 @@ func detachRequestResources(request *Request) {
 	}
 }
 
+func detachEventResources(event *Event) {
+	if event.Request != nil {
+		detachRequestResources(event.Request)
+	}
+	if event.Item != nil {
+		detachNodeResource(event.Item)
+	}
+	if event.Response != nil {
+		detachNodeResources(event.Response.Content)
+	}
+	if event.Media != nil {
+		event.Media.Reference.ID.raw = strings.Clone(event.Media.Reference.ID.raw)
+	}
+}
+
 func detachResourceIDs(resources []Resource) {
 	for index := range resources {
 		resources[index].ID.raw = strings.Clone(resources[index].ID.raw)
@@ -80,9 +95,13 @@ func detachCacheValues(intents []CacheIntent) {
 
 func detachNodeResources(nodes []Node) {
 	for index := range nodes {
-		detachResourceIDs(nodes[index].Resources)
-		detachCacheValues(nodes[index].Cache)
-		detachNodeResources(nodes[index].Children)
-		detachNodeResources(nodes[index].ReasoningContent)
+		detachNodeResource(&nodes[index])
 	}
+}
+
+func detachNodeResource(node *Node) {
+	detachResourceIDs(node.Resources)
+	detachCacheValues(node.Cache)
+	detachNodeResources(node.Children)
+	detachNodeResources(node.ReasoningContent)
 }

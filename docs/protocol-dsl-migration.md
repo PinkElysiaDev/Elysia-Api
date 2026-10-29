@@ -89,4 +89,8 @@ v3 样例已接入既有 Verify 和组合验证。统一样例读取直接取真
 
 以上批次各自的定向验证通过；`a533e112` 工作树时的 protocol／builtin 全量通过。后续仍须在最终稳定提交重新完成全工程验收。绑定和递归等新状态增加的调用成本必须实测，不能只根据减少 JSON 副本推断正常小请求不会回退。
 
+`1877bce7` 的 strict-load 资源生命周期已做源码核查：较大的 Resource.ID 可以在私有 `conversionState` 中借用当前语义 JSON，但该状态不跨调用保存。generic Request／Response／Event 路径均先 flush 为独立 Value，再由 `decodeContract` 建立返回对象；直接返回对象的 owned Request／Event 路径初始即为 strict，不进入这次新增 writer。转换动作、DiagnosticSink 和 DeliveryState 不保存该临时状态的资源引用。
+
+续传捕获的实际顺序也在转换之前：`server/gateway_response.go` 先捕获源 Response，`server/gateway_stream.go` 先经源事件 collector 捕获 Node，再调用 conversion。`captureContinuationNode` 随即 Seal 为独立密文，持久化保存密文，运行状态只保留 token 和摘要键。当前未发现 strict-load 借用资源经此路径持续保留额外正文，因此未追加无条件 detach 或重复测试；这是引用生命周期核查，不是新增堆保留实测。结论仅限 `conversionState.load`，不能外推到直接返回事件／响应的解码入口。后续若计划权威态取消最终 JSON／合同解码、直接返回 typed 结果，必须重新审验资源 ID 的独立所有权，不能沿用本结论。
+
 最终性能以当前成功路径五对交替测量。正常路径不得出现确认后的稳定回退；局部 JSON 条件／真实小字段修改目标为 2 MiB HTTP 累计分配下降至少 50%、完整消费延迟下降至少 25%，并保持峰值、流交付与回收边界。未测量或未达标的项目不写为通过。
