@@ -1,6 +1,9 @@
 package protocol
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // WireEventValidator checks cross-frame wire requirements that are not part of
 // the semantic event model (for example an explicit Chat assistant role).
@@ -23,15 +26,38 @@ type TypedObjectEventModule interface {
 // carrier insertion. Its contract is independent of a user-authored decode
 // mapping that could hide a malformed wire frame.
 type WireStreamValidation struct {
-	compiled *Compiled
-	decoder  Module
-	replay   *EventReplay
-	options  EvaluationContext
+	compiled      *Compiled
+	direction     Direction
+	packageStream *packageStreamValidation
+	decoder       Module
+	replay        *EventReplay
+	options       EvaluationContext
 }
 
+// NewWireStreamValidation checks final event bytes against their output contract.
 func (c *Compiled) NewWireStreamValidation(scope Scope) (*WireStreamValidation, error) {
-	v := &WireStreamValidation{compiled: c, options: EvaluationContext{Scope: scope, identity: c.identity}}
-	contract := c.wireContracts[EncodeEvent]
+	return c.newWireStreamValidation(EncodeEvent, scope)
+}
+
+// NewWireInputStreamValidation checks source frames independently of the decode
+// mapping, so a mapping cannot hide an invalid sequence or missing terminal.
+// It requires a package stream contract; legacy source validation stays with
+// its existing decoder and replay lifecycle.
+func (c *Compiled) NewWireInputStreamValidation(scope Scope) (*WireStreamValidation, error) {
+	if c.wireContracts[DecodeEvent].packageStream == nil {
+		return nil, fmt.Errorf("source wire validation requires an independent package stream contract")
+	}
+	return c.newWireStreamValidation(DecodeEvent, scope)
+}
+
+func (c *Compiled) newWireStreamValidation(direction Direction, scope Scope) (*WireStreamValidation, error) {
+	v := &WireStreamValidation{compiled: c, direction: direction, options: EvaluationContext{Scope: scope, identity: c.identity}}
+	contract := c.wireContracts[direction]
+	if contract.packageStream != nil {
+		var err error
+		v.packageStream, err = newPackageStreamValidation(contract.packageStream, c.target(direction, v.options), c.limits)
+		return v, err
+	}
 	if contract.streamFactory == nil {
 		return v, nil
 	}
@@ -46,15 +72,18 @@ func (c *Compiled) NewWireStreamValidation(scope Scope) (*WireStreamValidation, 
 
 func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 	var fields Object
-	if v.compiled.wireContracts[EncodeEvent].objectValidator != nil && frame.IsObject() {
+	if v.compiled.wireContracts[v.direction].objectValidator != nil && frame.IsObject() {
 		var err error
 		fields, err = (EvaluationContext{}).WithValueReader(frame).ReadObject(frame)
 		if err != nil {
 			return err
 		}
 	}
-	if err := v.compiled.validateWireContract(ctx, EncodeEvent, frame, fields, v.compiled.wireLimits(ctx, EncodeEvent)); err != nil {
+	if err := v.compiled.validateWireContract(ctx, v.direction, frame, fields, v.compiled.wireLimits(ctx, v.direction)); err != nil {
 		return err
+	}
+	if v.packageStream != nil {
+		return v.packageStream.consume(ctx, frame)
 	}
 	if v.decoder == nil {
 		return nil
@@ -116,6 +145,9 @@ func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 }
 
 func (v *WireStreamValidation) Finish() error {
+	if v.packageStream != nil {
+		return v.packageStream.finish()
+	}
 	if v.replay == nil {
 		return nil
 	}

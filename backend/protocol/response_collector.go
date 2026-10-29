@@ -113,7 +113,7 @@ func NewResponseCollector(target Target, limits Limits) (*ResponseCollector, err
 	if err != nil {
 		return nil, err
 	}
-	return &ResponseCollector{replay: replay, response: Response{SchemaVersion: SemanticSchemaVersion, Source: target.Protocol}, items: map[string]collectedPosition{}, texts: map[string]*collectedText{}, metadata: map[string]int{}, limit: limits.BufferBytes, logprobLimit: limits.StateItems}, nil
+	return &ResponseCollector{replay: replay, response: Response{SchemaVersion: target.coreSchemaVersion(), Source: target.Protocol}, items: map[string]collectedPosition{}, texts: map[string]*collectedText{}, metadata: map[string]int{}, limit: limits.BufferBytes, logprobLimit: limits.StateItems}, nil
 }
 
 // Consume returns the newly appended text, if any. Snapshot prefixes and

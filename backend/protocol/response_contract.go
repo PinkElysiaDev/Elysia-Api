@@ -53,7 +53,7 @@ func (check *capabilityCheck) usage(usage *Usage, path string) {
 // lifecycle validation belongs to StreamState, which is unique to a session.
 func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 	check := capabilityCheck{target: target, limits: limits, calls: map[string]struct{}{}, results: map[string]struct{}{}}
-	if event.SchemaVersion != SemanticSchemaVersion {
+	if event.SchemaVersion != target.coreSchemaVersion() {
 		check.add(InvalidInput, "/schemaVersion", "", "unsupported semantic event version")
 		return check.issues
 	}

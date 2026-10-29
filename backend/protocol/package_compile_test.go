@@ -106,7 +106,7 @@ func TestCompilePackageRejectsUnprovedEffects(t *testing.T) {
 			p.Mapping.Directions[EncodeRequest].Effects[1].Kind = "drop"
 			p.Mapping.Directions[EncodeRequest].Effects[1].Reason = "synthetic drop"
 		}},
-		{"event-runtime", "core event runtime", func(p *ProtocolPackage) {
+		{"event-runtime", "independent wire stream contract", func(p *ProtocolPackage) {
 			p.Mapping.Directions[DecodeEvent] = p.Mapping.Directions[DecodeRequest]
 			p.Spec.WireContracts[DecodeEvent] = p.Spec.WireContracts[DecodeRequest]
 		}},

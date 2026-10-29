@@ -14,6 +14,7 @@ type compiledWireContract struct {
 	objectValidator  WireObjectOutputValidator
 	contextValidator contextualWireValidator
 	streamFactory    StreamModule
+	packageStream    *compiledPackageStreamContract
 }
 
 // bindModuleWireContract captures the current module contracts during compiler

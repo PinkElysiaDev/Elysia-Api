@@ -57,8 +57,8 @@ func (compiler *Compiler) CompilePackage(raw []byte) (*Compiled, []ConversionIss
 		return nil, definitionIssues(document.Spec.Identity(), "/", err)
 	}
 	for _, direction := range sortedKeys(compiled.packagePlan.effects) {
-		if isEventDirection(direction) {
-			return nil, definitionIssues(compiled.identity, "/mapping/directions/"+string(direction), fmt.Errorf("event programs require the core event runtime and are not executable yet"))
+		if isEventDirection(direction) && compiled.wireContracts[direction].packageStream == nil {
+			return nil, definitionIssues(compiled.identity, "/mapping/directions/"+string(direction), fmt.Errorf("event programs require an independent wire stream contract"))
 		}
 		if compiled.mappings[direction].outputPlan == nil {
 			return nil, definitionIssues(compiled.identity, "/mapping/directions/"+string(direction)+"/program", fmt.Errorf("program requires a compiled output plan"))
@@ -260,8 +260,8 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	}
 	return compiledMapping{
 		outputPlan: plan, definitionHash: hashValue(identity),
-		hasCoreOutputPlan: direction == DecodeRequest || direction == DecodeResponse,
-		hasCoreInputPlan:  direction == EncodeRequest || direction == EncodeResponse,
+		hasCoreOutputPlan: isPackageDecodeDirection(direction),
+		hasCoreInputPlan:  !isPackageDecodeDirection(direction),
 	}, effects, nil
 }
 

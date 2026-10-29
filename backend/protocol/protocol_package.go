@@ -33,6 +33,38 @@ type ProtocolSpec struct {
 	WireVersion   string                         `json:"wireVersion"`
 	Operations    map[string]Operation           `json:"operations"`
 	WireContracts map[Direction]WireContractSpec `json:"wireContracts"`
+	Stream        *ProtocolStreamSpec            `json:"stream,omitempty"`
+}
+
+// ProtocolStreamSpec declares one response's wire lifecycle independently of
+// its mapping. Both event directions use these selectors and wire tag meanings.
+// Sequence, when declared, selects strictly increasing nonnegative int64 JSON
+// integer literals; decimal and exponent spellings are not sequence integers.
+type ProtocolStreamSpec struct {
+	Discriminator string                             `json:"discriminator"`
+	ResponseID    string                             `json:"responseId"`
+	ItemID        string                             `json:"itemId"`
+	Sequence      string                             `json:"sequence,omitempty"`
+	Events        map[string]ProtocolStreamEventSpec `json:"events"`
+}
+
+// ProtocolStreamEventSpec selects a fixed lifecycle action. The initial
+// contract supports text items; it does not infer tools, snapshots or controls.
+type ProtocolStreamEventSpec struct {
+	Action string                   `json:"action"`
+	Text   string                   `json:"text,omitempty"`
+	Error  string                   `json:"error,omitempty"`
+	Usage  *ProtocolStreamUsageSpec `json:"usage,omitempty"`
+}
+
+// ProtocolStreamUsageSpec selects observed cumulative token counts. Missing
+// selectors omit counters; present values must be nonnegative integers. Required
+// wire counters belong to the document schema or assertions. Counts use int64
+// integer literals, excluding decimal and exponent spellings.
+type ProtocolStreamUsageSpec struct {
+	Input  string `json:"input,omitempty"`
+	Output string `json:"output,omitempty"`
+	Total  string `json:"total,omitempty"`
 }
 
 // Identity returns the authored wire identity; content hashes bind its execution.
@@ -157,6 +189,17 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 			return nil, fmt.Errorf("/spec/wireContracts/%s: missing mapping direction", direction)
 		}
 	}
+	stream, err := compilePackageStreamContract(spec.Stream, limits)
+	if err != nil {
+		return nil, err
+	}
+	if stream != nil {
+		_, hasInput := mapping.Directions[DecodeEvent]
+		_, hasOutput := mapping.Directions[EncodeEvent]
+		if !hasInput && !hasOutput {
+			return nil, fmt.Errorf("/spec/stream: requires an event mapping direction")
+		}
+	}
 	compiled := &Compiled{identity: spec.Identity(), limits: limits, explicitLimits: mapping.Limits != nil || limits.BufferBytes != DefaultLimits().BufferBytes, native: mapping.Native, capabilities: mapping.Capabilities, operations: spec.Operations, operationSchemas: map[string]*runtimeValueSchema{}, mappings: map[Direction]compiledMapping{}, wireContracts: map[Direction]compiledWireContract{}, packagePlan: &compiledPackagePlan{coreVersion: mapping.CoreVersion, dslVersion: mapping.DSLVersion, effects: map[Direction][]compiledSemanticEffect{}}}
 	expressions := &expressionCompiler{limits: limits, references: mapping.Expressions, resolving: map[string]bool{}, used: map[string]bool{}}
 	for _, direction := range sortedKeys(mapping.Directions) {
@@ -170,6 +213,9 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 		contract, err := compileWireContractSpec(wire, "/spec/wireContracts/"+string(direction), limits)
 		if err != nil {
 			return nil, err
+		}
+		if isEventDirection(direction) {
+			contract.packageStream = stream
 		}
 		compiled.wireContracts[direction] = contract
 		entry := mapping.Directions[direction]
@@ -185,6 +231,19 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 		program.capabilities = mapping.Capabilities
 		if entry.Capabilities != nil {
 			program.capabilities = entry.Capabilities
+		}
+		if contract.packageStream != nil {
+			if !program.capabilities[TextCapability] || !program.capabilities[UsageCapability] {
+				return nil, fmt.Errorf("/mapping/directions/%s/capabilities: stream contract requires text and usage", direction)
+			}
+			identity, err := EncodeValue(struct {
+				Mapping string              `json:"mapping"`
+				Stream  *ProtocolStreamSpec `json:"stream"`
+			}{program.definitionHash, spec.Stream})
+			if err != nil {
+				return nil, err
+			}
+			program.definitionHash = hashValue(identity)
 		}
 		compiled.mappings[direction], compiled.packagePlan.effects[direction] = program, effects
 	}

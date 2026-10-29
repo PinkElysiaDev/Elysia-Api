@@ -240,7 +240,9 @@ func (compiled *Compiled) decodeEvents(ctx context.Context, direction Direction,
 	}
 	for index := range events {
 		event := &events[index]
-		event.SchemaVersion = SemanticSchemaVersion
+		if compiled.packagePlan == nil {
+			event.SchemaVersion = SemanticSchemaVersion
+		}
 		event.Source = compiled.identity
 		if compiled.mappings[direction].hasCoreOutputPlan {
 			detachEventResources(event)
@@ -308,7 +310,10 @@ func (compiled *Compiled) stampEventProvenance(event *Event, direction Direction
 	}
 	compiled.stampNative(event.Unmapped, direction, scope)
 	if event.Request != nil {
-		event.Request.SchemaVersion, event.Request.Source = SemanticSchemaVersion, compiled.identity
+		if compiled.packagePlan == nil {
+			event.Request.SchemaVersion = SemanticSchemaVersion
+		}
+		event.Request.Source = compiled.identity
 		compiled.stampNative(event.Request.Native, direction, scope)
 		if err := stampResourceScopes(event.Request, scope); err != nil {
 			return err
@@ -327,7 +332,10 @@ func (compiled *Compiled) stampEventProvenance(event *Event, direction Direction
 		compiled.stampNodeProvenance(event.Item.ReasoningContent, direction, scope)
 	}
 	if event.Response != nil {
-		event.Response.SchemaVersion, event.Response.Source = SemanticSchemaVersion, compiled.identity
+		if compiled.packagePlan == nil {
+			event.Response.SchemaVersion = SemanticSchemaVersion
+		}
+		event.Response.Source = compiled.identity
 		compiled.stampNative(event.Response.Native, direction, scope)
 		if err := stampNodeScopes(event.Response.Content, scope); err != nil {
 			return err
@@ -465,6 +473,14 @@ func (compiled *Compiled) target(direction Direction, options EvaluationContext)
 	return Target{Codec: compiled.Codec(direction), Protocol: compiled.identity, Direction: direction, Scope: options.Scope, Capabilities: compiled.mappings[direction].capabilities, coreVersion: compiled.CoreVersion()}
 }
 
+// Target binds validation and collection to this revision's core version and
+// capabilities. Callers may narrow Capabilities to their authorized binding.
+func (compiled *Compiled) Target(direction Direction, scope Scope) Target {
+	target := compiled.target(direction, EvaluationContext{Scope: scope})
+	target.Capabilities = compiled.Capabilities(direction)
+	return target
+}
+
 func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Direction, native *Native, output Value, options EvaluationContext) (Value, error) {
 	// Reconciliation replays a decoder with an already pinned binding. It must
 	// never repeat authorization/routing or choose a new source account.
@@ -530,7 +546,11 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 		if len(events) != 1 {
 			return Value{}, fmt.Errorf("native frame must map to exactly one event")
 		}
-		baseline = events[0]
+		if replay.packagePlan != nil {
+			baseline = &events[0]
+		} else {
+			baseline = events[0]
+		}
 	default:
 		return Value{}, fmt.Errorf("native reconciliation requires a request or response direction")
 	}

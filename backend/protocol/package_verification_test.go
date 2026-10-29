@@ -143,3 +143,37 @@ func TestPackageVerificationCombinationUsesPinnedFixtures(t *testing.T) {
 		t.Fatal("empty package combination supplied positive evidence", report)
 	}
 }
+
+func TestPackageExpectedEventVersions(t *testing.T) {
+	compiled := compilePackageForTest(t, verifiedTextPackage(t, "event-expected-version"))
+	for _, fixture := range []struct {
+		name   string
+		change func([]Event)
+	}{
+		{"valid", nil},
+		{"legacy-first-event", func(events []Event) { events[0].SchemaVersion = SemanticSchemaVersion }},
+		{"legacy-later-event", func(events []Event) { events[1].SchemaVersion = SemanticSchemaVersion }},
+		{"zero-event-version", func(events []Event) { events[0].SchemaVersion = 0 }},
+		{"legacy-nested-response", func(events []Event) { events[0].Response.SchemaVersion = SemanticSchemaVersion }},
+		{"zero-nested-request", func(events []Event) { events[1].Request.SchemaVersion = 0 }},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			events := []Event{
+				{SchemaVersion: ProtocolCoreVersion, Type: ResponseStarted, Response: &Response{SchemaVersion: ProtocolCoreVersion}},
+				{SchemaVersion: ProtocolCoreVersion, Type: ResponseCreate, Request: &Request{SchemaVersion: ProtocolCoreVersion}},
+			}
+			if fixture.change != nil {
+				fixture.change(events)
+			}
+			sample := Sample{Direction: DecodeEvent, Expected: fixtureValue(t, events)}
+			_, err := comparableExpected(compiled, sample)
+			if fixture.change == nil {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), "unsupported semantic schemaVersion") {
+				t.Fatal("semantic comparison erased an incompatible expected version", err)
+			}
+		})
+	}
+}

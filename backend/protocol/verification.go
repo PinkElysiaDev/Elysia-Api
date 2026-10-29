@@ -242,12 +242,25 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 			return verificationResult{}, err
 		}
 	}
+	var wireValidation *WireStreamValidation
+	if sample.Sequence && compiled.packagePlan != nil {
+		var err error
+		wireValidation, err = compiled.newWireStreamValidation(sample.Direction, options.Scope)
+		if err != nil {
+			return verificationResult{}, err
+		}
+	}
 	var events []Event
 	var outputs []Value
 	var frames []*EventFrame
 	buffered := 0
 	for _, input := range inputs {
 		if isEventDecoder(sample.Direction) {
+			if wireValidation != nil {
+				if err := wireValidation.Consume(ctx, input); err != nil {
+					return verificationResult{}, err
+				}
+			}
 			frame, err := compiled.decodeFrame(ctx, sample.Direction, input, options)
 			if err != nil {
 				return verificationResult{}, err
@@ -271,6 +284,11 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 			}
 			buffered += len(input.raw)
 			for _, frame := range wire {
+				if wireValidation != nil {
+					if err := wireValidation.Consume(ctx, frame); err != nil {
+						return verificationResult{}, err
+					}
+				}
 				buffered += len(frame.raw)
 			}
 			outputs = append(outputs, wire...)
@@ -307,12 +325,22 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 			return verificationResult{}, err
 		}
 		for _, frame := range tail {
+			if wireValidation != nil {
+				if err := wireValidation.Consume(ctx, frame); err != nil {
+					return verificationResult{}, err
+				}
+			}
 			buffered += len(frame.raw)
 		}
 		if buffered > compiled.limits.BufferBytes {
 			return verificationResult{}, streamIssue(LimitExceeded, "/samples", "event fixture exceeds replay buffer limit")
 		}
 		outputs = append(outputs, tail...)
+	}
+	if wireValidation != nil {
+		if err := wireValidation.Finish(); err != nil {
+			return verificationResult{}, err
+		}
 	}
 	result := verificationResult{semantic: events, frames: frames}
 	var err error
@@ -333,8 +361,8 @@ func comparableExpected(compiled *Compiled, sample Sample) (Value, error) {
 		if err := decodeContract(sample.Expected.Bytes(), &request); err != nil {
 			return Value{}, err
 		}
-		if compiled.packagePlan != nil && request.SchemaVersion != compiled.CoreVersion() {
-			return Value{}, fmt.Errorf("unsupported semantic schemaVersion %d", request.SchemaVersion)
+		if err := checkExpectedCoreVersion(compiled, request.SchemaVersion); err != nil {
+			return Value{}, err
 		}
 		return comparableSemantic(&request)
 	case DecodeResponse:
@@ -342,8 +370,8 @@ func comparableExpected(compiled *Compiled, sample Sample) (Value, error) {
 		if err := decodeContract(sample.Expected.Bytes(), &response); err != nil {
 			return Value{}, err
 		}
-		if compiled.packagePlan != nil && response.SchemaVersion != compiled.CoreVersion() {
-			return Value{}, fmt.Errorf("unsupported semantic schemaVersion %d", response.SchemaVersion)
+		if err := checkExpectedCoreVersion(compiled, response.SchemaVersion); err != nil {
+			return Value{}, err
 		}
 		return comparableSemantic(&response)
 	case DecodeEvent, DecodeClientEvent:
@@ -351,10 +379,32 @@ func comparableExpected(compiled *Compiled, sample Sample) (Value, error) {
 		if err := decodeContract(sample.Expected.Bytes(), &events); err != nil {
 			return Value{}, err
 		}
+		for _, event := range events {
+			if err := checkExpectedCoreVersion(compiled, event.SchemaVersion); err != nil {
+				return Value{}, err
+			}
+			if event.Request != nil {
+				if err := checkExpectedCoreVersion(compiled, event.Request.SchemaVersion); err != nil {
+					return Value{}, err
+				}
+			}
+			if event.Response != nil {
+				if err := checkExpectedCoreVersion(compiled, event.Response.SchemaVersion); err != nil {
+					return Value{}, err
+				}
+			}
+		}
 		return comparableSemantic(events)
 	default:
 		return sample.Expected, nil
 	}
+}
+
+func checkExpectedCoreVersion(compiled *Compiled, version int) error {
+	if compiled.packagePlan != nil && version != compiled.CoreVersion() {
+		return fmt.Errorf("unsupported semantic schemaVersion %d", version)
+	}
+	return nil
 }
 
 func capabilityApplies(capability Capability, direction Direction) bool {
