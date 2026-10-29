@@ -446,6 +446,8 @@
     "backend/protocol/wire_contract_spec_test.go",
     "backend/protocol/wire_contract_test.go",
     "backend/protocol/wire_output.go",
+    "backend/protocol/wire_schema_plan.go",
+    "backend/protocol/wire_schema_plan_test.go",
     "backend/protocol/wire_stream_validation.go",
     "backend/relay/main_test.go",
     "backend/relay/protocol_module.go",

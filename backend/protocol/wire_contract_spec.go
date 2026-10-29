@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -29,13 +30,13 @@ type compiledWireAssertion struct {
 	path    string
 	pointer []string
 	when    *compiledExpression
-	schema  *runtimeValueSchema
+	schema  *wireSchemaPlan
 	code    IssueCode
 	reason  string
 }
 
 type specWireValidator struct {
-	schema     *runtimeValueSchema
+	schema     *wireSchemaPlan
 	assertions []compiledWireAssertion
 	limits     Limits
 }
@@ -44,7 +45,7 @@ func compileWireContractSpec(spec WireContractSpec, path string, limits Limits) 
 	if spec.Schema == nil {
 		return compiledWireContract{}, fmt.Errorf("%s/schema: wire schema is required", path)
 	}
-	schema, err := compileValueSchema(spec.Schema, limits)
+	schema, err := compileWireSchemaPlan(spec.Schema, limits)
 	if err != nil {
 		return compiledWireContract{}, locateMappingError(path+"/schema", err)
 	}
@@ -75,7 +76,7 @@ func compileWireContractSpec(spec WireContractSpec, path string, limits Limits) 
 				return compiledWireContract{}, fmt.Errorf("%s/when: condition must produce a boolean", at)
 			}
 		}
-		check.schema, err = compileValueSchema(&assertion.Schema, limits)
+		check.schema, err = compileWireSchemaPlan(&assertion.Schema, limits)
 		if err != nil {
 			return compiledWireContract{}, locateMappingError(at+"/schema", err)
 		}
@@ -92,7 +93,7 @@ func (validator *specWireValidator) validate(ctx context.Context, direction Dire
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := validator.schema.validate(value, "", effectiveLimits); err != nil {
+	if err := validator.schema.validate(ctx, value, "", effectiveLimits); err != nil {
 		code := InvalidInput
 		if direction == DecodeResponse || direction == DecodeEvent {
 			code = UpstreamContractViolation
@@ -122,7 +123,7 @@ func (validator *specWireValidator) validate(ctx context.Context, direction Dire
 		}
 		selected, err := readValuePointerWithin(value, assertion.pointer, reader)
 		if err == nil {
-			err = assertion.schema.validate(selected, assertion.path, effectiveLimits)
+			err = assertion.schema.validate(ctx, selected, assertion.path, effectiveLimits)
 		}
 		if err != nil {
 			return wireAssertionError(assertion.code, assertion.path, assertion.reason, err)
@@ -132,5 +133,8 @@ func (validator *specWireValidator) validate(ctx context.Context, direction Dire
 }
 
 func wireAssertionError(code IssueCode, path, reason string, cause error) error {
+	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
+		return cause
+	}
 	return &ConversionError{cause: cause, Issues: []ConversionIssue{{Code: code, Severity: SeverityError, Stage: "wire", Path: path, Reason: reason}}}
 }
