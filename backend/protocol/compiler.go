@@ -122,16 +122,18 @@ func NewCompiler(limits Limits, modules []Module, features []string) (*Compiler,
 }
 
 type compiledMapping struct {
-	capabilities   CapabilitySet
-	module         Module
-	transform      *compiledExpression
-	outputPlan     *compiledOutputPlan
-	after          *compiledExpression
-	initial        *compiledExpression
-	input, output  *runtimeValueSchema
-	rules          []compiledEventRule
-	frameBatch     bool
-	definitionHash string
+	capabilities      CapabilitySet
+	module            Module
+	transform         *compiledExpression
+	outputPlan        *compiledOutputPlan
+	hasCoreInputPlan  bool
+	hasCoreOutputPlan bool
+	after             *compiledExpression
+	initial           *compiledExpression
+	input, output     *runtimeValueSchema
+	rules             []compiledEventRule
+	frameBatch        bool
+	definitionHash    string
 }
 
 type compiledEventRule struct{ when, emit *compiledExpression }
@@ -156,6 +158,7 @@ type Compiled struct {
 	modelMappings      map[string]compiledMapping
 	agentMapping       *compiledMapping
 	agentEfforts       []string
+	packagePlan        *compiledPackagePlan
 }
 
 // Compile strictly parses one v2 definition and compiles every direction.
@@ -375,6 +378,10 @@ func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction
 			return entry, err
 		}
 		entry.definitionHash = hashValue(identity)
+	}
+	if entry.outputPlan != nil && entry.module == nil && entry.after == nil && entry.initial == nil {
+		entry.hasCoreOutputPlan = entry.output == nil && (direction == DecodeRequest || direction == DecodeResponse)
+		entry.hasCoreInputPlan = entry.input == nil && (direction == EncodeRequest || direction == EncodeResponse)
 	}
 	return entry, nil
 }
@@ -770,6 +777,14 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 		return fail(err)
 	}
 	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	var packageState *packageExecution
+	if compiled.packagePlan != nil {
+		packageState, err = compiled.preparePackageExecution(ctx, direction, input, contextValue, inputLimits)
+		if err != nil {
+			return fail(err)
+		}
+		state.valueReader = packageState.reader
+	}
 	var output Value
 	switch {
 	case mapping.module != nil:
@@ -812,6 +827,11 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	}
 	if err := mapping.output.validate(output, "/output", outputLimits); err != nil {
 		return fail(err)
+	}
+	if packageState != nil {
+		if err := compiled.finishPackageExecution(ctx, direction, output, outputLimits); err != nil {
+			return fail(err)
+		}
 	}
 	if isInitial {
 		options.State.initialized[moduleStateKey{compiled: compiled, direction: direction}] = true
