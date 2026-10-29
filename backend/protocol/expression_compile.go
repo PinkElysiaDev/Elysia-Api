@@ -51,6 +51,7 @@ type expressionScope struct {
 	root         *ValueSchema
 	item         *ValueSchema
 	isIteration  bool
+	isWalk       bool
 	bindings     map[string]expressionBinding
 	bindingDepth int
 }
@@ -164,6 +165,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	if compiled.op == "index" && !scope.isIteration {
 		return nil, fmt.Errorf("%s: index requires an array iteration", path)
 	}
+	if compiled.op == "recur" && !scope.isWalk {
+		return nil, fmt.Errorf("%s: recur requires an enclosing walk body", path)
+	}
 	if expression.Source != nil {
 		child, err := compiler.compile(*expression.Source, path+"/source", scope, depth+1)
 		if err != nil {
@@ -172,6 +176,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		compiled.source = child
 	}
 	childScope := scope
+	if compiled.op == "walk" {
+		childScope.isWalk = true
+	}
 	if compiled.op == "let" {
 		if !definitionIdentifier.MatchString(expression.Name) {
 			return nil, fmt.Errorf("%s/name: expected a binding identifier", path)
@@ -184,7 +191,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		}
 		childScope.bindings[expression.Name] = expressionBinding{compiled.bindingSlot, compiled.source.result, compiled.source.schema}
 	}
-	if slices.Contains([]string{"map", "flatmap", "filter"}, compiled.op) {
+	if slices.Contains([]string{"map", "flatmap", "filter", "walk"}, compiled.op) {
 		if !isAssignable(compiled.source.result, ArrayType) {
 			return nil, fmt.Errorf("%s/source must produce an array", path)
 		}
@@ -281,6 +288,10 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 	switch expression.op {
 	case "let":
 		expression.result, expression.schema = expression.body.result, expression.body.schema
+	case "recur":
+		if !isAssignable(expression.source.result, ArrayType) {
+			return fail("recur source must produce an array")
+		}
 	case "strip_prefix", "trim_prefix":
 		prefix, err := readString(expression.value)
 		if err != nil || prefix == "" || !isAssignable(expression.source.result, StringType) {

@@ -12,11 +12,14 @@ type evaluation struct {
 	itemOutput                 *JSONOutput
 	itemIndex                  int
 	bindings                   []JSONOutput
+	walkBody                   *compiledOutputPlan
+	walkDepth                  int
 }
 
 type evaluationBudget struct {
 	stepLimit int
 	steps     int
+	walkNodes int
 	limits    Limits
 }
 

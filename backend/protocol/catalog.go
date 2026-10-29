@@ -19,6 +19,8 @@ var expressionOperations = []OperationInfo{
 	{"object", []string{"fields"}, nil, ObjectType, "Construct an object; omit only missing expression values."},
 	{"array", []string{"items"}, nil, ArrayType, "Construct an ordered array."},
 	{"map", []string{"source", "body"}, []string{"source", "body"}, ArrayType, "Map each array element in original order."},
+	{"walk", []string{"source", "body"}, []string{"source", "body"}, ArrayType, "Map an array with a bounded recursive body; recurse only through explicitly selected child arrays."},
+	{"recur", []string{"source"}, []string{"source"}, ArrayType, "Apply the nearest lexical walk body to a selected array, retaining input and root; requires an enclosing walk body."},
 	{"flatmap", []string{"source", "body"}, []string{"source", "body"}, ArrayType, "Map each element to an array and flatten one level."},
 	{"filter", []string{"source", "when"}, []string{"source", "when"}, ArrayType, "Select elements with a strictly boolean predicate."},
 	{"choose", []string{"source", "cases", "otherwise"}, []string{"source", "cases"}, AnyType, "Select a required branch by string discriminator; no implicit fallback."},

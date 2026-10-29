@@ -43,7 +43,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	}
 	plan := &compiledOutputPlan{expression: expression}
 	switch expression.op {
-	case "omit", "literal", "read", "let", "index", "object", "project", "array", "map", "flatmap", "filter", "if", "choose",
+	case "omit", "literal", "read", "let", "index", "object", "project", "array", "map", "walk", "recur", "flatmap", "filter", "if", "choose",
 		"merge", "concat", "join", "sort", "associate", "parse_json", "stringify_json",
 		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "equal", "all", "any":
 	default:
@@ -168,6 +168,8 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.buildScalarOperands(state)
 	case "map", "flatmap":
 		return plan.buildIteration(state)
+	case "walk", "recur":
+		return plan.buildWalk(state)
 	case "filter":
 		return plan.buildFilter(state)
 	case "if":
@@ -255,11 +257,15 @@ func (plan *compiledOutputPlan) buildArray(state evaluation) (plannedOutput, err
 }
 
 func (plan *compiledOutputPlan) buildIteration(state evaluation) (plannedOutput, error) {
-	expression := plan.expression
 	source, err := plan.source.build(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
+	return plan.buildIterationOutput(state, source, plan.body)
+}
+
+func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source plannedOutput, body *compiledOutputPlan) (plannedOutput, error) {
+	expression := plan.expression
 	// Iteration owns its containers but borrows raw items until final encoding.
 	// Returned Value storage is still independent of these temporary views.
 	reader := &valueReader{}
@@ -269,7 +275,14 @@ func (plan *compiledOutputPlan) buildIteration(state evaluation) (plannedOutput,
 	}
 	node := &jsonOutputNode{items: make([]JSONOutput, 0, len(items))}
 	logicalBytes, encodedBytes := 0, 2
+	isWalk := expression.op == "walk" || expression.op == "recur"
 	for index, item := range items {
+		if isWalk {
+			state.budget.walkNodes++
+			if state.budget.walkNodes > state.budget.limits.Nodes {
+				return plannedOutput{}, resourceFailure("evaluation", "nodes", state.budget.limits.Nodes, state.budget.walkNodes)
+			}
+		}
 		child := state
 		child.itemIndex = index
 		child.item = item.value
@@ -277,7 +290,7 @@ func (plan *compiledOutputPlan) buildIteration(state evaluation) (plannedOutput,
 		if item.node != nil {
 			child.itemOutput = &item
 		}
-		value, err := plan.body.build(child)
+		value, err := body.build(child)
 		if err != nil {
 			return plannedOutput{}, err
 		}
