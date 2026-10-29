@@ -94,7 +94,7 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 	if len(report.Issues) > 0 {
 		return report
 	}
-	for _, sample := range ingress.Definition().Samples {
+	for _, sample := range ingress.verificationSamples() {
 		if sample.Direction != DecodeRequest || sample.ExpectedIssue != "" {
 			continue
 		}
@@ -114,7 +114,7 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 		}
 		report.Checks = append(report.Checks, check)
 	}
-	for _, sample := range upstream.Definition().Samples {
+	for _, sample := range upstream.verificationSamples() {
 		if !hasHTTP || sample.Direction != DecodeResponse || sample.ExpectedIssue != "" {
 			continue
 		}
@@ -136,7 +136,7 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 	}
 	if hasHTTP && ((len(sessionOperations(ingress)) == 0 && len(sessionOperations(upstream)) == 0) || (hasHTTPStream(upstream) && hasHTTPStream(ingress))) && upstream.Supports(DecodeEvent) && ingress.Supports(EncodeEvent) {
 		hasSequence := false
-		for _, sample := range upstream.Definition().Samples {
+		for _, sample := range upstream.verificationSamples() {
 			if sample.Direction != DecodeEvent || !sample.Sequence || sample.ExpectedIssue != "" {
 				continue
 			}

@@ -32,7 +32,7 @@ func executeSessionSample(ctx context.Context, compiled *Compiled, sample Sessio
 		if err != nil {
 			return result, err
 		}
-		expected, err := comparableExpected(fixture)
+		expected, err := comparableExpected(compiled, fixture)
 		if err != nil {
 			return result, err
 		}

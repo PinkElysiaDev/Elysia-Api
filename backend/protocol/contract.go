@@ -9,11 +9,15 @@ import (
 // DecodeRequestContract accepts one versioned semantic request. Unknown fields
 // are rejected; wire extensions belong in Native and declared Attributes.
 func DecodeRequestContract(raw []byte) (*Request, error) {
+	return decodeRequestContract(raw, SemanticSchemaVersion)
+}
+
+func decodeRequestContract(raw []byte, coreVersion int) (*Request, error) {
 	var request Request
 	if err := decodeContract(raw, &request); err != nil {
 		return nil, err
 	}
-	if request.SchemaVersion != SemanticSchemaVersion {
+	if request.SchemaVersion != coreVersion {
 		return nil, fmt.Errorf("unsupported semantic schemaVersion %d", request.SchemaVersion)
 	}
 	return &request, nil

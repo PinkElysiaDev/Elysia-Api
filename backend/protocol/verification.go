@@ -26,8 +26,12 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 	for _, direction := range DirectionCatalog() {
 		coverage[direction], hasLifecycle[direction] = CapabilitySet{}, map[Capability]bool{}
 	}
-	for index, sample := range compiled.Definition().Samples {
-		path := fmt.Sprintf("/samples/%d", index)
+	samplesPath := "/samples"
+	if compiled.packagePlan != nil {
+		samplesPath = "/mapping/samples"
+	}
+	for index, sample := range compiled.verificationSamples() {
+		path := fmt.Sprintf("%s/%d", samplesPath, index)
 		check := VerificationCheck{SampleID: sample.ID, Direction: sample.Direction}
 		result, err := executeVerificationSample(ctx, compiled, sample)
 		if err == nil && (sample.Direction == DecodeRequest || sample.Direction == EncodeRequest) {
@@ -58,7 +62,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 			report.Checks = append(report.Checks, check)
 			continue
 		}
-		expected, err := comparableExpected(sample)
+		expected, err := comparableExpected(compiled, sample)
 		if err != nil {
 			report.Issues = append(report.Issues, verificationIssue(compiled, sample.Direction, path+"/expected", InvalidInput, "invalid expected semantic contract: "+err.Error(), sample.ID))
 			report.Checks = append(report.Checks, check)
@@ -125,10 +129,13 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 			report.Issues = append(report.Issues, verificationIssue(compiled, DecodeRequest, "/operations/"+name+"/input", IncompleteCoverage, "operation input schema requires a passing request fixture", ""))
 		}
 	}
-	verifySessionSamples(ctx, compiled, &report, coverage, hasSample, hasSequence, hasLifecycle)
-	hasTaskEvidence := verifyTaskSamples(ctx, compiled, &report)
-	verifyModelSamples(ctx, compiled, &report)
-	verifyAgentSamples(ctx, compiled, &report)
+	hasTaskEvidence := false
+	if compiled.packagePlan == nil {
+		verifySessionSamples(ctx, compiled, &report, coverage, hasSample, hasSequence, hasLifecycle)
+		hasTaskEvidence = verifyTaskSamples(ctx, compiled, &report)
+		verifyModelSamples(ctx, compiled, &report)
+		verifyAgentSamples(ctx, compiled, &report)
+	}
 	for _, direction := range DirectionCatalog() {
 		if !compiled.Supports(direction) {
 			continue
@@ -184,7 +191,7 @@ func executeVerificationSample(ctx context.Context, compiled *Compiled, sample S
 	case DecodeRequest:
 		result.semantic, err = compiled.DecodeRequest(ctx, sample.Input.Bytes(), options)
 	case EncodeRequest:
-		request, failure := DecodeRequestContract(sample.Input.Bytes())
+		request, failure := decodeRequestContract(sample.Input.Bytes(), compiled.CoreVersion())
 		if failure != nil {
 			return result, failure
 		}
@@ -319,18 +326,24 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 	return result, err
 }
 
-func comparableExpected(sample Sample) (Value, error) {
+func comparableExpected(compiled *Compiled, sample Sample) (Value, error) {
 	switch sample.Direction {
 	case DecodeRequest:
 		var request Request
 		if err := decodeContract(sample.Expected.Bytes(), &request); err != nil {
 			return Value{}, err
 		}
+		if compiled.packagePlan != nil && request.SchemaVersion != compiled.CoreVersion() {
+			return Value{}, fmt.Errorf("unsupported semantic schemaVersion %d", request.SchemaVersion)
+		}
 		return comparableSemantic(&request)
 	case DecodeResponse:
 		var response Response
 		if err := decodeContract(sample.Expected.Bytes(), &response); err != nil {
 			return Value{}, err
+		}
+		if compiled.packagePlan != nil && response.SchemaVersion != compiled.CoreVersion() {
+			return Value{}, fmt.Errorf("unsupported semantic schemaVersion %d", response.SchemaVersion)
 		}
 		return comparableSemantic(&response)
 	case DecodeEvent, DecodeClientEvent:

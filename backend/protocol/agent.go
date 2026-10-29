@@ -205,7 +205,7 @@ func verifyAgentSamples(ctx context.Context, compiled *Compiled, report *Verific
 }
 
 func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, parameters Object, model string) error {
-	for _, sample := range compiled.Definition().Samples {
+	for _, sample := range compiled.verificationSamples() {
 		if sample.Direction != DecodeRequest || sample.ExpectedIssue != "" {
 			continue
 		}
