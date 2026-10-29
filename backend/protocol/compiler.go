@@ -2,8 +2,6 @@ package protocol
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
@@ -855,8 +853,4 @@ func evaluateEventRules(mapping compiledMapping, state evaluation) (Value, error
 
 func definitionIssues(identity Identity, path string, err error) []ConversionIssue {
 	return []ConversionIssue{{Code: InvalidDefinition, Severity: SeverityError, Protocol: identity, Stage: "compile", Path: mappingErrorPath(path, err), Reason: err.Error(), Suggestion: "Correct the definition at this location before verification."}}
-}
-func hashValue(value Value) string {
-	sum := sha256.Sum256(value.Bytes())
-	return hex.EncodeToString(sum[:])
 }
