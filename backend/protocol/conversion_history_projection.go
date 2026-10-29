@@ -89,7 +89,7 @@ func (c *CompiledConversion) projectHistoryRetention(ctx context.Context, reques
 	return nil
 }
 
-func (compiled *Compiled) checkHistoryDispositions(state evaluation, limits Limits) error {
+func (compiled *Compiled) checkHistoryDispositions(state evaluation, limits Limits, options EvaluationContext) error {
 	request := state.coreRequest
 	if request == nil {
 		var err error
@@ -98,12 +98,18 @@ func (compiled *Compiled) checkHistoryDispositions(state evaluation, limits Limi
 			return err
 		}
 	}
-	if compiled.native.Preserve && request.Native != nil && CanPreserveNative(request.Native.Source, compiled.target(EncodeRequest, EvaluationContext{})) {
-		baseline := compiled.requestReplayBaseline(request.Native, compiled.wireLimits(state.ctx, DecodeRequest))
-		if baseline == nil {
-			return streamIssue(UnsupportedNative, "/native", "history dispositions require a matching private baseline for native replay")
+	if compiled.native.Preserve && request.Native != nil && CanPreserveNative(request.Native.Source, compiled.target(EncodeRequest, options)) {
+		replay := options.requestReplay
+		if replay == nil {
+			// Raw authoring has no later native reconciliation, so its resolver
+			// remains local to this preflight instead of escaping with the value.
+			replay = newRequestReplay(compiled, options)
 		}
-		if err := compiled.checkHistoryDispositionMatches(state.ctx, baseline, limits, true); err != nil {
+		prepared, err := replay.load(state.ctx, request.Native)
+		if err != nil {
+			return err
+		}
+		if err := compiled.checkHistoryDispositionMatches(state.ctx, prepared.baseline, limits, true); err != nil {
 			return err
 		}
 	}

@@ -48,7 +48,7 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 	state := evaluation{ctx: ctx, context: contextValue, runtime: bindEvaluationRuntime(options), inputReader: read, rootReader: read, valueReader: &reader, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	state.coreRequest, _ = input.(*Request)
 	if compiled.packagePlan != nil {
-		if err := compiled.preparePackageState(direction, state, inputLimits); err != nil {
+		if err := compiled.preparePackageState(direction, state, inputLimits, options); err != nil {
 			return fail(err)
 		}
 		state.native = compiled.newNativeEvaluation(ctx, direction, options)

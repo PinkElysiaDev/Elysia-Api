@@ -55,7 +55,7 @@ func evaluateCoreOutput(ctx context.Context, compiled *Compiled, direction Direc
 		if state.valueReader == nil {
 			state.valueReader = requestValueReader(input)
 		}
-		if err := compiled.preparePackageState(direction, state, inputLimits); err != nil {
+		if err := compiled.preparePackageState(direction, state, inputLimits, options); err != nil {
 			return fail(err)
 		}
 	}

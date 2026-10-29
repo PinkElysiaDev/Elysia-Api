@@ -30,6 +30,7 @@ type EvaluationContext struct {
 	transportControl *bool
 	wireLimits       Limits
 	valueReader      *valueReader
+	requestReplay    *requestReplay
 	// ResolveRequestScope is supplied by the gateway after model/authorization
 	// lookup. Definitions cannot execute it or replace its returned binding.
 	ResolveRequestScope func(*Request) (Scope, error)
@@ -778,7 +779,7 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 		if isPackageDecodeDirection(direction) {
 			state.objectReader = mapping.outputPlan.newRootObjectReader(input)
 		}
-		packageState, err = compiled.preparePackageExecution(direction, state, inputLimits)
+		packageState, err = compiled.preparePackageExecution(direction, state, inputLimits, options)
 		if err != nil {
 			return fail(err)
 		}

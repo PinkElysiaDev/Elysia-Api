@@ -28,6 +28,72 @@ type requestEncodingWorkspace struct {
 	baseline *Request
 }
 
+// requestReplay belongs to one synchronous encode, including its baseline
+// encoding. It never attaches reconstructed state to the caller's Native.
+type requestReplay struct {
+	compiled *Compiled
+	options  EvaluationContext
+	prepared preparedRequestReplay
+}
+
+type preparedRequestReplay struct {
+	compiled *Compiled
+	original Value
+	baseline *Request
+	options  EvaluationContext
+}
+
+func newRequestReplay(compiled *Compiled, options EvaluationContext) *requestReplay {
+	options.requestReplay = nil
+	return &requestReplay{compiled: compiled, options: options}
+}
+
+func (replay *requestReplay) load(ctx context.Context, native *Native) (preparedRequestReplay, error) {
+	if replay.prepared.baseline != nil {
+		return replay.prepared, nil
+	}
+	prepared, err := replay.compiled.prepareRequestReplay(ctx, native, replay.options)
+	if err != nil {
+		return preparedRequestReplay{}, err
+	}
+	replay.prepared = prepared
+	return prepared, nil
+}
+
+func (compiled *Compiled) prepareRequestReplay(ctx context.Context, native *Native, options EvaluationContext) (preparedRequestReplay, error) {
+	// Replay must not repeat routing/authorization. Validate against the selected
+	// target before restoring the source decoder's independent context.
+	options.ResolveRequestScope = nil
+	snapshotLimits := requestLimits(ctx, DefaultLimits(), false)
+	original, err := ReplayNative(*native, compiled.target(EncodeRequest, options), nil, snapshotLimits)
+	if err != nil {
+		return preparedRequestReplay{}, err
+	}
+	replay := *compiled
+	replay.limits, replay.explicitLimits = snapshotLimits, true
+	request := compiled.requestReplayBaseline(native, snapshotLimits)
+	if source := native.RequestContext; source != nil {
+		options.Scope, options.Values, options.InterleavedThinking = source.Scope, maps.Clone(source.Values), source.InterleavedThinking
+	}
+	if request == nil {
+		request, err = replay.decodeRequestValue(ctx, original, options, &native.Source.Scope)
+	} else {
+		decoded := request
+		if err = ctx.Err(); err == nil {
+			request, err = replay.finishDecodedRequest(ctx, original, cloneRequestSemantic(request), options, &native.Source.Scope)
+		}
+		if err == nil && replay.packagePlan != nil {
+			replay.attachRequestWorkspace(ctx, request, decoded)
+		}
+		err = replay.runtimeError(DecodeRequest, err)
+	}
+	if err != nil {
+		return preparedRequestReplay{}, err
+	}
+	options.Scope = native.Source.Scope
+	return preparedRequestReplay{compiled: &replay, original: original, baseline: request, options: options}, nil
+}
+
 // CanReuseRequestEncoding reports whether a private gateway preflight result
 // can be reused with identical request, revision, scope, context and budgets.
 // It never authorizes skipping final wire or operation validation.

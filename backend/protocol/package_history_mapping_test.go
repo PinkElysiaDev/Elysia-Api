@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -142,21 +143,68 @@ func TestHistoryDefaultCannotRestoreNativeControl(t *testing.T) {
 	document.Mapping.Directions[EncodeRequest] = encode
 	compiled := compilePackageForTest(t, document)
 	for _, hasControl := range []bool{false, true} {
-		raw := `{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"}]`
-		if hasControl {
-			raw += `,"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}`
-		}
-		raw += `}`
-		request, err := compiled.DecodeRequest(t.Context(), []byte(raw), EvaluationContext{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		request.Reasoning = nil // Clearing current state does not authorize replay.
-		wire, err := compiled.EncodeRequest(t.Context(), request, EvaluationContext{})
-		if hasControl {
-			assertPackageRuntimeIssue(t, err, UnsupportedNative, "/native")
-		} else if err != nil || string(wire) != raw {
-			t.Fatal("trusted baseline without a control was rejected", err, string(wire))
+		for _, isSerialized := range []bool{false, true} {
+			raw := `{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"}]`
+			if hasControl {
+				raw += `,"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}`
+			}
+			raw += `}`
+			calls := 0
+			options := EvaluationContext{Scope: Scope{Provider: "local", Account: "a"}, Values: Object{"binding": StringValue("synthetic")}, ResolveRequestScope: func(*Request) (Scope, error) {
+				calls++
+				return Scope{Provider: "local", Account: "a"}, nil
+			}}
+			request, err := compiled.DecodeRequest(t.Context(), []byte(raw), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Reasoning = nil // Clearing current state does not authorize replay.
+			if isSerialized {
+				request, err = decodeRequestContract(fixtureValue(t, request).Bytes(), ProtocolCoreVersion)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			native, workspace := request.Native, request.Native.requestWorkspace
+			wire, err := compiled.EncodeRequest(t.Context(), request, options)
+			if hasControl {
+				assertPackageRuntimeIssue(t, err, UnsupportedNative, "/native")
+			} else if err != nil || string(wire) != raw {
+				t.Fatal("trusted baseline without a control was rejected", err, string(wire))
+			}
+			if calls != 1 || request.Native != native || native.requestWorkspace != workspace {
+				t.Fatal("native preflight repeated authorization or modified caller-owned state")
+			}
+			if !isSerialized {
+				continue
+			}
+			_, issues := compiled.Execute(t.Context(), EncodeRequest, fixtureValue(t, request), options)
+			if hasControl {
+				assertPackageRuntimeIssue(t, IssuesError(issues), UnsupportedNative, "/native")
+			} else if err := IssuesError(issues); err != nil {
+				t.Fatal("raw authoring rejected a valid serialized baseline", err)
+			}
+			wrongScope := options
+			wrongScope.Scope.Account = "other"
+			_, issues = compiled.Execute(t.Context(), EncodeRequest, fixtureValue(t, request), wrongScope)
+			assertPackageRuntimeIssue(t, IssuesError(issues), ResourceScopeMismatch, request.Native.Source.Path)
+			if calls != 1 {
+				t.Fatal("raw native preflight repeated authorization")
+			}
+			if hasControl {
+				continue
+			}
+			oversized := cloneRequestSemantic(request)
+			oversized.Native.Value = Value{raw: strings.Replace(raw, `"hi"`, `"`+strings.Repeat("x", 4096)+`"`, 1)}
+			limited, err := WithRequestBodyLimit(t.Context(), int64(oversized.Native.Value.Len()-1))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = compiled.EncodeRequestValue(limited, oversized, options)
+			var limit *ResourceLimitError
+			if !errors.As(err, &limit) || limit.Domain != "wire" || limit.Metric != "bytes" {
+				t.Fatal("reconstructed native baseline escaped its snapshot budget", err)
+			}
 		}
 	}
 }

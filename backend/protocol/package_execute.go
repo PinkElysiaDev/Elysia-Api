@@ -11,16 +11,16 @@ type packageExecution struct {
 	reader *valueReader
 }
 
-func (compiled *Compiled) preparePackageExecution(direction Direction, state evaluation, limits Limits) (*packageExecution, error) {
+func (compiled *Compiled) preparePackageExecution(direction Direction, state evaluation, limits Limits, options EvaluationContext) (*packageExecution, error) {
 	execution := &packageExecution{reader: requestValueReader(state.input)}
 	state.valueReader = execution.reader
-	if err := compiled.preparePackageState(direction, state, limits); err != nil {
+	if err := compiled.preparePackageState(direction, state, limits, options); err != nil {
 		return nil, err
 	}
 	return execution, nil
 }
 
-func (compiled *Compiled) preparePackageState(direction Direction, state evaluation, limits Limits) error {
+func (compiled *Compiled) preparePackageState(direction Direction, state evaluation, limits Limits, options EvaluationContext) error {
 	isDecode := isPackageDecodeDirection(direction)
 	if isDecode {
 		if err := compiled.validateWireContract(state.ctx, direction, state.input, nil, limits); err != nil {
@@ -44,7 +44,7 @@ func (compiled *Compiled) preparePackageState(direction Direction, state evaluat
 		}
 	}
 	if direction == EncodeRequest && compiled.packagePlan.hasHistoryProjection {
-		if err := compiled.checkHistoryDispositions(state, limits); err != nil {
+		if err := compiled.checkHistoryDispositions(state, limits, options); err != nil {
 			return err
 		}
 	}

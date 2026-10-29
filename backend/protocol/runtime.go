@@ -143,6 +143,9 @@ func (compiled *Compiled) EncodeRequestValue(ctx context.Context, request *Reque
 	if err := IssuesError(CheckRequest(request, target, semanticLimits(compiled.nativeLimits(ctx, EncodeRequest)))); err != nil {
 		return Value{}, err
 	}
+	if compiled.packagePlan != nil && compiled.packagePlan.hasHistoryProjection && compiled.native.Preserve && request.Native != nil && CanPreserveNative(request.Native.Source, target) {
+		options.requestReplay = newRequestReplay(compiled, options)
+	}
 	output, err := encodeTyped(ctx, compiled, EncodeRequest, request, options, func(module TypedModule, input *Request, options EvaluationContext) (Value, error) {
 		return module.EncodeRequest(ctx, input, options)
 	})
@@ -489,77 +492,61 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 	if !compiled.native.Preserve || native == nil || !CanPreserveNative(native.Source, target) {
 		return output, nil
 	}
-	snapshotLimits := compiled.wireLimits(ctx, direction)
-	if direction == EncodeRequest {
-		snapshotLimits = requestLimits(ctx, DefaultLimits(), false)
-	}
-	original, err := ReplayNative(*native, target, nil, snapshotLimits)
-	if err != nil {
-		return Value{}, err
-	}
-	// Replay uses the source boundary; the immutable target revision and final
-	// output still enforce the smaller target limit.
-	replay := *compiled
-	if direction == EncodeRequest {
-		replay.limits, replay.explicitLimits = snapshotLimits, true
-	}
+	var replay *Compiled
+	var original Value
 	var baseline any
-	switch direction {
-	case EncodeRequest:
-
-		request := compiled.requestReplayBaseline(native, snapshotLimits)
-		if source := native.RequestContext; source != nil {
-			options.Scope, options.Values, options.InterleavedThinking = source.Scope, maps.Clone(source.Values), source.InterleavedThinking
-		}
-		if request == nil {
-			request, err = replay.decodeRequestValue(ctx, original, options, &native.Source.Scope)
+	var err error
+	if direction == EncodeRequest {
+		var prepared preparedRequestReplay
+		if options.requestReplay != nil {
+			prepared, err = options.requestReplay.load(ctx, native)
 		} else {
-			decoded := request
-			if err = ctx.Err(); err == nil {
-				request, err = replay.finishDecodedRequest(ctx, original, cloneRequestSemantic(request), options, &native.Source.Scope)
+			prepared, err = compiled.prepareRequestReplay(ctx, native, options)
+		}
+		if err != nil {
+			return Value{}, err
+		}
+		original, replay, baseline = prepared.original, prepared.compiled, prepared.baseline
+		currentReplay := options.requestReplay
+		options = prepared.options
+		options.requestReplay = currentReplay
+	} else {
+		original, err = ReplayNative(*native, target, nil, compiled.wireLimits(ctx, direction))
+		if err != nil {
+			return Value{}, err
+		}
+		view := *compiled
+		replay = &view
+		switch direction {
+		case EncodeResponse:
+			response, err := compiled.DecodeResponse(ctx, original.Bytes(), options)
+			if err != nil {
+				return Value{}, err
 			}
-			if err == nil && replay.packagePlan != nil {
-				// The replay view owns its effective budget. Retain the same
-				// immutable pre-finalization baseline under that exact identity.
-				replay.attachRequestWorkspace(ctx, request, decoded)
+			baseline = response
+		case EncodeEvent, EncodeUpstreamEvent:
+			events, err := compiled.decodeEvents(ctx, eventDecoder(direction), original, options)
+			if err != nil {
+				return Value{}, err
 			}
-			err = replay.runtimeError(DecodeRequest, err)
+			if len(events) != 1 {
+				return Value{}, fmt.Errorf("native frame must map to exactly one event")
+			}
+			if replay.packagePlan != nil {
+				baseline = &events[0]
+			} else {
+				baseline = events[0]
+			}
+		default:
+			return Value{}, fmt.Errorf("native reconciliation requires a request or response direction")
 		}
-		if err != nil {
-			return Value{}, err
-		}
-
-		options.Scope = native.Source.Scope
-		baseline = request
-
-	case EncodeResponse:
-		response, err := compiled.DecodeResponse(ctx, original.Bytes(), options)
-		if err != nil {
-			return Value{}, err
-		}
-		baseline = response
-	case EncodeEvent, EncodeUpstreamEvent:
-		events, err := compiled.decodeEvents(ctx, eventDecoder(direction), original, options)
-		if err != nil {
-			return Value{}, err
-		}
-		if len(events) != 1 {
-			return Value{}, fmt.Errorf("native frame must map to exactly one event")
-		}
-		if replay.packagePlan != nil {
-			baseline = &events[0]
-		} else {
-			baseline = events[0]
-		}
-	default:
-		return Value{}, fmt.Errorf("native reconciliation requires a request or response direction")
 	}
 
 	var before Value
 	if replay.packagePlan != nil {
-		before, err = encodePlannedCore(ctx, &replay, direction, baseline, options)
+		before, err = encodePlannedCore(ctx, replay, direction, baseline, options)
 	} else if direction == EncodeRequest && replay.hasTypedRequestMapping(EncodeRequest) {
-		before, err = encodeRequestMapping(ctx, &replay, baseline.(*Request), options, replay.mappings[direction].module.(TypedModule), func(module TypedModule, input *Request, options EvaluationContext) (Value, error) {
+		before, err = encodeRequestMapping(ctx, replay, baseline.(*Request), options, replay.mappings[direction].module.(TypedModule), func(module TypedModule, input *Request, options EvaluationContext) (Value, error) {
 			return module.EncodeRequest(ctx, input, options)
 		})
 	} else {
