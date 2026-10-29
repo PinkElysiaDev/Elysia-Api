@@ -141,6 +141,7 @@ func compareOutputPlan(t *testing.T, expression *compiledExpression, plan *compi
 		return evaluation{ctx: ctx, input: input, root: input, context: StringValue("context"), budget: &evaluationBudget{limits: limits, stepLimit: stepLimit}}
 	}
 	originalState, plannedState := state(), state()
+	plannedState.objectReader = plan.newRootObjectReader(input)
 	want, wantErr := expression.evaluate(originalState)
 	got, gotErr := plan.evaluate(plannedState)
 	if got != want || fmt.Sprint(gotErr) != fmt.Sprint(wantErr) || mappingErrorPath("", gotErr) != mappingErrorPath("", wantErr) || originalState.budget.steps != plannedState.budget.steps {

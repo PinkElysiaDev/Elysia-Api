@@ -122,7 +122,7 @@ func (state evaluation) readPackageInput(pointer []string) (JSONOutput, error) {
 	if state.inputReader != nil {
 		return state.inputReader(pointer)
 	}
-	value, err := readValuePointerWithin(state.input, pointer, state.valueReader)
+	value, err := readValuePointerWithObjectReader(state.input, pointer, state.valueReader, state.objectReader)
 	return JSONLeaf(value), err
 }
 

@@ -30,9 +30,9 @@ func (expression *compiledExpression) readOutput(state evaluation) (JSONOutput, 
 	case expression.from == "root" && state.rootReader != nil:
 		output, err = state.rootReader(expression.pointer)
 	case expression.from == "item" && state.itemOutput != nil:
-		output, err = readOutputPointer(*state.itemOutput, expression.pointer, state.valueReader)
+		output, err = readOutputPointerWithObjectReader(*state.itemOutput, expression.pointer, state.valueReader, state.objectReader)
 	case expression.from == "binding":
-		output, err = readOutputPointer(state.bindings[expression.bindingSlot], expression.pointer, state.valueReader)
+		output, err = readOutputPointerWithObjectReader(state.bindings[expression.bindingSlot], expression.pointer, state.valueReader, state.objectReader)
 	default:
 		return JSONOutput{}, false, nil
 	}
@@ -62,9 +62,13 @@ func (expression *compiledExpression) buildReadOutput(state evaluation) (value p
 }
 
 func readOutputPointer(output JSONOutput, pointer []string, reader *valueReader) (JSONOutput, error) {
+	return readOutputPointerWithObjectReader(output, pointer, reader, nil)
+}
+
+func readOutputPointerWithObjectReader(output JSONOutput, pointer []string, reader *valueReader, objects *planObjectReader) (JSONOutput, error) {
 	for index, key := range pointer {
 		if output.node == nil {
-			value, err := readValuePointerWithin(output.value, pointer[index:], reader.forParent(output.value))
+			value, err := readValuePointerWithObjectReader(output.value, pointer[index:], reader.forParent(output.value), objects)
 			return JSONLeaf(value), err
 		}
 		if output.node.object {

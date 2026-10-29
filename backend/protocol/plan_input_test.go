@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -45,5 +46,47 @@ func TestOutputPlanReadsConstructedInput(t *testing.T) {
 				t.Fatalf("%s, buffer=%d: got %s / %v (%d steps), want %s / %v (%d steps)", expression.Op, buffer, got.raw, gotErr, view.budget.steps, want.raw, wantErr, original.budget.steps)
 			}
 		}
+	}
+}
+
+func TestOutputPlanRootObjectReadScope(t *testing.T) {
+	root := Value{raw: `{"a":{"n":1},"b":2}`}
+	for _, tc := range []struct {
+		name       string
+		expression Expression
+		reads      uint8
+	}{
+		{"identity", readExpression("input", ""), 0},
+		{"single", readExpression("input", "/a"), 1},
+		{"context", objectExpression(map[string]Expression{"a": readExpression("context", "/a"), "b": readExpression("context", "/b")}), 0},
+		{"root-and-input", objectExpression(map[string]Expression{"a": readExpression("input", "/a"), "b": readExpression("root", "/b"), "again": readExpression("input", "/a")}), rootObjectReuseReads},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			plan, _ := compileOutputPlan(compileTestOutputExpression(t, tc.expression))
+			if plan.rootObjectReads != tc.reads {
+				t.Fatalf("root reads=%d, want %d", plan.rootObjectReads, tc.reads)
+			}
+			objects := plan.newRootObjectReader(root)
+			if (objects != nil) != (tc.reads == rootObjectReuseReads) || plan.newRootObjectReader(Value{raw: `[]`}) != nil {
+				t.Fatal("root reader eligibility changed")
+			}
+			if objects == nil {
+				return
+			}
+			copied := Value{raw: strings.Clone(root.raw)}
+			value, err := readValuePointerWithObjectReader(copied, []string{"a", "n"}, nil, objects)
+			if err != nil || value.raw != "1" || objects.isLoaded {
+				t.Fatal("equal contents reused a different root's storage", value, err)
+			}
+			for _, input := range []struct {
+				value Value
+				want  string
+			}{{root, "1"}, {Value{raw: `{"a":{"n":3}}`}, "3"}, {root, "1"}} {
+				value, err := readValuePointerWithObjectReader(input.value, []string{"a", "n"}, nil, objects)
+				if err != nil || value.raw != input.want || !objects.isLoaded {
+					t.Fatal("root reader crossed storage boundaries", value, err)
+				}
+			}
+		})
 	}
 }

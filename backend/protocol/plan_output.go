@@ -19,6 +19,7 @@ type compiledOutputPlan struct {
 	cases           map[string]*compiledOutputPlan
 	bindingSlots    int
 	indexSlots      int
+	rootObjectReads uint8
 	hasCapture      bool
 	hasNativeTarget bool
 }
@@ -57,6 +58,9 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	}
 	if expression.op == "with_index" || expression.op == "remember" || expression.op == "recall" {
 		plan.indexSlots = expression.indexSlot + 1
+	}
+	if expression.op == "read" && len(expression.pointer) != 0 && (expression.from == "input" || expression.from == "root") {
+		plan.rootObjectReads = 1
 	}
 	plan.hasCapture = expression.op == "capture_native"
 	plan.hasNativeTarget = expression.op == "replay_native" || expression.op == "native_matches"
@@ -109,6 +113,7 @@ func (plan *compiledOutputPlan) mergeRequirements(child *compiledOutputPlan) {
 	}
 	plan.bindingSlots = max(plan.bindingSlots, child.bindingSlots)
 	plan.indexSlots = max(plan.indexSlots, child.indexSlots)
+	plan.rootObjectReads = min(rootObjectReuseReads, plan.rootObjectReads+child.rootObjectReads)
 	plan.hasCapture = plan.hasCapture || child.hasCapture
 	plan.hasNativeTarget = plan.hasNativeTarget || child.hasNativeTarget
 }

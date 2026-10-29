@@ -17,6 +17,10 @@ func readValuePointer(value Value, pointer []string) (Value, error) {
 }
 
 func readValuePointerWithin(value Value, pointer []string, reader *valueReader) (Value, error) {
+	return readValuePointerWithObjectReader(value, pointer, reader, nil)
+}
+
+func readValuePointerWithObjectReader(value Value, pointer []string, reader *valueReader, objects *planObjectReader) (Value, error) {
 	if len(pointer) == 0 {
 		return value, nil
 	}
@@ -25,7 +29,7 @@ func readValuePointerWithin(value Value, pointer []string, reader *valueReader) 
 			return Value{}, nil
 		}
 		if value.IsObject() {
-			next, err := sonicObjectMember(value, key)
+			next, err := objects.readMember(value, key)
 			if err != nil {
 				return Value{}, err
 			}
@@ -62,6 +66,10 @@ func readValuePointerWithin(value Value, pointer []string, reader *valueReader) 
 // without materializing/cloning every sibling Value into a map.
 func sonicObjectMember(value Value, key string) (Value, error) {
 	node := ast.NewRaw(value.raw)
+	return readSonicObjectMember(&node, key)
+}
+
+func readSonicObjectMember(node *ast.Node, key string) (Value, error) {
 	properties, err := node.Properties()
 	if err != nil {
 		return Value{}, err

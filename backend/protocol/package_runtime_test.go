@@ -102,6 +102,22 @@ func TestPackageRawRequestReasoningValidation(t *testing.T) {
 	}
 }
 
+func TestPackageDecodeRootReadIsolation(t *testing.T) {
+	compiled := compilePackageForTest(t, textProtocolPackage(t))
+	for _, prompt := range []string{"first", "second", "third", "fourth"} {
+		t.Run(prompt, func(t *testing.T) {
+			t.Parallel()
+			request, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","prompt":"`+prompt+`"}`), EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if request.Content[0].Children[0].Payload != StringValue(prompt) {
+				t.Fatal("concurrent decode reused another request's root")
+			}
+		})
+	}
+}
+
 func TestPackageRuntimeRetainsWireAndEffectChecks(t *testing.T) {
 	document := textProtocolPackage(t)
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest, DecodeResponse, EncodeResponse} {

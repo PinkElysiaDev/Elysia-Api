@@ -402,6 +402,7 @@
     "backend/protocol/plan_native_replay_test.go",
     "backend/protocol/plan_numeric.go",
     "backend/protocol/plan_numeric_test.go",
+    "backend/protocol/plan_object_reader.go",
     "backend/protocol/plan_output.go",
     "backend/protocol/plan_output_test.go",
     "backend/protocol/plan_projection.go",

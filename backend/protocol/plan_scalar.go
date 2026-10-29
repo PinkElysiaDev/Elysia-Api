@@ -44,7 +44,7 @@ func (plan *compiledOutputPlan) buildReadValue(state evaluation) (plannedOutput,
 		}
 		return plannedLeaf(coreBoolean(state.runtime.isInterleavedThinking)), nil
 	}
-	value, err := readValuePointerWithin(root, expression.pointer, state.valueReader.forParent(root))
+	value, err := readValuePointerWithObjectReader(root, expression.pointer, state.valueReader.forParent(root), state.objectReader)
 	if err != nil {
 		return plannedOutput{}, fmt.Errorf("%s: %w", expression.path, err)
 	}

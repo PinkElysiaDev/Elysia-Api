@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -52,6 +53,13 @@ func TestJSONPointerSonicContract(t *testing.T) {
 			if (err != nil) != tc.fail || (!tc.fail && value.raw != tc.want) {
 				t.Fatalf("got %q, %v; want %q failure=%v", value.raw, err, tc.want, tc.fail)
 			}
+			objects := (&compiledOutputPlan{rootObjectReads: rootObjectReuseReads}).newRootObjectReader(root)
+			for range 2 {
+				cached, cachedErr := readValuePointerWithObjectReader(root, pointer, nil, objects)
+				if cached != value || !reflect.DeepEqual(cachedErr, err) {
+					t.Fatalf("root reuse changed pointer result: got %q, %v; want %q, %v", cached.raw, cachedErr, value.raw, err)
+				}
+			}
 		})
 	}
 }
@@ -61,10 +69,15 @@ func TestJSONPointerOwnsSelectedFragment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	objects := (&compiledOutputPlan{rootObjectReads: rootObjectReuseReads}).newRootObjectReader(root)
 	for _, path := range [][]string{{"selected"}, {"selected", "n"}, {"blob"}} {
 		child, err := readValuePointer(root, path)
 		if err != nil || child.IsZero() || sharesValueStorage(root, child) {
 			t.Fatalf("selected result retains input: %v %v", path, err)
+		}
+		cached, err := readValuePointerWithObjectReader(root, path, nil, objects)
+		if err != nil || cached != child || sharesValueStorage(root, cached) {
+			t.Fatalf("cached result changed fragment ownership: %v %v", path, err)
 		}
 	}
 }
@@ -110,10 +123,17 @@ func FuzzJSONPointerObjectLookup(f *testing.F) {
 		if err := json.Unmarshal([]byte(raw), &expected); err != nil {
 			t.Fatal(err)
 		}
+		objects := (&compiledOutputPlan{rootObjectReads: rootObjectReuseReads}).newRootObjectReader(root)
 		for key, want := range expected {
 			got, err := readValuePointer(root, []string{key})
 			if err != nil || got.raw != string(want) {
 				t.Fatalf("key %q: got %q err=%v want=%q", key, got.raw, err, want)
+			}
+			for range 2 {
+				cached, cachedErr := readValuePointerWithObjectReader(root, []string{key}, nil, objects)
+				if cached != got || cachedErr != nil {
+					t.Fatalf("cached key %q: got %q, %v; want %q", key, cached.raw, cachedErr, got.raw)
+				}
 			}
 		}
 	})

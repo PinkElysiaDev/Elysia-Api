@@ -775,6 +775,9 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, runtime: bindEvaluationRuntime(options), budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	var packageState *packageExecution
 	if compiled.packagePlan != nil {
+		if isPackageDecodeDirection(direction) {
+			state.objectReader = mapping.outputPlan.newRootObjectReader(input)
+		}
 		packageState, err = compiled.preparePackageExecution(direction, state, inputLimits)
 		if err != nil {
 			return fail(err)
