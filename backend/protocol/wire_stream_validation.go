@@ -53,7 +53,7 @@ func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 			return err
 		}
 	}
-	if err := v.compiled.validateWireOutput(EncodeEvent, frame, fields); err != nil {
+	if err := v.compiled.validateWireContract(ctx, EncodeEvent, frame, fields, v.compiled.wireLimits(ctx, EncodeEvent)); err != nil {
 		return err
 	}
 	if v.decoder == nil {

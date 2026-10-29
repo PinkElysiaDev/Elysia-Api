@@ -93,6 +93,11 @@ func TestWireContractSurvivesMappingReplacement(t *testing.T) {
 	if module.valueCalls != 1 || module.objectCalls != 1 {
 		t.Fatal("final output was checked more than once", module.valueCalls, module.objectCalls)
 	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := compiled.ValidateWireOutputContext(ctx, EncodeResponse, value); !errors.Is(err, failure) {
+		t.Fatal("the context entrypoint changed the installed module contract", err)
+	}
 }
 
 func TestWireContractStreamStateIsRequestOwned(t *testing.T) {

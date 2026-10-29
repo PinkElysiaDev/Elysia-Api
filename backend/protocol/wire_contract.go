@@ -1,12 +1,19 @@
 package protocol
 
+import "context"
+
+type contextualWireValidator interface {
+	validate(context.Context, Direction, Value, Limits) error
+}
+
 // compiledWireContract is pinned independently of the execution mapping. Its
 // validators check the delivered wire even when a mapping replaces the codec.
 type compiledWireContract struct {
-	codec           string
-	validator       WireOutputValidator
-	objectValidator WireObjectOutputValidator
-	streamFactory   StreamModule
+	codec            string
+	validator        WireOutputValidator
+	objectValidator  WireObjectOutputValidator
+	contextValidator contextualWireValidator
+	streamFactory    StreamModule
 }
 
 // bindModuleWireContract captures the current module contracts during compiler

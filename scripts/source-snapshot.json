@@ -442,6 +442,8 @@
     "backend/protocol/verification_task_combination.go",
     "backend/protocol/verification_test.go",
     "backend/protocol/wire_contract.go",
+    "backend/protocol/wire_contract_spec.go",
+    "backend/protocol/wire_contract_spec_test.go",
     "backend/protocol/wire_contract_test.go",
     "backend/protocol/wire_output.go",
     "backend/protocol/wire_stream_validation.go",
