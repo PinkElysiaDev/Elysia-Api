@@ -26,6 +26,10 @@ func TestOutputPlanParity(t *testing.T) {
 	object := objectExpression(map[string]Expression{"text": text, "missing": readExpression("item", "/missing")})
 	mapObjects := Expression{Op: "map", Source: &read, Body: &object}
 	mapItems := Expression{Op: "map", Source: &item, Body: &object}
+	nestedItems := Expression{Op: "map", Source: expressionPointer(readExpression("item", "/children")), Body: expressionPointer(objectExpression(map[string]Expression{
+		"first": readExpression("item", "/text"), "second": readExpression("item", "/text"), "root": readExpression("root", "/label"),
+	}))}
+	nestedObjects := objectExpression(map[string]Expression{"a_before": text, "b_children": nestedItems, "c_after": text})
 	for _, tc := range []struct {
 		name       string
 		expression Expression
@@ -42,11 +46,13 @@ func TestOutputPlanParity(t *testing.T) {
 		{"map", mapObjects, `[{"text":"<>& "},{"text":null},{}]`},
 		{"map-raw", Expression{Op: "map", Source: &read, Body: &item}, `[ {"k":"<"}, [ 1, 2 ], null ]`},
 		{"map-absent", mapObjects, `[{},{}]`},
+		{"map-nested-item-scopes", Expression{Op: "map", Source: expressionPointer(readExpression("input", "/items")), Body: &nestedObjects}, `{"label":"root","items":[{"text":"outer-one","children":[{"text":"inner-one"},{"text":"inner-two"}]},{"text":"outer-two","children":[{}, {"text":"inner-three"}]}]}`},
 		{"map-null", mapObjects, `null`},
 		{"map-scalar", mapObjects, `false`},
 		{"flatmap-raw", Expression{Op: "flatmap", Source: &read, Body: &item}, `[[ {"x":"<"} ],[],[1e+3,null]]`},
 		{"flatmap-planned", Expression{Op: "flatmap", Source: &read, Body: &mapItems}, `[[{"text":"<"},{"text":"two"}],[],[{"text":"three"}]]`},
 		{"flatmap-invalid", Expression{Op: "flatmap", Source: &read, Body: &item}, `[[1],true]`},
+		{"flatmap-object-scopes", Expression{Op: "flatmap", Source: &read, Body: expressionPointer(Expression{Op: "array", Items: []Expression{object}})}, `[{"text":"first"},{"text":"second","missing":null},{}]`},
 		{"if-object", Expression{Op: "if", When: expressionPointer(Expression{Op: "exists", Source: expressionPointer(readExpression("input", "/present"))}), Then: expressionPointer(objectExpression(map[string]Expression{"value": readExpression("input", "/present")}))}, `{"present":false}`},
 		{"if-omit", Expression{Op: "if", When: expressionPointer(readExpression("input", "/flag")), Then: expressionPointer(Expression{Op: "array", Items: []Expression{read}})}, `{"flag":false}`},
 		{"if-type", Expression{Op: "if", When: &read, Then: expressionPointer(Expression{Op: "array"})}, `0`},

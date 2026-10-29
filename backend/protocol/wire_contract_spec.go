@@ -80,8 +80,8 @@ func countAssertionRootReads(assertions []compiledWireAssertion) int {
 			}
 		}
 		reads += countAssertionRootReads(assertion.each)
-		if reads >= rootObjectReuseReads {
-			return rootObjectReuseReads
+		if reads >= objectReuseReads {
+			return objectReuseReads
 		}
 	}
 	return reads

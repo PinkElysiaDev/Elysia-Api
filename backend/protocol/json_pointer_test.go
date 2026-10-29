@@ -53,7 +53,7 @@ func TestJSONPointerSonicContract(t *testing.T) {
 			if (err != nil) != tc.fail || (!tc.fail && value.raw != tc.want) {
 				t.Fatalf("got %q, %v; want %q failure=%v", value.raw, err, tc.want, tc.fail)
 			}
-			objects := (&compiledOutputPlan{rootObjectReads: rootObjectReuseReads}).newRootObjectReader(root)
+			objects := (&compiledOutputPlan{rootObjectReads: objectReuseReads}).newRootObjectReader(root)
 			for range 2 {
 				cached, cachedErr := readValuePointerWithObjectReader(root, pointer, nil, objects)
 				if cached != value || !reflect.DeepEqual(cachedErr, err) {
@@ -69,7 +69,7 @@ func TestJSONPointerOwnsSelectedFragment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	objects := (&compiledOutputPlan{rootObjectReads: rootObjectReuseReads}).newRootObjectReader(root)
+	objects := (&compiledOutputPlan{rootObjectReads: objectReuseReads}).newRootObjectReader(root)
 	for _, path := range [][]string{{"selected"}, {"selected", "n"}, {"blob"}} {
 		child, err := readValuePointer(root, path)
 		if err != nil || child.IsZero() || sharesValueStorage(root, child) {
@@ -123,7 +123,7 @@ func FuzzJSONPointerObjectLookup(f *testing.F) {
 		if err := json.Unmarshal([]byte(raw), &expected); err != nil {
 			t.Fatal(err)
 		}
-		objects := (&compiledOutputPlan{rootObjectReads: rootObjectReuseReads}).newRootObjectReader(root)
+		objects := (&compiledOutputPlan{rootObjectReads: objectReuseReads}).newRootObjectReader(root)
 		for key, want := range expected {
 			got, err := readValuePointer(root, []string{key})
 			if err != nil || got.raw != string(want) {

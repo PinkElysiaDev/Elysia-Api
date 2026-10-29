@@ -20,6 +20,7 @@ type compiledOutputPlan struct {
 	bindingSlots    int
 	indexSlots      int
 	rootObjectReads uint8
+	itemObjectReads uint8
 	hasCapture      bool
 	hasNativeTarget bool
 }
@@ -59,21 +60,35 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	if expression.op == "with_index" || expression.op == "remember" || expression.op == "recall" {
 		plan.indexSlots = expression.indexSlot + 1
 	}
-	if expression.op == "read" && len(expression.pointer) != 0 && (expression.from == "input" || expression.from == "root") {
-		plan.rootObjectReads = 1
+	if expression.op == "read" && len(expression.pointer) != 0 {
+		switch expression.from {
+		case "input", "root":
+			plan.rootObjectReads = 1
+		case "item":
+			plan.itemObjectReads = 1
+		}
 	}
 	plan.hasCapture = expression.op == "capture_native"
 	plan.hasNativeTarget = expression.op == "replay_native" || expression.op == "native_matches"
+	// Nested iteration bodies bind a different item; their reads cannot justify
+	// retaining the caller's item parse tree.
 	for _, child := range []struct {
-		source *compiledExpression
-		target **compiledOutputPlan
-	}{{expression.source, &plan.source}, {expression.body, &plan.body}, {expression.when, &plan.when}, {expression.then, &plan.then}, {expression.otherwise, &plan.otherwise}} {
+		source      *compiledExpression
+		target      **compiledOutputPlan
+		hasSameItem bool
+	}{
+		{expression.source, &plan.source, true},
+		{expression.body, &plan.body, expression.op != "map" && expression.op != "flatmap" && expression.op != "walk"},
+		{expression.when, &plan.when, expression.op != "filter"},
+		{expression.then, &plan.then, true},
+		{expression.otherwise, &plan.otherwise, true},
+	} {
 		compiled, ok := compileOutputPlan(child.source)
 		if !ok {
 			return nil, false
 		}
 		*child.target = compiled
-		plan.mergeRequirements(compiled)
+		plan.mergeRequirements(compiled, child.hasSameItem)
 	}
 	if expression.op == "object" {
 		for _, key := range expression.keys {
@@ -82,7 +97,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 				return nil, false
 			}
 			plan.fields = append(plan.fields, outputPlanField{key, jsonStringBytes(key), child})
-			plan.mergeRequirements(child)
+			plan.mergeRequirements(child, true)
 		}
 	}
 	for _, item := range expression.items {
@@ -91,7 +106,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			return nil, false
 		}
 		plan.items = append(plan.items, child)
-		plan.mergeRequirements(child)
+		plan.mergeRequirements(child, true)
 	}
 	if len(expression.cases) != 0 {
 		plan.cases = make(map[string]*compiledOutputPlan, len(expression.cases))
@@ -101,19 +116,22 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 				return nil, false
 			}
 			plan.cases[key] = child
-			plan.mergeRequirements(child)
+			plan.mergeRequirements(child, true)
 		}
 	}
 	return plan, true
 }
 
-func (plan *compiledOutputPlan) mergeRequirements(child *compiledOutputPlan) {
+func (plan *compiledOutputPlan) mergeRequirements(child *compiledOutputPlan, hasSameItem bool) {
 	if child == nil {
 		return
 	}
 	plan.bindingSlots = max(plan.bindingSlots, child.bindingSlots)
 	plan.indexSlots = max(plan.indexSlots, child.indexSlots)
-	plan.rootObjectReads = min(rootObjectReuseReads, plan.rootObjectReads+child.rootObjectReads)
+	plan.rootObjectReads = min(objectReuseReads, plan.rootObjectReads+child.rootObjectReads)
+	if hasSameItem {
+		plan.itemObjectReads = min(objectReuseReads, plan.itemObjectReads+child.itemObjectReads)
+	}
 	plan.hasCapture = plan.hasCapture || child.hasCapture
 	plan.hasNativeTarget = plan.hasNativeTarget || child.hasNativeTarget
 }
@@ -310,6 +328,7 @@ func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source pl
 	node := &jsonOutputNode{items: make([]JSONOutput, 0, len(items))}
 	logicalBytes, encodedBytes := 0, 2
 	isWalk := expression.op == "walk" || expression.op == "recur"
+	var itemReader *planObjectReader
 	for index, item := range items {
 		if isWalk {
 			state.budget.walkNodes++
@@ -326,8 +345,15 @@ func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source pl
 		child.itemOutput = nil
 		if item.node != nil {
 			child.itemOutput = &item
+		} else if body.itemObjectReads >= objectReuseReads && item.value.IsObject() {
+			if itemReader == nil {
+				itemReader = new(planObjectReader)
+			}
+			*itemReader = planObjectReader{root: spanIdentity(item.value.raw), parent: state.objectReader}
+			child.objectReader = itemReader
 		}
 		value, err := body.build(child)
+		itemReader.releaseItem(err)
 		if err != nil {
 			return plannedOutput{}, err
 		}

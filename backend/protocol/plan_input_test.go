@@ -59,7 +59,7 @@ func TestOutputPlanRootObjectReadScope(t *testing.T) {
 		{"identity", readExpression("input", ""), 0},
 		{"single", readExpression("input", "/a"), 1},
 		{"context", objectExpression(map[string]Expression{"a": readExpression("context", "/a"), "b": readExpression("context", "/b")}), 0},
-		{"root-and-input", objectExpression(map[string]Expression{"a": readExpression("input", "/a"), "b": readExpression("root", "/b"), "again": readExpression("input", "/a")}), rootObjectReuseReads},
+		{"root-and-input", objectExpression(map[string]Expression{"a": readExpression("input", "/a"), "b": readExpression("root", "/b"), "again": readExpression("input", "/a")}), objectReuseReads},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			plan, _ := compileOutputPlan(compileTestOutputExpression(t, tc.expression))
@@ -67,7 +67,7 @@ func TestOutputPlanRootObjectReadScope(t *testing.T) {
 				t.Fatalf("root reads=%d, want %d", plan.rootObjectReads, tc.reads)
 			}
 			objects := plan.newRootObjectReader(root)
-			if (objects != nil) != (tc.reads == rootObjectReuseReads) || plan.newRootObjectReader(Value{raw: `[]`}) != nil {
+			if (objects != nil) != (tc.reads == objectReuseReads) || plan.newRootObjectReader(Value{raw: `[]`}) != nil {
 				t.Fatal("root reader eligibility changed")
 			}
 			if objects == nil {
@@ -88,5 +88,45 @@ func TestOutputPlanRootObjectReadScope(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestOutputPlanItemReadScope(t *testing.T) {
+	fields := objectExpression(map[string]Expression{"a": readExpression("item", "/a"), "b": readExpression("item", "/b")})
+	nested := Expression{Op: "map", Source: expressionPointer(readExpression("item", "/children")), Body: &fields}
+	filter := Expression{Op: "filter", Source: expressionPointer(readExpression("item", "/children")), When: expressionPointer(Expression{Op: "all", Items: []Expression{readExpression("item", "/a"), readExpression("item", "/b")}})}
+	for _, tc := range []struct {
+		name  string
+		body  Expression
+		reads uint8
+	}{
+		{"identity", readExpression("item", ""), 0},
+		{"single", readExpression("item", "/a"), 1},
+		{"repeated", fields, objectReuseReads},
+		{"nested-map", nested, 1},
+		{"nested-filter", filter, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expression := Expression{Op: "map", Source: expressionPointer(readExpression("input", "")), Body: &tc.body}
+			plan, _ := compileOutputPlan(compileTestOutputExpression(t, expression))
+			if plan.itemObjectReads != 0 || plan.body.itemObjectReads != tc.reads {
+				t.Fatalf("item read scope changed: outer=%d body=%d, want 0/%d", plan.itemObjectReads, plan.body.itemObjectReads, tc.reads)
+			}
+		})
+	}
+}
+
+func TestItemObjectReaderReleasesOwnersWithoutChangingParserError(t *testing.T) {
+	input := Value{raw: `{"unfinished":`}
+	reader := newPlanObjectReader(input, objectReuseReads)
+	reader.parent = newPlanObjectReader(Value{raw: `{"parent":true}`}, objectReuseReads)
+	_, err := reader.readMember(input, "unfinished")
+	if err == nil {
+		t.Fatal("incomplete JSON unexpectedly parsed")
+	}
+	want := err.Error()
+	reader.releaseItem(err)
+	if err.Error() != want || reader.parent != nil || reader.root != (immutableSpan{}) {
+		t.Fatal("item release changed the parser error or retained its enclosing owner", err)
 	}
 }
