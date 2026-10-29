@@ -181,31 +181,30 @@ func (meter *valueTokenMeter) scan(raw string) error {
 	// without allocating decoded keys/scalars or reparsing nested snapshots.
 	for offset := 0; offset < len(raw); offset++ {
 		token := raw[offset]
+		depthChange := 0
 		switch token {
 		case ' ', '\t', '\r', '\n', ',', ':':
 			continue
-		case '{', '[', '}', ']':
+		case '{', '[':
+			depthChange = 1
+		case '}', ']':
+			depthChange = -1
 		case '"':
 			offset = jsonStringEnd(raw, offset) - 1
 		default:
 			offset = jsonValueEnd(raw, offset) - 1
 		}
-		if err := meter.consume(token); err != nil {
+		if err := meter.consume(depthChange); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (meter *valueTokenMeter) consume(token byte) error {
-	switch token {
-	case '{', '[':
-		meter.depth++
-		if meter.depth > meter.limits.Depth {
-			return resourceFailure(meter.domain, "depth", meter.limits.Depth, meter.depth)
-		}
-	case '}', ']':
-		meter.depth--
+func (meter *valueTokenMeter) consume(depthChange int) error {
+	meter.depth += depthChange
+	if depthChange > 0 && meter.depth > meter.limits.Depth {
+		return resourceFailure(meter.domain, "depth", meter.limits.Depth, meter.depth)
 	}
 	meter.nodes++
 	if meter.nodes > meter.limits.Nodes {

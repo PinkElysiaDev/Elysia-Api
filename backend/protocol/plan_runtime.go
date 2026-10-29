@@ -75,16 +75,12 @@ func (meter *valueTokenMeter) visitOutput(output JSONOutput) error {
 	if output.node == nil {
 		return meter.scan(output.value.raw)
 	}
-	open, close := byte('['), byte(']')
-	if output.node.object {
-		open, close = '{', '}'
-	}
-	if err := meter.consume(open); err != nil {
+	if err := meter.consume(1); err != nil {
 		return err
 	}
 	if output.node.object {
 		for _, field := range output.node.fields {
-			if err := meter.consume('"'); err != nil {
+			if err := meter.consume(0); err != nil {
 				return err
 			}
 			if err := meter.visitOutput(field.value); err != nil {
@@ -98,5 +94,5 @@ func (meter *valueTokenMeter) visitOutput(output JSONOutput) error {
 			}
 		}
 	}
-	return meter.consume(close)
+	return meter.consume(-1)
 }
