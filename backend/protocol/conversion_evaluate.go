@@ -427,10 +427,10 @@ func protectConversionProvenance(before, after Value) error {
 		return nil
 	}
 	allowed := map[string]int{}
-	var collect func(Value, bool) error
-	collect = func(v Value, checking bool) error {
+	var collect func(Value, bool, *valueReader) error
+	collect = func(v Value, checking bool, reader *valueReader) error {
 		if v.IsObject() {
-			fields, err := v.ReadObject()
+			fields, err := v.readObjectWithin(reader)
 			if err != nil {
 				return err
 			}
@@ -457,25 +457,27 @@ func protectConversionProvenance(before, after Value) error {
 					}
 					continue
 				}
-				if err := collect(child, checking); err != nil {
+				if err := collect(child, checking, reader); err != nil {
 					return err
 				}
 			}
 		} else if strings.HasPrefix(strings.TrimSpace(v.raw), "[") {
-			items, err := v.readArray()
+			items, err := v.readArrayWithin(reader)
 			if err != nil {
 				return err
 			}
 			for _, item := range items {
-				if err := collect(item, checking); err != nil {
+				if err := collect(item, checking, reader); err != nil {
 					return err
 				}
 			}
 		}
 		return nil
 	}
-	if err := collect(before, false); err != nil {
+	// Only fixed-size digests escape this synchronous traversal. Keep original
+	// spelling for protection checks without cloning every enclosing payload.
+	if err := collect(before, false, newNativeComparisonReader(before)); err != nil {
 		return err
 	}
-	return collect(after, true)
+	return collect(after, true, newNativeComparisonReader(after))
 }

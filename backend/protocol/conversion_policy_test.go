@@ -96,6 +96,25 @@ func TestUnchangedConversionProvenanceDoesNotValidateScope(t *testing.T) {
 	}
 }
 
+func TestConversionProvenanceComparesOriginalFragments(t *testing.T) {
+	large := strings.Repeat("x", 1<<20)
+	native := `{ "payload" : "` + large + `" }`
+	before := Value{raw: `{"content":[{"native":` + native + `}],"model":"before"}`}
+	after := Value{raw: `{"content":[{"native":` + native + `}],"model":"after"}`}
+	if err := protectConversionProvenance(before, after); err != nil {
+		t.Fatal("unchanged protected bytes were rejected", err)
+	}
+	after.raw = `{"content":[{"native":` + compactValueString(native) + `}],"model":"after"}`
+	if err := protectConversionProvenance(before, after); err == nil || !strings.Contains(err.Error(), "protected native") {
+		t.Fatal("borrowing normalized the original protected bytes", err)
+	}
+	before.raw = `[{"scope":{"account":"same"}},{"scope":{"account":"same"}}]`
+	after.raw = `[{"scope":{"account":"same"}},{"scope":{"account":"same"}},{"scope":{"account":"same"}}]`
+	if err := protectConversionProvenance(before, after); err == nil {
+		t.Fatal("equal protected occurrences were incorrectly deduplicated")
+	}
+}
+
 func TestConversionNodeRulesAndLimits(t *testing.T) {
 	policy := ConversionPolicy{SchemaVersion: 1, ID: "node-policy", Rules: []ConversionRule{{ID: "text", Order: 1, Enabled: true, Phase: ConversionResponse, Match: ConversionMatch{NodeKind: TextNode}, Action: "set", Path: "/payload", Value: StringValue("changed")}}}
 	c, err := CompileConversion(policy)
