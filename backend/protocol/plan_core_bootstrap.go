@@ -16,3 +16,4 @@ func readCoreCacheIntent(CacheIntent, []string) (JSONOutput, error)  { panic("co
 func writeCoreCacheIntentField(jsonOutputField, *CacheIntent, *valueReader) error {
 	panic("coreplan generation")
 }
+func writeCoreEvent(JSONOutput, *Event, *valueReader) error { panic("coreplan generation") }
