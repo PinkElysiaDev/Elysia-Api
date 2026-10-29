@@ -211,6 +211,369 @@
                 ]
               }
             ]
+          },
+          {
+            "path": "/thinking",
+            "schema": {
+              "type": "object",
+              "allowUnknown": true
+            },
+            "code": "invalid_input",
+            "reason": "thinking controls must be an object or null",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/thinking"
+              }
+            }
+          },
+          {
+            "path": "/thinking/type",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "enabled",
+                "disabled",
+                "adaptive",
+                "between_tools"
+              ]
+            },
+            "code": "invalid_input",
+            "reason": "unknown thinking type",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking"
+                }
+              },
+              "then": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thinking"
+                    },
+                    {
+                      "op": "object",
+                      "fields": {}
+                    }
+                  ]
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            }
+          },
+          {
+            "path": "/thinking/budget_tokens",
+            "schema": {
+              "type": "any"
+            },
+            "code": "invalid_input",
+            "reason": "manual thinking requires an integer budget of at least 1024",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/thinking"
+                  }
+                },
+                "then": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/thinking"
+                      },
+                      {
+                        "op": "object",
+                        "fields": {}
+                      }
+                    ]
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "then": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/thinking/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "enabled"
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "check": {
+              "op": "if",
+              "when": {
+                "op": "is_integer",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                }
+              },
+              "then": {
+                "op": "integer",
+                "operation": "gte",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": 1024
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            }
+          },
+          {
+            "path": "/thinking/budget_tokens",
+            "schema": {
+              "type": "any"
+            },
+            "code": "invalid_input",
+            "reason": "this thinking mode does not accept a budget",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "if",
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thinking"
+                    }
+                  },
+                  "then": {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/thinking"
+                        },
+                        {
+                          "op": "object",
+                          "fields": {}
+                        }
+                      ]
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "then": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/thinking/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "enabled"
+                      }
+                    ]
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking/budget_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "check": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          {
+            "path": "/thinking/display",
+            "schema": {
+              "type": "string",
+              "nullable": true,
+              "enum": [
+                "summarized",
+                "omitted",
+                "updates"
+              ]
+            },
+            "code": "invalid_input",
+            "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/thinking"
+                  }
+                },
+                "then": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/thinking"
+                      },
+                      {
+                        "op": "object",
+                        "fields": {}
+                      }
+                    ]
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking/display"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            }
+          },
+          {
+            "path": "/output_config",
+            "schema": {
+              "type": "object",
+              "allowUnknown": true
+            },
+            "code": "invalid_input",
+            "reason": "thinking controls must be an object or null",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/output_config"
+              }
+            }
+          },
+          {
+            "path": "/output_config/effort",
+            "schema": {
+              "type": "any"
+            },
+            "code": "invalid_input",
+            "reason": "effort cannot disable thinking; use thinking.type",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/output_config"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/output_config/effort"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "check": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "none"
+                  }
+                ]
+              }
+            }
           }
         ]
       },
@@ -238,7 +601,372 @@
             }
           },
           "allowUnknown": true
-        }
+        },
+        "assertions": [
+          {
+            "path": "/thinking",
+            "schema": {
+              "type": "object",
+              "allowUnknown": true
+            },
+            "code": "invalid_input",
+            "reason": "thinking controls must be an object or null",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/thinking"
+              }
+            }
+          },
+          {
+            "path": "/thinking/type",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "enabled",
+                "disabled",
+                "adaptive",
+                "between_tools"
+              ]
+            },
+            "code": "invalid_input",
+            "reason": "unknown thinking type",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking"
+                }
+              },
+              "then": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thinking"
+                    },
+                    {
+                      "op": "object",
+                      "fields": {}
+                    }
+                  ]
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            }
+          },
+          {
+            "path": "/thinking/budget_tokens",
+            "schema": {
+              "type": "any"
+            },
+            "code": "invalid_input",
+            "reason": "manual thinking requires an integer budget of at least 1024",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/thinking"
+                  }
+                },
+                "then": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/thinking"
+                      },
+                      {
+                        "op": "object",
+                        "fields": {}
+                      }
+                    ]
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "then": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/thinking/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "enabled"
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "check": {
+              "op": "if",
+              "when": {
+                "op": "is_integer",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                }
+              },
+              "then": {
+                "op": "integer",
+                "operation": "gte",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": 1024
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            }
+          },
+          {
+            "path": "/thinking/budget_tokens",
+            "schema": {
+              "type": "any"
+            },
+            "code": "invalid_input",
+            "reason": "this thinking mode does not accept a budget",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "if",
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thinking"
+                    }
+                  },
+                  "then": {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/thinking"
+                        },
+                        {
+                          "op": "object",
+                          "fields": {}
+                        }
+                      ]
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "then": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/thinking/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "enabled"
+                      }
+                    ]
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking/budget_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "check": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          {
+            "path": "/thinking/display",
+            "schema": {
+              "type": "string",
+              "nullable": true,
+              "enum": [
+                "summarized",
+                "omitted",
+                "updates"
+              ]
+            },
+            "code": "invalid_input",
+            "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/thinking"
+                  }
+                },
+                "then": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/thinking"
+                      },
+                      {
+                        "op": "object",
+                        "fields": {}
+                      }
+                    ]
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking/display"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            }
+          },
+          {
+            "path": "/output_config",
+            "schema": {
+              "type": "object",
+              "allowUnknown": true
+            },
+            "code": "invalid_input",
+            "reason": "thinking controls must be an object or null",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/output_config"
+              }
+            }
+          },
+          {
+            "path": "/output_config/effort",
+            "schema": {
+              "type": "any"
+            },
+            "code": "invalid_input",
+            "reason": "effort cannot disable thinking; use thinking.type",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/output_config"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/output_config/effort"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "check": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "none"
+                  }
+                ]
+              }
+            }
+          }
+        ]
       },
       "decode_response": {
         "schema": {
@@ -2736,6 +3464,281 @@
           }
         }
       },
+      "decode-reasoning": {
+        "op": "let",
+        "name": "thinking",
+        "source": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/thinking"
+            }
+          },
+          "then": {
+            "op": "read",
+            "from": "input",
+            "path": "/thinking"
+          },
+          "otherwise": {
+            "op": "object",
+            "fields": {}
+          }
+        },
+        "body": {
+          "op": "let",
+          "name": "output-config",
+          "source": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/output_config"
+              }
+            },
+            "then": {
+              "op": "read",
+              "from": "input",
+              "path": "/output_config"
+            },
+            "otherwise": {
+              "op": "object",
+              "fields": {}
+            }
+          },
+          "body": {
+            "op": "let",
+            "name": "selected",
+            "source": {
+              "op": "object",
+              "fields": {
+                "mode": {
+                  "op": "if",
+                  "when": {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "thinking",
+                          "path": ""
+                        },
+                        {
+                          "op": "object",
+                          "fields": {}
+                        }
+                      ]
+                    }
+                  },
+                  "then": {
+                    "op": "choose",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "thinking",
+                      "path": "/type"
+                    },
+                    "cases": {
+                      "enabled": {
+                        "op": "literal",
+                        "value": "enabled"
+                      },
+                      "disabled": {
+                        "op": "literal",
+                        "value": "disabled"
+                      },
+                      "adaptive": {
+                        "op": "literal",
+                        "value": "auto"
+                      },
+                      "between_tools": {
+                        "op": "literal",
+                        "value": "between_tools"
+                      }
+                    }
+                  }
+                },
+                "budget": {
+                  "op": "if",
+                  "when": {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "thinking",
+                          "path": ""
+                        },
+                        {
+                          "op": "object",
+                          "fields": {}
+                        }
+                      ]
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "thinking",
+                    "path": "/budget_tokens"
+                  }
+                },
+                "summary": {
+                  "op": "if",
+                  "when": {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "thinking",
+                          "path": ""
+                        },
+                        {
+                          "op": "object",
+                          "fields": {}
+                        }
+                      ]
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "thinking",
+                    "path": "/display"
+                  }
+                },
+                "effort": {
+                  "op": "read",
+                  "from": "binding",
+                  "name": "output-config",
+                  "path": "/effort"
+                },
+                "effortScope": {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "output-config",
+                      "path": "/effort"
+                    }
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": "generation"
+                  }
+                },
+                "interleaved": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "thinking",
+                        "path": "/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "enabled"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "runtime",
+                          "path": "/interleavedThinking"
+                        },
+                        {
+                          "op": "if",
+                          "when": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "type",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/tools"
+                                }
+                              },
+                              {
+                                "op": "literal",
+                                "value": "array"
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/tools/0"
+                            }
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": false
+                          }
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": true
+                    }
+                  }
+                }
+              }
+            },
+            "body": {
+              "op": "if",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "selected",
+                    "path": ""
+                  },
+                  {
+                    "op": "object",
+                    "fields": {}
+                  }
+                ]
+              },
+              "then": {
+                "op": "omit"
+              },
+              "otherwise": {
+                "op": "read",
+                "from": "binding",
+                "name": "selected",
+                "path": ""
+              }
+            }
+          }
+        }
+      },
       "decode-request-block": {
         "op": "if",
         "when": {
@@ -3477,14 +4480,154 @@
                   "path": "/metadata"
                 },
                 "anthropic_thinking": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/thinking"
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "ref",
+                      "ref": "decode-reasoning"
+                    }
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/thinking"
+                      }
+                    },
+                    "then": {
+                      "op": "let",
+                      "name": "selected",
+                      "source": {
+                        "op": "project",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/thinking"
+                        },
+                        "keys": [
+                          "type",
+                          "budget_tokens",
+                          "display"
+                        ],
+                        "policy": "exclude"
+                      },
+                      "body": {
+                        "op": "if",
+                        "when": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "binding",
+                              "name": "selected",
+                              "path": ""
+                            },
+                            {
+                              "op": "object",
+                              "fields": {}
+                            }
+                          ]
+                        },
+                        "then": {
+                          "op": "omit"
+                        },
+                        "otherwise": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "selected",
+                          "path": ""
+                        }
+                      }
+                    },
+                    "otherwise": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thinking"
+                    }
+                  },
+                  "otherwise": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/thinking"
+                  }
                 },
                 "anthropic_output_config": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/output_config"
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "ref",
+                      "ref": "decode-reasoning"
+                    }
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output_config"
+                      }
+                    },
+                    "then": {
+                      "op": "let",
+                      "name": "selected",
+                      "source": {
+                        "op": "project",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/output_config"
+                        },
+                        "keys": [
+                          "effort"
+                        ],
+                        "policy": "exclude"
+                      },
+                      "body": {
+                        "op": "if",
+                        "when": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "binding",
+                              "name": "selected",
+                              "path": ""
+                            },
+                            {
+                              "op": "object",
+                              "fields": {}
+                            }
+                          ]
+                        },
+                        "then": {
+                          "op": "omit"
+                        },
+                        "otherwise": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "selected",
+                          "path": ""
+                        }
+                      }
+                    },
+                    "otherwise": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/output_config"
+                    }
+                  },
+                  "otherwise": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/output_config"
+                  }
                 }
               }
             },
@@ -5618,6 +6761,91 @@
           ]
         }
       },
+      "encode-output-config": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/reasoning"
+          }
+        },
+        "then": {
+          "op": "let",
+          "name": "rendered",
+          "source": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/anthropic_output_config"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/anthropic_output_config"
+                },
+                "otherwise": {
+                  "op": "object",
+                  "fields": {}
+                }
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "effort": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/effort"
+                  }
+                }
+              }
+            ]
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "binding",
+                  "name": "rendered",
+                  "path": ""
+                },
+                {
+                  "op": "object",
+                  "fields": {}
+                }
+              ]
+            },
+            "then": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/anthropic_output_config"
+            },
+            "otherwise": {
+              "op": "read",
+              "from": "binding",
+              "name": "rendered",
+              "path": ""
+            }
+          }
+        },
+        "otherwise": {
+          "op": "read",
+          "from": "input",
+          "path": "/parameters/anthropic_output_config"
+        }
+      },
       "encode-response-content": {
         "op": "walk",
         "source": {
@@ -5711,6 +6939,148 @@
             "name": "selected",
             "path": ""
           }
+        }
+      },
+      "encode-thinking": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/reasoning"
+          }
+        },
+        "then": {
+          "op": "let",
+          "name": "rendered",
+          "source": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/anthropic_thinking"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/anthropic_thinking"
+                },
+                "otherwise": {
+                  "op": "object",
+                  "fields": {}
+                }
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "type": {
+                    "op": "if",
+                    "when": {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "present",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/reasoning/mode"
+                          }
+                        },
+                        {
+                          "op": "not",
+                          "source": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/reasoning/mode"
+                              },
+                              {
+                                "op": "literal",
+                                "value": ""
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "choose",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/reasoning/mode"
+                      },
+                      "cases": {
+                        "auto": {
+                          "op": "literal",
+                          "value": "adaptive"
+                        }
+                      },
+                      "otherwise": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/reasoning/mode"
+                      }
+                    }
+                  },
+                  "budget_tokens": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/budget"
+                  },
+                  "display": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/summary"
+                  }
+                }
+              }
+            ]
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "binding",
+                  "name": "rendered",
+                  "path": ""
+                },
+                {
+                  "op": "object",
+                  "fields": {}
+                }
+              ]
+            },
+            "then": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/anthropic_thinking"
+            },
+            "otherwise": {
+              "op": "read",
+              "from": "binding",
+              "name": "rendered",
+              "path": ""
+            }
+          }
+        },
+        "otherwise": {
+          "op": "read",
+          "from": "input",
+          "path": "/parameters/anthropic_thinking"
         }
       },
       "encode-tool-choice": {
@@ -6129,6 +7499,10 @@
             "toolChoice": {
               "op": "ref",
               "ref": "decode-tool-choice"
+            },
+            "reasoning": {
+              "op": "ref",
+              "ref": "decode-reasoning"
             }
           }
         },
@@ -6226,14 +7600,12 @@
                   "path": "/parameters/anthropic_metadata"
                 },
                 "thinking": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/anthropic_thinking"
+                  "op": "ref",
+                  "ref": "encode-thinking"
                 },
                 "output_config": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/anthropic_output_config"
+                  "op": "ref",
+                  "ref": "encode-output-config"
                 }
               }
             },

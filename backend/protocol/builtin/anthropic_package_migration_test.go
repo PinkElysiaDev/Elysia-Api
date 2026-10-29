@@ -78,7 +78,7 @@ func TestAnthropicPackageDraftMigration(t *testing.T) {
 		{"raw-reference-key-before-escaping", `{"model":"m","max_tokens":10,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"<","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"\u003c","content":"done"}]}]}`, false, anthropicMigrationGap{}},
 		{"invalid-caller", `{"model":"m","max_tokens":10,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{},"caller":"invalid"}]}]}`, false, anthropicMigrationGap{reason: "structured rejection diagnostic parity", rejection: true}},
 		{"invalid-tool-error", `{"model":"m","max_tokens":10,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c","content":"done","is_error":"invalid"}]}]}`, false, anthropicMigrationGap{reason: "structured rejection diagnostic parity", rejection: true}},
-		{"thinking-controls", `{"model":"m","max_tokens":2048,"thinking":{"type":"enabled","budget_tokens":1024},"messages":[{"role":"user","content":"hello"}]}`, false, anthropicMigrationGap{reason: "canonical generation reasoning controls", paths: []string{"/parameters/anthropic_thinking", "/reasoning"}}},
+		{"thinking-controls", `{"model":"m","max_tokens":2048,"thinking":{"type":"enabled","budget_tokens":1024},"messages":[{"role":"user","content":"hello"}]}`, false, anthropicMigrationGap{}},
 		{"inline-system-without-root-native", `{"model":"m","max_tokens":10,"messages":[{"role":"user","content":"hello"},{"role":"system","content":"inline instruction"}]}`, true, anthropicMigrationGap{reason: "native inline-system position", paths: []string{"/messages", "/system"}}},
 	} {
 		t.Run("boundary/"+fixture.name, func(t *testing.T) {
@@ -99,6 +99,79 @@ func TestAnthropicPackageDraftMigration(t *testing.T) {
 			want, wantErr := executeAnthropicMigrationSample(t, legacy, sample, options, false)
 			got, gotErr := executeAnthropicMigrationSample(t, draft, sample, options, true)
 			checkAnthropicMigration(t, want, got, wantErr, gotErr, fixture.gap)
+		})
+	}
+	checkAnthropicReasoningMigration(t, legacy, draft)
+}
+
+func checkAnthropicReasoningMigration(t *testing.T, legacy, draft *p.Compiled) {
+	t.Helper()
+	for _, fixture := range []struct {
+		name, fields string
+		interleaved  bool
+		maxTokens    int
+	}{
+		{"enabled-with-unknowns", `"thinking":{"type":"enabled","budget_tokens":4096,"future_thinking":true},"output_config":{"effort":"high","future_config":true}`, false, 8192},
+		{"disabled-generation-effort", `"thinking":{"type":"disabled"},"output_config":{"effort":"high","future_config":true}`, false, 8192},
+		{"adaptive-display", `"thinking":{"type":"adaptive","display":"updates"},"output_config":{"effort":"high"}`, false, 8192},
+		{"between-tools", `"thinking":{"type":"between_tools"},"output_config":{"effort":"high"}`, false, 8192},
+		{"null-display", `"thinking":{"type":"enabled","budget_tokens":1024,"display":null}`, false, 8192},
+		{"empty-controls", `"thinking":{},"output_config":{}`, false, 8192},
+		{"null-controls", `"thinking":null,"output_config":null`, false, 8192},
+		{"unknown-only-output", `"output_config":{"future_config":true}`, false, 8192},
+		{"effort-null", `"output_config":{"effort":null}`, false, 8192},
+		{"empty-thinking-with-effort", `"thinking":{},"output_config":{"effort":"high"}`, false, 8192},
+		{"null-thinking-with-effort", `"thinking":null,"output_config":{"effort":"high"}`, false, 8192},
+		{"interleaved", `"thinking":{"type":"enabled","budget_tokens":4096},"tools":[{"name":"lookup","input_schema":{"type":"object"}}]`, true, 2048},
+		{"interleaved-without-tools", `"thinking":{"type":"enabled","budget_tokens":4096}`, true, 2048},
+		{"ordinary-context-cannot-enable", `"thinking":{"type":"enabled","budget_tokens":4096},"tools":[{"name":"lookup","input_schema":{"type":"object"}}]`, false, 2048},
+	} {
+		t.Run("reasoning/"+fixture.name, func(t *testing.T) {
+			spoof, _ := p.EncodeValue(!fixture.interleaved)
+			options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}, InterleavedThinking: fixture.interleaved, Values: p.Object{"interleavedThinking": spoof}}
+			wire := fmt.Sprintf(`{"model":"m","max_tokens":%d,%s,"messages":[{"role":"user","content":"hi"}]}`, fixture.maxTokens, fixture.fields)
+			sample := p.Sample{Direction: p.DecodeRequest, Input: testValue(t, wire)}
+			want, wantErr := executeAnthropicMigrationSample(t, legacy, sample, options, false)
+			got, gotErr := executeAnthropicMigrationSample(t, draft, sample, options, true)
+			if wantErr != nil || gotErr != nil {
+				t.Fatalf("valid reasoning controls rejected: old=%v, draft=%v", wantErr, gotErr)
+			}
+			checkAnthropicMigration(t, want, got, wantErr, gotErr, anthropicMigrationGap{})
+			request, err := legacy.DecodeRequest(t.Context(), sample.Input.Bytes(), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Native = nil
+			sample.Input, err = p.EncodeValue(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sample.Direction = p.EncodeRequest
+			want, wantErr = executeAnthropicMigrationSample(t, legacy, sample, options, false)
+			got, gotErr = executeAnthropicMigrationSample(t, draft, sample, options, true)
+			if wantErr != nil || gotErr != nil {
+				t.Fatalf("valid reasoning rendering rejected: old=%v, draft=%v", wantErr, gotErr)
+			}
+			checkAnthropicMigration(t, want, got, wantErr, gotErr, anthropicMigrationGap{})
+		})
+	}
+	for _, fixture := range []struct{ name, fields string }{
+		{"missing-mode", `"thinking":{"future":true}`},
+		{"missing-budget", `"thinking":{"type":"enabled"}`},
+		{"null-budget", `"thinking":{"type":"enabled","budget_tokens":null}`},
+		{"small-budget", `"thinking":{"type":"enabled","budget_tokens":1023}`},
+		{"adaptive-null-budget", `"thinking":{"type":"adaptive","budget_tokens":null}`},
+		{"unknown-display", `"thinking":{"type":"adaptive","display":"future"}`},
+		{"array-display", `"thinking":{"type":"adaptive","display":[]}`},
+		{"effort-none", `"output_config":{"effort":"none"}`},
+		{"scalar-output-config", `"output_config":false`},
+	} {
+		t.Run("reasoning/reject-"+fixture.name, func(t *testing.T) {
+			wire := `{"model":"m","max_tokens":8192,` + fixture.fields + `,"messages":[{"role":"user","content":"hi"}]}`
+			sample := p.Sample{Direction: p.DecodeRequest, Input: testValue(t, wire)}
+			want, wantErr := executeAnthropicMigrationSample(t, legacy, sample, p.EvaluationContext{}, false)
+			got, gotErr := executeAnthropicMigrationSample(t, draft, sample, p.EvaluationContext{}, true)
+			checkAnthropicMigration(t, want, got, wantErr, gotErr, anthropicMigrationGap{reason: "reasoning wire rejection diagnostic parity", rejection: true})
 		})
 	}
 }
