@@ -88,7 +88,12 @@ func (compiler *Compiler) CompilePackage(raw []byte) (*Compiled, []ConversionIss
 				if isPackageDecodeDirection(direction) {
 					input, output = output, input
 				}
-				if !provesPackageEmission(compiled.mappings[direction].outputPlan.expression, output, input) {
+				program := compiled.mappings[direction].outputPlan.expression
+				hasProof := provesPackageEmission(program, output, input)
+				if !hasProof && effect.when == nil && !isPackageDecodeDirection(direction) {
+					hasProof = provesDeepMergeEmission(program, output, input, document.Spec.WireContracts[direction].Schema)
+				}
+				if !hasProof {
 					path := fmt.Sprintf("/mapping/directions/%s/effects/%d", direction, index)
 					return nil, definitionIssues(compiled.identity, path, fmt.Errorf("emit effect %q requires a provable read of its declared input field", effect.id))
 				}

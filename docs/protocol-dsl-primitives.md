@@ -4,6 +4,26 @@
 
 表达式在配置编译时解析成计划。运行时执行选中的计划，不重新解释 JSON 声明，不在错误后换另一种转换算法。以下构件不包含供应商字段或跨协议取舍政策。
 
+## 递归对象并集
+
+`merge_deep` 按顺序求值全部 `items`，再合并对象。只有双方都是 object 的重叠成员才递归；其它重叠值一律报错，即使值相等。数组作为完整值处理，不拼接。缺失、null 和非对象操作数不会自动替换为 `{}`。原有 `merge` 的浅合并行为保持不变。
+
+```json
+{
+  "op": "merge_deep",
+  "items": [
+    {"op": "read", "from": "input", "path": "/mapped"},
+    {"op": "read", "from": "input", "path": "/extension"}
+  ]
+}
+```
+
+例如 `{"nested":{"known":1}}` 与 `{"nested":{"extra":2}}` 合为一个对象；两个 `{"nested":{"known":1}}` 在 `/nested/known` 冲突。错误链保留 `ObjectMergeConflictError.Path`，路径使用 RFC 6901 转义，不含成员值。当前通用映射入口仍将此错误归为 `invalid_input`，定位到表达式；这尚未等价复现旧模块的 `unsupported_capability` 与 wire 路径诊断。
+
+实现共享不可变子值，只为合并的对象构造新容器，不逐层编码，也不授予原生来源。深度、累计访问成员数、执行步骤、逻辑字节和取消沿用引擎预算。已有原始对象读取仍执行容器规范化：重叠的多层 raw 对象可能重复扫描其中的大叶子；“没有逐层编码”不表示“没有重复扫描”。`BenchmarkDeepMergeNestedPayload` 提供 2 MiB 叶子在 1／4／16 层下的 raw／已构造容器对照，收益必须另行测量。
+
+目前仅对编码方向的根 `merge_deep` 增加有限 `emit` 证明：effect 必须无条件应用，目标 wire schema 必须明确排除 object／any，并且一个操作数已能证明完整复制该输入字段。无条件 effect 的原有预检拒绝缺失输入；最终 schema 排除对象，成功合并又不能覆写非对象值。nullable string 的 null 同样不能覆写。对象、未知类型、条件 effect 和解码方向不适用此证明；不会通过收紧协议 schema 或删除 effect 迁就迁移。
+
 ## 复用局部值
 
 `let` 的 `source` 在外层作用域执行一次，`body` 用 `read.from=binding` 读取结果。名称在编译时转换为整数槽位，槽位按最大词法深度分配，兄弟分支复用。离开绑定后恢复外层值；不可变大字符串不会因绑定而重新编码。

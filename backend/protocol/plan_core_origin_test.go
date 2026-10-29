@@ -77,6 +77,7 @@ func TestNativeReplayRejectsConstructedAndOpaqueSources(t *testing.T) {
 		{"literal", literalExpression(map[string]any{"source": map[string]any{}, "value": "synthetic"})},
 		{"object", rebuilt},
 		{"merge", Expression{Op: "merge", Policy: "last", Items: []Expression{read, objectExpression(map[string]Expression{})}}},
+		{"merge-deep", Expression{Op: "merge_deep", Items: []Expression{read, objectExpression(map[string]Expression{})}}},
 		{"project", Expression{Op: "project", Source: &read, Policy: "include", Keys: []string{"source", "value"}}},
 		{"JSON-roundtrip", Expression{Op: "parse_json", Source: &Expression{Op: "stringify_json", Source: &read}}},
 		{"constructed-binding", Expression{Op: "let", Name: "copy", Source: &rebuilt, Body: expressionPointer(bindingTestRead("copy", ""))}},

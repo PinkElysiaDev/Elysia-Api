@@ -14,6 +14,9 @@ func TestPackageTypedDecodeRejectsAuthoredOrigins(t *testing.T) {
 		{"native-literal", "native", literalExpression(map[string]any{"source": map[string]any{"path": "/not-in-wire"}, "value": "invented"})},
 		{"source-literal", "source", literalExpression(map[string]any{"path": "/not-in-wire"})},
 		{"native-wire", "native", readExpression("input", "/spoof")},
+		{"native-deep-rebuilt", "native", Expression{Op: "merge_deep", Items: []Expression{
+			{Op: "capture_native", Source: expressionPointer(readExpression("input", "/prompt"))}, objectExpression(nil),
+		}}},
 		{"native-rebuilt", "native", Expression{Op: "merge", Policy: "last", Items: []Expression{
 			{Op: "capture_native", Source: expressionPointer(readExpression("input", "/prompt"))},
 			objectExpression(map[string]Expression{"value": literalExpression("invented")}),

@@ -49,7 +49,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	plan := &compiledOutputPlan{expression: expression}
 	switch expression.op {
 	case "omit", "literal", "read", "let", "with_index", "remember", "recall", "index", "capture_native", "replay_native", "native_matches", "object", "project", "keys", "array", "map", "walk", "recur", "flatmap", "filter", "if", "choose",
-		"merge", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
+		"merge", "merge_deep", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
 		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "equal", "all", "any":
 	default:
 		return nil, false
@@ -206,6 +206,8 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.buildArray(state)
 	case "merge", "concat":
 		return plan.buildOperands(state)
+	case "merge_deep":
+		return plan.buildDeepMerge(state)
 	case "join":
 		return plan.buildJoin(state)
 	case "sort", "associate":

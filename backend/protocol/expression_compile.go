@@ -417,13 +417,13 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 			return fail("cast supports scalar types only")
 		}
 		expression.result = expression.to
-	case "merge":
-		if !slices.Contains([]string{"reject", "first", "last"}, expression.policy) {
+	case "merge", "merge_deep":
+		if expression.op == "merge" && !slices.Contains([]string{"reject", "first", "last"}, expression.policy) {
 			return fail("merge requires reject, first or last policy")
 		}
 		for _, item := range expression.items {
 			if !isAssignable(item.result, ObjectType) {
-				return fail("merge inputs must be objects")
+				return fail(expression.op + " inputs must be objects")
 			}
 		}
 	case "keys":
