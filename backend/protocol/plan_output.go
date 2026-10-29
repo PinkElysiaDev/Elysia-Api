@@ -18,6 +18,7 @@ type compiledOutputPlan struct {
 	otherwise    *compiledOutputPlan
 	cases        map[string]*compiledOutputPlan
 	bindingSlots int
+	indexSlots   int
 	hasCapture   bool
 }
 
@@ -44,7 +45,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	}
 	plan := &compiledOutputPlan{expression: expression}
 	switch expression.op {
-	case "omit", "literal", "read", "let", "index", "capture_native", "object", "project", "array", "map", "walk", "recur", "flatmap", "filter", "if", "choose",
+	case "omit", "literal", "read", "let", "with_index", "remember", "recall", "index", "capture_native", "object", "project", "array", "map", "walk", "recur", "flatmap", "filter", "if", "choose",
 		"merge", "concat", "join", "sort", "associate", "parse_json", "stringify_json",
 		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "equal", "all", "any":
 	default:
@@ -52,6 +53,9 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	}
 	if expression.op == "let" || expression.op == "read" && expression.from == "binding" {
 		plan.bindingSlots = expression.bindingSlot + 1
+	}
+	if expression.op == "with_index" || expression.op == "remember" || expression.op == "recall" {
+		plan.indexSlots = expression.indexSlot + 1
 	}
 	plan.hasCapture = expression.op == "capture_native"
 	for _, child := range []struct {
@@ -65,6 +69,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 		*child.target = compiled
 		if compiled != nil {
 			plan.bindingSlots = max(plan.bindingSlots, compiled.bindingSlots)
+			plan.indexSlots = max(plan.indexSlots, compiled.indexSlots)
 			plan.hasCapture = plan.hasCapture || compiled.hasCapture
 		}
 	}
@@ -76,6 +81,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			}
 			plan.fields = append(plan.fields, outputPlanField{key, jsonStringBytes(key), child})
 			plan.bindingSlots = max(plan.bindingSlots, child.bindingSlots)
+			plan.indexSlots = max(plan.indexSlots, child.indexSlots)
 			plan.hasCapture = plan.hasCapture || child.hasCapture
 		}
 	}
@@ -86,6 +92,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 		}
 		plan.items = append(plan.items, child)
 		plan.bindingSlots = max(plan.bindingSlots, child.bindingSlots)
+		plan.indexSlots = max(plan.indexSlots, child.indexSlots)
 		plan.hasCapture = plan.hasCapture || child.hasCapture
 	}
 	if len(expression.cases) != 0 {
@@ -97,6 +104,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			}
 			plan.cases[key] = child
 			plan.bindingSlots = max(plan.bindingSlots, child.bindingSlots)
+			plan.indexSlots = max(plan.indexSlots, child.indexSlots)
 			plan.hasCapture = plan.hasCapture || child.hasCapture
 		}
 	}
@@ -151,6 +159,12 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.buildReadValue(state)
 	case "let":
 		return plan.buildBinding(state)
+	case "with_index":
+		return plan.buildIndexScope(state)
+	case "remember":
+		return plan.rememberValue(state)
+	case "recall":
+		return plan.recallValue(state)
 	case "index":
 		return plannedLeaf(coreInteger(int64(state.itemIndex))), nil
 	case "capture_native":

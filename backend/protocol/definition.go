@@ -231,6 +231,7 @@ type Expression struct {
 	Op        string                `json:"op"`
 	Operation string                `json:"operation,omitempty"`
 	Name      string                `json:"name,omitempty"`
+	KeyMode   string                `json:"keyMode,omitempty"`
 	From      string                `json:"from,omitempty"`
 	Path      string                `json:"path,omitempty"`
 	Value     Value                 `json:"value,omitzero"`

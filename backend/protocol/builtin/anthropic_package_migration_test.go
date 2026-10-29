@@ -50,7 +50,6 @@ func TestAnthropicPackageDraftMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	open := map[string]anthropicMigrationGap{
-		"history-decode":     {reason: "ordered tool-result name association", paths: []string{"/content/2/children/0/name"}},
 		"hosted-tool-encode": {reason: "trusted server-tool replay", errorText: "no branch for discriminator"},
 	}
 	for _, sample := range definition.Samples {
@@ -75,7 +74,8 @@ func TestAnthropicPackageDraftMigration(t *testing.T) {
 		{"opaque-without-type", `{"model":"m","max_tokens":10,"messages":[{"role":"user","content":[{"future":{"n":1}}]}]}`, false, anthropicMigrationGap{}},
 		{"direct-caller", `{"model":"m","max_tokens":10,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{},"caller":{"type":"direct"}}]}]}`, false, anthropicMigrationGap{}},
 		{"caller-extension", `{"model":"m","max_tokens":10,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{},"caller":{"type":"direct","extra":1}}]}]}`, false, anthropicMigrationGap{}},
-		{"tool-result-content-array", `{"model":"m","max_tokens":10,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{"content":[{"type":"opaque-user-data"}]}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c","content":[{"type":"text","text":"done","future":1},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}]}]}]}`, false, anthropicMigrationGap{reason: "ordered tool-result name association; recursive content and Native must otherwise match", paths: []string{"/content/1/children/0/name"}}},
+		{"tool-result-content-array", `{"model":"m","max_tokens":10,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{"content":[{"type":"opaque-user-data"}]}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c","content":[{"type":"text","text":"done","future":1},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}]}]}]}`, false, anthropicMigrationGap{}},
+		{"raw-reference-key-before-escaping", `{"model":"m","max_tokens":10,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"<","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"\u003c","content":"done"}]}]}`, false, anthropicMigrationGap{}},
 		{"invalid-caller", `{"model":"m","max_tokens":10,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{},"caller":"invalid"}]}]}`, false, anthropicMigrationGap{reason: "structured rejection diagnostic parity", rejection: true}},
 		{"invalid-tool-error", `{"model":"m","max_tokens":10,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c","content":"done","is_error":"invalid"}]}]}`, false, anthropicMigrationGap{reason: "structured rejection diagnostic parity", rejection: true}},
 		{"thinking-controls", `{"model":"m","max_tokens":2048,"thinking":{"type":"enabled","budget_tokens":1024},"messages":[{"role":"user","content":"hello"}]}`, false, anthropicMigrationGap{reason: "canonical generation reasoning controls", paths: []string{"/parameters/anthropic_thinking", "/reasoning"}}},

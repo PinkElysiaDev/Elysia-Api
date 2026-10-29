@@ -13,6 +13,9 @@ type OperationInfo struct {
 var expressionOperations = []OperationInfo{
 	{"read", []string{"from", "name", "path", "required"}, nil, AnyType, "Read an RFC 6901 pointer from input, item, root, context or a named binding; preserve missing and null."},
 	{"let", []string{"name", "source", "body"}, []string{"name", "source", "body"}, AnyType, "Evaluate source once and bind its immutable value by name within body; nested bindings may shadow outer names."},
+	{"with_index", []string{"name", "keyMode", "policy", "body"}, []string{"name", "keyMode", "policy", "body"}, AnyType, "Create a lexical raw_json index with last, first or reject duplicate policy; its bounded state lasts only through body."},
+	{"remember", []string{"name", "source", "body"}, []string{"name", "source", "body"}, AnyType, "Evaluate a raw JSON key from source and a value from body, record the value, and return this evaluated value without materializing containers."},
+	{"recall", []string{"name", "source", "policy"}, []string{"name", "source", "policy"}, AnyType, "Read a lexical index by raw JSON key; explicitly omit or reject a missing key."},
 	{"index", nil, nil, IntegerType, "Read the zero-based position in the immediate iteration source array, not an original wire location."},
 	{"literal", []string{"value"}, []string{"value"}, AnyType, "Return declared JSON without number coercion."},
 	{"omit", nil, nil, AnyType, "Explicitly omit an object field or array-map result."},

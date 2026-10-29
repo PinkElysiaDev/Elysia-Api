@@ -17,6 +17,7 @@ type compiledExpression struct {
 	pointer                             []string
 	from                                string
 	bindingSlot                         int
+	indexSlot                           int
 	value                               Value
 	fields                              map[string]*compiledExpression
 	keys                                []string
@@ -55,6 +56,8 @@ type expressionScope struct {
 	wireCapture  bool
 	bindings     map[string]expressionBinding
 	bindingDepth int
+	indexes      map[string]int
+	indexDepth   int
 }
 
 type expressionBinding struct {
@@ -172,6 +175,13 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	if compiled.op == "capture_native" && !scope.wireCapture {
 		return nil, fmt.Errorf("%s: native capture requires a package wire decoder", path)
 	}
+	if compiled.op == "remember" || compiled.op == "recall" {
+		slot, exists := scope.indexes[expression.Name]
+		if !exists {
+			return nil, fmt.Errorf("%s/name: index is not declared in this scope", path)
+		}
+		compiled.indexSlot = slot
+	}
 	if expression.Source != nil {
 		child, err := compiler.compile(*expression.Source, path+"/source", scope, depth+1)
 		if err != nil {
@@ -180,6 +190,18 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		compiled.source = child
 	}
 	childScope := scope
+	if compiled.op == "with_index" {
+		if !definitionIdentifier.MatchString(expression.Name) {
+			return nil, fmt.Errorf("%s/name: expected an index identifier", path)
+		}
+		compiled.indexSlot = scope.indexDepth
+		childScope.indexDepth++
+		childScope.indexes = make(map[string]int, len(scope.indexes)+1)
+		for name, slot := range scope.indexes {
+			childScope.indexes[name] = slot
+		}
+		childScope.indexes[expression.Name] = compiled.indexSlot
+	}
 	if compiled.op == "walk" {
 		childScope.isWalk = true
 	}
@@ -294,8 +316,17 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		if expression.source.op != "read" || !slices.Contains([]string{"input", "root", "item", "binding"}, expression.source.from) {
 			return fail("native capture requires a read from the original wire")
 		}
-	case "let":
+	case "let", "remember":
 		expression.result, expression.schema = expression.body.result, expression.body.schema
+	case "with_index":
+		if source.KeyMode != "raw_json" || !slices.Contains([]string{"last", "first", "reject"}, expression.policy) {
+			return fail("with_index requires raw_json keys and last, first or reject duplicate policy")
+		}
+		expression.result, expression.schema = expression.body.result, expression.body.schema
+	case "recall":
+		if !slices.Contains([]string{"omit", "reject"}, expression.policy) {
+			return fail("recall requires omit or reject missing-key policy")
+		}
 	case "recur":
 		if !isAssignable(expression.source.result, ArrayType) {
 			return fail("recur source must produce an array")

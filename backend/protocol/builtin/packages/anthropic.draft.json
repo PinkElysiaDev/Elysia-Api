@@ -2736,6 +2736,101 @@
           }
         }
       },
+      "decode-request-block": {
+        "op": "if",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "item",
+              "path": "/type"
+            },
+            {
+              "op": "literal",
+              "value": "tool_use"
+            }
+          ]
+        },
+        "then": {
+          "op": "let",
+          "name": "recorded-name",
+          "source": {
+            "op": "remember",
+            "name": "history-calls",
+            "source": {
+              "op": "read",
+              "from": "item",
+              "path": "/id"
+            },
+            "body": {
+              "op": "read",
+              "from": "item",
+              "path": "/name"
+            }
+          },
+          "body": {
+            "op": "ref",
+            "ref": "decode-block"
+          }
+        },
+        "otherwise": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "item",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "tool_result"
+              }
+            ]
+          },
+          "then": {
+            "op": "let",
+            "name": "result-name",
+            "source": {
+              "op": "recall",
+              "name": "history-calls",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/tool_use_id"
+              },
+              "policy": "omit"
+            },
+            "body": {
+              "op": "merge",
+              "policy": "reject",
+              "items": [
+                {
+                  "op": "ref",
+                  "ref": "decode-block"
+                },
+                {
+                  "op": "object",
+                  "fields": {
+                    "name": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "result-name",
+                      "path": ""
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "otherwise": {
+            "op": "ref",
+            "ref": "decode-block"
+          }
+        }
+      },
       "decode-request-cache": {
         "op": "let",
         "name": "selected",
@@ -3106,229 +3201,235 @@
         }
       },
       "decode-request-content": {
-        "op": "concat",
-        "items": [
-          {
-            "op": "if",
-            "when": {
-              "op": "exists",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/system"
-              }
-            },
-            "then": {
-              "op": "array",
-              "items": [
-                {
-                  "op": "object",
-                  "fields": {
-                    "kind": {
-                      "op": "literal",
-                      "value": "message"
-                    },
-                    "role": {
-                      "op": "literal",
-                      "value": "system"
-                    },
-                    "children": {
-                      "op": "let",
-                      "name": "content",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/system"
+        "op": "with_index",
+        "name": "history-calls",
+        "keyMode": "raw_json",
+        "policy": "last",
+        "body": {
+          "op": "concat",
+          "items": [
+            {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/system"
+                }
+              },
+              "then": {
+                "op": "array",
+                "items": [
+                  {
+                    "op": "object",
+                    "fields": {
+                      "kind": {
+                        "op": "literal",
+                        "value": "message"
                       },
-                      "body": {
-                        "op": "ref",
-                        "ref": "decode-content"
+                      "role": {
+                        "op": "literal",
+                        "value": "system"
+                      },
+                      "children": {
+                        "op": "let",
+                        "name": "content",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/system"
+                        },
+                        "body": {
+                          "op": "ref",
+                          "ref": "decode-request-parts"
+                        }
                       }
                     }
                   }
-                }
-              ]
+                ]
+              },
+              "otherwise": {
+                "op": "array",
+                "items": []
+              }
             },
-            "otherwise": {
-              "op": "array",
-              "items": []
-            }
-          },
-          {
-            "op": "map",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/messages"
-            },
-            "body": {
-              "op": "object",
-              "fields": {
-                "kind": {
-                  "op": "literal",
-                  "value": "message"
-                },
-                "role": {
-                  "op": "join",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "item",
-                      "path": "/role"
-                    }
-                  ]
-                },
-                "children": {
-                  "op": "let",
-                  "name": "content",
-                  "source": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/content"
+            {
+              "op": "map",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/messages"
+              },
+              "body": {
+                "op": "object",
+                "fields": {
+                  "kind": {
+                    "op": "literal",
+                    "value": "message"
                   },
-                  "body": {
-                    "op": "ref",
-                    "ref": "decode-content"
-                  }
-                },
-                "cache": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
+                  "role": {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/role"
+                      }
+                    ]
+                  },
+                  "children": {
+                    "op": "let",
+                    "name": "content",
                     "source": {
                       "op": "read",
                       "from": "item",
-                      "path": "/cache_control"
+                      "path": "/content"
+                    },
+                    "body": {
+                      "op": "ref",
+                      "ref": "decode-request-parts"
                     }
                   },
-                  "then": {
-                    "op": "array",
-                    "items": [
-                      {
-                        "op": "if",
-                        "when": {
-                          "op": "present",
-                          "source": {
-                            "op": "read",
-                            "from": "item",
-                            "path": "/cache_control"
-                          }
-                        },
-                        "then": {
-                          "op": "object",
-                          "fields": {
-                            "kind": {
-                              "op": "literal",
-                              "value": "breakpoint"
-                            },
-                            "location": {
-                              "op": "literal",
-                              "value": "message"
-                            },
-                            "value": {
-                              "op": "project",
-                              "source": {
-                                "op": "read",
-                                "from": "item",
-                                "path": "/cache_control"
-                              },
-                              "keys": [
-                                "ttl"
-                              ],
-                              "policy": "exclude"
-                            },
-                            "ttl": {
-                              "op": "read",
-                              "from": "item",
-                              "path": "/cache_control/ttl"
-                            }
-                          }
-                        },
-                        "otherwise": {
-                          "op": "object",
-                          "fields": {
-                            "kind": {
-                              "op": "literal",
-                              "value": "breakpoint"
-                            },
-                            "location": {
-                              "op": "literal",
-                              "value": "message"
-                            },
-                            "value": {
+                  "cache": {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/cache_control"
+                      }
+                    },
+                    "then": {
+                      "op": "array",
+                      "items": [
+                        {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
                               "op": "read",
                               "from": "item",
                               "path": "/cache_control"
                             }
+                          },
+                          "then": {
+                            "op": "object",
+                            "fields": {
+                              "kind": {
+                                "op": "literal",
+                                "value": "breakpoint"
+                              },
+                              "location": {
+                                "op": "literal",
+                                "value": "message"
+                              },
+                              "value": {
+                                "op": "project",
+                                "source": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/cache_control"
+                                },
+                                "keys": [
+                                  "ttl"
+                                ],
+                                "policy": "exclude"
+                              },
+                              "ttl": {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/cache_control/ttl"
+                              }
+                            }
+                          },
+                          "otherwise": {
+                            "op": "object",
+                            "fields": {
+                              "kind": {
+                                "op": "literal",
+                                "value": "breakpoint"
+                              },
+                              "location": {
+                                "op": "literal",
+                                "value": "message"
+                              },
+                              "value": {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/cache_control"
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "attributes": {
+                    "op": "let",
+                    "name": "extensions",
+                    "source": {
+                      "op": "project",
+                      "source": {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      },
+                      "keys": [
+                        "type",
+                        "role",
+                        "content",
+                        "cache_control"
+                      ],
+                      "policy": "exclude"
+                    },
+                    "body": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "extensions",
+                            "path": ""
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "omit"
+                      },
+                      "otherwise": {
+                        "op": "object",
+                        "fields": {
+                          "wire:claude": {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "extensions",
+                            "path": ""
                           }
                         }
                       }
-                    ]
-                  }
-                },
-                "attributes": {
-                  "op": "let",
-                  "name": "extensions",
-                  "source": {
-                    "op": "project",
+                    }
+                  },
+                  "native": {
+                    "op": "capture_native",
                     "source": {
                       "op": "read",
                       "from": "item",
                       "path": ""
-                    },
-                    "keys": [
-                      "type",
-                      "role",
-                      "content",
-                      "cache_control"
-                    ],
-                    "policy": "exclude"
-                  },
-                  "body": {
-                    "op": "if",
-                    "when": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "name": "extensions",
-                          "path": ""
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    },
-                    "then": {
-                      "op": "omit"
-                    },
-                    "otherwise": {
-                      "op": "object",
-                      "fields": {
-                        "wire:claude": {
-                          "op": "read",
-                          "from": "binding",
-                          "name": "extensions",
-                          "path": ""
-                        }
-                      }
                     }
-                  }
-                },
-                "native": {
-                  "op": "capture_native",
-                  "source": {
-                    "op": "read",
-                    "from": "item",
-                    "path": ""
                   }
                 }
               }
             }
-          }
-        ]
+          ]
+        }
       },
       "decode-request-parameters": {
         "op": "let",
@@ -3558,6 +3659,110 @@
             "from": "binding",
             "name": "selected",
             "path": ""
+          }
+        }
+      },
+      "decode-request-parts": {
+        "op": "choose",
+        "source": {
+          "op": "type",
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "name": "content",
+            "path": ""
+          }
+        },
+        "cases": {
+          "missing": {
+            "op": "omit"
+          },
+          "null": {
+            "op": "array",
+            "items": [
+              {
+                "op": "object",
+                "fields": {
+                  "kind": {
+                    "op": "literal",
+                    "value": "text"
+                  },
+                  "payload": {
+                    "op": "literal",
+                    "value": null
+                  }
+                }
+              }
+            ]
+          },
+          "string": {
+            "op": "array",
+            "items": [
+              {
+                "op": "object",
+                "fields": {
+                  "kind": {
+                    "op": "literal",
+                    "value": "text"
+                  },
+                  "payload": {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "content",
+                        "path": ""
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "array": {
+            "op": "let",
+            "name": "selected",
+            "source": {
+              "op": "walk",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "name": "content",
+                "path": ""
+              },
+              "body": {
+                "op": "ref",
+                "ref": "decode-request-block"
+              }
+            },
+            "body": {
+              "op": "if",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "selected",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": []
+                  }
+                ]
+              },
+              "then": {
+                "op": "omit"
+              },
+              "otherwise": {
+                "op": "read",
+                "from": "binding",
+                "name": "selected",
+                "path": ""
+              }
+            }
           }
         }
       },
