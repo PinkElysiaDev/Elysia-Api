@@ -32,6 +32,11 @@ func (compiled *Compiled) preparePackageState(direction Direction, state evaluat
 			return err
 		}
 	}
+	if direction == EncodeRequest && state.coreRequest == nil {
+		if err := validatePackageRawReasoning(state.input); err != nil {
+			return err
+		}
+	}
 	var conditions *evaluation
 	if direction == EncodeRequest && compiled.packagePlan.hasCacheProjection {
 		if err := compiled.checkCacheDispositions(state, limits); err != nil {
@@ -92,6 +97,25 @@ func (compiled *Compiled) preparePackageState(direction Direction, state evaluat
 		}
 	}
 	return nil
+}
+
+func validatePackageRawReasoning(input Value) error {
+	fields, err := coreObjectFields(JSONLeaf(input))
+	if err != nil {
+		return err
+	}
+	var reasoning *ReasoningIntent
+	// Match struct decoding: aliases select the same field and repeated objects
+	// merge into the existing intent. A later value cannot erase an earlier error.
+	for _, field := range fields {
+		if foldedCoreField(field.key, []string{"reasoning"}) != "reasoning" {
+			continue
+		}
+		if err := field.value.value.Decode(&reasoning); err != nil {
+			return err
+		}
+	}
+	return ValidateReasoningIntent(reasoning)
 }
 
 func (state evaluation) readPackageInput(pointer []string) (JSONOutput, error) {

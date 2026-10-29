@@ -57,6 +57,51 @@ func TestPackageRuntimeRoundTrip(t *testing.T) {
 	assertPackageRuntimeIssue(t, err, InvalidInput, "/schemaVersion")
 }
 
+func TestPackageRawRequestReasoningValidation(t *testing.T) {
+	compiled := compilePackageForTest(t, textProtocolPackage(t))
+	core, issues := compiled.Execute(t.Context(), DecodeRequest, Value{raw: `{"model":"m","prompt":"hello"}`}, EvaluationContext{})
+	if err := IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, fields string
+	}{
+		{"absent", ""},
+		{"null", `,"reasoning":null`},
+		{"valid", `,"reasoning":{"mode":"enabled","budget":1024,"future":true}`},
+		{"without-tools", `,"reasoning":{"mode":"enabled","budget":1024,"interleaved":true}`},
+		{"invalid-scope", `,"reasoning":{"effort":"high","effortScope":"unknown"}`},
+		{"invalid-interleaved", `,"reasoning":{"mode":"disabled","interleaved":true}`},
+		{"invalid-string", `,"reasoning":"disabled"`},
+		{"invalid-array", `,"reasoning":[]`},
+		{"invalid-boolean", `,"reasoning":false`},
+		{"invalid-number", `,"reasoning":1`},
+		{"unrelated-hints", `,"parameters":{"user":1},"future":true`},
+		{"case-alias", `,"Reasoning":{"effort":"high","effortScope":"unknown"}`},
+		{"duplicate-merge", `,"reasoning":{"budget":1024},"reasoning":{"mode":"disabled"}`},
+		{"duplicate-type-error", `,"reasoning":1,"reasoning":null`},
+		{"duplicate-null-reset", `,"reasoning":{"effort":"high","effortScope":"unknown"},"reasoning":null`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			input := Value{raw: strings.TrimSuffix(core.raw, "}") + tc.fields + "}"}
+			var request Request
+			wantErr := input.Decode(&request)
+			if wantErr == nil {
+				wantErr = ValidateReasoningIntent(request.Reasoning)
+			}
+			_, issues := compiled.Execute(t.Context(), EncodeRequest, input, EvaluationContext{})
+			gotErr := IssuesError(issues)
+			if (gotErr == nil) != (wantErr == nil) {
+				t.Fatalf("raw reasoning acceptance changed: got %v, want %v", gotErr, wantErr)
+			}
+			var original *ConversionError
+			if errors.As(wantErr, &original) && (len(issues) != 1 || issues[0].Code != original.Issues[0].Code || issues[0].Path != original.Issues[0].Path) {
+				t.Fatal("raw reasoning diagnostic changed", issues, original.Issues)
+			}
+		})
+	}
+}
+
 func TestPackageRuntimeRetainsWireAndEffectChecks(t *testing.T) {
 	document := textProtocolPackage(t)
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest, DecodeResponse, EncodeResponse} {
