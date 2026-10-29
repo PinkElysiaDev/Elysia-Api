@@ -39,10 +39,13 @@ func validateHistoryValueMapping(direction Direction, path string, mapping *Prot
 	return nil
 }
 
-func provesHistoryValueMapping(program *compiledExpression, direction Direction, effect compiledSemanticEffect) bool {
+func provesHistoryValueMapping(program *compiledExpression, direction Direction, effect compiledSemanticEffect, steps int) bool {
 	mapping := effect.valueMapping
-	if program == nil || program.op != "if" || mapping == nil || effect.when == nil {
+	if program == nil || mapping == nil || effect.when == nil {
 		return false
+	}
+	if program.op != "if" {
+		return provesLocalHistoryOwner(program, direction, effect, steps)
 	}
 	unknown, _ := parsePointer(mapping.Unmatched)
 	if direction == DecodeRequest {

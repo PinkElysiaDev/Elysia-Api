@@ -376,6 +376,8 @@
     "backend/protocol/package_execute.go",
     "backend/protocol/package_history_mapping.go",
     "backend/protocol/package_history_mapping_test.go",
+    "backend/protocol/package_history_owner.go",
+    "backend/protocol/package_history_owner_test.go",
     "backend/protocol/package_projection.go",
     "backend/protocol/package_runtime_test.go",
     "backend/protocol/package_stream_contract.go",

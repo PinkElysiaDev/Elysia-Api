@@ -71,7 +71,7 @@ func (compiler *Compiler) CompilePackage(raw []byte) (*Compiled, []ConversionIss
 			if effect.kind == "aggregate" {
 				path := fmt.Sprintf("/mapping/directions/%s/effects/%d", direction, index)
 				if effect.valueMapping != nil {
-					if !compiled.mappings[direction].capabilities[ReasoningHistoryRetentionCapability] || !provesHistoryValueMapping(compiled.mappings[direction].outputPlan.expression, direction, effect) {
+					if !compiled.mappings[direction].capabilities[ReasoningHistoryRetentionCapability] || !provesHistoryValueMapping(compiled.mappings[direction].outputPlan.expression, direction, effect, compiler.limits.Nodes) {
 						return nil, definitionIssues(compiled.identity, path, fmt.Errorf("history value mapping requires declared capability and a provable whole-value partition or reconstruction"))
 					}
 					continue
