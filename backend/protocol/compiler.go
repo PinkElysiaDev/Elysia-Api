@@ -125,6 +125,7 @@ type compiledMapping struct {
 	capabilities   CapabilitySet
 	module         Module
 	transform      *compiledExpression
+	outputPlan     *compiledOutputPlan
 	after          *compiledExpression
 	initial        *compiledExpression
 	input, output  *runtimeValueSchema
@@ -338,6 +339,7 @@ func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction
 			return entry, err
 		}
 		entry.transform = expression
+		entry.outputPlan, _ = compileOutputPlan(expression)
 	}
 	if len(mapping.Rules) > 0 {
 		if !isEventDirection(direction) {
@@ -778,6 +780,8 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 			return fail(resolveErr)
 		}
 		output, err = instance.Convert(ctx, direction, input, options)
+	case mapping.outputPlan != nil:
+		output, err = mapping.outputPlan.evaluate(state)
 	case mapping.transform != nil:
 		output, err = mapping.transform.evaluate(state)
 	default:

@@ -12,6 +12,7 @@ type evaluation struct {
 	ctx                        context.Context
 	input, item, root, context Value
 	budget                     *evaluationBudget
+	valueReader                *valueReader
 }
 
 type evaluationBudget struct {
@@ -69,7 +70,7 @@ func (expression *compiledExpression) evaluate(state evaluation) (value Value, e
 		case "context":
 			root = state.context
 		}
-		value, err := readValuePointer(root, expression.pointer)
+		value, err := readValuePointerWithin(root, expression.pointer, state.valueReader)
 		if err != nil {
 			return Value{}, fmt.Errorf("%s: %w", expression.path, err)
 		}

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/bytedance/sonic/ast"
@@ -14,6 +13,10 @@ import (
 // The returned selection owns its bytes, so small retained metadata cannot pin
 // an entire request. An empty pointer keeps the existing identity behavior.
 func readValuePointer(value Value, pointer []string) (Value, error) {
+	return readValuePointerWithin(value, pointer, nil)
+}
+
+func readValuePointerWithin(value Value, pointer []string, reader *valueReader) (Value, error) {
 	if len(pointer) == 0 {
 		return value, nil
 	}
@@ -51,7 +54,7 @@ func readValuePointer(value Value, pointer []string) (Value, error) {
 		}
 		value = Value{raw: raw}
 	}
-	return Value{raw: strings.Clone(value.raw)}, nil
+	return Value{raw: reader.fragment(value.raw)}, nil
 }
 
 // Searcher's string lookup stops at the first occurrence. Enumerating one
