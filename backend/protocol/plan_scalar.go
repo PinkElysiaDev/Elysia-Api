@@ -58,6 +58,12 @@ func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, er
 	}
 	expression := plan.expression
 	switch expression.op {
+	case "split_data_uri":
+		output, err := splitDataURI(source.output)
+		if err != nil {
+			return plannedOutput{}, err
+		}
+		return plannedOutput{output, normalizedOutputBytes(output)}, nil
 	case "exists":
 		return plannedLeaf(coreBoolean(!source.output.IsZero())), nil
 	case "present":

@@ -363,6 +363,10 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		if err != nil || prefix == "" || !isAssignable(expression.source.result, StringType) {
 			return fail(expression.op + " requires a nonempty literal string prefix and a string source")
 		}
+	case "split_data_uri":
+		if !isAssignable(expression.source.result, StringType) {
+			return fail("split_data_uri source must produce a string")
+		}
 	case "choose", "enum":
 		if !isAssignable(expression.source.result, StringType) {
 			return fail("type/enum discriminator must be a string")

@@ -50,6 +50,7 @@ var expressionOperations = []OperationInfo{
 	{"not", []string{"source"}, []string{"source"}, BooleanType, "Invert a boolean."},
 	{"parse_json", []string{"source"}, []string{"source"}, AnyType, "Decode a JSON string; invalid or absent tool arguments fail."},
 	{"stringify_json", []string{"source"}, []string{"source"}, StringType, "Encode a present JSON value as a string."},
+	{"split_data_uri", []string{"source"}, []string{"source"}, ObjectType, "Split an exact data URI base64 marker into kind, MIME and opaque data without decoding or validating the payload."},
 	{"strip_prefix", []string{"source", "value"}, []string{"source", "value"}, StringType, "Remove a required literal string prefix; a mismatching input is an error."},
 	{"trim_prefix", []string{"source", "value"}, []string{"source", "value"}, StringType, "Remove a literal string prefix when present; a mismatching input passes through unchanged."},
 	{"ref", []string{"ref"}, []string{"ref"}, AnyType, "Expand a named expression at compile time; recursive references fail."},
