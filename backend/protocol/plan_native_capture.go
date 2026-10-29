@@ -70,6 +70,7 @@ func (plan *compiledOutputPlan) captureNative(state evaluation) (plannedOutput, 
 	if !location.isWire || selected.output.node != nil || selected.output.IsZero() {
 		return plannedOutput{}, fmt.Errorf("native capture requires a present value at a proven original wire location")
 	}
+	selected = selected.normalizeForContainer()
 	origin := state.capture.source
 	origin.Path = location.path
 	source, err := readCoreProvenance(origin, nil)

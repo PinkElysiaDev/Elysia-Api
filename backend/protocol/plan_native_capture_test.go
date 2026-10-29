@@ -1,9 +1,41 @@
 package protocol
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
+
+func TestNativeCaptureMeasuresItsEncodedRepresentation(t *testing.T) {
+	compiler := expressionCompiler{limits: DefaultLimits()}
+	plan, err := compiler.compilePlan(Expression{Op: "capture_native", Source: expressionPointer(readExpression("input", ""))}, "/capture", expressionScope{wireCapture: true}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{`"<&>"`, ` { "text" : "<" } `} {
+		state := numericTestState(t, Value{raw: raw})
+		state.capture = &nativeCaptureState{}
+		planned, err := plan.build(state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wire, err := planned.output.Encode(t.Context())
+		if err != nil || wire.Len() != planned.bytes {
+			t.Fatal("capture did not measure the normalized wire bytes", wire.Len(), planned.bytes, err)
+		}
+		selected, err := readOutputPointer(planned.output, []string{"value"}, nil)
+		decoded, decodeErr := readValuePointer(wire, []string{"value"})
+		if err != nil || decodeErr != nil || selected.value != decoded {
+			t.Fatal("core writer and JSON materialization saw different snapshots", err, decodeErr)
+		}
+		state.budget.limits.BufferBytes = wire.Len() - 1
+		_, err = plan.build(state)
+		var limit *ResourceLimitError
+		if !errors.As(err, &limit) || limit.Metric != "bytes" || limit.Observed != wire.Len() {
+			t.Fatal("capture bypassed its exact output budget", err)
+		}
+	}
+}
 
 func TestPackageNativeCaptureUsesRuntimeProvenance(t *testing.T) {
 	document := textProtocolPackage(t)
