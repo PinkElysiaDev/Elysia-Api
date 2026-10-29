@@ -45,7 +45,9 @@
 
 `TestAnthropicPackageDraftMigration` 直接编译并执行候选文件，无测试分支或供应商回调。
 30 个既有 JSON 样例全部完整比较相等；另有 12 个边界场景，10 个相等。
-比较包含所有公开核心字段、Native、输出字节及完整诊断对象；仅显式适配核心 schemaVersion。
+比较包含所有公开核心字段、Native、输出字节及完整错误树；仅显式适配核心 schemaVersion。
+错误树逐层记录具体类型、错误文字、ConversionError 的 Issues／CandidateOnly、
+ResourceLimitError 的全部公开字段和 Unwrap 分支。
 
 工具历史和数组形式工具结果的 name 差异已闭合。新增原始 `"<"` 与 `"\u003c"`
 引用键差分，确认没有在容器规范化后错误匹配；递归内容和 Native 仍完整比较。
@@ -68,8 +70,21 @@ inline system 的原始位置只用于分类，不要求当前数组下标相同
 未知/数组 display、effort:none 和非对象 output_config。差异主要在 wire 阶段与旧阶段、
 诊断路径、原因或建议；不把两边都拒绝称为完整诊断保真。
 
-台账检查通过只表示没有出现未登记差异；**不表示上述 11 个未闭合场景通过了行为等价验收**。
-任何新增差异都会失败，已登记差异消失也要求显式更新台账。未运行本草案的性能验收。
+旧 helper 对负例只要求两边拒绝，并且仅比较首个 ConversionError 的 Issues，
+遗漏了包装层、CandidateOnly 和底层 cause；因此旧检查不能证明错误链等价。
+增强比较后发现：旧侧通常有两层 ConversionError，草案通常有三层；schema 拒绝还包含
+mappingError → fmt.wrapError → jsonschema.ValidationError。缺少 mode／budget 的草案另有
+errors.errorString cause，旧侧没有。本次各层 CandidateOnly 均为 false。
+这些是本次新明确的差异细节，仍属于原有 11 个未闭合负例，没有扩大已知差异场景范围。
+
+[静态差异账本](../testdata/package-migration-gaps.json) 固定这 11 个场景的完整旧／新错误树，
+不是把两边拒绝视为等价。首次快照来自 `c86b9d14` 上原 codec 与未修改草案的真实执行输出，
+原始一次性采集留在仓库忽略目录 `.tmp-dev/protocol-dsl-2026-10-29/migration-gap-evidence.jsonl`。
+正常测试只读取静态账本，不生成或更新期望；偏离任一侧记录或差异消失都会失败，须人工审查。
+增强比较未在原先相等的样例中发现新差异。
+
+台账检查通过只表示本批已覆盖场景没有偏离记录；**不表示上述 11 个未闭合场景通过了错误链或行为等价验收**。
+未运行本草案的性能验收。
 
 后续先完成请求方向的关联、保护和原生边界，再补全响应及其 wire contract。
 四方向及原有能力完成回归、证据和性能验收后，才考虑接入生产预置加载。

@@ -2,10 +2,12 @@ package builtin
 
 import (
 	"bytes"
-	"errors"
+	"encoding/json"
 	"fmt"
+	"os"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -13,9 +15,34 @@ import (
 )
 
 type packageMigrationGap struct {
-	reason, errorText string
-	paths             []string
-	rejection         bool
+	reason    string
+	paths     []string
+	rejection bool
+}
+
+type migrationErrorState struct {
+	Type       string                    `json:"type"`
+	Text       string                    `json:"text"`
+	Conversion *migrationConversionState `json:"conversion,omitempty"`
+	Resource   *p.ResourceLimitError     `json:"resource,omitempty"`
+	Children   []*migrationErrorState    `json:"children,omitempty"`
+}
+
+type migrationConversionState struct {
+	CandidateOnly bool                `json:"candidateOnly"`
+	Issues        []p.ConversionIssue `json:"issues"`
+}
+
+type migrationValueState struct {
+	Path   string  `json:"path"`
+	Legacy *string `json:"legacy"`
+	Draft  *string `json:"draft"`
+}
+
+type migrationGapState struct {
+	LegacyError *migrationErrorState  `json:"legacyError"`
+	DraftError  *migrationErrorState  `json:"draftError"`
+	Values      []migrationValueState `json:"values"`
 }
 
 func checkPackageMigration(t *testing.T, want, got []byte, wantErr, gotErr error, gap packageMigrationGap) {
@@ -33,16 +60,35 @@ func checkPackageMigration(t *testing.T, want, got []byte, wantErr, gotErr error
 	if gap.paths != nil && (wantErr != nil || gotErr != nil || !reflect.DeepEqual(gap.paths, migrationDifference(want, got))) {
 		t.Fatalf("unregistered differences beyond %s: %v; old=%v; draft=%v", gap.reason, migrationDifference(want, got), wantErr, gotErr)
 	}
-	if gap.errorText != "" && (wantErr != nil || gotErr == nil || !strings.Contains(gotErr.Error(), gap.errorText)) {
-		t.Fatalf("unexpected failure beyond %s: old=%v; draft=%v", gap.reason, wantErr, gotErr)
-	}
 	if gap.rejection && (wantErr == nil || gotErr == nil) {
 		t.Fatalf("rejection acceptance changed beyond diagnostic gap: old=%v; draft=%v", wantErr, gotErr)
 	}
-	if gap.rejection {
-		t.Logf("old diagnostics=%s; draft diagnostics=%s", migrationError(wantErr), migrationError(gotErr))
-	}
+	state := migrationGapState{LegacyError: describeMigrationError(wantErr), DraftError: describeMigrationError(gotErr), Values: describeMigrationValues(t, want, got, gap.paths)}
+	checkMigrationGapState(t, state)
 	t.Logf("NOT CLOSED: %s; old error=%v; draft error=%v; differences=%v", gap.reason, wantErr, gotErr, migrationDifference(want, got))
+}
+
+func checkMigrationGapState(t *testing.T, actual migrationGapState) {
+	t.Helper()
+	raw, err := os.ReadFile("testdata/package-migration-gaps.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ledger struct {
+		Cases map[string]migrationGapState `json:"cases"`
+	}
+	if err := json.Unmarshal(raw, &ledger); err != nil {
+		t.Fatal(err)
+	}
+	expected, exists := ledger.Cases[t.Name()]
+	if !exists {
+		t.Fatal("migration difference has no reviewed static snapshot")
+	}
+	if !reflect.DeepEqual(actual, expected) {
+		got, _ := json.Marshal(actual)
+		want, _ := json.Marshal(expected)
+		t.Fatalf("unregistered migration error/value change:\nactual: %s\nrecorded: %s", got, want)
+	}
 }
 
 func executePackageMigrationSample(t *testing.T, compiled *p.Compiled, sample p.Sample, options p.EvaluationContext, isPackage bool) ([]byte, error) {
@@ -91,15 +137,74 @@ func executePackageMigrationSample(t *testing.T, compiled *p.Compiled, sample p.
 }
 
 func migrationError(err error) string {
+	raw, encodingErr := json.Marshal(describeMigrationError(err))
+	if encodingErr != nil {
+		panic(encodingErr)
+	}
+	return string(raw)
+}
+
+func describeMigrationError(err error) *migrationErrorState {
 	if err == nil {
-		return ""
+		return nil
 	}
-	var conversion *p.ConversionError
-	if errors.As(err, &conversion) {
-		value, _ := p.EncodeValue(conversion.Issues)
-		return fmt.Sprintf("%T: %s", err, value.JSONString())
+	state := &migrationErrorState{Type: fmt.Sprintf("%T", err), Text: err.Error()}
+	switch failure := err.(type) {
+	case *p.ConversionError:
+		state.Conversion = &migrationConversionState{CandidateOnly: failure.CandidateOnly, Issues: failure.Issues}
+	case *p.ResourceLimitError:
+		state.Resource = failure
 	}
-	return fmt.Sprintf("%T: %v", err, err)
+	switch cause := err.(type) {
+	case interface{ Unwrap() []error }:
+		for _, child := range cause.Unwrap() {
+			state.Children = append(state.Children, describeMigrationError(child))
+		}
+	case interface{ Unwrap() error }:
+		if child := cause.Unwrap(); child != nil {
+			state.Children = []*migrationErrorState{describeMigrationError(child)}
+		}
+	}
+	return state
+}
+
+func describeMigrationValues(t *testing.T, want, got []byte, paths []string) []migrationValueState {
+	t.Helper()
+	var values []migrationValueState
+	for _, path := range paths {
+		values = append(values, migrationValueState{Path: path, Legacy: migrationPointerValue(t, want, path), Draft: migrationPointerValue(t, got, path)})
+	}
+	return values
+}
+
+func migrationPointerValue(t *testing.T, raw []byte, pointer string) *string {
+	t.Helper()
+	value, err := p.ParseValue(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, token := range strings.Split(strings.TrimPrefix(pointer, "/"), "/") {
+		token = strings.ReplaceAll(strings.ReplaceAll(token, "~1", "/"), "~0", "~")
+		if value.IsObject() {
+			fields, err := value.ReadObject()
+			if err != nil {
+				t.Fatal(err)
+			}
+			value = fields[token]
+		} else {
+			var items []p.Value
+			index, err := strconv.Atoi(token)
+			if err != nil || value.Decode(&items) != nil || index < 0 || index >= len(items) {
+				t.Fatalf("invalid migration snapshot pointer %s", pointer)
+			}
+			value = items[index]
+		}
+	}
+	if value.IsZero() {
+		return nil
+	}
+	text := value.JSONString()
+	return &text
 }
 
 func migrationDifference(want, got []byte) []string {

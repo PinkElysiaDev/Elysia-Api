@@ -29,7 +29,13 @@
 | 新增请求边界 | 3 | 全部相等 |
 | 新增 response usage/details | 1 | 业务字段相等，来源位置未闭合 |
 
-所有登记差异都固定到完整的差异路径集合。出现新增路径、错误、接受结果变化或登记差异消失都会失败，要求显式更新调查账本。未改写生产样例期望。
+所有登记差异都固定到完整的差异路径集合，并在[静态账本](../testdata/package-migration-gaps.json)中固定各路径的旧／新原始 JSON 值。缺失与显式 null 分开记录；不会仅因差异仍发生在同一路径就接受内容变化。
+
+共用 helper 现在逐层比较错误类型、文字、ConversionError 的 Issues／CandidateOnly、ResourceLimitError 全部公开字段及 Unwrap 分支。新增路径、错误树变化、已登记值变化或差异消失都会失败，要求人工审查。未改写生产样例期望。
+
+首次静态账本来自 `c86b9d14` 上旧 codec 与未修改草案的实际输出；一次性采集保留在仓库忽略目录 `.tmp-dev/protocol-dsl-2026-10-29/migration-gap-evidence.jsonl`。正常测试只读取账本，不生成或更新期望。
+
+旧 helper 没有比较完整错误链，对 Anthropic 的已知拒绝项也只要求两边拒绝。增强检查揭示了额外 ConversionError 包装层和 schema cause，具体见本目录 README；没有在 Chat 原先相等的比较中发现新差异。固定快照只锁定既有未闭合状态，不构成错误链等价或激活证据。
 
 ### 未闭合 1：Chat 响应中的旧来源位置
 

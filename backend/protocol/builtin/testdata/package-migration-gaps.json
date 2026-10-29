@@ -1,0 +1,1654 @@
+{
+  "sourceCommit": "c86b9d14",
+  "cases": {
+    "TestAnthropicPackageDraftMigration/boundary/invalid-caller": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /messages/0/content/0/caller: tool caller must be an object",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_request",
+              "stage": "",
+              "path": "/messages/0/content/0/caller",
+              "reason": "tool caller must be an object",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /messages/0/content/0/caller: tool caller must be an object",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "",
+                  "stage": "",
+                  "path": "/messages/0/content/0/caller",
+                  "reason": "tool caller must be an object",
+                  "suggestion": ""
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /messages/0/content/0/caller: tool caller must be an object",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/messages/0/content/0/caller",
+              "reason": "tool caller must be an object",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /messages/0/content/0/caller: tool caller must be an object",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "claude",
+                    "wireVersion": "v2",
+                    "definitionId": "anthropic-messages",
+                    "revision": "2.1.7"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/messages/0/content/0/caller",
+                  "reason": "tool caller must be an object",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /messages/0/content/0/caller: tool caller must be an object",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/messages/0/content/0/caller",
+                      "reason": "tool caller must be an object",
+                      "suggestion": ""
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "type": "*protocol.mappingError",
+                    "text": "/messages/0/content/0/caller: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': got string, want object",
+                    "children": [
+                      {
+                        "type": "*fmt.wrapError",
+                        "text": "/messages/0/content/0/caller: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': got string, want object",
+                        "children": [
+                          {
+                            "type": "*jsonschema.ValidationError",
+                            "text": "jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': got string, want object"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestAnthropicPackageDraftMigration/boundary/invalid-tool-error": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /directions/decode_request: /messages/1/content/0/is_error: tool error flag must be a boolean",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_request",
+              "stage": "evaluate",
+              "path": "/directions/decode_request",
+              "reason": "/messages/1/content/0/is_error: tool error flag must be a boolean",
+              "suggestion": "Correct the input or declared mapping and verify the revision again."
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /directions/decode_request: /messages/1/content/0/is_error: tool error flag must be a boolean",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "claude",
+                    "wireVersion": "v2",
+                    "definitionId": "anthropic-messages",
+                    "revision": "2.1.7"
+                  },
+                  "direction": "decode_request",
+                  "stage": "evaluate",
+                  "path": "/directions/decode_request",
+                  "reason": "/messages/1/content/0/is_error: tool error flag must be a boolean",
+                  "suggestion": "Correct the input or declared mapping and verify the revision again."
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*errors.errorString",
+                "text": "/messages/1/content/0/is_error: tool error flag must be a boolean"
+              }
+            ]
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /messages/1/content/0/is_error: tool error flag must be a boolean",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/messages/1/content/0/is_error",
+              "reason": "tool error flag must be a boolean",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /messages/1/content/0/is_error: tool error flag must be a boolean",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "claude",
+                    "wireVersion": "v2",
+                    "definitionId": "anthropic-messages",
+                    "revision": "2.1.7"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/messages/1/content/0/is_error",
+                  "reason": "tool error flag must be a boolean",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /messages/1/content/0/is_error: tool error flag must be a boolean",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/messages/1/content/0/is_error",
+                      "reason": "tool error flag must be a boolean",
+                      "suggestion": ""
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "type": "*protocol.mappingError",
+                    "text": "/messages/1/content/0/is_error: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': got string, want boolean",
+                    "children": [
+                      {
+                        "type": "*fmt.wrapError",
+                        "text": "/messages/1/content/0/is_error: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': got string, want boolean",
+                        "children": [
+                          {
+                            "type": "*jsonschema.ValidationError",
+                            "text": "jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': got string, want boolean"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestAnthropicPackageDraftMigration/reasoning/reject-adaptive-null-budget": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /thinking/budget_tokens: this thinking mode does not accept a budget",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_event",
+              "stage": "stream",
+              "path": "/thinking/budget_tokens",
+              "reason": "this thinking mode does not accept a budget",
+              "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /thinking/budget_tokens: this thinking mode does not accept a budget",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "decode_event",
+                  "stage": "stream",
+                  "path": "/thinking/budget_tokens",
+                  "reason": "this thinking mode does not accept a budget",
+                  "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /thinking/budget_tokens: this thinking mode does not accept a budget",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/thinking/budget_tokens",
+              "reason": "this thinking mode does not accept a budget",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /thinking/budget_tokens: this thinking mode does not accept a budget",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "claude",
+                    "wireVersion": "v2",
+                    "definitionId": "anthropic-messages",
+                    "revision": "2.1.7"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/thinking/budget_tokens",
+                  "reason": "this thinking mode does not accept a budget",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /thinking/budget_tokens: this thinking mode does not accept a budget",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/thinking/budget_tokens",
+                      "reason": "this thinking mode does not accept a budget",
+                      "suggestion": ""
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestAnthropicPackageDraftMigration/reasoning/reject-array-display": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /thinking/display: display requires a thinking mode and must be summarized, omitted or updates",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_request",
+              "stage": "request.validation",
+              "path": "/thinking/display",
+              "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+              "suggestion": "correct the request thinking.display or its declared mapping"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /thinking/display: display requires a thinking mode and must be summarized, omitted or updates",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "",
+                  "stage": "request.validation",
+                  "path": "/thinking/display",
+                  "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+                  "suggestion": "correct the request thinking.display or its declared mapping"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /thinking/display: display requires a thinking mode and must be summarized, omitted or updates",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/thinking/display",
+              "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /thinking/display: display requires a thinking mode and must be summarized, omitted or updates",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "claude",
+                    "wireVersion": "v2",
+                    "definitionId": "anthropic-messages",
+                    "revision": "2.1.7"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/thinking/display",
+                  "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /thinking/display: display requires a thinking mode and must be summarized, omitted or updates",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/thinking/display",
+                      "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+                      "suggestion": ""
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "type": "*protocol.mappingError",
+                    "text": "/thinking/display: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': 'anyOf' failed\n  - at '': got array, want null\n  - at '': got array, want string",
+                    "children": [
+                      {
+                        "type": "*fmt.wrapError",
+                        "text": "/thinking/display: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': 'anyOf' failed\n  - at '': got array, want null\n  - at '': got array, want string",
+                        "children": [
+                          {
+                            "type": "*jsonschema.ValidationError",
+                            "text": "jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': 'anyOf' failed\n  - at '': got array, want null\n  - at '': got array, want string"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestAnthropicPackageDraftMigration/reasoning/reject-effort-none": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /output_config/effort: effort cannot disable thinking; use thinking.type",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_event",
+              "stage": "stream",
+              "path": "/output_config/effort",
+              "reason": "effort cannot disable thinking; use thinking.type",
+              "suggestion": "correct the upstream stream or declared /output_config/effort rule"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /output_config/effort: effort cannot disable thinking; use thinking.type",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "decode_event",
+                  "stage": "stream",
+                  "path": "/output_config/effort",
+                  "reason": "effort cannot disable thinking; use thinking.type",
+                  "suggestion": "correct the upstream stream or declared /output_config/effort rule"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /output_config/effort: effort cannot disable thinking; use thinking.type",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/output_config/effort",
+              "reason": "effort cannot disable thinking; use thinking.type",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /output_config/effort: effort cannot disable thinking; use thinking.type",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "claude",
+                    "wireVersion": "v2",
+                    "definitionId": "anthropic-messages",
+                    "revision": "2.1.7"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/output_config/effort",
+                  "reason": "effort cannot disable thinking; use thinking.type",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /output_config/effort: effort cannot disable thinking; use thinking.type",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/output_config/effort",
+                      "reason": "effort cannot disable thinking; use thinking.type",
+                      "suggestion": ""
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestAnthropicPackageDraftMigration/reasoning/reject-missing-budget": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /thinking/budget_tokens: manual thinking requires an integer budget of at least 1024",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_event",
+              "stage": "stream",
+              "path": "/thinking/budget_tokens",
+              "reason": "manual thinking requires an integer budget of at least 1024",
+              "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /thinking/budget_tokens: manual thinking requires an integer budget of at least 1024",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "decode_event",
+                  "stage": "stream",
+                  "path": "/thinking/budget_tokens",
+                  "reason": "manual thinking requires an integer budget of at least 1024",
+                  "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /thinking/budget_tokens: manual thinking requires an integer budget of at least 1024",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/thinking/budget_tokens",
+              "reason": "manual thinking requires an integer budget of at least 1024",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /thinking/budget_tokens: manual thinking requires an integer budget of at least 1024",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "claude",
+                    "wireVersion": "v2",
+                    "definitionId": "anthropic-messages",
+                    "revision": "2.1.7"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/thinking/budget_tokens",
+                  "reason": "manual thinking requires an integer budget of at least 1024",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /thinking/budget_tokens: manual thinking requires an integer budget of at least 1024",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/thinking/budget_tokens",
+                      "reason": "manual thinking requires an integer budget of at least 1024",
+                      "suggestion": ""
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "type": "*errors.errorString",
+                    "text": "/thinking/budget_tokens is missing"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestAnthropicPackageDraftMigration/reasoning/reject-missing-mode": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /thinking/type: unknown thinking type",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_event",
+              "stage": "stream",
+              "path": "/thinking/type",
+              "reason": "unknown thinking type",
+              "suggestion": "correct the upstream stream or declared /thinking/type rule"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /thinking/type: unknown thinking type",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "decode_event",
+                  "stage": "stream",
+                  "path": "/thinking/type",
+                  "reason": "unknown thinking type",
+                  "suggestion": "correct the upstream stream or declared /thinking/type rule"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /thinking/type: unknown thinking type",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/thinking/type",
+              "reason": "unknown thinking type",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /thinking/type: unknown thinking type",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "claude",
+                    "wireVersion": "v2",
+                    "definitionId": "anthropic-messages",
+                    "revision": "2.1.7"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/thinking/type",
+                  "reason": "unknown thinking type",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /thinking/type: unknown thinking type",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/thinking/type",
+                      "reason": "unknown thinking type",
+                      "suggestion": ""
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "type": "*errors.errorString",
+                    "text": "/thinking/type is missing"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestAnthropicPackageDraftMigration/reasoning/reject-null-budget": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /thinking/budget_tokens: manual thinking requires an integer budget of at least 1024",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_event",
+              "stage": "stream",
+              "path": "/thinking/budget_tokens",
+              "reason": "manual thinking requires an integer budget of at least 1024",
+              "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /thinking/budget_tokens: manual thinking requires an integer budget of at least 1024",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "decode_event",
+                  "stage": "stream",
+                  "path": "/thinking/budget_tokens",
+                  "reason": "manual thinking requires an integer budget of at least 1024",
+                  "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /thinking/budget_tokens: manual thinking requires an integer budget of at least 1024",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/thinking/budget_tokens",
+              "reason": "manual thinking requires an integer budget of at least 1024",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /thinking/budget_tokens: manual thinking requires an integer budget of at least 1024",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "claude",
+                    "wireVersion": "v2",
+                    "definitionId": "anthropic-messages",
+                    "revision": "2.1.7"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/thinking/budget_tokens",
+                  "reason": "manual thinking requires an integer budget of at least 1024",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /thinking/budget_tokens: manual thinking requires an integer budget of at least 1024",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/thinking/budget_tokens",
+                      "reason": "manual thinking requires an integer budget of at least 1024",
+                      "suggestion": ""
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestAnthropicPackageDraftMigration/reasoning/reject-scalar-output-config": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /parameters/anthropic_output_config: thinking controls must be an object or null",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_event",
+              "stage": "stream",
+              "path": "/parameters/anthropic_output_config",
+              "reason": "thinking controls must be an object or null",
+              "suggestion": "correct the upstream stream or declared /parameters/anthropic_output_config rule"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /parameters/anthropic_output_config: thinking controls must be an object or null",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "decode_event",
+                  "stage": "stream",
+                  "path": "/parameters/anthropic_output_config",
+                  "reason": "thinking controls must be an object or null",
+                  "suggestion": "correct the upstream stream or declared /parameters/anthropic_output_config rule"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /output_config: thinking controls must be an object or null",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/output_config",
+              "reason": "thinking controls must be an object or null",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /output_config: thinking controls must be an object or null",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "claude",
+                    "wireVersion": "v2",
+                    "definitionId": "anthropic-messages",
+                    "revision": "2.1.7"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/output_config",
+                  "reason": "thinking controls must be an object or null",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /output_config: thinking controls must be an object or null",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/output_config",
+                      "reason": "thinking controls must be an object or null",
+                      "suggestion": ""
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "type": "*protocol.mappingError",
+                    "text": "/output_config: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': got boolean, want object",
+                    "children": [
+                      {
+                        "type": "*fmt.wrapError",
+                        "text": "/output_config: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': got boolean, want object",
+                        "children": [
+                          {
+                            "type": "*jsonschema.ValidationError",
+                            "text": "jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': got boolean, want object"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestAnthropicPackageDraftMigration/reasoning/reject-small-budget": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /thinking/budget_tokens: manual thinking requires an integer budget of at least 1024",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_event",
+              "stage": "stream",
+              "path": "/thinking/budget_tokens",
+              "reason": "manual thinking requires an integer budget of at least 1024",
+              "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /thinking/budget_tokens: manual thinking requires an integer budget of at least 1024",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "decode_event",
+                  "stage": "stream",
+                  "path": "/thinking/budget_tokens",
+                  "reason": "manual thinking requires an integer budget of at least 1024",
+                  "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /thinking/budget_tokens: manual thinking requires an integer budget of at least 1024",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/thinking/budget_tokens",
+              "reason": "manual thinking requires an integer budget of at least 1024",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /thinking/budget_tokens: manual thinking requires an integer budget of at least 1024",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "claude",
+                    "wireVersion": "v2",
+                    "definitionId": "anthropic-messages",
+                    "revision": "2.1.7"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/thinking/budget_tokens",
+                  "reason": "manual thinking requires an integer budget of at least 1024",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /thinking/budget_tokens: manual thinking requires an integer budget of at least 1024",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/thinking/budget_tokens",
+                      "reason": "manual thinking requires an integer budget of at least 1024",
+                      "suggestion": ""
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestAnthropicPackageDraftMigration/reasoning/reject-unknown-display": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /thinking/display: display requires a thinking mode and must be summarized, omitted or updates",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_request",
+              "stage": "request.validation",
+              "path": "/thinking/display",
+              "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+              "suggestion": "correct the request thinking.display or its declared mapping"
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /thinking/display: display requires a thinking mode and must be summarized, omitted or updates",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "",
+                    "wireVersion": "",
+                    "definitionId": "",
+                    "revision": ""
+                  },
+                  "direction": "",
+                  "stage": "request.validation",
+                  "path": "/thinking/display",
+                  "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+                  "suggestion": "correct the request thinking.display or its declared mapping"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /thinking/display: display requires a thinking mode and must be summarized, omitted or updates",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "claude",
+                "wireVersion": "v2",
+                "definitionId": "anthropic-messages",
+                "revision": "2.1.7"
+              },
+              "direction": "decode_request",
+              "stage": "wire",
+              "path": "/thinking/display",
+              "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+              "suggestion": ""
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /thinking/display: display requires a thinking mode and must be summarized, omitted or updates",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "claude",
+                    "wireVersion": "v2",
+                    "definitionId": "anthropic-messages",
+                    "revision": "2.1.7"
+                  },
+                  "direction": "decode_request",
+                  "stage": "wire",
+                  "path": "/thinking/display",
+                  "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+                  "suggestion": ""
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.ConversionError",
+                "text": "invalid_input at /thinking/display: display requires a thinking mode and must be summarized, omitted or updates",
+                "conversion": {
+                  "candidateOnly": false,
+                  "issues": [
+                    {
+                      "code": "invalid_input",
+                      "severity": "error",
+                      "protocol": {
+                        "family": "",
+                        "wireVersion": "",
+                        "definitionId": "",
+                        "revision": ""
+                      },
+                      "direction": "",
+                      "stage": "wire",
+                      "path": "/thinking/display",
+                      "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+                      "suggestion": ""
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "type": "*protocol.mappingError",
+                    "text": "/thinking/display: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': 'anyOf' failed\n  - at '': got string, want null\n  - at '': value must be one of 'summarized', 'omitted', 'updates'",
+                    "children": [
+                      {
+                        "type": "*fmt.wrapError",
+                        "text": "/thinking/display: jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': 'anyOf' failed\n  - at '': got string, want null\n  - at '': value must be one of 'summarized', 'omitted', 'updates'",
+                        "children": [
+                          {
+                            "type": "*jsonschema.ValidationError",
+                            "text": "jsonschema validation failed with 'urn:elysia:runtime-schema#'\n- at '': 'anyOf' failed\n  - at '': got string, want null\n  - at '': value must be one of 'summarized', 'omitted', 'updates'"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
+    },
+    "TestChatPackageDraftMigration/boundary/usage-details": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/native/source/path",
+          "legacy": "\"/choices/0/message/0\"",
+          "draft": "\"/choices/0/message\""
+        },
+        {
+          "path": "/content/0/source/path",
+          "legacy": "\"/choices/0/message/0\"",
+          "draft": "\"/choices/0/message\""
+        }
+      ]
+    },
+    "TestChatPackageDraftMigration/cache-creation-decode-response": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/native/source/path",
+          "legacy": "\"/choices/0/message/0\"",
+          "draft": "\"/choices/0/message\""
+        },
+        {
+          "path": "/content/0/source/path",
+          "legacy": "\"/choices/0/message/0\"",
+          "draft": "\"/choices/0/message\""
+        }
+      ]
+    },
+    "TestChatPackageDraftMigration/cache-creation-missing-decode-response": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/native/source/path",
+          "legacy": "\"/choices/0/message/0\"",
+          "draft": "\"/choices/0/message\""
+        },
+        {
+          "path": "/content/0/source/path",
+          "legacy": "\"/choices/0/message/0\"",
+          "draft": "\"/choices/0/message\""
+        }
+      ]
+    },
+    "TestChatPackageDraftMigration/document-decode": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/payload/data",
+          "legacy": "\"AAAA\"",
+          "draft": "\"data:application/pdf;base64,AAAA\""
+        },
+        {
+          "path": "/content/0/children/0/payload/mime",
+          "legacy": "\"application/pdf\"",
+          "draft": null
+        }
+      ]
+    },
+    "TestChatPackageDraftMigration/reasoning-response-decode": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/native/source/path",
+          "legacy": "\"/choices/0/message/0\"",
+          "draft": "\"/choices/0/message\""
+        },
+        {
+          "path": "/content/0/source/path",
+          "legacy": "\"/choices/0/message/0\"",
+          "draft": "\"/choices/0/message\""
+        }
+      ]
+    },
+    "TestChatPackageDraftMigration/text-decode-response": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/native/source/path",
+          "legacy": "\"/choices/0/message/0\"",
+          "draft": "\"/choices/0/message\""
+        },
+        {
+          "path": "/content/0/source/path",
+          "legacy": "\"/choices/0/message/0\"",
+          "draft": "\"/choices/0/message\""
+        }
+      ]
+    },
+    "TestChatPackageDraftMigration/tool-decode-response": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/native/source/path",
+          "legacy": "\"/choices/0/message/0/tool_calls/0\"",
+          "draft": "\"/choices/0/message/tool_calls/0\""
+        },
+        {
+          "path": "/content/0/children/0/source/path",
+          "legacy": "\"/choices/0/message/0/tool_calls/0\"",
+          "draft": "\"/choices/0/message/tool_calls/0\""
+        },
+        {
+          "path": "/content/0/native/source/path",
+          "legacy": "\"/choices/0/message/0\"",
+          "draft": "\"/choices/0/message\""
+        },
+        {
+          "path": "/content/0/source/path",
+          "legacy": "\"/choices/0/message/0\"",
+          "draft": "\"/choices/0/message\""
+        }
+      ]
+    }
+  }
+}
