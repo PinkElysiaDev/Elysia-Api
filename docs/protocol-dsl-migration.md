@@ -127,3 +127,11 @@ typed 的既有 JSON 规范化与原请求原字节协调分开处理；操作�
 161 项全部通过、无跳过。原失败输出保留，不计为生产回归。日志位于
 `.tmp-dev/protocol-dsl-2026-10-29/checks/encoding-*`。
 后续原语和草案提交的定向检查不能替代最终稳定提交的全工程验收。
+
+诊断调查发现旧共享 `streamIssue` 固定填写 DecodeEvent，导致七种 Anthropic 请求
+reasoning 错误被标为流事件错误；其他差异涉及 caller 的空阶段、is_error 的普通错误包装，
+以及 display 的 request.validation 阶段和建议。现有 WireAssertion 固定报告 wire，
+仅改变 JSON 不能让所有诊断逐字一致。该旧错标是否独立修复已向用户澄清；决定前保留
+生产行为，不在 DSL 中加入专门伪装错误方向的供应商补丁。
+当前单故障差分也不能证明多故障首错一致：Spec 先于 Mapping 的执行顺序仍须与旧请求缓存、
+逐消息解析、tools 和 reasoning 的验证次序核对，不能只根据两边都拒绝解除迁移门槛。
