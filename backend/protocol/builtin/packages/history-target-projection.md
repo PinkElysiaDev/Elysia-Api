@@ -1,8 +1,8 @@
 # 历史保留意图的目标侧声明接入
 
-本切片只把既有 `request_field` 处置接入三个未启用的真实草案。来源仍是
-`protocol/testdata/history/anthropic.json` 的有限值原型；完整 Anthropic 草案尚未将
-context_management 提取为核心 HistoryRetention，不能据此宣称四协议全链路已迁移。
+目标侧先用 `protocol/testdata/history/anthropic.json` 的有限值原型完成接入；现在验证来源改为
+真实 `anthropic.draft.json`，仅识别两个已声明的完整 keep-all 变体。所有文件仍是未启用草案，
+这条有限路径不能用于宣称四协议所有 context_management 语义已经迁移。
 
 ## 声明与执行边界
 
@@ -22,7 +22,7 @@ ReasoningIntent 字段。Chat/Responses 的拒绝同样不依赖兼容或严格�
 
 ## 垂直验证
 
-`TestPackageDraftHistoryTargets` 直接编译真实的三个目标草案，未安装 codec 模块。
+`TestPackageDraftHistoryTargets` 直接编译真实 Anthropic 来源及三个目标草案，未安装 codec 模块。
 一个来源请求分别执行三个目标、兼容/严格模式共六个子测试，检查：
 
 - Gemini 完整渲染 contents、generationConfig，与预期正文一致。
@@ -34,6 +34,10 @@ ReasoningIntent 字段。Chat/Responses 的拒绝同样不依赖兼容或严格�
 这组测试不替代来源 whole-value 识别、所有字段 owner 覆盖和完整协议验收。生产旧规则的诊断
 位于 `/wire:claude/context_management`，本声明使用 `/reasoning/historyRetention`；此处没有把
 两套诊断称为字节等价，也没有更改已有差分账本。
+
+来源升级后的六项矩阵与 `TestAnthropicPackageHistoryOwner`、原 Anthropic 迁移差分一同通过
+定向验证。源侧已识别字段的 core1→core2 表示移动及无 Native 时的规范输出，详见本目录
+[Anthropic 说明](README.md#historyretention-的显式核心表示迁移)。
 
 ## 已修复的基线集成回退
 
@@ -50,11 +54,11 @@ for native replay`。
 授权回调不重复执行，调用者 Native 不被写入新状态。原始基线确有历史控制时仍拒绝未经证明的
 恢复；缓存独立的精确 workspace 规则没有放宽。
 
-旧差分样例与六项目标矩阵已通过 protocol/builtin 全量；既有期望和差异账本未改。
+该基线修复阶段的旧差分样例与六项原型来源矩阵已通过 protocol/builtin 全量；既有期望和差异账本未改。
 原失败证据保留在 `.tmp-dev/protocol-dsl-2026-10-29/history-target-native-baseline-failure.log`。
 这项基础设施修复没有把供应商策略移入 Go：Gemini 默认满足以及 Chat/Responses 拒绝仍由
 三个目标 JSON 声明决定。
 
-此外，三个目标草案尚未完整拒绝未映射的其他族 `wire:*` 字段。一个没有被来源原型识别的
-context_management 不能借此 default 获得删除授权。完整源草案的 owner 提取与未映射保护
-仍是后续独立工作，本切片不作为生产激活证据。
+此外，三个目标草案尚未完整拒绝未映射的其他族 `wire:*` 字段。没有被来源完整值声明识别的
+context_management 不能借此 default 获得删除授权。源侧未匹配值仍完整保留，目标侧未映射
+owner 保护仍是后续独立工作，本切片不作为生产激活证据。

@@ -9,8 +9,8 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
-// The source remains the existing finite-value prototype. This fixture proves
-// target policy and rendering, not migration of the full Anthropic decoder.
+// Real package declarations supply both the source owner and target policy.
+// Unknown wire owners remain outside this recognized-history fixture.
 func TestPackageDraftHistoryTargets(t *testing.T) {
 	compiler, err := p.NewCompiler(p.DefaultLimits(), nil, nil)
 	if err != nil {
@@ -28,7 +28,7 @@ func TestPackageDraftHistoryTargets(t *testing.T) {
 		}
 		return compiled
 	}
-	source := load(filepath.Join("..", "testdata", "history", "anthropic.json"))
+	source := load(filepath.Join("packages", "anthropic.draft.json"))
 	options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
 	request, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"}],"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}}`), options)
 	if err != nil {

@@ -7,6 +7,8 @@
 迁移基线是现有 dev.78 Anthropic codec，目标是保持当前接受行为、核心语义和原生保真。
 使用现有样例和合成边界做差分；不读取私人请求，不调用供应商。
 核心 schemaVersion 1→2 是声明格式迁移的显式差异，不是业务期望值修改。
+独立的 history owner 切片另有明确的核心表示迁移：已识别的 keep-all 控制从 wire 参数移动到
+HistoryRetention。该切片不使用下述既有样例的“仅适配版本号”比较口径。
 
 ## 已写入候选的内容
 
@@ -21,6 +23,7 @@
   interleaved 只读取可信 runtime 元信息，普通 context Values 不能覆盖。
 - server/opaque 工具通过 `replay_native` 回放原生字段，再用当前 name/cache_control 重建可编辑字段；
   `native_matches` 识别原生 inline system 的消息位置，渲染保留当前数组顺序及子内容。
+- context_management 的两个完整 keep-all 变体映射到 HistoryRetention；未匹配值完整留在原 wire owner。
 - 请求渲染的对应字段，以及响应主体、终止原因、精确 int64 usage 加减的初稿。
 
 这些内容尚不能组成一个完整替代协议。不得把文件存在、编译通过或部分样例通过写成迁移完成。
@@ -89,6 +92,36 @@ errors.errorString cause，旧侧没有。本次各层 CandidateOnly 均为 fals
 
 台账检查通过只表示本批已覆盖场景没有偏离记录；**不表示上述 11 个未闭合场景通过了错误链或行为等价验收**。
 未运行本草案的性能验收。
+
+## HistoryRetention 的显式核心表示迁移
+
+`TestAnthropicPackageHistoryOwner` 独立验证有限值 owner，不扩大旧差分的忽略名单：
+
+| 表示 | core1 旧 codec | core2 候选 |
+|---|---|---|
+| 已识别的完整 keep-all 控制 | `parameters["wire:claude"].context_management` | `reasoning.historyRetention:"all"` |
+| 未匹配的控制 | 原 wire 参数 | 原 wire 参数，完整保留 |
+| 原始请求表示 | 根 Native | 根 Native，保留原字节与所用别名 |
+
+已识别范围仅为一个 `clear_thinking_20251015` edit，keep 为字符串 `all` 或仅含 `type:"all"`
+的对象，且 context_management 没有其他成员。转义拼写和字段顺序由 JSON 值相等处理；
+任何额外属性或 edit 都不能被局部匹配后删除。
+
+生成控制仍由原 `decode-reasoning` 负责，history 在独立组合表达式中加入。这避免 history-only
+请求改变空/null thinking 与 output_config 桶的旧早退行为。未知 wire owner 继续按原空对象规则省略，
+不会为满足证明器而创建空 `wire:claude`，完整请求/工具/消息程序也没有复制成两份。
+
+六组已知表示测试将字段移动明确写入 core2 期望，再比较其余全部公开核心与 Native；同时检查
+原生字节往返、修改 model、删除历史意图和去掉根 Native 后的渲染。最后一种情况使用声明的规范
+字符串变体，不能称为与旧对象/转义别名逐字节相同。七种未匹配形态仍做完整旧/新核心比较、
+原生往返和无根 Native 编码差分；canonical 与 unmatched 同时存在时拒绝。
+
+这 14 个场景及升级为真实源的六项目标/模式矩阵已通过定向验证；原有 Anthropic 迁移差分也
+保持通过，原静态诊断账本没有改动。这里的已知 owner 测试明确验证表示迁移，不计作旧核心字段
+逐字节相等的新增样例。
+
+真实源已接入[目标侧历史处置测试](history-target-projection.md)。该有限路径不证明未知 wire owner
+在跨协议目标端已经受到完整保护，也不替代其他 context_management 语义的声明。
 
 后续先完成请求方向的关联、保护和原生边界，再补全响应及其 wire contract。
 四方向及原有能力完成回归、证据和性能验收后，才考虑接入生产预置加载。

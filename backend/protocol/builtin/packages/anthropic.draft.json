@@ -1690,7 +1690,8 @@
       "reasoning": true,
       "reasoning.signatures": true,
       "reasoning.encrypted": true,
-      "usage": true
+      "usage": true,
+      "reasoning.history_retention": true
     },
     "expressions": {
       "decode-block": {
@@ -4667,7 +4668,8 @@
                           "stream",
                           "metadata",
                           "thinking",
-                          "output_config"
+                          "output_config",
+                          "context_management"
                         ],
                         "policy": "exclude"
                       },
@@ -4740,6 +4742,15 @@
                             "otherwise": {
                               "op": "omit"
                             }
+                          }
+                        }
+                      },
+                      {
+                        "op": "object",
+                        "fields": {
+                          "context_management": {
+                            "op": "ref",
+                            "ref": "decode-unmatched-history"
                           }
                         }
                       }
@@ -7657,6 +7668,157 @@
           "op": "literal",
           "value": false
         }
+      },
+      "is-history-retained": {
+        "op": "any",
+        "items": [
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/context_management"
+              },
+              {
+                "op": "literal",
+                "value": {
+                  "edits": [
+                    {
+                      "type": "clear_thinking_20251015",
+                      "keep": "all"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/context_management"
+              },
+              {
+                "op": "literal",
+                "value": {
+                  "edits": [
+                    {
+                      "type": "clear_thinking_20251015",
+                      "keep": {
+                        "type": "all"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "decode-history-retention": {
+        "op": "if",
+        "when": {
+          "op": "ref",
+          "ref": "is-history-retained"
+        },
+        "then": {
+          "op": "literal",
+          "value": "all"
+        }
+      },
+      "decode-unmatched-history": {
+        "op": "if",
+        "when": {
+          "op": "ref",
+          "ref": "is-history-retained"
+        },
+        "then": {
+          "op": "omit"
+        },
+        "otherwise": {
+          "op": "read",
+          "from": "input",
+          "path": "/context_management"
+        }
+      },
+      "decode-request-reasoning": {
+        "op": "let",
+        "name": "generation-reasoning",
+        "source": {
+          "op": "ref",
+          "ref": "decode-reasoning"
+        },
+        "body": {
+          "op": "let",
+          "name": "combined-reasoning",
+          "source": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "generation-reasoning"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "generation-reasoning"
+                },
+                "otherwise": {
+                  "op": "object",
+                  "fields": {}
+                }
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "historyRetention": {
+                    "op": "ref",
+                    "ref": "decode-history-retention"
+                  }
+                }
+              }
+            ]
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "combined-reasoning"
+                },
+                {
+                  "op": "object",
+                  "fields": {}
+                }
+              ]
+            },
+            "then": {
+              "op": "omit"
+            },
+            "otherwise": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "combined-reasoning"
+            }
+          }
+        }
       }
     },
     "directions": {
@@ -7699,7 +7861,7 @@
             },
             "reasoning": {
               "op": "ref",
-              "ref": "decode-reasoning"
+              "ref": "decode-request-reasoning"
             }
           }
         },
@@ -7717,6 +7879,44 @@
                 "path": "/model"
               }
             }
+          },
+          {
+            "id": "history-retention",
+            "kind": "aggregate",
+            "path": "/reasoning/historyRetention",
+            "target": "/context_management",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/context_management"
+              }
+            },
+            "valueMapping": {
+              "value": "all",
+              "variants": [
+                {
+                  "edits": [
+                    {
+                      "type": "clear_thinking_20251015",
+                      "keep": "all"
+                    }
+                  ]
+                },
+                {
+                  "edits": [
+                    {
+                      "type": "clear_thinking_20251015",
+                      "keep": {
+                        "type": "all"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "unmatched": "/parameters/wire:claude/context_management"
+            }
           }
         ],
         "capabilities": {
@@ -7729,7 +7929,8 @@
           "tools.server": true,
           "reasoning": true,
           "reasoning.signatures": true,
-          "reasoning.encrypted": true
+          "reasoning.encrypted": true,
+          "reasoning.history_retention": true
         }
       },
       "encode_request": {
@@ -7803,6 +8004,33 @@
                 "output_config": {
                   "op": "ref",
                   "ref": "encode-output-config"
+                },
+                "context_management": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/historyRetention"
+                    }
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": {
+                      "edits": [
+                        {
+                          "type": "clear_thinking_20251015",
+                          "keep": "all"
+                        }
+                      ]
+                    }
+                  },
+                  "otherwise": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/wire:claude/context_management"
+                  }
                 }
               }
             },
@@ -7886,9 +8114,16 @@
                 }
               },
               "then": {
-                "op": "read",
-                "from": "input",
-                "path": "/parameters/wire:claude"
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/wire:claude"
+                },
+                "keys": [
+                  "context_management"
+                ],
+                "policy": "exclude"
               },
               "otherwise": {
                 "op": "object",
@@ -7934,6 +8169,44 @@
               ]
             },
             "reason": "Anthropic has no equivalent request-level resource reference."
+          },
+          {
+            "id": "history-retention",
+            "kind": "aggregate",
+            "path": "/reasoning/historyRetention",
+            "target": "/context_management",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/historyRetention"
+              }
+            },
+            "valueMapping": {
+              "value": "all",
+              "variants": [
+                {
+                  "edits": [
+                    {
+                      "type": "clear_thinking_20251015",
+                      "keep": "all"
+                    }
+                  ]
+                },
+                {
+                  "edits": [
+                    {
+                      "type": "clear_thinking_20251015",
+                      "keep": {
+                        "type": "all"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "unmatched": "/parameters/wire:claude/context_management"
+            }
           }
         ],
         "capabilities": {
@@ -7946,7 +8219,8 @@
           "tools.server": true,
           "reasoning": true,
           "reasoning.signatures": true,
-          "reasoning.encrypted": true
+          "reasoning.encrypted": true,
+          "reasoning.history_retention": true
         }
       },
       "decode_response": {
