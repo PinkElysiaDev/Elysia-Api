@@ -931,6 +931,7 @@
     "docs/protocol-dsl-migration.md",
     "docs/protocol-dsl-performance-2026-10-30.md",
     "docs/protocol-dsl-primitives.md",
+    "docs/protocol-dsl-streams.md",
     "docs/protocol-editor-v2.md",
     "docs/protocol-gateway-v2.md",
     "docs/protocol-guide.en.md",
