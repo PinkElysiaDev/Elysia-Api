@@ -44,7 +44,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	switch expression.op {
 	case "omit", "literal", "read", "object", "project", "array", "map", "flatmap", "filter", "if", "choose",
 		"merge", "concat", "join", "sort", "associate", "parse_json", "stringify_json",
-		"exists", "present", "not", "enum", "cast", "strip_prefix", "trim_prefix", "equal", "all", "any":
+		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "equal", "all", "any":
 	default:
 		return nil, false
 	}
@@ -143,6 +143,10 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.buildJSONScalar(state)
 	case "exists", "present", "not", "enum", "cast", "strip_prefix", "trim_prefix":
 		return plan.buildScalar(state)
+	case "type", "is_integer":
+		return plan.buildTypeQuery(state)
+	case "integer":
+		return plan.buildInteger(state)
 	case "equal", "all", "any":
 		return plan.buildScalarOperands(state)
 	case "map", "flatmap":

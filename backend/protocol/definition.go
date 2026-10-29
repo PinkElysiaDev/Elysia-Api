@@ -229,6 +229,7 @@ type ValueSchema struct {
 type Expression struct {
 	present   map[string]bool
 	Op        string                `json:"op"`
+	Operation string                `json:"operation,omitempty"`
 	From      string                `json:"from,omitempty"`
 	Path      string                `json:"path,omitempty"`
 	Value     Value                 `json:"value,omitzero"`

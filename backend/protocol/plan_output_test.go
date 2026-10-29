@@ -183,9 +183,16 @@ func TestOutputPlanCoversCatalog(t *testing.T) {
 		if operation.Name == "ref" {
 			continue // References are expanded before plan compilation.
 		}
-		if _, ok := compileOutputPlan(&compiledExpression{op: operation.Name}); !ok {
-			t.Fatal("catalog operation has no compiled plan", operation.Name)
+		group := "historical"
+		switch operation.Name {
+		case "type", "is_integer", "integer":
+			group = "plan-only"
 		}
+		t.Run(group+"/"+operation.Name, func(t *testing.T) {
+			if _, ok := compileOutputPlan(&compiledExpression{op: operation.Name}); !ok {
+				t.Fatal("catalog operation has no compiled plan", operation.Name)
+			}
+		})
 	}
 }
 

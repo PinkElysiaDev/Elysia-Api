@@ -12,6 +12,7 @@ import (
 
 type compiledExpression struct {
 	op                                  string
+	operation                           string
 	path                                string
 	pointer                             []string
 	from                                string
@@ -98,7 +99,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		delete(compiler.resolving, expression.Ref)
 		return compiled, err
 	}
-	compiled := &compiledExpression{op: expression.Op, path: path, from: expression.From, value: expression.Value, to: expression.To, policy: expression.Policy, isRequired: expression.Required, result: operation.Result}
+	compiled := &compiledExpression{op: expression.Op, operation: expression.Operation, path: path, from: expression.From, value: expression.Value, to: expression.To, policy: expression.Policy, isRequired: expression.Required, result: operation.Result}
 	if compiled.op == "read" {
 		pointer, err := parsePointer(expression.Path)
 		if err != nil {
@@ -332,6 +333,29 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 	case "equal":
 		if len(expression.items) != 2 {
 			return fail("equal requires exactly two operands")
+		}
+	case "integer":
+		switch expression.operation {
+		case "add":
+			if len(expression.items) < 2 {
+				return fail("integer add requires at least two operands")
+			}
+			expression.result = IntegerType
+		case "subtract", "lt", "lte", "gt", "gte":
+			if len(expression.items) != 2 {
+				return fail("integer " + expression.operation + " requires exactly two operands")
+			}
+			expression.result = BooleanType
+			if expression.operation == "subtract" {
+				expression.result = IntegerType
+			}
+		default:
+			return fail("integer operation must be add, subtract, lt, lte, gt or gte")
+		}
+		for _, item := range expression.items {
+			if !isAssignable(item.result, NumberType) {
+				return fail("integer operands must produce numbers")
+			}
 		}
 	case "all", "any":
 		for _, item := range expression.items {
