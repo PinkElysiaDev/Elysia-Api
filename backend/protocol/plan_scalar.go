@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const scalarOperandCapacity = 2
+
 func plannedLeaf(value Value) plannedOutput {
 	return plannedOutput{JSONLeaf(value), value.Len()}
 }
@@ -108,7 +110,15 @@ func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, er
 }
 
 func (plan *compiledOutputPlan) buildScalarOperands(state evaluation) (plannedOutput, error) {
-	operands, err := plan.buildOperandValues(state)
+	var operands []plannedOutput
+	var err error
+	if len(plan.items) <= scalarOperandCapacity {
+		var storage [scalarOperandCapacity]plannedOutput
+		operands = storage[:len(plan.items)]
+		err = plan.buildOperandValuesInto(state, operands)
+	} else {
+		operands, err = plan.buildOperandValues(state)
+	}
 	if err != nil {
 		return plannedOutput{}, err
 	}

@@ -13,23 +13,31 @@ func (plan *compiledOutputPlan) buildOperands(state evaluation) (plannedOutput, 
 	return concatPlannedArrays(operands, state.budget.limits.Nodes)
 }
 
-func (plan *compiledOutputPlan) buildOperandValues(state evaluation) ([]plannedOutput, error) {
-	operands := make([]plannedOutput, 0, len(plan.items))
+func (plan *compiledOutputPlan) buildOperandValues(state evaluation) (operands []plannedOutput, err error) {
+	operands = make([]plannedOutput, len(plan.items))
+	err = plan.buildOperandValuesInto(state, operands)
+	if err != nil {
+		operands = nil
+	}
+	return
+}
+
+func (plan *compiledOutputPlan) buildOperandValuesInto(state evaluation, operands []plannedOutput) error {
 	logicalBytes := 0
 	// Evaluate all operands before checking their container types or collisions,
 	// preserving the expression evaluator's first-error order.
-	for _, item := range plan.items {
+	for index, item := range plan.items {
 		value, err := item.build(state)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		logicalBytes += value.bytes + 1
 		if logicalBytes > state.budget.limits.BufferBytes {
-			return nil, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, logicalBytes)
+			return resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, logicalBytes)
 		}
-		operands = append(operands, value)
+		operands[index] = value
 	}
-	return operands, nil
+	return nil
 }
 
 func (plan *compiledOutputPlan) mergeObjects(operands []plannedOutput) (plannedOutput, error) {
