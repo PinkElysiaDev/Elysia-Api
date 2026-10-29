@@ -6809,6 +6809,27 @@
               ]
             },
             "reason": "Chat has no equivalent request-level resource reference."
+          },
+          {
+            "id": "history-rejection",
+            "kind": "reject",
+            "scope": "request_field",
+            "path": "/reasoning/historyRetention",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": "all"
+                }
+              ]
+            },
+            "reason": "target does not declare supplied-history retention"
           }
         ],
         "capabilities": {

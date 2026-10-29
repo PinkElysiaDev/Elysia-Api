@@ -140,6 +140,7 @@
     "backend/protocol/builtin/gemini_system_instruction_test.go",
     "backend/protocol/builtin/gemini_thinking_total_test.go",
     "backend/protocol/builtin/history_declaration_test.go",
+    "backend/protocol/builtin/history_package_projection_test.go",
     "backend/protocol/builtin/identity_after_test.go",
     "backend/protocol/builtin/instructions_test.go",
     "backend/protocol/builtin/json.go",

@@ -5300,6 +5300,28 @@
               }
             },
             "reason": "Gemini cannot encode both level and budget"
+          },
+          {
+            "id": "history-default",
+            "kind": "default",
+            "scope": "request_field",
+            "path": "/reasoning/historyRetention",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": "all"
+                }
+              ]
+            },
+            "reason": "target sends supplied history without clearing it",
+            "default": "all"
           }
         ],
         "capabilities": {
