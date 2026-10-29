@@ -55,9 +55,6 @@ func TestChatPackageDraftMigration(t *testing.T) {
 			"/content/0/children/0/native/source/path", "/content/0/children/0/source/path",
 			"/content/0/native/source/path", "/content/0/source/path",
 		}},
-		"document-decode": {reason: "data URI needs a generic no-transcoding container parser", paths: []string{
-			"/content/0/children/0/payload/data", "/content/0/children/0/payload/mime",
-		}},
 	}
 	for _, sample := range definition.Samples {
 		if sample.Direction == p.DecodeEvent || sample.Direction == p.EncodeEvent {
@@ -105,4 +102,5 @@ func TestChatPackageDraftMigration(t *testing.T) {
 			checkPackageMigration(t, want, got, wantErr, gotErr, fixture.gap)
 		})
 	}
+	checkPackageMediaURIs(t, legacy, draft, definition)
 }

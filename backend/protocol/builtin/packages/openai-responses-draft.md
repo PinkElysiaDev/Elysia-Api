@@ -4,7 +4,7 @@
 
 ## 当前声明范围
 
-- 普通消息、字符串 input、input_text/output_text、URL 图片和文件容器。
+- 普通消息、字符串 input、input_text/output_text、URL/data URI 图片和文件容器。
 - JSON 与自由文本工具声明、调用和结果；参数字符串使用已有 parse_json/stringify_json。结果名称使用调用独享的原始 JSON ID 索引，不扫描工具 arguments。
 - 服务端/opaque 工具使用已有受目标与 scope 检查的 replay_native，输出时重新叠加当前 name/cache。
 - reasoning 的 summary、content、加密资源，以及旧实现对单段可见正文的规范化。仅请求方向把 `content:null` 当作无可见数组；不把它改成空数组。
@@ -22,22 +22,24 @@
 - 带 ID、空 summary、`content:null` 和合成 encrypted_content 的 reasoning 历史。
 - 原生 instructions、字符串 input、具名函数工具选择及 effort/summary 控制。
 
-合计 **56 次比较：55 次完整相等，1 次未闭合**。16 次无根 Native 编码全部相等；这避免了仅凭原始整份重放宣称编码器等价。
+本批再使用既有图片请求形状验证一次正常 base64 data URI，确认图片也接入同一媒体表达式。
+
+合计 **57 次比较，全部完整相等**。原 document 解码差异已闭合，16 次无根 Native 编码仍全部相等。这是当前样例集合的结果，不是全部协议行为、拒绝诊断或激活验收通过。
 
 共用 helper 对正常结果比较完整输出字节、所有公开核心字段、Source 和 Native，只显式适配核心 schemaVersion 1→2。错误按完整树比较类型、文字、ConversionError 的 Issues/CandidateOnly、ResourceLimitError 字段和 Unwrap 分支。当前样例以成功路径为主，不能据此宣称全部拒绝诊断也已等价。
 
-### 尚未闭合：文件 data URI 的容器拆分
+### 已闭合：文件 data URI 的容器拆分
 
-现有 `document-decode` 中，旧实现将 `data:application/pdf;base64,AAAA` 拆成 data=`AAAA`、mime=`application/pdf`；草案暂保留完整 file_data。所以仅以下路径存在差异：
+现有 `document-decode` 原先在以下路径有差异：
 
 - `/content/0/children/0/payload/data`
 - `/content/0/children/0/payload/mime`
 
-[共用静态账本](../testdata/package-migration-gaps.json)只新增这个 Responses 场景，固定完整旧／新值，并明确区分缺失与 null。现有 Anthropic/Chat 记录未修改。首次记录来自 `d54c4552` 上的实际 codec/草案输出；原始证据留在忽略目录 `.tmp-dev/protocol-dsl-2026-10-29/responses-migration-evidence.jsonl`。
+现在图片和文件复用 `decode-media-url`，使用通用 `split_data_uri` 拆分非空 MIME 的 base64 容器，不做媒体解码或转码。空 MIME、非法 marker 保留原 URL；文件层仍保留未拆分的 file_data。缺失由声明先处理，显式 null 不被当成缺失吞掉。
 
-正常测试只读账本。新差异、记录值变化、错误树变化或差异消失都会失败，须人工审查。台账通过表示当前未闭合状态被准确固定，不是行为等价或激活证据。
+该样例已完整相等，对应 Responses 静态 gap 明确移除，旧记录仍在 Git 历史中。首次未闭合证据保留在 `.tmp-dev/protocol-dsl-2026-10-29/responses-migration-evidence.jsonl`；没有改写样例期望值。
 
-此缺口应由通用 data URI 容器原语处理：只拆结构，不解码、重压缩或转码媒体；保留普通 URL 和非匹配输入的既有行为。不应硬编码 MIME 或本样例正文。
+精简 URI 边界表集中在 Chat 的一个既有请求形状，Responses 只增加正常图片确认，不机械复制全方向测试。Chat 的 null URL 本次发现拒绝诊断差异，单独记录在其说明和静态账本中，不能据此宣称 Responses 的所有拒绝路径已验证。
 
 ## 仍须迁移的边界
 
@@ -52,4 +54,4 @@
 - Native 关闭、不同 scope、修订与映射变化下的完整输入隔离、拒绝行为和保留量验证。
 - SSE、模型发现、异步任务、WebSocket、Agent 及真实客户端验收。
 
-后续应先关闭 data URI 和原生保存独立位置问题，再补齐逐 owner 字段处理与错误/metadata 边界。本批未调用供应商，未使用私人请求，也未运行性能验收。
+后续应先处理原生保存独立位置问题，再补齐逐 owner 字段处理与错误/metadata 边界。本批未调用供应商，未使用私人请求，也未运行性能验收。

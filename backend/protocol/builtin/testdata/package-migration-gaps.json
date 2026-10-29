@@ -1576,22 +1576,6 @@
         }
       ]
     },
-    "TestChatPackageDraftMigration/document-decode": {
-      "legacyError": null,
-      "draftError": null,
-      "values": [
-        {
-          "path": "/content/0/children/0/payload/data",
-          "legacy": "\"AAAA\"",
-          "draft": "\"data:application/pdf;base64,AAAA\""
-        },
-        {
-          "path": "/content/0/children/0/payload/mime",
-          "legacy": "\"application/pdf\"",
-          "draft": null
-        }
-      ]
-    },
     "TestChatPackageDraftMigration/reasoning-response-decode": {
       "legacyError": null,
       "draftError": null,
@@ -1650,21 +1634,100 @@
         }
       ]
     },
-    "TestResponsesPackageDraftMigration/document-decode": {
-      "legacyError": null,
-      "draftError": null,
-      "values": [
-        {
-          "path": "/content/0/children/0/payload/data",
-          "legacy": "\"AAAA\"",
-          "draft": "\"data:application/pdf;base64,AAAA\""
+    "TestChatPackageDraftMigration/media-uri/null": {
+      "legacyError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /: expected string, got null",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "openai_chat",
+                "wireVersion": "v2",
+                "definitionId": "openai-chat-completions",
+                "revision": "2.2.7"
+              },
+              "direction": "decode_request",
+              "stage": "runtime",
+              "path": "/",
+              "reason": "expected string, got null",
+              "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+            }
+          ]
         },
-        {
-          "path": "/content/0/children/0/payload/mime",
-          "legacy": "\"application/pdf\"",
-          "draft": null
-        }
-      ]
+        "children": [
+          {
+            "type": "*errors.errorString",
+            "text": "expected string, got null"
+          }
+        ]
+      },
+      "draftError": {
+        "type": "*protocol.ConversionError",
+        "text": "invalid_input at /mapping/directions/decode_request/program/fields/content/body/body/@decode-request-message/items/1/otherwise/fields/children/source/items/1/otherwise/when/source/body/@decode-content/cases/array/source/body/@decode-block/items/1/cases/image_url/fields/payload/body/items/0/@decode-media-url/then/source: expected a string",
+        "conversion": {
+          "candidateOnly": false,
+          "issues": [
+            {
+              "code": "invalid_input",
+              "severity": "error",
+              "protocol": {
+                "family": "openai_chat",
+                "wireVersion": "v2",
+                "definitionId": "openai-chat-completions",
+                "revision": "2.2.7"
+              },
+              "direction": "decode_request",
+              "stage": "evaluate",
+              "path": "/mapping/directions/decode_request/program/fields/content/body/body/@decode-request-message/items/1/otherwise/fields/children/source/items/1/otherwise/when/source/body/@decode-content/cases/array/source/body/@decode-block/items/1/cases/image_url/fields/payload/body/items/0/@decode-media-url/then/source",
+              "reason": "expected a string",
+              "suggestion": "Correct the input or declared mapping and verify the revision again."
+            }
+          ]
+        },
+        "children": [
+          {
+            "type": "*protocol.ConversionError",
+            "text": "invalid_input at /mapping/directions/decode_request/program/fields/content/body/body/@decode-request-message/items/1/otherwise/fields/children/source/items/1/otherwise/when/source/body/@decode-content/cases/array/source/body/@decode-block/items/1/cases/image_url/fields/payload/body/items/0/@decode-media-url/then/source: expected a string",
+            "conversion": {
+              "candidateOnly": false,
+              "issues": [
+                {
+                  "code": "invalid_input",
+                  "severity": "error",
+                  "protocol": {
+                    "family": "openai_chat",
+                    "wireVersion": "v2",
+                    "definitionId": "openai-chat-completions",
+                    "revision": "2.2.7"
+                  },
+                  "direction": "decode_request",
+                  "stage": "evaluate",
+                  "path": "/mapping/directions/decode_request/program/fields/content/body/body/@decode-request-message/items/1/otherwise/fields/children/source/items/1/otherwise/when/source/body/@decode-content/cases/array/source/body/@decode-block/items/1/cases/image_url/fields/payload/body/items/0/@decode-media-url/then/source",
+                  "reason": "expected a string",
+                  "suggestion": "Correct the input or declared mapping and verify the revision again."
+                }
+              ]
+            },
+            "children": [
+              {
+                "type": "*protocol.mappingError",
+                "text": "expected a string",
+                "children": [
+                  {
+                    "type": "*errors.errorString",
+                    "text": "expected a string"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "values": null
     }
   }
 }

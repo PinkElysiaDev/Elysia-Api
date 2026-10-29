@@ -2380,18 +2380,32 @@
                         "value": "image"
                       },
                       "payload": {
-                        "op": "object",
-                        "fields": {
-                          "url": {
-                            "op": "read",
-                            "from": "item",
-                            "path": "/image_url"
-                          },
-                          "detail": {
-                            "op": "read",
-                            "from": "item",
-                            "path": "/detail"
-                          }
+                        "op": "let",
+                        "name": "media-url",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/image_url"
+                        },
+                        "body": {
+                          "op": "merge",
+                          "policy": "reject",
+                          "items": [
+                            {
+                              "op": "ref",
+                              "ref": "decode-media-url"
+                            },
+                            {
+                              "op": "object",
+                              "fields": {
+                                "detail": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/detail"
+                                }
+                              }
+                            }
+                          ]
                         }
                       },
                       "resources": {
@@ -2521,22 +2535,63 @@
                         "value": "document"
                       },
                       "payload": {
-                        "op": "object",
-                        "fields": {
-                          "data": {
-                            "op": "read",
-                            "from": "item",
-                            "path": "/file_data"
+                        "op": "let",
+                        "name": "media-url",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/file_data"
+                        },
+                        "body": {
+                          "op": "let",
+                          "name": "media",
+                          "source": {
+                            "op": "ref",
+                            "ref": "decode-media-url"
                           },
-                          "url": {
-                            "op": "read",
-                            "from": "item",
-                            "path": "/file_url"
-                          },
-                          "name": {
-                            "op": "read",
-                            "from": "item",
-                            "path": "/filename"
+                          "body": {
+                            "op": "object",
+                            "fields": {
+                              "data": {
+                                "op": "if",
+                                "when": {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "binding",
+                                    "path": "/mime",
+                                    "name": "media"
+                                  }
+                                },
+                                "then": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "/data",
+                                  "name": "media"
+                                },
+                                "otherwise": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/file_data"
+                                }
+                              },
+                              "mime": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/mime",
+                                "name": "media"
+                              },
+                              "url": {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/file_url"
+                              },
+                              "name": {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/filename"
+                              }
+                            }
                           }
                         }
                       },
@@ -9551,6 +9606,113 @@
             ]
           }
         ]
+      },
+      "decode-media-url": {
+        "op": "if",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "path": "",
+            "name": "media-url"
+          }
+        },
+        "then": {
+          "op": "let",
+          "name": "uri",
+          "source": {
+            "op": "split_data_uri",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "media-url"
+            }
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "/kind",
+                  "name": "uri"
+                },
+                {
+                  "op": "literal",
+                  "value": "base64"
+                }
+              ]
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/mime",
+                      "name": "uri"
+                    },
+                    {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  ]
+                }
+              },
+              "then": {
+                "op": "object",
+                "fields": {
+                  "data": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/data",
+                    "name": "uri"
+                  },
+                  "mime": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/mime",
+                    "name": "uri"
+                  }
+                }
+              },
+              "otherwise": {
+                "op": "object",
+                "fields": {
+                  "url": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "media-url"
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "object",
+              "fields": {
+                "url": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "media-url"
+                }
+              }
+            }
+          }
+        },
+        "otherwise": {
+          "op": "object",
+          "fields": {}
+        }
       }
     },
     "directions": {

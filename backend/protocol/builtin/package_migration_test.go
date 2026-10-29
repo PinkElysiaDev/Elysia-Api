@@ -45,6 +45,54 @@ type migrationGapState struct {
 	Values      []migrationValueState `json:"values"`
 }
 
+// Reuse the shipped image request shapes; exercise URI edges on one shape,
+// with one ordinary Responses image proving its declaration uses the same ref.
+func checkPackageMediaURIs(t *testing.T, legacy, draft *p.Compiled, definition p.Definition) {
+	t.Helper()
+	var sample p.Sample
+	for _, candidate := range definition.Samples {
+		if candidate.ID == "image-decode" {
+			sample = candidate
+			break
+		}
+	}
+	if sample.ID == "" {
+		t.Fatal("missing shipped image request shape")
+	}
+	for _, fixture := range []struct{ protocol, name, path, raw string }{
+		{"openai-chat-completions", "empty-mime", "/messages/0/content/0/image_url/url", `"data:;base64,AAAA"`},
+		{"openai-chat-completions", "invalid-marker", "/messages/0/content/0/image_url/url", `"data:image/png;base64;charset=utf-8,AAAA"`},
+		{"openai-chat-completions", "payload-comma", "/messages/0/content/0/image_url/url", `"data:image/png;base64,AAAA,tail"`},
+		{"openai-chat-completions", "null", "/messages/0/content/0/image_url/url", `null`},
+		{"openai-chat-completions", "missing", "/messages/0/content/0/image_url/url", ""},
+		{"openai-responses", "base64", "/input/0/content/0/image_url", `"data:image/png;base64,AAAA"`},
+	} {
+		if fixture.protocol != definition.ID {
+			continue
+		}
+		t.Run("media-uri/"+fixture.name, func(t *testing.T) {
+			mutation := p.Mutation{Op: p.DeleteValue, Path: fixture.path}
+			if fixture.raw != "" {
+				mutation.Op, mutation.Value = p.SetValue, testValue(t, fixture.raw)
+			}
+			input, err := p.ApplyMutations(sample.Input, []p.Mutation{mutation}, p.DefaultLimits())
+			if err != nil {
+				t.Fatal(err)
+			}
+			current := sample
+			current.Input = input
+			options := p.EvaluationContext{Scope: sample.Scope, Values: sample.Context}
+			want, wantErr := executePackageMigrationSample(t, legacy, current, options, false)
+			got, gotErr := executePackageMigrationSample(t, draft, current, options, true)
+			gap := packageMigrationGap{}
+			if fixture.name == "null" {
+				gap = packageMigrationGap{reason: "null media URL is rejected, but codec and DSL diagnostics differ", rejection: true}
+			}
+			checkPackageMigration(t, want, got, wantErr, gotErr, gap)
+		})
+	}
+}
+
 func checkPackageMigration(t *testing.T, want, got []byte, wantErr, gotErr error, gap packageMigrationGap) {
 	t.Helper()
 	isEqual := bytes.Equal(got, want) && migrationError(gotErr) == migrationError(wantErr)

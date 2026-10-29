@@ -50,13 +50,7 @@ func TestResponsesPackageDraftMigration(t *testing.T) {
 		t.Run(sample.ID, func(t *testing.T) {
 			want, wantErr := executePackageMigrationSample(t, legacy, sample, options, false)
 			got, gotErr := executePackageMigrationSample(t, draft, sample, options, true)
-			gap := packageMigrationGap{}
-			if sample.ID == "document-decode" {
-				gap = packageMigrationGap{reason: "data URI needs a generic no-transcoding container parser", paths: []string{
-					"/content/0/children/0/payload/data", "/content/0/children/0/payload/mime",
-				}}
-			}
-			checkPackageMigration(t, want, got, wantErr, gotErr, gap)
+			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
 		})
 		if sample.Direction == p.EncodeRequest || sample.Direction == p.EncodeResponse {
 			t.Run("without-root-native/"+sample.ID, func(t *testing.T) {
@@ -100,4 +94,5 @@ func TestResponsesPackageDraftMigration(t *testing.T) {
 			})
 		}
 	}
+	checkPackageMediaURIs(t, legacy, draft, definition)
 }
