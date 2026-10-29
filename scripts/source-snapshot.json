@@ -380,6 +380,7 @@
     "backend/protocol/package_history_mapping_test.go",
     "backend/protocol/package_history_owner.go",
     "backend/protocol/package_history_owner_test.go",
+    "backend/protocol/package_merge_guard_test.go",
     "backend/protocol/package_merge_proof.go",
     "backend/protocol/package_merge_proof_test.go",
     "backend/protocol/package_projection.go",

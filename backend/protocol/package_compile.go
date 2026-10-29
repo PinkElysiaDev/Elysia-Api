@@ -90,8 +90,12 @@ func (compiler *Compiler) CompilePackage(raw []byte) (*Compiled, []ConversionIss
 				}
 				program := compiled.mappings[direction].outputPlan.expression
 				hasProof := provesPackageEmission(program, output, input)
-				if !hasProof && effect.when == nil && !isPackageDecodeDirection(direction) {
-					hasProof = provesDeepMergeEmission(program, output, input, document.Spec.WireContracts[direction].Schema)
+				if !hasProof && !isPackageDecodeDirection(direction) {
+					if effect.when == nil {
+						hasProof = provesDeepMergeEmission(program, output, input, document.Spec.WireContracts[direction].Schema)
+					} else {
+						hasProof = provesGuardedDeepMergeEmission(program, output, input, effect.when.expression, compiler.limits.Nodes)
+					}
 				}
 				if !hasProof {
 					path := fmt.Sprintf("/mapping/directions/%s/effects/%d", direction, index)
