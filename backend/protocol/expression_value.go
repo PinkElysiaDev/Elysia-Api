@@ -16,6 +16,13 @@ func readArray(value Value) ([]Value, error) {
 }
 
 func readBoolean(value Value) (bool, error) {
+	// Conditions usually already contain a canonical boolean from the evaluator.
+	switch value.raw {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	}
 	if valueType(value) != BooleanType {
 		return false, fmt.Errorf("expected a boolean")
 	}

@@ -2,10 +2,31 @@ package protocol
 
 import (
 	"encoding/json"
+	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/bytedance/sonic"
 )
+
+func TestReadBooleanKeepsDecoderBoundaries(t *testing.T) {
+	readOriginal := func(value Value) (bool, error) {
+		if valueType(value) != BooleanType {
+			return false, fmt.Errorf("expected a boolean")
+		}
+		var result bool
+		err := value.Decode(&result)
+		return result, err
+	}
+	for _, raw := range []string{"true", "false", " \ttrue\r\n", "false ", "truefalse", "false0", "t", "f", "true\x00", "\u00a0true", "", "null", "0", `"true"`, "[]", "{}"} {
+		value := Value{raw: raw}
+		want, wantErr := readOriginal(value)
+		got, gotErr := readBoolean(value)
+		if got != want || !reflect.DeepEqual(gotErr, wantErr) {
+			t.Fatalf("%q: got %t, %v; want %t, %v", raw, got, gotErr, want, wantErr)
+		}
+	}
+}
 
 func TestExpressionOperationsAndFailureBoundaries(t *testing.T) {
 	read := readExpression("input", "")
