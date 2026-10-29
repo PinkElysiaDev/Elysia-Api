@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -150,6 +151,17 @@ func TestRequestProjectionValidationAndUnknowns(t *testing.T) {
 		{"unknown-retention", Responses, `"prompt_cache_retention":"future"`, false},
 		{"unknown-tracking", Anthropic, `"metadata":{"user_id":"u","future":true}`, false},
 		{"unknown-request", Responses, `"future":{"setting":true}`, false},
+		{"context-null", Anthropic, `"context_management":null`, false},
+		{"context-empty", Anthropic, `"context_management":{"edits":[]}`, false},
+		{"context-edit-type", Anthropic, `"context_management":{"edits":{}}`, false},
+		{"context-keep-missing", Anthropic, `"context_management":{"edits":[{"type":"clear_thinking_20251015"}]}`, false},
+		{"context-keep-finite", Anthropic, `"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":{"type":"thinking_turns","value":1}}]}`, false},
+		{"context-keep-extra", Anthropic, `"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":{"type":"all","future":true}}]}`, false},
+		{"context-edit-extra", Anthropic, `"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all","future":true}]}`, false},
+		{"context-extra", Anthropic, `"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}],"future":true}`, false},
+		{"context-mixed", Anthropic, `"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"},{"type":"clear_tool_uses_20250919"}]}`, false},
+		{"context-compact", Anthropic, `"context_management":{"edits":[{"type":"compact_20260112"}]}`, false},
+		{"context-sibling", Anthropic, `"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]},"future":{"n":9007199254740993}`, false},
 		{"unknown-tool", Responses, `"tools":[{"type":"function","name":"f","parameters":{},"future":true}]`, false},
 		{"strict-type", Responses, `"tools":[{"type":"function","name":"f","parameters":{},"strict":"true"}]`, true},
 	} {
@@ -179,6 +191,131 @@ func TestRequestProjectionValidationAndUnknowns(t *testing.T) {
 			}
 			if err == nil {
 				t.Fatal("unknown semantics disappeared")
+			}
+		})
+	}
+}
+
+func TestAnthropicThinkingRetentionProjection(t *testing.T) {
+	t.Parallel()
+	source, target := shippedProjectionProtocol(t, Anthropic), shippedProjectionProtocol(t, Gemini)
+	const body = `{"model":"m","max_tokens":100,"messages":[{"role":"user","content":"question"},{"role":"assistant","content":[{"type":"thinking","thinking":"first thought"},{"type":"text","text":"answer"}]},{"role":"user","content":"follow up"},{"role":"assistant","content":[{"type":"thinking","thinking":"second thought"},{"type":"text","text":"second answer"}]},{"role":"user","content":"continue"}]}`
+	for _, mode := range []string{"compatible", "strict"} {
+		t.Run(mode, func(t *testing.T) {
+			policy := p.DefaultConversionPolicy(source, target)
+			policy.Mode = mode
+			conversion, err := p.ResolveConversion(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			route := p.ConversionContext{Source: source.Identity(), Target: target.Identity()}
+			baseline, err := source.DecodeRequest(t.Context(), []byte(body), p.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			baseline, err = conversion.Request(t.Context(), baseline, route, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := target.EncodeRequest(t.Context(), baseline, p.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, keep := range []string{`"all"`, `{"type":"all"}`, `"a\u006cl"`} {
+				raw := strings.TrimSuffix(body, "}") + `,"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":` + keep + `}]}}`
+				request, err := source.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				before, _ := p.EncodeValue(request)
+				sink := &p.DiagnosticSink{}
+				out, err := conversion.Request(t.Context(), request, route, sink)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wire, err := target.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+				if err != nil || !bytes.Equal(wire, want) {
+					t.Fatalf("retention changed Gemini history: %s vs %s: %v", wire, want, err)
+				}
+				issues := sink.Issues()
+				if len(issues) != 1 {
+					t.Fatal("expected one normalization", issues)
+				}
+				issue := issues[0]
+				if issue.Code != p.ConversionNormalized || issue.Severity != p.SeverityInfo || issue.Fidelity != "preserved" || issue.RuleID != "request-projection" || issue.Path != "/wire:claude/context_management" || issue.Direction != p.EncodeRequest || issue.Stage != "conversion.request" || issue.PolicyHash != conversion.Hash || issue.PolicyRevision == "" || issue.Evidence != "engine-default" {
+					t.Fatal(issue)
+				}
+				after, _ := p.EncodeValue(request)
+				if before != after {
+					t.Fatal("source request changed")
+				}
+				wire, err = source.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				sameJSON(t, wire, raw)
+			}
+		})
+	}
+}
+
+func TestAnthropicThinkingRetentionProjectionScope(t *testing.T) {
+	t.Parallel()
+	source := testCompiled(t, Anthropic)
+	definition := source.Definition()
+	definition.Family = "custom-family"
+	mapping := definition.Directions[p.DecodeRequest]
+	mapping.After = &p.Expression{Op: "read", Path: ""}
+	definition.Directions[p.DecodeRequest] = mapping
+	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
+	encoded, _ := p.EncodeValue(definition)
+	custom, issues := compiler.Compile(encoded.Bytes())
+	if err := p.IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	const raw = `{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"}],"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}}`
+	for _, tc := range []struct {
+		name, target string
+		source       *p.Compiled
+		disabled     bool
+	}{
+		{"native", Anthropic, source, false},
+		{"chat", Chat, source, false},
+		{"responses", Responses, source, false},
+		{"disabled", Gemini, source, true},
+		{"custom-after", Gemini, custom, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			target := testCompiled(t, tc.target)
+			policy := p.DefaultConversionPolicy(tc.source, target)
+			for i := range policy.Rules {
+				if policy.Rules[i].ID == "request-projection" && tc.disabled {
+					policy.Rules[i].Enabled = false
+				}
+			}
+			conversion, err := p.ResolveConversion(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request, err := tc.source.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			sink := &p.DiagnosticSink{}
+			request, err = conversion.Request(t.Context(), request, p.ConversionContext{Source: tc.source.Identity(), Target: target.Identity()}, sink)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wire, err := target.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+			if tc.target == Chat || tc.target == Responses || tc.disabled {
+				requireContextIssue(t, err, p.UnsupportedCapability, "/wire:claude/context_management/edits")
+			} else if err != nil {
+				t.Fatal(err)
+			} else if tc.target == Anthropic {
+				sameJSON(t, wire, raw)
+				if len(sink.Issues()) != 0 {
+					t.Fatal("native retention was projected", sink.Issues())
+				}
 			}
 		})
 	}

@@ -227,5 +227,45 @@ func (c *CompiledConversion) requestProjection(req *Request, route ConversionCon
 			delete(tool.Options, "strict")
 		}
 	}
+	if opts.SourceCodec == "anthropic" && codec == "gemini" {
+		c.normalizeAnthropicThinkingRetention(req, route, rule, sink)
+	}
 	return nil
+}
+
+func (c *CompiledConversion) normalizeAnthropicThinkingRetention(req *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) {
+	const key = "wire:claude"
+	value := req.Parameters[key]
+	if value.IsZero() {
+		return
+	}
+	reader := requestValueReader(value)
+	fields, _ := value.readObjectWithin(reader)
+	management, _ := fields["context_management"].readObjectWithin(reader)
+	if len(management) != 1 {
+		return
+	}
+	edits, _ := management["edits"].readArrayWithin(reader)
+	if len(edits) != 1 {
+		return
+	}
+	edit, _ := edits[0].readObjectWithin(reader)
+	if len(edit) != 2 || !edit["type"].IsString("clear_thinking_20251015") {
+		return
+	}
+	if keep := edit["keep"]; !keep.IsString("all") {
+		setting, _ := keep.readObjectWithin(reader)
+		if len(setting) != 1 || !setting["type"].IsString("all") {
+			return
+		}
+	}
+	// Gemini sends the supplied history without this clearing control. Unknown
+	// edits stay native so the encoder still rejects unverified context changes.
+	delete(fields, "context_management")
+	if len(fields) == 0 {
+		delete(req.Parameters, key)
+	} else {
+		req.Parameters[key], _ = EncodeValue(fields)
+	}
+	c.normalized(rule, route, "/"+key+"/context_management", "keep-all thinking mapped to Gemini's supplied-history behavior; no history cleared", sink)
 }

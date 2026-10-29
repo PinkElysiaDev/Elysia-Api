@@ -54,6 +54,9 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) 
 			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls++
 				raw, _ := io.ReadAll(r.Body)
+				if upstreamID == protocol.PresetGeminiID && strings.Contains(string(raw), `"context_management"`) {
+					t.Error("Anthropic retention control reached Gemini")
+				}
 				if second && !strings.Contains(string(raw), "900719925474099312345") {
 					t.Error("tool result integer lost", string(raw))
 				}
@@ -179,7 +182,8 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) 
 			s.invalidateRouteCache()
 			for _, id := range ids {
 				next := ids[(upstreamIndex+1)%len(ids)]
-				if id != next && (parallel || id != upstreamID) {
+				isThinkingRetention := !parallel && upstreamID == protocol.PresetGeminiID && id == protocol.PresetAnthropicID
+				if id != next && (parallel || id != upstreamID) && !isThinkingRetention {
 					continue
 				}
 				for _, stream := range []bool{false, true} {
@@ -187,6 +191,9 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) 
 						streaming, second = stream, false
 						ingress, _ := service.Pin(id)
 						request := &protocol.Request{SchemaVersion: 1, Model: protocol.StringValue("group"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("lookup")}}}}, Tools: []protocol.Tool{{Kind: protocol.FunctionTool, Name: protocol.StringValue("lookup"), InputSchema: mustProtocolValue(t, `{"type":"object","properties":{"n":{"type":"integer"}}}`)}}, Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, "32"), "stream": mustProtocolValue(t, fmt.Sprint(stream))}}
+						if isThinkingRetention {
+							request.Parameters["wire:claude"] = mustProtocolValue(t, `{"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}}`)
+						}
 						if id == protocol.PresetResponsesID || id == protocol.PresetChatCompletionsID {
 							request.Cache = []protocol.CacheIntent{{Kind: "key", Location: "request", Value: protocol.StringValue("anonymous-session")}}
 						} else if id == protocol.PresetAnthropicID {
