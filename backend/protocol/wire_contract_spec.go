@@ -44,9 +44,10 @@ type compiledWireAssertion struct {
 }
 
 type specWireValidator struct {
-	schema     *wireSchemaPlan
-	assertions []compiledWireAssertion
-	limits     Limits
+	schema          *wireSchemaPlan
+	assertions      []compiledWireAssertion
+	limits          Limits
+	rootObjectReads int
 }
 
 func compileWireContractSpec(spec WireContractSpec, path string, limits Limits) (compiledWireContract, error) {
@@ -63,7 +64,27 @@ func compileWireContractSpec(spec WireContractSpec, path string, limits Limits) 
 	if err != nil {
 		return compiledWireContract{}, err
 	}
+	validator.rootObjectReads = countAssertionRootReads(validator.assertions)
 	return compiledWireContract{validator: validator, contextValidator: validator}, nil
+}
+
+func countAssertionRootReads(assertions []compiledWireAssertion) int {
+	reads := 0
+	for _, assertion := range assertions {
+		if len(assertion.pointer) != 0 {
+			reads++
+		}
+		for _, predicate := range []*compiledOutputPlan{assertion.when, assertion.check} {
+			if predicate != nil {
+				reads += int(predicate.rootObjectReads)
+			}
+		}
+		reads += countAssertionRootReads(assertion.each)
+		if reads >= rootObjectReuseReads {
+			return rootObjectReuseReads
+		}
+	}
+	return reads
 }
 
 func compileWireAssertions(assertions []WireAssertion, path string, input, root *ValueSchema, expressions *expressionCompiler, depth int) ([]compiledWireAssertion, error) {
@@ -144,7 +165,7 @@ func (validator *specWireValidator) validate(ctx context.Context, direction Dire
 		return wireAssertionError(code, mappingErrorPath("", err), "wire document does not match its declared schema", err)
 	}
 	reader := newNativeComparisonReader(value)
-	state := evaluation{ctx: ctx, input: value, root: value, valueReader: reader, budget: &evaluationBudget{limits: effectiveLimits, stepLimit: effectiveLimits.Nodes}}
+	state := evaluation{ctx: ctx, input: value, root: value, valueReader: reader, objectReader: newPlanObjectReader(value, validator.rootObjectReads), budget: &evaluationBudget{limits: effectiveLimits, stepLimit: effectiveLimits.Nodes}}
 	return validateWireAssertions(validator.assertions, state, "")
 }
 
@@ -168,7 +189,7 @@ func validateWireAssertions(assertions []compiledWireAssertion, state evaluation
 				continue
 			}
 		}
-		selected, err := readValuePointerWithin(state.input, assertion.pointer, state.valueReader)
+		selected, err := readValuePointerWithObjectReader(state.input, assertion.pointer, state.valueReader, state.objectReader)
 		if err == nil {
 			err = assertion.schema.validate(ctx, selected, path, state.budget.limits)
 		}

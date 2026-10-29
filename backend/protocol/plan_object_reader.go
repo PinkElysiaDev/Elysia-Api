@@ -13,7 +13,11 @@ type planObjectReader struct {
 }
 
 func (plan *compiledOutputPlan) newRootObjectReader(input Value) *planObjectReader {
-	if plan.rootObjectReads < rootObjectReuseReads || !input.IsObject() {
+	return newPlanObjectReader(input, int(plan.rootObjectReads))
+}
+
+func newPlanObjectReader(input Value, readCount int) *planObjectReader {
+	if readCount < rootObjectReuseReads || !input.IsObject() {
 		return nil
 	}
 	return &planObjectReader{root: spanIdentity(input.raw)}

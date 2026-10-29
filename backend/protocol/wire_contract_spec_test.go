@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -20,11 +21,14 @@ func TestWireContractSpecOrderedAssertions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	original := *contract.validator.(*specWireValidator)
+	original.rootObjectReads = 0
 	for _, tc := range []struct {
 		name, raw, path, reason string
 		code                    IssueCode
 	}{
 		{"valid", `{"id":"r","kind":"text","payload":{"text":"private value"},"usage":9007199254740993}`, "", "", ""},
+		{"last-duplicate", `{"id":"r","kind":"other","kind":"text","payload":{"text":"ok"},"usage":"invalid","usage":1}`, "", "", ""},
 		{"condition-false", `{"id":"r","kind":"other","usage":0}`, "", "", ""},
 		{"missing", `{"kind":"text","payload":{},"usage":"invalid"}`, "/payload/text", "text payload must be a string", ConversionRejected},
 		{"explicit-null", `{"kind":"text","payload":{"text":null},"usage":0}`, "/payload/text", "text payload must be a string", ConversionRejected},
@@ -38,6 +42,9 @@ func TestWireContractSpecOrderedAssertions(t *testing.T) {
 				t.Fatal(err)
 			}
 			err = contract.validator.ValidateWireOutput(EncodeResponse, value)
+			if want := original.ValidateWireOutput(EncodeResponse, value); !reflect.DeepEqual(err, want) {
+				t.Fatalf("root reuse changed the assertion error: got %v, want %v", err, want)
+			}
 			if tc.code == "" {
 				if err != nil {
 					t.Fatal(err)
