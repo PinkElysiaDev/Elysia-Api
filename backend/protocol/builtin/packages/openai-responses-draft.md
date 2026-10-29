@@ -1,0 +1,55 @@
+# OpenAI Responses 请求与响应声明迁移草案
+
+`openai-responses.draft.json` 是独立的 v3 Spec/Mapping 候选，参照当前 Responses 2.2.8、dev.78 实现。只包含请求解码、请求编码、JSON 响应解码与编码；不包含 SSE，也没有加入生产加载、embed 或激活样例。测试编译器不安装旧 codec 模块。
+
+## 当前声明范围
+
+- 普通消息、字符串 input、input_text/output_text、URL 图片和文件容器。
+- JSON 与自由文本工具声明、调用和结果；参数字符串使用已有 parse_json/stringify_json。结果名称使用调用独享的原始 JSON ID 索引，不扫描工具 arguments。
+- 服务端/opaque 工具使用已有受目标与 scope 检查的 replay_native，输出时重新叠加当前 name/cache。
+- reasoning 的 summary、content、加密资源，以及旧实现对单段可见正文的规范化。仅请求方向把 `content:null` 当作无可见数组；不把它改成空数组。
+- 请求常规参数、reasoning effort/summary、工具选择及请求缓存意图。effort 派生 enabled/disabled 模式，空/null 控制保留原参数表示。
+- 普通原生 instructions 的首节点位置与当前文本。判断读取现有 Native 来源，不创建或改写 source path。
+- 基础 usage、缓存读写、已知 input/output details、精确 int64 total 推断；普通 response 状态与 finish reason。
+- 原始节点捕获和 output_text 的 annotations/logprobs。捕获点来自原始 read；没有根据重排后的下标伪造来源。
+
+这些声明不是完整替代品。效果声明目前只证明已声明的局部作用，不代表所有核心字段都有处理证明。
+
+## 差分账本
+
+`TestResponsesPackageDraftMigration` 使用现有定义中的 **36 个非事件样例**，并将其中 **16 个编码样例移除根 Native** 后再比较。另有两个合成边界，各比较请求解码和移除根 Native 后编码：
+
+- 带 ID、空 summary、`content:null` 和合成 encrypted_content 的 reasoning 历史。
+- 原生 instructions、字符串 input、具名函数工具选择及 effort/summary 控制。
+
+合计 **56 次比较：55 次完整相等，1 次未闭合**。16 次无根 Native 编码全部相等；这避免了仅凭原始整份重放宣称编码器等价。
+
+共用 helper 对正常结果比较完整输出字节、所有公开核心字段、Source 和 Native，只显式适配核心 schemaVersion 1→2。错误按完整树比较类型、文字、ConversionError 的 Issues/CandidateOnly、ResourceLimitError 字段和 Unwrap 分支。当前样例以成功路径为主，不能据此宣称全部拒绝诊断也已等价。
+
+### 尚未闭合：文件 data URI 的容器拆分
+
+现有 `document-decode` 中，旧实现将 `data:application/pdf;base64,AAAA` 拆成 data=`AAAA`、mime=`application/pdf`；草案暂保留完整 file_data。所以仅以下路径存在差异：
+
+- `/content/0/children/0/payload/data`
+- `/content/0/children/0/payload/mime`
+
+[共用静态账本](../testdata/package-migration-gaps.json)只新增这个 Responses 场景，固定完整旧／新值，并明确区分缺失与 null。现有 Anthropic/Chat 记录未修改。首次记录来自 `d54c4552` 上的实际 codec/草案输出；原始证据留在忽略目录 `.tmp-dev/protocol-dsl-2026-10-29/responses-migration-evidence.jsonl`。
+
+正常测试只读账本。新差异、记录值变化、错误树变化或差异消失都会失败，须人工审查。台账通过表示当前未闭合状态被准确固定，不是行为等价或激活证据。
+
+此缺口应由通用 data URI 容器原语处理：只拆结构，不解码、重压缩或转码媒体；保留普通 URL 和非匹配输入的既有行为。不应硬编码 MIME 或本样例正文。
+
+## 仍须迁移的边界
+
+- wire 输入/输出的完整类型约束、负例诊断与首错顺序；当前 wire contract 只声明根对象。
+- 混合 message 子项分段、独立响应内容的相邻分组、工具结果内部块和完整工具关联拒绝。
+- instructions 被改为非系统/带 metadata/多正文后的拒绝；首项之外的原生 instructions，以及 scope/映射变化后的全部行为。
+- 所有 request/session 引用、跨协议资源和未知字段保护；当前普通字段直接渲染不能代替逐 owner 的保留/丢弃/拒绝证明。
+- 请求参数与工具/节点扩展的递归合并、冲突和空/null 细节；缓存 owner、重复意图和完整反向布局。
+- 完整 reasoning parts 类型拒绝与扩展规范化、独立 reasoning_text 的来源限制、修改摘要/签名后所有保护边界。
+- 响应根及 item/message 的完整 metadata、output_text 一致性、turn-state/turn-tags、未知响应状态和错误包络。当前内容 metadata 通过 Native 捕获取得位置，关闭原生保存时还需独立的可信位置来源，不能用空路径冒充。
+- usage 未知扩展、别名冲突、账单归因、工具 usage 及其原生协调；基础计数样例相等不能替代这些检查。
+- Native 关闭、不同 scope、修订与映射变化下的完整输入隔离、拒绝行为和保留量验证。
+- SSE、模型发现、异步任务、WebSocket、Agent 及真实客户端验收。
+
+后续应先关闭 data URI 和原生保存独立位置问题，再补齐逐 owner 字段处理与错误/metadata 边界。本批未调用供应商，未使用私人请求，也未运行性能验收。

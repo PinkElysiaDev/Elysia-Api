@@ -1649,6 +1649,22 @@
           "draft": "\"/choices/0/message\""
         }
       ]
+    },
+    "TestResponsesPackageDraftMigration/document-decode": {
+      "legacyError": null,
+      "draftError": null,
+      "values": [
+        {
+          "path": "/content/0/children/0/payload/data",
+          "legacy": "\"AAAA\"",
+          "draft": "\"data:application/pdf;base64,AAAA\""
+        },
+        {
+          "path": "/content/0/children/0/payload/mime",
+          "legacy": "\"application/pdf\"",
+          "draft": null
+        }
+      ]
     }
   }
 }
