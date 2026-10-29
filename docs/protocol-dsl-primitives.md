@@ -101,13 +101,39 @@
 未使用它们的计划不创建原生目标上下文。操作数使用闭合 Native/Provenance 核心形状；
 这不能等同于旧 raw 接口对任意含未知核心字段 JSON 的宽松解码。
 
+原语来源还必须在编译期证明为原核心的 Native／Provenance 读取。证明按实际核心 Go 类型
+和 JSON 标签走路径，遇到 Value 或 map 业务 JSON 即停止，不靠名为 native 的键猜测。
+let、保留成员的 filter/sort/map 等可以传递已证明的原值；重建 object、merge/project、
+JSON 往返、recall 以及未证明同类型递归的 walk item 不获得资格。
+因此不能重建 Source.scope 后冒充原生授权；原数据跨 scope 仍由 ReplayNative 拒绝。
+该证明同时约束 raw 和 typed 程序，不在请求中增加全文扫描或内容哈希。
+
+## 拆分媒体容器
+
+`split_data_uri` 只拆分字符串容器，不解码或验证媒体内容：
+
+```json
+{"op":"split_data_uri","source":{"op":"read","from":"item","path":"/url"}}
+```
+
+source 求值、字符串解码各一次。非精确 `data:` 前缀返回 `{"kind":"other"}`；
+有此前缀但缺首个逗号，或 metadata 不以精确 `;base64` 结尾，返回 `{"kind":"data"}`；
+匹配时返回 `{"kind":"base64","mime":"…","data":"…"}`。MIME 是去掉最后标记的完整 metadata，
+data 保留首逗号后的全部文本，两者允许为空。缺失、null 和非字符串不被默认成 URL。
+
+kind=base64 只说明存在该标记，不保证合法 base64。原语不补 MIME、不转码、不解码百分号，
+也不改变大小写。是否保留空 MIME 的原 URL、是否拒绝非 base64 data URI，由协议声明决定。
+输出字符串独立拥有存储，不保留一份原 URL；形成 data 字符串仍有必要的编码分配。
+
 ## 类型、整数与 wire 断言
 
-v3 program 与普通 effect 条件还可读取唯一运行时事实：
-`{"op":"read","from":"runtime","path":"/interleavedThinking"}`。
-它直接来自网关传入的 EvaluationContext，不读取正文或 Values 中的同名字段；
-真实 false 保持布尔 false，遗漏内部绑定会报错。Spec 断言、局部处置条件与 v2
-不能使用此入口。来源身份及 scope 仍由 capture_native 处理，不在 runtime 中开放。
+v3 program 与普通 effect 条件可读取两个运行时事实：
+`/interleavedThinking` 是布尔值，`/scope/model` 是当前绑定模型的字符串。
+读取写作 `{"op":"read","from":"runtime","path":"/scope/model"}`。
+它们直接来自 EvaluationContext，不读取正文或 Values 中的同名字段；
+真实 false 和空模型字符串保持原值，遗漏内部绑定会报错。context.model 是否优先、
+null 是否覆盖缺省模型，由声明表达。Spec 断言、局部处置条件与 v2 不能使用此入口；
+未列出的运行时路径在编译期拒绝，来源身份及其余 scope 字段不在这里开放。
 
 `type` 区分 missing/null/string/array/object/boolean/number，不解码大正文。`is_integer` 按现有 int64 解码契约判断。`integer` 支持 add/subtract/lt/lte/gt/gte，先按顺序计算所有操作数，再验证类型及溢出，不使用浮点数或默认零掩盖错误。
 
