@@ -24,7 +24,7 @@
 
 本批再使用既有图片请求形状验证一次正常 base64 data URI，确认图片也接入同一媒体表达式。
 
-合计 **57 次比较，全部完整相等**。原 document 解码差异已闭合，16 次无根 Native 编码仍全部相等。这是当前样例集合的结果，不是全部协议行为、拒绝诊断或激活验收通过。
+上述基准集合合计 **57 次比较，全部完整相等**。原 document 解码差异已闭合，16 次无根 Native 编码仍全部相等。这是该样例集合的结果，不是全部协议行为、拒绝诊断或激活验收通过。
 
 共用 helper 对正常结果比较完整输出字节、所有公开核心字段、Source 和 Native，只显式适配核心 schemaVersion 1→2。错误按完整树比较类型、文字、ConversionError 的 Issues/CandidateOnly、ResourceLimitError 字段和 Unwrap 分支。当前样例以成功路径为主，不能据此宣称全部拒绝诊断也已等价。
 
@@ -41,13 +41,36 @@
 
 精简 URI 边界表集中在 Chat 的一个既有请求形状，Responses 只增加正常图片确认，不机械复制全方向测试。Chat 的 null URL 本次发现拒绝诊断差异，单独记录在其说明和静态账本中，不能据此宣称 Responses 的所有拒绝路径已验证。
 
+### 已闭合：请求自身 owner 的双向保留
+
+`decode-parameters` 现在将 `prompt_cache_options` 中 `mode/ttl` 之外的成员放回
+`wire:openai_responses`；原有未知根字段继续保留。编码由 `merge_deep` 合并自身 owner：
+仅 object/object 重叠时递归，标量、null、数组相撞均拒绝，即使值相等。
+普通编码对象提取为 `encode-request-fields`，没有 owner 时直接执行它，不进入深合并。
+新增原语不认识 Responses 字段，实际取舍仍在 JSON 声明中。
+
+原直接 `EncodeRequest` 允许 model 为任意 JSON，最终线格式校验才限制非空字符串。
+草案没有提前收紧类型：当 model 存在、owner 又不含 model 时，条件 emit 才承诺完整复制；
+owner 提供 model 时执行原有补入／深合并规则，不宣称这是原样复制。
+编译器只证明明确的条件与互斥首级字段，不在运行时比较两份完整正文。
+
+在原57次比较上新增26次成功路径比较，合计83次完整相等；覆盖未知缓存项、原始Native、
+模型编辑、移除根Native及直接编码的模型类型边界。另有8次拒绝核对仍有诊断差异：
+
+- 五种合并冲突：旧版 `unsupported_capability / wire`，新原语 `invalid_input / evaluate`，
+  新错误链保留 `ObjectMergeConflictError.Path`。不把两边均拒绝视为完整错误树相等。
+- 三种非对象 owner：旧版在扩展读取处拒绝；新声明可能先在条件读取 `owner/model` 时拒绝。
+  没有新增错误后回退、放行或修改旧静态差异快照。
+
+一般未知参数、其他 owner 和缓存重复意图仍未闭合；这批不能用作生产激活证据。
+
 ## 仍须迁移的边界
 
 - wire 输入/输出的完整类型约束、负例诊断与首错顺序；当前 wire contract 只声明根对象。
 - 混合 message 子项分段、独立响应内容的相邻分组、工具结果内部块和完整工具关联拒绝。
 - instructions 被改为非系统/带 metadata/多正文后的拒绝；首项之外的原生 instructions，以及 scope/映射变化后的全部行为。
 - 所有 request/session 引用、跨协议资源和未知字段保护；当前普通字段直接渲染不能代替逐 owner 的保留/丢弃/拒绝证明。
-- 请求参数与工具/节点扩展的递归合并、冲突和空/null 细节；缓存 owner、重复意图和完整反向布局。
+- 请求普通参数、工具/节点扩展的递归合并与拒绝诊断；缓存 owner、重复意图和完整反向布局。请求自身 owner 的正常重建已接通，但错误树仍有上述差异。
 - 完整 reasoning parts 类型拒绝与扩展规范化、独立 reasoning_text 的来源限制、修改摘要/签名后所有保护边界。
 - 响应根及 item/message 的完整 metadata、output_text 一致性、turn-state/turn-tags、未知响应状态和错误包络。当前内容 metadata 通过 Native 捕获取得位置，关闭原生保存时还需独立的可信位置来源，不能用空路径冒充。
 - usage 未知扩展、别名冲突、账单归因、工具 usage 及其原生协调；基础计数样例相等不能替代这些检查。

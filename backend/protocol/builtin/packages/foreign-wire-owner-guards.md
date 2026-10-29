@@ -45,6 +45,7 @@
 本批只保护 Request.Parameters 中的 owner。节点 Attributes、工具 Options、响应/事件扩展等
 其他位置仍需各自声明，不应把根参数的通过外推到全部核心数据。
 
-Responses 自己的非空 `wire:openai_responses` owner 在现有草案中的渲染缺口没有混入本次修改。
-自己的空对象不被拒绝，不能证明该 owner 的任意扩展已经完整输出。其他同族深层冲突合并及
-普通未映射参数的处理也保持原范围。
+Responses 自己的非空 `wire:openai_responses` owner 的渲染缺口已在后续独立切片中处理，
+详见 [Responses 草案说明](openai-responses-draft.md)。本守卫自身不负责渲染；自己的空对象
+不被拒绝，不能证明该 owner 的任意扩展已经完整输出。其他同族深层冲突合并及
+普通未映射参数的处理仍须独立验证。

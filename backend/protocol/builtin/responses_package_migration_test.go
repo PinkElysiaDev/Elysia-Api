@@ -1,7 +1,10 @@
 package builtin
 
 import (
+	"bytes"
+	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
@@ -112,6 +115,120 @@ func TestResponsesPackageDraftMigration(t *testing.T) {
 			got, gotErr := executePackageMigrationSample(t, draft, sample, options, true)
 			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
 		})
+		t.Run("owner-encode/"+fixture.name, func(t *testing.T) {
+			options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
+			original, err := legacy.DecodeRequest(t.Context(), []byte(fixture.wire), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoded, err := draft.DecodeRequest(t.Context(), []byte(fixture.wire), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, edit := range []string{"native", "model", "without-root-native"} {
+				t.Run(edit, func(t *testing.T) {
+					oldRequest, newRequest := original.Clone(), decoded.Clone()
+					switch edit {
+					case "model":
+						oldRequest.Model, newRequest.Model = p.StringValue("routed"), p.StringValue("routed")
+					case "without-root-native":
+						oldRequest.Native, newRequest.Native = nil, nil
+					}
+					want, wantErr := legacy.EncodeRequest(t.Context(), oldRequest, options)
+					if wantErr != nil {
+						t.Fatal(wantErr)
+					}
+					got, gotErr := draft.EncodeRequest(t.Context(), newRequest, options)
+					checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+					if edit == "native" && !bytes.Equal(got, []byte(fixture.wire)) {
+						t.Fatal("unchanged request lost original wire bytes", string(got))
+					}
+				})
+			}
+		})
 	}
+	checkResponsesModelOwnerEncoding(t, legacy, draft)
 	checkPackageMediaURIs(t, legacy, draft, definition)
+}
+
+func checkResponsesModelOwnerEncoding(t *testing.T, legacy, draft *p.Compiled) {
+	t.Helper()
+	options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
+	base, err := legacy.DecodeRequest(t.Context(), []byte(`{"model":"m","input":"hi"}`), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.Native = nil
+	// Direct EncodeRequest retains arbitrary model values. The gateway's final
+	// wire validation is a separate boundary and must not narrow this comparison.
+	for _, fixture := range []struct{ name, model, owner, conflict string }{
+		{"missing", "", "", ""},
+		{"null", `null`, "", ""},
+		{"empty-string", `""`, "", ""},
+		{"boolean", `false`, "", ""},
+		{"number", `1e2`, "", ""},
+		{"array", `[null,9007199254740993]`, "", ""},
+		{"object", `{"nested":{"original":1}}`, `{"future":true}`, ""},
+		{"owner-empty", `"m"`, `{}`, ""},
+		{"owner-fills-model", "", `{"model":{"future":null}}`, ""},
+		{"owner-merges-model", `{"nested":{"original":1}}`, `{"model":{"nested":{"extra":2},"future":null}}`, ""},
+		{"equal-string-conflict", `"m"`, `{"model":"m"}`, "/model"},
+		{"null-conflict", `null`, `{"model":null}`, "/model"},
+		{"array-conflict", `[]`, `{"model":[]}`, "/model"},
+		{"nested-conflict", `{"nested":{"value":1}}`, `{"model":{"nested":{"value":1}}}`, "/model/nested/value"},
+		{"object-scalar-conflict", `{"value":1}`, `{"model":true}`, "/model"},
+	} {
+		t.Run("model-owner/"+fixture.name, func(t *testing.T) {
+			oldRequest := base.Clone()
+			oldRequest.Model = p.Value{}
+			if fixture.model != "" {
+				oldRequest.Model = testValue(t, fixture.model)
+			}
+			if fixture.owner != "" {
+				oldRequest.Parameters = p.Object{"wire:openai_responses": testValue(t, fixture.owner)}
+			}
+			newRequest := oldRequest.Clone()
+			newRequest.SchemaVersion = p.ProtocolCoreVersion
+			want, wantErr := legacy.EncodeRequest(t.Context(), oldRequest, options)
+			got, gotErr := draft.EncodeRequest(t.Context(), newRequest, options)
+			if fixture.conflict == "" {
+				if wantErr != nil {
+					t.Fatal(wantErr)
+				}
+				checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+				return
+			}
+			var oldFailure, newFailure *p.ConversionError
+			var conflict *p.ObjectMergeConflictError
+			if !errors.As(wantErr, &oldFailure) || len(oldFailure.Issues) != 1 ||
+				oldFailure.Issues[0].Code != p.UnsupportedCapability || oldFailure.Issues[0].Stage != "wire" || oldFailure.Issues[0].Path != fixture.conflict {
+				t.Fatal("legacy collision boundary changed", wantErr)
+			}
+			if !errors.As(gotErr, &newFailure) || len(newFailure.Issues) != 1 ||
+				newFailure.Issues[0].Code != p.InvalidInput || newFailure.Issues[0].Stage != "evaluate" ||
+				!errors.As(gotErr, &conflict) || conflict.Path != fixture.conflict {
+				t.Fatal("deep merge lost the typed collision cause", gotErr)
+			}
+			t.Log("NOT CLOSED: legacy wire capability diagnostics and DSL evaluation diagnostics differ", wantErr, gotErr)
+		})
+	}
+	for _, owner := range []string{`null`, `false`, `[]`} {
+		t.Run("invalid-owner/"+owner, func(t *testing.T) {
+			oldRequest := base.Clone()
+			oldRequest.Parameters = p.Object{"wire:openai_responses": testValue(t, owner)}
+			newRequest := oldRequest.Clone()
+			newRequest.SchemaVersion = p.ProtocolCoreVersion
+			_, wantErr := legacy.EncodeRequest(t.Context(), oldRequest, options)
+			_, gotErr := draft.EncodeRequest(t.Context(), newRequest, options)
+			var oldFailure, newFailure *p.ConversionError
+			if !errors.As(wantErr, &oldFailure) || len(oldFailure.Issues) != 1 ||
+				oldFailure.Issues[0].Code != p.InvalidInput || oldFailure.Issues[0].Stage != "runtime" ||
+				!strings.Contains(wantErr.Error(), "expected JSON object") ||
+				!errors.As(gotErr, &newFailure) || len(newFailure.Issues) != 1 ||
+				newFailure.Issues[0].Code != p.InvalidInput || newFailure.Issues[0].Stage != "evaluate" || errors.Unwrap(gotErr) == nil {
+				t.Fatal("non-object owner was accepted or lost its cause", wantErr, gotErr)
+			}
+			t.Log("NOT CLOSED: invalid owner diagnostics differ because the emit condition also reads the owner", wantErr, gotErr)
+		})
+	}
 }
