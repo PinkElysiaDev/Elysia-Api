@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
@@ -19,6 +20,27 @@ type packageMigrationGap struct {
 	reason    string
 	paths     []string
 	rejection bool
+}
+
+func compileBuiltinPackage(t *testing.T, name string) *p.Compiled {
+	t.Helper()
+	read := func(part string) []byte {
+		t.Helper()
+		raw, err := os.ReadFile(filepath.Join("packages", name, part+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return raw
+	}
+	compiler, err := p.NewCompiler(p.DefaultLimits(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, issues := compiler.CompileSources(read("spec"), read("mapping"))
+	if err := p.IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	return compiled
 }
 
 type migrationErrorState struct {

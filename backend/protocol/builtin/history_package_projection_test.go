@@ -2,8 +2,6 @@ package builtin
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
@@ -12,23 +10,7 @@ import (
 // Real package declarations supply both the source owner and target policy.
 // Unknown wire owners remain outside this recognized-history fixture.
 func TestPackageDraftHistoryTargets(t *testing.T) {
-	compiler, err := p.NewCompiler(p.DefaultLimits(), nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	load := func(path string) *p.Compiled {
-		t.Helper()
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		compiled, issues := compiler.CompilePackage(raw)
-		if err := p.IssuesError(issues); err != nil {
-			t.Fatal(err)
-		}
-		return compiled
-	}
-	source := load(filepath.Join("packages", "anthropic.draft.json"))
+	source := compileBuiltinPackage(t, "anthropic")
 	options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
 	request, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"}],"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}}`), options)
 	if err != nil {
@@ -42,11 +24,11 @@ func TestPackageDraftHistoryTargets(t *testing.T) {
 		name, file string
 		canDefault bool
 	}{
-		{"gemini", "google-generate-content.draft.json", true},
-		{"chat", "openai-chat.draft.json", false},
-		{"responses", "openai-responses.draft.json", false},
+		{"gemini", "google-generate-content", true},
+		{"chat", "openai-chat", false},
+		{"responses", "openai-responses", false},
 	} {
-		target := load(filepath.Join("packages", fixture.file))
+		target := compileBuiltinPackage(t, fixture.file)
 		for _, mode := range []string{"compatible", "strict"} {
 			t.Run(fixture.name+"/"+mode, func(t *testing.T) {
 				policy := p.DefaultConversionPolicy(source, target)

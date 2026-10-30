@@ -2,32 +2,20 @@ package builtin
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
 )
 
 func TestPackageDraftForeignWireOwners(t *testing.T) {
-	compiler, err := p.NewCompiler(p.DefaultLimits(), nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+
 	for _, target := range []struct{ name, file, owner, foreign string }{
-		{"anthropic", "anthropic.draft.json", "wire:claude", "wire:gemini"},
-		{"gemini", "google-generate-content.draft.json", "wire:gemini", "wire:claude"},
-		{"chat", "openai-chat.draft.json", "wire:openai_chat", "wire:claude"},
-		{"responses", "openai-responses.draft.json", "wire:openai_responses", "wire:claude"},
+		{"anthropic", "anthropic", "wire:claude", "wire:gemini"},
+		{"gemini", "google-generate-content", "wire:gemini", "wire:claude"},
+		{"chat", "openai-chat", "wire:openai_chat", "wire:claude"},
+		{"responses", "openai-responses", "wire:openai_responses", "wire:claude"},
 	} {
-		raw, err := os.ReadFile(filepath.Join("packages", target.file))
-		if err != nil {
-			t.Fatal(err)
-		}
-		compiled, issues := compiler.CompilePackage(raw)
-		if err := p.IssuesError(issues); err != nil {
-			t.Fatal(err)
-		}
+		compiled := compileBuiltinPackage(t, target.file)
 		request := func() *p.Request {
 			return &p.Request{
 				SchemaVersion: p.ProtocolCoreVersion,

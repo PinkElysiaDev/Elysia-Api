@@ -1,0 +1,243 @@
+{
+  "id": "google-generate-content",
+  "name": "Google Generate-content migration draft (not enabled)",
+  "version": "2.1.6",
+  "family": "gemini",
+  "wireVersion": "v2",
+  "operations": {
+    "generate": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/v1beta/models/{model}:generateContent",
+      "transport": "http_json",
+      "request": "encode_request",
+      "response": "decode_response",
+      "auth": {
+        "location": "header",
+        "name": "x-goog-api-key"
+      }
+    }
+  },
+  "wireContracts": {
+    "decode_request": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      },
+      "assertions": [
+        {
+          "path": "/generationConfig/thinkingConfig",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "invalid_input",
+          "reason": "thinking controls must be an object or null",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig"
+            }
+          }
+        },
+        {
+          "path": "/generationConfig/thinkingConfig",
+          "schema": {
+            "type": "any"
+          },
+          "code": "invalid_input",
+          "reason": "thinkingLevel and thinkingBudget cannot coexist",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/generationConfig/thinkingConfig"
+              }
+            },
+            "then": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/generationConfig/thinkingConfig/thinkingLevel"
+                  }
+                },
+                {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/generationConfig/thinkingConfig/thinkingBudget"
+                  }
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        {
+          "path": "/generationConfig/thinkingConfig/includeThoughts",
+          "schema": {
+            "type": "boolean"
+          },
+          "code": "invalid_input",
+          "reason": "includeThoughts must be a boolean",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/generationConfig/thinkingConfig"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/generationConfig/thinkingConfig/includeThoughts"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/generationConfig/thinkingConfig/thinkingLevel",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "code": "invalid_input",
+          "reason": "invalid thinking level",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/generationConfig/thinkingConfig"
+              }
+            },
+            "then": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/generationConfig/thinkingConfig/thinkingLevel"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/generationConfig/thinkingConfig/thinkingBudget",
+          "schema": {
+            "type": "any"
+          },
+          "code": "invalid_input",
+          "reason": "budget must be an integer >= -1 without overflow",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/generationConfig/thinkingConfig"
+              }
+            },
+            "then": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/generationConfig/thinkingConfig/thinkingBudget"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": -1
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        }
+      ]
+    },
+    "encode_request": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "decode_response": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "encode_response": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    }
+  }
+}

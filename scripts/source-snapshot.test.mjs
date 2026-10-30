@@ -10,7 +10,9 @@ test('checked-in snapshot manifest matches publishable sources', () => {
   const root = fileURLToPath(new URL('../', import.meta.url))
   const plan = readSnapshotPlan(root)
   assert.ok(plan.length > 0)
-  assert.ok(plan.some(({ path }) => path === 'backend/protocol/builtin/packages/anthropic.draft.json'))
+  for (const part of ['spec', 'mapping']) {
+    assert.ok(plan.some(({ path }) => path === `backend/protocol/builtin/packages/anthropic/${part}.json`))
+  }
 })
 
 function fixture() {

@@ -33,18 +33,7 @@ func TestAnthropicPackageDraftMigration(t *testing.T) {
 	if err := p.IssuesError(issues); err != nil {
 		t.Fatal(err)
 	}
-	draftRaw, err := os.ReadFile("packages/anthropic.draft.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	compiler, err := p.NewCompiler(p.DefaultLimits(), nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	draft, issues := compiler.CompilePackage(draftRaw)
-	if err := p.IssuesError(issues); err != nil {
-		t.Fatal(err)
-	}
+	draft := compileBuiltinPackage(t, "anthropic")
 	for _, sample := range definition.Samples {
 		if sample.Direction == p.DecodeEvent || sample.Direction == p.EncodeEvent {
 			continue

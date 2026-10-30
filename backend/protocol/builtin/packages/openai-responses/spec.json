@@ -1,0 +1,48 @@
+{
+  "id": "openai-responses",
+  "version": "2.2.8",
+  "family": "openai_responses",
+  "wireVersion": "v2",
+  "name": "OpenAI Responses migration draft (not enabled)",
+  "operations": {
+    "generate": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/v1/responses",
+      "transport": "http_json",
+      "request": "encode_request",
+      "response": "decode_response",
+      "auth": {
+        "location": "header",
+        "name": "Authorization",
+        "prefix": "Bearer "
+      }
+    }
+  },
+  "wireContracts": {
+    "decode_request": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "encode_request": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "decode_response": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "encode_response": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    }
+  }
+}

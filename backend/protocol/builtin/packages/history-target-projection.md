@@ -1,7 +1,7 @@
 # 历史保留意图的目标侧声明接入
 
 目标侧先用 `protocol/testdata/history/anthropic.json` 的有限值原型完成接入；现在验证来源改为
-真实 `anthropic.draft.json`，仅识别两个已声明的完整 keep-all 变体。所有文件仍是未启用草案，
+真实 `anthropic/spec.json` 与 `anthropic/mapping.json`，仅识别两个已声明的完整 keep-all 变体。所有文件仍是未启用草案，
 这条有限路径不能用于宣称四协议所有 context_management 语义已经迁移。
 
 ## 声明与执行边界

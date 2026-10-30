@@ -1,6 +1,6 @@
 # Gemini 请求与响应声明迁移草案
 
-`google-generate-content.draft.json` 是未启用的 v3 Spec/Mapping 候选，参照当前
+`google-generate-content/spec.json` 与 `google-generate-content/mapping.json` 是未启用的 v3 Spec/Mapping 候选，参照当前
 `google-generate-content` 2.1.6 的实现。它只声明 `decode_request`、`encode_request`、
 `decode_response`、`encode_response`；生产加载器、编译器版本和现有预置均未改变。
 候选编译器没有安装旧 codec，`mapping.samples` 为空，不构成激活证据。

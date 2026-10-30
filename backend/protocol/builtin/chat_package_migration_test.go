@@ -33,18 +33,7 @@ func TestChatPackageDraftMigration(t *testing.T) {
 	if err := p.IssuesError(issues); err != nil {
 		t.Fatal(err)
 	}
-	draftRaw, err := os.ReadFile("packages/openai-chat.draft.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	compiler, err := p.NewCompiler(p.DefaultLimits(), nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	draft, issues := compiler.CompilePackage(draftRaw)
-	if err := p.IssuesError(issues); err != nil {
-		t.Fatal(err)
-	}
+	draft := compileBuiltinPackage(t, "openai-chat")
 	responsePathGap := packageMigrationGap{
 		reason: "legacy response message provenance inserts a synthetic /0; capture_native preserves the actual wire location",
 		paths:  []string{"/content/0/native/source/path", "/content/0/source/path"},

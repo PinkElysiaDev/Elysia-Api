@@ -1,6 +1,16 @@
 # Anthropic 声明迁移草案
 
-`anthropic.draft.json` 是未启用、未取得激活证据的 v3 Spec/Mapping 候选。
+## 两份源文件
+
+本目录的四个协议子目录分别维护 `spec.json`（外部 API 描述）和 `mapping.json`
+（与大自在天的映射及处置）。`Compiler.CompileSources` 将一对源文件编译为一个不可分割的
+ProtocolPackage，复用整包入口的修订、证据和执行计划；不会在请求时重新读取文件。
+两种输入方式产生相同编译身份，改动任一源文件使旧修订证据失效。
+
+本批先完成源文件组织；Spec 仍有按核心方向命名的契约及操作绑定，下一批将其迁为独立的
+命名文档。四预置尚未切换，这里不是已经完成的生产配置或激活证据。
+
+`anthropic/spec.json` 与 `anthropic/mapping.json` 是未启用、未取得激活证据的 v3 Spec/Mapping 候选。
 生产加载器仍只读取 `definitions/*.json`；本目录没有加入 embed 或加载流程。
 文件保持真实 ProtocolPackage 格式，没有测试封套、隐藏开关或迁移拒绝兜底。
 

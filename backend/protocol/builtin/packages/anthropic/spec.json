@@ -1,0 +1,1673 @@
+{
+  "id": "anthropic-messages",
+  "name": "Anthropic Messages migration draft (not enabled)",
+  "version": "2.1.7",
+  "family": "claude",
+  "wireVersion": "v2",
+  "operations": {
+    "generate": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/v1/messages",
+      "transport": "http_json",
+      "request": "encode_request",
+      "response": "decode_response",
+      "auth": {
+        "location": "header",
+        "name": "x-api-key"
+      },
+      "headers": {
+        "anthropic-version": "2023-06-01"
+      },
+      "input": {
+        "type": "object",
+        "required": [
+          "max_tokens"
+        ],
+        "properties": {
+          "max_tokens": {
+            "type": "integer"
+          }
+        },
+        "allowUnknown": true
+      }
+    }
+  },
+  "wireContracts": {
+    "decode_request": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "max_tokens": {
+            "type": "integer"
+          }
+        },
+        "allowUnknown": true
+      },
+      "assertions": [
+        {
+          "path": "/messages",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "code": "invalid_input",
+          "reason": "messages must be an array",
+          "each": [
+            {
+              "path": "/content",
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "allowUnknown": true
+                }
+              },
+              "code": "invalid_input",
+              "reason": "content must be an array",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "type",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/content"
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "array"
+                  }
+                ]
+              },
+              "each": [
+                {
+                  "path": "/caller",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "tool caller must be an object",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/type"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "tool_use"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/caller"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "/caller/type",
+                  "schema": {
+                    "type": "string"
+                  },
+                  "code": "invalid_input",
+                  "reason": "tool caller requires a string type",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/type"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "tool_use"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/caller"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "/is_error",
+                  "schema": {
+                    "type": "boolean"
+                  },
+                  "code": "invalid_input",
+                  "reason": "tool error flag must be a boolean",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/type"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "tool_result"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/is_error"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "path": "/thinking",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "invalid_input",
+          "reason": "thinking controls must be an object or null",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/thinking"
+            }
+          }
+        },
+        {
+          "path": "/thinking/type",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "enabled",
+              "disabled",
+              "adaptive",
+              "between_tools"
+            ]
+          },
+          "code": "invalid_input",
+          "reason": "unknown thinking type",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/thinking"
+              }
+            },
+            "then": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/thinking"
+                  },
+                  {
+                    "op": "object",
+                    "fields": {}
+                  }
+                ]
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/thinking/budget_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "invalid_input",
+          "reason": "manual thinking requires an integer budget of at least 1024",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking"
+                }
+              },
+              "then": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thinking"
+                    },
+                    {
+                      "op": "object",
+                      "fields": {}
+                    }
+                  ]
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "then": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "enabled"
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 1024
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/thinking/budget_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "invalid_input",
+          "reason": "this thinking mode does not accept a budget",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/thinking"
+                  }
+                },
+                "then": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/thinking"
+                      },
+                      {
+                        "op": "object",
+                        "fields": {}
+                      }
+                    ]
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "then": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thinking/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "enabled"
+                    }
+                  ]
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/thinking/budget_tokens"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        {
+          "path": "/thinking/display",
+          "schema": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "summarized",
+              "omitted",
+              "updates"
+            ]
+          },
+          "code": "invalid_input",
+          "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking"
+                }
+              },
+              "then": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thinking"
+                    },
+                    {
+                      "op": "object",
+                      "fields": {}
+                    }
+                  ]
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/thinking/display"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/output_config",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "invalid_input",
+          "reason": "thinking controls must be an object or null",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/output_config"
+            }
+          }
+        },
+        {
+          "path": "/output_config/effort",
+          "schema": {
+            "type": "any"
+          },
+          "code": "invalid_input",
+          "reason": "effort cannot disable thinking; use thinking.type",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/output_config"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/output_config/effort"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": "none"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "encode_request": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages",
+          "max_tokens"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "max_tokens": {
+            "type": "integer"
+          }
+        },
+        "allowUnknown": true
+      },
+      "assertions": [
+        {
+          "path": "/thinking",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "invalid_input",
+          "reason": "thinking controls must be an object or null",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/thinking"
+            }
+          }
+        },
+        {
+          "path": "/thinking/type",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "enabled",
+              "disabled",
+              "adaptive",
+              "between_tools"
+            ]
+          },
+          "code": "invalid_input",
+          "reason": "unknown thinking type",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/thinking"
+              }
+            },
+            "then": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/thinking"
+                  },
+                  {
+                    "op": "object",
+                    "fields": {}
+                  }
+                ]
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/thinking/budget_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "invalid_input",
+          "reason": "manual thinking requires an integer budget of at least 1024",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking"
+                }
+              },
+              "then": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thinking"
+                    },
+                    {
+                      "op": "object",
+                      "fields": {}
+                    }
+                  ]
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "then": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "enabled"
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 1024
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/thinking/budget_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "invalid_input",
+          "reason": "this thinking mode does not accept a budget",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/thinking"
+                  }
+                },
+                "then": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/thinking"
+                      },
+                      {
+                        "op": "object",
+                        "fields": {}
+                      }
+                    ]
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "then": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thinking/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "enabled"
+                    }
+                  ]
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/thinking/budget_tokens"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        {
+          "path": "/thinking/display",
+          "schema": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "summarized",
+              "omitted",
+              "updates"
+            ]
+          },
+          "code": "invalid_input",
+          "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking"
+                }
+              },
+              "then": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thinking"
+                    },
+                    {
+                      "op": "object",
+                      "fields": {}
+                    }
+                  ]
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/thinking/display"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/output_config",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "invalid_input",
+          "reason": "thinking controls must be an object or null",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/output_config"
+            }
+          }
+        },
+        {
+          "path": "/output_config/effort",
+          "schema": {
+            "type": "any"
+          },
+          "code": "invalid_input",
+          "reason": "effort cannot disable thinking; use thinking.type",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/output_config"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/output_config/effort"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": "none"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "decode_response": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      },
+      "assertions": [
+        {
+          "path": "/usage",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage must be an object",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/usage"
+            }
+          }
+        },
+        {
+          "path": "/usage/cache_creation",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage details must be an object",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage/cache_creation"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/usage/output_tokens_details",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage details must be an object",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage/output_tokens_details"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/usage/input_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counter must be a nonnegative int64",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/input_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/usage/output_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counter must be a nonnegative int64",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/output_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/usage/total_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counter must be a nonnegative int64",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/total_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/usage/cache_read_input_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counter must be a nonnegative int64",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_read_input_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/usage/cache_creation_input_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counter must be a nonnegative int64",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_creation_input_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/usage/cache_creation/ephemeral_5m_input_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counter must be a nonnegative int64",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_creation"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_creation/ephemeral_5m_input_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/usage/cache_creation/ephemeral_1h_input_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counter must be a nonnegative int64",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_creation"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_creation/ephemeral_1h_input_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/usage/output_tokens_details/thinking_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counter must be a nonnegative int64",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/output_tokens_details"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/output_tokens_details/thinking_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        }
+      ]
+    },
+    "encode_response": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    }
+  }
+}

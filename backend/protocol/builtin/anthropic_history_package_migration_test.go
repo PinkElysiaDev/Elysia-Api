@@ -3,7 +3,6 @@ package builtin
 import (
 	"bytes"
 	"errors"
-	"os"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
@@ -11,18 +10,7 @@ import (
 
 func TestAnthropicPackageHistoryOwner(t *testing.T) {
 	legacy := shippedProjectionProtocol(t, Anthropic)
-	raw, err := os.ReadFile("packages/anthropic.draft.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	compiler, err := p.NewCompiler(p.DefaultLimits(), nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	draft, issues := compiler.CompilePackage(raw)
-	if err := p.IssuesError(issues); err != nil {
-		t.Fatal(err)
-	}
+	draft := compileBuiltinPackage(t, "anthropic")
 	options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
 	const canonical = `{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}`
 	for _, fixture := range []struct{ name, control, extra string }{

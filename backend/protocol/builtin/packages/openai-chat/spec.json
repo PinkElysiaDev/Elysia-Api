@@ -1,0 +1,104 @@
+{
+  "id": "openai-chat-completions",
+  "version": "2.2.7",
+  "family": "openai_chat",
+  "wireVersion": "v2",
+  "name": "OpenAI Chat migration draft (not enabled)",
+  "operations": {
+    "generate": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "transport": "http_json",
+      "request": "encode_request",
+      "response": "decode_response",
+      "auth": {
+        "location": "header",
+        "name": "Authorization",
+        "prefix": "Bearer "
+      }
+    }
+  },
+  "wireContracts": {
+    "decode_request": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          }
+        },
+        "allowUnknown": true
+      }
+    },
+    "encode_request": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          }
+        },
+        "allowUnknown": true
+      }
+    },
+    "decode_response": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "choices"
+        ],
+        "properties": {
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          }
+        },
+        "allowUnknown": true
+      }
+    },
+    "encode_response": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "choices"
+        ],
+        "properties": {
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          }
+        },
+        "allowUnknown": true
+      }
+    }
+  }
+}

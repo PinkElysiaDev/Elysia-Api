@@ -1,6 +1,6 @@
 # OpenAI Chat 请求与响应声明迁移草案
 
-`openai-chat.draft.json` 是未启用的 v3 Spec/Mapping 候选。生产加载、编译器版本和预置定义不变；没有新增 embed、供应商调用或激活样例。编译测试不安装旧模块，JSON 中也没有将 Chat codec 包装成 DSL 原语。
+`openai-chat/spec.json` 与 `openai-chat/mapping.json` 是未启用的 v3 Spec/Mapping 候选。生产加载、编译器版本和预置定义不变；没有新增 embed、供应商调用或激活样例。编译测试不安装旧模块，JSON 中也没有将 Chat codec 包装成 DSL 原语。
 
 迁移参照当前 `openai-chat-completions` 2.2.7、dev.78 实现，只包含 `decode_request`、`encode_request`、`decode_response`、`encode_response`。核心 schemaVersion 1→2 是比较时唯一显式适配；其余公开核心字段、来源、Native、数字拼写、输出字节和诊断都保留在差分中。
 

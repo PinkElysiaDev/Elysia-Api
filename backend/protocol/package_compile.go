@@ -52,6 +52,10 @@ func (compiler *Compiler) CompilePackage(raw []byte) (*Compiled, []ConversionIss
 	if err != nil {
 		return nil, definitionIssues(document.Spec.Identity(), "/", err)
 	}
+	return compiler.compilePackage(document)
+}
+
+func (compiler *Compiler) compilePackage(document ProtocolPackage) (*Compiled, []ConversionIssue) {
 	compiled, err := document.compileContract(compiler.limits)
 	if err != nil {
 		return nil, definitionIssues(document.Spec.Identity(), "/", err)

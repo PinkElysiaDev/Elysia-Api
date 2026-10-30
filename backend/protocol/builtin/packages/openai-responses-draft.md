@@ -1,6 +1,6 @@
 # OpenAI Responses 请求与响应声明迁移草案
 
-`openai-responses.draft.json` 是独立的 v3 Spec/Mapping 候选，参照当前 Responses 2.2.8、dev.78 实现。只包含请求解码、请求编码、JSON 响应解码与编码；不包含 SSE，也没有加入生产加载、embed 或激活样例。测试编译器不安装旧 codec 模块。
+`openai-responses/spec.json` 与 `openai-responses/mapping.json` 是独立的 v3 Spec/Mapping 候选，参照当前 Responses 2.2.8、dev.78 实现。只包含请求解码、请求编码、JSON 响应解码与编码；不包含 SSE，也没有加入生产加载、embed 或激活样例。测试编译器不安装旧 codec 模块。
 
 ## 当前声明范围
 
