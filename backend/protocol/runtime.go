@@ -479,8 +479,15 @@ func (compiled *Compiled) target(direction Direction, options EvaluationContext)
 // Target binds validation and collection to this revision's core version and
 // capabilities. Callers may narrow Capabilities to their authorized binding.
 func (compiled *Compiled) Target(direction Direction, scope Scope) Target {
+	return compiled.TargetWithCapabilities(direction, scope, compiled.Capabilities(direction))
+}
+
+// TargetWithCapabilities binds this revision's core version and direction while
+// borrowing the caller's fixed, read-only capability map for the target's lifetime.
+// It neither copies the map nor supplies default capabilities when it is nil.
+func (compiled *Compiled) TargetWithCapabilities(direction Direction, scope Scope, capabilities CapabilitySet) Target {
 	target := compiled.target(direction, EvaluationContext{Scope: scope})
-	target.Capabilities = compiled.Capabilities(direction)
+	target.Capabilities = capabilities
 	return target
 }
 

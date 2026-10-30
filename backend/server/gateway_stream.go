@@ -54,12 +54,12 @@ func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext
 	var collector *protocol.ResponseCollector
 	if candidate.continuation != nil {
 		candidate.continuation.sink = options.Diagnostics
-		collector, _ = protocol.NewResponseCollector(protocol.Target{Codec: candidate.compiled.Codec(protocol.DecodeEvent), Protocol: candidate.compiled.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: candidate.binding.Capabilities}, limits)
+		collector, _ = protocol.NewResponseCollector(candidate.sourceEventTarget(), limits)
 	}
 	if options.ClientOutput == nil {
 		options.ClientOutput = &protocol.ClientOutput{}
 	}
-	target := protocol.Target{Codec: plan.ingress.Codec(protocol.EncodeEvent), Protocol: plan.ingress.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: plan.ingress.Capabilities(protocol.EncodeEvent)}
+	target := plan.ingress.Target(protocol.EncodeEvent, candidate.scope)
 	replay, err := protocol.NewEventReplay(target, limits)
 	if err != nil {
 		return err
@@ -317,7 +317,7 @@ func emitFailureEvent(ctx context.Context, c *app.RequestContext, plan *gatewayR
 	if encodeErr != nil {
 		return fmt.Errorf("%w; downstream error frame: %v", cause, encodeErr)
 	}
-	failure := protocol.Event{SchemaVersion: protocol.SemanticSchemaVersion, Type: protocol.OperationFailed, Error: errorValue}
+	failure := protocol.Event{SchemaVersion: plan.ingress.CoreVersion(), Type: protocol.OperationFailed, Error: errorValue}
 	frames, encodeErr := plan.ingress.EncodeFrames(ctx, failure, options)
 	if encodeErr != nil {
 		return fmt.Errorf("%w; downstream error frame: %v", cause, encodeErr)

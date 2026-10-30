@@ -135,7 +135,7 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 		}
 		return result, errors.Join(protocol.CheckGenerationOutcome(result), protocol.IssuesError(protocol.CheckModelResponse(result, candidate.compiled, candidate.binding, candidate.scope)))
 	}
-	target := protocol.Target{Codec: candidate.compiled.Codec(protocol.DecodeEvent), Protocol: candidate.compiled.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: candidate.binding.Capabilities}
+	target := candidate.sourceEventTarget()
 	collector, err := protocol.NewResponseCollector(target, limits)
 	if err != nil {
 		return nil, err

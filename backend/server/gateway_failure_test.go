@@ -180,3 +180,20 @@ func TestGatewayUnmappedFailureKeepsProviderMessageAndConversionIssue(t *testing
 		t.Fatalf("missing response lost its validation error: %v", failure)
 	}
 }
+
+func TestPackageHTTPFailureUsesSourceCoreVersion(t *testing.T) {
+	compiled := compileSourceStreamPackage(t, sourceStreamPackage(t))
+	response, secondary := decodeUpstreamHTTPFailure(t.Context(), http.StatusBadGateway, []byte("<html>private provider body</html>"), compiled, protocol.EvaluationContext{})
+	if secondary == nil || response.SchemaVersion != compiled.CoreVersion() || protocol.CheckGenerationOutcome(response) == nil {
+		t.Fatal("synthetic HTTP failure lost its source version or cause", response, secondary)
+	}
+	failure := encodeGatewayFailure(t.Context(), http.StatusBadGateway, response, compiled, protocol.EvaluationContext{})
+	var upstream *upstreamFailure
+	if !errors.As(failure, &upstream) || failure.status != http.StatusBadGateway || !strings.Contains(string(upstream.body), "HTTP 502") || strings.Contains(string(upstream.body), "private provider body") {
+		t.Fatal("core2 HTTP error could not reach its declared output", failure)
+	}
+	declared, err := decodeUpstreamHTTPFailure(t.Context(), http.StatusForbidden, []byte(`{"error":{"message":"declared denial"}}`), compiled, protocol.EvaluationContext{})
+	if err != nil || declared.SchemaVersion != compiled.CoreVersion() || !declared.Error.IsObject() {
+		t.Fatal("declared HTTP error was replaced", declared, err)
+	}
+}

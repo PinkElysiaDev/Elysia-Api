@@ -147,3 +147,134 @@ func TestCollectorAppliesStartupConversion(t *testing.T) {
 		})
 	}
 }
+
+func TestSourceEventTargetKeepsDirectionalContract(t *testing.T) {
+	definition := presetDefinition(t, p.PresetChatCompletionsID)
+	definition.Directions[p.EncodeEvent] = p.Mapping{Module: builtin.Anthropic}
+	compiled := compileFixtureDefinition(t, definition)
+	capabilities := p.CapabilitySet{p.UsageCapability: true}
+	candidate := gatewayCandidate{compiled: compiled, binding: p.Binding{Capabilities: capabilities}, scope: p.Scope{Account: "fixture"}}
+	target := candidate.sourceEventTarget()
+	if target.Codec != builtin.Chat || target.Direction != p.EncodeEvent || target.Protocol != compiled.Identity() || target.Scope != candidate.scope || target.Capabilities[p.TextCapability] {
+		t.Fatal("source target used the encoder or widened the binding", target)
+	}
+	event := p.Event{SchemaVersion: p.SemanticSchemaVersion, Type: p.ItemStarted, ItemID: p.StringValue("text"), Item: &p.Node{Kind: p.TextNode}}
+	if issues := p.CheckEvent(event, target, compiled.ResourceLimits()); len(issues) == 0 || issues[0].Code != p.UnsupportedCapability || len(capabilities) != 1 {
+		t.Fatal("binding capability checks changed or mutated their borrowed map", issues, capabilities)
+	}
+	candidate.binding.Capabilities = nil
+	if candidate.sourceEventTarget().Capabilities != nil {
+		t.Fatal("nil binding acquired default capabilities")
+	}
+}
+
+func TestPackageSourceStreamCollectsUsage(t *testing.T) {
+	compiled := compileSourceStreamPackage(t, sourceStreamPackage(t))
+	candidate := gatewayCandidate{compiled: compiled, binding: p.Binding{Capabilities: compiled.Capabilities(p.DecodeEvent)}}
+	collector, err := p.NewResponseCollector(candidate.sourceEventTarget(), compiled.ResourceLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: 1 << 20}}
+	consumed := 0
+	source, err := newProtocolSourceStream(t.Context(), candidate, compiled, p.ConversionContext{}, p.EvaluationContext{State: p.NewEvaluationState()}, record, func(frame *p.EventFrame, _ p.Object) error {
+		for _, event := range frame.Events {
+			if !event.Sequence.IsZero() || event.SchemaVersion != p.ProtocolCoreVersion {
+				t.Fatal("fixture mapping or event version changed", event)
+			}
+			if _, _, err := collector.Consume(event); err != nil {
+				return err
+			}
+			consumed++
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	frames := []string{
+		`{"type":"response.started","responseId":"r","sequence":0}`,
+		`{"type":"item.started","responseId":"r","sequence":1,"itemId":"text","item":{"kind":"text"}}`,
+		`{"type":"item.delta","responseId":"r","sequence":2,"itemId":"text","delta":"hi"}`,
+		`{"type":"usage.updated","responseId":"r","sequence":3,"usage":{"input":{"count":7,"origin":"observed"}}}`,
+		`{"type":"item.finished","responseId":"r","sequence":4,"itemId":"text"}`,
+		`{"type":"response.finished","responseId":"r","sequence":5}`,
+		`{"type":"usage.updated","responseId":"r","sequence":6,"usage":{"input":{"count":7,"origin":"observed"},"output":{"count":2,"origin":"observed"},"total":{"count":9,"origin":"observed"}}}`,
+	}
+	for _, raw := range frames {
+		if err := source.Push(mustProtocolValue(t, raw), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := source.Finish(nil); err != nil {
+		t.Fatal(err)
+	}
+	response, err := collector.Finish()
+	if err != nil || response.SchemaVersion != p.ProtocolCoreVersion || len(response.Content) != 1 || !response.Content[0].Payload.IsString("hi") || response.Usage.Total.Count != 9 {
+		t.Fatal("source collection lost text, core version or usage", response, err)
+	}
+	if consumed != len(frames) || record.ProtocolUsage.Input.Count != 7 || record.ProtocolUsage.Output.Count != 2 || record.ProtocolUsage.Total.Count != 9 || len(record.pendingStreamEvents) != len(frames) {
+		t.Fatal("source delivery or accounting duplicated a frame", consumed, record.ProtocolUsage)
+	}
+}
+
+func TestPackageSourceStreamChecksOriginalLifecycle(t *testing.T) {
+	readFailure := errors.New("synthetic source read failure")
+	for _, fixture := range []struct {
+		name      string
+		fakeEnd   bool
+		readError error
+		path      string
+	}{
+		{"hidden-sequence", false, nil, "/sequence"},
+		{"hidden-eof", true, nil, "/type"},
+		{"cancel-before-eof", true, context.Canceled, ""},
+		{"read-error-before-eof", true, readFailure, ""},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			document := sourceStreamPackage(t)
+			if fixture.fakeEnd {
+				document.Mapping.Directions[p.DecodeEvent].Program.Fields["type"] = p.Expression{Op: "literal", Value: p.StringValue(string(p.ResponseFinished))}
+			}
+			compiled := compileSourceStreamPackage(t, document)
+			candidate := gatewayCandidate{compiled: compiled, binding: p.Binding{Capabilities: document.Mapping.Capabilities}}
+			consumed := 0
+			source, err := newProtocolSourceStream(t.Context(), candidate, compiled, p.ConversionContext{}, p.EvaluationContext{}, nil, func(frame *p.EventFrame, _ p.Object) error {
+				consumed += len(frame.Events)
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := source.Push(mustProtocolValue(t, `{"type":"response.started","responseId":"r","sequence":0}`), nil); err != nil {
+				t.Fatal(err)
+			}
+			if !fixture.fakeEnd {
+				err = source.Push(mustProtocolValue(t, `{"type":"response.finished","responseId":"r","sequence":0}`), nil)
+				if err == nil {
+					t.Fatal("mapping hid the repeated provider sequence")
+				}
+				original := err
+				err = source.Finish(err)
+				if !errors.Is(err, original) {
+					t.Fatal("completion replaced the frame failure", err)
+				}
+			} else {
+				err = source.Finish(fixture.readError)
+			}
+			if fixture.readError != nil {
+				if !errors.Is(err, fixture.readError) {
+					t.Fatal("missing terminal replaced the read/cancellation cause", err)
+				}
+			} else {
+				var failure *p.ConversionError
+				if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Code != p.UpstreamContractViolation || failure.Issues[0].Direction != p.DecodeEvent || failure.Issues[0].Path != fixture.path {
+					t.Fatal("original wire lifecycle was not enforced", err)
+				}
+			}
+			if consumed != 1 {
+				t.Fatal("invalid frame or synthetic terminal reached the consumer twice", consumed)
+			}
+		})
+	}
+}

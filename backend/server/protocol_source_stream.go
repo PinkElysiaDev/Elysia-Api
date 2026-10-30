@@ -14,17 +14,32 @@ type protocolSourceStream struct {
 	record          *usageRecord
 	options         protocol.EvaluationContext
 	state           *protocol.SourceEventState
+	wireValidation  *protocol.WireStreamValidation
 	replay          *protocol.EventReplay
 	consume         func(*protocol.EventFrame, protocol.Object) error
 	terminalFailure error
 }
 
+func (candidate gatewayCandidate) sourceEventTarget() protocol.Target {
+	target := candidate.compiled.TargetWithCapabilities(protocol.DecodeEvent, candidate.scope, candidate.binding.Capabilities)
+	target.Direction = protocol.EncodeEvent
+	return target
+}
+
 func newProtocolSourceStream(ctx context.Context, candidate gatewayCandidate, target *protocol.Compiled, route protocol.ConversionContext, options protocol.EvaluationContext, record *usageRecord, consume func(*protocol.EventFrame, protocol.Object) error) (*protocolSourceStream, error) {
-	replay, err := protocol.NewEventReplay(protocol.Target{Codec: candidate.compiled.Codec(protocol.DecodeEvent), Protocol: candidate.compiled.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: candidate.binding.Capabilities}, candidate.compiled.ResourceLimits())
+	var wireValidation *protocol.WireStreamValidation
+	if candidate.compiled.CoreVersion() == protocol.ProtocolCoreVersion {
+		var err error
+		wireValidation, err = candidate.compiled.NewWireInputStreamValidation(candidate.scope)
+		if err != nil {
+			return nil, err
+		}
+	}
+	replay, err := protocol.NewEventReplay(candidate.sourceEventTarget(), candidate.compiled.ResourceLimits())
 	if err != nil {
 		return nil, err
 	}
-	return &protocolSourceStream{ctx: ctx, candidate: candidate, record: record, options: options, consume: consume, replay: replay, state: protocol.NewSourceEventState(candidate.conversion, route, candidate.compiled, target, options.Diagnostics)}, nil
+	return &protocolSourceStream{ctx: ctx, candidate: candidate, record: record, options: options, consume: consume, replay: replay, wireValidation: wireValidation, state: protocol.NewSourceEventState(candidate.conversion, route, candidate.compiled, target, options.Diagnostics)}, nil
 }
 
 func (source *protocolSourceStream) Push(value protocol.Value, metadata protocol.Object) error {
@@ -44,6 +59,11 @@ func (source *protocolSourceStream) Push(value protocol.Value, metadata protocol
 }
 
 func (source *protocolSourceStream) decode(frame protocol.SourceFrame) error {
+	if source.wireValidation != nil {
+		if err := source.wireValidation.Consume(source.ctx, frame.Value); err != nil {
+			return err
+		}
+	}
 	source.options.Values = frame.Metadata
 	decoded, err := source.candidate.compiled.DecodeFrame(source.ctx, frame.Value, source.options)
 	if err != nil {
@@ -93,6 +113,11 @@ func (source *protocolSourceStream) Finish(readErr error) error {
 	}
 	if readErr != nil {
 		return protocol.AnnotateResourceError(readErr, source.candidate.compiled.Identity(), protocol.DecodeEvent, "read.event")
+	}
+	if source.wireValidation != nil {
+		if err := source.wireValidation.Finish(); err != nil {
+			return err
+		}
 	}
 	return source.candidate.compiled.AnnotateSourceEventError(source.replay.Finish())
 }

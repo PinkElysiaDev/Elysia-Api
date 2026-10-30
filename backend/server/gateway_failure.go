@@ -36,7 +36,9 @@ func decodeUpstreamHTTPFailure(ctx context.Context, status int, body []byte, com
 	if err == nil {
 		return response, nil
 	}
-	return fallbackHTTPFailure(status, body), err
+	response = fallbackHTTPFailure(status, body)
+	response.SchemaVersion = compiled.CoreVersion()
+	return response, err
 }
 
 func fallbackHTTPFailure(status int, body []byte) *protocol.Response {
