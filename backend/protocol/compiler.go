@@ -485,20 +485,26 @@ func (compiler *Compiler) checkDefinition(definition Definition) error {
 			}
 		}
 	}
-	for _, sample := range definition.SessionSamples {
+	return checkSessionSamples(definition.SessionSamples, definition.Operations, func(direction Direction) bool {
+		return hasDefinitionDirections(definition, direction)
+	}, compiler.limits.StateItems, seen)
+}
+
+func checkSessionSamples(samples []SessionSample, operations map[string]Operation, supports func(Direction) bool, stepLimit int, seen map[string]bool) error {
+	for _, sample := range samples {
 		if sample.ID == "" || seen[sample.ID] {
 			return fmt.Errorf("session samples require unique nonempty IDs")
 		}
 		seen[sample.ID] = true
-		operation, exists := definition.Operations[sample.Operation]
+		operation, exists := operations[sample.Operation]
 		if !exists || operation.Transport != WebSocket {
 			return fmt.Errorf("session sample %q requires a WebSocket operation", sample.ID)
 		}
-		if len(sample.Steps) == 0 || len(sample.Steps) > compiler.limits.StateItems {
+		if len(sample.Steps) == 0 || len(sample.Steps) > stepLimit {
 			return fmt.Errorf("session sample %q has an invalid step count", sample.ID)
 		}
 		for _, step := range sample.Steps {
-			if !isEventDirection(step.Direction) || !hasDefinitionDirections(definition, step.Direction) || step.Input.IsZero() || step.Expected.IsZero() {
+			if !isEventDirection(step.Direction) || !supports(step.Direction) || step.Input.IsZero() || step.Expected.IsZero() {
 				return fmt.Errorf("session sample %q requires implemented event directions, inputs and expectations", sample.ID)
 			}
 		}

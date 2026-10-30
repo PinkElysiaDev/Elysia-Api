@@ -66,18 +66,19 @@ type ProtocolStreamUsageSpec struct {
 // ProtocolMapping contains only declarative programs and their semantic effects.
 // A v2 module or after mapping cannot be selected through this contract.
 type ProtocolMapping struct {
-	CoreVersion  int                                    `json:"coreVersion"`
-	DSLVersion   int                                    `json:"dslVersion"`
-	Directions   map[Direction]ProtocolDirectionMapping `json:"directions"`
-	Operations   map[string]ProtocolOperationMapping    `json:"operations"`
-	Expressions  map[string]Expression                  `json:"expressions,omitempty"`
-	Native       NativePolicy                           `json:"native"`
-	Capabilities CapabilitySet                          `json:"capabilities"`
-	Limits       *Limits                                `json:"limits,omitempty"`
-	Samples      []Sample                               `json:"samples"`
-	ModelSamples []ModelSample                          `json:"modelSamples,omitempty"`
-	TaskSamples  []TaskSample                           `json:"taskSamples,omitempty"`
-	Agent        *ProtocolAgentMapping                  `json:"agent,omitempty"`
+	CoreVersion    int                                    `json:"coreVersion"`
+	DSLVersion     int                                    `json:"dslVersion"`
+	Directions     map[Direction]ProtocolDirectionMapping `json:"directions"`
+	Operations     map[string]ProtocolOperationMapping    `json:"operations"`
+	Expressions    map[string]Expression                  `json:"expressions,omitempty"`
+	Native         NativePolicy                           `json:"native"`
+	Capabilities   CapabilitySet                          `json:"capabilities"`
+	Limits         *Limits                                `json:"limits,omitempty"`
+	Samples        []Sample                               `json:"samples"`
+	ModelSamples   []ModelSample                          `json:"modelSamples,omitempty"`
+	TaskSamples    []TaskSample                           `json:"taskSamples,omitempty"`
+	SessionSamples []SessionSample                        `json:"sessionSamples,omitempty"`
+	Agent          *ProtocolAgentMapping                  `json:"agent,omitempty"`
 }
 
 // ProtocolDirectionMapping transforms one wire/core boundary without a codec module.
@@ -193,7 +194,7 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 	compiled := &Compiled{identity: spec.Identity(), limits: limits, explicitLimits: mapping.Limits != nil || limits.BufferBytes != DefaultLimits().BufferBytes, native: mapping.Native, capabilities: mapping.Capabilities, operations: wireSpec.operations, operationSchemas: wireSpec.operationSchemas, mappings: map[Direction]compiledMapping{}, wireContracts: map[Direction]compiledWireContract{}, packagePlan: &compiledPackagePlan{coreVersion: mapping.CoreVersion, dslVersion: mapping.DSLVersion, effects: map[Direction][]compiledSemanticEffect{}}}
 	expressions := &expressionCompiler{limits: limits, references: mapping.Expressions, resolving: map[string]bool{}, used: map[string]bool{}}
 	for _, direction := range sortedKeys(mapping.Directions) {
-		if !slices.Contains([]Direction{DecodeRequest, EncodeRequest, DecodeResponse, EncodeResponse, DecodeEvent, EncodeEvent}, direction) {
+		if !slices.Contains(DirectionCatalog(), direction) {
 			return nil, fmt.Errorf("/mapping/directions/%s: unsupported package direction", direction)
 		}
 		entry := mapping.Directions[direction]
@@ -246,7 +247,7 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 			return nil, fmt.Errorf("/mapping/expressions/%s: unreachable expression", name)
 		}
 	}
-	if err := validateProtocolSamples(mapping, spec.Operations, limits); err != nil {
+	if err := validateProtocolSamples(mapping, compiled.operations, limits); err != nil {
 		return nil, err
 	}
 	if err := compiled.bindPackageIdentity(document); err != nil {
@@ -255,8 +256,8 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 	return compiled, nil
 }
 
-func validateProtocolSamples(mapping ProtocolMapping, operations map[string]ProtocolOperationSpec, limits Limits) error {
-	count := len(mapping.Samples) + len(mapping.ModelSamples) + len(mapping.TaskSamples)
+func validateProtocolSamples(mapping ProtocolMapping, operations map[string]Operation, limits Limits) error {
+	count := len(mapping.Samples) + len(mapping.ModelSamples) + len(mapping.TaskSamples) + len(mapping.SessionSamples)
 	if mapping.Agent != nil {
 		count += len(mapping.Agent.Samples)
 	}
@@ -290,5 +291,8 @@ func validateProtocolSamples(mapping ProtocolMapping, operations map[string]Prot
 			}
 		}
 	}
-	return nil
+	return checkSessionSamples(mapping.SessionSamples, operations, func(direction Direction) bool {
+		_, exists := mapping.Directions[direction]
+		return exists
+	}, limits.StateItems, seen)
 }

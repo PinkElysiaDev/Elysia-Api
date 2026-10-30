@@ -37,7 +37,7 @@ func executeSessionSample(ctx context.Context, compiled *Compiled, sample Sessio
 			return result, err
 		}
 		if !equalValues(expected, value.output) {
-			return result, IssuesError([]ConversionIssue{verificationIssue(compiled, step.Direction, fmt.Sprintf("/sessionSamples/%s/steps/%d/expected", sample.ID, index)+differencePath(expected, value.output), VerificationMismatch, "session step differs from its expected output", fixture.ID)})
+			return result, IssuesError([]ConversionIssue{verificationIssue(compiled, step.Direction, fmt.Sprintf("%s/%s/steps/%d/expected", compiled.sessionSamplesPath(), sample.ID, index)+differencePath(expected, value.output), VerificationMismatch, "session step differs from its expected output", fixture.ID)})
 		}
 		if err := verifyEventRoundTrip(ctx, compiled, fixture, value); err != nil {
 			return result, err
@@ -61,7 +61,7 @@ func executeSessionSample(ctx context.Context, compiled *Compiled, sample Sessio
 		}
 		buffered += len(encoded.raw) + len(value.output.raw)
 		if buffered > compiled.limits.BufferBytes {
-			return result, streamIssue(LimitExceeded, "/sessionSamples", "session replay exceeds its aggregate buffer limit")
+			return result, streamIssue(LimitExceeded, compiled.sessionSamplesPath(), "session replay exceeds its aggregate buffer limit")
 		}
 		result.events = append(result.events, events...)
 		if result.coverage[step.Direction] == nil {
@@ -104,9 +104,9 @@ func sessionLaneTarget(compiled *Compiled, origin EventOrigin, options Evaluatio
 
 func verifySessionSamples(ctx context.Context, compiled *Compiled, report *VerificationReport, coverage map[Direction]CapabilitySet, hasSample, hasSequence map[Direction]bool, hasLifecycle map[Direction]map[Capability]bool) {
 	hasOperation := map[string]bool{}
-	for index, sample := range compiled.Definition().SessionSamples {
+	for index, sample := range compiled.verificationSessionSamples() {
 		evidence, err := executeSessionSample(ctx, compiled, sample)
-		path := fmt.Sprintf("/sessionSamples/%d", index)
+		path := fmt.Sprintf("%s/%d", compiled.sessionSamplesPath(), index)
 		check := VerificationCheck{SampleID: sample.ID, Passed: err == nil}
 		if sample.ExpectedIssue != "" {
 			check.Passed = hasIssueCode(err, sample.ExpectedIssue)

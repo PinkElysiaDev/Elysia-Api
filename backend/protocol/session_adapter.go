@@ -108,7 +108,11 @@ func (adapter *SessionAdapter) convertMedia(origin EventOrigin, frame SessionFra
 	}
 	adapter.mediaSequence[origin]++
 	sequence := adapter.mediaSequence[origin]
-	event := Event{SchemaVersion: SemanticSchemaVersion, Type: MediaReceived, Media: &Media{Type: format.Type, Format: format.Format, Sequence: Value{raw: strconv.FormatInt(sequence, 10)}, Reference: Resource{Kind: "transport_frame", ID: StringValue(string(origin) + ":" + strconv.FormatInt(sequence, 10)), Scope: adapter.options.Scope}}}
+	coreVersion := adapter.upstream.CoreVersion()
+	if origin == ClientEvent {
+		coreVersion = adapter.ingress.CoreVersion()
+	}
+	event := Event{SchemaVersion: coreVersion, Type: MediaReceived, Media: &Media{Type: format.Type, Format: format.Format, Sequence: Value{raw: strconv.FormatInt(sequence, 10)}, Reference: Resource{Kind: "transport_frame", ID: StringValue(string(origin) + ":" + strconv.FormatInt(sequence, 10)), Scope: adapter.options.Scope}}}
 	if err := adapter.checkModel(origin, event); err != nil {
 		return nil, err
 	}
@@ -142,6 +146,6 @@ func (adapter *SessionAdapter) EncodeFailure(ctx context.Context, failure error)
 	if err != nil {
 		return SessionFrame{}, err
 	}
-	frame, err := adapter.ingress.EncodeEvent(ctx, Event{SchemaVersion: SemanticSchemaVersion, Type: OperationFailed, Error: errorValue}, adapter.options)
+	frame, err := adapter.ingress.EncodeEvent(ctx, Event{SchemaVersion: adapter.ingress.CoreVersion(), Type: OperationFailed, Error: errorValue}, adapter.options)
 	return SessionFrame{Payload: frame.Bytes()}, err
 }

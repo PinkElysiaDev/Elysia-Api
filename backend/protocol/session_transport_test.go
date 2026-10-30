@@ -232,8 +232,13 @@ func TestSessionAdapterPreservesDeclaredMediaAndRejectsModelChange(t *testing.T)
 	definition.Operations["session"].Session.InputMedia = &MediaFormat{Type: "audio", Format: "pcm16"}
 	definition.Operations["session"].Session.OutputMedia = &MediaFormat{Type: "audio", Format: "pcm16"}
 	compiled := compileSessionDefinition(t, definition)
+	checkSessionAdapterMediaAndModel(t, compiled)
+}
+
+func checkSessionAdapterMediaAndModel(t *testing.T, compiled *Compiled) {
+	t.Helper()
 	operation := compiled.Operations()["session"]
-	binding := Binding{Capabilities: definition.Capabilities}
+	binding := Binding{Capabilities: compiled.capabilities}
 	adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, binding, Scope{Model: "upstream-model"}, StringValue("group"))
 	if err != nil {
 		t.Fatal(err)

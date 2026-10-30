@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -32,6 +33,7 @@ type ProtocolOperationSpec struct {
 	Input     *ValueSchema                `json:"input,omitempty"`
 	Models    *ProtocolModelDiscoverySpec `json:"models,omitempty"`
 	Task      *ProtocolTaskFlowSpec       `json:"task,omitempty"`
+	Session   *ProtocolSessionSpec        `json:"session,omitempty"`
 }
 
 // ProtocolModelDiscoverySpec declares wire pagination without a core decoder.
@@ -115,11 +117,18 @@ func (spec ProtocolSpec) compile(limits Limits) (compiledProtocolSpec, error) {
 
 func (wire ProtocolOperationSpec) compile(name string, documents map[string]compiledWireContract, limits Limits) (Operation, error) {
 	path := "/spec/operations/" + escapePointer(name)
-	if (wire.Kind != "generate" && wire.Kind != "models" && wire.Kind != "submit" && wire.Kind != "status" && wire.Kind != "result" && wire.Kind != "cancel") || wire.Transport == WebSocket {
-		return Operation{}, fmt.Errorf("%s: unsupported operation kind or session transport", path)
+	if !slices.Contains(OperationKindCatalog(), wire.Kind) {
+		return Operation{}, fmt.Errorf("%s: unsupported operation kind", path)
 	}
 	operation := Operation{Kind: wire.Kind, Method: wire.Method, Path: wire.Path, Transport: wire.Transport,
 		Headers: wire.Headers, Query: wire.Query, Auth: wire.Auth, Framing: wire.Framing, Input: wire.Input}
+	if wire.Session != nil {
+		configuration := wire.Session.SessionConfig
+		operation.Session = &configuration
+	}
+	if err := checkSessionTransport(operation, limits); err != nil {
+		return Operation{}, fmt.Errorf("%s/session: %w", path, err)
+	}
 	if wire.Task != nil {
 		if wire.Kind != "submit" {
 			return Operation{}, fmt.Errorf("%s/task: flow requires a submit operation", path)
@@ -192,6 +201,14 @@ func (compiled *Compiled) bindPackageOperations(spec ProtocolSpec, mapping Proto
 		}
 		if binding.DecodeModels != nil {
 			return fmt.Errorf("%s/decodeModels: requires models operation kind", path)
+		}
+		if operation.Transport == WebSocket {
+			if err := compiled.bindPackageSession(wire, binding, mapping.Directions); err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			operation.Request = binding.Request
+			compiled.operations[name] = operation
+			continue
 		}
 		if (operation.Transport == SSE || operation.Transport == NDJSON) && binding.Response == "" {
 			return fmt.Errorf("%s/response: streaming operations require an event mapping", path)

@@ -63,8 +63,13 @@ func (compiler *Compiler) compilePackage(document ProtocolPackage) (*Compiled, [
 	if err != nil {
 		return nil, definitionIssues(document.Spec.Identity(), "/", err)
 	}
+	for _, operation := range compiled.operations {
+		if operation.Transport == WebSocket && !compiler.features[featureWebSocketTransport] {
+			return nil, definitionIssues(compiled.identity, "/spec/operations", fmt.Errorf("WebSocket transport is not installed"))
+		}
+	}
 	for _, direction := range sortedKeys(compiled.packagePlan.effects) {
-		if isEventDirection(direction) && compiled.wireContracts[direction].packageStream == nil {
+		if isEventDirection(direction) && compiled.wireContracts[direction].packageStream == nil && !compiled.hasPackageSession() {
 			return nil, definitionIssues(compiled.identity, "/mapping/directions/"+string(direction), fmt.Errorf("event programs require an independent wire stream contract"))
 		}
 		if compiled.mappings[direction].outputPlan == nil {
@@ -143,13 +148,14 @@ func (compiled *Compiled) bindPackageIdentity(document ProtocolPackage) error {
 	}
 	compiled.hash = hashValue(identity)
 	samples, err := EncodeValue(struct {
-		CoreVersion  int                   `json:"coreVersion"`
-		DSLVersion   int                   `json:"dslVersion"`
-		Samples      []Sample              `json:"samples"`
-		ModelSamples []ModelSample         `json:"modelSamples,omitempty"`
-		TaskSamples  []TaskSample          `json:"taskSamples,omitempty"`
-		Agent        *ProtocolAgentMapping `json:"agent,omitempty"`
-	}{document.Mapping.CoreVersion, document.Mapping.DSLVersion, document.Mapping.Samples, document.Mapping.ModelSamples, document.Mapping.TaskSamples, document.Mapping.Agent})
+		CoreVersion    int                   `json:"coreVersion"`
+		DSLVersion     int                   `json:"dslVersion"`
+		Samples        []Sample              `json:"samples"`
+		ModelSamples   []ModelSample         `json:"modelSamples,omitempty"`
+		TaskSamples    []TaskSample          `json:"taskSamples,omitempty"`
+		Agent          *ProtocolAgentMapping `json:"agent,omitempty"`
+		SessionSamples []SessionSample       `json:"sessionSamples,omitempty"`
+	}{document.Mapping.CoreVersion, document.Mapping.DSLVersion, document.Mapping.Samples, document.Mapping.ModelSamples, document.Mapping.TaskSamples, document.Mapping.Agent, document.Mapping.SessionSamples})
 	if err != nil {
 		return err
 	}
@@ -293,7 +299,7 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 }
 
 func isPackageDecodeDirection(direction Direction) bool {
-	return direction == DecodeRequest || direction == DecodeResponse || direction == DecodeEvent
+	return direction == DecodeRequest || direction == DecodeResponse || isEventDecoder(direction)
 }
 
 // An emit is a field copy, not an author-supplied claim that arbitrary code is

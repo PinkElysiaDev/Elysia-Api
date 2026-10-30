@@ -41,7 +41,7 @@ func verifySessionCombination(ctx context.Context, ingress, upstream *Compiled, 
 				targetOperation Operation
 			}{{ingress, upstream, clientName, server}, {upstream, ingress, serverName, client}} {
 				hasTrace := false
-				for _, sample := range pair.source.Definition().SessionSamples {
+				for _, sample := range pair.source.verificationSessionSamples() {
 					if sample.Operation != pair.operation || sample.ExpectedIssue != "" {
 						continue
 					}

@@ -147,7 +147,7 @@ func (compiled *Compiled) finishPackageExecution(ctx context.Context, direction 
 }
 
 func (compiled *Compiled) finishPackageCoreOutput(ctx context.Context, direction Direction, output JSONOutput, reader *valueReader) error {
-	if direction == DecodeEvent && plannedJSONType(output) != "object" {
+	if isEventDecoder(direction) && plannedJSONType(output) != "object" {
 		return &ConversionError{Issues: []ConversionIssue{{Code: InvalidInput, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "mapping.core", Path: "/", Reason: "package event mapping requires one core event object per wire frame"}}}
 	}
 	version, err := readOutputPointer(output, []string{"schemaVersion"}, reader)

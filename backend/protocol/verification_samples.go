@@ -33,3 +33,18 @@ func (compiled *Compiled) verificationAgentSamples() []AgentSample {
 	}
 	return compiled.Definition().Agent.Samples
 }
+
+func (compiled *Compiled) verificationSessionSamples() []SessionSample {
+	if compiled.packagePlan != nil {
+		document, _ := compiled.Package()
+		return document.Mapping.SessionSamples
+	}
+	return compiled.Definition().SessionSamples
+}
+
+func (compiled *Compiled) sessionSamplesPath() string {
+	if compiled.packagePlan != nil {
+		return "/mapping/sessionSamples"
+	}
+	return "/sessionSamples"
+}

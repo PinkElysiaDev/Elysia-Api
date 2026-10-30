@@ -10,15 +10,20 @@ import (
 
 func loadTaskPackage(t *testing.T, name string) (*Compiler, ProtocolPackage, *Compiled) {
 	t.Helper()
+	return loadTransportPackage(t, "tasks", name, featureAsyncTasks)
+}
+
+func loadTransportPackage(t *testing.T, kind, name string, features ...string) (*Compiler, ProtocolPackage, *Compiled) {
+	t.Helper()
 	read := func(part string) []byte {
 		t.Helper()
-		raw, err := os.ReadFile(filepath.Join("testdata", "tasks", name, part+".json"))
+		raw, err := os.ReadFile(filepath.Join("testdata", kind, name, part+".json"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		return raw
 	}
-	compiler, err := NewCompiler(DefaultLimits(), nil, []string{"tasks.async"})
+	compiler, err := NewCompiler(DefaultLimits(), nil, features)
 	if err != nil {
 		t.Fatal(err)
 	}

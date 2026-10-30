@@ -185,3 +185,30 @@ Responses 用通用 group_runs 保留相邻正文段及独立项顺序；原语�
 “连续正文→工具→正文→空消息”也与旧编码完整字节一致。日志为
 `completion-agent-{protocol,server-history,vet}`，新增原语为 `completion-group-runs`。
 尚未重测本阶段性能，也未更新六目标二进制；归档仍是修改前 dev.81。
+
+## 第六批：双向会话声明（dev.86）
+
+Spec 的 WebSocket session 声明客户端帧／服务端帧文档与现有传输参数，握手使用命名文档；
+Mapping 接通 decode_client_event、encode_upstream_event 及其余既有方向。不添加供应商模块，
+不改 WebSocket 读写循环、关闭顺序、队列和凭据限制。静态绑定要求完整 ingress 或 upstream
+方向及正确文档，编译器仍需显式安装 transport.websocket 支持。
+
+会话复用原 SessionReplay 的双向状态机，按响应分别管理工具关联、终态和晚到 usage；
+它与单响应 HTTP 流契约分开，不能给会话套单响应结束条件。帧的静态类型约束来自 Spec，
+会话的动态关联检查来自已转换核心事件，不新增第二个会话解码器或逐帧双执行。
+源 WireStreamValidation 的独立单响应契约仍只适用于已声明的 HTTP 流；本批不宣称会话
+获得了独立于 Mapping 的完整 wire 状态机。
+
+原 session-alpha／session-beta 的握手和两条 16 步轨迹迁入两文件测试夹具，外部帧保持
+原格式，核心事件及嵌套 Request 使用版本 2。Verify、组合验证和样例哈希接通 SessionSamples，
+缺证据不能激活。SessionAdapter 的二进制媒体及失败事件使用绑定核心版本，不再固定版本 1。
+
+新旧原轨迹、跨两包组合、原样帧字节、工具后续轮次、usage、显式关闭通过；复用原媒体与
+模型授权回归，二进制字节、模型重写及非法改模型拒绝也通过。记录为
+`completion-session-{compile,mapping,protocol,media}`。这里验证的是声明夹具；没有接入真实
+Realtime 供应商、也没有宣称四预置真实 SSE 已完成。管理／激活加载仍在迁移范围内。
+
+固定修改集的 Go 全量通过（约 104 秒），vet 及 Agent／会话／分组相关 race 通过。
+staticcheck v0.8.2 仍为既有 45 条；归一化行号后新增 0、移除 0，未把退出 1 写为通过。
+记录为 `completion-session-{go-all,vet,staticcheck}`、`completion-agent-session-race` 及
+`completion-session-staticcheck-comparison.json`。没有改前端，未重跑六目标或性能矩阵。

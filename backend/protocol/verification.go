@@ -130,9 +130,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 		}
 	}
 	hasTaskEvidence := verifyTaskSamples(ctx, compiled, &report)
-	if compiled.packagePlan == nil {
-		verifySessionSamples(ctx, compiled, &report, coverage, hasSample, hasSequence, hasLifecycle)
-	}
+	verifySessionSamples(ctx, compiled, &report, coverage, hasSample, hasSequence, hasLifecycle)
 	verifyAgentSamples(ctx, compiled, &report)
 	verifyModelSamples(ctx, compiled, &report)
 	for _, direction := range DirectionCatalog() {
