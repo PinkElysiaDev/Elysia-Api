@@ -1,10 +1,11 @@
 # 协议 DSL 改造进度与不变量
 
-实施分支：`refactor/protocol-dsl`。行为基线：`d40e1940`，编译器 dev.78；当前编译器 dev.80。
+实施分支：`refactor/protocol-dsl`。行为基线：`d40e1940`，编译器 dev.78；当前编译器 dev.81。
 
 经用户明确批准的独立例外：dev.79纠正请求reasoning诊断归因；dev.80接受相同用户标识
 的不同JSON字符串拼写，保留真实冲突。后者的8项接受变化与22项未变化入口见
 [身份等价记录](user-identity-equivalence-2026-10-30.md)，不将其归为行为等价重构。
+dev.81再按用户授权独立接受两个null的不同外围空白，保留真实身份冲突，关闭已记录的两项typed差异。
 
 目标是由 ProtocolSpec 描述外部协议，由 ProtocolMapping 声明外部协议与核心语义的对应，编译器生成直接操作核心对象和延迟输出容器的计划。四预置的 24 个核心方向、WebSocket、任务、模型发现、Agent、预览和验证最终使用同一执行后端。
 
@@ -232,7 +233,7 @@ staticcheck仍为原45条诊断。完整HTTP增量对照保留了SSE堆峰回退
 这批组件配对有改善，不能替代四草案完整保真或生产HTTP验收。
 
 `ca4f0d1a`以声明补齐Chat／Responses用户标识：34个输出比较相等，14项拒绝诊断及2项typed
-空白null接受差异仍未闭合，详见 [身份迁移](protocol-tracking-identity.md)。
+空白null接受差异曾未闭合；后者已由获批的dev.81独立修正，详见 [身份迁移](protocol-tracking-identity.md)。
 `ac505bbc`接入显式JSON工具流Spec及真正双向Mapping夹具；generic item_finish按既有类型完成，
 无需修改核心的partial Item规则。Native关闭的完整链路、参数分片、大整数、usage及终态已核对；
 真实供应商的多动作包络、快照、晚到身份仍未迁移。纯文本七帧验证没有稳定回退，不能称确定提速。

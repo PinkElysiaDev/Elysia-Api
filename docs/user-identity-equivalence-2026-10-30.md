@@ -57,3 +57,29 @@ protocol/builtin全量、对应vet和身份／hint定向race通过，日志分�
 本切片未单独执行完整HTTP性能或前端页面。后续a4a8f275阶段已完成dev.80六目标构建，
 匹配产物与源码归档见 [阶段验收记录](protocol-dsl-validation-2026-10-30.md)；原dev.79产物保留。
 未调用真实供应商；原客户端会话仍需另行复测。
+
+## 两个null的独立兼容修复（dev.81）
+
+2026-10-30用户批准继续修正，基线为aef4351d/dev.80。共享身份比较器现在也接受两个JSON
+null的不同外围空白表示。不同身份、null／字符串，以及raw入口的数字拼写等原拒绝规则保持。
+原字节相等和字符串比较路径不变；仅在原先拒绝非字符串的分支判断两者是否均为null。
+编译器升级至dev.81，沿用既有离线证据重验机制。
+
+这是旧比较规则与DSL规范化的表示差异，没有并发读写证据，不称竞态。复现请求由迁移测试
+直接构造；正常默认投影会映射user并删除anthropic_metadata，常规HTTP字段解析也会跳过
+外围空白。未发现正常客户端请求因此失败，本次不增加运行时模拟、默认字段或双执行。
+
+沿用现有回归验证公开typed编码、raw Execute、默认投影及两份草案。直接typed测试明确
+保留原Value外围空白，避免被测试输入解析提前清掉。旧实现对两个目标的4个定向断言失败，
+修复后通过；两份草案原有空白null差异转为成功输出逐字节比较，并核对调用者输入未修改。
+失败及成功日志在`.tmp-dev/protocol-dsl-2026-10-29/checks/null-identity-before.*`和
+`null-identity-after.*`。其他迁移gap快照未修改。
+
+新增判断只查看这两个标识，不扫描正文或历史，不增加锁、goroutine或缓存。正常字符串路径
+不增加null检查；这是代码层面的成本说明，未发布本切片的性能改善数值。
+
+修复后Go全量（约110秒）、vet及身份／hint／两草案tracking-user相关race均通过。
+固定staticcheck v0.8.2仍以原45条诊断退出1，去行号后新增0、移除0。原始日志和对照保存为
+`checks/null-identity-go-all.*`、`null-identity-vet.*`、`null-identity-race.*`、
+`null-identity-staticcheck.*`及`null-identity-staticcheck-comparison.json`。
+本次不重跑未修改的前端，也未重新构建六目标；现有a4a8f275归档仍为dev.80，不能当作dev.81产物。

@@ -14,7 +14,7 @@ Chat和Responses草案以JSON表达`parameters.user`与`parameters.anthropic_met
 
 ## 差分结果及未闭合项
 
-两草案共50项新增比较：34项成功输出字节完全相等；14项均拒绝但诊断仍不同；
+首次采集两草案共50项新增比较：34项成功输出字节完全相等；14项均拒绝但诊断仍不同；
 2项明确保留typed空白null的接受差异。共享测试入口是`checkPackageTrackingUsers`，
 既有迁移gap期望没有修改。两份完整迁移与四草案foreign-owner定向均通过。
 
@@ -26,7 +26,11 @@ Chat和Responses草案以JSON表达`parameters.user`与`parameters.anthropic_met
 另有一个已实测的合法typed输入：`user`的Value保存` null `，metadata的user_id保存`null`。
 旧编码器对非字符串仍比较原JSON字节，因而拒绝；typed DSL读取已去掉外围空白，草案接受并
 输出`user:null`。两个目标均复现。此差异没有通过更新旧期望或增加raw读取框架隐藏，也不能
-因为其只涉及空白就当成行为相等。完全迁移前须独立决定这个旧接受边界。
+因为其只涉及空白就当成行为相等。
+
+用户随后批准独立修复，dev.81使两个null按空值比较，关闭上述2项接受差异；当前50项中
+36项成功输出字节相等，14项诊断仍未闭合。原数据与旧拒绝日志保留，详见
+[独立null修复](user-identity-equivalence-2026-10-30.md)。这不代表全部协议迁移已经完成。
 
 证据位于`.tmp-dev/tracking-user-migration-2026-10-30/`，包括50个子场景的输出与错误记录、
 完整迁移定向日志。全部标识为合成数据；未运行真实供应商或本切片的性能测量。

@@ -178,10 +178,21 @@ tool首次新增集成错误地期待Collector自动补Status，原失败保留�
 方向均改善，幅度不稳，所有反向结果保留于性能记录。两项均不是生产HTTP／堆峰值验收。
 
 这三批未重跑全工程、前端页面或六目标；匹配六目标仍为a4a8f275/dev.80，不能当作包含
-这些新声明／工具动作的当前源码产物。typed空白null接受差异正在等待用户独立决定，
-没有擅自扩展已批准的字符串等价修复。
+这些新声明／工具动作的当前源码产物。当时typed空白null差异等待用户独立决定，
+随后按用户批准在dev.81修正，见[身份修复记录](user-identity-equivalence-2026-10-30.md)。
 
 随后在aefcce22运行固定staticcheck v0.8.2，仍为原45条诊断，去行号后无新增／移除；
 日志与对照为`checks/type-stage-staticcheck.*`、`type-stage-staticcheck-comparison.json`。
 真实Responses源／输出身份差异及同步源事实入口的未实施设计见
 [后续迁移依据](protocol-stream-identity-investigation.md)。
+
+## 两个null表示等价的独立修复（dev.81）
+
+基线aef4351d。用户批准后仅修改共享身份比较的非字符串分支，两个null允许不同外围空白；
+真实身份冲突仍拒绝。这是内部表示差异修复，不是有并发证据的竞态修复。
+旧代码在更新后的4个定向断言上失败，修复后原矩阵及两份迁移通过；两项空白null gap转为
+完整字节等价与输入隔离断言，其他差异不放宽。
+
+Go全量、vet和相关race通过；staticcheck v0.8.2仍为原45条，无新增。命令及输出在
+`checks/null-identity-*`，详见[接受边界记录](user-identity-equivalence-2026-10-30.md)。
+前端、六目标及性能矩阵本次未重跑；生产预置和整体v3迁移状态不因此改变。

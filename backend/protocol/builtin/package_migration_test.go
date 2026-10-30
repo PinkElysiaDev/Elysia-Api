@@ -108,22 +108,21 @@ func checkPackageTrackingUsers(t *testing.T, legacy, draft *p.Compiled) {
 			checkTrackingUserRejection(t, wantErr, gotErr, fixture.rejection)
 		})
 	}
-	t.Run("tracking-user/typed-whitespace-null-gap", func(t *testing.T) {
+	t.Run("tracking-user/typed-whitespace-null", func(t *testing.T) {
 		request := &p.Request{SchemaVersion: p.SemanticSchemaVersion, Model: p.StringValue("m"), Content: []p.Node{}, Parameters: p.Object{
 			"user": testValue(t, " null "), "anthropic_metadata": testValue(t, `{"user_id":null}`),
 		}}
-		_, wantErr := legacy.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+		want, wantErr := legacy.EncodeRequest(t.Context(), request, p.EvaluationContext{})
 		request.SchemaVersion = p.ProtocolCoreVersion
 		got, gotErr := draft.EncodeRequest(t.Context(), request, p.EvaluationContext{})
-		var failure *p.ConversionError
-		if !errors.As(wantErr, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Code != p.UnsupportedCapability || failure.Issues[0].Path != "/parameters/user" || failure.Issues[0].Reason != "conflicting user identities" || gotErr != nil {
-			t.Fatal("typed null spelling gap changed; review it explicitly", wantErr, gotErr)
+		if wantErr != nil {
+			t.Fatal("equivalent null identities must encode", wantErr)
 		}
+		checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
 		fields, err := testValue(t, string(got)).ReadObject()
-		if err != nil || !fields["user"].IsNull() {
-			t.Fatal("draft null spelling fixture lost its current user", err, string(got))
+		if err != nil || !fields["user"].IsNull() || request.Parameters["user"].JSONString() != " null " {
+			t.Fatal("null identity encoding changed its value or caller input", err, string(got))
 		}
-		t.Log("NOT CLOSED: typed DSL reads compact whitespace around null; the direct encoder compares non-string identity spelling", migrationError(wantErr), string(got))
 	})
 }
 

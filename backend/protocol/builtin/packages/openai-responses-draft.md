@@ -78,7 +78,7 @@ owner 提供 model 时执行原有补入／深合并规则，不宣称这是原�
 - SSE、模型发现、异步任务、WebSocket、Agent 及真实客户端验收。
 
 请求用户标识已补为纯声明，优先已有user，再映射anthropic_metadata.user_id；
-拒绝未知metadata和真实冲突。与Chat共用的差分与未闭合typed空白null边界见
-[身份迁移记录](../../../../docs/protocol-tracking-identity.md)。
+拒绝未知metadata和真实冲突。与Chat共用的差分及已在dev.81独立修正的typed空白null边界见
+[身份迁移记录](../../../../docs/protocol-tracking-identity.md)，剩余诊断差异仍未闭合。
 
 后续应先处理原生保存独立位置问题，再补齐逐 owner 字段处理与错误/metadata 边界。本批未调用供应商，未使用私人请求，也未运行性能验收。

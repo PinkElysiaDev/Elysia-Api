@@ -520,10 +520,10 @@ func isSameUserIdentity(left, right p.Value) bool {
 	if left == right {
 		return true
 	}
-	// Only string identities ignore JSON spelling; other values retain the
-	// existing comparison for raw callers outside the typed hint validation.
+	// Raw callers may bypass typed hint validation. Apart from null, keep
+	// non-string values strict instead of broadening equality to arbitrary JSON.
 	if !left.IsStringValue() || !right.IsStringValue() {
-		return false
+		return left.IsNull() && right.IsNull()
 	}
 	var leftText, rightText string
 	return left.Decode(&leftText) == nil && right.Decode(&rightText) == nil && leftText == rightText

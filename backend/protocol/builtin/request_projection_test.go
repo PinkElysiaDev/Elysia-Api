@@ -497,8 +497,10 @@ func TestRequestTrackingIdentitySpellings(t *testing.T) {
 			{"html-escape", `"<"`, `"\u003c"`, true, false},
 			{"different", `"u"`, `"other"`, false, false},
 			{"null", `null`, `null`, true, false},
+			{"null-whitespace", " \t\r\nnull \t", `null`, true, false},
 			{"null-string", `null`, `"u"`, false, false},
 			{"null-empty-string", `null`, `""`, false, false},
+			{"null-whitespace-string", " null ", `""`, false, false},
 			{"number", `1`, `1`, true, true},
 			{"number-spelling", `1`, `1.0`, false, true},
 		} {
@@ -508,6 +510,9 @@ func TestRequestTrackingIdentitySpellings(t *testing.T) {
 				if err := input.Decode(&request); err != nil {
 					t.Fatal(err)
 				}
+				// Direct typed callers can retain outer JSON whitespace that field
+				// extraction from an HTTP body would already have skipped.
+				request.Parameters["user"] = testValue(t, fixture.user)
 				request.Source = source.Identity()
 				check := func(entry string, wire p.Value, err error, canEncode bool, code p.IssueCode, path string) {
 					t.Helper()
