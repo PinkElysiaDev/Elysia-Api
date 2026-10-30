@@ -180,3 +180,8 @@ tool首次新增集成错误地期待Collector自动补Status，原失败保留�
 这三批未重跑全工程、前端页面或六目标；匹配六目标仍为a4a8f275/dev.80，不能当作包含
 这些新声明／工具动作的当前源码产物。typed空白null接受差异正在等待用户独立决定，
 没有擅自扩展已批准的字符串等价修复。
+
+随后在aefcce22运行固定staticcheck v0.8.2，仍为原45条诊断，去行号后无新增／移除；
+日志与对照为`checks/type-stage-staticcheck.*`、`type-stage-staticcheck-comparison.json`。
+真实Responses源／输出身份差异及同步源事实入口的未实施设计见
+[后续迁移依据](protocol-stream-identity-investigation.md)。
