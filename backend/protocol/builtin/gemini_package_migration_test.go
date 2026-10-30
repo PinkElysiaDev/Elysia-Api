@@ -1,7 +1,10 @@
 package builtin
 
 import (
+	"bytes"
+	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
@@ -122,6 +125,115 @@ func TestGeminiPackageDraftMigration(t *testing.T) {
 		})
 	}
 	checkGeminiReasoningMigration(t, legacy, draft)
+	checkGeminiCacheRemainder(t, legacy, draft)
+}
+
+func checkGeminiCacheRemainder(t *testing.T, legacy, draft *p.Compiled) {
+	t.Helper()
+	options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
+	for _, fixture := range []struct{ name, cache, extra string }{
+		{"mixed", `{"future":{"items":[null,1e2,{}]}}`, `,"future_root":{"n":9007199254740993,"empty":null},"generationConfig":{"temperature":0.25,"future_gen":{"enabled":false}}`},
+		{"unknown-null", `{"future":null}`, ""},
+		{"empty", `{}`, ""},
+		{"null", `null`, ""},
+	} {
+		t.Run("cache-remainder/"+fixture.name, func(t *testing.T) {
+			raw := `{"contents":[],"prompt_cache_options":` + fixture.cache + fixture.extra + `}`
+			wire := testValue(t, raw)
+			request, err := legacy.DecodeRequest(t.Context(), wire.Bytes(), options)
+			if err != nil {
+				t.Fatal("valid remainder fixture rejected by baseline", err)
+			}
+			t.Run("decode", func(t *testing.T) {
+				compareGeminiMigration(t, legacy, draft, p.Sample{Direction: p.DecodeRequest, Input: wire}, options)
+			})
+			if fixture.name == "mixed" {
+				t.Run("native", func(t *testing.T) {
+					decoded, err := draft.DecodeRequest(t.Context(), wire.Bytes(), options)
+					if err != nil {
+						t.Fatal(err)
+					}
+					want, wantErr := legacy.EncodeRequest(t.Context(), request, options)
+					got, gotErr := draft.EncodeRequest(t.Context(), decoded, options)
+					if wantErr != nil {
+						t.Fatal(wantErr)
+					}
+					checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+					if !bytes.Equal(got, wire.Bytes()) {
+						t.Fatal("unchanged remainder lost original bytes")
+					}
+				})
+			}
+			request.Native = nil
+			t.Run("without-root-native", func(t *testing.T) {
+				want, wantErr := legacy.EncodeRequest(t.Context(), request, options)
+				if wantErr != nil {
+					t.Fatal("legacy remainder rendering failed", wantErr)
+				}
+				current := request.Clone()
+				current.SchemaVersion = p.ProtocolCoreVersion
+				got, gotErr := draft.EncodeRequest(t.Context(), current, options)
+				checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+			})
+		})
+	}
+	t.Run("cache-remainder/system-owner", func(t *testing.T) {
+		// Reuse the old core for encoding: the existing system provenance gap is
+		// unrelated to whether both unknown owners survive semantic rendering.
+		request, err := legacy.DecodeRequest(t.Context(), []byte(`{"systemInstruction":{"role":"user","parts":[{"text":"prefix"}],"vendor":{"n":9007199254740993}},"contents":[],"prompt_cache_options":{"future":null}}`), options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Native = nil
+		want, wantErr := legacy.EncodeRequest(t.Context(), request, options)
+		if wantErr != nil {
+			t.Fatal("legacy system/owner fixture failed", wantErr)
+		}
+		current := request.Clone()
+		current.SchemaVersion = p.ProtocolCoreVersion
+		got, gotErr := draft.EncodeRequest(t.Context(), current, options)
+		checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+	})
+	checkGeminiOwnerBucket(t, legacy, draft, options)
+}
+
+func checkGeminiOwnerBucket(t *testing.T, legacy, draft *p.Compiled, options p.EvaluationContext) {
+	t.Helper()
+	base, err := legacy.DecodeRequest(t.Context(), []byte(`{"contents":[]}`), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.Native = nil
+	for _, owner := range []string{"", `{}`, `null`} {
+		name := owner
+		if name == "" {
+			name = "absent"
+		}
+		t.Run("cache-remainder/owner-"+name, func(t *testing.T) {
+			request := base.Clone()
+			if owner != "" {
+				request.Parameters = p.Object{"wire:gemini": testValue(t, owner)}
+			}
+			current := request.Clone()
+			current.SchemaVersion = p.ProtocolCoreVersion
+			want, wantErr := legacy.EncodeRequest(t.Context(), request, options)
+			got, gotErr := draft.EncodeRequest(t.Context(), current, options)
+			if owner != "null" {
+				if wantErr != nil {
+					t.Fatal(wantErr)
+				}
+				checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+				return
+			}
+			var oldFailure, newFailure *p.ConversionError
+			if !errors.As(wantErr, &oldFailure) || len(oldFailure.Issues) != 1 || oldFailure.Issues[0].Code != p.InvalidInput || oldFailure.Issues[0].Stage != "runtime" || !strings.Contains(wantErr.Error(), "expected JSON object") ||
+				!errors.As(gotErr, &newFailure) || len(newFailure.Issues) != 1 || newFailure.Issues[0].Code != p.InvalidInput || newFailure.Issues[0].Stage != "evaluate" ||
+				!strings.HasSuffix(newFailure.Issues[0].Path, "/@encode-system-envelope/body/source") || !strings.Contains(gotErr.Error(), "JSON pointer traverses a scalar") || errors.Unwrap(gotErr) == nil {
+				t.Fatal("null owner acceptance or existing rejection point changed", wantErr, gotErr)
+			}
+			t.Log("NOT CLOSED: existing null owner rejection differs; draft rejects the system-extension child read before the root guard", wantErr, gotErr)
+		})
+	}
 }
 
 func checkGeminiReasoningMigration(t *testing.T, legacy, draft *p.Compiled) {

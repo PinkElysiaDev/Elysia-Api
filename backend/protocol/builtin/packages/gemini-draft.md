@@ -46,9 +46,11 @@ output，保留 inferred 与 observed 的区别。加减使用现有 int64 原�
 | thinkingConfig 正例的解码与无根 Native 编码 | 22 | 22 | 0 |
 | 当前 thinking 编辑与删除 | 2 | 2 | 0 |
 | thinking 来源与编码冲突负例 | 7 | 0 | 7 |
-| 合计 | 86 | 60 | 26 |
+| 缓存未知余项、无根 Native、已有 system/root/generation owner 回归 | 12 | 12 | 0 |
+| 现有 null 自身 owner 拒绝边界 | 1 | 0 | 1 |
+| 合计 | 99 | 72 | 27 |
 
-86 次检查的台账测试通过，不表示 26 项差异已经等价。比较保留所有公开核心字段、来源、
+99 次定向检查通过，不表示 27 项差异已经等价。比较保留所有公开核心字段、来源、
 Native、完整输出字节及完整错误树，唯一显式适配是核心 schemaVersion 1→2。
 
 最初 19 项实际差异追加在共享静态账本 `../testdata/package-migration-gaps.json`，没有更改既有
@@ -116,6 +118,28 @@ thinkingLevel 对应 effort，非 null 时指定 reasoning scope；thinkingBudge
 这 7 项追加快照采自 `9794e509` 工作区，证据为忽略目录中的
 `.tmp-dev/protocol-dsl-2026-10-29/gemini-thinking-observed.log`。原 19 项 Gemini 及其他协议的快照
 保持不变，正常测试没有生成或自动更新账本的代码。多个同时错误时的首错顺序仍未证明。
+
+### 已补齐：prompt_cache_options 的未知余项
+
+解码声明在原有根扩展与 system 包装扩展之后，追加 `prompt_cache_options` 的
+`mode/ttl` 以外成员。只有对象才提取；非空未知余项进入 `wire:gemini`，其中的 null、
+空对象、数组及数字拼写保留。空/null options 不生成空 owner，去掉根 Native 后沿用旧语义省略。
+编码基体并不写这个字段，因此已有根合并可以重建它，本批没有引入 `merge_deep`，
+也没有修改其它根、generationConfig、systemInstruction 的合并、schema、effects 或静态 gap。
+
+新增 12 次成功比较包括空 contents 下的完整核心、原始 Native 字节、无根 Native 编码，
+并带上原已保留的未知根字段与 generationConfig 余项。system 包装回归使用旧核心做编码比较，
+不扩大已固定的来源路径差异。原有 86 项及新增用例已通过 `TestGeminiPackageDraftMigration` 定向执行。
+
+另确认一项已有拒绝：`wire:gemini:null` 并未被整个程序当作缺失。旧 codec 在扩展读取时报告
+`invalid_input / runtime / expected JSON object`；草案更早在
+`encode-system-envelope` 读取 `owner/systemInstruction` 时报告
+`invalid_input / evaluate / JSON pointer traverses a scalar`，错误链仍保留。
+根 owner 的 `present` 判断本批保持不变；这不是新增 null 拒绝能力，也未完成错误树等价。
+新用例独立记录此现有边界，没有改写旧诊断账本。
+
+本批仅补未知余项，不声称已闭合 mode/ttl 等已知缓存意图、非对象 options 或 Gemini 缓存能力拒绝。
+未运行性能基准或完整工程验收；合成差分不是生产激活证据。
 
 ## 尚未完成的边界
 

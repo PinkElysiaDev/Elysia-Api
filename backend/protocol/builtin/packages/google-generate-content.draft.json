@@ -2205,6 +2205,75 @@
                       }
                     }
                   }
+                },
+                {
+                  "op": "object",
+                  "fields": {
+                    "prompt_cache_options": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/prompt_cache_options"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "object"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "let",
+                        "name": "cache-extensions",
+                        "source": {
+                          "op": "project",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/prompt_cache_options"
+                          },
+                          "keys": [
+                            "mode",
+                            "ttl"
+                          ],
+                          "policy": "exclude"
+                        },
+                        "body": {
+                          "op": "if",
+                          "when": {
+                            "op": "not",
+                            "source": {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "name": "cache-extensions",
+                                  "path": ""
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": {}
+                                }
+                              ]
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "cache-extensions",
+                            "path": ""
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               ]
             },
