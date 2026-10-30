@@ -9975,9 +9975,8 @@
             "path": "/parameters/store"
           },
           "user": {
-            "op": "read",
-            "from": "input",
-            "path": "/parameters/user"
+            "op": "ref",
+            "ref": "encode-user"
           },
           "text": {
             "op": "read",
@@ -10423,6 +10422,222 @@
             }
           }
         }
+      },
+      "is-tracking-metadata-object": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "type",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/anthropic_metadata"
+            }
+          },
+          {
+            "op": "literal",
+            "value": "object"
+          }
+        ]
+      },
+      "encode-user": {
+        "op": "if",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/parameters/user"
+          }
+        },
+        "then": {
+          "op": "read",
+          "from": "input",
+          "path": "/parameters/user"
+        },
+        "otherwise": {
+          "op": "if",
+          "when": {
+            "op": "ref",
+            "ref": "is-tracking-metadata-object"
+          },
+          "then": {
+            "op": "read",
+            "from": "input",
+            "path": "/parameters/anthropic_metadata/user_id"
+          }
+        }
+      },
+      "has-unknown-tracking-metadata": {
+        "op": "if",
+        "when": {
+          "op": "ref",
+          "ref": "is-tracking-metadata-object"
+        },
+        "then": {
+          "op": "not",
+          "source": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "filter",
+                "source": {
+                  "op": "keys",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/anthropic_metadata"
+                  }
+                },
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": "user_id"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "op": "array",
+                "items": []
+              }
+            ]
+          }
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "has-conflicting-user-identities": {
+        "op": "if",
+        "when": {
+          "op": "ref",
+          "ref": "is-tracking-metadata-object"
+        },
+        "then": {
+          "op": "if",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/user"
+                }
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/anthropic_metadata/user_id"
+                }
+              }
+            ]
+          },
+          "then": {
+            "op": "not",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/parameters/user"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/parameters/anthropic_metadata/user_id"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "string"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "then": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/user"
+                  },
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/anthropic_metadata/user_id"
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "stringify_json",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/user"
+                    }
+                  },
+                  {
+                    "op": "stringify_json",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/anthropic_metadata/user_id"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
       }
     },
     "directions": {
@@ -10719,6 +10934,26 @@
               ]
             },
             "reason": "target does not declare supplied-history retention"
+          },
+          {
+            "id": "unknown-tracking-metadata",
+            "kind": "reject",
+            "path": "/parameters/anthropic_metadata",
+            "when": {
+              "op": "ref",
+              "ref": "has-unknown-tracking-metadata"
+            },
+            "reason": "unknown metadata requires explicit mapping"
+          },
+          {
+            "id": "conflicting-user-identities",
+            "kind": "reject",
+            "path": "/parameters/user",
+            "when": {
+              "op": "ref",
+              "ref": "has-conflicting-user-identities"
+            },
+            "reason": "conflicting user identities"
           },
           {
             "id": "foreign-wire-owner",

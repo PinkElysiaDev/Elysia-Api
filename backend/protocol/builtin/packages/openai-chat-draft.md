@@ -110,6 +110,10 @@
 
 ## 尚未完成的生产边界
 
+请求用户标识已补为纯声明：已有user优先，否则映射anthropic_metadata.user_id；
+未知metadata与真实冲突仍拒绝。与Responses共用的差分、诊断及typed空白null差异见
+[身份迁移边界](../../../../docs/protocol-tracking-identity.md)，这些差异仍阻止完整等价验收。
+
 以下不属于已有定向比较完整覆盖的能力：
 
 - 请求 wire 的完整类型拒绝、冲突 token 上限、旧 functions/function_call 拒绝、n 范围、非法参数的首错顺序和诊断归因。

@@ -148,6 +148,7 @@ func TestResponsesPackageDraftMigration(t *testing.T) {
 		})
 	}
 	checkResponsesModelOwnerEncoding(t, legacy, draft)
+	checkPackageTrackingUsers(t, legacy, draft)
 	checkPackageMediaURIs(t, legacy, draft, definition)
 }
 

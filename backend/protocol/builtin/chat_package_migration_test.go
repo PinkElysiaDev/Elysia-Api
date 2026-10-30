@@ -107,6 +107,7 @@ func TestChatPackageDraftMigration(t *testing.T) {
 	}
 	checkChatRequestOwners(t, legacy, draft)
 	checkChatReasoningParameters(t, legacy, draft)
+	checkPackageTrackingUsers(t, legacy, draft)
 	checkPackageMediaURIs(t, legacy, draft, definition)
 	wire := testValue(t, `{"model":"m","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{"q":{"type":"string"}}}}}],"tool_choice":{"type":"function","function":{"name":"lookup"}}}`)
 	for _, direction := range []p.Direction{p.DecodeRequest, p.EncodeRequest} {

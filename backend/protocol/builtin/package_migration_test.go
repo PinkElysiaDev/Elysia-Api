@@ -3,6 +3,7 @@ package builtin
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -43,6 +44,104 @@ type migrationGapState struct {
 	LegacyError *migrationErrorState  `json:"legacyError"`
 	DraftError  *migrationErrorState  `json:"draftError"`
 	Values      []migrationValueState `json:"values"`
+}
+
+func checkPackageTrackingUsers(t *testing.T, legacy, draft *p.Compiled) {
+	t.Helper()
+	for _, fixture := range []struct {
+		name, parameters, rejection string
+		isRaw                       bool
+	}{
+		{"absent", `{}`, "", false},
+		{"user-only", `{"user":"current"}`, "", false},
+		{"metadata-empty", `{"anthropic_metadata":{}}`, "", false},
+		{"metadata-null", `{"anthropic_metadata":null}`, "", false},
+		{"tracking-user", `{"anthropic_metadata":{"user_id":"tracking"}}`, "", false},
+		{"tracking-null", `{"anthropic_metadata":{"user_id":null}}`, "", false},
+		{"same-null", `{"user":null,"anthropic_metadata":{"user_id":null}}`, "", false},
+		{"same-string-spelling", `{"user":"\\path\/user","anthropic_metadata":{"user_id":"\\path/user"}}`, "", false},
+		{"same-unicode", `{"user":"\u0075ser","anthropic_metadata":{"user_id":"user"}}`, "", false},
+		{"current-user-priority", `{"user":"current","anthropic_metadata":{}}`, "", false},
+		{"conflicting-user", `{"user":"current","anthropic_metadata":{"user_id":"other"}}`, "conflict", false},
+		{"null-user-conflict", `{"user":null,"anthropic_metadata":{"user_id":"other"}}`, "conflict", false},
+		{"null-tracking-conflict", `{"user":"current","anthropic_metadata":{"user_id":null}}`, "conflict", false},
+		{"unknown-member", `{"anthropic_metadata":{"future":null}}`, "unknown", false},
+		{"unknown-before-conflict", `{"user":"current","anthropic_metadata":{"future":false,"user_id":"other"}}`, "unknown", false},
+		{"raw-string-equivalent", `{"user":"\u0075ser","anthropic_metadata":{"user_id":"user"}}`, "", true},
+		{"raw-number-identical", `{"user":1,"anthropic_metadata":{"user_id":1}}`, "", true},
+		{"raw-number-spelling", `{"user":1,"anthropic_metadata":{"user_id":1.0}}`, "conflict", true},
+		{"raw-object-identical", `{"user":{"a":1,"b":2},"anthropic_metadata":{"user_id":{"a":1,"b":2}}}`, "", true},
+		{"raw-object-order", `{"user":{"a":1,"b":2},"anthropic_metadata":{"user_id":{"b":2,"a":1}}}`, "conflict", true},
+		{"raw-metadata-string", `{"anthropic_metadata":"ignored"}`, "", true},
+		{"raw-metadata-number", `{"anthropic_metadata":1}`, "", true},
+		{"raw-metadata-boolean", `{"anthropic_metadata":false}`, "", true},
+		{"raw-metadata-array", `{"anthropic_metadata":[]}`, "", true},
+	} {
+		t.Run("tracking-user/"+fixture.name, func(t *testing.T) {
+			var want, got []byte
+			var wantErr, gotErr error
+			if fixture.isRaw {
+				encode := func(compiled *p.Compiled) ([]byte, error) {
+					input := testValue(t, `{"schemaVersion":`+strconv.Itoa(compiled.CoreVersion())+`,"model":"m","content":[],"parameters":`+fixture.parameters+`}`)
+					output, issues := compiled.Execute(t.Context(), p.EncodeRequest, input, p.EvaluationContext{})
+					return output.Bytes(), p.IssuesError(issues)
+				}
+				want, wantErr = encode(legacy)
+				got, gotErr = encode(draft)
+			} else {
+				parameters, err := testValue(t, fixture.parameters).ReadObject()
+				if err != nil {
+					t.Fatal(err)
+				}
+				request := &p.Request{SchemaVersion: p.SemanticSchemaVersion, Model: p.StringValue("m"), Content: []p.Node{}, Parameters: parameters}
+				want, wantErr = legacy.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+				request.SchemaVersion = p.ProtocolCoreVersion
+				got, gotErr = draft.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+			}
+			if fixture.rejection == "" {
+				if wantErr != nil {
+					t.Fatal("legacy tracking fixture must encode", wantErr)
+				}
+				checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+				return
+			}
+			checkTrackingUserRejection(t, wantErr, gotErr, fixture.rejection)
+		})
+	}
+	t.Run("tracking-user/typed-whitespace-null-gap", func(t *testing.T) {
+		request := &p.Request{SchemaVersion: p.SemanticSchemaVersion, Model: p.StringValue("m"), Content: []p.Node{}, Parameters: p.Object{
+			"user": testValue(t, " null "), "anthropic_metadata": testValue(t, `{"user_id":null}`),
+		}}
+		_, wantErr := legacy.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+		request.SchemaVersion = p.ProtocolCoreVersion
+		got, gotErr := draft.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+		var failure *p.ConversionError
+		if !errors.As(wantErr, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Code != p.UnsupportedCapability || failure.Issues[0].Path != "/parameters/user" || failure.Issues[0].Reason != "conflicting user identities" || gotErr != nil {
+			t.Fatal("typed null spelling gap changed; review it explicitly", wantErr, gotErr)
+		}
+		fields, err := testValue(t, string(got)).ReadObject()
+		if err != nil || !fields["user"].IsNull() {
+			t.Fatal("draft null spelling fixture lost its current user", err, string(got))
+		}
+		t.Log("NOT CLOSED: typed DSL reads compact whitespace around null; the direct encoder compares non-string identity spelling", migrationError(wantErr), string(got))
+	})
+}
+
+func checkTrackingUserRejection(t *testing.T, wantErr, gotErr error, rejection string) {
+	t.Helper()
+	oldPath, newPath, reason, rule := "/parameters/user", "/parameters/user", "conflicting user identities", "conflicting-user-identities"
+	if rejection == "unknown" {
+		oldPath, newPath = "/parameters/anthropic_metadata/future", "/parameters/anthropic_metadata"
+		reason, rule = "unknown metadata requires explicit mapping", "unknown-tracking-metadata"
+	}
+	var oldFailure, newFailure *p.ConversionError
+	if !errors.As(wantErr, &oldFailure) || len(oldFailure.Issues) != 1 || oldFailure.Issues[0].Code != p.UnsupportedCapability || oldFailure.Issues[0].Stage != "wire" || oldFailure.Issues[0].Path != oldPath || oldFailure.Issues[0].Reason != reason ||
+		!errors.As(gotErr, &newFailure) || len(newFailure.Issues) != 1 || newFailure.Issues[0].Code != p.ConversionRejected || newFailure.Issues[0].Stage != "mapping.effects" || newFailure.Issues[0].Path != newPath || newFailure.Issues[0].Reason != reason || newFailure.Issues[0].RuleID != rule {
+		t.Fatal("tracking metadata rejection changed", wantErr, gotErr)
+	}
+	// These new fixtures expose the existing effects/renderer boundary instead
+	// of changing the reviewed snapshots for unrelated migration differences.
+	t.Log("NOT CLOSED: metadata rejection diagnostics differ; renderer-wide first-error order remains unverified", migrationError(wantErr), migrationError(gotErr))
 }
 
 // Reuse the shipped image request shapes; exercise URI edges on one shape,
