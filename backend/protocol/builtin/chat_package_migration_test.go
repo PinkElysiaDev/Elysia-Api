@@ -1,7 +1,10 @@
 package builtin
 
 import (
+	"bytes"
+	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
@@ -102,6 +105,7 @@ func TestChatPackageDraftMigration(t *testing.T) {
 			checkPackageMigration(t, want, got, wantErr, gotErr, fixture.gap)
 		})
 	}
+	checkChatRequestOwners(t, legacy, draft)
 	checkPackageMediaURIs(t, legacy, draft, definition)
 	wire := testValue(t, `{"model":"m","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{"q":{"type":"string"}}}}}],"tool_choice":{"type":"function","function":{"name":"lookup"}}}`)
 	for _, direction := range []p.Direction{p.DecodeRequest, p.EncodeRequest} {
@@ -122,6 +126,124 @@ func TestChatPackageDraftMigration(t *testing.T) {
 			want, wantErr := executePackageMigrationSample(t, legacy, sample, options, false)
 			got, gotErr := executePackageMigrationSample(t, draft, sample, options, true)
 			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+		})
+	}
+}
+
+func checkChatRequestOwners(t *testing.T, legacy, draft *p.Compiled) {
+	t.Helper()
+	options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
+	for _, fixture := range []struct{ name, options string }{
+		{"known-and-unknown", `{"mode":"implicit","ttl":"1h","future":{"n":9007199254740993,"empty":null}}`},
+		{"unknown-only", `{"future":null}`},
+		{"empty", `{}`},
+		{"null", `null`},
+	} {
+		t.Run("request-owner/"+fixture.name, func(t *testing.T) {
+			raw := `{"model":"m","messages":[{"role":"user","content":"hi"}],"future_root":{},"prompt_cache_options":` + fixture.options + `}`
+			sample := p.Sample{Direction: p.DecodeRequest, Input: testValue(t, raw)}
+			want, wantErr := executePackageMigrationSample(t, legacy, sample, options, false)
+			got, gotErr := executePackageMigrationSample(t, draft, sample, options, true)
+			if wantErr != nil {
+				t.Fatal(wantErr)
+			}
+			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+			original, err := legacy.DecodeRequest(t.Context(), []byte(raw), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoded, err := draft.DecodeRequest(t.Context(), []byte(raw), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			edits := []string{"native", "without-root-native"}
+			if fixture.name == "known-and-unknown" {
+				edits = append(edits, "cache-mode", "remove-cache-owner")
+			}
+			for _, edit := range edits {
+				t.Run(edit, func(t *testing.T) {
+					oldRequest, newRequest := original.Clone(), decoded.Clone()
+					for _, request := range []*p.Request{oldRequest, newRequest} {
+						switch edit {
+						case "without-root-native":
+							request.Native = nil
+						case "cache-mode":
+							for index := range request.Cache {
+								if request.Cache[index].Kind == "mode" {
+									request.Cache[index].Value = p.StringValue("explicit")
+								}
+							}
+						case "remove-cache-owner":
+							owner, err := request.Parameters["wire:openai_chat"].ReadObject()
+							if err != nil {
+								t.Fatal(err)
+							}
+							delete(owner, "prompt_cache_options")
+							request.Parameters["wire:openai_chat"], err = p.EncodeValue(owner)
+							if err != nil {
+								t.Fatal(err)
+							}
+						}
+					}
+					want, wantErr := legacy.EncodeRequest(t.Context(), oldRequest, options)
+					got, gotErr := draft.EncodeRequest(t.Context(), newRequest, options)
+					if wantErr != nil {
+						t.Fatal(wantErr)
+					}
+					checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+					if edit == "native" && !bytes.Equal(got, []byte(raw)) {
+						t.Fatal("unchanged request lost its original bytes")
+					}
+				})
+			}
+		})
+	}
+	checkChatOwnerMerge(t, legacy, draft, options)
+}
+
+func checkChatOwnerMerge(t *testing.T, legacy, draft *p.Compiled, options p.EvaluationContext) {
+	t.Helper()
+	base, err := legacy.DecodeRequest(t.Context(), []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}],"response_format":{"type":"json_schema","json_schema":{"name":"result","schema":{"type":"object","properties":{"answer":{"type":"string"}}}}}}`), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.Native = nil
+	if _, err := legacy.EncodeRequest(t.Context(), base, options); err != nil {
+		t.Fatal("legacy JSON Schema fixture must encode without Native", err)
+	}
+	for _, fixture := range []struct{ name, owner, conflict string }{
+		{"empty", `{}`, ""},
+		{"nested-union", `{"response_format":{"json_schema":{"schema":{"description":"synthetic"}}}}`, ""},
+		{"equal-leaf-conflict", `{"response_format":{"json_schema":{"schema":{"type":"object"}}}}`, "/response_format/json_schema/schema/type"},
+		{"null-owner", `null`, ""},
+	} {
+		t.Run("request-owner-merge/"+fixture.name, func(t *testing.T) {
+			oldRequest := base.Clone()
+			oldRequest.Parameters["wire:openai_chat"] = testValue(t, fixture.owner)
+			newRequest := oldRequest.Clone()
+			newRequest.SchemaVersion = p.ProtocolCoreVersion
+			want, wantErr := legacy.EncodeRequest(t.Context(), oldRequest, options)
+			got, gotErr := draft.EncodeRequest(t.Context(), newRequest, options)
+			if fixture.conflict == "" && fixture.owner != "null" {
+				if wantErr != nil {
+					t.Fatal(wantErr)
+				}
+				checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+				return
+			}
+			var oldFailure, newFailure *p.ConversionError
+			if !errors.As(wantErr, &oldFailure) || len(oldFailure.Issues) != 1 || !errors.As(gotErr, &newFailure) || len(newFailure.Issues) != 1 || newFailure.Issues[0].Code != p.InvalidInput || newFailure.Issues[0].Stage != "evaluate" {
+				t.Fatal("owner rejection changed or lost classification", wantErr, gotErr)
+			}
+			if fixture.conflict != "" {
+				var conflict *p.ObjectMergeConflictError
+				if oldFailure.Issues[0].Code != p.UnsupportedCapability || oldFailure.Issues[0].Stage != "wire" || oldFailure.Issues[0].Path != fixture.conflict || !errors.As(gotErr, &conflict) || conflict.Path != fixture.conflict {
+					t.Fatal("nested leaf collision lost its structured cause", wantErr, gotErr)
+				}
+			} else if oldFailure.Issues[0].Code != p.InvalidInput || oldFailure.Issues[0].Stage != "runtime" || !strings.Contains(wantErr.Error(), "expected JSON object") || !strings.Contains(gotErr.Error(), "expected JSON object") || errors.Unwrap(gotErr) == nil {
+				t.Fatal("null owner became absent or lost its cause", wantErr, gotErr)
+			}
+			t.Log("NOT CLOSED: codec wire/runtime diagnostics and DSL evaluate diagnostics differ", wantErr, gotErr)
 		})
 	}
 }

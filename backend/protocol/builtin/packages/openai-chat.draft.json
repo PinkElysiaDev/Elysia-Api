@@ -613,45 +613,120 @@
                   "op": "let",
                   "name": "selected",
                   "source": {
-                    "op": "project",
-                    "policy": "exclude",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": ""
-                    },
-                    "keys": [
-                      "model",
-                      "messages",
-                      "tools",
-                      "tool_choice",
-                      "functions",
-                      "function_call",
-                      "stream_options",
-                      "cache_control",
-                      "prompt_cache_key",
-                      "prompt_cache_retention",
-                      "prompt_cache_options",
-                      "prewarm",
-                      "max_tokens",
-                      "reasoning_effort",
-                      "max_completion_tokens",
-                      "temperature",
-                      "top_p",
-                      "stop",
-                      "stream",
-                      "parallel_tool_calls",
-                      "seed",
-                      "frequency_penalty",
-                      "presence_penalty",
-                      "metadata",
-                      "store",
-                      "user",
-                      "response_format",
-                      "n",
-                      "logprobs",
-                      "top_logprobs",
-                      "logit_bias"
+                    "op": "merge",
+                    "policy": "reject",
+                    "items": [
+                      {
+                        "op": "project",
+                        "policy": "exclude",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": ""
+                        },
+                        "keys": [
+                          "model",
+                          "messages",
+                          "tools",
+                          "tool_choice",
+                          "functions",
+                          "function_call",
+                          "stream_options",
+                          "cache_control",
+                          "prompt_cache_key",
+                          "prompt_cache_retention",
+                          "prompt_cache_options",
+                          "prewarm",
+                          "max_tokens",
+                          "reasoning_effort",
+                          "max_completion_tokens",
+                          "temperature",
+                          "top_p",
+                          "stop",
+                          "stream",
+                          "parallel_tool_calls",
+                          "seed",
+                          "frequency_penalty",
+                          "presence_penalty",
+                          "metadata",
+                          "store",
+                          "user",
+                          "response_format",
+                          "n",
+                          "logprobs",
+                          "top_logprobs",
+                          "logit_bias"
+                        ]
+                      },
+                      {
+                        "op": "object",
+                        "fields": {
+                          "prompt_cache_options": {
+                            "op": "if",
+                            "when": {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "type",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/prompt_cache_options"
+                                  }
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "object"
+                                }
+                              ]
+                            },
+                            "then": {
+                              "op": "let",
+                              "name": "cache-extensions",
+                              "source": {
+                                "op": "project",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/prompt_cache_options"
+                                },
+                                "keys": [
+                                  "mode",
+                                  "ttl"
+                                ],
+                                "policy": "exclude"
+                              },
+                              "body": {
+                                "op": "if",
+                                "when": {
+                                  "op": "not",
+                                  "source": {
+                                    "op": "equal",
+                                    "items": [
+                                      {
+                                        "op": "read",
+                                        "from": "binding",
+                                        "name": "cache-extensions",
+                                        "path": ""
+                                      },
+                                      {
+                                        "op": "literal",
+                                        "value": {}
+                                      }
+                                    ]
+                                  }
+                                },
+                                "then": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "name": "cache-extensions",
+                                  "path": ""
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
                     ]
                   },
                   "body": {
@@ -6621,6 +6696,133 @@
           "op": "literal",
           "value": false
         }
+      },
+      "encode-request-fields": {
+        "op": "merge",
+        "policy": "reject",
+        "items": [
+          {
+            "op": "object",
+            "fields": {
+              "model": {
+                "op": "read",
+                "from": "input",
+                "path": "/model"
+              },
+              "messages": {
+                "op": "ref",
+                "ref": "encode-messages"
+              },
+              "tools": {
+                "op": "ref",
+                "ref": "encode-tools"
+              },
+              "tool_choice": {
+                "op": "ref",
+                "ref": "encode-tool-choice"
+              },
+              "reasoning_effort": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/effort"
+              },
+              "stream_options": {
+                "op": "read",
+                "from": "input",
+                "path": "/clientOutput/rawStreamOptions"
+              },
+              "max_completion_tokens": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/max_output_tokens"
+              },
+              "temperature": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/temperature"
+              },
+              "top_p": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/top_p"
+              },
+              "stop": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/stop"
+              },
+              "stream": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/stream"
+              },
+              "parallel_tool_calls": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/parallel_tool_calls"
+              },
+              "seed": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/seed"
+              },
+              "frequency_penalty": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/frequency_penalty"
+              },
+              "presence_penalty": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/presence_penalty"
+              },
+              "metadata": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/metadata"
+              },
+              "store": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/store"
+              },
+              "user": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/user"
+              },
+              "response_format": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/response_format"
+              },
+              "n": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/n"
+              },
+              "logprobs": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/logprobs"
+              },
+              "top_logprobs": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/top_logprobs"
+              },
+              "logit_bias": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/logit_bias"
+              }
+            }
+          },
+          {
+            "op": "ref",
+            "ref": "encode-cache"
+          }
+        ]
       }
     },
     "directions": {
@@ -6717,151 +6919,33 @@
       },
       "encode_request": {
         "program": {
-          "op": "merge",
-          "policy": "reject",
-          "items": [
-            {
-              "op": "object",
-              "fields": {
-                "model": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/model"
-                },
-                "messages": {
-                  "op": "ref",
-                  "ref": "encode-messages"
-                },
-                "tools": {
-                  "op": "ref",
-                  "ref": "encode-tools"
-                },
-                "tool_choice": {
-                  "op": "ref",
-                  "ref": "encode-tool-choice"
-                },
-                "reasoning_effort": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/reasoning/effort"
-                },
-                "stream_options": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/clientOutput/rawStreamOptions"
-                },
-                "max_completion_tokens": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/max_output_tokens"
-                },
-                "temperature": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/temperature"
-                },
-                "top_p": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/top_p"
-                },
-                "stop": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/stop"
-                },
-                "stream": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/stream"
-                },
-                "parallel_tool_calls": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/parallel_tool_calls"
-                },
-                "seed": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/seed"
-                },
-                "frequency_penalty": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/frequency_penalty"
-                },
-                "presence_penalty": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/presence_penalty"
-                },
-                "metadata": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/metadata"
-                },
-                "store": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/store"
-                },
-                "user": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/user"
-                },
-                "response_format": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/response_format"
-                },
-                "n": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/n"
-                },
-                "logprobs": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/logprobs"
-                },
-                "top_logprobs": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/top_logprobs"
-                },
-                "logit_bias": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/logit_bias"
-                }
-              }
-            },
-            {
-              "op": "ref",
-              "ref": "encode-cache"
-            },
-            {
-              "op": "if",
-              "when": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/wire:openai_chat"
-                }
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/wire:openai_chat"
+            }
+          },
+          "then": {
+            "op": "merge_deep",
+            "items": [
+              {
+                "op": "ref",
+                "ref": "encode-request-fields"
               },
-              "then": {
+              {
                 "op": "read",
                 "from": "input",
                 "path": "/parameters/wire:openai_chat"
-              },
-              "otherwise": {
-                "op": "object",
-                "fields": {}
               }
-            }
-          ]
+            ]
+          },
+          "otherwise": {
+            "op": "ref",
+            "ref": "encode-request-fields"
+          }
         },
         "effects": [
           {

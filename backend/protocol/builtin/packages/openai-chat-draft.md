@@ -25,7 +25,7 @@
 
 再加入一个实际具名工具选择请求，比较解码及移除根 Native 后重编码。
 
-共 **47 次比较：40 次完整相等，7 次未闭合**。原 document 差异已闭合；null 拒绝诊断仍未闭合。台账检查通过不等于这 7 次行为等价通过。
+原有矩阵共 **47 次比较：40 次完整相等，7 次未闭合**。原 document 差异已闭合；null 拒绝诊断仍未闭合。台账检查通过不等于这 7 次行为等价通过。新增自身 owner 切片另列于下节。
 
 | 比较组 | 数量 | 当前结果 |
 |---|---:|---|
@@ -50,6 +50,32 @@
 
 现在两向声明对齐 `builtin/tool_choice.go`，新增的同一请求在解码和无根 Native 编码中均完整相等，原有 45 次比较未改变。此修正只作用于未启用草案；生产 codec 原本使用正确字段。没有扩展全模式矩阵，工具选择的完整拒绝与诊断仍需后续验证。
 
+### 请求自身 owner 的缓存余项与深层重建
+
+本切片只修改声明：`prompt_cache_options` 中 `mode/ttl` 以外的成员进入
+`parameters["wire:openai_chat"]`，包括未知成员中的 null、空对象和精确数字。
+顶层 options 为 null 或空对象时仍不凭空创建未知余项；移除根 Native 后沿用旧语义省略。
+原先已能保存的未知根字段继续保存，不计作新增能力。
+
+编码基体提取成 `encode-request-fields`，保留原普通字段与 cache 输出之间的
+`merge policy:reject`；仅自身 owner 存在时调用通用 `merge_deep`。无 owner 时直接执行
+原基体，不新增深合并容器。没有收紧模型类型、修改 Go 原语或批量替换其它浅合并。
+自身 owner 的 null／非对象仍拒绝，空对象接受；重叠对象递归合并，相同标量仍冲突。
+
+新增定向覆盖先比较完整解码核心，避免根 Native 遮盖丢字段，再检查原生字节、
+移除根 Native、修改缓存 mode 及移除缓存未知 owner 的输出。另用合法的
+`response_format.json_schema.schema` 与自身 owner 的嵌套对象区分深并与浅合并，
+先确认旧编码器无需 Native 即可编码基线，再保留叶子冲突和 null owner 的拒绝边界。
+新增 16 次成功路径完整比较均通过，另有 2 次拒绝边界核对，诊断差异如下。
+本次执行 `TestChatPackageDraftMigration/request-owner` 定向测试，未重复运行原有矩阵。
+首次新增用例误将嵌套对象放入要求字符串值的 tracking metadata，旧版和草案均拒绝；
+现已换用合法 JSON Schema 并先通过旧编码器基线，没有放宽生产校验。
+
+两类诊断仍单列，不修改或放宽已有静态账本：旧叶子冲突为
+`unsupported_capability / wire`，新原语为 `invalid_input / evaluate` 并保留
+`ObjectMergeConflictError.Path`；旧 null owner 在 runtime 拒绝，新声明在 evaluate 拒绝。
+双方均拒绝不等于完整错误树相等。本切片也不覆盖重复 cache 意图、节点／工具的所有 owner。
+
 ### 未闭合 1：Chat 响应中的旧来源位置
 
 旧 `response.go` 把单个 `message` 包装成临时数组，再交给 `decodeMessages`，所以 message 的 Source／Native 路径为 `/choices/0/message/0`，工具调用也多一层 `/0`。草案捕获的是实际输入位置 `/choices/0/message`。
@@ -70,7 +96,7 @@
 
 ## 尚未完成的生产边界
 
-以下不是上述 47 次比较已证明的能力：
+以下不属于已有定向比较完整覆盖的能力：
 
 - 请求 wire 的完整类型拒绝、冲突 token 上限、旧 functions/function_call 拒绝、n 范围、非法参数的首错顺序和诊断归因。
 - 工具选择全部模式及 names/disableParallel 等组合的拒绝边界；具名函数两向相等不代表这些规则已经闭合。
@@ -79,7 +105,7 @@
 - 文件 ID 与引用、媒体 metadata、完整 cache TTL/owner 校验和所有缓存反向布局。多个同类缓存意图不能把第一项选择当成完整聚合证明。
 - choice/message metadata 的来源位置和承载者、logprobs、annotations、多 choice 结果、独立响应 item 的分组、未知 finish reason 与错误包络。
 - usage 的 DeepSeek hit/miss 推断、别名冲突、完整未知 usage 扩展及其反向协调；基础 details 相等不能替代这些边界。
-- 任意未知字段的递归冲突合并与无根 Native 的完整保真；当前的浅层 `merge` 不等于旧扩展处理的全部规则。
+- 工具／节点等其它 owner 未知字段的递归冲突合并与无根 Native 的完整保真；本批只闭合请求自身 owner 的正常重建，其拒绝诊断仍不等价。
 - 模型发现、SSE、WebSocket、任务/Agent 操作以及激活证据。
 
 上述范围必须继续按旧实现差分补齐。当前未运行本草案的性能验收，也未使用真实供应商或私人会话。
