@@ -54,5 +54,6 @@
 
 protocol/builtin全量、对应vet和身份／hint定向race通过，日志分别为
 `checks/identity-dev80-protocol.*`、`identity-dev80-vet.*`、`identity-dev80-race.*`。
-本切片未单独执行完整HTTP性能、前端页面或六目标构建；已有8a6f84b6产物仍是dev.79，
-不充作本修复二进制。未调用真实供应商；原客户端会话仍需另行复测。
+本切片未单独执行完整HTTP性能或前端页面。后续a4a8f275阶段已完成dev.80六目标构建，
+匹配产物与源码归档见 [阶段验收记录](protocol-dsl-validation-2026-10-30.md)；原dev.79产物保留。
+未调用真实供应商；原客户端会话仍需另行复测。

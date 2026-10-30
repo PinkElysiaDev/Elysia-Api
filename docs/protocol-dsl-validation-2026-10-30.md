@@ -151,5 +151,15 @@ staticcheck首次新增一条ST1008，来自新测试助手的error返回位置�
 | 生成一致性 | 通过 | `checks/keys-generator-final.*` |
 | 测试助手风格修正后keys定向 | 通过 | `checks/keys-test-style.*` |
 
-上述检查的生产代码为dbb1c430；之后只调整测试助手返回顺序及文档。前端和六目标构建待
-本阶段另行记录。四生产预置仍未切换，v3编辑、加载、激活、完整供应商流及最终性能矩阵未完成。
+上述检查的生产代码为dbb1c430；之后只调整测试助手返回顺序及文档，形成a4a8f275。
+该固定提交的前端lint、包含TypeScript的标准生产构建和六目标编译均通过，日志为
+`checks/keys-stage-webui-lint.*`和`checks/keys-stage-six-targets.*`。
+
+六目标已在覆盖dist之前核验旧8a6f84b6归档哈希。新产物位于`dist/standalone/`，另完整归档至
+`.tmp-dev/protocol-dsl-2026-10-29/stage-a4a8f275-artifacts/`。身份文件包含源码ZIP、全部二进制
+SHA256、Go构建信息；六个二进制的vcs.revision均为a4a8f275，vcs.modified=false。
+源码ZIP SHA256为`9c8e87410d2cd6f25bf9be876aeeba383c68ade1a24ed14f7b0ce785da609578`。
+Windows amd64为本机测试平台；其他五个目标仅交叉编译，不构成运行验收。
+
+尚未重做真实后端页面运行验收。四生产预置仍未切换，v3编辑、加载、激活、完整供应商流及
+最终性能矩阵未完成；当前已有的SSE峰值反向结果继续保留，不将组件改善外推为全部请求无损。
