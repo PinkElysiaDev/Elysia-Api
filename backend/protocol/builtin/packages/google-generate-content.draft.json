@@ -5270,8 +5270,7 @@
       },
       "encode_request": {
         "program": {
-          "op": "merge",
-          "policy": "reject",
+          "op": "merge_deep",
           "items": [
             {
               "op": "object",

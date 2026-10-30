@@ -107,6 +107,7 @@ func TestChatPackageDraftMigration(t *testing.T) {
 	}
 	checkChatRequestOwners(t, legacy, draft)
 	checkChatReasoningParameters(t, legacy, draft)
+	checkChatCollectedUsage(t, legacy, draft)
 	checkPackageTrackingUsers(t, legacy, draft)
 	checkPackageMediaURIs(t, legacy, draft, definition)
 	wire := testValue(t, `{"model":"m","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{"q":{"type":"string"}}}}}],"tool_choice":{"type":"function","function":{"name":"lookup"}}}`)
@@ -128,6 +129,54 @@ func TestChatPackageDraftMigration(t *testing.T) {
 			want, wantErr := executePackageMigrationSample(t, legacy, sample, options, false)
 			got, gotErr := executePackageMigrationSample(t, draft, sample, options, true)
 			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+		})
+	}
+}
+
+func checkChatCollectedUsage(t *testing.T, legacy, draft *p.Compiled) {
+	t.Helper()
+	for _, fixture := range []struct {
+		name, stream, rawOptions, expected string
+		shouldCollect                      bool
+	}{
+		{"missing-options", `true`, "", `{"include_usage":true}`, true},
+		{"preserve-extension", `true`, `{"include_usage":false,"future":{"n":9007199254740993,"empty":null}}`, `{"future":{"n":9007199254740993,"empty":null},"include_usage":true}`, true},
+		{"null-options", `true`, `null`, `{"include_usage":true}`, true},
+		{"scalar-options", `true`, `false`, `{"include_usage":true}`, true},
+		{"array-options", `true`, `[]`, `{"include_usage":true}`, true},
+		{"collection-disabled", `true`, `{"include_usage":false}`, `{"include_usage":false}`, false},
+		{"non-streaming", `false`, `{"include_usage":false}`, `{"include_usage":false}`, true},
+		{"null-stream", `null`, `null`, `null`, true},
+		{"missing-stream", "", "", "", true},
+	} {
+		t.Run("collected-usage/"+fixture.name, func(t *testing.T) {
+			request := &p.Request{SchemaVersion: p.SemanticSchemaVersion, Model: p.StringValue("m"), Content: []p.Node{}, Parameters: p.Object{}, ClientOutput: &p.ClientOutput{CollectUsage: fixture.shouldCollect}}
+			if fixture.stream != "" {
+				request.Parameters["stream"] = testValue(t, fixture.stream)
+			}
+			if fixture.rawOptions != "" {
+				request.ClientOutput.RawStreamOptions = testValue(t, fixture.rawOptions)
+			}
+			candidate := request.Clone()
+			candidate.SchemaVersion = p.ProtocolCoreVersion
+			before, err := p.EncodeValue(candidate)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, wantErr := legacy.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+			if wantErr != nil {
+				t.Fatal("legacy collection fixture must encode", wantErr)
+			}
+			fields, err := testValue(t, string(want)).ReadObject()
+			if err != nil || fields["stream_options"].JSONString() != fixture.expected {
+				t.Fatal("legacy stream options differ from the declared collection contract", fields, err)
+			}
+			got, gotErr := draft.EncodeRequest(t.Context(), candidate, p.EvaluationContext{})
+			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+			after, err := p.EncodeValue(candidate)
+			if err != nil || before != after {
+				t.Fatal("encoding changed the caller's client output controls", err)
+			}
 		})
 	}
 }

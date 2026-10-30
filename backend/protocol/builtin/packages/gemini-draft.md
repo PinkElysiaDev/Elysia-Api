@@ -158,3 +158,22 @@ thinkingLevel 对应 effort，非 null 时指定 reasoning scope；thinkingBudge
 
 本批未运行性能验收，未调用供应商或读取私人正文。编码样例相等和合成关联成功不替代上述边界，
 也不能用于宣称生产 Gemini 已经完成声明式迁移。
+
+### 已补齐：请求自有 owner 的递归对象合并
+
+请求根 program 改用现有 `merge_deep` 合并已渲染字段和 `wire:gemini` 的余项，匹配旧
+preserveExtensions 的递归对象并集。systemInstruction 仍先处理自己的包装 owner，
+再从根 owner 排除；generation extensions 参数内部的既有合并规则未改变。
+
+两个新增无根 Native 用例在修复前均是旧编码成功、草案因 generationConfig 重名拒绝：
+普通 temperature 与未知 generationConfig 余项共存，以及 responseSchema 内部的嵌套
+对象并集。修复后完整输出字节相等，大整数、数字拼写及 null 余项保留。
+
+另外四项验证相同标量、null、相同数组及对象与 null 的碰撞仍拒绝，不用值相等放行
+覆盖。新错误链提供原语的具体 ObjectMergeConflictError.Path；旧 wire 与新 evaluate
+的诊断形态仍不同，明确登记为未闭合，没有改写旧 gap 快照。成功和失败都核对输入隔离。
+
+上述定向及 builtin 全量通过，修复前后证据同为
+`.tmp-dev/protocol-dsl-2026-10-29/checks/completion-request-gaps-before.*`、
+`completion-request-gaps-after.*`、`completion-request-gaps-builtin.*`。
+未启用草案、未运行性能测量，不将这一局部保真修复等同于全部请求／响应迁移完成。

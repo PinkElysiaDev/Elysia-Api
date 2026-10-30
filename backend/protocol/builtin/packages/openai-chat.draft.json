@@ -6726,9 +6726,8 @@
                 "ref": "encode-reasoning-effort"
               },
               "stream_options": {
-                "op": "read",
-                "from": "input",
-                "path": "/clientOutput/rawStreamOptions"
+                "op": "ref",
+                "ref": "encode-stream-options"
               },
               "max_completion_tokens": {
                 "op": "read",
@@ -7072,6 +7071,102 @@
         "otherwise": {
           "op": "literal",
           "value": false
+        }
+      },
+      "encode-stream-options": {
+        "op": "if",
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/stream"
+                },
+                {
+                  "op": "literal",
+                  "value": true
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/clientOutput/collectUsage"
+                },
+                {
+                  "op": "literal",
+                  "value": true
+                }
+              ]
+            }
+          ]
+        },
+        "then": {
+          "op": "let",
+          "name": "options",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/clientOutput/rawStreamOptions"
+          },
+          "body": {
+            "op": "merge",
+            "policy": "last",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "type",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "options",
+                        "path": ""
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": "object"
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "read",
+                  "from": "binding",
+                  "name": "options",
+                  "path": ""
+                },
+                "otherwise": {
+                  "op": "object",
+                  "fields": {}
+                }
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "include_usage": {
+                    "op": "literal",
+                    "value": true
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "otherwise": {
+          "op": "read",
+          "from": "input",
+          "path": "/clientOutput/rawStreamOptions"
         }
       }
     },

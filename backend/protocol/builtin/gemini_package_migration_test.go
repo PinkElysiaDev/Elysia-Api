@@ -126,6 +126,54 @@ func TestGeminiPackageDraftMigration(t *testing.T) {
 	}
 	checkGeminiReasoningMigration(t, legacy, draft)
 	checkGeminiCacheRemainder(t, legacy, draft)
+	checkGeminiGenerationOwner(t, legacy, draft)
+}
+
+func checkGeminiGenerationOwner(t *testing.T, legacy, draft *p.Compiled) {
+	t.Helper()
+	base := &p.Request{SchemaVersion: p.SemanticSchemaVersion, Model: p.StringValue("m"), Content: []p.Node{}, Parameters: p.Object{
+		"temperature": testValue(t, `0.25`), "stop": testValue(t, `[]`),
+		"gemini_response_schema": testValue(t, `{"type":"object","properties":{"answer":{"type":"string"}}}`),
+	}}
+	for _, fixture := range []struct{ name, owner, conflict string }{
+		{"generation-union", `{"generationConfig":{"future":{"n":9007199254740993,"empty":null,"spelling":1e2}}}`, ""},
+		{"nested-schema-union", `{"generationConfig":{"responseSchema":{"description":"synthetic","properties":{"answer":{"description":"current answer"}}}}}`, ""},
+		{"equal-leaf-conflict", `{"generationConfig":{"temperature":0.25}}`, "/generationConfig/temperature"},
+		{"null-leaf-conflict", `{"generationConfig":{"temperature":null}}`, "/generationConfig/temperature"},
+		{"equal-array-conflict", `{"generationConfig":{"stopSequences":[]}}`, "/generationConfig/stopSequences"},
+		{"object-null-conflict", `{"generationConfig":{"responseSchema":null}}`, "/generationConfig/responseSchema"},
+	} {
+		t.Run("generation-owner/"+fixture.name, func(t *testing.T) {
+			request := base.Clone()
+			request.Parameters["wire:gemini"] = testValue(t, fixture.owner)
+			candidate := request.Clone()
+			candidate.SchemaVersion = p.ProtocolCoreVersion
+			before, err := p.EncodeValue(candidate)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, wantErr := legacy.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+			got, gotErr := draft.EncodeRequest(t.Context(), candidate, p.EvaluationContext{})
+			if fixture.conflict == "" {
+				if wantErr != nil {
+					t.Fatal("legacy generation owner fixture must encode", wantErr)
+				}
+				checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+			} else {
+				var oldFailure, newFailure *p.ConversionError
+				var conflict *p.ObjectMergeConflictError
+				if !errors.As(wantErr, &oldFailure) || len(oldFailure.Issues) != 1 || oldFailure.Issues[0].Code != p.UnsupportedCapability || oldFailure.Issues[0].Stage != "wire" || oldFailure.Issues[0].Path != fixture.conflict ||
+					!errors.As(gotErr, &newFailure) || len(newFailure.Issues) != 1 || newFailure.Issues[0].Code != p.InvalidInput || newFailure.Issues[0].Stage != "evaluate" || !errors.As(gotErr, &conflict) || conflict.Path != fixture.conflict {
+					t.Fatal("generation owner collision changed or lost its structured path", wantErr, gotErr)
+				}
+				t.Log("NOT CLOSED: wire and mapping diagnostics differ for the same rejected generation owner collision", migrationError(wantErr), migrationError(gotErr))
+			}
+			after, err := p.EncodeValue(candidate)
+			if err != nil || before != after {
+				t.Fatal("generation owner merge changed the caller's request", err)
+			}
+		})
+	}
 }
 
 func checkGeminiCacheRemainder(t *testing.T, legacy, draft *p.Compiled) {

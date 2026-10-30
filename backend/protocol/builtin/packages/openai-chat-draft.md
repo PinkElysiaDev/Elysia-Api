@@ -128,3 +128,20 @@
 - 模型发现、SSE、WebSocket、任务/Agent 操作以及激活证据。
 
 上述范围必须继续按旧实现差分补齐。当前未运行本草案的性能验收，也未使用真实供应商或私人会话。
+
+### 已补齐：上游流式 usage 收集
+
+`encode-stream-options` 现在执行旧直接编码器的 ClientOutput.CollectUsage 契约：仅当
+stream 为 true 且要求收集 usage 时，保留原 stream_options 对象的其他成员，并把
+include_usage 设为 true。原值缺失、null 或非对象时，沿用旧编码器已有的对象替换行为；
+没有收集要求或未启用流式时，仍输出原值。声明使用现有 if/type/merge，不添加 Go 分支。
+
+新增九项直接编码差分，修复前五项输出确有差异，另外四项原本一致；修复后九项完整输出
+字节均相等，并检查调用者的控制对象未被修改。覆盖缺省、已有 false、未知嵌套扩展、
+null／非对象值、关闭收集及非流式输入。这里的非对象替换是旧编码边界的实际行为，
+不代表外部请求的其他校验入口也接受这些类型。
+
+修复前失败、修复后定向和 builtin 全量结果分别保存在
+`.tmp-dev/protocol-dsl-2026-10-29/checks/completion-request-gaps-before.*`、
+`completion-request-gaps-after.*`、`completion-request-gaps-builtin.*`。
+生产预置未切换；这项输出一致性不代表完整供应商流、诊断或性能验收已完成。
