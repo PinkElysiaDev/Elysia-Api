@@ -84,3 +84,36 @@ staticcheck 对照排除源码行号位移，但保留诊断正文与出现次�
 
 本阶段没有重跑前端、审计全套或六目标；`dist/standalone` 和已归档六目标仍属于24618cc0，
 不能当作54d54b45或后续代码的二进制。最终稳定提交仍需完整工程和平台验收。
+
+## 最新固定阶段（8a6f84b6，dev.79）
+
+`f246eea3` 完成上一轮固定验收并另行归档；随后加入Gemini未知缓存余项、目标版本健康探测、
+独立请求诊断修正、只读目标流位置及Native保护、Anthropic同族扩展深合并。
+只有经用户确认的诊断修正升级至dev.79，旧编译器证据继续按现有机制重验。
+
+| 检查 | 8a6f84b6结果 | 原始日志 |
+|---|---|---|
+| Go全量 | 通过，约98秒 | `checks/delivery-stage-go-all.*` |
+| vet | 通过 | `checks/delivery-stage-vet.*` |
+| staticcheck v0.8.2 | 命令失败，仍45条；新增0、移除0 | `checks/delivery-stage-staticcheck.*`、`delivery-stage-staticcheck-comparison.json` |
+| protocol/builtin/server相关race | 通过，约112秒 | `checks/delivery-stage-race.*` |
+| 审计工具自测 | 161项全过，无跳过 | `checks/delivery-stage-audit.*` |
+| 前端类型、lint、生产构建 | 通过；类型检查包含在标准构建 | `checks/delivery-stage-webui-lint.*`、`delivery-stage-six-targets.*` |
+| 六目标构建 | 全部通过 | `checks/delivery-stage-six-targets.*` |
+
+Windows amd64是本机测试环境；Windows arm64、Linux与macOS仅交叉编译，不是运行验收。
+最新产物在 `dist/standalone/`，源码、六个二进制和完整SHA256身份另存
+`.tmp-dev/protocol-dsl-2026-10-29/stage-8a6f84b6-artifacts/identity.json`。
+前一组 `stage-f246eea3-artifacts/` 保留，未覆盖更早产物。
+
+本次真实失败记录也保留：Chat新增fixture曾误用不合法的嵌套tracking metadata，改为旧实现
+确认可编码的JSON Schema后再通过；Native流状态反例曾返回错误序号2并绕过effects，修复后
+明确拒绝未证明的状态相关协调。请求诊断改动独立捕获20项，只有14项旧侧归因字段变化，
+详见 [诊断证据](request-reasoning-diagnostics-2026-10-30.md)。
+
+原有v3原生／诊断差异没有因此全部闭合。新状态结构变大、草案组件仍慢于旧codec；
+不能仅凭工程通过宣称性能无损。f246eea3→8a6f84b6完整HTTP首组及独立确认共100批、
+82,800请求均完整消费；累计分配基本不变，SSE确认组堆峰+17.15%、普通PNG延迟方向反转，
+不利结果与限制见 [阶段性能报告](protocol-dsl-performance-2026-10-30.md)。
+尚未执行最新版的真实后端页面运行验收；生产加载／编辑／激活仍未接入v3，
+不能将内部候选测试、健康探测helper或序列测试当成这些产品流程已经完成。
