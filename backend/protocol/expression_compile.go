@@ -51,20 +51,21 @@ type expressionCompiler struct {
 }
 
 type expressionScope struct {
-	input          *ValueSchema
-	root           *ValueSchema
-	item           *ValueSchema
-	coreInput      reflect.Type
-	coreItem       reflect.Type
-	isIteration    bool
-	isWalk         bool
-	wireCapture    bool
-	canReadRuntime bool
-	canReadNative  bool
-	bindings       map[string]expressionBinding
-	bindingDepth   int
-	indexes        map[string]int
-	indexDepth     int
+	input               *ValueSchema
+	root                *ValueSchema
+	item                *ValueSchema
+	coreInput           reflect.Type
+	coreItem            reflect.Type
+	isIteration         bool
+	isWalk              bool
+	wireCapture         bool
+	canReadRuntime      bool
+	canReadOutputStream bool
+	canReadNative       bool
+	bindings            map[string]expressionBinding
+	bindingDepth        int
+	indexes             map[string]int
+	indexDepth          int
 }
 
 type expressionBinding struct {
@@ -157,6 +158,17 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 				compiled.result = BooleanType
 			case len(pointer) == 2 && pointer[0] == "scope" && pointer[1] == "model":
 				compiled.result = StringType
+			case len(pointer) == 2 && pointer[0] == "stream" && scope.canReadOutputStream:
+				switch pointer[1] {
+				case "responseId":
+					compiled.result = StringType
+				case "sequence":
+					compiled.result = IntegerType
+				case "started", "terminal":
+					compiled.result = BooleanType
+				default:
+					return nil, fmt.Errorf("%s/path: unknown output stream field", path)
+				}
 			default:
 				return nil, fmt.Errorf("%s/path: unknown runtime metadata field", path)
 			}

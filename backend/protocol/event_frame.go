@@ -129,6 +129,13 @@ func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Dire
 			}
 		}
 	}
+	if canReplay && compiled.packagePlan != nil && compiled.mappings[direction].outputPlan.hasOutputStreamRead {
+		// Package decoding produces one event. Its encoder must run to decide
+		// whether this event actually reads mutable output-stream metadata.
+		event := frame.Events[0]
+		event.Native = frame.native
+		return compiled.encodeFrames(ctx, direction, event, options)
+	}
 	var frames []Value
 	for _, event := range frame.Events {
 		if err := IssuesError(CheckEvent(event, target, compiled.limits)); err != nil {
@@ -137,6 +144,11 @@ func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Dire
 		// Pinned same-wire streams remain native throughout; source decoding and
 		// replay validate the lifecycle before any original frame is emitted.
 		if canReplay {
+			if compiled.packagePlan != nil {
+				if err := compiled.checkNativeEventEffects(ctx, direction, event, options); err != nil {
+					return nil, err
+				}
+			}
 			continue
 		}
 		value, err := compiled.encodeFrames(ctx, direction, event, options)

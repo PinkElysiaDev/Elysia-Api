@@ -94,3 +94,25 @@ func compileSourceStreamPackage(t *testing.T, document protocol.ProtocolPackage)
 	}
 	return compiled
 }
+
+func outputAwareStreamPackage(t *testing.T) protocol.ProtocolPackage {
+	t.Helper()
+	document := sourceStreamPackage(t)
+	document.Mapping.Native.Preserve = true
+	document.Mapping.Directions[protocol.DecodeEvent].Program.Fields["sequence"] = protocol.Expression{Op: "read", From: "input", Path: "/sequence"}
+	mapping := document.Mapping.Directions[protocol.EncodeEvent]
+	for _, name := range []string{"responseId", "sequence"} {
+		input := protocol.Expression{Op: "read", From: "input", Path: "/" + name}
+		previous := protocol.Expression{Op: "read", From: "runtime", Path: "/stream/" + name}
+		if name == "sequence" {
+			previous = protocol.Expression{Op: "integer", Operation: "add", Items: []protocol.Expression{previous, {Op: "literal", Value: mustProtocolValue(t, "1")}}}
+		}
+		mapping.Program.Fields[name] = protocol.Expression{Op: "if", When: &protocol.Expression{Op: "exists", Source: &input}, Then: &input, Otherwise: &previous}
+	}
+	mapping.Program.Fields["was_started"] = protocol.Expression{Op: "if", When: &protocol.Expression{Op: "equal", Items: []protocol.Expression{
+		{Op: "read", From: "input", Path: "/type"}, {Op: "literal", Value: protocol.StringValue(string(protocol.OperationFailed))},
+	}}, Then: &protocol.Expression{Op: "read", From: "runtime", Path: "/stream/started"}}
+	mapping.Effects = []protocol.ProtocolSemanticEffect{{ID: "type", Kind: "emit", Path: "/type", Target: "/type"}}
+	document.Mapping.Directions[protocol.EncodeEvent] = mapping
+	return document
+}

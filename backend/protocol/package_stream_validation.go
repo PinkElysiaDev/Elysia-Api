@@ -10,16 +10,23 @@ import (
 // One response owns this state. The contract and mapping share no mutable state;
 // only identities, cumulative usage and text digests survive the current frame.
 type packageStreamValidation struct {
-	contract      *compiledPackageStreamContract
-	replay        *EventReplay
-	target        Target
-	direction     Direction
-	responseID    string
-	openItems     int
-	identityBytes int
-	sequence      int64
-	hasSequence   bool
-	hasStarted    bool
+	contract           *compiledPackageStreamContract
+	replay             *EventReplay
+	target             Target
+	direction          Direction
+	openItems          int
+	identityBytes      int
+	accepted           streamPosition
+	delivered          streamPosition
+	hasPendingDelivery bool
+}
+
+type streamPosition struct {
+	responseID  string
+	sequence    int64
+	hasSequence bool
+	hasStarted  bool
+	isTerminal  bool
 }
 
 func newPackageStreamValidation(contract *compiledPackageStreamContract, target Target, limits Limits) (*packageStreamValidation, error) {
@@ -51,20 +58,20 @@ func (state *packageStreamValidation) consume(ctx context.Context, frame Value) 
 	if state.replay.isTerminal && definition.action != UsageUpdated {
 		return state.issue(state.contract.discriminator.path, "event arrived after terminal; only usage tails are permitted", nil)
 	}
-	if definition.action == ResponseStarted && state.hasStarted {
+	if definition.action == ResponseStarted && state.accepted.hasStarted {
 		return state.issue(state.contract.discriminator.path, "response started more than once", nil)
 	}
-	if definition.action != ResponseStarted && !state.hasStarted {
+	if definition.action != ResponseStarted && !state.accepted.hasStarted {
 		return state.issue(state.contract.discriminator.path, "event requires a preceding response start", nil)
 	}
 	responseID, err := state.readIdentity(state.contract.responseID, read)
 	if err != nil {
 		return err
 	}
-	if state.hasStarted && responseID != state.responseID {
+	if state.accepted.hasStarted && responseID != state.accepted.responseID {
 		return state.issue(state.contract.responseID.path, "response identity changed", nil)
 	}
-	sequence := state.sequence
+	sequence := state.accepted.sequence
 	if state.contract.sequence.path != "" {
 		value, err := read(state.contract.sequence)
 		if err != nil {
@@ -74,13 +81,13 @@ func (state *packageStreamValidation) consume(ctx context.Context, frame Value) 
 		if err != nil {
 			return err
 		}
-		if state.hasSequence && sequence <= state.sequence {
+		if state.accepted.hasSequence && sequence <= state.accepted.sequence {
 			return state.issue(state.contract.sequence.path, "stream sequence must increase strictly", nil)
 		}
 	}
 	event := Event{SchemaVersion: state.target.coreSchemaVersion(), Source: state.target.Protocol, Type: definition.action}
 	identityBytes := state.identityBytes
-	if !state.hasStarted {
+	if !state.accepted.hasStarted {
 		identityBytes += len(responseID)
 	}
 	itemBytes, err := state.readPayload(&event, &definition, read)
@@ -99,18 +106,21 @@ func (state *packageStreamValidation) consume(ctx context.Context, frame Value) 
 	if _, err := state.replay.Consume(event); err != nil {
 		return state.replayError(err, definition)
 	}
-	if !state.hasStarted {
-		state.responseID = responseID
-		state.hasStarted = true
+	if !state.accepted.hasStarted {
+		state.accepted.responseID = responseID
+		state.accepted.hasStarted = true
 	}
 	state.identityBytes = identityBytes
-	state.sequence, state.hasSequence = sequence, state.contract.sequence.path != ""
+	state.accepted.sequence, state.accepted.hasSequence = sequence, state.contract.sequence.path != ""
 	switch definition.action {
 	case ItemStarted:
 		state.openItems++
 	case ItemFinished:
 		state.openItems--
+	case ResponseFinished, OperationFailed, OperationCancelled:
+		state.accepted.isTerminal = true
 	}
+	state.hasPendingDelivery = state.direction == EncodeEvent
 	return nil
 }
 

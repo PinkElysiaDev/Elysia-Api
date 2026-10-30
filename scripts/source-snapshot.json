@@ -366,6 +366,8 @@
     "backend/protocol/native_test.go",
     "backend/protocol/operation_input.go",
     "backend/protocol/operation_input_test.go",
+    "backend/protocol/output_stream.go",
+    "backend/protocol/output_stream_test.go",
     "backend/protocol/ownership_performance_test.go",
     "backend/protocol/package_aggregate.go",
     "backend/protocol/package_aggregate_test.go",

@@ -249,12 +249,16 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 		if err != nil {
 			return verificationResult{}, err
 		}
+		if !isEventDecoder(sample.Direction) {
+			options = options.WithOutputStream(wireValidation)
+		}
 	}
 	var events []Event
 	var outputs []Value
 	var frames []*EventFrame
 	buffered := 0
 	for _, input := range inputs {
+		hasOutputFrames := false
 		if isEventDecoder(sample.Direction) {
 			if wireValidation != nil {
 				if err := wireValidation.Consume(ctx, input); err != nil {
@@ -293,9 +297,17 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 			}
 			outputs = append(outputs, wire...)
 			events = append(events, event)
+			hasOutputFrames = len(wire) > 0
 		}
 		if buffered > compiled.limits.BufferBytes {
 			return verificationResult{}, streamIssue(LimitExceeded, "/samples", "event fixture exceeds replay buffer limit")
+		}
+		if hasOutputFrames && wireValidation != nil {
+			// This fixture explicitly simulates successful delivery of a fully
+			// validated output batch; Consume alone never records delivery.
+			if err := wireValidation.CommitDelivery(); err != nil {
+				return verificationResult{}, err
+			}
 		}
 	}
 	if sample.Sequence {
@@ -334,6 +346,11 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 		}
 		if buffered > compiled.limits.BufferBytes {
 			return verificationResult{}, streamIssue(LimitExceeded, "/samples", "event fixture exceeds replay buffer limit")
+		}
+		if len(tail) > 0 && wireValidation != nil {
+			if err := wireValidation.CommitDelivery(); err != nil {
+				return verificationResult{}, err
+			}
 		}
 		outputs = append(outputs, tail...)
 	}

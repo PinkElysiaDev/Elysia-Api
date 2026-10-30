@@ -45,7 +45,7 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 		}
 	}
 	reader := valueReader{minimumSharedBytes: minimumSharedValueBytes(size.maxRawBytes), canGrowThreshold: true}
-	state := evaluation{ctx: ctx, context: contextValue, runtime: bindEvaluationRuntime(options), inputReader: read, rootReader: read, valueReader: &reader, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	state := evaluation{ctx: ctx, context: contextValue, runtime: bindEvaluationRuntime(compiled, direction, options), inputReader: read, rootReader: read, valueReader: &reader, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	state.coreRequest, _ = input.(*Request)
 	if compiled.packagePlan != nil {
 		if err := compiled.preparePackageState(direction, state, inputLimits, options); err != nil {
@@ -72,5 +72,37 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 			return fail(err)
 		}
 	}
+	if state.budget.hasReadOutputStream && direction == EncodeEvent {
+		event := input.(*Event)
+		target := compiled.target(direction, options)
+		if compiled.native.Preserve && event.Native != nil && CanPreserveNative(event.Native.Source, target) {
+			// Keep the original provenance and resource errors ahead of this
+			// unsupported combination. Never drop Native to make it encode.
+			if _, err := ReplayNative(*event.Native, target, nil, compiled.wireLimits(ctx, direction)); err != nil {
+				return fail(err)
+			}
+			if err := ctx.Err(); err != nil {
+				return fail(err)
+			}
+			return fail(IssuesError([]ConversionIssue{{Code: UnsupportedNative, Severity: SeverityError, Protocol: compiled.identity, Direction: direction,
+				Stage: "preserve", Path: "/native", Reason: "output stream metadata cannot be combined with automatic native reconciliation without declared dynamic field ownership"}}))
+		}
+	}
 	return output, nil
+}
+
+func (compiled *Compiled) checkNativeEventEffects(ctx context.Context, direction Direction, event Event, options EvaluationContext) error {
+	inputLimits, _, workLimits := compiled.mappingLimits(ctx, direction)
+	fail := func(err error) error { return compiled.runtimeError(direction, compiled.mappingError(direction, err)) }
+	contextValue, err := EncodeValue(options.Values)
+	if err != nil {
+		return fail(err)
+	}
+	read := func(pointer []string) (JSONOutput, error) { return readCoreEventOutput(&event, pointer) }
+	state := evaluation{ctx: ctx, context: contextValue, inputReader: read, rootReader: read, runtime: bindEvaluationRuntime(compiled, direction, options),
+		budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	if err := compiled.checkPackageEffects(direction, state, inputLimits); err != nil {
+		return fail(err)
+	}
+	return nil
 }

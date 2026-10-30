@@ -37,7 +37,6 @@ func (compiled *Compiled) preparePackageState(direction Direction, state evaluat
 			return err
 		}
 	}
-	var conditions *evaluation
 	if direction == EncodeRequest && compiled.packagePlan.hasCacheProjection {
 		if err := compiled.checkCacheDispositions(state, limits); err != nil {
 			return err
@@ -48,6 +47,12 @@ func (compiled *Compiled) preparePackageState(direction Direction, state evaluat
 			return err
 		}
 	}
+	return compiled.checkPackageEffects(direction, state, limits)
+}
+
+func (compiled *Compiled) checkPackageEffects(direction Direction, state evaluation, limits Limits) error {
+	isDecode := isPackageDecodeDirection(direction)
+	var conditions *evaluation
 	for _, effect := range compiled.packagePlan.effects[direction] {
 		if isRequestProjectionScope(effect.scope) {
 			continue // Projection belongs to the overridable conversion rule.

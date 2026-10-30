@@ -157,3 +157,68 @@ func TestPackageEventCoreVersion(t *testing.T) {
 		t.Fatal("event decoding lost cancellation", err)
 	}
 }
+
+func TestPackageNativeFrameRunsEncodeEffects(t *testing.T) {
+	document := eventProtocolPackage(t)
+	mapping := document.Mapping.Directions[EncodeEvent]
+	mapping.Effects = append(mapping.Effects, ProtocolSemanticEffect{
+		ID: "reject-event", Kind: "reject", Path: "/type", Reason: "synthetic encoder policy rejection",
+		When: expressionPointer(literalExpression(true)),
+	})
+	document.Mapping.Directions[EncodeEvent] = mapping
+	compiled := compilePackageForTest(t, document)
+	wire := packageStreamFrame(ResponseStarted, 0, `,"future":9007199254740993`)
+	for _, entry := range []string{"event", "frame", "converted-frame"} {
+		t.Run(entry, func(t *testing.T) {
+			frame, err := compiled.DecodeFrame(t.Context(), wire, EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if entry == "event" {
+				_, err = compiled.EncodeEvent(t.Context(), frame.Events[0], EvaluationContext{})
+			} else if entry == "frame" {
+				_, err = compiled.EncodeFrame(t.Context(), frame, EvaluationContext{})
+			} else {
+				_, err = compiled.EncodeConvertedFrame(t.Context(), frame, frame.Events, EvaluationContext{})
+			}
+			var failure *ConversionError
+			if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Code != ConversionRejected || failure.Issues[0].RuleID != "reject-event" {
+				t.Fatal("native frame bypassed the encoder's declared rejection", err)
+			}
+		})
+	}
+}
+
+func TestPackageNativeEffectsReadStreamWithoutChangingOutput(t *testing.T) {
+	for _, hasUnusedRead := range []bool{false, true} {
+		document := eventProtocolPackage(t)
+		mapping := document.Mapping.Directions[EncodeEvent]
+		mapping.Effects = append(mapping.Effects, ProtocolSemanticEffect{ID: "started", Kind: "reject", Path: "/type", Reason: "requires a delivered start",
+			When: expressionPointer(Expression{Op: "not", Source: expressionPointer(readExpression("runtime", "/stream/started"))})})
+		if hasUnusedRead {
+			mapping.Program.Fields["unused"] = Expression{Op: "if", When: expressionPointer(literalExpression(false)), Then: expressionPointer(readExpression("runtime", "/stream/sequence"))}
+		}
+		document.Mapping.Directions[EncodeEvent] = mapping
+		compiled := compilePackageForTest(t, document)
+		validation, _ := compiled.NewWireStreamValidation(Scope{})
+		options := (EvaluationContext{}).WithOutputStream(validation)
+		wire := packageStreamFrame(UsageUpdated, 1, `,"usage":{"input":7},"future":9007199254740993`)
+		frame, err := compiled.DecodeFrame(t.Context(), wire, EvaluationContext{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := compiled.EncodeFrame(t.Context(), frame, options); err == nil {
+			t.Fatal("native frame skipped a state-dependent effect")
+		}
+		if err := validation.Consume(t.Context(), packageStreamFrame(ResponseStarted, 0, "")); err != nil {
+			t.Fatal(err)
+		}
+		if err := validation.CommitDelivery(); err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := compiled.EncodeFrame(t.Context(), frame, options)
+		if err != nil || len(encoded) != 1 || encoded[0] != wire {
+			t.Fatal("passing effects were mistaken for an output dependency or lost native fields", hasUnusedRead, encoded, err)
+		}
+	}
+}

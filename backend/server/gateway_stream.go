@@ -72,11 +72,15 @@ func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext
 	if err != nil {
 		return err
 	}
+	sourceOptions := options
+	if plan.ingress.CoreVersion() == protocol.ProtocolCoreVersion {
+		options = options.WithOutputStream(finalValidation)
+	}
 	stream := &gatewayStream{server: s, context: c, ctx: ctx, writer: startStream(c), record: record, plan: plan, candidate: candidate,
 		limits: limits, options: options, route: route, eventState: eventState, carriers: carriers,
 		collector: collector, replay: replay,
 		wireValidation: wireValidation, finalValidation: finalValidation}
-	stream.source, err = newProtocolSourceStream(ctx, candidate, plan.ingress, route, options, record, stream.consumeSourceFrame)
+	stream.source, err = newProtocolSourceStream(ctx, candidate, plan.ingress, route, sourceOptions, record, stream.consumeSourceFrame)
 	if err != nil {
 		return err
 	}
@@ -121,7 +125,13 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 	if len(frames) == 0 {
 		return nil
 	}
-	return stream.writer.Flush()
+	if err := stream.writer.Flush(); err != nil {
+		return err
+	}
+	if stream.plan.ingress.CoreVersion() == protocol.ProtocolCoreVersion {
+		return stream.finalValidation.CommitDelivery()
+	}
+	return nil
 }
 
 func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, metadata protocol.Object) error {

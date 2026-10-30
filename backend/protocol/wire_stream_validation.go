@@ -71,6 +71,9 @@ func (c *Compiled) newWireStreamValidation(direction Direction, scope Scope) (*W
 }
 
 func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
+	if v.packageStream != nil {
+		v.packageStream.hasPendingDelivery = false
+	}
 	var fields Object
 	if v.compiled.wireContracts[v.direction].objectValidator != nil && frame.IsObject() {
 		var err error
@@ -146,7 +149,11 @@ func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 
 func (v *WireStreamValidation) Finish() error {
 	if v.packageStream != nil {
-		return v.packageStream.finish()
+		err := v.packageStream.finish()
+		if err != nil {
+			v.packageStream.hasPendingDelivery = false
+		}
+		return err
 	}
 	if v.replay == nil {
 		return nil

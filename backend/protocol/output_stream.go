@@ -1,0 +1,53 @@
+package protocol
+
+import "fmt"
+
+// WithOutputStream binds the actual target wire validator for read-only runtime
+// stream metadata. Unbound or mismatched identity, direction and scope are
+// rejected when metadata is read, including reads of started or terminal.
+// Carrying this context through another mapping does not grant access.
+func (options EvaluationContext) WithOutputStream(validation *WireStreamValidation) EvaluationContext {
+	options.outputStream = validation
+	return options
+}
+
+// CommitDelivery records successful delivery of the last accepted output batch.
+// The single owner calls it only after all writes and their Flush succeed, or
+// after explicitly simulating successful delivery during offline verification.
+// It does not check cancellation: a successful Flush has already happened.
+func (validation *WireStreamValidation) CommitDelivery() error {
+	if validation == nil || validation.direction != EncodeEvent || validation.packageStream == nil {
+		return fmt.Errorf("delivery commit requires an output package stream")
+	}
+	state := validation.packageStream
+	if !state.hasPendingDelivery {
+		return fmt.Errorf("delivery commit requires a successfully accepted output frame")
+	}
+	state.delivered = state.accepted
+	state.hasPendingDelivery = false
+	return nil
+}
+
+func (runtime evaluationRuntime) readOutputStream(field string) (plannedOutput, error) {
+	if runtime.outputStream == nil {
+		return plannedOutput{}, fmt.Errorf("output stream metadata is not bound to this mapping and scope")
+	}
+	position := runtime.outputStream.delivered
+	switch field {
+	case "responseId":
+		if !position.hasStarted {
+			return plannedOutput{}, nil
+		}
+		return plannedLeaf(StringValue(position.responseID)), nil
+	case "sequence":
+		if !position.hasSequence {
+			return plannedOutput{}, nil
+		}
+		return plannedLeaf(coreInteger(position.sequence)), nil
+	case "started":
+		return plannedLeaf(coreBoolean(position.hasStarted)), nil
+	case "terminal":
+		return plannedLeaf(coreBoolean(position.isTerminal)), nil
+	}
+	panic("uncompiled output stream field")
+}

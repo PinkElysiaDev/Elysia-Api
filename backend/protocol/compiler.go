@@ -31,6 +31,7 @@ type EvaluationContext struct {
 	wireLimits       Limits
 	valueReader      *valueReader
 	requestReplay    *requestReplay
+	outputStream     *WireStreamValidation
 	// ResolveRequestScope is supplied by the gateway after model/authorization
 	// lookup. Definitions cannot execute it or replace its returned binding.
 	ResolveRequestScope func(*Request) (Scope, error)
@@ -773,7 +774,7 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	if err != nil {
 		return fail(err)
 	}
-	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, runtime: bindEvaluationRuntime(options), budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, runtime: bindEvaluationRuntime(compiled, direction, options), budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	var packageState *packageExecution
 	if compiled.packagePlan != nil {
 		if isPackageDecodeDirection(direction) {

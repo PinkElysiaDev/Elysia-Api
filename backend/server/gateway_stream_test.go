@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/network"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -144,5 +147,127 @@ func TestGatewayBrokenStreamReportsErrorAndNeverRetries(t *testing.T) {
 	result := gatewayTestRequest(server, "text-alpha", `{"deployment":"group","turns":[{"actor":"user","segments":[{"text":"hello"}]}]}`, "gateway-test-token")
 	if calls.Load() != 1 || !strings.Contains(result.Body.String(), "operation.failed") || strings.Contains(result.Body.String(), "response.finished") || result.Result().Trailer.Get(gatewayStreamErrorTrailer) == "" {
 		t.Fatalf("broken stream: calls=%d trailer=%v body=%s", calls.Load(), result.Result().Trailer, result.Body)
+	}
+}
+
+type deliveryCommitWriter struct {
+	network.ExtWriter
+	writeError error
+	flushError error
+	afterFlush func()
+	flushes    int
+}
+
+func (writer *deliveryCommitWriter) Write(body []byte) (int, error) {
+	if writer.writeError != nil {
+		return 0, writer.writeError
+	}
+	return writer.ExtWriter.Write(body)
+}
+
+func (writer *deliveryCommitWriter) WriteString(body string) (int, error) {
+	return writer.Write([]byte(body))
+}
+
+func (writer *deliveryCommitWriter) Flush() error {
+	writer.flushes++
+	if writer.flushError != nil {
+		return writer.flushError
+	}
+	if err := writer.ExtWriter.Flush(); err != nil {
+		return err
+	}
+	if writer.afterFlush != nil {
+		writer.afterFlush()
+	}
+	return nil
+}
+
+func TestGatewayOutputPositionCommitsAfterFlush(t *testing.T) {
+	compiled := compileSourceStreamPackage(t, outputAwareStreamPackage(t))
+	for _, ending := range []string{"complete", "write-failure", "flush-failure", "cancel-after-flush"} {
+		t.Run(ending, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			c := newTestContext(httptest.NewRecorder())
+			setTestRequest(c, httptest.NewRequest(http.MethodPost, "/generate", nil))
+			writer := &deliveryCommitWriter{ExtWriter: startStream(c)}
+			transportFailure := errors.New("synthetic output transport failure")
+			switch ending {
+			case "write-failure":
+				writer.writeError = transportFailure
+			case "flush-failure":
+				writer.flushError = transportFailure
+			case "cancel-after-flush":
+				writer.afterFlush = cancel
+			}
+			defer flushTestResponse(c)
+			validation, err := compiled.NewWireStreamValidation(protocol.Scope{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			options := (protocol.EvaluationContext{}).WithOutputStream(validation)
+			present := true
+			conversion, err := protocol.CompileConversion(protocol.ConversionPolicy{SchemaVersion: 1, ID: "final-sequence", Rules: []protocol.ConversionRule{{
+				ID: "sequence", Enabled: true, Phase: protocol.ConversionWire, Match: protocol.ConversionMatch{Path: "/initial", Present: &present},
+				Action: "set", Path: "/sequence", Value: mustProtocolValue(t, "41"),
+			}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			stream := &gatewayStream{ctx: ctx, context: c, writer: writer, record: &usageRecord{FirstByteMs: 1},
+				plan:      &gatewayResponsePlan{ingress: compiled, operation: protocol.Operation{Transport: protocol.SSE}},
+				candidate: gatewayCandidate{conversion: conversion}, limits: compiled.ResourceLimits(), options: options, finalValidation: validation}
+			raw := mustProtocolValue(t, `{"type":"response.started","responseId":"delivered-id","sequence":0,"initial":true}`)
+			decoded, err := compiled.DecodeFrame(ctx, raw, protocol.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			frames, err := compiled.EncodeConvertedFrame(ctx, decoded, decoded.Events, options)
+			if err != nil || len(frames) != 1 || frames[0] != raw {
+				t.Fatal("native source was not replayed exactly once", frames, err)
+			}
+			err = stream.emit(frames[0])
+			hasDelivered := ending == "complete" || ending == "cancel-after-flush"
+			if hasDelivered && err != nil || !hasDelivered && !errors.Is(err, transportFailure) {
+				t.Fatal("output transport result changed", err)
+			}
+			if ending == "cancel-after-flush" && ctx.Err() != context.Canceled {
+				t.Fatal("flush cancellation fixture did not cancel")
+			}
+			probe := protocol.Event{SchemaVersion: protocol.ProtocolCoreVersion, Type: protocol.OperationFailed, ResponseID: protocol.StringValue("probe"), Sequence: mustProtocolValue(t, "99"), Error: protocol.StringValue("probe")}
+			observed, err := compiled.EncodeEvent(t.Context(), probe, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fields, _ := observed.ReadObject()
+			var wasStarted bool
+			if err := fields["was_started"].Decode(&wasStarted); err != nil || wasStarted != hasDelivered {
+				t.Fatal("visible position advanced before a successful Flush", observed, err)
+			}
+			wantFlushes := 1
+			if ending == "write-failure" {
+				wantFlushes = 0
+			}
+			if writer.flushes != wantFlushes {
+				t.Fatal("stream flush boundary changed", writer.flushes)
+			}
+			if ending != "complete" {
+				return // An uncertain write/flush is not a reusable stream.
+			}
+			err = emitFailureEvent(ctx, c, stream.plan, options, func(wire protocol.Value) error {
+				fields, _ := wire.ReadObject()
+				if !fields["responseId"].IsString("delivered-id") || fields["sequence"].JSONString() != "42" {
+					t.Fatal("local failure ignored the final edited wire position", wire)
+				}
+				return stream.emit(wire)
+			}, errors.New("local failure"))
+			if err != nil {
+				t.Fatal("local failure did not pass final stream validation", err)
+			}
+			if err := validation.Finish(); err != nil || writer.flushes != 2 {
+				t.Fatal("failure delivery did not terminate exactly once", err, writer.flushes)
+			}
+		})
 	}
 }
