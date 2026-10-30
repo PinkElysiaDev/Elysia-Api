@@ -7910,6 +7910,177 @@
           "op": "literal",
           "value": false
         }
+      },
+      "encode-request-base": {
+        "op": "merge",
+        "policy": "reject",
+        "items": [
+          {
+            "op": "object",
+            "fields": {
+              "model": {
+                "op": "read",
+                "from": "input",
+                "path": "/model"
+              },
+              "messages": {
+                "op": "ref",
+                "ref": "encode-messages"
+              },
+              "system": {
+                "op": "ref",
+                "ref": "encode-system"
+              },
+              "tools": {
+                "op": "ref",
+                "ref": "encode-tools"
+              },
+              "tool_choice": {
+                "op": "ref",
+                "ref": "encode-tool-choice"
+              },
+              "max_tokens": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/max_output_tokens"
+              },
+              "temperature": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/temperature"
+              },
+              "top_p": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/top_p"
+              },
+              "top_k": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/top_k"
+              },
+              "stop_sequences": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/stop"
+              },
+              "stream": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/stream"
+              },
+              "metadata": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/anthropic_metadata"
+              },
+              "thinking": {
+                "op": "ref",
+                "ref": "encode-thinking"
+              },
+              "output_config": {
+                "op": "ref",
+                "ref": "encode-output-config"
+              },
+              "context_management": {
+                "op": "if",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/historyRetention"
+                  }
+                },
+                "then": {
+                  "op": "literal",
+                  "value": {
+                    "edits": [
+                      {
+                        "type": "clear_thinking_20251015",
+                        "keep": "all"
+                      }
+                    ]
+                  }
+                },
+                "otherwise": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/wire:claude/context_management"
+                }
+              }
+            }
+          },
+          {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/cache/0"
+              }
+            },
+            "then": {
+              "op": "object",
+              "fields": {
+                "cache_control": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/cache/0/value"
+                      },
+                      {
+                        "op": "literal",
+                        "value": null
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": null
+                  },
+                  "otherwise": {
+                    "op": "merge",
+                    "policy": "reject",
+                    "items": [
+                      {
+                        "op": "project",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/cache/0/value"
+                        },
+                        "keys": [
+                          "ttl"
+                        ],
+                        "policy": "exclude"
+                      },
+                      {
+                        "op": "object",
+                        "fields": {
+                          "ttl": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/cache/0/ttl"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "object",
+              "fields": {}
+            }
+          }
+        ]
       }
     },
     "directions": {
@@ -8026,185 +8197,23 @@
       },
       "encode_request": {
         "program": {
-          "op": "merge",
-          "policy": "reject",
-          "items": [
-            {
-              "op": "object",
-              "fields": {
-                "model": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/model"
-                },
-                "messages": {
-                  "op": "ref",
-                  "ref": "encode-messages"
-                },
-                "system": {
-                  "op": "ref",
-                  "ref": "encode-system"
-                },
-                "tools": {
-                  "op": "ref",
-                  "ref": "encode-tools"
-                },
-                "tool_choice": {
-                  "op": "ref",
-                  "ref": "encode-tool-choice"
-                },
-                "max_tokens": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/max_output_tokens"
-                },
-                "temperature": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/temperature"
-                },
-                "top_p": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/top_p"
-                },
-                "top_k": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/top_k"
-                },
-                "stop_sequences": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/stop"
-                },
-                "stream": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/stream"
-                },
-                "metadata": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/anthropic_metadata"
-                },
-                "thinking": {
-                  "op": "ref",
-                  "ref": "encode-thinking"
-                },
-                "output_config": {
-                  "op": "ref",
-                  "ref": "encode-output-config"
-                },
-                "context_management": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/historyRetention"
-                    }
-                  },
-                  "then": {
-                    "op": "literal",
-                    "value": {
-                      "edits": [
-                        {
-                          "type": "clear_thinking_20251015",
-                          "keep": "all"
-                        }
-                      ]
-                    }
-                  },
-                  "otherwise": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/parameters/wire:claude/context_management"
-                  }
-                }
-              }
-            },
-            {
-              "op": "if",
-              "when": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/cache/0"
-                }
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/wire:claude"
+            }
+          },
+          "then": {
+            "op": "merge_deep",
+            "items": [
+              {
+                "op": "ref",
+                "ref": "encode-request-base"
               },
-              "then": {
-                "op": "object",
-                "fields": {
-                  "cache_control": {
-                    "op": "if",
-                    "when": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/cache/0/value"
-                        },
-                        {
-                          "op": "literal",
-                          "value": null
-                        }
-                      ]
-                    },
-                    "then": {
-                      "op": "literal",
-                      "value": null
-                    },
-                    "otherwise": {
-                      "op": "merge",
-                      "policy": "reject",
-                      "items": [
-                        {
-                          "op": "project",
-                          "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/cache/0/value"
-                          },
-                          "keys": [
-                            "ttl"
-                          ],
-                          "policy": "exclude"
-                        },
-                        {
-                          "op": "object",
-                          "fields": {
-                            "ttl": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/cache/0/ttl"
-                            }
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              },
-              "otherwise": {
-                "op": "object",
-                "fields": {}
-              }
-            },
-            {
-              "op": "if",
-              "when": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/wire:claude"
-                }
-              },
-              "then": {
+              {
                 "op": "project",
                 "source": {
                   "op": "read",
@@ -8215,13 +8224,13 @@
                   "context_management"
                 ],
                 "policy": "exclude"
-              },
-              "otherwise": {
-                "op": "object",
-                "fields": {}
               }
-            }
-          ]
+            ]
+          },
+          "otherwise": {
+            "op": "ref",
+            "ref": "encode-request-base"
+          }
         },
         "effects": [
           {

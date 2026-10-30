@@ -97,7 +97,7 @@ func (proof *historyOwnerProof) field(program *compiledExpression, scope *histor
 			return goal.isAbsent
 		}
 		return proof.field(program.source, scope, output, goal, hasCase, isRecognized)
-	case "merge":
+	case "merge", "merge_deep":
 		return proof.mergedField(program, scope, output, goal, hasCase, isRecognized)
 	}
 	return false
@@ -111,12 +111,12 @@ func (proof *historyOwnerProof) isPartition(condition *compiledExpression) bool 
 }
 
 func (proof *historyOwnerProof) mergedField(program *compiledExpression, scope *historyOwnerBinding, output []string, goal historyOwnerGoal, hasCase, isRecognized bool) bool {
-	if program.policy != "reject" {
+	if program.op == "merge" && program.policy != "reject" {
 		return false
 	}
 	var owner *compiledExpression
 	for _, item := range program.items {
-		// Merge is shallow: a different child of the same parent still collides.
+		// Keep the entire owner exclusive; deep merges cannot add sibling fields.
 		if proof.field(item, scope, output[:1], historyOwnerGoal{isAbsent: true}, false, false) {
 			continue
 		}

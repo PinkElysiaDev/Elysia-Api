@@ -44,6 +44,18 @@ func TestHistoryLocalOwnerProof(t *testing.T) {
 		{"unique merge owner", true, func(program Expression) Expression {
 			return Expression{Op: "merge", Policy: "reject", Items: []Expression{objectExpression(map[string]Expression{"unrelated": literalExpression(true)}), program}}
 		}},
+		{"unique deep merge owner", true, func(program Expression) Expression {
+			return Expression{Op: "merge_deep", Items: []Expression{objectExpression(map[string]Expression{"unrelated": literalExpression(true)}), program}}
+		}},
+		{"deep merge ancestor writer", false, func(program Expression) Expression {
+			other := objectExpression(map[string]Expression{"reasoning": objectExpression(map[string]Expression{"summary": literalExpression("brief")})})
+			return Expression{Op: "merge_deep", Items: []Expression{program, other}}
+		}},
+		{"deep merge conditional writer", false, func(program Expression) Expression {
+			other := Expression{Op: "if", When: expressionPointer(Expression{Op: "exists", Source: expressionPointer(readExpression("input", "/other"))}),
+				Then: expressionPointer(objectExpression(nil)), Otherwise: expressionPointer(objectExpression(map[string]Expression{"reasoning": objectExpression(map[string]Expression{"summary": literalExpression("brief")})}))}
+			return Expression{Op: "merge_deep", Items: []Expression{program, other}}
+		}},
 		{"partial comparison", false, func(program Expression) Expression {
 			program.Fields["reasoning"].When.Items[0].Items[0] = readExpression("input", "/context_management/edits/0/keep")
 			return program

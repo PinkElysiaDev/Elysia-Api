@@ -24,6 +24,8 @@ HistoryRetention。该切片不使用下述既有样例的“仅适配版本号�
 - server/opaque 工具通过 `replay_native` 回放原生字段，再用当前 name/cache_control 重建可编辑字段；
   `native_matches` 识别原生 inline system 的消息位置，渲染保留当前数组顺序及子内容。
 - context_management 的两个完整 keep-all 变体映射到 HistoryRetention；未匹配值完整留在原 wire owner。
+- 请求根部的同族 owner 用 `merge_deep` 合并未知对象余项；普通字段与缓存的合并、
+  thinking/output_config 内部的 typed/legacy 控制冲突继续使用浅合并拒绝。
 - 请求渲染的对应字段，以及响应主体、终止原因、精确 int64 usage 加减的初稿。
 
 这些内容尚不能组成一个完整替代协议。不得把文件存在、编译通过或部分样例通过写成迁移完成。
@@ -35,7 +37,7 @@ HistoryRetention。该切片不使用下述既有样例的“仅适配版本号�
 | 请求解码 | 完整负例诊断及多处输入错误的首错顺序 |
 | 请求渲染 | 非原生 system 位置、完整 system 历史约束、注解拒绝及独立 assistant 历史分组 |
 | 节点保护 | metadata/citations、scope、结构化拒绝及告警；多缓存、多资源和未映射核心字段的逐 owner 拒绝 |
-| 扩展 | 递归冲突合并、跨族扩展拒绝及稳定诊断；媒体 data URI 的无转码解析 |
+| 扩展 | 节点级递归合并、跨族扩展拒绝及稳定诊断；媒体 data URI 的无转码解析 |
 | 响应 | 错误包络、metadata、完整未知 finish reason 与 fallback；输出分组、完整 usage 扩展与反向校验 |
 | 原生保真 | 完整节点回放矩阵；原生保存禁用时独立的来源证据；映射变更、scope 和修订矩阵 |
 | 声明证据 | 动态 owner 的 emit/aggregate 证明尚未完成；现有效果声明不代表完整字段覆盖 |
@@ -65,6 +67,30 @@ ResourceLimitError 的全部公开字段和 Unwrap 分支。
 将工具改为 opaque 后删除名称并设置 null 缓存，以及移动 inline system 并修改当前子内容。
 这些比较确认可编辑字段来自当前语义对象，原生快照不会恢复已删除值；
 inline system 的原始位置只用于分类，不要求当前数组下标相同。
+
+### 请求根 owner 合并（2026-10-30）
+
+从 `2a23daeb` 工作区新增真实正例，先由旧 codec 解码合法 thinking/output_config，
+去掉根 Native 后添加同族 owner 的嵌套未知余项。旧编码成功，原草案因根浅合并在
+output_config 提前冲突；改后完整输出字节相等，大整数、null 和数组均保留。
+另验证空 owner 成功、相等标量叶仍拒绝。后者旧侧是 `unsupported_capability / wire`，
+草案是 `invalid_input / evaluate`，保留含精确路径的 `ObjectMergeConflictError`；诊断仍未等价。
+
+根程序先检查同族 owner 是否存在；不存在时直接执行共用 `encode-request-base`，
+只在存在时进行外层深合并。base 仍浅合并普通字段与缓存；thinking/output_config 内部合并未改。
+context_management 仍由 base 唯一写入，owner 投影继续排除它，不会向已识别的完整 history 值添字段。
+
+编译期 local history owner 证明现在接受深合并，但其他 operand 必须不写整个目标首键，
+不能仅凭某个叶缺席就宣称完整值未改。独立的根 if 由两分支分别证明；已识别 history 分区
+快捷证明失败时不会回退。沿用原步骤预算，没有增加运行时校验或供应商专用 Go 分支。
+
+本切片通过完整 Anthropic 草案迁移和 history owner 定向，以及共有 owner、深合并、
+history 原型与错误证明定向。既有 11 项完整错误树快照未修改，也未新增 model emit 或收紧 schema。
+原始修复前失败、修复后日志和环境保存在
+`.tmp-dev/protocol-dsl-2026-10-29/anthropic-owner-merge-2026-10-30/`。
+没有运行性能、race 或完整工程验收；编译器保持 dev.79，生产加载器仍未使用本草案。
+
+### 既有规模与诊断记录
 
 复用已有大请求夹具，另比较 3 MiB 媒体和约 1,800 个小节点两个场景的解码，
 以及移除根 Native 后的编码；四次比较完整相等，使用原预算，没有放宽节点或工作限制。

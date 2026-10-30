@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -95,6 +96,7 @@ func TestAnthropicPackageDraftMigration(t *testing.T) {
 	}
 	checkAnthropicReasoningMigration(t, legacy, draft)
 	checkAnthropicNativeEdits(t, legacy, draft)
+	checkAnthropicRequestOwnerMerge(t, legacy, draft)
 	for _, scale := range []struct {
 		name          string
 		bytes, blocks int
@@ -121,6 +123,47 @@ func TestAnthropicPackageDraftMigration(t *testing.T) {
 			want, wantErr = executePackageMigrationSample(t, legacy, sample, p.EvaluationContext{}, false)
 			got, gotErr = executePackageMigrationSample(t, draft, sample, p.EvaluationContext{}, true)
 			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+		})
+	}
+}
+
+func checkAnthropicRequestOwnerMerge(t *testing.T, legacy, draft *p.Compiled) {
+	t.Helper()
+	options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
+	base, err := legacy.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":8192,"messages":[],"thinking":{"type":"enabled","budget_tokens":1024,"future":{"left":9007199254740993}},"output_config":{"effort":"high","future":{"left":null}}}`), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.Native = nil
+	if _, err := legacy.EncodeRequest(t.Context(), base, options); err != nil {
+		t.Fatal("legacy reasoning fixture must encode without Native", err)
+	}
+	for _, fixture := range []struct{ name, owner, conflict string }{
+		{"empty", `{}`, ""},
+		{"nested-union", `{"thinking":{"future":{"right":null}},"output_config":{"future":{"right":[1,2]}}}`, ""},
+		{"equal-leaf-conflict", `{"thinking":{"future":{"left":9007199254740993}}}`, "/thinking/future/left"},
+	} {
+		t.Run("request-owner-merge/"+fixture.name, func(t *testing.T) {
+			oldRequest := base.Clone()
+			oldRequest.Parameters["wire:claude"] = testValue(t, fixture.owner)
+			newRequest := oldRequest.Clone()
+			newRequest.SchemaVersion = p.ProtocolCoreVersion
+			want, wantErr := legacy.EncodeRequest(t.Context(), oldRequest, options)
+			if fixture.conflict == "" && wantErr != nil {
+				t.Fatal("legacy owner fixture must encode", wantErr)
+			}
+			got, gotErr := draft.EncodeRequest(t.Context(), newRequest, options)
+			if fixture.conflict == "" {
+				checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+				return
+			}
+			var oldFailure, newFailure *p.ConversionError
+			var conflict *p.ObjectMergeConflictError
+			if !errors.As(wantErr, &oldFailure) || len(oldFailure.Issues) != 1 || oldFailure.Issues[0].Code != p.UnsupportedCapability || oldFailure.Issues[0].Stage != "wire" || oldFailure.Issues[0].Path != fixture.conflict ||
+				!errors.As(gotErr, &newFailure) || len(newFailure.Issues) != 1 || newFailure.Issues[0].Code != p.InvalidInput || newFailure.Issues[0].Stage != "evaluate" || !errors.As(gotErr, &conflict) || conflict.Path != fixture.conflict {
+				t.Fatal("owner collision lost its rejection or structured cause", wantErr, gotErr)
+			}
+			t.Log("NOT CLOSED: codec wire and DSL evaluate diagnostics differ", wantErr, gotErr)
 		})
 	}
 }

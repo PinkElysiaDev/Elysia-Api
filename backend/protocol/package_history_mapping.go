@@ -44,7 +44,7 @@ func provesHistoryValueMapping(program *compiledExpression, direction Direction,
 	if program == nil || mapping == nil || effect.when == nil {
 		return false
 	}
-	if program.op != "if" {
+	if program.op != "if" || (direction == EncodeRequest && !aggregatePresence(program.when, "exists", effect.corePointer)) {
 		return provesLocalHistoryOwner(program, direction, effect, steps)
 	}
 	unknown, _ := parsePointer(mapping.Unmatched)
@@ -56,7 +56,7 @@ func provesHistoryValueMapping(program *compiledExpression, direction Direction,
 			provesAbsentField(program.then, unknown) &&
 			provesCopiedField(program.otherwise, unknown, effect.wirePointer)
 	}
-	if !aggregatePresence(effect.when.expression, "exists", effect.corePointer) || !aggregatePresence(program.when, "exists", effect.corePointer) || !provesCopiedField(program.otherwise, effect.wirePointer, unknown) {
+	if !aggregatePresence(effect.when.expression, "exists", effect.corePointer) || !provesCopiedField(program.otherwise, effect.wirePointer, unknown) {
 		return false
 	}
 	for _, variant := range mapping.Variants {
