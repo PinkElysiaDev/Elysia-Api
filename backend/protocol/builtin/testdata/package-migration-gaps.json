@@ -317,11 +317,11 @@
                 "definitionId": "anthropic-messages",
                 "revision": "2.1.7"
               },
-              "direction": "decode_event",
-              "stage": "stream",
+              "direction": "decode_request",
+              "stage": "request.validation",
               "path": "/thinking/budget_tokens",
               "reason": "this thinking mode does not accept a budget",
-              "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+              "suggestion": "correct the request controls or declared /thinking/budget_tokens rule"
             }
           ]
         },
@@ -341,11 +341,11 @@
                     "definitionId": "",
                     "revision": ""
                   },
-                  "direction": "decode_event",
-                  "stage": "stream",
+                  "direction": "",
+                  "stage": "request.validation",
                   "path": "/thinking/budget_tokens",
                   "reason": "this thinking mode does not accept a budget",
-                  "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+                  "suggestion": "correct the request controls or declared /thinking/budget_tokens rule"
                 }
               ]
             }
@@ -593,11 +593,11 @@
                 "definitionId": "anthropic-messages",
                 "revision": "2.1.7"
               },
-              "direction": "decode_event",
-              "stage": "stream",
+              "direction": "decode_request",
+              "stage": "request.validation",
               "path": "/output_config/effort",
               "reason": "effort cannot disable thinking; use thinking.type",
-              "suggestion": "correct the upstream stream or declared /output_config/effort rule"
+              "suggestion": "correct the request controls or declared /output_config/effort rule"
             }
           ]
         },
@@ -617,11 +617,11 @@
                     "definitionId": "",
                     "revision": ""
                   },
-                  "direction": "decode_event",
-                  "stage": "stream",
+                  "direction": "",
+                  "stage": "request.validation",
                   "path": "/output_config/effort",
                   "reason": "effort cannot disable thinking; use thinking.type",
-                  "suggestion": "correct the upstream stream or declared /output_config/effort rule"
+                  "suggestion": "correct the request controls or declared /output_config/effort rule"
                 }
               ]
             }
@@ -722,11 +722,11 @@
                 "definitionId": "anthropic-messages",
                 "revision": "2.1.7"
               },
-              "direction": "decode_event",
-              "stage": "stream",
+              "direction": "decode_request",
+              "stage": "request.validation",
               "path": "/thinking/budget_tokens",
               "reason": "manual thinking requires an integer budget of at least 1024",
-              "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+              "suggestion": "correct the request controls or declared /thinking/budget_tokens rule"
             }
           ]
         },
@@ -746,11 +746,11 @@
                     "definitionId": "",
                     "revision": ""
                   },
-                  "direction": "decode_event",
-                  "stage": "stream",
+                  "direction": "",
+                  "stage": "request.validation",
                   "path": "/thinking/budget_tokens",
                   "reason": "manual thinking requires an integer budget of at least 1024",
-                  "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+                  "suggestion": "correct the request controls or declared /thinking/budget_tokens rule"
                 }
               ]
             }
@@ -857,11 +857,11 @@
                 "definitionId": "anthropic-messages",
                 "revision": "2.1.7"
               },
-              "direction": "decode_event",
-              "stage": "stream",
+              "direction": "decode_request",
+              "stage": "request.validation",
               "path": "/thinking/type",
               "reason": "unknown thinking type",
-              "suggestion": "correct the upstream stream or declared /thinking/type rule"
+              "suggestion": "correct the request controls or declared /thinking/type rule"
             }
           ]
         },
@@ -881,11 +881,11 @@
                     "definitionId": "",
                     "revision": ""
                   },
-                  "direction": "decode_event",
-                  "stage": "stream",
+                  "direction": "",
+                  "stage": "request.validation",
                   "path": "/thinking/type",
                   "reason": "unknown thinking type",
-                  "suggestion": "correct the upstream stream or declared /thinking/type rule"
+                  "suggestion": "correct the request controls or declared /thinking/type rule"
                 }
               ]
             }
@@ -992,11 +992,11 @@
                 "definitionId": "anthropic-messages",
                 "revision": "2.1.7"
               },
-              "direction": "decode_event",
-              "stage": "stream",
+              "direction": "decode_request",
+              "stage": "request.validation",
               "path": "/thinking/budget_tokens",
               "reason": "manual thinking requires an integer budget of at least 1024",
-              "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+              "suggestion": "correct the request controls or declared /thinking/budget_tokens rule"
             }
           ]
         },
@@ -1016,11 +1016,11 @@
                     "definitionId": "",
                     "revision": ""
                   },
-                  "direction": "decode_event",
-                  "stage": "stream",
+                  "direction": "",
+                  "stage": "request.validation",
                   "path": "/thinking/budget_tokens",
                   "reason": "manual thinking requires an integer budget of at least 1024",
-                  "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+                  "suggestion": "correct the request controls or declared /thinking/budget_tokens rule"
                 }
               ]
             }
@@ -1121,11 +1121,11 @@
                 "definitionId": "anthropic-messages",
                 "revision": "2.1.7"
               },
-              "direction": "decode_event",
-              "stage": "stream",
+              "direction": "decode_request",
+              "stage": "request.validation",
               "path": "/parameters/anthropic_output_config",
               "reason": "thinking controls must be an object or null",
-              "suggestion": "correct the upstream stream or declared /parameters/anthropic_output_config rule"
+              "suggestion": "correct the request controls or declared /parameters/anthropic_output_config rule"
             }
           ]
         },
@@ -1145,11 +1145,11 @@
                     "definitionId": "",
                     "revision": ""
                   },
-                  "direction": "decode_event",
-                  "stage": "stream",
+                  "direction": "",
+                  "stage": "request.validation",
                   "path": "/parameters/anthropic_output_config",
                   "reason": "thinking controls must be an object or null",
-                  "suggestion": "correct the upstream stream or declared /parameters/anthropic_output_config rule"
+                  "suggestion": "correct the request controls or declared /parameters/anthropic_output_config rule"
                 }
               ]
             }
@@ -1268,11 +1268,11 @@
                 "definitionId": "anthropic-messages",
                 "revision": "2.1.7"
               },
-              "direction": "decode_event",
-              "stage": "stream",
+              "direction": "decode_request",
+              "stage": "request.validation",
               "path": "/thinking/budget_tokens",
               "reason": "manual thinking requires an integer budget of at least 1024",
-              "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+              "suggestion": "correct the request controls or declared /thinking/budget_tokens rule"
             }
           ]
         },
@@ -1292,11 +1292,11 @@
                     "definitionId": "",
                     "revision": ""
                   },
-                  "direction": "decode_event",
-                  "stage": "stream",
+                  "direction": "",
+                  "stage": "request.validation",
                   "path": "/thinking/budget_tokens",
                   "reason": "manual thinking requires an integer budget of at least 1024",
-                  "suggestion": "correct the upstream stream or declared /thinking/budget_tokens rule"
+                  "suggestion": "correct the request controls or declared /thinking/budget_tokens rule"
                 }
               ]
             }
@@ -2368,11 +2368,11 @@
                 "definitionId": "google-generate-content",
                 "revision": "2.1.6"
               },
-              "direction": "decode_event",
-              "stage": "stream",
+              "direction": "decode_request",
+              "stage": "request.validation",
               "path": "/parameters/gemini_thinking",
               "reason": "thinking controls must be an object or null",
-              "suggestion": "correct the upstream stream or declared /parameters/gemini_thinking rule"
+              "suggestion": "correct the request controls or declared /parameters/gemini_thinking rule"
             }
           ]
         },
@@ -2392,11 +2392,11 @@
                     "definitionId": "",
                     "revision": ""
                   },
-                  "direction": "decode_event",
-                  "stage": "stream",
+                  "direction": "",
+                  "stage": "request.validation",
                   "path": "/parameters/gemini_thinking",
                   "reason": "thinking controls must be an object or null",
-                  "suggestion": "correct the upstream stream or declared /parameters/gemini_thinking rule"
+                  "suggestion": "correct the request controls or declared /parameters/gemini_thinking rule"
                 }
               ]
             }
@@ -2515,11 +2515,11 @@
                 "definitionId": "google-generate-content",
                 "revision": "2.1.6"
               },
-              "direction": "decode_event",
-              "stage": "stream",
+              "direction": "decode_request",
+              "stage": "request.validation",
               "path": "/generationConfig/thinkingConfig",
               "reason": "thinkingLevel and thinkingBudget cannot coexist",
-              "suggestion": "correct the upstream stream or declared /generationConfig/thinkingConfig rule"
+              "suggestion": "correct the request controls or declared /generationConfig/thinkingConfig rule"
             }
           ]
         },
@@ -2539,11 +2539,11 @@
                     "definitionId": "",
                     "revision": ""
                   },
-                  "direction": "decode_event",
-                  "stage": "stream",
+                  "direction": "",
+                  "stage": "request.validation",
                   "path": "/generationConfig/thinkingConfig",
                   "reason": "thinkingLevel and thinkingBudget cannot coexist",
-                  "suggestion": "correct the upstream stream or declared /generationConfig/thinkingConfig rule"
+                  "suggestion": "correct the request controls or declared /generationConfig/thinkingConfig rule"
                 }
               ]
             }
@@ -2644,11 +2644,11 @@
                 "definitionId": "google-generate-content",
                 "revision": "2.1.6"
               },
-              "direction": "decode_event",
-              "stage": "stream",
+              "direction": "decode_request",
+              "stage": "request.validation",
               "path": "/generationConfig/thinkingConfig/includeThoughts",
               "reason": "includeThoughts must be a boolean",
-              "suggestion": "correct the upstream stream or declared /generationConfig/thinkingConfig/includeThoughts rule"
+              "suggestion": "correct the request controls or declared /generationConfig/thinkingConfig/includeThoughts rule"
             }
           ]
         },
@@ -2668,11 +2668,11 @@
                     "definitionId": "",
                     "revision": ""
                   },
-                  "direction": "decode_event",
-                  "stage": "stream",
+                  "direction": "",
+                  "stage": "request.validation",
                   "path": "/generationConfig/thinkingConfig/includeThoughts",
                   "reason": "includeThoughts must be a boolean",
-                  "suggestion": "correct the upstream stream or declared /generationConfig/thinkingConfig/includeThoughts rule"
+                  "suggestion": "correct the request controls or declared /generationConfig/thinkingConfig/includeThoughts rule"
                 }
               ]
             }
@@ -2791,11 +2791,11 @@
                 "definitionId": "google-generate-content",
                 "revision": "2.1.6"
               },
-              "direction": "decode_event",
-              "stage": "stream",
+              "direction": "decode_request",
+              "stage": "request.validation",
               "path": "/generationConfig/thinkingConfig/thinkingLevel",
               "reason": "invalid thinking level",
-              "suggestion": "correct the upstream stream or declared /generationConfig/thinkingConfig/thinkingLevel rule"
+              "suggestion": "correct the request controls or declared /generationConfig/thinkingConfig/thinkingLevel rule"
             }
           ]
         },
@@ -2815,11 +2815,11 @@
                     "definitionId": "",
                     "revision": ""
                   },
-                  "direction": "decode_event",
-                  "stage": "stream",
+                  "direction": "",
+                  "stage": "request.validation",
                   "path": "/generationConfig/thinkingConfig/thinkingLevel",
                   "reason": "invalid thinking level",
-                  "suggestion": "correct the upstream stream or declared /generationConfig/thinkingConfig/thinkingLevel rule"
+                  "suggestion": "correct the request controls or declared /generationConfig/thinkingConfig/thinkingLevel rule"
                 }
               ]
             }
@@ -2938,11 +2938,11 @@
                 "definitionId": "google-generate-content",
                 "revision": "2.1.6"
               },
-              "direction": "decode_event",
-              "stage": "stream",
+              "direction": "decode_request",
+              "stage": "request.validation",
               "path": "/reasoning/budget",
               "reason": "budget must be an integer >= -1 without overflow",
-              "suggestion": "correct the upstream stream or declared /reasoning/budget rule"
+              "suggestion": "correct the request controls or declared /reasoning/budget rule"
             }
           ]
         },
@@ -2962,11 +2962,11 @@
                     "definitionId": "",
                     "revision": ""
                   },
-                  "direction": "decode_event",
-                  "stage": "stream",
+                  "direction": "",
+                  "stage": "request.validation",
                   "path": "/reasoning/budget",
                   "reason": "budget must be an integer >= -1 without overflow",
-                  "suggestion": "correct the upstream stream or declared /reasoning/budget rule"
+                  "suggestion": "correct the request controls or declared /reasoning/budget rule"
                 }
               ]
             }
@@ -3067,11 +3067,11 @@
                 "definitionId": "google-generate-content",
                 "revision": "2.1.6"
               },
-              "direction": "decode_event",
-              "stage": "stream",
+              "direction": "encode_request",
+              "stage": "request.validation",
               "path": "/parameters/gemini_thinking/thinkingLevel",
               "reason": "conflicting typed and legacy reasoning controls",
-              "suggestion": "correct the upstream stream or declared /parameters/gemini_thinking/thinkingLevel rule"
+              "suggestion": "correct the request controls or declared /parameters/gemini_thinking/thinkingLevel rule"
             }
           ]
         },
@@ -3091,11 +3091,11 @@
                     "definitionId": "",
                     "revision": ""
                   },
-                  "direction": "decode_event",
-                  "stage": "stream",
+                  "direction": "",
+                  "stage": "request.validation",
                   "path": "/parameters/gemini_thinking/thinkingLevel",
                   "reason": "conflicting typed and legacy reasoning controls",
-                  "suggestion": "correct the upstream stream or declared /parameters/gemini_thinking/thinkingLevel rule"
+                  "suggestion": "correct the request controls or declared /parameters/gemini_thinking/thinkingLevel rule"
                 }
               ]
             }
@@ -3182,11 +3182,11 @@
                 "definitionId": "google-generate-content",
                 "revision": "2.1.6"
               },
-              "direction": "decode_event",
-              "stage": "stream",
+              "direction": "encode_request",
+              "stage": "request.validation",
               "path": "/reasoning",
               "reason": "Gemini cannot encode both level and budget",
-              "suggestion": "correct the upstream stream or declared /reasoning rule"
+              "suggestion": "correct the request controls or declared /reasoning rule"
             }
           ]
         },
@@ -3206,11 +3206,11 @@
                     "definitionId": "",
                     "revision": ""
                   },
-                  "direction": "decode_event",
-                  "stage": "stream",
+                  "direction": "",
+                  "stage": "request.validation",
                   "path": "/reasoning",
                   "reason": "Gemini cannot encode both level and budget",
-                  "suggestion": "correct the upstream stream or declared /reasoning rule"
+                  "suggestion": "correct the request controls or declared /reasoning rule"
                 }
               ]
             }

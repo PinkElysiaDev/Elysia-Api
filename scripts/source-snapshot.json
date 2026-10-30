@@ -179,6 +179,7 @@
     "backend/protocol/builtin/request_output_test.go",
     "backend/protocol/builtin/request_pipeline_test.go",
     "backend/protocol/builtin/request_projection_test.go",
+    "backend/protocol/builtin/request_reasoning_diagnostics_test.go",
     "backend/protocol/builtin/request_workspace_test.go",
     "backend/protocol/builtin/response.go",
     "backend/protocol/builtin/response_metadata.go",

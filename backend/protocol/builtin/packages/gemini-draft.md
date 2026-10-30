@@ -111,13 +111,17 @@ thinkingLevel 对应 effort，非 null 时指定 reasoning scope；thinkingBudge
 
 7 个负例双方均拒绝，但完整诊断未等价：非对象桶、level 与 budget 并存、includeThoughts:null、
 非法来源 level、过小 budget、typed/legacy 冲突，以及 canonical level/budget 并存。
-旧实现全部报告 `decode_event / stream`；草案分别在 `decode_request / wire`、
+在 dev.78 采集时，旧实现全部报告 `decode_event / stream`；草案分别在 `decode_request / wire`、
 `encode_request / evaluate` 或 `encode_request / mapping.effects` 报告，部分路径、错误码、建议及
-包装树也不同。旧诊断方向未修改，不能将草案的较准确归因算作等价迁移。
+包装树也不同。dev.79 独立修正旧实现的 reasoning 请求诊断：公开请求入口提供真实方向，
+阶段改为 `request.validation`，共享校验器本身不臆造方向。依据隔离前后采集，仅更新这 7 项的
+`legacyError`；草案错误树及所有成功结果不变。其余诊断差异仍未闭合，不能据此宣称等价迁移。
+修正证据与版本边界见 [请求 reasoning 诊断记录](../../../../docs/request-reasoning-diagnostics-2026-10-30.md)。
 
 这 7 项追加快照采自 `9794e509` 工作区，证据为忽略目录中的
 `.tmp-dev/protocol-dsl-2026-10-29/gemini-thinking-observed.log`。原 19 项 Gemini 及其他协议的快照
-保持不变，正常测试没有生成或自动更新账本的代码。多个同时错误时的首错顺序仍未证明。
+保持不变；上述 dev.79 纠正另有独立前后证据，正常测试没有生成或自动更新账本的代码。
+多个同时错误时的首错顺序仍未证明。
 
 ### 已补齐：prompt_cache_options 的未知余项
 

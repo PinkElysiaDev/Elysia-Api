@@ -8,6 +8,15 @@ import (
 
 const ReasoningControlsFeature = "conversion.reasoning.v1"
 
+// Core reasoning checks have no intrinsic wire direction. The request boundary
+// supplies it; they must not identify a request failure as an upstream event.
+func reasoningValidationIssue(code IssueCode, path, reason string) error {
+	return &ConversionError{Issues: []ConversionIssue{{
+		Code: code, Severity: SeverityError, Stage: "request.validation",
+		Path: path, Reason: reason, Suggestion: fmt.Sprintf("correct the request controls or declared %s rule", path),
+	}}}
+}
+
 // ReasoningIntent keeps independent controls independent: Anthropic effort
 // also affects generation when thinking is disabled or a budget is present.
 type ReasoningIntent struct {
@@ -44,42 +53,42 @@ func ValidateReasoningIntent(r *ReasoningIntent) error {
 		return nil
 	}
 	if !r.HistoryRetention.IsZero() && !r.HistoryRetention.IsString("all") {
-		return streamIssue(InvalidInput, "/reasoning/historyRetention", "history retention must be all when present")
+		return reasoningValidationIssue(InvalidInput, "/reasoning/historyRetention", "history retention must be all when present")
 	}
 	if !slices.Contains([]string{"", "enabled", "disabled", "auto", "between_tools"}, r.Mode) {
-		return streamIssue(InvalidInput, "/reasoning/mode", "unknown thinking mode")
+		return reasoningValidationIssue(InvalidInput, "/reasoning/mode", "unknown thinking mode")
 	}
 	if controlPresent(r.Effort) {
 		var effort string
 		if r.Effort.Decode(&effort) != nil || !slices.Contains([]string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}, effort) {
-			return streamIssue(InvalidInput, "/reasoning/effort", "unknown or non-string effort")
+			return reasoningValidationIssue(InvalidInput, "/reasoning/effort", "unknown or non-string effort")
 		}
 		if r.EffortScope != "reasoning" && r.EffortScope != "generation" {
-			return streamIssue(InvalidInput, "/reasoning/effortScope", "effort requires its reasoning or generation scope")
+			return reasoningValidationIssue(InvalidInput, "/reasoning/effortScope", "effort requires its reasoning or generation scope")
 		}
 	}
 	if controlPresent(r.Budget) {
 		var budget int64
 		if r.Budget.Decode(&budget) != nil || budget < -1 {
-			return streamIssue(InvalidInput, "/reasoning/budget", "budget must be an integer >= -1 without overflow")
+			return reasoningValidationIssue(InvalidInput, "/reasoning/budget", "budget must be an integer >= -1 without overflow")
 		}
 	}
 	if controlPresent(r.Budget) && ((r.Mode == "disabled" && controlInt(r.Budget) != 0) || (r.Mode == "auto" && controlInt(r.Budget) != -1)) {
-		return streamIssue(InvalidInput, "/reasoning/budget", "budget conflicts with thinking mode")
+		return reasoningValidationIssue(InvalidInput, "/reasoning/budget", "budget conflicts with thinking mode")
 	}
 	if controlPresent(r.Effort) && r.EffortScope == "reasoning" && r.Mode == "disabled" && controlText(r.Effort) != "none" {
-		return streamIssue(InvalidInput, "/reasoning/effort", "reasoning effort conflicts with disabled mode")
+		return reasoningValidationIssue(InvalidInput, "/reasoning/effort", "reasoning effort conflicts with disabled mode")
 	}
 	if controlPresent(r.Budget) && r.Mode == "enabled" && controlInt(r.Budget) <= 0 {
-		return streamIssue(InvalidInput, "/reasoning/budget", "enabled thinking requires a positive budget")
+		return reasoningValidationIssue(InvalidInput, "/reasoning/budget", "enabled thinking requires a positive budget")
 	}
 	if r.Interleaved && (r.Mode != "enabled" || !controlPresent(r.Budget) || controlInt(r.Budget) <= 0) {
-		return streamIssue(InvalidInput, "/reasoning/interleaved", "interleaved thinking requires manual thinking with a positive budget")
+		return reasoningValidationIssue(InvalidInput, "/reasoning/interleaved", "interleaved thinking requires manual thinking with a positive budget")
 	}
 	if controlPresent(r.Summary) {
 		var summary string
 		if r.Summary.Decode(&summary) != nil || !slices.Contains([]string{"auto", "concise", "detailed", "summarized", "omitted", "updates"}, summary) {
-			return streamIssue(InvalidInput, "/reasoning/summary", "unknown or non-string summary preference")
+			return reasoningValidationIssue(InvalidInput, "/reasoning/summary", "unknown or non-string summary preference")
 		}
 	}
 	return nil
@@ -96,7 +105,7 @@ func NormalizeReasoningParameters(req *Request, codec string, interleaved bool) 
 				continue
 			}
 			if names == nil {
-				return streamIssue(InvalidInput, "/parameters/"+key, "conflicting canonical and legacy reasoning controls")
+				return reasoningValidationIssue(InvalidInput, "/parameters/"+key, "conflicting canonical and legacy reasoning controls")
 			}
 			obj, err := v.ReadObject()
 			if err != nil {
@@ -104,7 +113,7 @@ func NormalizeReasoningParameters(req *Request, codec string, interleaved bool) 
 			}
 			for _, name := range names {
 				if _, present := obj[name]; present {
-					return streamIssue(InvalidInput, "/parameters/"+key+"/"+name, "conflicting canonical and legacy reasoning controls")
+					return reasoningValidationIssue(InvalidInput, "/parameters/"+key+"/"+name, "conflicting canonical and legacy reasoning controls")
 				}
 			}
 		}
@@ -122,7 +131,7 @@ func NormalizeReasoningParameters(req *Request, codec string, interleaved bool) 
 		}
 		object, err := v.ReadObject()
 		if err != nil {
-			return nil, streamIssue(InvalidInput, "/parameters/"+key, "thinking controls must be an object or null")
+			return nil, reasoningValidationIssue(InvalidInput, "/parameters/"+key, "thinking controls must be an object or null")
 		}
 		rest := maps.Clone(object)
 		for _, name := range names {
@@ -152,17 +161,17 @@ func NormalizeReasoningParameters(req *Request, codec string, interleaved bool) 
 		}
 		if len(obj) > 0 {
 			if obj["type"].Decode(&r.Mode) != nil || !slices.Contains([]string{"enabled", "disabled", "adaptive", "between_tools"}, r.Mode) {
-				return streamIssue(InvalidInput, "/thinking/type", "unknown thinking type")
+				return reasoningValidationIssue(InvalidInput, "/thinking/type", "unknown thinking type")
 			}
 			r.Budget, r.Summary = obj["budget_tokens"], obj["display"]
 			if r.Mode == "adaptive" {
 				r.Mode = "auto"
 			}
 			if r.Mode == "enabled" && (!controlPresent(r.Budget) || r.Budget.Decode(new(int64)) != nil || controlInt(r.Budget) < 1024) {
-				return streamIssue(InvalidInput, "/thinking/budget_tokens", "manual thinking requires an integer budget of at least 1024")
+				return reasoningValidationIssue(InvalidInput, "/thinking/budget_tokens", "manual thinking requires an integer budget of at least 1024")
 			}
 			if r.Mode != "enabled" && !r.Budget.IsZero() {
-				return streamIssue(InvalidInput, "/thinking/budget_tokens", "this thinking mode does not accept a budget")
+				return reasoningValidationIssue(InvalidInput, "/thinking/budget_tokens", "this thinking mode does not accept a budget")
 			}
 			if err := validateAnthropicDisplay(r.Mode, r.Summary); err != nil {
 				return err
@@ -181,12 +190,12 @@ func NormalizeReasoningParameters(req *Request, codec string, interleaved bool) 
 		}
 		r.Effort, r.Budget, r.EffortScope = obj["thinkingLevel"], obj["thinkingBudget"], "reasoning"
 		if controlPresent(r.Effort) && controlPresent(r.Budget) {
-			return streamIssue(InvalidInput, "/generationConfig/thinkingConfig", "thinkingLevel and thinkingBudget cannot coexist")
+			return reasoningValidationIssue(InvalidInput, "/generationConfig/thinkingConfig", "thinkingLevel and thinkingBudget cannot coexist")
 		}
 		if !obj["includeThoughts"].IsZero() {
 			var include bool
 			if obj["includeThoughts"].IsNull() || obj["includeThoughts"].Decode(&include) != nil {
-				return streamIssue(InvalidInput, "/generationConfig/thinkingConfig/includeThoughts", "includeThoughts must be a boolean")
+				return reasoningValidationIssue(InvalidInput, "/generationConfig/thinkingConfig/includeThoughts", "includeThoughts must be a boolean")
 			}
 			if include {
 				r.Summary = StringValue("auto")
@@ -239,17 +248,17 @@ func validateSourceReasoning(codec string, r *ReasoningIntent) error {
 		return nil
 	}
 	if codec == "responses" && controlPresent(r.Summary) && !slices.Contains([]string{"auto", "concise", "detailed"}, controlText(r.Summary)) {
-		return streamIssue(InvalidInput, "/reasoning/summary", "summary must be auto, concise or detailed")
+		return reasoningValidationIssue(InvalidInput, "/reasoning/summary", "summary must be auto, concise or detailed")
 	}
 	if codec == "anthropic" && controlText(r.Effort) == "none" {
-		return streamIssue(InvalidInput, "/output_config/effort", "effort cannot disable thinking; use thinking.type")
+		return reasoningValidationIssue(InvalidInput, "/output_config/effort", "effort cannot disable thinking; use thinking.type")
 	}
 	if codec == "gemini" && controlPresent(r.Effort) && !slices.Contains([]string{"minimal", "low", "medium", "high"}, controlText(r.Effort)) {
-		return streamIssue(InvalidInput, "/generationConfig/thinkingConfig/thinkingLevel", "invalid thinking level")
+		return reasoningValidationIssue(InvalidInput, "/generationConfig/thinkingConfig/thinkingLevel", "invalid thinking level")
 	}
 	if codec == "anthropic" {
 		if r.Mode != "enabled" && controlPresent(r.Budget) {
-			return streamIssue(InvalidInput, "/thinking/budget_tokens", "this thinking mode does not accept a budget")
+			return reasoningValidationIssue(InvalidInput, "/thinking/budget_tokens", "this thinking mode does not accept a budget")
 		}
 		if err := validateAnthropicDisplay(r.Mode, r.Summary); err != nil {
 			return err
@@ -257,7 +266,7 @@ func validateSourceReasoning(codec string, r *ReasoningIntent) error {
 	}
 	if codec == "anthropic" && r.Mode == "enabled" {
 		if !controlPresent(r.Budget) || controlInt(r.Budget) < 1024 {
-			return streamIssue(InvalidInput, "/thinking/budget_tokens", "manual thinking requires an integer budget of at least 1024")
+			return reasoningValidationIssue(InvalidInput, "/thinking/budget_tokens", "manual thinking requires an integer budget of at least 1024")
 		}
 	}
 	return nil
@@ -272,12 +281,12 @@ func validateReasoningModel(req *Request, codec string, r *ReasoningIntent, cap 
 	}
 	if codec == "anthropic" && r.Mode == "enabled" {
 		if cap.Kind != "unknown" && !cap.Manual {
-			return streamIssue(InvalidInput, "/thinking/type", "model does not support manual thinking")
+			return reasoningValidationIssue(InvalidInput, "/thinking/type", "model does not support manual thinking")
 		}
 		interleaved := r.Interleaved && (cap.Kind == "unknown" || cap.Interleaved)
 
 		if controlPresent(req.Parameters["max_output_tokens"]) && controlInt(r.Budget) >= controlInt(req.Parameters["max_output_tokens"]) && !interleaved {
-			return streamIssue(InvalidInput, "/thinking/budget_tokens", "manual budget must be below max_tokens without supported interleaved thinking")
+			return reasoningValidationIssue(InvalidInput, "/thinking/budget_tokens", "manual budget must be below max_tokens without supported interleaved thinking")
 		}
 	}
 	if cap.Kind == "unknown" {
@@ -286,33 +295,33 @@ func validateReasoningModel(req *Request, codec string, r *ReasoningIntent, cap 
 	if codec == "gemini" && controlPresent(r.Budget) {
 		n := controlInt(r.Budget)
 		if cap.Kind != "budget" || (n == 0 && !cap.Disable) || (n > 0 && (n < cap.MinBudget || (cap.MaxBudget > 0 && n > cap.MaxBudget))) {
-			return streamIssue(InvalidInput, "/generationConfig/thinkingConfig/thinkingBudget", "budget is invalid for the model")
+			return reasoningValidationIssue(InvalidInput, "/generationConfig/thinkingConfig/thinkingBudget", "budget is invalid for the model")
 		}
 	}
 	if codec == "gemini" && controlPresent(r.Effort) && (cap.Kind != "level" || !slices.Contains(cap.Levels, controlText(r.Effort))) {
-		return streamIssue(InvalidInput, "/generationConfig/thinkingConfig/thinkingLevel", "level is invalid for the model")
+		return reasoningValidationIssue(InvalidInput, "/generationConfig/thinkingConfig/thinkingLevel", "level is invalid for the model")
 	}
 	if codec == "anthropic" && r.Mode == "auto" && cap.Kind != "adaptive" {
-		return streamIssue(InvalidInput, "/thinking/type", "model does not support adaptive thinking")
+		return reasoningValidationIssue(InvalidInput, "/thinking/type", "model does not support adaptive thinking")
 	}
 	if (codec == "anthropic" || codec == "openai-chat" || codec == "responses") && controlPresent(r.Effort) && controlText(r.Effort) != "none" && !slices.Contains(cap.Levels, controlText(r.Effort)) {
-		return streamIssue(InvalidInput, "/reasoning/effort", "effort is invalid for the model")
+		return reasoningValidationIssue(InvalidInput, "/reasoning/effort", "effort is invalid for the model")
 	}
 	if r.Mode == "between_tools" && len(cap.BetweenToolsLevels) == 0 {
-		return streamIssue(InvalidInput, "/thinking/type", "model does not support between_tools thinking")
+		return reasoningValidationIssue(InvalidInput, "/thinking/type", "model does not support between_tools thinking")
 	}
 	effectiveEffort := controlText(r.Effort)
 	if effectiveEffort == "" {
 		effectiveEffort = cap.DefaultEffort
 	}
 	if r.Mode == "disabled" && len(cap.DisabledLevels) > 0 && !slices.Contains(cap.DisabledLevels, effectiveEffort) {
-		return streamIssue(InvalidInput, "/reasoning/effort", "model does not allow this effort with disabled thinking")
+		return reasoningValidationIssue(InvalidInput, "/reasoning/effort", "model does not allow this effort with disabled thinking")
 	}
 	if r.Mode == "between_tools" && !slices.Contains(cap.BetweenToolsLevels, effectiveEffort) {
-		return streamIssue(InvalidInput, "/reasoning/effort", "model does not allow this effort with between_tools thinking")
+		return reasoningValidationIssue(InvalidInput, "/reasoning/effort", "model does not allow this effort with between_tools thinking")
 	}
 	if r.Mode == "disabled" && !cap.Disable {
-		return streamIssue(InvalidInput, "/reasoning/mode", "model does not support disabled thinking")
+		return reasoningValidationIssue(InvalidInput, "/reasoning/mode", "model does not support disabled thinking")
 	}
 	return nil
 }
@@ -328,7 +337,7 @@ func ReasoningParameters(req *Request, codec string) (Object, error) {
 		return nil, err
 	}
 	if !r.HistoryRetention.IsZero() {
-		return nil, streamIssue(UnsupportedCapability, "/reasoning/historyRetention", "generation parameter rendering cannot consume unresolved history retention")
+		return nil, reasoningValidationIssue(UnsupportedCapability, "/reasoning/historyRetention", "generation parameter rendering cannot consume unresolved history retention")
 	}
 	out := maps.Clone(req.Parameters)
 	if out == nil {
@@ -348,7 +357,7 @@ func ReasoningParameters(req *Request, codec string) (Object, error) {
 				continue
 			}
 			if _, exists := base[k]; exists {
-				return streamIssue(InvalidInput, "/parameters/"+key+"/"+k, "conflicting typed and legacy reasoning controls")
+				return reasoningValidationIssue(InvalidInput, "/parameters/"+key+"/"+k, "conflicting typed and legacy reasoning controls")
 			}
 			base[k] = v
 		}
@@ -360,17 +369,17 @@ func ReasoningParameters(req *Request, codec string) (Object, error) {
 	switch codec {
 	case "openai-chat":
 		if !r.Budget.IsZero() || !r.Summary.IsZero() {
-			return nil, streamIssue(UnsupportedCapability, "/reasoning", "Chat cannot encode unresolved budget or summary controls")
+			return nil, reasoningValidationIssue(UnsupportedCapability, "/reasoning", "Chat cannot encode unresolved budget or summary controls")
 		}
 		if !r.Effort.IsZero() {
 			if !out["reasoning_effort"].IsZero() {
-				return nil, streamIssue(InvalidInput, "/reasoning/effort", "conflicting typed and legacy effort")
+				return nil, reasoningValidationIssue(InvalidInput, "/reasoning/effort", "conflicting typed and legacy effort")
 			}
 			out["reasoning_effort"] = r.Effort
 		}
 	case "responses":
 		if !r.Budget.IsZero() {
-			return nil, streamIssue(UnsupportedCapability, "/reasoning/budget", "Responses cannot encode a numeric thinking budget")
+			return nil, reasoningValidationIssue(UnsupportedCapability, "/reasoning/budget", "Responses cannot encode a numeric thinking budget")
 		}
 		if err := merge("responses_reasoning", Object{"effort": r.Effort, "summary": r.Summary}); err != nil {
 			return nil, err
@@ -392,7 +401,7 @@ func ReasoningParameters(req *Request, codec string) (Object, error) {
 		}
 	case "gemini":
 		if controlPresent(r.Effort) && controlPresent(r.Budget) {
-			return nil, streamIssue(UnsupportedCapability, "/reasoning", "Gemini cannot encode both level and budget")
+			return nil, reasoningValidationIssue(UnsupportedCapability, "/reasoning", "Gemini cannot encode both level and budget")
 		}
 		fields := Object{"thinkingLevel": r.Effort, "thinkingBudget": r.Budget}
 		if controlPresent(r.Summary) {
