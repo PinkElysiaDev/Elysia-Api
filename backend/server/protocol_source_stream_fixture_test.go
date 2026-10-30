@@ -53,31 +53,36 @@ func sourceStreamPackage(t *testing.T) protocol.ProtocolPackage {
 		decode[name], encode[name] = read("/"+name), read("/"+name)
 	}
 	directions := map[protocol.Direction]protocol.ProtocolDirectionMapping{
-		protocol.EncodeRequest:  {Program: protocol.Expression{Op: "object", Fields: map[string]protocol.Expression{"model": read("/model")}}, Effects: optionalEmit("model")},
-		protocol.DecodeResponse: {Program: protocol.Expression{Op: "object", Fields: map[string]protocol.Expression{"schemaVersion": literal(protocol.ProtocolCoreVersion), "error": read("/error")}}, Effects: optionalEmit("error")},
-		protocol.EncodeResponse: {Program: protocol.Expression{Op: "object", Fields: map[string]protocol.Expression{"error": read("/error")}}, Effects: optionalEmit("error")},
-		protocol.DecodeEvent:    {Program: protocol.Expression{Op: "object", Fields: decode}, Effects: optionalEmit("responseId")},
-		protocol.EncodeEvent:    {Program: protocol.Expression{Op: "object", Fields: encode}, Effects: optionalEmit("responseId")},
+		protocol.EncodeRequest:  {Document: "generation-request", Program: protocol.Expression{Op: "object", Fields: map[string]protocol.Expression{"model": read("/model")}}, Effects: optionalEmit("model")},
+		protocol.DecodeResponse: {Document: "provider-response", Program: protocol.Expression{Op: "object", Fields: map[string]protocol.Expression{"schemaVersion": literal(protocol.ProtocolCoreVersion), "error": read("/error")}}, Effects: optionalEmit("error")},
+		protocol.EncodeResponse: {Document: "client-response", Program: protocol.Expression{Op: "object", Fields: map[string]protocol.Expression{"error": read("/error")}}, Effects: optionalEmit("error")},
+		protocol.DecodeEvent:    {Document: "provider-event", Program: protocol.Expression{Op: "object", Fields: decode}, Effects: optionalEmit("responseId")},
+		protocol.EncodeEvent:    {Document: "client-event", Program: protocol.Expression{Op: "object", Fields: encode}, Effects: optionalEmit("responseId")},
 	}
-	contracts := map[protocol.Direction]protocol.WireContractSpec{}
-	for direction := range directions {
-		contracts[direction] = protocol.WireContractSpec{Schema: &protocol.ValueSchema{Type: protocol.ObjectType, AllowUnknown: true}}
+	stream := &protocol.ProtocolStreamSpec{Discriminator: "/type", ResponseID: "/responseId", ItemID: "/itemId", Sequence: "/sequence",
+		Events: map[string]protocol.ProtocolStreamEventSpec{
+			"response.started": {Action: "response_start"}, "response.finished": {Action: "response_finish"},
+			"item.started": {Action: "item_start"}, "item.delta": {Action: "text_delta", Text: "/delta"}, "item.finished": {Action: "item_finish"},
+			"usage.updated":    {Action: "usage", Usage: &protocol.ProtocolStreamUsageSpec{Input: "/usage/input/count", Output: "/usage/output/count", Total: "/usage/total/count"}},
+			"operation.failed": {Action: "failure", Error: "/error"},
+		}}
+	documents := map[string]protocol.WireContractSpec{}
+	for direction, mapping := range directions {
+		document := protocol.WireContractSpec{Schema: &protocol.ValueSchema{Type: protocol.ObjectType, AllowUnknown: true}}
+		if direction == protocol.DecodeEvent || direction == protocol.EncodeEvent {
+			document.Stream = stream
+		}
+		documents[mapping.Document] = document
 	}
 	return protocol.ProtocolPackage{
 		SchemaVersion: protocol.ProtocolPackageSchemaVersion,
 		Spec: protocol.ProtocolSpec{ID: "source-stream-fixture", Version: "1", Family: "source-stream-fixture", WireVersion: "1",
-			Operations: map[string]protocol.Operation{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: protocol.HTTPJSON,
-				Request: protocol.EncodeRequest, Response: protocol.DecodeResponse, Auth: protocol.Credential{Location: "none"}}},
-			WireContracts: contracts,
-			Stream: &protocol.ProtocolStreamSpec{Discriminator: "/type", ResponseID: "/responseId", ItemID: "/itemId", Sequence: "/sequence",
-				Events: map[string]protocol.ProtocolStreamEventSpec{
-					"response.started": {Action: "response_start"}, "response.finished": {Action: "response_finish"},
-					"item.started": {Action: "item_start"}, "item.delta": {Action: "text_delta", Text: "/delta"}, "item.finished": {Action: "item_finish"},
-					"usage.updated":    {Action: "usage", Usage: &protocol.ProtocolStreamUsageSpec{Input: "/usage/input/count", Output: "/usage/output/count", Total: "/usage/total/count"}},
-					"operation.failed": {Action: "failure", Error: "/error"},
-				}},
+			Operations: map[string]protocol.ProtocolOperationSpec{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: protocol.HTTPJSON,
+				Request: "generation-request", Response: "provider-response", Auth: protocol.Credential{Location: "none"}}},
+			Documents: documents,
 		},
 		Mapping: protocol.ProtocolMapping{CoreVersion: protocol.ProtocolCoreVersion, DSLVersion: protocol.ProtocolDSLVersion,
+			Operations:   map[string]protocol.ProtocolOperationMapping{"generate": {Request: protocol.EncodeRequest, Response: protocol.DecodeResponse}},
 			Capabilities: protocol.CapabilitySet{protocol.TextCapability: true, protocol.UsageCapability: true}, Directions: directions},
 	}
 }

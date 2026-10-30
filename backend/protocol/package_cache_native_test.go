@@ -6,7 +6,7 @@ func TestPackageCacheNativeAllowsUnchangedBaselines(t *testing.T) {
 	for _, hasExplicitLimit := range []bool{false, true} {
 		document := noCachePackage(t)
 		document.Mapping.Native.Preserve = true
-		document.Spec.WireContracts[DecodeRequest].Schema.AllowUnknown = true
+		document.Spec.Documents[document.Mapping.Directions[DecodeRequest].Document].Schema.AllowUnknown = true
 		if hasExplicitLimit {
 			limits := DefaultLimits()
 			limits.BufferBytes = 1 << 20
@@ -149,7 +149,7 @@ func TestPackageCacheNativeMatchesBoundResourceScope(t *testing.T) {
 	document := noCachePackage(t)
 	document.Mapping.Native.Preserve = true
 	document.Mapping.Capabilities[CacheResourcesCapability] = true
-	document.Spec.WireContracts[DecodeRequest].Schema.Properties["cache_ref"] = ValueSchema{Type: StringType}
+	document.Spec.Documents[document.Mapping.Directions[DecodeRequest].Document].Schema.Properties["cache_ref"] = ValueSchema{Type: StringType}
 	decode := document.Mapping.Directions[DecodeRequest]
 	decode.Program.Fields["cache"] = Expression{Op: "array", Items: []Expression{objectExpression(map[string]Expression{
 		"kind": literalExpression("resource"), "resource": objectExpression(map[string]Expression{"kind": literalExpression("cache"), "id": readExpression("input", "/cache_ref")}),

@@ -128,9 +128,9 @@ func TestPackageVerificationCombinationUsesPinnedFixtures(t *testing.T) {
 			t.Fatal("combination evidence lost package identity", report)
 		}
 	}
-	contract := document.Spec.WireContracts[EncodeRequest]
+	contract := document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document]
 	contract.Assertions = []WireAssertion{{Path: "/prompt", Schema: ValueSchema{Type: StringType, Enum: []Value{StringValue("different")}}, Code: ConversionRejected, Reason: "synthetic final wire rejection"}}
-	document.Spec.WireContracts[EncodeRequest] = contract
+	document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document] = contract
 	restricted := compilePackageForTest(t, document)
 	report := VerifyCombination(t.Context(), first, restricted)
 	if report.Passed || report.Fidelity != "rejected" {

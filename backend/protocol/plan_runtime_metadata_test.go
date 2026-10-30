@@ -15,7 +15,7 @@ func TestPackageRuntimeMetadataAcrossBoundaries(t *testing.T) {
 		"runtimeThinking": {Op: "ref", Ref: "runtime-thinking"},
 	})
 	document.Mapping.Directions[EncodeRequest].Program.Fields["runtimeThinking"] = Expression{Op: "ref", Ref: "runtime-thinking"}
-	document.Spec.WireContracts[DecodeRequest].Schema.AllowUnknown = true
+	document.Spec.Documents[document.Mapping.Directions[DecodeRequest].Document].Schema.AllowUnknown = true
 	compiled := compilePackageForTest(t, document)
 	if !compiled.mappings[DecodeRequest].hasCoreOutputPlan || !compiled.mappings[EncodeRequest].hasCoreInputPlan {
 		t.Fatal("fixture must use typed mapping plans")
@@ -68,7 +68,7 @@ func TestPackageRuntimeScopeModel(t *testing.T) {
 		"contextFirst": {Op: "if", When: &Expression{Op: "exists", Source: &contextModel}, Then: &contextModel, Otherwise: &model},
 	})
 	document.Mapping.Directions[EncodeRequest].Program.Fields["scopeModel"] = model
-	document.Spec.WireContracts[DecodeRequest].Schema.AllowUnknown = true
+	document.Spec.Documents[document.Mapping.Directions[DecodeRequest].Document].Schema.AllowUnknown = true
 	compiled := compilePackageForTest(t, document)
 	for _, tc := range []struct {
 		name, scopeModel string
@@ -178,9 +178,9 @@ func TestRuntimeMetadataRejectsInvalidScopesAndFields(t *testing.T) {
 			} else {
 				document := textProtocolPackage(t)
 				if scope == "spec" {
-					contract := document.Spec.WireContracts[DecodeRequest]
+					contract := document.Spec.Documents[document.Mapping.Directions[DecodeRequest].Document]
 					contract.Assertions = []WireAssertion{{Path: "/prompt", Schema: ValueSchema{Type: StringType}, Check: &read, Code: InvalidInput, Reason: "synthetic assertion"}}
-					document.Spec.WireContracts[DecodeRequest] = contract
+					document.Spec.Documents[document.Mapping.Directions[DecodeRequest].Document] = contract
 				} else {
 					document = noCachePackage(t)
 					document.Mapping.Directions[EncodeRequest].Effects[2].When = &read

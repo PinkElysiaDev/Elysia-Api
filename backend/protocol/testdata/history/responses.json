@@ -12,21 +12,21 @@
         "method": "POST",
         "path": "/prototype",
         "transport": "http_json",
-        "request": "encode_request",
-        "response": "decode_response",
+        "request": "generation-request",
+        "response": "provider-response",
         "auth": {
           "location": "none"
         }
       }
     },
-    "wireContracts": {
-      "encode_request": {
+    "documents": {
+      "generation-request": {
         "schema": {
           "type": "object",
           "allowUnknown": true
         }
       },
-      "decode_response": {
+      "provider-response": {
         "schema": {
           "type": "object",
           "required": [
@@ -39,7 +39,7 @@
           }
         }
       },
-      "encode_response": {
+      "client-response": {
         "schema": {
           "type": "object",
           "required": [
@@ -125,7 +125,8 @@
         ],
         "capabilities": {
           "text": true
-        }
+        },
+        "document": "provider-response"
       },
       "encode_response": {
         "program": {
@@ -148,7 +149,8 @@
         ],
         "capabilities": {
           "text": true
-        }
+        },
+        "document": "client-response"
       },
       "encode_request": {
         "program": {
@@ -301,7 +303,8 @@
             },
             "reason": "generation controls are outside this history prototype"
           }
-        ]
+        ],
+        "document": "generation-request"
       }
     },
     "samples": [
@@ -387,6 +390,12 @@
           "reply": "ok"
         }
       }
-    ]
+    ],
+    "operations": {
+      "generate": {
+        "request": "encode_request",
+        "response": "decode_response"
+      }
+    }
   }
 }

@@ -9,7 +9,7 @@ import (
 func deepMergeTestPackage(t *testing.T) ProtocolPackage {
 	t.Helper()
 	document := textProtocolPackage(t)
-	document.Spec.WireContracts[EncodeRequest].Schema.AllowUnknown = true
+	document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document].Schema.AllowUnknown = true
 	mapping := document.Mapping.Directions[EncodeRequest]
 	mapping.Program = Expression{Op: "merge_deep", Items: []Expression{mapping.Program, readExpression("input", "/parameters/extension")}}
 	document.Mapping.Directions[EncodeRequest] = mapping
@@ -22,10 +22,10 @@ func TestDeepMergeEmissionRequiresUnconditionalNonObjectCopy(t *testing.T) {
 		change     func(*ProtocolPackage)
 	}{
 		{"unknown-leaf", "provable read", func(document *ProtocolPackage) {
-			document.Spec.WireContracts[EncodeRequest].Schema.Properties["model"] = ValueSchema{Type: AnyType}
+			document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document].Schema.Properties["model"] = ValueSchema{Type: AnyType}
 		}},
 		{"object-leaf", "provable read", func(document *ProtocolPackage) {
-			document.Spec.WireContracts[EncodeRequest].Schema.Properties["model"] = ValueSchema{Type: ObjectType, Nullable: true, AllowUnknown: true}
+			document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document].Schema.Properties["model"] = ValueSchema{Type: ObjectType, Nullable: true, AllowUnknown: true}
 		}},
 		{"different-source", "provable read", func(document *ProtocolPackage) {
 			document.Mapping.Directions[EncodeRequest].Program.Items[0].Fields["model"] = readExpression("input", "/other")
@@ -53,7 +53,7 @@ func TestDeepMergeEmissionRequiresUnconditionalNonObjectCopy(t *testing.T) {
 
 func TestDeepMergeEmissionChecksFinalSchemaAndPreservesNull(t *testing.T) {
 	document := deepMergeTestPackage(t)
-	document.Spec.WireContracts[EncodeRequest].Schema.Properties["model"] = ValueSchema{Type: StringType, Nullable: true}
+	document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document].Schema.Properties["model"] = ValueSchema{Type: StringType, Nullable: true}
 	compiled := compilePackageForTest(t, document)
 	request := &Request{SchemaVersion: ProtocolCoreVersion, Model: StringValue("m"), Content: []Node{{Kind: MessageNode, Role: StringValue("user"), Children: []Node{{Kind: TextNode, Payload: StringValue("hello")}}}}, Parameters: Object{"extension": Value{raw: `{"metadata":{"n":9007199254740993}}`}}}
 	for _, model := range []Value{StringValue("m"), Value{raw: "null"}} {

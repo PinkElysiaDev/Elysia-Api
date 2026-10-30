@@ -506,31 +506,12 @@ func (compiler *Compiler) checkDefinition(definition Definition) error {
 }
 
 func (compiler *Compiler) checkOperation(name string, operation Operation, definition Definition) error {
-	if !definitionIdentifier.MatchString(name) {
-		return fmt.Errorf("invalid operation name %q", name)
-	}
-	if !slices.Contains(OperationKindCatalog(), operation.Kind) {
-		return fmt.Errorf("operation %q has unsupported kind", name)
-	}
-	if !slices.Contains(operationMethodWhitelist, operation.Method) {
-		return fmt.Errorf("operation %q has unsupported method", name)
-	}
-	path, err := url.Parse(operation.Path)
-	if err != nil || path.IsAbs() || path.Host != "" || !strings.HasPrefix(operation.Path, "/") || strings.HasPrefix(operation.Path, "//") || path.Fragment != "" || strings.Contains(operation.Path, "\\") {
-		return fmt.Errorf("operation %q requires a relative absolute-path endpoint", name)
-	}
-	if !slices.Contains(TransportCatalog(), operation.Transport) {
-		return fmt.Errorf("operation %q has unknown transport", name)
-	}
 	limits := compiler.limits
 	if definition.Limits != nil {
 		limits = *definition.Limits
 	}
-	if err := validateSchema(operation.Input, "/operations/"+name+"/input", 1, limits); err != nil {
+	if err := checkOperationEndpoint(name, operation, limits); err != nil {
 		return err
-	}
-	if operation.Input != nil && (operation.Kind != "generate" || operation.Transport == WebSocket) {
-		return fmt.Errorf("operation %q input schema requires HTTP generation; task and session inputs use their own mappings", name)
 	}
 	if err := checkSessionOperation(operation, definition, limits); err != nil {
 		return fmt.Errorf("operation %q: %w", name, err)
@@ -555,6 +536,60 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 			return fmt.Errorf("operation %q requires an event direction", name)
 		}
 	}
+	if err := checkOperationFraming(name, operation); err != nil {
+		return err
+	}
+	if operation.Request != "" && operation.Request != DecodeRequest && operation.Request != EncodeRequest {
+		return fmt.Errorf("operation %q request must select a request direction", name)
+	}
+	if operation.Response != "" && operation.Response != DecodeResponse && operation.Response != EncodeResponse && operation.Response != DecodeEvent && operation.Response != EncodeEvent {
+		return fmt.Errorf("operation %q response must select a response/event direction", name)
+	}
+	if err := checkOperationHeaders(name, operation); err != nil {
+		return err
+	}
+	if operation.Task != nil {
+		if operation.Kind != "submit" {
+			return fmt.Errorf("operation %q has a task flow without submit kind", name)
+		}
+		for _, reference := range []string{operation.Task.Status, operation.Task.Result, operation.Task.Cancel} {
+			if reference != "" {
+				if _, exists := definition.Operations[reference]; !exists {
+					return fmt.Errorf("operation %q has an unknown task reference", name)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func checkOperationEndpoint(name string, operation Operation, limits Limits) error {
+	if !definitionIdentifier.MatchString(name) {
+		return fmt.Errorf("invalid operation name %q", name)
+	}
+	if !slices.Contains(OperationKindCatalog(), operation.Kind) {
+		return fmt.Errorf("operation %q has unsupported kind", name)
+	}
+	if !slices.Contains(operationMethodWhitelist, operation.Method) {
+		return fmt.Errorf("operation %q has unsupported method", name)
+	}
+	path, err := url.Parse(operation.Path)
+	if err != nil || path.IsAbs() || path.Host != "" || !strings.HasPrefix(operation.Path, "/") || strings.HasPrefix(operation.Path, "//") || path.Fragment != "" || strings.Contains(operation.Path, "\\") {
+		return fmt.Errorf("operation %q requires a relative absolute-path endpoint", name)
+	}
+	if !slices.Contains(TransportCatalog(), operation.Transport) {
+		return fmt.Errorf("operation %q has unknown transport", name)
+	}
+	if err := validateSchema(operation.Input, "/operations/"+name+"/input", 1, limits); err != nil {
+		return err
+	}
+	if operation.Input != nil && (operation.Kind != "generate" || operation.Transport == WebSocket) {
+		return fmt.Errorf("operation %q input schema requires HTTP generation; task and session inputs use their own mappings", name)
+	}
+	return nil
+}
+
+func checkOperationFraming(name string, operation Operation) error {
 	if operation.Auth.Location != "none" && operation.Auth.Location != "header" && operation.Auth.Location != "query" {
 		return fmt.Errorf("operation %q requires auth location none, header or query", name)
 	}
@@ -577,12 +612,10 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 			return fmt.Errorf("operation %q has an invalid event name pointer: %w", name, err)
 		}
 	}
-	if operation.Request != "" && operation.Request != DecodeRequest && operation.Request != EncodeRequest {
-		return fmt.Errorf("operation %q request must select a request direction", name)
-	}
-	if operation.Response != "" && operation.Response != DecodeResponse && operation.Response != EncodeResponse && operation.Response != DecodeEvent && operation.Response != EncodeEvent {
-		return fmt.Errorf("operation %q response must select a response/event direction", name)
-	}
+	return nil
+}
+
+func checkOperationHeaders(name string, operation Operation) error {
 	for key, value := range operation.Headers {
 		if strings.ContainsAny(key+value, "\r\n") || strings.Contains(key, ":") {
 			return fmt.Errorf("operation %q has invalid HTTP headers", name)
@@ -590,18 +623,6 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 	}
 	if strings.ContainsAny(operation.Auth.Name+operation.Auth.Prefix, "\r\n") {
 		return fmt.Errorf("operation %q has invalid credential injection", name)
-	}
-	if operation.Task != nil {
-		if operation.Kind != "submit" {
-			return fmt.Errorf("operation %q has a task flow without submit kind", name)
-		}
-		for _, reference := range []string{operation.Task.Status, operation.Task.Result, operation.Task.Cancel} {
-			if reference != "" {
-				if _, exists := definition.Operations[reference]; !exists {
-					return fmt.Errorf("operation %q has an unknown task reference", name)
-				}
-			}
-		}
 	}
 	return nil
 }
@@ -744,6 +765,10 @@ func (compiled *Compiled) mappingError(direction Direction, err error) error {
 	var conversion *ConversionError
 	if errors.As(err, &conversion) {
 		return err
+	}
+	var conflict *mergeConflictDiagnosticError
+	if errors.As(err, &conflict) {
+		return &ConversionError{cause: err, Issues: []ConversionIssue{conflict.issue(compiled.identity, direction)}}
 	}
 	code := InvalidInput
 	if direction == DecodeResponse || direction == DecodeEvent {

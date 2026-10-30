@@ -72,11 +72,10 @@ func TestHealthProbeUsesVerifiedWireAndCredentials(t *testing.T) {
 func TestHealthProbeUsesTargetCoreVersion(t *testing.T) {
 	server := newHealthTestServer(t)
 	document := sourceStreamPackage(t)
-	document.Spec.Stream = nil
-	for direction := range document.Mapping.Directions {
+	for direction, mapping := range document.Mapping.Directions {
 		if direction != protocol.EncodeRequest && direction != protocol.DecodeResponse {
 			delete(document.Mapping.Directions, direction)
-			delete(document.Spec.WireContracts, direction)
+			delete(document.Spec.Documents, mapping.Document)
 		}
 	}
 	read := func(path string) protocol.Expression {
@@ -122,7 +121,11 @@ func TestHealthProbeUsesTargetCoreVersion(t *testing.T) {
 		_, _ = io.WriteString(w, `{"content":[{"kind":"text","payload":"pong"}],"usage":{"input":{"count":7,"origin":"observed"},"output":{"count":1,"origin":"observed"},"total":{"count":8,"origin":"observed"}}}`)
 	}))
 	defer upstream.Close()
-	candidate := gatewayCandidate{compiled: compiled, operation: operation, operationName: "generate",
+	boundOperation, exists := compiled.Operation("generate")
+	if !exists {
+		t.Fatal("compiled probe operation missing")
+	}
+	candidate := gatewayCandidate{compiled: compiled, operation: boundOperation, operationName: "generate",
 		model:   config.ModelRef{ID: "probe-model", Name: modelName, BaseURL: upstream.URL, APIKey: "probe-key"},
 		binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: document.Mapping.Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
 	// Package activation is a separate migration boundary; exercise the same

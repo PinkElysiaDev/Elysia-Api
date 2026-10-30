@@ -125,9 +125,9 @@ func TestPackageRuntimeRetainsWireAndEffectChecks(t *testing.T) {
 		if direction == DecodeResponse || direction == EncodeResponse {
 			path = "/reply"
 		}
-		contract := document.Spec.WireContracts[direction]
+		contract := document.Spec.Documents[document.Mapping.Directions[direction].Document]
 		contract.Assertions = []WireAssertion{{Path: path, Schema: ValueSchema{Type: StringType, Enum: []Value{StringValue("allowed")}}, Code: ConversionRejected, Reason: "synthetic wire rule"}}
-		document.Spec.WireContracts[direction] = contract
+		document.Spec.Documents[document.Mapping.Directions[direction].Document] = contract
 	}
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
 		entry := document.Mapping.Directions[direction]
@@ -219,11 +219,11 @@ func TestPackageRuntimeKeepsSemanticChecks(t *testing.T) {
 func TestPackageRuntimeNativePreservation(t *testing.T) {
 	document := textProtocolPackage(t)
 	document.Mapping.Native.Preserve = true
-	for direction, contract := range document.Spec.WireContracts {
+	for name, contract := range document.Spec.Documents {
 		schema := *contract.Schema
 		schema.AllowUnknown = true
 		contract.Schema = &schema
-		document.Spec.WireContracts[direction] = contract
+		document.Spec.Documents[name] = contract
 	}
 	compiled := compilePackageForTest(t, document)
 	wire := []byte(`{"model":"m","prompt":"hello","extension":{"n":9007199254740993,"rows":[{"id":"a"},{"id":"b"}]}}`)
@@ -250,9 +250,9 @@ func TestPackageRuntimeNativePreservation(t *testing.T) {
 	if err != nil || !strings.Contains(string(changedResponse), `"reply":"changed"`) || !strings.Contains(string(changedResponse), `9007199254740993`) {
 		t.Fatal("native response reconciliation lost unknown values", err, string(changedResponse))
 	}
-	contract := document.Spec.WireContracts[EncodeRequest]
+	contract := document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document]
 	contract.Schema.AllowUnknown = false
-	document.Spec.WireContracts[EncodeRequest] = contract
+	document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document] = contract
 	strict := compilePackageForTest(t, document)
 	request, err = strict.DecodeRequest(t.Context(), wire, EvaluationContext{})
 	if err != nil {

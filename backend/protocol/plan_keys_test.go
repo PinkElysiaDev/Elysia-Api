@@ -179,7 +179,7 @@ func TestTypeTypedRequestInputAndOutputBudgets(t *testing.T) {
 func checkTypedRequestQueryBudgets(t *testing.T, operation string) {
 	t.Helper()
 	document := textProtocolPackage(t)
-	document.Spec.WireContracts[EncodeRequest].Schema.AllowUnknown = true
+	document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document].Schema.AllowUnknown = true
 	document.Mapping.Directions[EncodeRequest].Program.Fields["query"] = Expression{Op: operation, Source: expressionPointer(readExpression("input", "/parameters"))}
 	compiled := compilePackageForTest(t, document)
 	request, err := compiled.DecodeRequestValue(t.Context(), Value{raw: `{"model":"m","prompt":"hello"}`}, EvaluationContext{})

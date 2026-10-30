@@ -58,7 +58,7 @@ func TestProjectRawNormalizationParity(t *testing.T) {
 
 func TestProjectCannotHideInvalidInput(t *testing.T) {
 	document := textProtocolPackage(t)
-	document.Spec.WireContracts[DecodeRequest].Schema.AllowUnknown = true
+	document.Spec.Documents[document.Mapping.Directions[DecodeRequest].Document].Schema.AllowUnknown = true
 	document.Mapping.Directions[DecodeRequest].Program.Fields["parameters"] = Expression{Op: "project", Source: expressionPointer(readExpression("input", "")), Keys: []string{"model", "prompt", "drop"}, Policy: "exclude"}
 	compiled := compilePackageForTest(t, document)
 	if _, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","prompt":"hi","drop":[1]}`), EvaluationContext{}); err != nil {

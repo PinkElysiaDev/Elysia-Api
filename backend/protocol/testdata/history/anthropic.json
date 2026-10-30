@@ -12,15 +12,15 @@
         "method": "POST",
         "path": "/prototype",
         "transport": "http_json",
-        "request": "encode_request",
-        "response": "decode_response",
+        "request": "generation-request",
+        "response": "provider-response",
         "auth": {
           "location": "none"
         }
       }
     },
-    "wireContracts": {
-      "decode_request": {
+    "documents": {
+      "request": {
         "schema": {
           "type": "object",
           "allowUnknown": true,
@@ -57,7 +57,7 @@
           ]
         }
       },
-      "encode_request": {
+      "generation-request": {
         "schema": {
           "type": "object",
           "allowUnknown": true,
@@ -94,7 +94,7 @@
           ]
         }
       },
-      "decode_response": {
+      "provider-response": {
         "schema": {
           "type": "object",
           "required": [
@@ -107,7 +107,7 @@
           }
         }
       },
-      "encode_response": {
+      "client-response": {
         "schema": {
           "type": "object",
           "required": [
@@ -194,7 +194,8 @@
         ],
         "capabilities": {
           "text": true
-        }
+        },
+        "document": "provider-response"
       },
       "encode_response": {
         "program": {
@@ -217,7 +218,8 @@
         ],
         "capabilities": {
           "text": true
-        }
+        },
+        "document": "client-response"
       },
       "decode_request": {
         "program": {
@@ -485,7 +487,8 @@
               "unmatched": "/parameters/wire:claude/context_management"
             }
           }
-        ]
+        ],
+        "document": "request"
       },
       "encode_request": {
         "program": {
@@ -696,7 +699,8 @@
               "unmatched": "/parameters/wire:claude/context_management"
             }
           }
-        ]
+        ],
+        "document": "generation-request"
       }
     },
     "samples": [
@@ -916,6 +920,12 @@
           "reasoning.history_retention"
         ]
       }
-    ]
+    ],
+    "operations": {
+      "generate": {
+        "request": "encode_request",
+        "response": "decode_response"
+      }
+    }
   }
 }

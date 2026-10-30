@@ -29,6 +29,7 @@ type compiledExpression struct {
 	values                              map[string]Value
 	to                                  JSONType
 	policy                              string
+	onConflict                          *MergeConflictDiagnostic
 	isRequired                          bool
 	result                              JSONType
 	schema                              *ValueSchema
@@ -124,6 +125,13 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		return compiled, err
 	}
 	compiled := &compiledExpression{op: expression.Op, operation: expression.Operation, path: path, from: expression.From, value: expression.Value, to: expression.To, policy: expression.Policy, isRequired: expression.Required, result: operation.Result}
+	if _, hasDiagnostic := expression.present["onConflict"]; hasDiagnostic || expression.OnConflict != nil {
+		var err error
+		compiled.onConflict, err = compileMergeConflictDiagnostic(expression.OnConflict, path+"/onConflict")
+		if err != nil {
+			return nil, err
+		}
+	}
 	if compiled.op == "read" {
 		pointer, err := parsePointer(expression.Path)
 		if err != nil {

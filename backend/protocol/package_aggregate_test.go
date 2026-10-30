@@ -18,10 +18,10 @@ func cacheOwnerPackage(t *testing.T) ProtocolPackage {
 		document.Mapping.Directions[direction] = mapping
 	}
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
-		contract := document.Spec.WireContracts[direction]
+		contract := document.Spec.Documents[document.Mapping.Directions[direction].Document]
 		contract.Schema.AllowUnknown = true
 		contract.Schema.Properties["cache_control"] = ValueSchema{Type: ObjectType, Nullable: true, AllowUnknown: true}
-		document.Spec.WireContracts[direction] = contract
+		document.Spec.Documents[document.Mapping.Directions[direction].Document] = contract
 	}
 	read := func(path string) *Expression { return expressionPointer(readExpression("input", path)) }
 	exists := func(path string) *Expression { return &Expression{Op: "exists", Source: read(path)} }

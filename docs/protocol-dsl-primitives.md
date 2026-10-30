@@ -8,6 +8,12 @@
 
 `merge_deep` 按顺序求值全部 `items`，再合并对象。只有双方都是 object 的重叠成员才递归；其它重叠值一律报错，即使值相等。数组作为完整值处理，不拼接。缺失、null 和非对象操作数不会自动替换为 `{}`。原有 `merge` 的浅合并行为保持不变。
 
+可选 `onConflict` 只为本次合并的非对象叶子冲突声明 `code`、`stage`、`pathPrefix`、
+静态 `reason` 和可选 `suggestion`。动态业务路径由 `ObjectMergeConflictError.Path` 追加，
+原错误继续可通过 Unwrap 读取；操作数内部错误、取消和预算错误不在此边界重分类。
+未声明时保留原诊断。此机制不新增成功路径扫描或预先验证，并非通用 try/catch。
+诊断元信息在编译期固定，编译结构多一个可空指针，不能称为完全没有内存成本。
+
 ```json
 {
   "op": "merge_deep",

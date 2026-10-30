@@ -60,3 +60,27 @@ builtin 全量通过。碰撞的对外错误诊断差异仍待后续迁移，不
 `completion-sources` 定向以及 `completion-source-pairs` 的 protocol/builtin 全量通过。
 本批不改变请求执行算法，未重新测量性能。Spec 的命名文档与纯外部操作结构、完整流及
 管理激活仍未完成，当前生产加载器仍读取旧预置。
+
+## 第二批：独立外部文档与局部冲突诊断（dev.82）
+
+Spec 改为 `documents` 和独立的 `ProtocolOperationSpec`，不再引用核心 Direction 或旧 Mapping。
+Mapping 每个方向显式引用 `document`，每个操作显式绑定请求／响应方向。既有四份配置和
+合成样例逐文档迁移，保留 Anthropic／Gemini 输入与输出约束的差异，不机械合并。
+同一文档编译一次，运行态仍按方向取不可变契约；未被本 Mapping 使用的文档仍验证合法性。
+旧草案 `wireContracts`、根 `stream` 和嵌套旧程序明确拒绝，不保留兼容格式。
+
+`merge_deep.onConflict` 可对本次合并的叶子冲突声明对外错误分类和业务位置。
+Gemini 同族扩展采用此声明后，四个冲突的外层 ConversionIssue 与旧模块完全相等，
+内部错误保留结构化冲突 Path 和 Unwrap，不复刻旧包装层。其他拒绝诊断尚未因此闭合。
+成功路径不加正文扫描；元信息只在编译产物持有，失败时创建包装。
+
+protocol/builtin 全量及相关 server 流与健康探测定向通过，日志为
+`checks/completion-documents-protocol-fixed.*`、`completion-documents-server-fixed.*`。
+初次检查的两个测试问题保留：空 items 比 null onConflict 更早被拒绝；健康探测夹具仍传入了
+Spec 操作而非编译后的 Operation。修正测试输入／绑定后通过，没有放宽运行校验。
+合并诊断首次还发现 suggestion 未保存，补为声明字段后外层 Issue 差分通过，日志为
+`checks/completion-generation-diagnostic*`。本批尚未启用供应商流或管理加载。
+
+随后固定修改集的 Go 全量通过（约 98 秒）、vet 通过，日志为
+`checks/completion-documents-go-all.*` 和 `completion-documents-vet.*`。
+此阶段未改前端，未重跑性能或六目标；修改前归档仍对应 dev.81。

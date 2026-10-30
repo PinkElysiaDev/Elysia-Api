@@ -25,9 +25,9 @@ func compilePackageForTest(t *testing.T, document ProtocolPackage) *Compiled {
 func TestCompilePackageExecutesIndependentContracts(t *testing.T) {
 	document := textProtocolPackage(t)
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
-		contract := document.Spec.WireContracts[direction]
+		contract := document.Spec.Documents[document.Mapping.Directions[direction].Document]
 		contract.Assertions = []WireAssertion{{Path: "/prompt", Schema: ValueSchema{Type: StringType, Enum: []Value{StringValue("hello <world>")}}, Code: ConversionRejected, Reason: "synthetic prompt contract"}}
-		document.Spec.WireContracts[direction] = contract
+		document.Spec.Documents[document.Mapping.Directions[direction].Document] = contract
 	}
 	compiled := compilePackageForTest(t, document)
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest, DecodeResponse, EncodeResponse} {
@@ -108,7 +108,6 @@ func TestCompilePackageRejectsUnprovedEffects(t *testing.T) {
 		}},
 		{"event-runtime", "independent wire stream contract", func(p *ProtocolPackage) {
 			p.Mapping.Directions[DecodeEvent] = p.Mapping.Directions[DecodeRequest]
-			p.Spec.WireContracts[DecodeEvent] = p.Spec.WireContracts[DecodeRequest]
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -131,10 +130,10 @@ func TestPackageEffectsObserveInputPresence(t *testing.T) {
 	entry.Effects = append([]ProtocolSemanticEffect{{ID: "model-guard", Kind: "reject", Path: "/model", Target: "/model", When: &condition, Reason: "synthetic model rejection"}}, entry.Effects...)
 	document.Mapping.Directions[DecodeRequest] = entry
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
-		contract := document.Spec.WireContracts[direction]
+		contract := document.Spec.Documents[document.Mapping.Directions[direction].Document]
 		contract.Schema.Required = []string{"model"}
 		contract.Schema.Properties["prompt"] = ValueSchema{Type: StringType, Nullable: true}
-		document.Spec.WireContracts[direction] = contract
+		document.Spec.Documents[document.Mapping.Directions[direction].Document] = contract
 	}
 	compiled := compilePackageForTest(t, document)
 	for _, tc := range []struct{ input, rule string }{
@@ -158,7 +157,7 @@ func TestPackageEffectsObserveInputPresence(t *testing.T) {
 	}
 }
 
-func TestPackageIdentityIncludesReferencesAndWireContracts(t *testing.T) {
+func TestPackageIdentityIncludesReferencesAndDocuments(t *testing.T) {
 	document := textProtocolPackage(t)
 	document.Mapping.Expressions = map[string]Expression{"model": readExpression("input", "/model")}
 	document.Mapping.Directions[EncodeRequest].Program.Fields["model"] = Expression{Op: "ref", Ref: "model"}
@@ -170,9 +169,9 @@ func TestPackageIdentityIncludesReferencesAndWireContracts(t *testing.T) {
 	if before.Hash() == after.Hash() || before.mappings[EncodeRequest].definitionHash == after.mappings[EncodeRequest].definitionHash {
 		t.Fatal("referenced program changes did not invalidate identity")
 	}
-	contract := document.Spec.WireContracts[EncodeRequest]
+	contract := document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document]
 	contract.Assertions = []WireAssertion{{Path: "/model", Schema: ValueSchema{Type: StringType}, Code: InvalidInput, Reason: "synthetic wire assertion"}}
-	document.Spec.WireContracts[EncodeRequest] = contract
+	document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document] = contract
 	withAssertion := compilePackageForTest(t, document)
 	if after.Hash() == withAssertion.Hash() || after.mappings[EncodeRequest].definitionHash == withAssertion.mappings[EncodeRequest].definitionHash {
 		t.Fatal("wire contract changes did not invalidate identity")

@@ -12,7 +12,7 @@ func mergeAbsentCondition(path string) Expression {
 func guardedMergeTestPackage(t *testing.T) ProtocolPackage {
 	t.Helper()
 	document := deepMergeTestPackage(t)
-	schema := document.Spec.WireContracts[EncodeRequest].Schema
+	schema := document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document].Schema
 	schema.Properties["model"] = ValueSchema{Type: AnyType}
 	schema.Required = []string{"prompt"}
 	document.Mapping.Directions[EncodeRequest].Effects[0].When = &Expression{Op: "all", Items: []Expression{

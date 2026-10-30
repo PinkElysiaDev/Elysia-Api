@@ -34,7 +34,7 @@ var expressionOperations = []OperationInfo{
 	{"enum", []string{"source", "values"}, []string{"source", "values"}, AnyType, "Map an explicit enum; an unmapped input is an error."},
 	{"cast", []string{"source", "to"}, []string{"source", "to"}, AnyType, "Perform a lossless scalar conversion; never truncate numbers."},
 	{"merge", []string{"items", "policy"}, []string{"items", "policy"}, ObjectType, "Explicitly merge objects with reject, first or last collision policy."},
-	{"merge_deep", []string{"items"}, []string{"items"}, ObjectType, "Recursively union objects; overlapping non-object values always conflict, even when equal. Arrays are atomic. Missing, null and non-object operands fail."},
+	{"merge_deep", []string{"items", "onConflict"}, []string{"items"}, ObjectType, "Recursively union objects; overlapping non-object values always conflict, even when equal. Optional onConflict classifies only this merge's leaf collisions. Arrays are atomic. Missing, null and non-object operands fail."},
 	{"project", []string{"source", "keys", "policy"}, []string{"source", "keys", "policy"}, ObjectType, "Include or exclude declared object keys; retain present null values and never create missing fields."},
 	{"keys", []string{"source"}, []string{"source"}, ArrayType, "Return an object's sorted, unique decoded key strings after JSON key normalization, without materializing member values or granting native provenance. Missing, null and non-object sources are errors."},
 	{"concat", []string{"items"}, []string{"items"}, ArrayType, "Concatenate ordered arrays."},

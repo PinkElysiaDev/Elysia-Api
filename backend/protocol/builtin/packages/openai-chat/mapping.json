@@ -1,4 +1,10 @@
 {
+  "operations": {
+    "generate": {
+      "request": "encode_request",
+      "response": "decode_response"
+    }
+  },
   "coreVersion": 2,
   "dslVersion": 1,
   "native": {
@@ -7066,6 +7072,7 @@
   },
   "directions": {
     "decode_request": {
+      "document": "request",
       "program": {
         "op": "object",
         "fields": {
@@ -7157,6 +7164,7 @@
       }
     },
     "encode_request": {
+      "document": "generation-request",
       "program": {
         "op": "if",
         "when": {
@@ -7375,6 +7383,7 @@
       }
     },
     "decode_response": {
+      "document": "provider-response",
       "program": {
         "op": "object",
         "fields": {
@@ -7656,6 +7665,7 @@
       }
     },
     "encode_response": {
+      "document": "client-response",
       "program": {
         "op": "object",
         "fields": {

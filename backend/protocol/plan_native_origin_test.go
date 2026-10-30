@@ -26,7 +26,7 @@ func TestPackageTypedDecodeRejectsAuthoredOrigins(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			document := textProtocolPackage(t)
 			document.Mapping.Native.Preserve = true
-			document.Spec.WireContracts[DecodeRequest].Schema.AllowUnknown = true
+			document.Spec.Documents[document.Mapping.Directions[DecodeRequest].Document].Schema.AllowUnknown = true
 			child := document.Mapping.Directions[DecodeRequest].Program.Fields["content"].Items[0].Fields["children"].Items[0]
 			child.Fields[tc.field] = tc.expression
 			origin := Provenance{Protocol: document.Spec.Identity(), Direction: DecodeRequest, Path: "/prompt"}
@@ -59,7 +59,7 @@ func TestPackageOriginCheckCoversRawRootsAndNestedContainers(t *testing.T) {
 	for _, size := range []int{0, 128 << 10} {
 		for _, hasRawRoot := range []bool{true, false} {
 			document := textProtocolPackage(t)
-			document.Spec.WireContracts[DecodeRequest].Schema.AllowUnknown = true
+			document.Spec.Documents[document.Mapping.Directions[DecodeRequest].Document].Schema.AllowUnknown = true
 			mapping := document.Mapping.Directions[DecodeRequest]
 			mapping.Effects = mapping.Effects[:1]
 			if hasRawRoot {

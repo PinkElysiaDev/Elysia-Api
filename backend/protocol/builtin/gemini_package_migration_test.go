@@ -152,10 +152,9 @@ func checkGeminiGenerationOwner(t *testing.T, legacy, draft *p.Compiled) {
 				var oldFailure, newFailure *p.ConversionError
 				var conflict *p.ObjectMergeConflictError
 				if !errors.As(wantErr, &oldFailure) || len(oldFailure.Issues) != 1 || oldFailure.Issues[0].Code != p.UnsupportedCapability || oldFailure.Issues[0].Stage != "wire" || oldFailure.Issues[0].Path != fixture.conflict ||
-					!errors.As(gotErr, &newFailure) || len(newFailure.Issues) != 1 || newFailure.Issues[0].Code != p.InvalidInput || newFailure.Issues[0].Stage != "evaluate" || !errors.As(gotErr, &conflict) || conflict.Path != fixture.conflict {
-					t.Fatal("generation owner collision changed or lost its structured path", wantErr, gotErr)
+					!errors.As(gotErr, &newFailure) || len(newFailure.Issues) != 1 || newFailure.Issues[0] != oldFailure.Issues[0] || !errors.As(gotErr, &conflict) || conflict.Path != fixture.conflict {
+					t.Fatal("generation owner collision changed or lost its structured path", migrationError(wantErr), migrationError(gotErr))
 				}
-				t.Log("NOT CLOSED: wire and mapping diagnostics differ for the same rejected generation owner collision", migrationError(wantErr), migrationError(gotErr))
 			}
 			after, err := p.EncodeValue(candidate)
 			if err != nil || before != after {

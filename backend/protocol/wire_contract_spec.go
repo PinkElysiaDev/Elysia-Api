@@ -12,8 +12,9 @@ import (
 // WireContractSpec validates a wire document independently of its mapping.
 // Assertions run in authored order after the document schema succeeds.
 type WireContractSpec struct {
-	Schema     *ValueSchema    `json:"schema"`
-	Assertions []WireAssertion `json:"assertions,omitempty"`
+	Schema     *ValueSchema        `json:"schema"`
+	Assertions []WireAssertion     `json:"assertions,omitempty"`
+	Stream     *ProtocolStreamSpec `json:"stream,omitempty"`
 }
 
 // WireAssertion checks one wire location when its optional condition is true.
@@ -65,7 +66,11 @@ func compileWireContractSpec(spec WireContractSpec, path string, limits Limits) 
 		return compiledWireContract{}, err
 	}
 	validator.rootObjectReads = countAssertionRootReads(validator.assertions)
-	return compiledWireContract{validator: validator, contextValidator: validator}, nil
+	stream, err := compilePackageStreamContract(spec.Stream, path+"/stream", limits)
+	if err != nil {
+		return compiledWireContract{}, err
+	}
+	return compiledWireContract{validator: validator, contextValidator: validator, packageStream: stream}, nil
 }
 
 func countAssertionRootReads(assertions []compiledWireAssertion) int {

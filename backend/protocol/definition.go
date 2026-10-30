@@ -5,7 +5,7 @@ package protocol
 const DefinitionSchemaVersion = 2
 
 // CompilerVersion binds verification evidence to execution semantics.
-const CompilerVersion = "2.0.0-dev.81"
+const CompilerVersion = "2.0.0-dev.82"
 
 // Preset protocol identifiers. Presets ship with the engine, are read-only for
 // authoring, and are refreshed to the shipped revision on every startup;
@@ -227,27 +227,28 @@ type ValueSchema struct {
 // Expression is a finite, typed mapping tree. Per-operation field validation
 // rejects unrelated keys; loops only traverse a bounded input array.
 type Expression struct {
-	present   map[string]bool
-	Op        string                `json:"op"`
-	Operation string                `json:"operation,omitempty"`
-	Name      string                `json:"name,omitempty"`
-	KeyMode   string                `json:"keyMode,omitempty"`
-	From      string                `json:"from,omitempty"`
-	Path      string                `json:"path,omitempty"`
-	Value     Value                 `json:"value,omitzero"`
-	Fields    map[string]Expression `json:"fields,omitempty"`
-	Items     []Expression          `json:"items,omitempty"`
-	Source    *Expression           `json:"source,omitempty"`
-	Body      *Expression           `json:"body,omitempty"`
-	When      *Expression           `json:"when,omitempty"`
-	Then      *Expression           `json:"then,omitempty"`
-	Otherwise *Expression           `json:"otherwise,omitempty"`
-	Cases     map[string]Expression `json:"cases,omitempty"`
-	Values    map[string]Value      `json:"values,omitempty"`
-	To        JSONType              `json:"to,omitempty"`
-	Key       string                `json:"key,omitempty"`
-	Keys      []string              `json:"keys,omitzero"`
-	Policy    string                `json:"policy,omitempty"`
-	Ref       string                `json:"ref,omitempty"`
-	Required  bool                  `json:"required,omitempty"`
+	present    map[string]bool
+	Op         string                   `json:"op"`
+	Operation  string                   `json:"operation,omitempty"`
+	Name       string                   `json:"name,omitempty"`
+	KeyMode    string                   `json:"keyMode,omitempty"`
+	From       string                   `json:"from,omitempty"`
+	Path       string                   `json:"path,omitempty"`
+	Value      Value                    `json:"value,omitzero"`
+	Fields     map[string]Expression    `json:"fields,omitempty"`
+	Items      []Expression             `json:"items,omitempty"`
+	Source     *Expression              `json:"source,omitempty"`
+	Body       *Expression              `json:"body,omitempty"`
+	When       *Expression              `json:"when,omitempty"`
+	Then       *Expression              `json:"then,omitempty"`
+	Otherwise  *Expression              `json:"otherwise,omitempty"`
+	Cases      map[string]Expression    `json:"cases,omitempty"`
+	Values     map[string]Value         `json:"values,omitempty"`
+	To         JSONType                 `json:"to,omitempty"`
+	Key        string                   `json:"key,omitempty"`
+	Keys       []string                 `json:"keys,omitzero"`
+	Policy     string                   `json:"policy,omitempty"`
+	OnConflict *MergeConflictDiagnostic `json:"onConflict,omitempty"`
+	Ref        string                   `json:"ref,omitempty"`
+	Required   bool                     `json:"required,omitempty"`
 }

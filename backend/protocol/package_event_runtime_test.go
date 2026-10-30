@@ -16,7 +16,8 @@ func eventProtocolPackage(t *testing.T) ProtocolPackage {
 		"item.delta":{"action":"text_delta","text":"/text"},"item.finished":{"action":"item_finish"},
 		"usage.updated":{"action":"usage","usage":{"input":"/usage/input","output":"/usage/output","total":"/usage/total"}},
 		"response.finished":{"action":"response_finish"},"operation.failed":{"action":"failure","error":"/error"},"operation.cancelled":{"action":"cancel"}}}`}
-	if err := stream.Decode(&document.Spec.Stream); err != nil {
+	var lifecycle ProtocolStreamSpec
+	if err := stream.Decode(&lifecycle); err != nil {
 		t.Fatal(err)
 	}
 	isType := func(kind EventType) Expression {
@@ -52,8 +53,12 @@ func eventProtocolPackage(t *testing.T) ProtocolPackage {
 		"kind": {Type: StringType}, "response_id": {Type: StringType}, "seq": {Type: IntegerType},
 	}}
 	for direction, program := range map[Direction]Expression{DecodeEvent: decode, EncodeEvent: encode} {
-		document.Spec.WireContracts[direction] = WireContractSpec{Schema: &schema}
-		document.Mapping.Directions[direction] = ProtocolDirectionMapping{Program: program, Effects: []ProtocolSemanticEffect{
+		name := "provider-event"
+		if direction == EncodeEvent {
+			name = "client-event"
+		}
+		document.Spec.Documents[name] = WireContractSpec{Schema: &schema, Stream: &lifecycle}
+		document.Mapping.Directions[direction] = ProtocolDirectionMapping{Document: name, Program: program, Effects: []ProtocolSemanticEffect{
 			{ID: "response-id", Kind: "emit", Path: "/responseId", Target: "/response_id"},
 		}}
 	}

@@ -3,7 +3,6 @@ package protocol
 import (
 	"fmt"
 	"slices"
-	"strings"
 )
 
 const (
@@ -21,19 +20,6 @@ type ProtocolPackage struct {
 	SchemaVersion int             `json:"schemaVersion"`
 	Spec          ProtocolSpec    `json:"spec"`
 	Mapping       ProtocolMapping `json:"mapping"`
-}
-
-// ProtocolSpec describes the provider's wire identity, endpoints and documents.
-// WireContracts describe input on decode directions and output on encode directions.
-type ProtocolSpec struct {
-	ID            string                         `json:"id"`
-	Name          string                         `json:"name"`
-	Version       string                         `json:"version"`
-	Family        string                         `json:"family"`
-	WireVersion   string                         `json:"wireVersion"`
-	Operations    map[string]Operation           `json:"operations"`
-	WireContracts map[Direction]WireContractSpec `json:"wireContracts"`
-	Stream        *ProtocolStreamSpec            `json:"stream,omitempty"`
 }
 
 // ProtocolStreamSpec declares one response's wire lifecycle independently of
@@ -77,17 +63,13 @@ type ProtocolStreamUsageSpec struct {
 	Total  string `json:"total,omitempty"`
 }
 
-// Identity returns the authored wire identity; content hashes bind its execution.
-func (spec ProtocolSpec) Identity() Identity {
-	return Identity{DefinitionID: spec.ID, Revision: spec.Version, Family: spec.Family, WireVersion: spec.WireVersion}
-}
-
 // ProtocolMapping contains only declarative programs and their semantic effects.
 // A v2 module or after mapping cannot be selected through this contract.
 type ProtocolMapping struct {
 	CoreVersion  int                                    `json:"coreVersion"`
 	DSLVersion   int                                    `json:"dslVersion"`
 	Directions   map[Direction]ProtocolDirectionMapping `json:"directions"`
+	Operations   map[string]ProtocolOperationMapping    `json:"operations"`
 	Expressions  map[string]Expression                  `json:"expressions,omitempty"`
 	Native       NativePolicy                           `json:"native"`
 	Capabilities CapabilitySet                          `json:"capabilities"`
@@ -97,6 +79,7 @@ type ProtocolMapping struct {
 
 // ProtocolDirectionMapping transforms one wire/core boundary without a codec module.
 type ProtocolDirectionMapping struct {
+	Document     string                   `json:"document"`
 	Program      Expression               `json:"program"`
 	Effects      []ProtocolSemanticEffect `json:"effects"`
 	Capabilities CapabilitySet            `json:"capabilities,omitzero"`
@@ -163,11 +146,8 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 		return nil, fmt.Errorf("/mapping: expected coreVersion %d and dslVersion %d", ProtocolCoreVersion, ProtocolDSLVersion)
 	}
 	spec, mapping := document.Spec, document.Mapping
-	if !definitionIdentifier.MatchString(spec.ID) || strings.TrimSpace(spec.Version) == "" || strings.TrimSpace(spec.Family) == "" || strings.TrimSpace(spec.WireVersion) == "" {
-		return nil, fmt.Errorf("/spec: id, version, family and wireVersion are required")
-	}
-	if len(mapping.Directions) == 0 || len(spec.Operations) == 0 {
-		return nil, fmt.Errorf("protocol package requires directions and operations")
+	if len(mapping.Directions) == 0 {
+		return nil, fmt.Errorf("/mapping/directions: protocol package requires mapping directions")
 	}
 	limits := engineLimits
 	if mapping.Limits != nil {
@@ -194,41 +174,26 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 			}
 		}
 	}
-	for _, direction := range sortedKeys(spec.WireContracts) {
-		if _, exists := mapping.Directions[direction]; !exists {
-			return nil, fmt.Errorf("/spec/wireContracts/%s: missing mapping direction", direction)
-		}
-	}
-	stream, err := compilePackageStreamContract(spec.Stream, limits)
+	wireSpec, err := spec.compile(limits)
 	if err != nil {
 		return nil, err
 	}
-	if stream != nil {
-		_, hasInput := mapping.Directions[DecodeEvent]
-		_, hasOutput := mapping.Directions[EncodeEvent]
-		if !hasInput && !hasOutput {
-			return nil, fmt.Errorf("/spec/stream: requires an event mapping direction")
-		}
-	}
-	compiled := &Compiled{identity: spec.Identity(), limits: limits, explicitLimits: mapping.Limits != nil || limits.BufferBytes != DefaultLimits().BufferBytes, native: mapping.Native, capabilities: mapping.Capabilities, operations: spec.Operations, operationSchemas: map[string]*runtimeValueSchema{}, mappings: map[Direction]compiledMapping{}, wireContracts: map[Direction]compiledWireContract{}, packagePlan: &compiledPackagePlan{coreVersion: mapping.CoreVersion, dslVersion: mapping.DSLVersion, effects: map[Direction][]compiledSemanticEffect{}}}
+	compiled := &Compiled{identity: spec.Identity(), limits: limits, explicitLimits: mapping.Limits != nil || limits.BufferBytes != DefaultLimits().BufferBytes, native: mapping.Native, capabilities: mapping.Capabilities, operations: wireSpec.operations, operationSchemas: wireSpec.operationSchemas, mappings: map[Direction]compiledMapping{}, wireContracts: map[Direction]compiledWireContract{}, packagePlan: &compiledPackagePlan{coreVersion: mapping.CoreVersion, dslVersion: mapping.DSLVersion, effects: map[Direction][]compiledSemanticEffect{}}}
 	expressions := &expressionCompiler{limits: limits, references: mapping.Expressions, resolving: map[string]bool{}, used: map[string]bool{}}
 	for _, direction := range sortedKeys(mapping.Directions) {
 		if !slices.Contains([]Direction{DecodeRequest, EncodeRequest, DecodeResponse, EncodeResponse, DecodeEvent, EncodeEvent}, direction) {
 			return nil, fmt.Errorf("/mapping/directions/%s: unsupported package direction", direction)
 		}
-		wire, exists := spec.WireContracts[direction]
+		entry := mapping.Directions[direction]
+		wire, exists := spec.Documents[entry.Document]
 		if !exists {
-			return nil, fmt.Errorf("/spec/wireContracts/%s: wire contract is required", direction)
+			return nil, fmt.Errorf("/mapping/directions/%s/document: requires a declared wire document", direction)
 		}
-		contract, err := compileWireContractSpec(wire, "/spec/wireContracts/"+string(direction), limits)
-		if err != nil {
-			return nil, err
-		}
-		if isEventDirection(direction) {
-			contract.packageStream = stream
+		contract := wireSpec.documents[entry.Document]
+		if contract.packageStream != nil && !isEventDirection(direction) {
+			return nil, fmt.Errorf("/mapping/directions/%s/document: stream documents require an event direction", direction)
 		}
 		compiled.wireContracts[direction] = contract
-		entry := mapping.Directions[direction]
 		for _, capability := range sortedKeys(entry.Capabilities) {
 			if !mapping.Capabilities[capability] {
 				return nil, fmt.Errorf("/mapping/directions/%s/capabilities: undeclared capability %q", direction, capability)
@@ -249,14 +214,6 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 			if contract.packageStream.hasTools && !program.capabilities[FunctionToolsCapability] {
 				return nil, fmt.Errorf("/mapping/directions/%s/capabilities: stream tool actions require tools.function", direction)
 			}
-			identity, err := EncodeValue(struct {
-				Mapping string              `json:"mapping"`
-				Stream  *ProtocolStreamSpec `json:"stream"`
-			}{program.definitionHash, spec.Stream})
-			if err != nil {
-				return nil, err
-			}
-			program.definitionHash = hashValue(identity)
 		}
 		compiled.mappings[direction], compiled.packagePlan.effects[direction] = program, effects
 	}
@@ -265,31 +222,11 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 			return nil, fmt.Errorf("/mapping/expressions/%s: unreachable expression", name)
 		}
 	}
-	// Reuse endpoint validation only. This reference set contains no executable
-	// legacy mapping and is never compiled or serialized as a v2 definition.
-	references := Definition{Operations: spec.Operations, Capabilities: mapping.Capabilities, Directions: map[Direction]Mapping{}}
-	for direction := range mapping.Directions {
-		references.Directions[direction] = Mapping{}
-	}
-	validator := &Compiler{limits: limits}
-	for _, name := range sortedKeys(spec.Operations) {
-		operation := spec.Operations[name]
-		if operation.Kind != "generate" || operation.Task != nil || operation.Models != nil || operation.Session != nil || operation.Transport == WebSocket {
-			return nil, fmt.Errorf("/spec/operations/%s: task, model discovery and session programs are not supported by this package compiler", name)
-		}
-		if err := validator.checkOperation(name, operation, references); err != nil {
-			return nil, fmt.Errorf("/spec/operations/%s: %w", name, err)
-		}
+	if err := compiled.bindPackageOperations(spec, mapping); err != nil {
+		return nil, err
 	}
 	if err := validateProtocolSamples(mapping, spec.Operations, limits); err != nil {
 		return nil, err
-	}
-	for _, name := range sortedKeys(spec.Operations) {
-		schema, err := compileValueSchema(spec.Operations[name].Input, limits)
-		if err != nil {
-			return nil, err
-		}
-		compiled.operationSchemas[name] = schema
 	}
 	if err := compiled.bindPackageIdentity(document); err != nil {
 		return nil, err
@@ -297,7 +234,7 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 	return compiled, nil
 }
 
-func validateProtocolSamples(mapping ProtocolMapping, operations map[string]Operation, limits Limits) error {
+func validateProtocolSamples(mapping ProtocolMapping, operations map[string]ProtocolOperationSpec, limits Limits) error {
 	if len(mapping.Samples) > limits.StateItems {
 		return fmt.Errorf("/mapping/samples: sample count exceeds fixture limit")
 	}

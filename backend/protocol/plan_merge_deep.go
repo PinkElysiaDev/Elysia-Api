@@ -25,6 +25,9 @@ func (plan *compiledOutputPlan) buildDeepMerge(state evaluation) (plannedOutput,
 	merge := deepObjectMerge{state: state}
 	output, err := merge.objects(operands, "", 1)
 	if err != nil {
+		if conflict, ok := err.(*ObjectMergeConflictError); ok && plan.expression.onConflict != nil {
+			err = &mergeConflictDiagnosticError{diagnostic: plan.expression.onConflict, conflict: conflict}
+		}
 		return plannedOutput{}, err
 	}
 	return plannedOutput{output: output, bytes: normalizedOutputBytes(output)}, nil

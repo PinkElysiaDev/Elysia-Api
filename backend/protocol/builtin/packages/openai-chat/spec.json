@@ -10,8 +10,8 @@
       "method": "POST",
       "path": "/v1/chat/completions",
       "transport": "http_json",
-      "request": "encode_request",
-      "response": "decode_response",
+      "request": "generation-request",
+      "response": "provider-response",
       "auth": {
         "location": "header",
         "name": "Authorization",
@@ -19,8 +19,8 @@
       }
     }
   },
-  "wireContracts": {
-    "decode_request": {
+  "documents": {
+    "request": {
       "schema": {
         "type": "object",
         "required": [
@@ -42,7 +42,7 @@
         "allowUnknown": true
       }
     },
-    "encode_request": {
+    "generation-request": {
       "schema": {
         "type": "object",
         "required": [
@@ -64,7 +64,7 @@
         "allowUnknown": true
       }
     },
-    "decode_response": {
+    "provider-response": {
       "schema": {
         "type": "object",
         "required": [
@@ -82,7 +82,7 @@
         "allowUnknown": true
       }
     },
-    "encode_response": {
+    "client-response": {
       "schema": {
         "type": "object",
         "required": [

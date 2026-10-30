@@ -1,4 +1,10 @@
 {
+  "operations": {
+    "generate": {
+      "request": "encode_request",
+      "response": "decode_response"
+    }
+  },
   "coreVersion": 2,
   "dslVersion": 1,
   "native": {
@@ -4844,6 +4850,7 @@
   },
   "directions": {
     "decode_request": {
+      "document": "request",
       "program": {
         "op": "with_index",
         "name": "call-sequence",
@@ -5024,8 +5031,15 @@
       }
     },
     "encode_request": {
+      "document": "generation-request",
       "program": {
         "op": "merge_deep",
+        "onConflict": {
+          "code": "unsupported_capability",
+          "stage": "wire",
+          "reason": "native extension collides with a mapped field",
+          "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+        },
         "items": [
           {
             "op": "object",
@@ -5263,6 +5277,7 @@
       }
     },
     "decode_response": {
+      "document": "provider-response",
       "program": {
         "op": "with_index",
         "name": "call-sequence",
@@ -5544,6 +5559,7 @@
       }
     },
     "encode_response": {
+      "document": "client-response",
       "program": {
         "op": "merge",
         "policy": "reject",

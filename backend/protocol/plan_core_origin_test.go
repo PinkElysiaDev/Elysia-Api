@@ -25,7 +25,7 @@ func TestNativeReplayPreservesOriginalCoreReads(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			document := textProtocolPackage(t)
 			document.Mapping.Capabilities[ServerToolsCapability] = true
-			document.Spec.WireContracts[EncodeRequest].Schema.AllowUnknown = true
+			document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document].Schema.AllowUnknown = true
 			document.Mapping.Directions[EncodeRequest].Program.Fields["extension"] = tc.program
 			compiled := compilePackageForTest(t, document)
 			options := EvaluationContext{Scope: Scope{Provider: "local", Account: "a"}}

@@ -96,7 +96,8 @@ func (compiler *Compiler) compilePackage(document ProtocolPackage) (*Compiled, [
 				hasProof := provesPackageEmission(program, output, input)
 				if !hasProof && !isPackageDecodeDirection(direction) {
 					if effect.when == nil {
-						hasProof = provesDeepMergeEmission(program, output, input, document.Spec.WireContracts[direction].Schema)
+						wire := document.Spec.Documents[document.Mapping.Directions[direction].Document]
+						hasProof = provesDeepMergeEmission(program, output, input, wire.Schema)
 					} else {
 						hasProof = provesGuardedDeepMergeEmission(program, output, input, effect.when.expression, compiler.limits.Nodes)
 					}

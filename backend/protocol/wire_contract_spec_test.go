@@ -17,7 +17,7 @@ func TestWireContractSpecOrderedAssertions(t *testing.T) {
 			{Path: "", Schema: ValueSchema{Type: ObjectType, AllowUnknown: true, Properties: map[string]ValueSchema{"id": {Type: StringType}}, Required: []string{"id"}}, Code: UnsupportedCapability, Reason: "response id is required"},
 		},
 	}
-	contract, err := compileWireContractSpec(spec, "/spec/wireContracts/encode_response", DefaultLimits())
+	contract, err := compileWireContractSpec(spec, "/spec/documents/client-response", DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestWireContractSpecRejectsPostMappingChanges(t *testing.T) {
 	contract, err := compileWireContractSpec(WireContractSpec{
 		Schema:     &ValueSchema{Type: ObjectType, AllowUnknown: true},
 		Assertions: []WireAssertion{{Path: "/request", Schema: ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "request identity must be a string"}},
-	}, "/spec/wireContracts/encode_response", DefaultLimits())
+	}, "/spec/documents/client-response", DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestWireContractSpecRejectsInvalidDeclarations(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			spec := WireContractSpec{Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true}, Assertions: []WireAssertion{{Path: "/id", Schema: ValueSchema{Type: StringType}, Code: InvalidInput, Reason: "id must be a string"}}}
 			change(&spec)
-			if _, err := compileWireContractSpec(spec, "/spec/wireContracts/decode_request", DefaultLimits()); err == nil {
+			if _, err := compileWireContractSpec(spec, "/spec/documents/request", DefaultLimits()); err == nil {
 				t.Fatal("invalid wire declaration was accepted")
 			}
 		})
@@ -121,7 +121,7 @@ func TestWireContractSpecUsesRequestContextAndBudget(t *testing.T) {
 	// Small stand-in limits exercise request expansion without a large fixture.
 	limits := DefaultLimits()
 	limits.BufferBytes = 16
-	contract, err := compileWireContractSpec(WireContractSpec{Schema: &ValueSchema{Type: StringType}}, "/spec/wireContracts/encode_request", limits)
+	contract, err := compileWireContractSpec(WireContractSpec{Schema: &ValueSchema{Type: StringType}}, "/spec/documents/generation-request", limits)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestWireContractSpecChecksSourceArrayLocations(t *testing.T) {
 	spec := WireContractSpec{Schema: rootSchema, Assertions: []WireAssertion{
 		{Path: "/messages", Schema: ValueSchema{Type: ArrayType}, Code: InvalidInput, Reason: "messages must be an array", Each: []WireAssertion{contentCheck}},
 	}}
-	contract, err := compileWireContractSpec(spec, "/spec/wireContracts/decode_response", DefaultLimits())
+	contract, err := compileWireContractSpec(spec, "/spec/documents/provider-response", DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}

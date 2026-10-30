@@ -86,10 +86,10 @@ func TestPackageHistoryRetentionEvidence(t *testing.T) {
 	document := verifiedTextPackage(t, "history-retention")
 	document.Mapping.Capabilities[ReasoningHistoryRetentionCapability] = true
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
-		contract := document.Spec.WireContracts[direction]
+		contract := document.Spec.Documents[document.Mapping.Directions[direction].Document]
 		contract.Schema.Properties["history"] = ValueSchema{Type: StringType, Enum: []Value{StringValue("all")}}
 		contract.Schema.Required = []string{"model", "prompt", "history"}
-		document.Spec.WireContracts[direction] = contract
+		document.Spec.Documents[document.Mapping.Directions[direction].Document] = contract
 		mapping := document.Mapping.Directions[direction]
 		if direction == DecodeRequest {
 			mapping.Program.Fields["reasoning"] = objectExpression(map[string]Expression{"historyRetention": readExpression("input", "/history")})

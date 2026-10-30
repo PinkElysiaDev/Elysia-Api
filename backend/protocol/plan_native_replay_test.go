@@ -11,7 +11,7 @@ func TestNativeReplayRejectsRebuiltScope(t *testing.T) {
 	document := textProtocolPackage(t)
 	const nativePath = "/content/0/children/0/native"
 	document.Mapping.Directions[EncodeRequest].Program.Fields["extension"] = Expression{Op: "replay_native", Source: expressionPointer(readExpression("input", nativePath))}
-	document.Spec.WireContracts[EncodeRequest].Schema.AllowUnknown = true
+	document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document].Schema.AllowUnknown = true
 	compiled := compilePackageForTest(t, document)
 	options := EvaluationContext{Scope: Scope{Provider: "local", Account: "selected"}}
 	request, err := compiled.DecodeRequestValue(t.Context(), Value{raw: `{"model":"m","prompt":"hello"}`}, options)
@@ -41,7 +41,7 @@ func TestPackageNativeTargetOperations(t *testing.T) {
 	const nativePath = "/content/0/children/0/native"
 	document.Mapping.Directions[EncodeRequest].Program.Fields["extension"] = Expression{Op: "replay_native", Source: expressionPointer(readExpression("input", nativePath))}
 	document.Mapping.Directions[EncodeRequest].Program.Fields["located"] = Expression{Op: "native_matches", Operation: "array_item", Path: "/items", Source: expressionPointer(readExpression("input", nativePath+"/source"))}
-	document.Spec.WireContracts[EncodeRequest].Schema.AllowUnknown = true
+	document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document].Schema.AllowUnknown = true
 	compiled := compilePackageForTest(t, document)
 	options := EvaluationContext{Scope: Scope{Provider: "local", Account: "a"}, Values: Object{
 		"target": fixtureValue(t, Target{Protocol: Identity{Family: "forged"}, Scope: Scope{Account: "forged"}}),

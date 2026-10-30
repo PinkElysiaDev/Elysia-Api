@@ -7,8 +7,9 @@
 ProtocolPackage，复用整包入口的修订、证据和执行计划；不会在请求时重新读取文件。
 两种输入方式产生相同编译身份，改动任一源文件使旧修订证据失效。
 
-本批先完成源文件组织；Spec 仍有按核心方向命名的契约及操作绑定，下一批将其迁为独立的
-命名文档。四预置尚未切换，这里不是已经完成的生产配置或激活证据。
+Spec 的 `documents` 按外部文档名声明线格式；`operations` 只引用文档名。Mapping 的各方向
+通过 `document` 选择线格式，`operations` 再绑定核心转换方向。同一文档只编译一次，
+不同输入／输出文档保留各自约束。四预置尚未切换，这里不是已激活的生产配置。
 
 `anthropic/spec.json` 与 `anthropic/mapping.json` 是未启用、未取得激活证据的 v3 Spec/Mapping 候选。
 生产加载器仍只读取 `definitions/*.json`；本目录没有加入 embed 或加载流程。

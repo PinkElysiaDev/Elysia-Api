@@ -25,7 +25,7 @@ type compiledStreamTool struct {
 	name, callID streamField
 }
 
-func compilePackageStreamContract(spec *ProtocolStreamSpec, limits Limits) (*compiledPackageStreamContract, error) {
+func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits Limits) (*compiledPackageStreamContract, error) {
 	if spec == nil {
 		return nil, nil
 	}
@@ -37,23 +37,23 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, limits Limits) (*com
 		if selector.name == "sequence" && selector.path == "" {
 			continue
 		}
-		field, err := compileStreamField(selector.path, "/spec/stream/"+selector.name, limits)
+		field, err := compileStreamField(selector.path, path+"/"+selector.name, limits)
 		if err != nil {
 			return nil, err
 		}
 		*selector.field = field
 	}
 	if len(spec.Events) == 0 || len(spec.Events) > limits.StateItems {
-		return nil, fmt.Errorf("/spec/stream/events: requires a nonempty bounded event table")
+		return nil, fmt.Errorf("%s/events: requires a nonempty bounded event table", path)
 	}
 	actions := map[EventType]bool{}
 	toolActions := map[EventType]bool{}
 	for _, tag := range sortedKeys(spec.Events) {
-		path := "/spec/stream/events/" + escapePointer(tag)
+		eventPath := path + "/events/" + escapePointer(tag)
 		if tag == "" {
-			return nil, fmt.Errorf("%s: event tag must not be empty", path)
+			return nil, fmt.Errorf("%s: event tag must not be empty", eventPath)
 		}
-		event, err := compileStreamEvent(spec.Events[tag], path, limits)
+		event, err := compileStreamEvent(spec.Events[tag], eventPath, limits)
 		if err != nil {
 			return nil, err
 		}
@@ -66,13 +66,13 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, limits Limits) (*com
 	}
 	for _, action := range []EventType{ResponseStarted, ItemStarted, ItemDelta, ItemFinished, UsageUpdated, ResponseFinished} {
 		if !actions[action] {
-			return nil, fmt.Errorf("/spec/stream/events: missing lifecycle action for %s", action)
+			return nil, fmt.Errorf("%s/events: missing lifecycle action for %s", path, action)
 		}
 	}
 	if contract.hasTools {
 		for _, action := range []EventType{ItemStarted, ItemDelta} {
 			if !toolActions[action] {
-				return nil, fmt.Errorf("/spec/stream/events: missing tool lifecycle action for %s", action)
+				return nil, fmt.Errorf("%s/events: missing tool lifecycle action for %s", path, action)
 			}
 		}
 	}

@@ -20,15 +20,16 @@ func textProtocolPackage(t *testing.T) ProtocolPackage {
 	return ProtocolPackage{
 		SchemaVersion: ProtocolPackageSchemaVersion,
 		Spec: ProtocolSpec{ID: "declarative-text", Name: "Declarative text", Version: "1", Family: "declarative-text", WireVersion: "1",
-			Operations:    map[string]Operation{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: HTTPJSON, Request: EncodeRequest, Response: DecodeResponse, Auth: Credential{Location: "none"}}},
-			WireContracts: map[Direction]WireContractSpec{DecodeRequest: {Schema: &request}, EncodeRequest: {Schema: &request}, DecodeResponse: {Schema: &response}, EncodeResponse: {Schema: &response}},
+			Operations: map[string]ProtocolOperationSpec{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: HTTPJSON, Request: "generation-request", Response: "provider-response", Auth: Credential{Location: "none"}}},
+			Documents:  map[string]WireContractSpec{"request": {Schema: &request}, "generation-request": {Schema: &request}, "provider-response": {Schema: &response}, "client-response": {Schema: &response}},
 		},
 		Mapping: ProtocolMapping{CoreVersion: ProtocolCoreVersion, DSLVersion: ProtocolDSLVersion, Capabilities: CapabilitySet{TextCapability: true},
+			Operations: map[string]ProtocolOperationMapping{"generate": {Request: EncodeRequest, Response: DecodeResponse}},
 			Directions: map[Direction]ProtocolDirectionMapping{
-				DecodeRequest:  {Program: objectExpression(map[string]Expression{"schemaVersion": literalExpression(ProtocolCoreVersion), "model": readExpression("input", "/model"), "content": message("user", "/prompt")}), Effects: []ProtocolSemanticEffect{{ID: "model", Kind: "emit", Path: "/model", Target: "/model"}, {ID: "prompt", Kind: "emit", Path: "/content/0/children/0/payload", Target: "/prompt"}}},
-				EncodeRequest:  {Program: objectExpression(map[string]Expression{"model": readExpression("input", "/model"), "prompt": readExpression("input", "/content/0/children/0/payload")}), Effects: []ProtocolSemanticEffect{{ID: "model", Kind: "emit", Path: "/model", Target: "/model"}, {ID: "prompt", Kind: "emit", Path: "/content/0/children/0/payload", Target: "/prompt"}}},
-				DecodeResponse: {Program: objectExpression(map[string]Expression{"schemaVersion": literalExpression(ProtocolCoreVersion), "status": literalExpression("completed"), "content": message("assistant", "/reply")}), Effects: []ProtocolSemanticEffect{{ID: "reply", Kind: "emit", Path: "/content/0/children/0/payload", Target: "/reply"}}},
-				EncodeResponse: {Program: objectExpression(map[string]Expression{"reply": readExpression("input", "/content/0/children/0/payload")}), Effects: []ProtocolSemanticEffect{{ID: "reply", Kind: "emit", Path: "/content/0/children/0/payload", Target: "/reply"}}},
+				DecodeRequest:  {Document: "request", Program: objectExpression(map[string]Expression{"schemaVersion": literalExpression(ProtocolCoreVersion), "model": readExpression("input", "/model"), "content": message("user", "/prompt")}), Effects: []ProtocolSemanticEffect{{ID: "model", Kind: "emit", Path: "/model", Target: "/model"}, {ID: "prompt", Kind: "emit", Path: "/content/0/children/0/payload", Target: "/prompt"}}},
+				EncodeRequest:  {Document: "generation-request", Program: objectExpression(map[string]Expression{"model": readExpression("input", "/model"), "prompt": readExpression("input", "/content/0/children/0/payload")}), Effects: []ProtocolSemanticEffect{{ID: "model", Kind: "emit", Path: "/model", Target: "/model"}, {ID: "prompt", Kind: "emit", Path: "/content/0/children/0/payload", Target: "/prompt"}}},
+				DecodeResponse: {Document: "provider-response", Program: objectExpression(map[string]Expression{"schemaVersion": literalExpression(ProtocolCoreVersion), "status": literalExpression("completed"), "content": message("assistant", "/reply")}), Effects: []ProtocolSemanticEffect{{ID: "reply", Kind: "emit", Path: "/content/0/children/0/payload", Target: "/reply"}}},
+				EncodeResponse: {Document: "client-response", Program: objectExpression(map[string]Expression{"reply": readExpression("input", "/content/0/children/0/payload")}), Effects: []ProtocolSemanticEffect{{ID: "reply", Kind: "emit", Path: "/content/0/children/0/payload", Target: "/reply"}}},
 			},
 		},
 	}
@@ -57,7 +58,7 @@ func TestProtocolPackageRejectsInvalidContracts(t *testing.T) {
 		{"v2-package", "schemaVersion", func(p *ProtocolPackage) { p.SchemaVersion = 2 }},
 		{"legacy-core", "coreVersion", func(p *ProtocolPackage) { p.Mapping.CoreVersion = 1 }},
 		{"unknown-dsl", "dslVersion", func(p *ProtocolPackage) { p.Mapping.DSLVersion++ }},
-		{"missing-wire-contract", "wire contract", func(p *ProtocolPackage) { delete(p.Spec.WireContracts, DecodeRequest) }},
+		{"missing-document", "wire document", func(p *ProtocolPackage) { delete(p.Spec.Documents, p.Mapping.Directions[DecodeRequest].Document) }},
 		{"duplicate-effect", "unique effect", func(p *ProtocolPackage) {
 			entry := p.Mapping.Directions[DecodeRequest]
 			entry.Effects = append(entry.Effects, entry.Effects[0])
@@ -79,9 +80,9 @@ func TestProtocolPackageRejectsInvalidContracts(t *testing.T) {
 		{"unused-expression", "unreachable expression", func(p *ProtocolPackage) {
 			p.Mapping.Expressions = map[string]Expression{"unused": literalExpression(true)}
 		}},
-		{"legacy-task-module", "not supported", func(p *ProtocolPackage) {
+		{"task-operation", "not supported", func(p *ProtocolPackage) {
 			operation := p.Spec.Operations["generate"]
-			operation.Task = &TaskFlow{Decode: Mapping{Module: "anthropic"}}
+			operation.Kind = "submit"
 			p.Spec.Operations["generate"] = operation
 		}},
 		{"raised-budget", "cannot exceed", func(p *ProtocolPackage) {
