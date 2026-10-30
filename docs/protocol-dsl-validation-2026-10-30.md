@@ -128,3 +128,28 @@ Windows amd64是本机测试环境；Windows arm64、Linux与macOS仅交叉编�
 protocol/builtin全量通过。首次定向因测试使用不存在的Expression字段而编译失败，
 `checks/combination-output-position.*`保留。该首次失败不是生产运行回归。
 这些结果不替代后续最终稳定提交的工程、激活和性能验收；六目标匹配产物仍为8a6f84b6。
+
+## 用户身份修复与typed键查询阶段（dev.80）
+
+`f3a5fafa`独立实现用户批准的身份字符串等价修复；原30次入口观察恰有8次拒绝改成功，
+其余22次完整输出及错误树不变。`d40e52d6`减少typed Request对象键查询的值规范化，
+不增加运行态字段或缓存；配对完整编码耗时短参数确认−3.24%、2MiB参数−8.38%，
+大参数分配仅−0.085%，没有HTTP或峰值结论。原反向样本与全部身份见性能报告。
+
+首轮Go全量在原语目录的不完整keys节点中发生编译期nil访问，`dbb1c430`补齐资格条件，
+没有改原测试。随后Go全量通过约103秒；不能将第一次失败写为环境问题。
+staticcheck首次新增一条ST1008，来自新测试助手的error返回位置，已按Go规范调整；
+原46条输出和修正后45条输出均保留，去行号比较修正后新增0、移除0。
+
+| 检查 | 结果 | 证据 |
+|---|---|---|
+| Go全量 | 修正后通过；首轮失败保留 | `checks/keys-stage-go-all-fixed.*`、`keys-stage-go-all.*` |
+| vet | 通过 | `checks/keys-stage-vet.*` |
+| staticcheck v0.8.2 | 命令仍失败，原45条；无新增 | `checks/keys-stage-staticcheck-fixed.*`、`keys-stage-staticcheck-fixed-comparison.json` |
+| keys、输出位置、package事件、身份和hint相关race | 通过 | `checks/keys-stage-race.*` |
+| 审计自测 | 161项全过，无跳过 | `checks/keys-stage-audit.*` |
+| 生成一致性 | 通过 | `checks/keys-generator-final.*` |
+| 测试助手风格修正后keys定向 | 通过 | `checks/keys-test-style.*` |
+
+上述检查的生产代码为dbb1c430；之后只调整测试助手返回顺序及文档。前端和六目标构建待
+本阶段另行记录。四生产预置仍未切换，v3编辑、加载、激活、完整供应商流及最终性能矩阵未完成。

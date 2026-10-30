@@ -126,7 +126,7 @@ func TestKeysTypedRequestObjectParity(t *testing.T) {
 			read := readExpression(tc.from, tc.path)
 			read.Required = tc.isRequired
 			plan, _ := compileOutputPlan(compileTestOutputExpression(t, Expression{Op: "keys", Source: &read}))
-			run := func(hasRequest bool) (Value, error, int, int) {
+			run := func(hasRequest bool) (Value, int, int, error) {
 				ctx := t.Context()
 				if tc.cancelAt != 0 {
 					ctx = &outputPlanCancelContext{Context: ctx, remaining: tc.cancelAt}
@@ -141,10 +141,10 @@ func TestKeysTypedRequestObjectParity(t *testing.T) {
 					state.coreRequest = tc.request
 				}
 				output, err := plan.evaluate(state)
-				return output, err, state.budget.steps, reads
+				return output, state.budget.steps, reads, err
 			}
-			want, wantErr, wantSteps, _ := run(false)
-			got, gotErr, gotSteps, reads := run(true)
+			want, wantSteps, _, wantErr := run(false)
+			got, gotSteps, reads, gotErr := run(true)
 			if got != want || gotSteps != wantSteps || !reflect.DeepEqual(gotErr, wantErr) {
 				t.Fatal("typed keys changed output, error chain or steps", got, gotErr, gotSteps, want, wantErr, wantSteps)
 			}
