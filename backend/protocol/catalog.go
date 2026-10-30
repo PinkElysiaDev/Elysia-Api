@@ -37,6 +37,8 @@ var expressionOperations = []OperationInfo{
 	{"merge_deep", []string{"items", "onConflict"}, []string{"items"}, ObjectType, "Recursively union objects; overlapping non-object values always conflict, even when equal. Optional onConflict classifies only this merge's leaf collisions. Arrays are atomic. Missing, null and non-object operands fail."},
 	{"project", []string{"source", "keys", "policy"}, []string{"source", "keys", "policy"}, ObjectType, "Include or exclude declared object keys; retain present null values and never create missing fields."},
 	{"keys", []string{"source"}, []string{"source"}, ArrayType, "Return an object's sorted, unique decoded key strings after JSON key normalization, without materializing member values or granting native provenance. Missing, null and non-object sources are errors."},
+	{"entries", []string{"source"}, []string{"source"}, ArrayType, "Read sorted object members as key/value entries; retain null values and fold decoded duplicate keys like object reads."},
+	{"from_entries", []string{"source", "policy", "onConflict"}, []string{"source", "policy"}, ObjectType, "Construct an object from key/value entries. Reject duplicate keys, or accept only byte-identical values with identical policy. No implicit empty value."},
 	{"concat", []string{"items"}, []string{"items"}, ArrayType, "Concatenate ordered arrays."},
 	{"join", []string{"items", "source"}, nil, StringType, "Concatenate either string expressions in items or a source array of strings, without implicit coercion."},
 	{"sort", []string{"source", "key"}, []string{"source", "key"}, ArrayType, "Stable sort by a declared scalar JSON pointer."},

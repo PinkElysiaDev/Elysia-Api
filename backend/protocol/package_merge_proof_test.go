@@ -16,6 +16,32 @@ func deepMergeTestPackage(t *testing.T) ProtocolPackage {
 	return document
 }
 
+func TestLastMergeEmissionRequiresFinalMemberWriter(t *testing.T) {
+	copyModel := objectExpression(map[string]Expression{"model": readExpression("input", "/model")})
+	otherModel := objectExpression(map[string]Expression{"model": literalExpression("other")})
+	for _, fixture := range []struct {
+		name   string
+		items  []Expression
+		policy string
+		want   bool
+	}{
+		{"final-copy", []Expression{otherModel, copyModel}, "last", true},
+		{"later-overwrite", []Expression{copyModel, otherModel}, "last", false},
+		{"first-keeps-earlier", []Expression{otherModel, copyModel}, "first", false},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			compiled := compileTestOutputExpression(t, Expression{Op: "merge", Policy: fixture.policy, Items: fixture.items})
+			if provesPackageEmission(compiled, []string{"model"}, []string{"model"}) != fixture.want {
+				t.Fatal("merge copy proof ignored its winning member")
+			}
+		})
+	}
+	whole := compileTestOutputExpression(t, Expression{Op: "merge", Policy: "last", Items: []Expression{otherModel, readExpression("input", "")}})
+	if provesPackageEmission(whole, nil, nil) {
+		t.Fatal("merge with possible extra members promised a whole-object copy")
+	}
+}
+
 func TestDeepMergeEmissionRequiresUnconditionalNonObjectCopy(t *testing.T) {
 	for _, test := range []struct {
 		name, kind string

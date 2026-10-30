@@ -13,32 +13,31 @@ func (compiler *Compiler) CompileSources(specRaw, mappingRaw []byte) (*Compiled,
 	if err := compiler.limits.Validate(); err != nil {
 		return nil, definitionIssues(Identity{}, "/", err)
 	}
-	spec, err := decodeProtocolSource(specRaw, &document.Spec, compiler.limits)
+	spec, err := parseProtocolSource(specRaw, compiler.limits)
 	if err != nil {
 		return nil, definitionIssues(document.Spec.Identity(), "/spec", err)
 	}
-	mapping, err := decodeProtocolSource(mappingRaw, &document.Mapping, compiler.limits)
+	mapping, err := parseProtocolSource(mappingRaw, compiler.limits)
 	if err != nil {
 		return nil, definitionIssues(document.Spec.Identity(), "/mapping", err)
 	}
 	if err := checkProtocolSourceLimits(spec, mapping, compiler.limits); err != nil {
 		return nil, definitionIssues(document.Spec.Identity(), "/", err)
 	}
+	if err := decodeContract(specRaw, &document.Spec); err != nil {
+		return nil, definitionIssues(document.Spec.Identity(), "/spec", err)
+	}
+	if err := decodeContract(mappingRaw, &document.Mapping); err != nil {
+		return nil, definitionIssues(document.Spec.Identity(), "/mapping", err)
+	}
 	return compiler.compilePackage(document)
 }
 
-func decodeProtocolSource(raw []byte, target any, limits Limits) (Value, error) {
+func parseProtocolSource(raw []byte, limits Limits) (Value, error) {
 	if len(raw) > limits.BufferBytes {
 		return Value{}, fmt.Errorf("protocol source exceeds buffer limit")
 	}
-	value, err := ParseValue(raw)
-	if err != nil {
-		return Value{}, err
-	}
-	if err := checkValueLimits(value, limits); err != nil {
-		return Value{}, err
-	}
-	return value, decodeContract(raw, target)
+	return ParseValue(raw)
 }
 
 func checkProtocolSourceLimits(spec, mapping Value, limits Limits) error {

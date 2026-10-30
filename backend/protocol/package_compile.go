@@ -14,6 +14,7 @@ type compiledPackagePlan struct {
 	requestProjection    Value
 	hasCacheProjection   bool
 	hasHistoryProjection bool
+	modelContracts       map[string]compiledWireContract
 }
 
 type compiledSemanticEffect struct {
@@ -25,6 +26,7 @@ type compiledSemanticEffect struct {
 	valueUnmatched                 []string
 	scope                          string
 	severity                       Severity
+	diagnostic                     *RejectDiagnostic
 	conditionReferences            map[string]Expression
 }
 
@@ -140,10 +142,11 @@ func (compiled *Compiled) bindPackageIdentity(document ProtocolPackage) error {
 	}
 	compiled.hash = hashValue(identity)
 	samples, err := EncodeValue(struct {
-		CoreVersion int      `json:"coreVersion"`
-		DSLVersion  int      `json:"dslVersion"`
-		Samples     []Sample `json:"samples"`
-	}{document.Mapping.CoreVersion, document.Mapping.DSLVersion, document.Mapping.Samples})
+		CoreVersion  int           `json:"coreVersion"`
+		DSLVersion   int           `json:"dslVersion"`
+		Samples      []Sample      `json:"samples"`
+		ModelSamples []ModelSample `json:"modelSamples,omitempty"`
+	}{document.Mapping.CoreVersion, document.Mapping.DSLVersion, document.Mapping.Samples, document.Mapping.ModelSamples})
 	if err != nil {
 		return err
 	}
@@ -202,6 +205,13 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 			return compiledMapping{}, nil, fmt.Errorf("%s: %w", at, err)
 		}
 		entry := compiledSemanticEffect{id: effect.ID, kind: effect.Kind, path: effect.Path, target: effect.Target, reason: effect.Reason, scope: effect.Scope, severity: effect.Severity}
+		if effect.Diagnostic != nil {
+			if err := validateDiagnosticClassification(effect.Diagnostic.Code, effect.Diagnostic.Stage, at+"/diagnostic"); err != nil {
+				return compiledMapping{}, nil, err
+			}
+			diagnostic := *effect.Diagnostic
+			entry.diagnostic = &diagnostic
+		}
 		entry.corePointer, err = parsePointer(effect.Path)
 		if err != nil {
 			return compiledMapping{}, nil, fmt.Errorf("%s/path: %w", at, err)
@@ -305,6 +315,10 @@ func provesPackageEmission(program *compiledExpression, output, input []string) 
 			}
 		}
 		return true
+	case "merge":
+		// Emit preflight establishes that the copied input exists. In a last
+		// merge, the final operand's whole member cannot be overwritten later.
+		return len(output) > 0 && program.policy == "last" && len(program.items) > 0 && provesPackageEmission(program.items[len(program.items)-1], output, input)
 	}
 	if len(output) == 0 {
 		return false

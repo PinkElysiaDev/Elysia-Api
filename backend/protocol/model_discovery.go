@@ -58,12 +58,8 @@ func (compiler *Compiler) compileModelMappings(compiled *Compiled, definition De
 			return fmt.Errorf("operation %q: model discovery requires GET HTTP JSON and its own decoder", name)
 		}
 		discovery := operation.Models
-		cursor := discovery.CursorParameter
-		if cursor != "" {
-			_, isStatic := operation.Query[cursor]
-			if strings.TrimSpace(cursor) != cursor || strings.ContainsAny(cursor, "\r\n") || isCredentialField(cursor) || isStatic || (operation.Auth.Location == "query" && cursor == operation.Auth.Name) {
-				return fmt.Errorf("operation %q: pagination conflicts with static routing or credentials", name)
-			}
+		if err := checkModelCursor(operation); err != nil {
+			return fmt.Errorf("operation %q: %w", name, err)
 		}
 		mapping := discovery.Decode
 		if mapping.Module != "" || len(mapping.Rules) > 0 || mapping.Transform == nil || mapping.FrameBatch || mapping.After != nil || mapping.UnknownEvent != "" || mapping.Capabilities != nil {
@@ -75,6 +71,21 @@ func (compiler *Compiler) compileModelMappings(compiled *Compiled, definition De
 		}
 		compiled.modelMappings[name] = entry
 	}
+	return compiled.prepareModelEvidence(definition.ModelSamples)
+}
+
+func checkModelCursor(operation Operation) error {
+	cursor := operation.Models.CursorParameter
+	if cursor != "" {
+		_, isStatic := operation.Query[cursor]
+		if strings.TrimSpace(cursor) != cursor || strings.ContainsAny(cursor, "\r\n") || isCredentialField(cursor) || isStatic || (operation.Auth.Location == "query" && cursor == operation.Auth.Name) {
+			return fmt.Errorf("pagination conflicts with static routing or credentials")
+		}
+	}
+	return nil
+}
+
+func (compiled *Compiled) prepareModelEvidence(samples []ModelSample) error {
 	if len(compiled.modelMappings) > 0 {
 		validator, err := compileValueSchema(&modelPageSchema, compiled.limits)
 		if err != nil {
@@ -83,7 +94,7 @@ func (compiler *Compiler) compileModelMappings(compiled *Compiled, definition De
 		compiled.modelPageValidator = validator
 	}
 	seen := map[string]bool{}
-	for _, sample := range definition.ModelSamples {
+	for _, sample := range samples {
 		_, exists := compiled.modelMappings[sample.Operation]
 		if sample.ID == "" || seen[sample.ID] || !exists || sample.Input.IsZero() || sample.Expected.IsZero() {
 			return fmt.Errorf("invalid model sample identity, operation or assertion")
@@ -101,7 +112,13 @@ func (compiled *Compiled) DecodeModelPage(ctx context.Context, operation string,
 	if !exists {
 		return page, fmt.Errorf("protocol has no model discovery decoder for %q", operation)
 	}
-	output, err := compiled.executeOperationMapping(ctx, mapping, DecodeResponse, "/operations/"+operation+"/models/decode", input, EvaluationContext{})
+	var output Value
+	var err error
+	if compiled.packagePlan != nil {
+		output, err = compiled.executePackageModelMapping(ctx, operation, mapping, input)
+	} else {
+		output, err = compiled.executeOperationMapping(ctx, mapping, DecodeResponse, "/operations/"+operation+"/models/decode", input, EvaluationContext{})
+	}
 	if err != nil {
 		return page, err
 	}
@@ -144,8 +161,17 @@ func (compiled *Compiled) executeOperationMapping(ctx context.Context, mapping c
 }
 
 func verifyModelSamples(ctx context.Context, compiled *Compiled, report *VerificationReport) {
+	if len(compiled.modelMappings) == 0 {
+		return
+	}
 	terminal, continuation := map[string]bool{}, map[string]bool{}
-	for _, sample := range compiled.Definition().ModelSamples {
+	samplesPath, operationsPath := "/modelSamples/", "/operations/"
+	operationSuffix := "/models"
+	if compiled.packagePlan != nil {
+		samplesPath, operationsPath = "/mapping/modelSamples/", "/mapping/operations/"
+		operationSuffix = "/decodeModels"
+	}
+	for _, sample := range compiled.verificationModelSamples() {
 		page, err := compiled.DecodeModelPage(ctx, sample.Operation, sample.Input)
 		if err == nil {
 			actual, encodeErr := EncodeValue(page)
@@ -156,15 +182,15 @@ func verifyModelSamples(ctx context.Context, compiled *Compiled, report *Verific
 		}
 		report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Passed: err == nil})
 		if err != nil {
-			report.Issues = append(report.Issues, verificationIssue(compiled, "", "/modelSamples/"+sample.ID, VerificationMismatch, err.Error(), sample.ID))
+			report.Issues = append(report.Issues, verificationIssue(compiled, "", samplesPath+sample.ID, VerificationMismatch, err.Error(), sample.ID))
 			continue
 		}
 		terminal[sample.Operation] = terminal[sample.Operation] || page.Next == ""
 		continuation[sample.Operation] = continuation[sample.Operation] || page.Next != ""
 	}
-	for name := range compiled.modelMappings {
+	for _, name := range sortedKeys(compiled.modelMappings) {
 		if !terminal[name] || (compiled.operations[name].Models.CursorParameter != "" && !continuation[name]) {
-			report.Issues = append(report.Issues, verificationIssue(compiled, "", "/operations/"+name+"/models", IncompleteCoverage, "discovery requires terminal and, when paginated, continuation page evidence", ""))
+			report.Issues = append(report.Issues, verificationIssue(compiled, "", operationsPath+name+operationSuffix, IncompleteCoverage, "discovery requires terminal and, when paginated, continuation page evidence", ""))
 		}
 	}
 }

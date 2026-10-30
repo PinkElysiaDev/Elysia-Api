@@ -9,3 +9,11 @@ func (compiled *Compiled) verificationSamples() []Sample {
 	}
 	return compiled.Definition().Samples
 }
+
+func (compiled *Compiled) verificationModelSamples() []ModelSample {
+	if compiled.packagePlan != nil {
+		document, _ := compiled.Package()
+		return document.Mapping.ModelSamples
+	}
+	return compiled.Definition().ModelSamples
+}

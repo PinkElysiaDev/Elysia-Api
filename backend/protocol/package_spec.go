@@ -19,23 +19,30 @@ type ProtocolSpec struct {
 // ProtocolOperationSpec binds transport metadata to named wire documents.
 // Request and Response identify documents, not executable mapping programs.
 type ProtocolOperationSpec struct {
-	Kind      string            `json:"kind"`
-	Method    string            `json:"method"`
-	Path      string            `json:"path"`
-	Transport Transport         `json:"transport"`
-	Request   string            `json:"request,omitempty"`
-	Response  string            `json:"response,omitempty"`
-	Headers   map[string]string `json:"headers,omitempty"`
-	Query     map[string]string `json:"query,omitempty"`
-	Auth      Credential        `json:"auth"`
-	Framing   *Framing          `json:"framing,omitempty"`
-	Input     *ValueSchema      `json:"input,omitempty"`
+	Kind      string                      `json:"kind"`
+	Method    string                      `json:"method"`
+	Path      string                      `json:"path"`
+	Transport Transport                   `json:"transport"`
+	Request   string                      `json:"request,omitempty"`
+	Response  string                      `json:"response,omitempty"`
+	Headers   map[string]string           `json:"headers,omitempty"`
+	Query     map[string]string           `json:"query,omitempty"`
+	Auth      Credential                  `json:"auth"`
+	Framing   *Framing                    `json:"framing,omitempty"`
+	Input     *ValueSchema                `json:"input,omitempty"`
+	Models    *ProtocolModelDiscoverySpec `json:"models,omitempty"`
+}
+
+// ProtocolModelDiscoverySpec declares wire pagination without a core decoder.
+type ProtocolModelDiscoverySpec struct {
+	CursorParameter string `json:"cursorParameter,omitempty"`
 }
 
 // ProtocolOperationMapping selects core adapters for an existing wire operation.
 type ProtocolOperationMapping struct {
-	Request  Direction `json:"request,omitempty"`
-	Response Direction `json:"response,omitempty"`
+	Request      Direction   `json:"request,omitempty"`
+	Response     Direction   `json:"response,omitempty"`
+	DecodeModels *Expression `json:"decodeModels,omitempty"`
 }
 
 type compiledProtocolSpec struct {
@@ -91,11 +98,22 @@ func (spec ProtocolSpec) compile(limits Limits) (compiledProtocolSpec, error) {
 
 func (wire ProtocolOperationSpec) compile(name string, documents map[string]compiledWireContract, limits Limits) (Operation, error) {
 	path := "/spec/operations/" + escapePointer(name)
-	if wire.Kind != "generate" || wire.Transport == WebSocket {
-		return Operation{}, fmt.Errorf("%s: task, model discovery and session programs are not supported by this package compiler", path)
+	if (wire.Kind != "generate" && wire.Kind != "models") || wire.Transport == WebSocket {
+		return Operation{}, fmt.Errorf("%s: task and session programs are not supported by this package compiler", path)
 	}
 	operation := Operation{Kind: wire.Kind, Method: wire.Method, Path: wire.Path, Transport: wire.Transport,
 		Headers: wire.Headers, Query: wire.Query, Auth: wire.Auth, Framing: wire.Framing, Input: wire.Input}
+	if wire.Kind == "models" {
+		if wire.Models == nil || wire.Method != "GET" || wire.Transport != HTTPJSON || wire.Request != "" || wire.Response == "" {
+			return Operation{}, fmt.Errorf("%s: model discovery requires GET HTTP JSON, a response document and explicit models configuration", path)
+		}
+		operation.Models = &ModelDiscovery{CursorParameter: wire.Models.CursorParameter}
+		if err := checkModelCursor(operation); err != nil {
+			return Operation{}, fmt.Errorf("%s/models: %w", path, err)
+		}
+	} else if wire.Models != nil {
+		return Operation{}, fmt.Errorf("%s/models: requires models operation kind", path)
+	}
 	if err := checkOperationEndpoint(name, operation, limits); err != nil {
 		return Operation{}, fmt.Errorf("%s: %w", path, err)
 	}
@@ -134,6 +152,15 @@ func (compiled *Compiled) bindPackageOperations(spec ProtocolSpec, mapping Proto
 			return fmt.Errorf("%s: operation mapping is required", path)
 		}
 		wire, operation := spec.Operations[name], compiled.operations[name]
+		if operation.Kind == "models" {
+			if binding.DecodeModels == nil || binding.Request != "" || binding.Response != "" {
+				return fmt.Errorf("%s: model discovery requires only a declared decodeModels program", path)
+			}
+			continue
+		}
+		if binding.DecodeModels != nil {
+			return fmt.Errorf("%s/decodeModels: requires models operation kind", path)
+		}
 		if (operation.Transport == SSE || operation.Transport == NDJSON) && binding.Response == "" {
 			return fmt.Errorf("%s/response: streaming operations require an event mapping", path)
 		}

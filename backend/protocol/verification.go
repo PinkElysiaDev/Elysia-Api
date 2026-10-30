@@ -133,9 +133,9 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 	if compiled.packagePlan == nil {
 		verifySessionSamples(ctx, compiled, &report, coverage, hasSample, hasSequence, hasLifecycle)
 		hasTaskEvidence = verifyTaskSamples(ctx, compiled, &report)
-		verifyModelSamples(ctx, compiled, &report)
 		verifyAgentSamples(ctx, compiled, &report)
 	}
+	verifyModelSamples(ctx, compiled, &report)
 	for _, direction := range DirectionCatalog() {
 		if !compiled.Supports(direction) {
 			continue

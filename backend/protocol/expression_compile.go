@@ -446,11 +446,18 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 				return fail(expression.op + " inputs must be objects")
 			}
 		}
-	case "keys":
+	case "keys", "entries":
 		if !isAssignable(expression.source.result, ObjectType) {
-			return fail("keys source must be an object")
+			return fail(expression.op + " source must be an object")
 		}
 		expression.schema = &ValueSchema{Type: ArrayType, Items: &ValueSchema{Type: StringType}}
+		if expression.op == "entries" {
+			expression.schema.Items = &ValueSchema{Type: ObjectType, Required: []string{"key", "value"}, Properties: map[string]ValueSchema{"key": {Type: StringType}, "value": {Type: AnyType}}}
+		}
+	case "from_entries":
+		if !isAssignable(expression.source.result, ArrayType) || !slices.Contains([]string{"reject", "identical"}, expression.policy) {
+			return fail("from_entries requires an array and reject or identical duplicate policy")
+		}
 	case "project":
 		if !isAssignable(expression.source.result, ObjectType) {
 			return fail("project source must be an object")

@@ -1,6 +1,20 @@
 package protocol
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"slices"
+)
+
+func validateDiagnosticClassification(code IssueCode, stage, path string) error {
+	if !slices.Contains([]IssueCode{InvalidInput, UnsupportedCapability, ConversionRejected, UpstreamContractViolation}, code) {
+		return fmt.Errorf("%s/code: unsupported diagnostic classification", path)
+	}
+	if stage != "wire" && stage != "evaluate" && stage != "runtime" {
+		return fmt.Errorf("%s/stage: requires wire, evaluate or runtime", path)
+	}
+	return nil
+}
 
 // mappingError retains the innermost configuration location through nested
 // expressions. Human-readable messages never need to be parsed by the editor.

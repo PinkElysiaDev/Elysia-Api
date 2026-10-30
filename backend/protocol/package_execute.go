@@ -79,7 +79,12 @@ func (compiled *Compiled) checkPackageEffects(direction Direction, state evaluat
 			}
 		}
 		if effect.kind == "reject" {
-			return compiled.packageEffectError(direction, effect, effect.reason, nil)
+			failure := compiled.packageEffectError(direction, effect, effect.reason, nil)
+			if diagnostic := effect.diagnostic; diagnostic != nil {
+				issue := &failure.Issues[0]
+				issue.Code, issue.Stage, issue.Suggestion = diagnostic.Code, diagnostic.Stage, diagnostic.Suggestion
+			}
+			return failure
 		}
 		pointer := effect.corePointer
 		if isDecode {
@@ -167,7 +172,7 @@ func (compiled *Compiled) checkPackageVersion(direction Direction, output JSONOu
 	return nil
 }
 
-func (compiled *Compiled) packageEffectError(direction Direction, effect compiledSemanticEffect, reason string, cause error) error {
+func (compiled *Compiled) packageEffectError(direction Direction, effect compiledSemanticEffect, reason string, cause error) *ConversionError {
 	path := effect.path
 	if isPackageDecodeDirection(direction) {
 		path = effect.target

@@ -75,6 +75,7 @@ type ProtocolMapping struct {
 	Capabilities CapabilitySet                          `json:"capabilities"`
 	Limits       *Limits                                `json:"limits,omitempty"`
 	Samples      []Sample                               `json:"samples"`
+	ModelSamples []ModelSample                          `json:"modelSamples,omitempty"`
 }
 
 // ProtocolDirectionMapping transforms one wire/core boundary without a codec module.
@@ -101,6 +102,15 @@ type ProtocolSemanticEffect struct {
 	Scope        string                   `json:"scope,omitempty"`
 	Default      Value                    `json:"default,omitzero"`
 	Severity     Severity                 `json:"severity,omitempty"`
+	Diagnostic   *RejectDiagnostic        `json:"diagnostic,omitempty"`
+}
+
+// RejectDiagnostic classifies an explicit mapping rejection. The effect still
+// supplies its business path, explanation and rule identity.
+type RejectDiagnostic struct {
+	Code       IssueCode `json:"code"`
+	Stage      string    `json:"stage"`
+	Suggestion string    `json:"suggestion,omitempty"`
 }
 
 // ProtocolAggregateLayout partitions one wire object into a core owner.
@@ -146,8 +156,8 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 		return nil, fmt.Errorf("/mapping: expected coreVersion %d and dslVersion %d", ProtocolCoreVersion, ProtocolDSLVersion)
 	}
 	spec, mapping := document.Spec, document.Mapping
-	if len(mapping.Directions) == 0 {
-		return nil, fmt.Errorf("/mapping/directions: protocol package requires mapping directions")
+	if len(mapping.Directions) == 0 && len(mapping.Operations) == 0 {
+		return nil, fmt.Errorf("/mapping: protocol package requires mapping directions or operation programs")
 	}
 	limits := engineLimits
 	if mapping.Limits != nil {
@@ -217,13 +227,16 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 		}
 		compiled.mappings[direction], compiled.packagePlan.effects[direction] = program, effects
 	}
+	if err := compiled.bindPackageOperations(spec, mapping); err != nil {
+		return nil, err
+	}
+	if err := compiled.compilePackageModelMappings(spec, mapping, wireSpec.documents, expressions); err != nil {
+		return nil, err
+	}
 	for _, name := range sortedKeys(mapping.Expressions) {
 		if !expressions.used[name] {
 			return nil, fmt.Errorf("/mapping/expressions/%s: unreachable expression", name)
 		}
-	}
-	if err := compiled.bindPackageOperations(spec, mapping); err != nil {
-		return nil, err
 	}
 	if err := validateProtocolSamples(mapping, spec.Operations, limits); err != nil {
 		return nil, err
@@ -235,7 +248,7 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 }
 
 func validateProtocolSamples(mapping ProtocolMapping, operations map[string]ProtocolOperationSpec, limits Limits) error {
-	if len(mapping.Samples) > limits.StateItems {
+	if len(mapping.Samples)+len(mapping.ModelSamples) > limits.StateItems {
 		return fmt.Errorf("/mapping/samples: sample count exceeds fixture limit")
 	}
 	seen := map[string]bool{}

@@ -1,10 +1,15 @@
 package protocol
 
+import "fmt"
+
 func isRequestProjectionScope(scope string) bool {
 	return scope == cacheIntentScope || scope == requestFieldScope
 }
 
 func validateRequestProjectionEffect(direction Direction, effect ProtocolSemanticEffect) error {
+	if effect.Diagnostic != nil && (effect.Kind != "reject" || effect.Scope != "") {
+		return fmt.Errorf("diagnostic requires an unscoped reject effect")
+	}
 	if effect.Scope == requestFieldScope {
 		return validateHistoryDisposition(direction, effect)
 	}

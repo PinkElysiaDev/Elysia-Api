@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 )
 
@@ -21,11 +20,8 @@ func compileMergeConflictDiagnostic(diagnostic *MergeConflictDiagnostic, path st
 	if diagnostic == nil {
 		return nil, fmt.Errorf("%s: requires a diagnostic object", path)
 	}
-	if !slices.Contains([]IssueCode{InvalidInput, UnsupportedCapability, ConversionRejected, UpstreamContractViolation}, diagnostic.Code) {
-		return nil, fmt.Errorf("%s/code: unsupported merge conflict classification", path)
-	}
-	if diagnostic.Stage != "wire" && diagnostic.Stage != "evaluate" {
-		return nil, fmt.Errorf("%s/stage: requires wire or evaluate", path)
+	if err := validateDiagnosticClassification(diagnostic.Code, diagnostic.Stage, path); err != nil {
+		return nil, err
 	}
 	if _, err := parsePointer(diagnostic.PathPrefix); err != nil {
 		return nil, fmt.Errorf("%s/pathPrefix: %w", path, err)
