@@ -24,12 +24,16 @@ func readValuePointerWithObjectReader(value Value, pointer []string, reader *val
 	if len(pointer) == 0 {
 		return value, nil
 	}
+	var owner *planObjectReader
 	for _, key := range pointer {
 		if value.IsZero() {
 			return Value{}, nil
 		}
 		if value.IsObject() {
-			next, err := objects.readMember(value, key)
+			if enclosing := objects.ownerFor(value); enclosing != nil {
+				owner = enclosing
+			}
+			next, err := owner.readOwnedMember(value, key)
 			if err != nil {
 				return Value{}, err
 			}

@@ -130,3 +130,45 @@ func TestItemObjectReaderReleasesOwnersWithoutChangingParserError(t *testing.T) 
 		t.Fatal("item release changed the parser error or retained its enclosing owner", err)
 	}
 }
+
+func TestObjectReaderBoundsDescendantsToActiveOwner(t *testing.T) {
+	var entries []string
+	for index := range objectReaderChildren + 3 {
+		entries = append(entries, fmt.Sprintf(`"field%d":{"n":%d}`, index, index))
+	}
+	input := Value{raw: `{` + strings.Join(entries, ",") + `}`}
+	reader := newPlanObjectReader(input, objectReuseReads)
+	for range 2 {
+		for index := range objectReaderChildren + 3 {
+			path := []string{fmt.Sprintf("field%d", index), "n"}
+			want, wantErr := readValuePointer(input, path)
+			got, gotErr := readValuePointerWithObjectReader(input, path, nil, reader)
+			if wantErr != nil || gotErr != nil || want != got {
+				t.Fatal("bounded descendant reads changed their result", path, want, got, wantErr, gotErr)
+			}
+		}
+	}
+	if len(reader.children) != objectReaderChildren {
+		t.Fatal("descendant cache did not stay bounded", len(reader.children))
+	}
+	reader.releaseItem(nil)
+	if reader.children != nil || reader.isLoaded || reader.parent != nil || reader.root != (immutableSpan{}) {
+		t.Fatal("finished item retained its descendants")
+	}
+	input = Value{raw: `{"nested":{"n":1}}`}
+	reader = newPlanObjectReader(input, objectReuseReads)
+	_, err := readValuePointerWithObjectReader(input, []string{"nested", "n"}, nil, reader)
+	if err != nil || len(reader.children) != 1 {
+		t.Fatal("descendant was not cached", err)
+	}
+	malformed := Value{raw: `{"n":`}
+	_, err = reader.readOwnedMember(malformed, "n")
+	if err == nil {
+		t.Fatal("malformed descendant unexpectedly parsed")
+	}
+	want := err.Error()
+	reader.releaseItem(err)
+	if err.Error() != want || reader.children != nil || reader.root != (immutableSpan{}) {
+		t.Fatal("release altered the descendant parser error or retained the owner")
+	}
+}
