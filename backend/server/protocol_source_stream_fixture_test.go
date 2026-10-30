@@ -61,10 +61,10 @@ func sourceStreamPackage(t *testing.T) protocol.ProtocolPackage {
 	}
 	stream := &protocol.ProtocolStreamSpec{Discriminator: "/type", ResponseID: "/responseId", ItemID: "/itemId", Sequence: "/sequence",
 		Events: map[string]protocol.ProtocolStreamEventSpec{
-			"response.started": {Action: "response_start"}, "response.finished": {Action: "response_finish"},
-			"item.started": {Action: "item_start"}, "item.delta": {Action: "text_delta", Text: "/delta"}, "item.finished": {Action: "item_finish"},
-			"usage.updated":    {Action: "usage", Usage: &protocol.ProtocolStreamUsageSpec{Input: "/usage/input/count", Output: "/usage/output/count", Total: "/usage/total/count"}},
-			"operation.failed": {Action: "failure", Error: "/error"},
+			"response.started": {{Action: "response_start"}}, "response.finished": {{Action: "response_finish"}},
+			"item.started": {{Action: "item_start"}}, "item.delta": {{Action: "text_delta", Text: "/delta"}}, "item.finished": {{Action: "item_finish"}},
+			"usage.updated":    {{Action: "usage", Usage: &protocol.ProtocolStreamUsageSpec{Input: "/usage/input/count", Output: "/usage/output/count", Total: "/usage/total/count"}}},
+			"operation.failed": {{Action: "failure", Error: "/error"}},
 		}}
 	documents := map[string]protocol.WireContractSpec{}
 	for direction, mapping := range directions {

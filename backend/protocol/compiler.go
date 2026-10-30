@@ -132,6 +132,7 @@ type compiledMapping struct {
 	input, output     *runtimeValueSchema
 	rules             []compiledEventRule
 	frameBatch        bool
+	isEventBatch      bool
 	definitionHash    string
 }
 

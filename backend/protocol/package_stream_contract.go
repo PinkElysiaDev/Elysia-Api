@@ -9,7 +9,7 @@ type streamField struct {
 
 type compiledPackageStreamContract struct {
 	discriminator, responseID, itemID, sequence streamField
-	events                                      map[string]compiledPackageStreamEvent
+	events                                      map[string][]compiledPackageStreamEvent
 	hasTools                                    bool
 }
 
@@ -29,7 +29,7 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 	if spec == nil {
 		return nil, nil
 	}
-	contract := &compiledPackageStreamContract{events: make(map[string]compiledPackageStreamEvent, len(spec.Events))}
+	contract := &compiledPackageStreamContract{events: make(map[string][]compiledPackageStreamEvent, len(spec.Events))}
 	for _, selector := range []struct {
 		name, path string
 		field      *streamField
@@ -48,20 +48,28 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 	}
 	actions := map[EventType]bool{}
 	toolActions := map[EventType]bool{}
+	actionCount := 0
 	for _, tag := range sortedKeys(spec.Events) {
 		eventPath := path + "/events/" + escapePointer(tag)
 		if tag == "" {
 			return nil, fmt.Errorf("%s: event tag must not be empty", eventPath)
 		}
-		event, err := compileStreamEvent(spec.Events[tag], eventPath, limits)
-		if err != nil {
-			return nil, err
+		entries := spec.Events[tag]
+		actionCount += len(entries)
+		if len(entries) == 0 || actionCount > limits.StateItems {
+			return nil, fmt.Errorf("%s: requires nonempty actions within the stream item limit", eventPath)
 		}
-		contract.events[tag] = event
-		if event.isTool {
-			contract.hasTools, toolActions[event.action] = true, true
-		} else {
-			actions[event.action] = true
+		for index, entry := range entries {
+			event, err := compileStreamEvent(entry, fmt.Sprintf("%s/%d", eventPath, index), limits)
+			if err != nil {
+				return nil, err
+			}
+			contract.events[tag] = append(contract.events[tag], event)
+			if event.isTool {
+				contract.hasTools, toolActions[event.action] = true, true
+			} else {
+				actions[event.action] = true
+			}
 		}
 	}
 	for _, action := range []EventType{ResponseStarted, ItemStarted, ItemDelta, ItemFinished, UsageUpdated, ResponseFinished} {
@@ -90,7 +98,7 @@ func compileStreamField(pointer, path string, limits Limits) (streamField, error
 	return streamField{path: pointer, pointer: parts}, nil
 }
 
-func compileStreamEvent(spec ProtocolStreamEventSpec, path string, limits Limits) (compiledPackageStreamEvent, error) {
+func compileStreamEvent(spec ProtocolStreamActionSpec, path string, limits Limits) (compiledPackageStreamEvent, error) {
 	event := compiledPackageStreamEvent{}
 	switch spec.Action {
 	case "response_start":

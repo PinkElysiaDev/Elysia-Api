@@ -52,18 +52,12 @@ func (state *packageStreamValidation) consume(ctx context.Context, frame Value) 
 	if err != nil {
 		return err
 	}
-	definition, exists := state.contract.events[tag]
+	actions, exists := state.contract.events[tag]
 	if !exists {
 		return state.issue(state.contract.discriminator.path, "undeclared stream event tag", nil)
 	}
-	if state.replay.isTerminal && definition.action != UsageUpdated {
-		return state.issue(state.contract.discriminator.path, "event arrived after terminal; only usage tails are permitted", nil)
-	}
-	if definition.action == ResponseStarted && state.accepted.hasStarted {
-		return state.issue(state.contract.discriminator.path, "response started more than once", nil)
-	}
-	if definition.action != ResponseStarted && !state.accepted.hasStarted {
-		return state.issue(state.contract.discriminator.path, "event requires a preceding response start", nil)
+	if err := state.checkActionPosition(actions[0]); err != nil {
+		return err
 	}
 	responseID, err := state.readIdentity(state.contract.responseID, read)
 	if err != nil {
@@ -86,6 +80,35 @@ func (state *packageStreamValidation) consume(ctx context.Context, frame Value) 
 			return state.issue(state.contract.sequence.path, "stream sequence must increase strictly", nil)
 		}
 	}
+	for index, action := range actions {
+		if index > 0 {
+			if err := state.checkActionPosition(action); err != nil {
+				return err
+			}
+		}
+		if err := state.consumeAction(ctx, action, responseID, read); err != nil {
+			return err
+		}
+	}
+	state.accepted.sequence, state.accepted.hasSequence = sequence, state.contract.sequence.path != ""
+	state.hasPendingDelivery = state.direction == EncodeEvent
+	return nil
+}
+
+func (state *packageStreamValidation) checkActionPosition(action compiledPackageStreamEvent) error {
+	if state.replay.isTerminal && action.action != UsageUpdated {
+		return state.issue(state.contract.discriminator.path, "event arrived after terminal; only usage tails are permitted", nil)
+	}
+	if action.action == ResponseStarted && state.accepted.hasStarted {
+		return state.issue(state.contract.discriminator.path, "response started more than once", nil)
+	}
+	if action.action != ResponseStarted && !state.accepted.hasStarted {
+		return state.issue(state.contract.discriminator.path, "event requires a preceding response start", nil)
+	}
+	return nil
+}
+
+func (state *packageStreamValidation) consumeAction(ctx context.Context, definition compiledPackageStreamEvent, responseID string, read func(streamField) (Value, error)) error {
 	event := Event{SchemaVersion: state.target.coreSchemaVersion(), Source: state.target.Protocol, Type: definition.action}
 	identityBytes := state.identityBytes
 	if !state.accepted.hasStarted {
@@ -112,7 +135,6 @@ func (state *packageStreamValidation) consume(ctx context.Context, frame Value) 
 		state.accepted.hasStarted = true
 	}
 	state.identityBytes = identityBytes
-	state.accepted.sequence, state.accepted.hasSequence = sequence, state.contract.sequence.path != ""
 	switch definition.action {
 	case ItemStarted:
 		state.openItems++
@@ -127,7 +149,6 @@ func (state *packageStreamValidation) consume(ctx context.Context, frame Value) 
 		}
 		state.replay.state.buffered = 0
 	}
-	state.hasPendingDelivery = state.direction == EncodeEvent
 	return nil
 }
 

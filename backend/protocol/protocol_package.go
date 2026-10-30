@@ -34,10 +34,14 @@ type ProtocolStreamSpec struct {
 	Events        map[string]ProtocolStreamEventSpec `json:"events"`
 }
 
-// ProtocolStreamEventSpec selects an explicit text or JSON-tool lifecycle
+// ProtocolStreamEventSpec lists the ordered actions carried by one wire frame.
+// Sequence numbers belong to the frame and are checked once before its actions.
+type ProtocolStreamEventSpec []ProtocolStreamActionSpec
+
+// ProtocolStreamActionSpec selects an explicit text or JSON-tool lifecycle
 // action. It does not infer starts, late identities, snapshots or controls.
 // item_finish closes the established kind; tool_finish requires a tool item.
-type ProtocolStreamEventSpec struct {
+type ProtocolStreamActionSpec struct {
 	Action    string                   `json:"action"`
 	Text      string                   `json:"text,omitempty"`
 	Arguments string                   `json:"arguments,omitempty"`
@@ -84,6 +88,7 @@ type ProtocolMapping struct {
 // ProtocolDirectionMapping transforms one wire/core boundary without a codec module.
 type ProtocolDirectionMapping struct {
 	Document     string                   `json:"document"`
+	IsEventBatch bool                     `json:"eventBatch,omitempty"`
 	Program      Expression               `json:"program"`
 	Effects      []ProtocolSemanticEffect `json:"effects"`
 	Capabilities CapabilitySet            `json:"capabilities,omitzero"`

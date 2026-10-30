@@ -18,9 +18,9 @@ func toolStreamPackage(t *testing.T) ProtocolPackage {
 	t.Helper()
 	document := eventProtocolPackage(t)
 	document.Mapping.Capabilities[FunctionToolsCapability] = true
-	document.Spec.Documents["provider-event"].Stream.Events[string(packageToolStarted)] = ProtocolStreamEventSpec{Action: "tool_start", Tool: &ProtocolStreamToolSpec{Name: "/name", CallID: "/call_id"}}
-	document.Spec.Documents["provider-event"].Stream.Events[string(packageToolDelta)] = ProtocolStreamEventSpec{Action: "tool_delta", Arguments: "/arguments"}
-	document.Spec.Documents["provider-event"].Stream.Events[string(packageToolFinished)] = ProtocolStreamEventSpec{Action: "tool_finish"}
+	document.Spec.Documents["provider-event"].Stream.Events[string(packageToolStarted)] = ProtocolStreamEventSpec{{Action: "tool_start", Tool: &ProtocolStreamToolSpec{Name: "/name", CallID: "/call_id"}}}
+	document.Spec.Documents["provider-event"].Stream.Events[string(packageToolDelta)] = ProtocolStreamEventSpec{{Action: "tool_delta", Arguments: "/arguments"}}
+	document.Spec.Documents["provider-event"].Stream.Events[string(packageToolFinished)] = ProtocolStreamEventSpec{{Action: "tool_finish"}}
 	isTag := func(tag EventType) Expression {
 		return Expression{Op: "equal", Items: []Expression{readExpression("input", "/kind"), literalExpression(tag)}}
 	}
@@ -62,19 +62,19 @@ func TestPackageStreamContractCompilation(t *testing.T) {
 		{"root-pointer", func(p *ProtocolPackage) { p.Spec.Documents["provider-event"].Stream.ItemID = "" }, "/spec/documents/client-event/stream/itemId"},
 		{"missing-action", func(p *ProtocolPackage) { delete(p.Spec.Documents["provider-event"].Stream.Events, "item.delta") }, "/spec/documents/client-event/stream/events"},
 		{"unknown-action", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events["future"] = ProtocolStreamEventSpec{Action: "infer"}
-		}, "/spec/documents/client-event/stream/events/future/action"},
+			p.Spec.Documents["provider-event"].Stream.Events["future"] = ProtocolStreamEventSpec{{Action: "infer"}}
+		}, "/spec/documents/client-event/stream/events/future/0/action"},
 		{"misplaced-text", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events["response.started"] = ProtocolStreamEventSpec{Action: "response_start", Text: "/text"}
+			p.Spec.Documents["provider-event"].Stream.Events["response.started"] = ProtocolStreamEventSpec{{Action: "response_start", Text: "/text"}}
 		}, "/spec/documents/client-event/stream/events/response.started"},
 		{"missing-text", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events["item.delta"] = ProtocolStreamEventSpec{Action: "text_delta"}
+			p.Spec.Documents["provider-event"].Stream.Events["item.delta"] = ProtocolStreamEventSpec{{Action: "text_delta"}}
 		}, "/spec/documents/client-event/stream/events/item.delta"},
 		{"empty-usage", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events["usage.updated"] = ProtocolStreamEventSpec{Action: "usage", Usage: &ProtocolStreamUsageSpec{}}
-		}, "/spec/documents/client-event/stream/events/usage.updated/usage"},
+			p.Spec.Documents["provider-event"].Stream.Events["usage.updated"] = ProtocolStreamEventSpec{{Action: "usage", Usage: &ProtocolStreamUsageSpec{}}}
+		}, "/spec/documents/client-event/stream/events/usage.updated/0/usage"},
 		{"missing-error", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events["operation.failed"] = ProtocolStreamEventSpec{Action: "failure"}
+			p.Spec.Documents["provider-event"].Stream.Events["operation.failed"] = ProtocolStreamEventSpec{{Action: "failure"}}
 		}, "/spec/documents/client-event/stream/events/operation.failed"},
 		{"capabilities", func(p *ProtocolPackage) {
 			entry := p.Mapping.Directions[EncodeEvent]
@@ -260,21 +260,21 @@ func TestPackageStreamToolContractCompilation(t *testing.T) {
 		path string
 	}{
 		{"missing-name", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolStarted)].Tool.Name = ""
-		}, "/spec/documents/client-event/stream/events/tool.started/tool/name"},
+			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolStarted)][0].Tool.Name = ""
+		}, "/spec/documents/client-event/stream/events/tool.started/0/tool/name"},
 		{"missing-call-id", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolStarted)].Tool.CallID = ""
-		}, "/spec/documents/client-event/stream/events/tool.started/tool/callId"},
+			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolStarted)][0].Tool.CallID = ""
+		}, "/spec/documents/client-event/stream/events/tool.started/0/tool/callId"},
 		{"missing-arguments", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolDelta)] = ProtocolStreamEventSpec{Action: "tool_delta"}
+			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolDelta)] = ProtocolStreamEventSpec{{Action: "tool_delta"}}
 		}, "/spec/documents/client-event/stream/events/tool.delta"},
 		{"misplaced-tool", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolFinished)] = ProtocolStreamEventSpec{Action: "tool_finish", Tool: &ProtocolStreamToolSpec{Name: "/name", CallID: "/call_id"}}
+			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolFinished)] = ProtocolStreamEventSpec{{Action: "tool_finish", Tool: &ProtocolStreamToolSpec{Name: "/name", CallID: "/call_id"}}}
 		}, "/spec/documents/client-event/stream/events/tool.finished"},
 		{"tools-cannot-replace-text", func(p *ProtocolPackage) { delete(p.Spec.Documents["provider-event"].Stream.Events, string(ItemDelta)) }, "/spec/documents/client-event/stream/events"},
 		{"snapshot-not-supported", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events["tool.snapshot"] = ProtocolStreamEventSpec{Action: "tool_snapshot"}
-		}, "/spec/documents/client-event/stream/events/tool.snapshot/action"},
+			p.Spec.Documents["provider-event"].Stream.Events["tool.snapshot"] = ProtocolStreamEventSpec{{Action: "tool_snapshot"}}
+		}, "/spec/documents/client-event/stream/events/tool.snapshot/0/action"},
 		{"missing-capability", func(p *ProtocolPackage) {
 			entry := p.Mapping.Directions[EncodeEvent]
 			entry.Capabilities = CapabilitySet{TextCapability: true, UsageCapability: true}

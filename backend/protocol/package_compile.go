@@ -166,6 +166,9 @@ func (compiled *Compiled) bindPackageIdentity(document ProtocolPackage) error {
 func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Direction, wire WireContractSpec, compiler *expressionCompiler, coreVersion, dslVersion int) (compiledMapping, []compiledSemanticEffect, error) {
 	path := "/mapping/directions/" + string(direction)
 	isDecode := isPackageDecodeDirection(direction)
+	if mapping.IsEventBatch && !isEventDecoder(direction) {
+		return compiledMapping{}, nil, fmt.Errorf("%s/eventBatch: requires an event decoder", path)
+	}
 	scope := expressionScope{canReadRuntime: true, canReadOutputStream: direction == EncodeEvent}
 	if isDecode {
 		scope.input = wire.Schema
@@ -181,6 +184,9 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	program, err := compiler.compile(mapping.Program, path+"/program", programScope, 1)
 	if err != nil {
 		return compiledMapping{}, nil, err
+	}
+	if mapping.IsEventBatch && !isAssignable(program.result, ArrayType) {
+		return compiledMapping{}, nil, fmt.Errorf("%s/program: eventBatch requires an array output", path)
 	}
 	if !isDecode {
 		if err := checkExpressionOutput(program, wire.Schema, compiler.limits); err != nil {
@@ -293,6 +299,7 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	}
 	return compiledMapping{
 		outputPlan: plan, definitionHash: hashValue(identity),
+		isEventBatch:      mapping.IsEventBatch,
 		hasCoreOutputPlan: isPackageDecodeDirection(direction),
 		hasCoreInputPlan:  !isPackageDecodeDirection(direction),
 	}, effects, nil

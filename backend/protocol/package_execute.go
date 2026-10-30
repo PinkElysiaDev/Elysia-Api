@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"fmt"
+	"strconv"
 )
 
 // packageExecution shares input views between effects and the mapping. Conditions
@@ -28,7 +29,7 @@ func (compiled *Compiled) preparePackageState(direction Direction, state evaluat
 		}
 	} else {
 		version, err := state.readPackageInput([]string{"schemaVersion"})
-		if err := compiled.checkPackageVersion(direction, version, err); err != nil {
+		if err := compiled.checkPackageVersion(direction, version, err, "/schemaVersion"); err != nil {
 			return err
 		}
 	}
@@ -147,17 +148,40 @@ func (compiled *Compiled) finishPackageExecution(ctx context.Context, direction 
 }
 
 func (compiled *Compiled) finishPackageCoreOutput(ctx context.Context, direction Direction, output JSONOutput, reader *valueReader) error {
+	if compiled.mappings[direction].isEventBatch {
+		items, err := plannedArrayItems(output)
+		if err != nil {
+			return err
+		}
+		if len(items) == 0 {
+			return compiled.packageCoreShapeError(direction, "package event batch must contain at least one core event")
+		}
+		for index, item := range items {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			version, readErr := readOutputPointer(item, []string{"schemaVersion"}, reader)
+			if err := compiled.checkPackageVersion(direction, version, readErr, "/"+strconv.Itoa(index)+"/schemaVersion"); err != nil {
+				return err
+			}
+		}
+		return ctx.Err()
+	}
 	if isEventDecoder(direction) && plannedJSONType(output) != "object" {
-		return &ConversionError{Issues: []ConversionIssue{{Code: InvalidInput, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "mapping.core", Path: "/", Reason: "package event mapping requires one core event object per wire frame"}}}
+		return compiled.packageCoreShapeError(direction, "package event mapping requires one core event object per wire frame")
 	}
 	version, err := readOutputPointer(output, []string{"schemaVersion"}, reader)
-	if err := compiled.checkPackageVersion(direction, version, err); err != nil {
+	if err := compiled.checkPackageVersion(direction, version, err, "/schemaVersion"); err != nil {
 		return err
 	}
 	return ctx.Err()
 }
 
-func (compiled *Compiled) checkPackageVersion(direction Direction, output JSONOutput, err error) error {
+func (compiled *Compiled) packageCoreShapeError(direction Direction, reason string) error {
+	return &ConversionError{Issues: []ConversionIssue{{Code: InvalidInput, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "mapping.core", Path: "/", Reason: reason}}}
+}
+
+func (compiled *Compiled) checkPackageVersion(direction Direction, output JSONOutput, err error, path string) error {
 	version := output.value
 	if err == nil && output.node != nil {
 		version, err = output.Encode(context.Background())
@@ -167,7 +191,7 @@ func (compiled *Compiled) checkPackageVersion(direction Direction, output JSONOu
 		err = version.Decode(&number)
 	}
 	if err != nil || number != compiled.packagePlan.coreVersion {
-		return &ConversionError{cause: err, Issues: []ConversionIssue{{Code: InvalidInput, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "mapping.core", Path: "/schemaVersion", Reason: fmt.Sprintf("mapping requires core schemaVersion %d", compiled.packagePlan.coreVersion)}}}
+		return &ConversionError{cause: err, Issues: []ConversionIssue{{Code: InvalidInput, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "mapping.core", Path: path, Reason: fmt.Sprintf("mapping requires core schemaVersion %d", compiled.packagePlan.coreVersion)}}}
 	}
 	return nil
 }

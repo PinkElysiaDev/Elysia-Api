@@ -120,7 +120,7 @@ func TestItemObjectReaderReleasesOwnersWithoutChangingParserError(t *testing.T) 
 	input := Value{raw: `{"unfinished":`}
 	reader := newPlanObjectReader(input, objectReuseReads)
 	reader.parent = newPlanObjectReader(Value{raw: `{"parent":true}`}, objectReuseReads)
-	_, err := reader.readMember(input, "unfinished")
+	_, err := reader.readOwnedMember(input, "unfinished")
 	if err == nil {
 		t.Fatal("incomplete JSON unexpectedly parsed")
 	}

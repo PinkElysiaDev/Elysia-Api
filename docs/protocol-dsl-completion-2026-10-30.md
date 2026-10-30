@@ -298,3 +298,30 @@ choices 在无根 Native 时的完整编码。修改前六种分组差异有失�
 字节和拒绝分类通过；protocol/builtin 全量通过。记录为
 `completion-chat-groups-{before,mapping,null,builtin}`。本批未测 Chat 编码性能；候选 metadata、
 未知 choice 扩展与全协议终止状态仍有其他迁移边界，不以本组测试替代它们。
+
+## 第十批：显式多动作帧（dev.88）
+
+Stream 的 events 每个标签现在直接声明有序动作数组；旧草案的单对象形式不作为另一种
+格式继续兼容。文档内动作总数受原 StateItems 预算约束。一个外部帧的身份和序号只检查
+一次，再按声明顺序执行每个生命周期动作；完成后的 usage 仍按既有规则接受，先 delta
+后 start 等非法顺序继续拒绝。输出提交位置只在整帧通过并交付后推进。
+
+Mapping 的 eventBatch 仅用于事件解码方向，明确声明输出非空核心事件数组。静态已知
+非数组输出在编译时拒绝，运行期逐项检查核心版本并保留成员位置；实际对象写入继续
+使用既有计划，不先把整批核心对象编码成 JSON。EventFrame 只持有一份原生帧，同协议
+完整字节回放一次；跨协议按核心事件输出。不为多事件复制原生正文。
+
+一帧六事件的文本、usage、终态、原样回放、跨线格式展开及错误动作顺序已验证。原单动作
+生命周期回归继续通过；本次两次夹具问题（动作索引更新、跨协议测试仍使用同 wire family）
+保留为 `completion-stream-actions` 和 `completion-compound-events`，修正后记录为
+`completion-stream-actions-indexed`、`completion-compound-events-distinct-wire`。
+
+边界仍明确：本批不推断缺失身份、不生成隐式开始，不支持任意快照或通用持久状态程序。
+多事件 Native 与动态输出位置同时使用时仍拒绝，尚未声明动态字段所有权。四预置 SSE
+配置、管理切换和最终性能门槛尚未完成，不能把这组机制验收称为真实供应商流迁移完成。
+
+protocol/builtin 全量通过。首次 Go 全量因服务端一份测试夹具仍使用旧动作结构而编译
+失败（`completion-compound-go-all`），更新夹具结构后全量通过（约 96 秒，
+`completion-compound-go-all-fixtures`）；未修改期望输出。vet 和相关 race 通过，固定
+staticcheck 仍为 45 条、无新增／移除，见 `completion-compound-{vet,race,staticcheck}`。
+本阶段没有重测吞吐或更新六目标产物；前述性能数据分别对应其记录的修改集。

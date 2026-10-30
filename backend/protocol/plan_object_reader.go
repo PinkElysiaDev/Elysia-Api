@@ -33,10 +33,6 @@ func newPlanObjectReader(input Value, readCount int) *planObjectReader {
 	return &planObjectReader{root: spanIdentity(input.raw)}
 }
 
-func (reader *planObjectReader) readMember(value Value, key string) (Value, error) {
-	return reader.ownerFor(value).readOwnedMember(value, key)
-}
-
 func (reader *planObjectReader) ownerFor(value Value) *planObjectReader {
 	identity := spanIdentity(value.raw)
 	for ; reader != nil; reader = reader.parent {

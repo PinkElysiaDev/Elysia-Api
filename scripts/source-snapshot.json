@@ -383,6 +383,7 @@
     "backend/protocol/package_cache_projection_test.go",
     "backend/protocol/package_compile.go",
     "backend/protocol/package_compile_test.go",
+    "backend/protocol/package_compound_event_test.go",
     "backend/protocol/package_event_runtime_test.go",
     "backend/protocol/package_event_verification_test.go",
     "backend/protocol/package_execute.go",

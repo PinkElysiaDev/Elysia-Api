@@ -11,11 +11,7 @@ func eventProtocolPackage(t *testing.T) ProtocolPackage {
 	document := textProtocolPackage(t)
 	document.Mapping.Capabilities[UsageCapability] = true
 	document.Mapping.Native.Preserve = true
-	stream := Value{raw: `{"discriminator":"/kind","responseId":"/response_id","itemId":"/item_id","sequence":"/seq","events":{
-		"response.started":{"action":"response_start"},"item.started":{"action":"item_start"},
-		"item.delta":{"action":"text_delta","text":"/text"},"item.finished":{"action":"item_finish"},
-		"usage.updated":{"action":"usage","usage":{"input":"/usage/input","output":"/usage/output","total":"/usage/total"}},
-		"response.finished":{"action":"response_finish"},"operation.failed":{"action":"failure","error":"/error"},"operation.cancelled":{"action":"cancel"}}}`}
+	stream := Value{raw: `{"discriminator":"/kind","responseId":"/response_id","itemId":"/item_id","sequence":"/seq","events":{"response.started":[{"action":"response_start"}],"item.started":[{"action":"item_start"}],"item.delta":[{"action":"text_delta","text":"/text"}],"item.finished":[{"action":"item_finish"}],"usage.updated":[{"action":"usage","usage":{"input":"/usage/input","output":"/usage/output","total":"/usage/total"}}],"response.finished":[{"action":"response_finish"}],"operation.failed":[{"action":"failure","error":"/error"}],"operation.cancelled":[{"action":"cancel"}]}}`}
 	var lifecycle ProtocolStreamSpec
 	if err := stream.Decode(&lifecycle); err != nil {
 		t.Fatal(err)

@@ -130,7 +130,10 @@ func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Dire
 		}
 	}
 	if canReplay && compiled.packagePlan != nil && compiled.mappings[direction].outputPlan.hasOutputStreamRead {
-		// Package decoding produces one event. Its encoder must run to decide
+		if len(frame.Events) != 1 {
+			return nil, streamIssue(UnsupportedNative, "/frame", "compound native frames require explicit dynamic field ownership before reading output stream metadata")
+		}
+		// The single-event encoder must run to decide
 		// whether this event actually reads mutable output-stream metadata.
 		event := frame.Events[0]
 		event.Native = frame.native
