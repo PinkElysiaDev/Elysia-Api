@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -475,6 +476,72 @@ func TestRequestTrackingIdentityMapping(t *testing.T) {
 			if _, err := c.Request(t.Context(), req, p.ConversionContext{}, nil); err == nil {
 				t.Fatal("conflicting identity overwritten")
 			}
+		}
+	}
+}
+
+func TestRequestTrackingIdentitySpellings(t *testing.T) {
+	source := shippedProjectionProtocol(t, Anthropic)
+	for _, codec := range []string{Chat, Responses} {
+		target := shippedProjectionProtocol(t, codec)
+		conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(source, target))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, fixture := range []struct {
+			name, user, identity string
+			isEqual, isInvalid   bool
+		}{
+			{"same", `"u"`, `"u"`, true, false},
+			{"unicode-escape", `"u"`, `"\u0075"`, true, false},
+			{"html-escape", `"<"`, `"\u003c"`, true, false},
+			{"different", `"u"`, `"other"`, false, false},
+			{"null", `null`, `null`, true, false},
+			{"null-string", `null`, `"u"`, false, false},
+			{"null-empty-string", `null`, `""`, false, false},
+			{"number", `1`, `1`, true, true},
+			{"number-spelling", `1`, `1.0`, false, true},
+		} {
+			t.Run(codec+"/"+fixture.name, func(t *testing.T) {
+				input := testValue(t, `{"schemaVersion":1,"model":"m","content":[{"kind":"message","role":"user","children":[{"kind":"text","payload":"hi"}]}],"parameters":{"user":`+fixture.user+`,"anthropic_metadata":{"user_id":`+fixture.identity+`}}}`)
+				var request p.Request
+				if err := input.Decode(&request); err != nil {
+					t.Fatal(err)
+				}
+				request.Source = source.Identity()
+				check := func(entry string, wire p.Value, err error, canEncode bool, code p.IssueCode, path string) {
+					t.Helper()
+					if canEncode {
+						if err != nil {
+							t.Fatalf("%s rejected the same identity: %v", entry, err)
+						}
+						fields, err := wire.ReadObject()
+						if err != nil {
+							t.Fatal(err)
+						}
+						sameJSON(t, fields["user"].Bytes(), fixture.user)
+						return
+					}
+					var failure *p.ConversionError
+					if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Code != code || failure.Issues[0].Path != path {
+						t.Fatalf("%s changed identity rejection: %v", entry, err)
+					}
+				}
+				public, publicErr := target.EncodeRequestValue(t.Context(), request.Clone(), p.EvaluationContext{})
+				code, path := p.UnsupportedCapability, "/parameters/user"
+				if fixture.isInvalid {
+					code, path = p.InvalidInput, "/parameters/anthropic_metadata/user_id"
+				}
+				check("public", public, publicErr, fixture.isEqual && !fixture.isInvalid, code, path)
+				raw, issues := target.Execute(t.Context(), p.EncodeRequest, input, p.EvaluationContext{})
+				check("raw", raw, p.IssuesError(issues), fixture.isEqual, p.UnsupportedCapability, "/parameters/user")
+				projected, projectionErr := conversion.Request(t.Context(), request.Clone(), p.ConversionContext{Source: source.Identity(), Target: target.Identity()}, nil)
+				var projectedWire p.Value
+				if projectionErr == nil {
+					projectedWire, projectionErr = target.EncodeRequestValue(t.Context(), projected, p.EvaluationContext{})
+				}
+				check("projection", projectedWire, projectionErr, fixture.isEqual && !fixture.isInvalid, p.InvalidInput, "/parameters/anthropic_metadata/user_id")
+			})
 		}
 	}
 }

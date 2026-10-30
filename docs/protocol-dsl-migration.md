@@ -1,6 +1,10 @@
 # 协议 DSL 改造进度与不变量
 
-实施分支：`refactor/protocol-dsl`。行为基线：`d40e1940`，编译器 dev.78；当前编译器 dev.79。
+实施分支：`refactor/protocol-dsl`。行为基线：`d40e1940`，编译器 dev.78；当前编译器 dev.80。
+
+经用户明确批准的独立例外：dev.79纠正请求reasoning诊断归因；dev.80接受相同用户标识
+的不同JSON字符串拼写，保留真实冲突。后者的8项接受变化与22项未变化入口见
+[身份等价记录](user-identity-equivalence-2026-10-30.md)，不将其归为行为等价重构。
 
 目标是由 ProtocolSpec 描述外部协议，由 ProtocolMapping 声明外部协议与核心语义的对应，编译器生成直接操作核心对象和延迟输出容器的计划。四预置的 24 个核心方向、WebSocket、任务、模型发现、Agent、预览和验证最终使用同一执行后端。
 
