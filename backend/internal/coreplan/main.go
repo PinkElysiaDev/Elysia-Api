@@ -70,6 +70,12 @@ func main() {
 		g.emitWriter(g.name(g.types[index]), g.types[index])
 		g.emitReader(g.name(g.types[index]), g.types[index])
 	}
+	objectTypes := requestObjectTypes()
+	for _, kind := range g.types {
+		if objectTypes[kind] {
+			g.emitObjectSelector(g.name(kind), kind, objectTypes)
+		}
+	}
 	source, err := format.Source(g.output.Bytes())
 	if err != nil {
 		panic(err)
@@ -225,6 +231,95 @@ func (g *generator) emitReader(name string, t reflect.Type) {
 		g.line("return JSONOutput{node:&jsonOutputNode{object:true,fields:fields}},nil")
 	default:
 		panic("unsupported core type: " + t.String())
+	}
+	g.line("}")
+}
+
+// Object selectors stop at opaque Values. Their field conditions come from the
+// same tags as readers so selecting keys cannot resurrect omitted containers.
+func requestObjectTypes() map[reflect.Type]bool {
+	object := reflect.TypeFor[p.Object]()
+	reachable := map[reflect.Type]bool{}
+	var visit func(reflect.Type)
+	visit = func(kind reflect.Type) {
+		if reachable[kind] || kind == reflect.TypeFor[p.Value]() {
+			return
+		}
+		reachable[kind] = true
+		switch kind.Kind() {
+		case reflect.Pointer, reflect.Slice:
+			visit(kind.Elem())
+		case reflect.Struct:
+			for _, field := range fields(kind) {
+				visit(field.typeOf)
+			}
+		}
+	}
+	visit(reflect.TypeFor[*p.Request]())
+	selected := map[reflect.Type]bool{object: true}
+	for hasChanges := true; hasChanges; {
+		hasChanges = false
+		for kind := range reachable {
+			if selected[kind] {
+				continue
+			}
+			canSelect := false
+			switch kind.Kind() {
+			case reflect.Pointer, reflect.Slice:
+				canSelect = selected[kind.Elem()]
+			case reflect.Struct:
+				for _, field := range fields(kind) {
+					canSelect = canSelect || selected[field.typeOf]
+				}
+			}
+			if canSelect {
+				selected[kind], hasChanges = true, true
+			}
+		}
+	}
+	return selected
+}
+
+func (g *generator) emitObjectSelector(name string, kind reflect.Type, selected map[reflect.Type]bool) {
+	g.line("func isCore%sObjectPath(pointer []string) bool {", name)
+	switch kind.Kind() {
+	case reflect.Pointer:
+		g.line("return isCore%sObjectPath(pointer)", g.name(kind.Elem()))
+	case reflect.Map:
+		g.line("return len(pointer)==0")
+	case reflect.Slice:
+		g.line("if len(pointer)==0{return false};_,err:=coreArrayIndex(pointer[0],0);return err==nil&&isCore%sObjectPath(pointer[1:])", g.name(kind.Elem()))
+	case reflect.Struct:
+		g.line("if len(pointer)==0{return false};switch pointer[0]{")
+		for _, field := range fields(kind) {
+			if selected[field.typeOf] {
+				g.line("case %q:return isCore%sObjectPath(pointer[1:])", field.key, g.name(field.typeOf))
+			}
+		}
+		g.line("default:return false}")
+	}
+	g.line("}")
+	g.line("func selectCore%sObject(value %s,pointer []string)(Object,bool,error){", name, local(kind))
+	switch kind.Kind() {
+	case reflect.Pointer:
+		g.line("if value==nil{return selectNullCoreObject(pointer)};return selectCore%sObject(*value,pointer)", g.name(kind.Elem()))
+	case reflect.Map:
+		g.line("return value,true,nil")
+	case reflect.Slice:
+		g.line("if value==nil{return selectNullCoreObject(pointer)};index,err:=coreArrayIndex(pointer[0],len(value));if err!=nil||index<0{return nil,false,err};return selectCore%sObject(value[index],pointer[1:])", g.name(kind.Elem()))
+	case reflect.Struct:
+		g.line("switch pointer[0]{")
+		for _, field := range fields(kind) {
+			if !selected[field.typeOf] {
+				continue
+			}
+			if field.condition == "" {
+				g.line("case %q:return selectCore%sObject(value.%s,pointer[1:])", field.key, g.name(field.typeOf), field.name)
+			} else {
+				g.line("case %q:if %s{return selectCore%sObject(value.%s,pointer[1:])};return nil,false,nil", field.key, field.condition, g.name(field.typeOf), field.name)
+			}
+		}
+		g.line("default:return nil,false,nil}")
 	}
 	g.line("}")
 }

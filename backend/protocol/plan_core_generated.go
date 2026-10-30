@@ -3301,3 +3301,226 @@ func writeCoreCounterOrigin(output JSONOutput, value *CounterOrigin, reader *val
 func readCoreCounterOrigin(value CounterOrigin, pointer []string) (JSONOutput, error) {
 	return readCoreScalar(StringValue(string(value)), pointer)
 }
+func isCoreRequestObjectPath(pointer []string) bool {
+	if len(pointer) == 0 {
+		return false
+	}
+	switch pointer[0] {
+	case "content":
+		return isCoreNodeSliceObjectPath(pointer[1:])
+	case "tools":
+		return isCoreToolSliceObjectPath(pointer[1:])
+	case "parameters":
+		return isCoreObjectObjectPath(pointer[1:])
+	case "native":
+		return isCoreNativePointerObjectPath(pointer[1:])
+	default:
+		return false
+	}
+}
+func selectCoreRequestObject(value Request, pointer []string) (Object, bool, error) {
+	switch pointer[0] {
+	case "content":
+		return selectCoreNodeSliceObject(value.Content, pointer[1:])
+	case "tools":
+		if len(value.Tools) != 0 {
+			return selectCoreToolSliceObject(value.Tools, pointer[1:])
+		}
+		return nil, false, nil
+	case "parameters":
+		if len(value.Parameters) != 0 {
+			return selectCoreObjectObject(value.Parameters, pointer[1:])
+		}
+		return nil, false, nil
+	case "native":
+		if value.Native != nil {
+			return selectCoreNativePointerObject(value.Native, pointer[1:])
+		}
+		return nil, false, nil
+	default:
+		return nil, false, nil
+	}
+}
+func isCoreRequestPointerObjectPath(pointer []string) bool {
+	return isCoreRequestObjectPath(pointer)
+}
+func selectCoreRequestPointerObject(value *Request, pointer []string) (Object, bool, error) {
+	if value == nil {
+		return selectNullCoreObject(pointer)
+	}
+	return selectCoreRequestObject(*value, pointer)
+}
+func isCoreNodeSliceObjectPath(pointer []string) bool {
+	if len(pointer) == 0 {
+		return false
+	}
+	_, err := coreArrayIndex(pointer[0], 0)
+	return err == nil && isCoreNodeObjectPath(pointer[1:])
+}
+func selectCoreNodeSliceObject(value []Node, pointer []string) (Object, bool, error) {
+	if value == nil {
+		return selectNullCoreObject(pointer)
+	}
+	index, err := coreArrayIndex(pointer[0], len(value))
+	if err != nil || index < 0 {
+		return nil, false, err
+	}
+	return selectCoreNodeObject(value[index], pointer[1:])
+}
+func isCoreToolSliceObjectPath(pointer []string) bool {
+	if len(pointer) == 0 {
+		return false
+	}
+	_, err := coreArrayIndex(pointer[0], 0)
+	return err == nil && isCoreToolObjectPath(pointer[1:])
+}
+func selectCoreToolSliceObject(value []Tool, pointer []string) (Object, bool, error) {
+	if value == nil {
+		return selectNullCoreObject(pointer)
+	}
+	index, err := coreArrayIndex(pointer[0], len(value))
+	if err != nil || index < 0 {
+		return nil, false, err
+	}
+	return selectCoreToolObject(value[index], pointer[1:])
+}
+func isCoreObjectObjectPath(pointer []string) bool {
+	return len(pointer) == 0
+}
+func selectCoreObjectObject(value Object, pointer []string) (Object, bool, error) {
+	return value, true, nil
+}
+func isCoreNativePointerObjectPath(pointer []string) bool {
+	return isCoreNativeObjectPath(pointer)
+}
+func selectCoreNativePointerObject(value *Native, pointer []string) (Object, bool, error) {
+	if value == nil {
+		return selectNullCoreObject(pointer)
+	}
+	return selectCoreNativeObject(*value, pointer)
+}
+func isCoreNodeObjectPath(pointer []string) bool {
+	if len(pointer) == 0 {
+		return false
+	}
+	switch pointer[0] {
+	case "reasoningContent":
+		return isCoreNodeSliceObjectPath(pointer[1:])
+	case "children":
+		return isCoreNodeSliceObjectPath(pointer[1:])
+	case "attributes":
+		return isCoreObjectObjectPath(pointer[1:])
+	case "native":
+		return isCoreNativePointerObjectPath(pointer[1:])
+	default:
+		return false
+	}
+}
+func selectCoreNodeObject(value Node, pointer []string) (Object, bool, error) {
+	switch pointer[0] {
+	case "reasoningContent":
+		if value.ReasoningContent != nil {
+			return selectCoreNodeSliceObject(value.ReasoningContent, pointer[1:])
+		}
+		return nil, false, nil
+	case "children":
+		if len(value.Children) != 0 {
+			return selectCoreNodeSliceObject(value.Children, pointer[1:])
+		}
+		return nil, false, nil
+	case "attributes":
+		if len(value.Attributes) != 0 {
+			return selectCoreObjectObject(value.Attributes, pointer[1:])
+		}
+		return nil, false, nil
+	case "native":
+		if value.Native != nil {
+			return selectCoreNativePointerObject(value.Native, pointer[1:])
+		}
+		return nil, false, nil
+	default:
+		return nil, false, nil
+	}
+}
+func isCoreToolObjectPath(pointer []string) bool {
+	if len(pointer) == 0 {
+		return false
+	}
+	switch pointer[0] {
+	case "options":
+		return isCoreObjectObjectPath(pointer[1:])
+	case "native":
+		return isCoreNativePointerObjectPath(pointer[1:])
+	default:
+		return false
+	}
+}
+func selectCoreToolObject(value Tool, pointer []string) (Object, bool, error) {
+	switch pointer[0] {
+	case "options":
+		if len(value.Options) != 0 {
+			return selectCoreObjectObject(value.Options, pointer[1:])
+		}
+		return nil, false, nil
+	case "native":
+		if value.Native != nil {
+			return selectCoreNativePointerObject(value.Native, pointer[1:])
+		}
+		return nil, false, nil
+	default:
+		return nil, false, nil
+	}
+}
+func isCoreNativeObjectPath(pointer []string) bool {
+	if len(pointer) == 0 {
+		return false
+	}
+	switch pointer[0] {
+	case "requestContext":
+		return isCoreNativeRequestContextPointerObjectPath(pointer[1:])
+	default:
+		return false
+	}
+}
+func selectCoreNativeObject(value Native, pointer []string) (Object, bool, error) {
+	switch pointer[0] {
+	case "requestContext":
+		if value.RequestContext != nil {
+			return selectCoreNativeRequestContextPointerObject(value.RequestContext, pointer[1:])
+		}
+		return nil, false, nil
+	default:
+		return nil, false, nil
+	}
+}
+func isCoreNativeRequestContextPointerObjectPath(pointer []string) bool {
+	return isCoreNativeRequestContextObjectPath(pointer)
+}
+func selectCoreNativeRequestContextPointerObject(value *NativeRequestContext, pointer []string) (Object, bool, error) {
+	if value == nil {
+		return selectNullCoreObject(pointer)
+	}
+	return selectCoreNativeRequestContextObject(*value, pointer)
+}
+func isCoreNativeRequestContextObjectPath(pointer []string) bool {
+	if len(pointer) == 0 {
+		return false
+	}
+	switch pointer[0] {
+	case "values":
+		return isCoreObjectObjectPath(pointer[1:])
+	default:
+		return false
+	}
+}
+func selectCoreNativeRequestContextObject(value NativeRequestContext, pointer []string) (Object, bool, error) {
+	switch pointer[0] {
+	case "values":
+		if len(value.Values) != 0 {
+			return selectCoreObjectObject(value.Values, pointer[1:])
+		}
+		return nil, false, nil
+	default:
+		return nil, false, nil
+	}
+}

@@ -8,11 +8,7 @@ import (
 )
 
 func (plan *compiledOutputPlan) buildKeys(state evaluation) (plannedOutput, error) {
-	source, err := plan.source.build(state)
-	if err != nil {
-		return plannedOutput{}, err
-	}
-	keys, err := outputObjectKeys(source.output)
+	keys, err := plan.readObjectKeys(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -33,6 +29,53 @@ func (plan *compiledOutputPlan) buildKeys(state evaluation) (plannedOutput, erro
 		node.items[index] = JSONLeaf(StringValue(key))
 	}
 	return plannedOutput{output: JSONOutput{node: node}, bytes: bytes}, nil
+}
+
+func (plan *compiledOutputPlan) readObjectKeys(state evaluation) ([]string, error) {
+	if plan.hasRequestObjectSource && state.coreRequest != nil {
+		object, isPresent, err := plan.source.expression.readRequestObject(state)
+		if err != nil {
+			return nil, err
+		}
+		if !isPresent || object == nil {
+			return nil, fmt.Errorf("expected JSON object")
+		}
+		keys := make([]string, 0, len(object))
+		for key := range object {
+			keys = append(keys, coreJSONKey(key))
+		}
+		slices.Sort(keys)
+		return slices.Compact(keys), nil
+	}
+	source, err := plan.source.build(state)
+	if err != nil {
+		return nil, err
+	}
+	return outputObjectKeys(source.output)
+}
+
+func (expression *compiledExpression) readRequestObject(state evaluation) (object Object, isPresent bool, err error) {
+	defer func() { err = locateMappingError(expression.path, err) }()
+	if err := state.advance(); err != nil {
+		return nil, false, err
+	}
+	object, isPresent, err = selectCoreRequestPointerObject(state.coreRequest, expression.pointer)
+	if err != nil {
+		return nil, false, fmt.Errorf("%s: %w", expression.path, err)
+	}
+	if expression.isRequired && !isPresent {
+		return nil, false, fmt.Errorf("%s: required field is absent", expression.path)
+	}
+	// coreRequest is bound only after the whole input fits this evaluation's
+	// budget. Keys need its names, not another normalized copy of every value.
+	return object, isPresent, nil
+}
+
+func selectNullCoreObject(pointer []string) (Object, bool, error) {
+	if len(pointer) != 0 {
+		return nil, false, fmt.Errorf("JSON pointer traverses a scalar")
+	}
+	return nil, true, nil
 }
 
 // outputObjectKeys never materializes or normalizes member values. buildKeys

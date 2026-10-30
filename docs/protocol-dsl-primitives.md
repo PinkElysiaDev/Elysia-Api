@@ -157,7 +157,15 @@ v3 program 与普通 effect 条件可读取两个运行时事实：
 null 是否覆盖缺省模型，由声明表达。Spec 断言、局部处置条件与 v2 不能使用此入口；
 未列出的运行时路径在编译期拒绝，来源身份及其余 scope 字段不在这里开放。
 
-`type` 区分 missing/null/string/array/object/boolean/number，不解码大正文。`is_integer` 按现有 int64 解码契约判断。`integer` 支持 add/subtract/lt/lte/gt/gte，先按顺序计算所有操作数，再验证类型及溢出，不使用浮点数或默认零掩盖错误。
+`type` 区分 missing/null/string/array/object/boolean/number；查询本身不解码大正文，但source求值仍可能读取、规范化字段。`is_integer` 按现有 int64 解码契约判断。`integer` 支持 add/subtract/lt/lte/gt/gte，先按顺序计算所有操作数，再验证类型及溢出，不使用浮点数或默认零掩盖错误。
+
+`keys` 返回排序、去重并独立拥有的对象键名。编译器可为直接读取typed Request中Object字段的
+`keys(read input/root)`选择生成的只取键访问器，包括参数、工具选项及节点属性；不硬编码协议字段。
+该入口已通过完整输入计量，因此无需为取名字再次规范化各成员值。它仍执行原read与keys两次
+步骤／取消检查、required和缺失／null语义、UTF-8键归一化及输出转义预算。
+生成规则复用核心字段标签，遇到任意Value即停止；raw输入、item／binding及不符合静态路径
+资格的读取事先选择原算法，执行失败后不重跑。它不新增运行时字段、缓存或Native来源权限，
+也不消除同一条件内`type(read)`的另一次读取。
 
 Spec 的 `WireAssertion.check` 在 schema 通过后检查选中值，`when` 检查所在对象，root 保持原始文档。`each` 只对明确声明的非 nullable 数组逐项应用子断言，诊断路径按原始索引追加。断言按声明顺序返回首错，错误原因使用静态说明，不把正文带进日志。
 

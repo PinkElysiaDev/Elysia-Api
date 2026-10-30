@@ -8,22 +8,23 @@ import (
 // compiledOutputPlan keeps construction nodes unencoded until the mapping
 // returns. Eligibility is decided before execution; a failed plan is never rerun.
 type compiledOutputPlan struct {
-	expression          *compiledExpression
-	fields              []outputPlanField
-	items               []*compiledOutputPlan
-	source              *compiledOutputPlan
-	body                *compiledOutputPlan
-	when                *compiledOutputPlan
-	then                *compiledOutputPlan
-	otherwise           *compiledOutputPlan
-	cases               map[string]*compiledOutputPlan
-	bindingSlots        int
-	indexSlots          int
-	rootObjectReads     uint8
-	itemObjectReads     uint8
-	hasCapture          bool
-	hasNativeTarget     bool
-	hasOutputStreamRead bool
+	expression             *compiledExpression
+	fields                 []outputPlanField
+	items                  []*compiledOutputPlan
+	source                 *compiledOutputPlan
+	body                   *compiledOutputPlan
+	when                   *compiledOutputPlan
+	then                   *compiledOutputPlan
+	otherwise              *compiledOutputPlan
+	cases                  map[string]*compiledOutputPlan
+	bindingSlots           int
+	indexSlots             int
+	rootObjectReads        uint8
+	itemObjectReads        uint8
+	hasCapture             bool
+	hasNativeTarget        bool
+	hasOutputStreamRead    bool
+	hasRequestObjectSource bool
 }
 
 type outputPlanField struct {
@@ -72,6 +73,9 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	plan.hasCapture = expression.op == "capture_native"
 	plan.hasNativeTarget = expression.op == "replay_native" || expression.op == "native_matches"
 	plan.hasOutputStreamRead = expression.op == "read" && expression.from == "runtime" && len(expression.pointer) == 2 && expression.pointer[0] == "stream"
+	if expression.op == "keys" && expression.source.op == "read" && (expression.source.from == "input" || expression.source.from == "root") {
+		plan.hasRequestObjectSource = isCoreRequestPointerObjectPath(expression.source.pointer)
+	}
 	// Nested iteration bodies bind a different item; their reads cannot justify
 	// retaining the caller's item parse tree.
 	for _, child := range []struct {
