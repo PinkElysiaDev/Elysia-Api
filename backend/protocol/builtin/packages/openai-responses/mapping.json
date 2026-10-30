@@ -10594,6 +10594,264 @@
         "op": "literal",
         "value": false
       }
+    },
+    "decode-response-metadata": {
+      "op": "let",
+      "name": "metadata",
+      "source": {
+        "op": "map",
+        "source": {
+          "op": "entries",
+          "source": {
+            "op": "project",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            "policy": "include",
+            "keys": [
+              "background",
+              "completed_at",
+              "frequency_penalty",
+              "max_output_tokens",
+              "max_tool_calls",
+              "metadata",
+              "parallel_tool_calls",
+              "presence_penalty",
+              "prompt_cache_key",
+              "prompt_cache_retention",
+              "reasoning",
+              "safety_identifier",
+              "service_tier",
+              "store",
+              "temperature",
+              "text",
+              "tools",
+              "top_logprobs",
+              "top_p",
+              "truncation",
+              "user"
+            ]
+          }
+        },
+        "body": {
+          "op": "object",
+          "fields": {
+            "name": {
+              "op": "read",
+              "from": "item",
+              "path": "/key"
+            },
+            "location": {
+              "op": "literal",
+              "value": "response"
+            },
+            "codec": {
+              "op": "literal",
+              "value": "responses"
+            },
+            "sourceCodec": {
+              "op": "literal",
+              "value": "responses"
+            },
+            "path": {
+              "op": "join",
+              "items": [
+                {
+                  "op": "literal",
+                  "value": "/"
+                },
+                {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/key"
+                }
+              ]
+            },
+            "value": {
+              "op": "read",
+              "from": "item",
+              "path": "/value"
+            }
+          }
+        }
+      },
+      "body": {
+        "op": "if",
+        "when": {
+          "op": "not",
+          "source": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "metadata"
+              },
+              {
+                "op": "literal",
+                "value": []
+              }
+            ]
+          }
+        },
+        "then": {
+          "op": "read",
+          "from": "binding",
+          "path": "",
+          "name": "metadata"
+        }
+      }
+    },
+    "decode-response-extensions": {
+      "op": "let",
+      "name": "extra",
+      "source": {
+        "op": "project",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": ""
+        },
+        "policy": "exclude",
+        "keys": [
+          "id",
+          "model",
+          "status",
+          "error",
+          "usage",
+          "object",
+          "created",
+          "created_at",
+          "output",
+          "incomplete_details",
+          "background",
+          "completed_at",
+          "frequency_penalty",
+          "max_output_tokens",
+          "max_tool_calls",
+          "metadata",
+          "parallel_tool_calls",
+          "presence_penalty",
+          "prompt_cache_key",
+          "prompt_cache_retention",
+          "reasoning",
+          "safety_identifier",
+          "service_tier",
+          "store",
+          "temperature",
+          "text",
+          "tools",
+          "top_logprobs",
+          "top_p",
+          "truncation",
+          "user"
+        ]
+      },
+      "body": {
+        "op": "if",
+        "when": {
+          "op": "not",
+          "source": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "extra"
+              },
+              {
+                "op": "literal",
+                "value": {}
+              }
+            ]
+          }
+        },
+        "then": {
+          "op": "read",
+          "from": "binding",
+          "path": "",
+          "name": "extra"
+        }
+      }
+    },
+    "encode-response-metadata": {
+      "op": "map",
+      "source": {
+        "op": "filter",
+        "source": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/metadata"
+            }
+          },
+          "then": {
+            "op": "read",
+            "from": "input",
+            "path": "/metadata"
+          },
+          "otherwise": {
+            "op": "array",
+            "items": []
+          }
+        },
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "item",
+              "path": "/location"
+            },
+            {
+              "op": "literal",
+              "value": "response"
+            }
+          ]
+        }
+      },
+      "body": {
+        "op": "object",
+        "fields": {
+          "key": {
+            "op": "read",
+            "from": "item",
+            "path": "/name"
+          },
+          "value": {
+            "op": "read",
+            "from": "item",
+            "path": "/value"
+          }
+        }
+      }
+    },
+    "response-extensions": {
+      "op": "if",
+      "when": {
+        "op": "exists",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/attributes/wire:openai_responses"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "input",
+        "path": "/attributes/wire:openai_responses"
+      },
+      "otherwise": {
+        "op": "object",
+        "fields": {}
+      }
     }
   },
   "directions": {
@@ -11160,6 +11418,10 @@
                   "otherwise": {
                     "op": "omit"
                   }
+                },
+                "wire:openai_responses": {
+                  "op": "ref",
+                  "ref": "decode-response-extensions"
                 }
               }
             },
@@ -11190,6 +11452,10 @@
                 "name": "selected"
               }
             }
+          },
+          "metadata": {
+            "op": "ref",
+            "ref": "decode-response-metadata"
           }
         }
       },
@@ -11229,135 +11495,261 @@
     "encode_response": {
       "document": "client-response",
       "program": {
-        "op": "object",
-        "fields": {
-          "id": {
-            "op": "read",
-            "from": "input",
-            "path": "/id"
-          },
-          "model": {
-            "op": "read",
-            "from": "input",
-            "path": "/model"
-          },
-          "object": {
-            "op": "literal",
-            "value": "response"
-          },
-          "created_at": {
-            "op": "read",
-            "from": "input",
-            "path": "/attributes/created_at"
-          },
-          "status": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/attributes/finishReason"
-              }
-            },
-            "then": {
-              "op": "choose",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/attributes/finishReason"
-              },
-              "cases": {
-                "stop": {
-                  "op": "literal",
-                  "value": "completed"
+        "op": "merge",
+        "policy": "last",
+        "items": [
+          {
+            "op": "merge_deep",
+            "items": [
+              {
+                "op": "from_entries",
+                "source": {
+                  "op": "concat",
+                  "items": [
+                    {
+                      "op": "entries",
+                      "source": {
+                        "op": "object",
+                        "fields": {
+                          "id": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/id"
+                          },
+                          "model": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/model"
+                          },
+                          "error": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/error"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "op": "ref",
+                      "ref": "encode-response-metadata"
+                    }
+                  ]
                 },
-                "tool_calls": {
-                  "op": "literal",
-                  "value": "completed"
-                },
-                "length": {
-                  "op": "literal",
-                  "value": "incomplete"
-                },
-                "content_filter": {
-                  "op": "literal",
-                  "value": "incomplete"
+                "policy": "identical",
+                "onConflict": {
+                  "code": "unsupported_capability",
+                  "stage": "wire",
+                  "reason": "response metadata collides with a mapped field",
+                  "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
                 }
+              },
+              {
+                "op": "ref",
+                "ref": "response-extensions"
               }
-            },
-            "otherwise": {
-              "op": "read",
-              "from": "input",
-              "path": "/status"
+            ],
+            "onConflict": {
+              "code": "unsupported_capability",
+              "stage": "wire",
+              "reason": "native extension collides with a mapped field",
+              "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
             }
           },
-          "incomplete_details": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/attributes/finishReason"
-              }
-            },
-            "then": {
-              "op": "choose",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/attributes/finishReason"
+          {
+            "op": "object",
+            "fields": {
+              "object": {
+                "op": "literal",
+                "value": "response"
               },
-              "cases": {
-                "length": {
-                  "op": "object",
-                  "fields": {
-                    "reason": {
+              "created_at": {
+                "op": "read",
+                "from": "input",
+                "path": "/attributes/created_at"
+              },
+              "status": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/attributes/finishReason"
+                  }
+                },
+                "then": {
+                  "op": "choose",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/attributes/finishReason"
+                  },
+                  "cases": {
+                    "stop": {
                       "op": "literal",
-                      "value": "max_output_tokens"
+                      "value": "completed"
+                    },
+                    "tool_calls": {
+                      "op": "literal",
+                      "value": "completed"
+                    },
+                    "length": {
+                      "op": "literal",
+                      "value": "incomplete"
+                    },
+                    "content_filter": {
+                      "op": "literal",
+                      "value": "incomplete"
                     }
                   }
                 },
-                "content_filter": {
-                  "op": "object",
-                  "fields": {
-                    "reason": {
-                      "op": "literal",
-                      "value": "content_filter"
+                "otherwise": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/status"
+                }
+              },
+              "incomplete_details": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/attributes/finishReason"
+                  }
+                },
+                "then": {
+                  "op": "choose",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/attributes/finishReason"
+                  },
+                  "cases": {
+                    "length": {
+                      "op": "object",
+                      "fields": {
+                        "reason": {
+                          "op": "literal",
+                          "value": "max_output_tokens"
+                        }
+                      }
+                    },
+                    "content_filter": {
+                      "op": "object",
+                      "fields": {
+                        "reason": {
+                          "op": "literal",
+                          "value": "content_filter"
+                        }
+                      }
                     }
+                  },
+                  "otherwise": {
+                    "op": "omit"
                   }
                 }
               },
-              "otherwise": {
-                "op": "omit"
+              "output": {
+                "op": "map",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/content"
+                },
+                "body": {
+                  "op": "ref",
+                  "ref": "encode-response-item"
+                }
+              },
+              "usage": {
+                "op": "ref",
+                "ref": "encode-usage"
+              },
+              "id": {
+                "op": "read",
+                "from": "input",
+                "path": "/id"
+              },
+              "model": {
+                "op": "read",
+                "from": "input",
+                "path": "/model"
+              },
+              "error": {
+                "op": "read",
+                "from": "input",
+                "path": "/error"
               }
             }
-          },
-          "output": {
-            "op": "map",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/content"
-            },
-            "body": {
-              "op": "ref",
-              "ref": "encode-response-item"
-            }
-          },
-          "usage": {
-            "op": "ref",
-            "ref": "encode-usage"
-          },
-          "error": {
-            "op": "read",
-            "from": "input",
-            "path": "/error"
           }
-        }
+        ]
       },
       "effects": [
+        {
+          "id": "response-metadata-owner",
+          "kind": "reject",
+          "path": "/metadata",
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "filter",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/metadata"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/metadata"
+                    },
+                    "otherwise": {
+                      "op": "array",
+                      "items": []
+                    }
+                  },
+                  "when": {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/codec"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "responses"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": []
+                }
+              ]
+            }
+          },
+          "reason": "response metadata requires response_metadata projection",
+          "diagnostic": {
+            "code": "unsupported_capability",
+            "stage": "wire",
+            "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+          }
+        },
         {
           "id": "model",
           "kind": "emit",

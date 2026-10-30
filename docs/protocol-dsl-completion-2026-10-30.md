@@ -84,3 +84,54 @@ Spec 操作而非编译后的 Operation。修正测试输入／绑定后通过�
 随后固定修改集的 Go 全量通过（约 98 秒）、vet 通过，日志为
 `checks/completion-documents-go-all.*` 和 `completion-documents-vet.*`。
 此阶段未改前端，未重跑性能或六目标；修改前归档仍对应 dev.81。
+
+## 第三批：模型发现、声明诊断与响应字段（dev.83）
+
+模型发现已能由两份源文件编译。Spec 只含 GET 端点、目录文档和分页参数；Mapping 的
+`operations.*.decodeModels` 描述目录转换，`modelSamples` 纳入原验证及样例哈希。
+复用既有 ModelPage、分页／凭据约束和完整输入预算，不将模型目录伪装成核心 Response。
+models-only 包不取得生成能力证据；未声明模型发现的包不分配模型运行状态。
+管理加载及四预置的 models 操作仍待接通，不能将内部编译测试称为产品闭环完成。
+
+两源编译移除每源预算扫描后再合包重扫的重复工作：各源只检查字节长度和 JSON 有效性，
+组合预算扫描一次，再分别严格解码。身份及超限测试保持原期望。
+
+Responses 普通根 metadata 的 string/bool/number/object/array 类型字段现已映射到独立核心元数据，
+未知根字段落在自身 wire owner。原生往返、修改 model 和无根 Native 重建比较通过；
+新增通用 entries/from_entries 用于动态成员构造，未增加供应商 Go 逻辑。
+最终 root renderer 保留原 identity/metadata 冲突检查和后续包络字段覆盖顺序。
+静态 emit 证明补充 last merge 的最后成员写入者，不给整个合并对象作完整复制承诺。
+
+尚未完成：Responses output_text 一致性、tool_usage、access_programs 等特殊元数据，
+usage 内未知扩展、foreign response owner 的完整拒绝和动态元数据错误位置。
+三个非法普通元数据反例还复现旧 JSON decoder 将错误标成 decode_event/stream；新声明为
+decode_response/wire，错误码、业务字段和原因相同。该对外归因差异明确登记，未据此宣称完整等价。
+
+`completion-models-metadata-protocol` 的 protocol/builtin 全量通过。
+定向与原失败证据包括 `completion-object-entries`、`completion-response-extensions-*`、
+`completion-response-metadata*`。一条组合正则未选中 builtin 测试，随后已用实际测试路径重跑，
+不将该空运行作为验收。Python 编辑脚本语法错误造成的未修改失败也保留。
+此阶段未重测性能，不把新声明的功能完整性成本称为零开销。
+
+## Chat cache miss 计量声明
+
+迁移检查发现 Chat 草案未读取 `prompt_cache_miss_tokens`：合法响应会丢失由命中与未命中
+计数推导的输入、总量和未缓存明细，也会接受旧模块拒绝的矛盾计数。修复仅进入 Chat
+`mapping.json`，以命名表达式复用命中选择、输入推导及计数约束，不新增 Go 厂商分支。
+显式观测计数不改成推导计数；缓存创建量从未命中量扣除；缺失计数不默认补零。
+
+复用现有 Chat 迁移测试，5 项成功场景比较完整核心对象和移除根 Native 后的编码字节，
+11 项拒绝核对旧版的错误码、阶段、路径、原因及方向。声明拒绝使用通用 diagnostic
+分类保留 `upstream_contract_violation/runtime`，仅增加规则证据及内部错误包装。
+只有 miss 而缺少总输入的同步响应仍由现有核心算术检查拒绝；流式晚到 usage 合并
+没有在本批改写。证据位于 `checks/completion-chat-cache-{before-isolated-fixed,diagnostics}.*`；
+首次修改前记录为 `completion-chat-cache-before.*`。过程中一次测试助手调用不存在的
+Response.Clone 导致编译失败、一次修订脚本路径错误未写入文件，均保留原始失败记录。
+
+另独立发现：空 `choices` 解码后移除根 Native，旧 Chat 编码器合成一个空 assistant
+choice，草案输出空数组。本批不处理这一消息布局缺口；usage 编码比较显式使用两边
+相同的普通 assistant 节点，核心解码比较仍保留原始空 choices。后续消息布局迁移必须
+单独承接，不能把本批 usage 通过解释为响应转换全部等价。
+
+最终 builtin 全量通过，记录为 `checks/completion-chat-cache-builtin-final.*`。
+本批只补声明中的已有计量语义，尚未重测 DSL 性能。

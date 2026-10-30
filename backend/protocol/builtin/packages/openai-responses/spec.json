@@ -36,7 +36,369 @@
       "schema": {
         "type": "object",
         "allowUnknown": true
-      }
+      },
+      "assertions": [
+        {
+          "path": "/background",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/background"
+            }
+          },
+          "schema": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected bool or null"
+        },
+        {
+          "path": "/completed_at",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/completed_at"
+            }
+          },
+          "schema": {
+            "type": "number",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected number or null"
+        },
+        {
+          "path": "/frequency_penalty",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/frequency_penalty"
+            }
+          },
+          "schema": {
+            "type": "number",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected number or null"
+        },
+        {
+          "path": "/max_output_tokens",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/max_output_tokens"
+            }
+          },
+          "schema": {
+            "type": "number",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected number or null"
+        },
+        {
+          "path": "/max_tool_calls",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/max_tool_calls"
+            }
+          },
+          "schema": {
+            "type": "number",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected number or null"
+        },
+        {
+          "path": "/metadata",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/metadata"
+            }
+          },
+          "schema": {
+            "type": "object",
+            "nullable": true,
+            "allowUnknown": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected object or null"
+        },
+        {
+          "path": "/parallel_tool_calls",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parallel_tool_calls"
+            }
+          },
+          "schema": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected bool or null"
+        },
+        {
+          "path": "/presence_penalty",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/presence_penalty"
+            }
+          },
+          "schema": {
+            "type": "number",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected number or null"
+        },
+        {
+          "path": "/prompt_cache_key",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/prompt_cache_key"
+            }
+          },
+          "schema": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected string or null"
+        },
+        {
+          "path": "/prompt_cache_retention",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/prompt_cache_retention"
+            }
+          },
+          "schema": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected string or null"
+        },
+        {
+          "path": "/reasoning",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/reasoning"
+            }
+          },
+          "schema": {
+            "type": "object",
+            "nullable": true,
+            "allowUnknown": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected object or null"
+        },
+        {
+          "path": "/safety_identifier",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/safety_identifier"
+            }
+          },
+          "schema": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected string or null"
+        },
+        {
+          "path": "/service_tier",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/service_tier"
+            }
+          },
+          "schema": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected string or null"
+        },
+        {
+          "path": "/store",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/store"
+            }
+          },
+          "schema": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected bool or null"
+        },
+        {
+          "path": "/temperature",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/temperature"
+            }
+          },
+          "schema": {
+            "type": "number",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected number or null"
+        },
+        {
+          "path": "/text",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/text"
+            }
+          },
+          "schema": {
+            "type": "object",
+            "nullable": true,
+            "allowUnknown": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected object or null"
+        },
+        {
+          "path": "/tools",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/tools"
+            }
+          },
+          "schema": {
+            "type": "array",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected array or null"
+        },
+        {
+          "path": "/top_logprobs",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/top_logprobs"
+            }
+          },
+          "schema": {
+            "type": "number",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected number or null"
+        },
+        {
+          "path": "/top_p",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/top_p"
+            }
+          },
+          "schema": {
+            "type": "number",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected number or null"
+        },
+        {
+          "path": "/truncation",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/truncation"
+            }
+          },
+          "schema": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected string or null"
+        },
+        {
+          "path": "/user",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/user"
+            }
+          },
+          "schema": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "invalid response metadata type; expected string or null"
+        }
+      ]
     },
     "client-response": {
       "schema": {

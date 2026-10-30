@@ -34,6 +34,7 @@ func TestResponsesPackageDraftMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	draft := compileBuiltinPackage(t, "openai-responses")
+	checkResponsesResponseExtensions(t, legacy, draft)
 	for _, sample := range definition.Samples {
 		if sample.Direction == p.DecodeEvent || sample.Direction == p.EncodeEvent {
 			continue
@@ -139,6 +140,74 @@ func TestResponsesPackageDraftMigration(t *testing.T) {
 	checkResponsesModelOwnerEncoding(t, legacy, draft)
 	checkPackageTrackingUsers(t, legacy, draft)
 	checkPackageMediaURIs(t, legacy, draft, definition)
+}
+
+func checkResponsesResponseExtensions(t *testing.T, legacy, draft *p.Compiled) {
+	t.Helper()
+	const base = `{ "id":"r","model":"m","object":"response","status":"completed","output":[],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3},"future":{"n":9007199254740993,"null":null,"values":[1e2,"<"]} }`
+	options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
+	for _, fixture := range []struct{ name, extra string }{
+		{"unknown", ""},
+		{"metadata", `,"service_tier":"default","metadata":{"trace":"synthetic","n":9007199254740993},"store":false,"temperature":0.25,"tools":[],"reasoning":{},"text":{},"user":"synthetic-user"`},
+		{"null-metadata", `,"service_tier":null,"metadata":null,"tools":null,"store":null`},
+	} {
+		raw := strings.TrimSuffix(base, " }") + fixture.extra + " }"
+		t.Run("response-extensions/"+fixture.name, func(t *testing.T) {
+			original, err := legacy.DecodeResponse(t.Context(), []byte(raw), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoded, err := draft.DecodeResponse(t.Context(), []byte(raw), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			original.SchemaVersion = p.ProtocolCoreVersion
+			want, wantErr := p.EncodeValue(original)
+			got, gotErr := p.EncodeValue(decoded)
+			checkPackageMigration(t, want.Bytes(), got.Bytes(), wantErr, gotErr, packageMigrationGap{})
+			original.SchemaVersion = p.SemanticSchemaVersion
+			for _, mode := range []string{"native", "changed-model", "rebuilt"} {
+				t.Run(mode, func(t *testing.T) {
+					before, after := *original, *decoded
+					if mode == "changed-model" {
+						before.Model, after.Model = p.StringValue("routed"), p.StringValue("routed")
+					} else if mode == "rebuilt" {
+						before.Native, after.Native = nil, nil
+					}
+					input, err := p.EncodeValue(after)
+					if err != nil {
+						t.Fatal(err)
+					}
+					want, wantErr := legacy.EncodeResponse(t.Context(), &before, options)
+					got, gotErr := draft.EncodeResponse(t.Context(), &after, options)
+					checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+					if mode == "native" && string(got) != raw {
+						t.Fatal("unchanged response lost original bytes")
+					}
+					current, err := p.EncodeValue(after)
+					if err != nil || current != input {
+						t.Fatal("response encoding changed caller input", err)
+					}
+				})
+			}
+		})
+	}
+	for _, fixture := range []struct{ field, value string }{{"service_tier", "1"}, {"metadata", "[]"}, {"store", `"false"`}} {
+		t.Run("response-metadata-type/"+fixture.field, func(t *testing.T) {
+			raw := strings.TrimSuffix(base, " }") + `,"` + fixture.field + `":` + fixture.value + " }"
+			_, wantErr := legacy.DecodeResponse(t.Context(), []byte(raw), options)
+			_, gotErr := draft.DecodeResponse(t.Context(), []byte(raw), options)
+			var before, after *p.ConversionError
+			if !errors.As(wantErr, &before) || !errors.As(gotErr, &after) || len(before.Issues) != 1 || len(after.Issues) != 1 {
+				t.Fatal("invalid response metadata lost rejection", wantErr, gotErr)
+			}
+			want, got := before.Issues[0], after.Issues[0]
+			if want.Code != got.Code || want.Path != got.Path || want.Reason != got.Reason || want.Stage != "stream" || want.Direction != p.DecodeEvent || got.Stage != "wire" || got.Direction != p.DecodeResponse {
+				t.Fatal("metadata type error changed its public attribution", want, got)
+			}
+			t.Log("NOT CLOSED: old JSON metadata rejection is labeled as a stream event; candidate uses its response wire boundary")
+		})
+	}
 }
 
 func checkResponsesModelOwnerEncoding(t *testing.T, legacy, draft *p.Compiled) {

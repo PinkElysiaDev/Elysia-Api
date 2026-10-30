@@ -177,3 +177,19 @@ null 是否覆盖缺省模型，由声明表达。Spec 断言、局部处置条�
 Spec 的 `WireAssertion.check` 在 schema 通过后检查选中值，`when` 检查所在对象，root 保持原始文档。`each` 只对明确声明的非 nullable 数组逐项应用子断言，诊断路径按原始索引追加。断言按声明顺序返回首错，错误原因使用静态说明，不把正文带进日志。
 
 转换取舍属于 Mapping effects，不能放进这些原语。缓存及 historyRetention 的有限处置分别见 [缓存说明](protocol-cache-dispositions.md) 和 [历史保留说明](protocol-history-declarations.md)。
+
+## 对象键值项
+
+`entries` 把对象变成按解码键排序的 `[{"key":...,"value":...}]`；空对象得到空数组，
+显式 null 保留，原对象重复键沿用最后一个值。它不把缺失或 null 对象替换成空对象。
+`from_entries` 反向构造对象，每项必须恰有字符串 key 和 value；空字符串键是合法 JSON 键。
+`policy:"reject"` 拒绝任何重复键，`policy:"identical"` 只允许编码字节完全相同的重复值，
+数字 `1` 与 `1.0` 仍冲突。支持与 `merge_deep` 相同的局部 `onConflict` 诊断。
+
+二者复用延迟容器和不可变叶子，不逐项编码正文，也不授予 Native 来源。
+遍历逐项执行原有步数／取消检查，构造结果继续受逻辑字节和最终节点／深度预算限制。
+这组工具用于动态字段映射，不内置 metadata 或供应商语义。
+
+显式 `reject` effect 可用 `diagnostic` 指定 code、stage 和可选 suggestion，path、reason、id
+继续取自 effect。仅实际拒绝时采用该分类，条件求值、emit 缺失和 aggregate 失败不会被捕获。
+带投影 scope 的 effect 暂不接受此字段，避免配置被另一处理边界静默忽略。

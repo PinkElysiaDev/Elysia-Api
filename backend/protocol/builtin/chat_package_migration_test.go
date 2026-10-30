@@ -97,6 +97,7 @@ func TestChatPackageDraftMigration(t *testing.T) {
 	checkChatRequestOwners(t, legacy, draft)
 	checkChatReasoningParameters(t, legacy, draft)
 	checkChatCollectedUsage(t, legacy, draft)
+	checkChatCacheUsage(t, legacy, draft)
 	checkPackageTrackingUsers(t, legacy, draft)
 	checkPackageMediaURIs(t, legacy, draft, definition)
 	wire := testValue(t, `{"model":"m","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{"q":{"type":"string"}}}}}],"tool_choice":{"type":"function","function":{"name":"lookup"}}}`)
@@ -118,6 +119,70 @@ func TestChatPackageDraftMigration(t *testing.T) {
 			want, wantErr := executePackageMigrationSample(t, legacy, sample, options, false)
 			got, gotErr := executePackageMigrationSample(t, draft, sample, options, true)
 			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+		})
+	}
+}
+
+func checkChatCacheUsage(t *testing.T, legacy, draft *p.Compiled) {
+	t.Helper()
+	for _, fixture := range []struct{ name, usage, rejection string }{
+		{"nested-hit-infers-input", `{"prompt_tokens_details":{"cached_tokens":2},"prompt_cache_miss_tokens":3,"completion_tokens":1}`, ""},
+		{"input-infers-hit", `{"prompt_tokens":5,"prompt_cache_miss_tokens":3,"completion_tokens":1}`, ""},
+		{"observed-counts-and-alias-order", `{"prompt_tokens":5,"completion_tokens":1,"total_tokens":9,"cache_read_input_tokens":1,"prompt_tokens_details":{"cached_tokens":2},"prompt_cache_hit_tokens":2,"prompt_cache_miss_tokens":3}`, ""},
+		{"creation-adjusts-miss", `{"prompt_cache_hit_tokens":2,"prompt_cache_miss_tokens":3,"completion_tokens":1,"cache_creation_input_tokens":1,"prompt_tokens_details":{"cache_write_tokens":1}}`, ""},
+		{"missing-miss", `{"prompt_tokens":5,"completion_tokens":1,"prompt_cache_hit_tokens":2}`, ""},
+		{"null-miss", `{"prompt_tokens":5,"prompt_cache_miss_tokens":null}`, "usage counter cannot be null"},
+		{"fractional-miss", `{"prompt_tokens":5,"prompt_cache_miss_tokens":1.5}`, "usage counter must be a nonnegative int64"},
+		{"negative-miss", `{"prompt_tokens":5,"prompt_cache_miss_tokens":-1}`, "usage counter must be a nonnegative int64"},
+		{"masked-null-counter", `{"cache_read_input_tokens":null,"prompt_tokens_details":{"cached_tokens":2},"prompt_cache_miss_tokens":3}`, "usage counter cannot be null"},
+		{"conflicting-hit", `{"prompt_tokens_details":{"cached_tokens":2},"prompt_cache_hit_tokens":3,"prompt_cache_miss_tokens":3}`, "prompt_cache_hit_tokens disagrees with cached input"},
+		{"contradictory-miss", `{"prompt_tokens":5,"prompt_cache_hit_tokens":2,"prompt_cache_miss_tokens":4}`, "prompt_cache_miss_tokens disagrees with prompt input and cache hits"},
+		{"creation-exceeds-miss", `{"prompt_tokens":5,"prompt_cache_hit_tokens":2,"prompt_cache_miss_tokens":3,"cache_creation_input_tokens":4}`, "cache creation exceeds prompt cache misses"},
+		{"conflicting-creation", `{"prompt_tokens":5,"prompt_cache_miss_tokens":3,"cache_creation_input_tokens":1,"prompt_tokens_details":{"cache_write_tokens":2}}`, "disagrees with another cache creation counter"},
+		{"input-overflow", `{"prompt_tokens_details":{"cached_tokens":9223372036854775807},"prompt_cache_miss_tokens":1}`, "usage count overflow"},
+		{"total-overflow", `{"prompt_cache_hit_tokens":9223372036854775806,"prompt_cache_miss_tokens":1,"completion_tokens":1}`, "usage count overflow"},
+		{"miss-without-input", `{"prompt_cache_miss_tokens":3,"completion_tokens":1}`, "uncached subtotal requires total input"},
+	} {
+		t.Run("cache-miss-usage/"+fixture.name, func(t *testing.T) {
+			wire := `{"id":"r","model":"m","choices":[],"usage":` + fixture.usage + `}`
+			original, wantErr := legacy.DecodeResponse(t.Context(), []byte(wire), p.EvaluationContext{})
+			candidate, gotErr := draft.DecodeResponse(t.Context(), []byte(wire), p.EvaluationContext{})
+			if fixture.rejection != "" {
+				var oldFailure, newFailure *p.ConversionError
+				if !errors.As(wantErr, &oldFailure) || !strings.Contains(wantErr.Error(), fixture.rejection) || !errors.As(gotErr, &newFailure) {
+					t.Fatal("invalid cache usage changed acceptance or lost its structured error", wantErr, gotErr)
+				}
+				if len(oldFailure.Issues) != 1 || len(newFailure.Issues) != 1 {
+					t.Fatal("cache usage rejection count changed", wantErr, gotErr)
+				}
+				oldIssue, newIssue := oldFailure.Issues[0], newFailure.Issues[0]
+				if oldIssue.Code != newIssue.Code || oldIssue.Stage != newIssue.Stage || oldIssue.Path != newIssue.Path || oldIssue.Reason != newIssue.Reason || oldIssue.Direction != newIssue.Direction {
+					t.Fatal("cache usage rejection classification changed", wantErr, gotErr)
+				}
+				if migrationError(wantErr) != migrationError(gotErr) {
+					t.Log("Declarative rejection adds rule evidence; external classification is preserved", migrationError(wantErr), migrationError(gotErr))
+				}
+				return
+			}
+			if wantErr != nil || gotErr != nil {
+				t.Fatal("valid cache usage must decode", wantErr, gotErr)
+			}
+			original.SchemaVersion = p.ProtocolCoreVersion
+			want, wantErr := p.EncodeValue(original)
+			got, gotErr := p.EncodeValue(candidate)
+			checkPackageMigration(t, want.Bytes(), got.Bytes(), wantErr, gotErr, packageMigrationGap{})
+			original.SchemaVersion = p.SemanticSchemaVersion
+			original.Native, candidate.Native = nil, nil
+			// Empty-choice synthesis is a separate migration gap; use the same
+			// ordinary message to compare usage rendering without native replay.
+			original.Content = []p.Node{{Kind: p.MessageNode, Role: p.StringValue("assistant")}}
+			candidate.Content = []p.Node{{Kind: p.MessageNode, Role: p.StringValue("assistant")}}
+			wantWire, wantErr := legacy.EncodeResponse(t.Context(), original, p.EvaluationContext{})
+			gotWire, gotErr := draft.EncodeResponse(t.Context(), candidate, p.EvaluationContext{})
+			if wantErr != nil {
+				t.Fatal("legacy usage must encode without root Native", wantErr)
+			}
+			checkPackageMigration(t, wantWire, gotWire, wantErr, gotErr, packageMigrationGap{})
 		})
 	}
 }

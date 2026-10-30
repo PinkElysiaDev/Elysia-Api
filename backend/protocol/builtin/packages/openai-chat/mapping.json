@@ -5030,6 +5030,888 @@
         }
       }
     },
+    "decode-usage-base-hit": {
+      "op": "if",
+      "when": {
+        "op": "exists",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/usage/prompt_tokens_details/cached_tokens"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "input",
+        "path": "/usage/prompt_tokens_details/cached_tokens"
+      },
+      "otherwise": {
+        "op": "read",
+        "from": "input",
+        "path": "/usage/cache_read_input_tokens"
+      }
+    },
+    "decode-usage-hit": {
+      "op": "if",
+      "when": {
+        "op": "exists",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/usage/prompt_cache_hit_tokens"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "input",
+        "path": "/usage/prompt_cache_hit_tokens"
+      },
+      "otherwise": {
+        "op": "ref",
+        "ref": "decode-usage-base-hit"
+      }
+    },
+    "decode-usage-input": {
+      "op": "if",
+      "when": {
+        "op": "exists",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/usage/prompt_tokens"
+        }
+      },
+      "then": {
+        "op": "object",
+        "fields": {
+          "count": {
+            "op": "read",
+            "from": "input",
+            "path": "/usage/prompt_tokens"
+          },
+          "origin": {
+            "op": "literal",
+            "value": "observed"
+          }
+        }
+      },
+      "otherwise": {
+        "op": "if",
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "cache-hit"
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage/prompt_cache_miss_tokens"
+              }
+            }
+          ]
+        },
+        "then": {
+          "op": "object",
+          "fields": {
+            "count": {
+              "op": "integer",
+              "operation": "add",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "cache-hit"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_cache_miss_tokens"
+                }
+              ]
+            },
+            "origin": {
+              "op": "literal",
+              "value": "inferred"
+            }
+          }
+        }
+      }
+    },
+    "has-null-usage-counter": {
+      "op": "not",
+      "source": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "filter",
+            "source": {
+              "op": "array",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/completion_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/total_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_read_input_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_creation_input_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_cache_hit_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_cache_miss_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens_details/cached_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens_details/cache_write_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens_details/cached_creation_tokens"
+                }
+              ]
+            },
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "null"
+                }
+              ]
+            }
+          },
+          {
+            "op": "literal",
+            "value": []
+          }
+        ]
+      }
+    },
+    "has-invalid-usage-counters": {
+      "op": "not",
+      "source": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "filter",
+            "source": {
+              "op": "array",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/completion_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/total_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_read_input_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_creation_input_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_cache_hit_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_cache_miss_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens_details/cached_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens_details/cache_write_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens_details/cached_creation_tokens"
+                }
+              ]
+            },
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "if",
+                "when": {
+                  "op": "is_integer",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": ""
+                  }
+                },
+                "then": {
+                  "op": "integer",
+                  "operation": "gte",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": ""
+                    },
+                    {
+                      "op": "literal",
+                      "value": 0
+                    }
+                  ]
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              }
+            }
+          },
+          {
+            "op": "literal",
+            "value": []
+          }
+        ]
+      }
+    },
+    "has-conflicting-usage-creation-write": {
+      "op": "any",
+      "items": [
+        {
+          "op": "if",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_creation_input_tokens"
+                }
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens_details/cache_write_tokens"
+                }
+              }
+            ]
+          },
+          "then": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "integer",
+                  "operation": "subtract",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage/cache_creation_input_tokens"
+                    },
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage/prompt_tokens_details/cache_write_tokens"
+                    }
+                  ]
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        {
+          "op": "if",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens_details/cache_write_tokens"
+                }
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens_details/cached_creation_tokens"
+                }
+              }
+            ]
+          },
+          "then": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "integer",
+                  "operation": "subtract",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage/prompt_tokens_details/cache_write_tokens"
+                    },
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage/prompt_tokens_details/cached_creation_tokens"
+                    }
+                  ]
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      ]
+    },
+    "has-conflicting-usage-creation-alias": {
+      "op": "if",
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/usage/cache_creation_input_tokens"
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/usage/prompt_tokens_details/cached_creation_tokens"
+            }
+          }
+        ]
+      },
+      "then": {
+        "op": "not",
+        "source": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "integer",
+              "operation": "subtract",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_creation_input_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens_details/cached_creation_tokens"
+                }
+              ]
+            },
+            {
+              "op": "literal",
+              "value": 0
+            }
+          ]
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    "has-conflicting-usage-hit": {
+      "op": "if",
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/usage/prompt_cache_hit_tokens"
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "ref",
+              "ref": "decode-usage-base-hit"
+            }
+          }
+        ]
+      },
+      "then": {
+        "op": "not",
+        "source": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "integer",
+              "operation": "subtract",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_cache_hit_tokens"
+                },
+                {
+                  "op": "ref",
+                  "ref": "decode-usage-base-hit"
+                }
+              ]
+            },
+            {
+              "op": "literal",
+              "value": 0
+            }
+          ]
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    "has-overflowing-usage-input": {
+      "op": "if",
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "not",
+            "source": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage/prompt_tokens"
+              }
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "ref",
+              "ref": "decode-usage-hit"
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/usage/prompt_cache_miss_tokens"
+            }
+          }
+        ]
+      },
+      "then": {
+        "op": "integer",
+        "operation": "gt",
+        "items": [
+          {
+            "op": "ref",
+            "ref": "decode-usage-hit"
+          },
+          {
+            "op": "integer",
+            "operation": "subtract",
+            "items": [
+              {
+                "op": "literal",
+                "value": 9223372036854775807
+              },
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/usage/prompt_cache_miss_tokens"
+              }
+            ]
+          }
+        ]
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    "has-contradictory-usage-miss": {
+      "op": "if",
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/usage/prompt_tokens"
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "ref",
+              "ref": "decode-usage-hit"
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/usage/prompt_cache_miss_tokens"
+            }
+          }
+        ]
+      },
+      "then": {
+        "op": "not",
+        "source": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "integer",
+              "operation": "subtract",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens"
+                },
+                {
+                  "op": "ref",
+                  "ref": "decode-usage-hit"
+                }
+              ]
+            },
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/usage/prompt_cache_miss_tokens"
+            }
+          ]
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    "has-creation-exceeding-usage-miss": {
+      "op": "let",
+      "name": "creation",
+      "source": {
+        "op": "if",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage/prompt_tokens_details/cache_write_tokens"
+              }
+            },
+            "then": {
+              "op": "read",
+              "from": "input",
+              "path": "/usage/prompt_tokens_details/cache_write_tokens"
+            },
+            "otherwise": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens_details/cached_creation_tokens"
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage/prompt_tokens_details/cached_creation_tokens"
+              },
+              "otherwise": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage/cache_creation_input_tokens"
+              }
+            }
+          }
+        },
+        "then": {
+          "op": "object",
+          "fields": {
+            "count": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens_details/cache_write_tokens"
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage/prompt_tokens_details/cache_write_tokens"
+              },
+              "otherwise": {
+                "op": "if",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/usage/prompt_tokens_details/cached_creation_tokens"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/prompt_tokens_details/cached_creation_tokens"
+                },
+                "otherwise": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_creation_input_tokens"
+                }
+              }
+            },
+            "origin": {
+              "op": "literal",
+              "value": "observed"
+            }
+          }
+        }
+      },
+      "body": {
+        "op": "if",
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage/prompt_cache_miss_tokens"
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "creation"
+              }
+            }
+          ]
+        },
+        "then": {
+          "op": "integer",
+          "operation": "gt",
+          "items": [
+            {
+              "op": "read",
+              "from": "binding",
+              "path": "/count",
+              "name": "creation"
+            },
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/usage/prompt_cache_miss_tokens"
+            }
+          ]
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      }
+    },
+    "has-overflowing-usage-total": {
+      "op": "let",
+      "name": "cache-hit",
+      "source": {
+        "op": "ref",
+        "ref": "decode-usage-hit"
+      },
+      "body": {
+        "op": "let",
+        "name": "input-count",
+        "source": {
+          "op": "ref",
+          "ref": "decode-usage-input"
+        },
+        "body": {
+          "op": "if",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "not",
+                "source": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/usage/total_tokens"
+                  }
+                }
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "input-count"
+                }
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/completion_tokens"
+                }
+              }
+            ]
+          },
+          "then": {
+            "op": "integer",
+            "operation": "gt",
+            "items": [
+              {
+                "op": "read",
+                "from": "binding",
+                "path": "/count",
+                "name": "input-count"
+              },
+              {
+                "op": "integer",
+                "operation": "subtract",
+                "items": [
+                  {
+                    "op": "literal",
+                    "value": 9223372036854775807
+                  },
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/usage/completion_tokens"
+                  }
+                ]
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      }
+    },
     "decode-usage": {
       "op": "if",
       "when": {
@@ -5041,278 +5923,27 @@
         }
       },
       "then": {
-        "op": "object",
-        "fields": {
-          "input": {
-            "op": "if",
-            "when": {
-              "op": "exists",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/usage/prompt_tokens"
-              }
-            },
-            "then": {
-              "op": "object",
-              "fields": {
-                "count": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/prompt_tokens"
-                },
-                "origin": {
-                  "op": "literal",
-                  "value": "observed"
-                }
-              }
-            }
+        "op": "let",
+        "name": "cache-hit",
+        "source": {
+          "op": "ref",
+          "ref": "decode-usage-hit"
+        },
+        "body": {
+          "op": "let",
+          "name": "input-count",
+          "source": {
+            "op": "ref",
+            "ref": "decode-usage-input"
           },
-          "output": {
-            "op": "if",
-            "when": {
-              "op": "exists",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/usage/completion_tokens"
-              }
-            },
-            "then": {
-              "op": "object",
-              "fields": {
-                "count": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/completion_tokens"
-                },
-                "origin": {
-                  "op": "literal",
-                  "value": "observed"
-                }
-              }
-            }
-          },
-          "total": {
-            "op": "if",
-            "when": {
-              "op": "exists",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/usage/total_tokens"
-              }
-            },
-            "then": {
+          "body": {
+            "op": "let",
+            "name": "cache-creation",
+            "source": {
               "op": "if",
               "when": {
                 "op": "exists",
                 "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/total_tokens"
-                }
-              },
-              "then": {
-                "op": "object",
-                "fields": {
-                  "count": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/usage/total_tokens"
-                  },
-                  "origin": {
-                    "op": "literal",
-                    "value": "observed"
-                  }
-                }
-              }
-            },
-            "otherwise": {
-              "op": "if",
-              "when": {
-                "op": "all",
-                "items": [
-                  {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/prompt_tokens"
-                    }
-                  },
-                  {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/completion_tokens"
-                    }
-                  }
-                ]
-              },
-              "then": {
-                "op": "object",
-                "fields": {
-                  "count": {
-                    "op": "integer",
-                    "operation": "add",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/usage/prompt_tokens"
-                      },
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/usage/completion_tokens"
-                      }
-                    ]
-                  },
-                  "origin": {
-                    "op": "literal",
-                    "value": "inferred"
-                  }
-                }
-              }
-            }
-          },
-          "cacheRead": {
-            "op": "if",
-            "when": {
-              "op": "exists",
-              "source": {
-                "op": "if",
-                "when": {
-                  "op": "exists",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/usage/prompt_tokens_details/cached_tokens"
-                  }
-                },
-                "then": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/prompt_tokens_details/cached_tokens"
-                },
-                "otherwise": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/prompt_cache_hit_tokens"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/usage/prompt_cache_hit_tokens"
-                  },
-                  "otherwise": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/usage/cache_read_input_tokens"
-                  }
-                }
-              }
-            },
-            "then": {
-              "op": "object",
-              "fields": {
-                "count": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/prompt_tokens_details/cached_tokens"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/usage/prompt_tokens_details/cached_tokens"
-                  },
-                  "otherwise": {
-                    "op": "if",
-                    "when": {
-                      "op": "exists",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/usage/prompt_cache_hit_tokens"
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/prompt_cache_hit_tokens"
-                    },
-                    "otherwise": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/cache_read_input_tokens"
-                    }
-                  }
-                },
-                "origin": {
-                  "op": "literal",
-                  "value": "observed"
-                }
-              }
-            }
-          },
-          "cacheCreation": {
-            "op": "if",
-            "when": {
-              "op": "exists",
-              "source": {
-                "op": "if",
-                "when": {
-                  "op": "exists",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/usage/prompt_tokens_details/cache_write_tokens"
-                  }
-                },
-                "then": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/prompt_tokens_details/cache_write_tokens"
-                },
-                "otherwise": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/prompt_tokens_details/cached_creation_tokens"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/usage/prompt_tokens_details/cached_creation_tokens"
-                  },
-                  "otherwise": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/usage/cache_creation_input_tokens"
-                  }
-                }
-              }
-            },
-            "then": {
-              "op": "object",
-              "fields": {
-                "count": {
                   "op": "if",
                   "when": {
                     "op": "exists",
@@ -5348,272 +5979,590 @@
                       "path": "/usage/cache_creation_input_tokens"
                     }
                   }
-                },
-                "origin": {
-                  "op": "literal",
-                  "value": "observed"
                 }
-              }
-            }
-          },
-          "details": {
-            "op": "let",
-            "name": "selected",
-            "source": {
-              "op": "object",
-              "fields": {
-                "input.text_tokens": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/prompt_tokens_details/text_tokens"
-                    }
-                  },
-                  "then": {
-                    "op": "object",
-                    "fields": {
-                      "count": {
+              },
+              "then": {
+                "op": "object",
+                "fields": {
+                  "count": {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
                         "op": "read",
                         "from": "input",
-                        "path": "/usage/prompt_tokens_details/text_tokens"
-                      },
-                      "origin": {
-                        "op": "literal",
-                        "value": "observed"
+                        "path": "/usage/prompt_tokens_details/cache_write_tokens"
                       }
-                    }
-                  }
-                },
-                "input.image_tokens": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
-                    "source": {
+                    },
+                    "then": {
                       "op": "read",
                       "from": "input",
-                      "path": "/usage/prompt_tokens_details/image_tokens"
-                    }
-                  },
-                  "then": {
-                    "op": "object",
-                    "fields": {
-                      "count": {
+                      "path": "/usage/prompt_tokens_details/cache_write_tokens"
+                    },
+                    "otherwise": {
+                      "op": "if",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/usage/prompt_tokens_details/cached_creation_tokens"
+                        }
+                      },
+                      "then": {
                         "op": "read",
                         "from": "input",
-                        "path": "/usage/prompt_tokens_details/image_tokens"
+                        "path": "/usage/prompt_tokens_details/cached_creation_tokens"
                       },
-                      "origin": {
-                        "op": "literal",
-                        "value": "observed"
-                      }
-                    }
-                  }
-                },
-                "input.audio_tokens": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/prompt_tokens_details/audio_tokens"
-                    }
-                  },
-                  "then": {
-                    "op": "object",
-                    "fields": {
-                      "count": {
+                      "otherwise": {
                         "op": "read",
                         "from": "input",
-                        "path": "/usage/prompt_tokens_details/audio_tokens"
-                      },
-                      "origin": {
-                        "op": "literal",
-                        "value": "observed"
+                        "path": "/usage/cache_creation_input_tokens"
                       }
-                    }
-                  }
-                },
-                "output.reasoning_tokens": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/completion_tokens_details/reasoning_tokens"
                     }
                   },
-                  "then": {
-                    "op": "object",
-                    "fields": {
-                      "count": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/usage/completion_tokens_details/reasoning_tokens"
-                      },
-                      "origin": {
-                        "op": "literal",
-                        "value": "observed"
-                      }
-                    }
-                  }
-                },
-                "output.text_tokens": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/completion_tokens_details/text_tokens"
-                    }
-                  },
-                  "then": {
-                    "op": "object",
-                    "fields": {
-                      "count": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/usage/completion_tokens_details/text_tokens"
-                      },
-                      "origin": {
-                        "op": "literal",
-                        "value": "observed"
-                      }
-                    }
-                  }
-                },
-                "output.image_tokens": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/completion_tokens_details/image_tokens"
-                    }
-                  },
-                  "then": {
-                    "op": "object",
-                    "fields": {
-                      "count": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/usage/completion_tokens_details/image_tokens"
-                      },
-                      "origin": {
-                        "op": "literal",
-                        "value": "observed"
-                      }
-                    }
-                  }
-                },
-                "output.audio_tokens": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/completion_tokens_details/audio_tokens"
-                    }
-                  },
-                  "then": {
-                    "op": "object",
-                    "fields": {
-                      "count": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/usage/completion_tokens_details/audio_tokens"
-                      },
-                      "origin": {
-                        "op": "literal",
-                        "value": "observed"
-                      }
-                    }
-                  }
-                },
-                "output.accepted_prediction_tokens": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/completion_tokens_details/accepted_prediction_tokens"
-                    }
-                  },
-                  "then": {
-                    "op": "object",
-                    "fields": {
-                      "count": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/usage/completion_tokens_details/accepted_prediction_tokens"
-                      },
-                      "origin": {
-                        "op": "literal",
-                        "value": "observed"
-                      }
-                    }
-                  }
-                },
-                "output.rejected_prediction_tokens": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/completion_tokens_details/rejected_prediction_tokens"
-                    }
-                  },
-                  "then": {
-                    "op": "object",
-                    "fields": {
-                      "count": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/usage/completion_tokens_details/rejected_prediction_tokens"
-                      },
-                      "origin": {
-                        "op": "literal",
-                        "value": "observed"
-                      }
-                    }
+                  "origin": {
+                    "op": "literal",
+                    "value": "observed"
                   }
                 }
               }
             },
             "body": {
-              "op": "if",
-              "when": {
-                "op": "not",
-                "source": {
-                  "op": "equal",
-                  "items": [
-                    {
+              "op": "object",
+              "fields": {
+                "input": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "input-count"
+                },
+                "output": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage/completion_tokens"
+                    }
+                  },
+                  "then": {
+                    "op": "object",
+                    "fields": {
+                      "count": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/usage/completion_tokens"
+                      },
+                      "origin": {
+                        "op": "literal",
+                        "value": "observed"
+                      }
+                    }
+                  }
+                },
+                "total": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage/total_tokens"
+                    }
+                  },
+                  "then": {
+                    "op": "object",
+                    "fields": {
+                      "count": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/usage/total_tokens"
+                      },
+                      "origin": {
+                        "op": "literal",
+                        "value": "observed"
+                      }
+                    }
+                  },
+                  "otherwise": {
+                    "op": "if",
+                    "when": {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "input-count"
+                          }
+                        },
+                        {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/usage/completion_tokens"
+                          }
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "object",
+                      "fields": {
+                        "count": {
+                          "op": "integer",
+                          "operation": "add",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/count",
+                              "name": "input-count"
+                            },
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/usage/completion_tokens"
+                            }
+                          ]
+                        },
+                        "origin": {
+                          "op": "literal",
+                          "value": "inferred"
+                        }
+                      }
+                    }
+                  }
+                },
+                "cacheRead": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "cache-hit"
+                    }
+                  },
+                  "then": {
+                    "op": "object",
+                    "fields": {
+                      "count": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "cache-hit"
+                      },
+                      "origin": {
+                        "op": "literal",
+                        "value": "observed"
+                      }
+                    }
+                  },
+                  "otherwise": {
+                    "op": "if",
+                    "when": {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/usage/prompt_tokens"
+                          }
+                        },
+                        {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/usage/prompt_cache_miss_tokens"
+                          }
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "if",
+                      "when": {
+                        "op": "integer",
+                        "operation": "gte",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/usage/prompt_tokens"
+                          },
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/usage/prompt_cache_miss_tokens"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "object",
+                        "fields": {
+                          "count": {
+                            "op": "integer",
+                            "operation": "subtract",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/usage/prompt_tokens"
+                              },
+                              {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/usage/prompt_cache_miss_tokens"
+                              }
+                            ]
+                          },
+                          "origin": {
+                            "op": "literal",
+                            "value": "inferred"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "cacheCreation": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "cache-creation"
+                },
+                "details": {
+                  "op": "let",
+                  "name": "selected",
+                  "source": {
+                    "op": "object",
+                    "fields": {
+                      "input.text_tokens": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/usage/prompt_tokens_details/text_tokens"
+                          }
+                        },
+                        "then": {
+                          "op": "object",
+                          "fields": {
+                            "count": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/usage/prompt_tokens_details/text_tokens"
+                            },
+                            "origin": {
+                              "op": "literal",
+                              "value": "observed"
+                            }
+                          }
+                        }
+                      },
+                      "input.image_tokens": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/usage/prompt_tokens_details/image_tokens"
+                          }
+                        },
+                        "then": {
+                          "op": "object",
+                          "fields": {
+                            "count": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/usage/prompt_tokens_details/image_tokens"
+                            },
+                            "origin": {
+                              "op": "literal",
+                              "value": "observed"
+                            }
+                          }
+                        }
+                      },
+                      "input.audio_tokens": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/usage/prompt_tokens_details/audio_tokens"
+                          }
+                        },
+                        "then": {
+                          "op": "object",
+                          "fields": {
+                            "count": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/usage/prompt_tokens_details/audio_tokens"
+                            },
+                            "origin": {
+                              "op": "literal",
+                              "value": "observed"
+                            }
+                          }
+                        }
+                      },
+                      "output.reasoning_tokens": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/usage/completion_tokens_details/reasoning_tokens"
+                          }
+                        },
+                        "then": {
+                          "op": "object",
+                          "fields": {
+                            "count": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/usage/completion_tokens_details/reasoning_tokens"
+                            },
+                            "origin": {
+                              "op": "literal",
+                              "value": "observed"
+                            }
+                          }
+                        }
+                      },
+                      "output.text_tokens": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/usage/completion_tokens_details/text_tokens"
+                          }
+                        },
+                        "then": {
+                          "op": "object",
+                          "fields": {
+                            "count": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/usage/completion_tokens_details/text_tokens"
+                            },
+                            "origin": {
+                              "op": "literal",
+                              "value": "observed"
+                            }
+                          }
+                        }
+                      },
+                      "output.image_tokens": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/usage/completion_tokens_details/image_tokens"
+                          }
+                        },
+                        "then": {
+                          "op": "object",
+                          "fields": {
+                            "count": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/usage/completion_tokens_details/image_tokens"
+                            },
+                            "origin": {
+                              "op": "literal",
+                              "value": "observed"
+                            }
+                          }
+                        }
+                      },
+                      "output.audio_tokens": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/usage/completion_tokens_details/audio_tokens"
+                          }
+                        },
+                        "then": {
+                          "op": "object",
+                          "fields": {
+                            "count": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/usage/completion_tokens_details/audio_tokens"
+                            },
+                            "origin": {
+                              "op": "literal",
+                              "value": "observed"
+                            }
+                          }
+                        }
+                      },
+                      "output.accepted_prediction_tokens": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/usage/completion_tokens_details/accepted_prediction_tokens"
+                          }
+                        },
+                        "then": {
+                          "op": "object",
+                          "fields": {
+                            "count": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/usage/completion_tokens_details/accepted_prediction_tokens"
+                            },
+                            "origin": {
+                              "op": "literal",
+                              "value": "observed"
+                            }
+                          }
+                        }
+                      },
+                      "output.rejected_prediction_tokens": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/usage/completion_tokens_details/rejected_prediction_tokens"
+                          }
+                        },
+                        "then": {
+                          "op": "object",
+                          "fields": {
+                            "count": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/usage/completion_tokens_details/rejected_prediction_tokens"
+                            },
+                            "origin": {
+                              "op": "literal",
+                              "value": "observed"
+                            }
+                          }
+                        }
+                      },
+                      "uncached_input_tokens": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/usage/prompt_cache_miss_tokens"
+                          }
+                        },
+                        "then": {
+                          "op": "if",
+                          "when": {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "cache-creation"
+                            }
+                          },
+                          "then": {
+                            "op": "object",
+                            "fields": {
+                              "count": {
+                                "op": "integer",
+                                "operation": "subtract",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/usage/prompt_cache_miss_tokens"
+                                  },
+                                  {
+                                    "op": "read",
+                                    "from": "binding",
+                                    "path": "/count",
+                                    "name": "cache-creation"
+                                  }
+                                ]
+                              },
+                              "origin": {
+                                "op": "literal",
+                                "value": "inferred"
+                              }
+                            }
+                          },
+                          "otherwise": {
+                            "op": "object",
+                            "fields": {
+                              "count": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/usage/prompt_cache_miss_tokens"
+                              },
+                              "origin": {
+                                "op": "literal",
+                                "value": "observed"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "body": {
+                    "op": "if",
+                    "when": {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "selected"
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      }
+                    },
+                    "then": {
                       "op": "read",
                       "from": "binding",
                       "path": "",
                       "name": "selected"
-                    },
-                    {
-                      "op": "literal",
-                      "value": {}
                     }
-                  ]
+                  }
                 }
-              },
-              "then": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "selected"
               }
             }
           }
@@ -7647,6 +8596,285 @@
               "from": "input",
               "path": "/model"
             }
+          }
+        },
+        {
+          "id": "null-usage-counter",
+          "kind": "reject",
+          "path": "/usage",
+          "target": "/",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "ref",
+              "ref": "has-null-usage-counter"
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "reason": "usage counter cannot be null",
+          "diagnostic": {
+            "code": "upstream_contract_violation",
+            "stage": "runtime",
+            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+          }
+        },
+        {
+          "id": "invalid-usage-counters",
+          "kind": "reject",
+          "path": "/usage",
+          "target": "/",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "ref",
+              "ref": "has-invalid-usage-counters"
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "reason": "usage counter must be a nonnegative int64",
+          "diagnostic": {
+            "code": "upstream_contract_violation",
+            "stage": "runtime",
+            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+          }
+        },
+        {
+          "id": "conflicting-usage-creation-write",
+          "kind": "reject",
+          "path": "/usage",
+          "target": "/",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "ref",
+              "ref": "has-conflicting-usage-creation-write"
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "reason": "cache_write_tokens disagrees with another cache creation counter",
+          "diagnostic": {
+            "code": "upstream_contract_violation",
+            "stage": "runtime",
+            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+          }
+        },
+        {
+          "id": "conflicting-usage-creation-alias",
+          "kind": "reject",
+          "path": "/usage",
+          "target": "/",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "ref",
+              "ref": "has-conflicting-usage-creation-alias"
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "reason": "cached_creation_tokens disagrees with another cache creation counter",
+          "diagnostic": {
+            "code": "upstream_contract_violation",
+            "stage": "runtime",
+            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+          }
+        },
+        {
+          "id": "conflicting-usage-hit",
+          "kind": "reject",
+          "path": "/usage",
+          "target": "/",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "ref",
+              "ref": "has-conflicting-usage-hit"
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "reason": "prompt_cache_hit_tokens disagrees with cached input",
+          "diagnostic": {
+            "code": "upstream_contract_violation",
+            "stage": "runtime",
+            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+          }
+        },
+        {
+          "id": "overflowing-usage-input",
+          "kind": "reject",
+          "path": "/usage",
+          "target": "/",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "ref",
+              "ref": "has-overflowing-usage-input"
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "reason": "usage count overflow",
+          "diagnostic": {
+            "code": "upstream_contract_violation",
+            "stage": "runtime",
+            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+          }
+        },
+        {
+          "id": "contradictory-usage-miss",
+          "kind": "reject",
+          "path": "/usage",
+          "target": "/",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "ref",
+              "ref": "has-contradictory-usage-miss"
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "reason": "prompt_cache_miss_tokens disagrees with prompt input and cache hits",
+          "diagnostic": {
+            "code": "upstream_contract_violation",
+            "stage": "runtime",
+            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+          }
+        },
+        {
+          "id": "creation-exceeding-usage-miss",
+          "kind": "reject",
+          "path": "/usage",
+          "target": "/",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "ref",
+              "ref": "has-creation-exceeding-usage-miss"
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "reason": "cache creation exceeds prompt cache misses",
+          "diagnostic": {
+            "code": "upstream_contract_violation",
+            "stage": "runtime",
+            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+          }
+        },
+        {
+          "id": "overflowing-usage-total",
+          "kind": "reject",
+          "path": "/usage",
+          "target": "/",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "ref",
+              "ref": "has-overflowing-usage-total"
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "reason": "usage count overflow",
+          "diagnostic": {
+            "code": "upstream_contract_violation",
+            "stage": "runtime",
+            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
           }
         }
       ],
