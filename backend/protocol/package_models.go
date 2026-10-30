@@ -51,31 +51,5 @@ func (compiled *Compiled) compilePackageModelMappings(spec ProtocolSpec, mapping
 // or native replay. It still uses the shared wire validator and expression plan.
 func (compiled *Compiled) executePackageModelMapping(ctx context.Context, operation string, mapping compiledMapping, input Value) (Value, error) {
 	path := "/mapping/operations/" + escapePointer(operation) + "/decodeModels"
-	fail := func(err error) (Value, error) {
-		return Value{}, compiled.mappingError(DecodeResponse, locateMappingError(path, err))
-	}
-	if err := ctx.Err(); err != nil {
-		return fail(err)
-	}
-	if err := checkResourceValue(input, compiled.limits, "mapping_input"); err != nil {
-		return fail(err)
-	}
-	contract := compiled.packagePlan.modelContracts[operation]
-	if err := contract.contextValidator.validate(ctx, DecodeResponse, input, compiled.limits); err != nil {
-		return Value{}, compiled.runtimeError(DecodeResponse, err)
-	}
-	state := evaluation{ctx: ctx, input: input, root: input, context: Value{raw: "null"},
-		valueReader: requestValueReader(input), objectReader: mapping.outputPlan.newRootObjectReader(input),
-		budget: &evaluationBudget{limits: compiled.limits, stepLimit: compiled.limits.Nodes}}
-	output, err := mapping.outputPlan.evaluate(state)
-	if err != nil {
-		return fail(err)
-	}
-	if output.IsZero() {
-		return fail(fmt.Errorf("mapping omitted its entire output"))
-	}
-	if err := checkResourceValue(output, compiled.limits, "mapping_output"); err != nil {
-		return fail(err)
-	}
-	return output, nil
+	return compiled.executePackageOperationPlan(ctx, mapping, DecodeResponse, path, input, Value{raw: "null"}, compiled.packagePlan.modelContracts[operation], compiledWireContract{})
 }

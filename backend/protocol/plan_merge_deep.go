@@ -2,8 +2,9 @@ package protocol
 
 import "fmt"
 
-// ObjectMergeConflictError identifies a repeated non-object value. Path is an
-// RFC 6901 pointer relative to the merged object; no operand values are exposed.
+// ObjectMergeConflictError identifies an object member collision that the
+// selected merge policy rejects. Path is relative to the output object and
+// uses RFC 6901 escaping; no operand values are exposed.
 type ObjectMergeConflictError struct {
 	Path string
 }

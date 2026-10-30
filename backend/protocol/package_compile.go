@@ -15,6 +15,7 @@ type compiledPackagePlan struct {
 	hasCacheProjection   bool
 	hasHistoryProjection bool
 	modelContracts       map[string]compiledWireContract
+	taskContracts        map[string]map[string]packageTaskContracts
 }
 
 type compiledSemanticEffect struct {
@@ -146,7 +147,8 @@ func (compiled *Compiled) bindPackageIdentity(document ProtocolPackage) error {
 		DSLVersion   int           `json:"dslVersion"`
 		Samples      []Sample      `json:"samples"`
 		ModelSamples []ModelSample `json:"modelSamples,omitempty"`
-	}{document.Mapping.CoreVersion, document.Mapping.DSLVersion, document.Mapping.Samples, document.Mapping.ModelSamples})
+		TaskSamples  []TaskSample  `json:"taskSamples,omitempty"`
+	}{document.Mapping.CoreVersion, document.Mapping.DSLVersion, document.Mapping.Samples, document.Mapping.ModelSamples, document.Mapping.TaskSamples})
 	if err != nil {
 		return err
 	}

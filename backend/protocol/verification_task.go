@@ -37,11 +37,18 @@ func executeTaskSample(ctx context.Context, compiled *Compiled, sample TaskSampl
 }
 
 func verifyTaskSamples(ctx context.Context, compiled *Compiled, report *VerificationReport) bool {
+	if len(compiled.taskMappings) == 0 {
+		return false
+	}
 	coverage := map[string]map[string]bool{}
+	samplePath, operationPath := "/taskSamples/", "/operations/"
+	if compiled.packagePlan != nil {
+		samplePath, operationPath = "/mapping/taskSamples/", "/mapping/operations/"
+	}
 	for name := range compiled.taskMappings {
 		coverage[name] = map[string]bool{}
 	}
-	for _, sample := range compiled.Definition().TaskSamples {
+	for _, sample := range compiled.verificationTaskSamples() {
 		output, err := executeTaskSample(ctx, compiled, sample)
 		if err == nil && !equalValues(output, sample.Expected) {
 			err = fmt.Errorf("task sample differs from expected output")
@@ -58,7 +65,7 @@ func verifyTaskSamples(ctx context.Context, compiled *Compiled, report *Verifica
 		}
 		check := VerificationCheck{SampleID: sample.ID, Passed: err == nil}
 		if err != nil {
-			report.Issues = append(report.Issues, verificationIssue(compiled, "", "/taskSamples/"+sample.ID, VerificationMismatch, err.Error(), sample.ID))
+			report.Issues = append(report.Issues, verificationIssue(compiled, "", samplePath+sample.ID, VerificationMismatch, err.Error(), sample.ID))
 		} else {
 			check.Capabilities = []Capability{AsyncJobsCapability}
 			key := sample.Kind + "/" + sample.Purpose
@@ -92,7 +99,7 @@ func verifyTaskSamples(ctx context.Context, compiled *Compiled, report *Verifica
 		for _, key := range required {
 			if !covered[key] {
 				isComplete = false
-				report.Issues = append(report.Issues, verificationIssue(compiled, "", "/operations/"+name+"/task", IncompleteCoverage, "task flow lacks passing evidence for "+key, ""))
+				report.Issues = append(report.Issues, verificationIssue(compiled, "", operationPath+name+"/task", IncompleteCoverage, "task flow lacks passing evidence for "+key, ""))
 			}
 		}
 	}

@@ -129,10 +129,9 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 			report.Issues = append(report.Issues, verificationIssue(compiled, DecodeRequest, "/operations/"+name+"/input", IncompleteCoverage, "operation input schema requires a passing request fixture", ""))
 		}
 	}
-	hasTaskEvidence := false
+	hasTaskEvidence := verifyTaskSamples(ctx, compiled, &report)
 	if compiled.packagePlan == nil {
 		verifySessionSamples(ctx, compiled, &report, coverage, hasSample, hasSequence, hasLifecycle)
-		hasTaskEvidence = verifyTaskSamples(ctx, compiled, &report)
 		verifyAgentSamples(ctx, compiled, &report)
 	}
 	verifyModelSamples(ctx, compiled, &report)

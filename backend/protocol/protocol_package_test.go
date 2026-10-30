@@ -80,7 +80,7 @@ func TestProtocolPackageRejectsInvalidContracts(t *testing.T) {
 		{"unused-expression", "unreachable expression", func(p *ProtocolPackage) {
 			p.Mapping.Expressions = map[string]Expression{"unused": literalExpression(true)}
 		}},
-		{"task-operation", "not supported", func(p *ProtocolPackage) {
+		{"task-missing-program", "declared programs", func(p *ProtocolPackage) {
 			operation := p.Spec.Operations["generate"]
 			operation.Kind = "submit"
 			p.Spec.Operations["generate"] = operation

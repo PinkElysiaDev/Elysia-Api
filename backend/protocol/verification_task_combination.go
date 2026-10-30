@@ -14,7 +14,7 @@ func verifyTaskCombination(ctx context.Context, ingress, upstream *Compiled, cap
 		report.Issues = append(report.Issues, proof.Issues...)
 		return
 	}
-	for _, sample := range upstream.Definition().TaskSamples {
+	for _, sample := range upstream.verificationTaskSamples() {
 		if sample.Kind != "decode" {
 			continue
 		}

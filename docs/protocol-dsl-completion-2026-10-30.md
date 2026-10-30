@@ -113,6 +113,27 @@ decode_response/wire，错误码、业务字段和原因相同。该对外归因
 不将该空运行作为验收。Python 编辑脚本语法错误造成的未修改失败也保留。
 此阶段未重测性能，不把新声明的功能完整性成本称为零开销。
 
+## 第四批：声明式任务流程（dev.84）
+
+Spec 的 task 只描述 status/result/cancel 操作及幂等 header；Mapping 的 task 含 decode、
+encode、control 三个表达式。复用原 JobUpdate／TaskControl、身份、状态、usage 与凭据冲突
+检查；provider reply 和 client receipt 分别使用其命名文档。动态 query 仍由原传输合并，
+程序不能选择 URL、凭据或替换持久任务修订。
+
+旧两套 job-alpha/job-beta 样例作为对照，新增两文件声明继承相同 wire 和静态任务样例。
+所有原任务状态／回执／控制样例输出相同，新包和两包组合验证通过；缺证据不能激活。
+这不等于旧数据库任务可由新引擎恢复，管理切换及存量任务处理仍待实施。
+
+模型发现和任务共用一个窄的辅助操作计划入口，不套核心 Response/Native 逻辑。
+有输入／输出 wire 契约时复用其完整预算检查，移除模型发现先计量后由同一契约再计量的重复。
+无 wire 契约的核心控制输入仍执行原完整预算。正常运行不增加请求配置读取或数据库查询。
+`completion-task-mapping` 的任务／模型定向通过，初次全协议发现的旧“不支持任务”测试改为
+检查“缺少任务程序仍拒绝”，保留原失败记录 `completion-task-compile`。
+
+本批 protocol/builtin 全量、全后端 vet 和任务／模型／新原语相关 race 通过。
+固定 staticcheck v0.8.2 仍以既有 45 条诊断退出 1，归一化行号后新增 0、移除 0；
+证据为 `completion-task-{protocol,race,vet}.*`、`completion-stage-staticcheck*`。
+
 ## Chat cache miss 计量声明
 
 迁移检查发现 Chat 草案未读取 `prompt_cache_miss_tokens`：合法响应会丢失由命中与未命中

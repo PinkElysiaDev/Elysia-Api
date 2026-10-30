@@ -17,3 +17,11 @@ func (compiled *Compiled) verificationModelSamples() []ModelSample {
 	}
 	return compiled.Definition().ModelSamples
 }
+
+func (compiled *Compiled) verificationTaskSamples() []TaskSample {
+	if compiled.packagePlan != nil {
+		document, _ := compiled.Package()
+		return document.Mapping.TaskSamples
+	}
+	return compiled.Definition().TaskSamples
+}

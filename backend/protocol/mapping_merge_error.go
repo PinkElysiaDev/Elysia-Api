@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// MergeConflictDiagnostic classifies a merge_deep leaf collision without
+// MergeConflictDiagnostic classifies a local object member collision without
 // changing rejection behavior. PathPrefix locates the merged object; the
 // collision's RFC 6901 pointer is appended to it. Reason is static text.
 type MergeConflictDiagnostic struct {

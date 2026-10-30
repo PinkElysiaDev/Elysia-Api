@@ -31,6 +31,7 @@ type ProtocolOperationSpec struct {
 	Framing   *Framing                    `json:"framing,omitempty"`
 	Input     *ValueSchema                `json:"input,omitempty"`
 	Models    *ProtocolModelDiscoverySpec `json:"models,omitempty"`
+	Task      *ProtocolTaskFlowSpec       `json:"task,omitempty"`
 }
 
 // ProtocolModelDiscoverySpec declares wire pagination without a core decoder.
@@ -40,9 +41,25 @@ type ProtocolModelDiscoverySpec struct {
 
 // ProtocolOperationMapping selects core adapters for an existing wire operation.
 type ProtocolOperationMapping struct {
-	Request      Direction   `json:"request,omitempty"`
-	Response     Direction   `json:"response,omitempty"`
-	DecodeModels *Expression `json:"decodeModels,omitempty"`
+	Request      Direction            `json:"request,omitempty"`
+	Response     Direction            `json:"response,omitempty"`
+	DecodeModels *Expression          `json:"decodeModels,omitempty"`
+	Task         *ProtocolTaskMapping `json:"task,omitempty"`
+}
+
+// ProtocolTaskFlowSpec links fixed wire operations, never executable mappings.
+type ProtocolTaskFlowSpec struct {
+	Status            string `json:"status"`
+	Result            string `json:"result"`
+	Cancel            string `json:"cancel,omitempty"`
+	IdempotencyHeader string `json:"idempotencyHeader,omitempty"`
+}
+
+// ProtocolTaskMapping maps provider updates, client receipts and control input.
+type ProtocolTaskMapping struct {
+	Decode  Expression `json:"decode"`
+	Encode  Expression `json:"encode"`
+	Control Expression `json:"control"`
 }
 
 type compiledProtocolSpec struct {
@@ -98,11 +115,17 @@ func (spec ProtocolSpec) compile(limits Limits) (compiledProtocolSpec, error) {
 
 func (wire ProtocolOperationSpec) compile(name string, documents map[string]compiledWireContract, limits Limits) (Operation, error) {
 	path := "/spec/operations/" + escapePointer(name)
-	if (wire.Kind != "generate" && wire.Kind != "models") || wire.Transport == WebSocket {
-		return Operation{}, fmt.Errorf("%s: task and session programs are not supported by this package compiler", path)
+	if (wire.Kind != "generate" && wire.Kind != "models" && wire.Kind != "submit" && wire.Kind != "status" && wire.Kind != "result" && wire.Kind != "cancel") || wire.Transport == WebSocket {
+		return Operation{}, fmt.Errorf("%s: unsupported operation kind or session transport", path)
 	}
 	operation := Operation{Kind: wire.Kind, Method: wire.Method, Path: wire.Path, Transport: wire.Transport,
 		Headers: wire.Headers, Query: wire.Query, Auth: wire.Auth, Framing: wire.Framing, Input: wire.Input}
+	if wire.Task != nil {
+		if wire.Kind != "submit" {
+			return Operation{}, fmt.Errorf("%s/task: flow requires a submit operation", path)
+		}
+		operation.Task = &TaskFlow{Status: wire.Task.Status, Result: wire.Task.Result, Cancel: wire.Task.Cancel, IdempotencyHeader: wire.Task.IdempotencyHeader}
+	}
 	if wire.Kind == "models" {
 		if wire.Models == nil || wire.Method != "GET" || wire.Transport != HTTPJSON || wire.Request != "" || wire.Response == "" {
 			return Operation{}, fmt.Errorf("%s: model discovery requires GET HTTP JSON, a response document and explicit models configuration", path)
@@ -152,6 +175,15 @@ func (compiled *Compiled) bindPackageOperations(spec ProtocolSpec, mapping Proto
 			return fmt.Errorf("%s: operation mapping is required", path)
 		}
 		wire, operation := spec.Operations[name], compiled.operations[name]
+		if operation.Kind == "submit" || operation.Kind == "status" || operation.Kind == "result" || operation.Kind == "cancel" {
+			if binding.DecodeModels != nil || binding.Request != "" || binding.Response != "" || (operation.Kind == "submit") != (binding.Task != nil) {
+				return fmt.Errorf("%s: task operations use their flow's declared programs", path)
+			}
+			continue
+		}
+		if binding.Task != nil {
+			return fmt.Errorf("%s/task: requires a submit operation", path)
+		}
 		if operation.Kind == "models" {
 			if binding.DecodeModels == nil || binding.Request != "" || binding.Response != "" {
 				return fmt.Errorf("%s: model discovery requires only a declared decodeModels program", path)

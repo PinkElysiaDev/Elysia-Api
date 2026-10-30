@@ -76,6 +76,7 @@ type ProtocolMapping struct {
 	Limits       *Limits                                `json:"limits,omitempty"`
 	Samples      []Sample                               `json:"samples"`
 	ModelSamples []ModelSample                          `json:"modelSamples,omitempty"`
+	TaskSamples  []TaskSample                           `json:"taskSamples,omitempty"`
 }
 
 // ProtocolDirectionMapping transforms one wire/core boundary without a codec module.
@@ -233,6 +234,9 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 	if err := compiled.compilePackageModelMappings(spec, mapping, wireSpec.documents, expressions); err != nil {
 		return nil, err
 	}
+	if err := compiled.compilePackageTaskMappings(spec, mapping, wireSpec.documents, expressions); err != nil {
+		return nil, err
+	}
 	for _, name := range sortedKeys(mapping.Expressions) {
 		if !expressions.used[name] {
 			return nil, fmt.Errorf("/mapping/expressions/%s: unreachable expression", name)
@@ -248,7 +252,7 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 }
 
 func validateProtocolSamples(mapping ProtocolMapping, operations map[string]ProtocolOperationSpec, limits Limits) error {
-	if len(mapping.Samples)+len(mapping.ModelSamples) > limits.StateItems {
+	if len(mapping.Samples)+len(mapping.ModelSamples)+len(mapping.TaskSamples) > limits.StateItems {
 		return fmt.Errorf("/mapping/samples: sample count exceeds fixture limit")
 	}
 	seen := map[string]bool{}
