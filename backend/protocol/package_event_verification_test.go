@@ -1,6 +1,9 @@
 package protocol
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestPackageEventVerificationChecksWireLifecycle(t *testing.T) {
 	for _, direction := range []Direction{DecodeEvent, EncodeEvent} {
@@ -48,5 +51,57 @@ func TestPackageEventVerificationChecksWireLifecycle(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestPackageEventCombinationUsesFinalDeliveredPosition(t *testing.T) {
+	source := eventProtocolPackage(t)
+	source.Spec.ID = "position-source"
+	source.Mapping.Native.Preserve = false
+	target := outputPositionPackage(t)
+	target.Mapping.Native.Preserve = false
+	delete(target.Mapping.Directions[EncodeEvent].Program.Fields, "observed")
+	isStart := Expression{Op: "equal", Items: []Expression{readExpression("input", "/type"), literalExpression(ResponseStarted)}}
+	nextSequence := Expression{Op: "integer", Operation: "add", Items: []Expression{
+		readExpression("runtime", "/stream/sequence"), literalExpression(1),
+	}}
+	target.Mapping.Directions[EncodeEvent].Program.Fields["seq"] = Expression{
+		Op: "if", When: &isStart, Then: expressionPointer(readExpression("input", "/sequence")), Otherwise: &nextSequence,
+	}
+	ingress, upstream := compilePackageForTest(t, target), compilePackageForTest(t, source)
+	sample := Sample{Direction: DecodeEvent, Sequence: true, Input: fixtureValue(t, []Value{
+		packageStreamFrame(ResponseStarted, 0, ""), packageStreamFrame(ResponseFinished, 1, ""),
+	})}
+	for _, hasInvalidTerminal := range []bool{false, true} {
+		name := "follows-final-wire"
+		if hasInvalidTerminal {
+			name = "rejects-final-wire"
+		}
+		t.Run(name, func(t *testing.T) {
+			condition := Expression{Op: "equal", Items: []Expression{readExpression("input", "/kind"), literalExpression(ResponseStarted)}}
+			if hasInvalidTerminal {
+				condition = literalExpression(true)
+			}
+			// Move only the start to 41. The target must observe that final wire
+			// and generate 42, not the source's 1 or the pre-edit target's 1.
+			replacement := Expression{Op: "merge", Policy: "reject", Items: []Expression{
+				{Op: "project", Source: expressionPointer(readExpression("input", "")), Keys: []string{"seq"}, Policy: "exclude"},
+				objectExpression(map[string]Expression{"seq": literalExpression(41)}),
+			}}
+			program := Expression{Op: "if", When: &condition, Then: &replacement, Otherwise: expressionPointer(readExpression("input", ""))}
+			conversion, err := ResolveConversion(ConversionPolicy{SchemaVersion: 1, ID: "final-position", Mode: "compatible", Rules: []ConversionRule{{
+				ID: "edit-sequence", Order: 1, Enabled: true, Phase: ConversionWire, Action: "transform", Expression: &program,
+			}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := context.WithValue(t.Context(), conversionVerificationKey{}, conversion)
+			err = verifyEventCombination(ctx, ingress, upstream, sample)
+			if hasInvalidTerminal {
+				assertPackageRuntimeIssue(t, err, ConversionRejected, "/seq")
+			} else if err != nil {
+				t.Fatal("combination did not simulate delivery of the final wire batch", err)
+			}
+		})
 	}
 }

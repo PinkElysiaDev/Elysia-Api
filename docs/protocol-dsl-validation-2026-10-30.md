@@ -117,3 +117,14 @@ Windows amd64是本机测试环境；Windows arm64、Linux与macOS仅交叉编�
 不利结果与限制见 [阶段性能报告](protocol-dsl-performance-2026-10-30.md)。
 尚未执行最新版的真实后端页面运行验收；生产加载／编辑／激活仍未接入v3，
 不能将内部候选测试、健康探测helper或序列测试当成这些产品流程已经完成。
+
+## 后续离线组合流与Chat effort切片
+
+`3316b5f9` 以纯声明补齐Chat legacy effort取值及控制冲突，新增8个成功表示字节等价；
+5个拒绝条件已对齐但完整诊断仍不同，未改写原gap。随后v3组合验证按最终wire批次模拟交付，
+保留旧预置的编码／校验顺序。两项都未启用生产草案，没有修改生成请求热路径。
+
+`checks/combination-output-position-fixed.*` 定向通过；`checks/combination-stage-protocol.*`
+protocol/builtin全量通过。首次定向因测试使用不存在的Expression字段而编译失败，
+`checks/combination-output-position.*`保留。该首次失败不是生产运行回归。
+这些结果不替代后续最终稳定提交的工程、激活和性能验收；六目标匹配产物仍为8a6f84b6。

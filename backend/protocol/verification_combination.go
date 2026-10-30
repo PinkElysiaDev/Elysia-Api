@@ -362,45 +362,8 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 		convertedFrames = append(convertedFrames, &EventFrame{Events: []Event{event}})
 	}
 	result.semantic = projected
-	var frames []Value
-	var decoded []Event
-	for _, frame := range convertedFrames {
-		wire, err := ingress.EncodeFrame(ctx, frame, options)
-		if err != nil {
-			return err
-		}
-		frames = append(frames, wire...)
-	}
-	tail, err := ingress.FinishEvents(ctx, options)
+	decoded, err := verifyCombinationEventOutput(ctx, ingress, convertedFrames, options, conversion, route)
 	if err != nil {
-		return err
-	}
-	frames = append(frames, tail...)
-	finalValidation, err := ingress.NewWireStreamValidation(options.Scope)
-	if err != nil {
-		return err
-	}
-	for _, wire := range frames {
-		if conversion != nil && conversion.HasPhase(ConversionWire) {
-			route.ResponseWire = true
-			wire, err = conversion.ApplyValue(ctx, ConversionWire, wire, route, verificationDiagnostics(ctx))
-			if err != nil {
-				return err
-			}
-		}
-		if err := finalValidation.Consume(ctx, wire); err != nil {
-			return err
-		}
-		if !ingress.Supports(DecodeEvent) {
-			continue
-		}
-		frame, err := ingress.DecodeFrame(ctx, wire, options)
-		if err != nil {
-			return err
-		}
-		decoded = append(decoded, frame.Events...)
-	}
-	if err := finalValidation.Finish(); err != nil {
 		return err
 	}
 	if !ingress.Supports(DecodeEvent) {
@@ -426,6 +389,79 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 		}
 	}
 	return replay.Finish()
+}
+
+func verifyCombinationEventOutput(ctx context.Context, compiled *Compiled, frames []*EventFrame, options EvaluationContext, conversion *CompiledConversion, route ConversionContext) ([]Event, error) {
+	var pending []Value
+	if compiled.packagePlan == nil {
+		// Legacy evidence preserves its encode-before-validation error order.
+		if err := encodeCombinationEventFrames(ctx, compiled, frames, options, func(batch []Value) error {
+			pending = append(pending, batch...)
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+	}
+	validation, err := compiled.NewWireStreamValidation(options.Scope)
+	if err != nil {
+		return nil, err
+	}
+	var decoded []Event
+	consume := func(batch []Value) error {
+		for _, wire := range batch {
+			if conversion != nil && conversion.HasPhase(ConversionWire) {
+				route.ResponseWire = true
+				var err error
+				wire, err = conversion.ApplyValue(ctx, ConversionWire, wire, route, verificationDiagnostics(ctx))
+				if err != nil {
+					return err
+				}
+			}
+			if err := validation.Consume(ctx, wire); err != nil {
+				return err
+			}
+			if compiled.Supports(DecodeEvent) {
+				frame, err := compiled.DecodeFrame(ctx, wire, options)
+				if err != nil {
+					return err
+				}
+				decoded = append(decoded, frame.Events...)
+			}
+		}
+		if compiled.packagePlan != nil && len(batch) > 0 {
+			// Offline evidence simulates delivery only after the entire final
+			// wire batch is valid; the next encoder observes those exact values.
+			return validation.CommitDelivery()
+		}
+		return nil
+	}
+	if compiled.packagePlan == nil {
+		err = consume(pending)
+	} else {
+		options = options.WithOutputStream(validation)
+		err = encodeCombinationEventFrames(ctx, compiled, frames, options, consume)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return decoded, validation.Finish()
+}
+
+func encodeCombinationEventFrames(ctx context.Context, compiled *Compiled, frames []*EventFrame, options EvaluationContext, consume func([]Value) error) error {
+	for _, frame := range frames {
+		batch, err := compiled.EncodeFrame(ctx, frame, options)
+		if err != nil {
+			return err
+		}
+		if err := consume(batch); err != nil {
+			return err
+		}
+	}
+	tail, err := compiled.FinishEvents(ctx, options)
+	if err != nil {
+		return err
+	}
+	return consume(tail)
 }
 
 func verifyRequestCombination(ctx context.Context, ingress, upstream *Compiled, sample Sample) error {
