@@ -10,12 +10,19 @@ type streamField struct {
 type compiledPackageStreamContract struct {
 	discriminator, responseID, itemID, sequence streamField
 	events                                      map[string]compiledPackageStreamEvent
+	hasTools                                    bool
 }
 
 type compiledPackageStreamEvent struct {
-	action        EventType
-	text, failure streamField
-	usage         [3]streamField
+	action         EventType
+	delta, failure streamField
+	usage          [3]streamField
+	tool           *compiledStreamTool
+	isTool         bool
+}
+
+type compiledStreamTool struct {
+	name, callID streamField
 }
 
 func compilePackageStreamContract(spec *ProtocolStreamSpec, limits Limits) (*compiledPackageStreamContract, error) {
@@ -40,6 +47,7 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, limits Limits) (*com
 		return nil, fmt.Errorf("/spec/stream/events: requires a nonempty bounded event table")
 	}
 	actions := map[EventType]bool{}
+	toolActions := map[EventType]bool{}
 	for _, tag := range sortedKeys(spec.Events) {
 		path := "/spec/stream/events/" + escapePointer(tag)
 		if tag == "" {
@@ -49,11 +57,23 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, limits Limits) (*com
 		if err != nil {
 			return nil, err
 		}
-		contract.events[tag], actions[event.action] = event, true
+		contract.events[tag] = event
+		if event.isTool {
+			contract.hasTools, toolActions[event.action] = true, true
+		} else {
+			actions[event.action] = true
+		}
 	}
 	for _, action := range []EventType{ResponseStarted, ItemStarted, ItemDelta, ItemFinished, UsageUpdated, ResponseFinished} {
 		if !actions[action] {
 			return nil, fmt.Errorf("/spec/stream/events: missing lifecycle action for %s", action)
+		}
+	}
+	if contract.hasTools {
+		for _, action := range []EventType{ItemStarted, ItemDelta} {
+			if !toolActions[action] {
+				return nil, fmt.Errorf("/spec/stream/events: missing tool lifecycle action for %s", action)
+			}
 		}
 	}
 	return contract, nil
@@ -81,6 +101,12 @@ func compileStreamEvent(spec ProtocolStreamEventSpec, path string, limits Limits
 		event.action = ItemDelta
 	case "item_finish":
 		event.action = ItemFinished
+	case "tool_start":
+		event.action, event.isTool = ItemStarted, true
+	case "tool_delta":
+		event.action, event.isTool = ItemDelta, true
+	case "tool_finish":
+		event.action, event.isTool = ItemFinished, true
 	case "usage":
 		event.action = UsageUpdated
 	case "response_finish":
@@ -92,18 +118,37 @@ func compileStreamEvent(spec ProtocolStreamEventSpec, path string, limits Limits
 	default:
 		return event, fmt.Errorf("%s/action: unsupported lifecycle action", path)
 	}
-	if (event.action == ItemDelta) != (spec.Text != "") || (event.action == OperationFailed) != (spec.Error != "") || (event.action == UsageUpdated) != (spec.Usage != nil) {
+	if (spec.Action == "text_delta") != (spec.Text != "") || (event.action == OperationFailed) != (spec.Error != "") || (event.action == UsageUpdated) != (spec.Usage != nil) {
 		return event, fmt.Errorf("%s: text, error and usage selectors belong only to their respective actions and are required there", path)
+	}
+	if (spec.Action == "tool_delta") != (spec.Arguments != "") || (spec.Action == "tool_start") != (spec.Tool != nil) {
+		return event, fmt.Errorf("%s: tool identity belongs to tool_start and arguments to tool_delta; both are required there", path)
 	}
 	var err error
 	if spec.Text != "" {
-		event.text, err = compileStreamField(spec.Text, path+"/text", limits)
+		event.delta, err = compileStreamField(spec.Text, path+"/text", limits)
+	}
+	if spec.Arguments != "" {
+		event.delta, err = compileStreamField(spec.Arguments, path+"/arguments", limits)
 	}
 	if spec.Error != "" {
 		event.failure, err = compileStreamField(spec.Error, path+"/error", limits)
 	}
 	if err != nil {
 		return event, err
+	}
+	if spec.Tool != nil {
+		event.tool = &compiledStreamTool{}
+		for _, field := range []struct {
+			name, pointer string
+			target        *streamField
+		}{{"name", spec.Tool.Name, &event.tool.name}, {"callId", spec.Tool.CallID, &event.tool.callID}} {
+			selected, err := compileStreamField(field.pointer, path+"/tool/"+field.name, limits)
+			if err != nil {
+				return event, err
+			}
+			*field.target = selected
+		}
 	}
 	if spec.Usage != nil {
 		if spec.Usage.Input == "" && spec.Usage.Output == "" && spec.Usage.Total == "" {

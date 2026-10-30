@@ -1,7 +1,7 @@
 # 声明式流契约的首批边界
 
 v3 包现在可以独立编译 `decode_event` 和 `encode_event`，但生产加载器及四个预置尚未切换。
-本阶段验证单响应、文本项目、单帧单事件；不能据此宣称已迁移供应商 SSE。
+本阶段验证单响应、文本及显式JSON工具项目、单帧单事件；不能据此宣称已迁移供应商 SSE。
 
 ## Spec 和 Mapping 各自负责什么
 
@@ -40,7 +40,7 @@ Mapping 的 DSL 程序负责真正构造核心事件与目标帧。两者没有�
 - 正常生命周期要求响应开始、文本项目开始、增量、项目结束、usage 和响应结束六类动作的声明。
   failure/cancel 可选；未知标签和不支持的动作在声明或运行边界拒绝。
 - 响应和项目身份必须是非空字符串。一个实例只接受一个响应，所有帧必须使用同一响应 ID。
-  响应开始之前不接受其他动作；响应结束要求所有文本项目闭合。
+  响应开始之前不接受其他动作；响应结束要求所有项目闭合。
 - 如果声明 sequence，则每帧必须提供非负 int64 整数字面量并严格递增。
   本阶段拒绝重复序号，不把相同内容当作续传重放。
 - usage 选择器读取累积快照。缺失计数表示本帧未观察，显式零仍是零；至少一个已声明计数必须出现。
@@ -50,6 +50,48 @@ Mapping 的 DSL 程序负责真正构造核心事件与目标帧。两者没有�
   EOF 必须由 `Finish` 确认已有终态，不能补造成功帧。
 - 单帧继续受 wire 限额约束；跨帧保留项目身份、文本摘要及累积 usage。
   项目数量和身份总字节有界，不保存原始帧数组、已转发全文或额外 Mapping 状态。
+
+## 显式JSON工具生命周期
+
+工具动作可与原文本动作共同声明，事件方向必须具有`tools.function`能力：
+
+```json
+{
+  "tool_started": {"action":"tool_start","tool":{"name":"/name","callId":"/call_id"}},
+  "tool_arguments": {"action":"tool_delta","arguments":"/arguments"},
+  "item_stopped": {"action":"item_finish"},
+  "tool_stopped": {"action":"tool_finish"}
+}
+```
+
+声明工具时要求tool_start和tool_delta。tool_start当前帧即须有非空name和callId，不提供
+晚到身份或默认值。tool_delta选择JSON字符串片段，复用现有StreamState的累计预算和
+完成时JSON语法检查；不把片段当成已完成参数，也不逐帧重复解码整个前缀。
+
+item_finish根据已建立项目类型完成文本或工具；严格tool_finish可选，只能完成工具。
+这个通用结束动作适用于线格式的停止事件不区分内容种类的情况。核心ItemFinished可继续
+不携带Item；Mapping不必为识别工具而补造完整参数快照或放宽核心的partial Item约束。
+文本与工具delta必须匹配已建立种类，已完成项目拒绝后续内容和重复完成。
+
+工具名称和callId加入已有identityBytes预算；未完成JSON参数使用已有StreamState.buffered
+预算，完成、失败或取消后释放参数缓冲，只保留必要身份／摘要。两种逻辑预算各自有界，
+不等于总物理内存只有一个BufferBytes。纯文本契约跳过新增类型关联查询，不增加每帧Node
+或辅助map；编译态工具选择器仅工具开始动作持有，text与arguments共用delta字段。
+
+Spec只校验实际线格式。真正的工具核心事件和反向帧仍由独立DSL程序构造，不能只声明上述
+动作就认为工具转换已经可用。当前不支持参数快照、重复done、晚到身份、free-text工具、
+一帧多事件或稀疏响应身份；真实Chat／Responses仍有包络及身份选择问题待迁移。
+
+合成双向Mapping已验证Native关闭路径：源严格tool_finish映射到不带Item的核心完成事件，
+目标按声明渲染generic item_finish；target Spec无需声明严格tool_finish。测试串联原始源流
+校验、DecodeFrame、EncodeFrame、最终Spec、目标反解和Collector，核对两个原参数片段、
+`9007199254740993`完整输入、三项usage及实际终态。这是声明的结束标签变体，不称全部原帧
+字节回放。首次测试误以为Collector会自动补Response.Status，失败日志保留；随后改为检查
+真实replay／交付终态，没有改变核心模型或补默认状态。
+
+相关生命周期、错误关联、预算释放及protocol/builtin全量通过。证据在
+`.tmp-dev/protocol-dsl-2026-10-29/explicit-json-tool-stream-2026-10-30/`和
+`checks/tool-stage-protocol.*`；纯文本组件的增量成本单独测量。
 
 此处的“整数字面量”不包含 `1.0` 或 `1e1`。需要其他数值拼写的协议必须显式扩展契约，
 不能把本阶段的读取规则等同于全部 JSON Schema integer 表示。
@@ -70,7 +112,7 @@ Mapping 的 DSL 程序负责真正构造核心事件与目标帧。两者没有�
 
 ## 后续迁移所需工作
 
-本阶段没有跨帧可写 Mapping 寄存器、工具参数片段、父子消息容器、复合帧、metadata、签名、
+本阶段没有跨帧可写 Mapping 寄存器、工具快照／晚到身份、父子消息容器、复合帧、metadata、签名、
 源续传去重、WebSocket、任务或 Agent 接入。四个供应商的实际流规则须逐项迁移并差分。
 六处转换包络新建Response已在 `05cf4117` 绑定所属事件版本；旧零版本独立helper调用保留
 core1兼容，已提供Response的版本不被修正。服务器Target、独立源流校验及新建HTTP失败响应

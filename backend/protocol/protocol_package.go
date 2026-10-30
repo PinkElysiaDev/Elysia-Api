@@ -48,13 +48,23 @@ type ProtocolStreamSpec struct {
 	Events        map[string]ProtocolStreamEventSpec `json:"events"`
 }
 
-// ProtocolStreamEventSpec selects a fixed lifecycle action. The initial
-// contract supports text items; it does not infer tools, snapshots or controls.
+// ProtocolStreamEventSpec selects an explicit text or JSON-tool lifecycle
+// action. It does not infer starts, late identities, snapshots or controls.
+// item_finish closes the established kind; tool_finish requires a tool item.
 type ProtocolStreamEventSpec struct {
-	Action string                   `json:"action"`
-	Text   string                   `json:"text,omitempty"`
-	Error  string                   `json:"error,omitempty"`
-	Usage  *ProtocolStreamUsageSpec `json:"usage,omitempty"`
+	Action    string                   `json:"action"`
+	Text      string                   `json:"text,omitempty"`
+	Arguments string                   `json:"arguments,omitempty"`
+	Tool      *ProtocolStreamToolSpec  `json:"tool,omitempty"`
+	Error     string                   `json:"error,omitempty"`
+	Usage     *ProtocolStreamUsageSpec `json:"usage,omitempty"`
+}
+
+// ProtocolStreamToolSpec selects the complete identity required at tool_start.
+// Both fields must be nonempty strings on that frame; input is always JSON.
+type ProtocolStreamToolSpec struct {
+	Name   string `json:"name"`
+	CallID string `json:"callId"`
 }
 
 // ProtocolStreamUsageSpec selects observed cumulative token counts. Missing
@@ -235,6 +245,9 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 		if contract.packageStream != nil {
 			if !program.capabilities[TextCapability] || !program.capabilities[UsageCapability] {
 				return nil, fmt.Errorf("/mapping/directions/%s/capabilities: stream contract requires text and usage", direction)
+			}
+			if contract.packageStream.hasTools && !program.capabilities[FunctionToolsCapability] {
+				return nil, fmt.Errorf("/mapping/directions/%s/capabilities: stream tool actions require tools.function", direction)
 			}
 			identity, err := EncodeValue(struct {
 				Mapping string              `json:"mapping"`

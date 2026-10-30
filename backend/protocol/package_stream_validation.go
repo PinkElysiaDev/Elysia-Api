@@ -8,7 +8,8 @@ import (
 )
 
 // One response owns this state. The contract and mapping share no mutable state;
-// only identities, cumulative usage and text digests survive the current frame.
+// Identities and digests survive each item. JSON tool arguments are retained
+// only until tool completion or an unsuccessful response terminal.
 type packageStreamValidation struct {
 	contract           *compiledPackageStreamContract
 	replay             *EventReplay
@@ -120,6 +121,12 @@ func (state *packageStreamValidation) consume(ctx context.Context, frame Value) 
 	case ResponseFinished, OperationFailed, OperationCancelled:
 		state.accepted.isTerminal = true
 	}
+	if state.contract.hasTools && (event.Type == OperationFailed || event.Type == OperationCancelled) {
+		for _, tool := range state.replay.state.tools {
+			tool.input.Reset()
+		}
+		state.replay.state.buffered = 0
+	}
 	state.hasPendingDelivery = state.direction == EncodeEvent
 	return nil
 }
@@ -132,17 +139,40 @@ func (state *packageStreamValidation) readPayload(event *Event, definition *comp
 			return 0, err
 		}
 		event.ItemID = StringValue(itemID)
+		// Generic finishes close the established item, as on transports whose
+		// end marker carries no kind. Tool finishes still promise a tool item.
+		if state.contract.hasTools && (event.Type == ItemDelta || event.Type == ItemFinished && definition.isTool) {
+			key := state.replay.identities.aliases["item:"+itemID]
+			if item := state.replay.items[key]; item != nil && (item.kind == ToolCallNode) != definition.isTool {
+				return 0, state.issue(state.contract.itemID.path, "stream action does not match the established item kind", nil)
+			}
+		}
 		if event.Type == ItemStarted {
+			if definition.isTool {
+				name, err := state.readIdentity(definition.tool.name, read)
+				if err != nil {
+					return 0, err
+				}
+				callID, err := state.readIdentity(definition.tool.callID, read)
+				if err != nil {
+					return 0, err
+				}
+				event.Item = &Node{Kind: ToolCallNode, Name: StringValue(name), CallID: StringValue(callID), Input: &ToolInput{Kind: JSONInput}}
+				return len(itemID) + len(name) + len(callID), nil
+			}
 			event.Item = &Node{Kind: TextNode}
 			return len(itemID), nil
 		}
 		if event.Type == ItemDelta {
-			event.Delta, err = read(definition.text)
+			event.Delta, err = read(definition.delta)
 			if err != nil {
 				return 0, err
 			}
 			if !event.Delta.IsStringValue() {
-				return 0, state.issue(definition.text.path, "text delta must be a string", nil)
+				if definition.isTool {
+					return 0, state.issue(definition.delta.path, "tool arguments delta must be a string", nil)
+				}
+				return 0, state.issue(definition.delta.path, "text delta must be a string", nil)
 			}
 		}
 	case UsageUpdated:
@@ -151,6 +181,9 @@ func (state *packageStreamValidation) readPayload(event *Event, definition *comp
 		return 0, err
 	case ResponseFinished:
 		if state.openItems != 0 {
+			if state.contract.hasTools {
+				return 0, state.issue(state.contract.discriminator.path, "response finished before all stream items", nil)
+			}
 			return 0, state.issue(state.contract.discriminator.path, "response finished before all text items", nil)
 		}
 	case OperationFailed:
@@ -245,11 +278,31 @@ func (state *packageStreamValidation) replayError(err error, event compiledPacka
 		case "/item", "/itemId", "/item/kind":
 			issue.Path = state.contract.itemID.path
 		case "/delta":
-			issue.Path = event.text.path
+			issue.Path = event.delta.path
+		case "/item/name":
+			issue.Path = state.contract.itemID.path
+			if event.tool != nil {
+				issue.Path = event.tool.name.path
+			}
+		case "/item/callId", "/callId":
+			issue.Path = state.contract.itemID.path
+			if event.tool != nil {
+				issue.Path = event.tool.callID.path
+			}
 		case "/error":
 			issue.Path = event.failure.path
 		case "/usage":
 			issue.Path = "/"
+		}
+		if item := state.replay.items[issue.Path]; item != nil && item.kind == ToolCallNode {
+			switch event.action {
+			case ItemStarted:
+				issue.Path = event.tool.callID.path
+			case ItemDelta:
+				issue.Path = event.delta.path
+			case ItemFinished:
+				issue.Path = state.contract.itemID.path
+			}
 		}
 		if issue.Code != LimitExceeded {
 			issue.Code = ConversionRejected

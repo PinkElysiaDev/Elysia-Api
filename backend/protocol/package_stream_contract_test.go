@@ -8,6 +8,50 @@ import (
 	"testing"
 )
 
+const (
+	packageToolStarted  EventType = "tool.started"
+	packageToolDelta    EventType = "tool.delta"
+	packageToolFinished EventType = "tool.finished"
+)
+
+func toolStreamPackage(t *testing.T) ProtocolPackage {
+	t.Helper()
+	document := eventProtocolPackage(t)
+	document.Mapping.Capabilities[FunctionToolsCapability] = true
+	document.Spec.Stream.Events[string(packageToolStarted)] = ProtocolStreamEventSpec{Action: "tool_start", Tool: &ProtocolStreamToolSpec{Name: "/name", CallID: "/call_id"}}
+	document.Spec.Stream.Events[string(packageToolDelta)] = ProtocolStreamEventSpec{Action: "tool_delta", Arguments: "/arguments"}
+	document.Spec.Stream.Events[string(packageToolFinished)] = ProtocolStreamEventSpec{Action: "tool_finish"}
+	isTag := func(tag EventType) Expression {
+		return Expression{Op: "equal", Items: []Expression{readExpression("input", "/kind"), literalExpression(tag)}}
+	}
+	decode := document.Mapping.Directions[DecodeEvent].Program.Fields
+	decode["type"] = Expression{Op: "choose", Source: expressionPointer(readExpression("input", "/kind")), Cases: map[string]Expression{
+		string(packageToolStarted): literalExpression(ItemStarted), string(packageToolDelta): literalExpression(ItemDelta), string(packageToolFinished): literalExpression(ItemFinished),
+	}, Otherwise: expressionPointer(readExpression("input", "/kind"))}
+	decode["delta"] = Expression{Op: "if", When: expressionPointer(isTag(packageToolDelta)), Then: expressionPointer(readExpression("input", "/arguments")), Otherwise: expressionPointer(readExpression("input", "/text"))}
+	partialTool := objectExpression(map[string]Expression{
+		"kind": literalExpression(ToolCallNode), "name": readExpression("input", "/name"), "callId": readExpression("input", "/call_id"),
+		"input": objectExpression(map[string]Expression{"kind": literalExpression(JSONInput)}),
+	})
+	decode["item"] = Expression{Op: "if", When: &Expression{Op: "any", Items: []Expression{isTag(packageToolStarted), isTag(packageToolDelta)}}, Then: &partialTool, Otherwise: expressionPointer(decode["item"])}
+	isTool := Expression{Op: "if", When: &Expression{Op: "present", Source: expressionPointer(readExpression("input", "/item"))},
+		Then: &Expression{Op: "equal", Items: []Expression{readExpression("input", "/item/kind"), literalExpression(ToolCallNode)}}, Otherwise: expressionPointer(literalExpression(false))}
+	encode := document.Mapping.Directions[EncodeEvent].Program.Fields
+	encode["kind"] = Expression{Op: "choose", Source: expressionPointer(readExpression("input", "/type")), Cases: map[string]Expression{
+		string(ItemStarted): {Op: "if", When: &isTool, Then: expressionPointer(literalExpression(packageToolStarted)), Otherwise: expressionPointer(literalExpression(ItemStarted))},
+		string(ItemDelta):   {Op: "if", When: &isTool, Then: expressionPointer(literalExpression(packageToolDelta)), Otherwise: expressionPointer(literalExpression(ItemDelta))},
+	}, Otherwise: expressionPointer(readExpression("input", "/type"))}
+	encode["text"] = Expression{Op: "if", When: &isTool, Then: &Expression{Op: "omit"}, Otherwise: expressionPointer(readExpression("input", "/delta"))}
+	for wire, source := range map[string]string{"name": "/item/name", "call_id": "/item/callId", "arguments": "/delta"} {
+		encode[wire] = Expression{Op: "if", When: &isTool, Then: expressionPointer(readExpression("input", source))}
+	}
+	return document
+}
+
+func packageToolDeltaFrame(sequence int, id, arguments string) Value {
+	return packageStreamFrame(packageToolDelta, sequence, fmt.Sprintf(`,"item_id":%q,"arguments":%s`, id, StringValue(arguments).raw))
+}
+
 func TestPackageStreamContractCompilation(t *testing.T) {
 	for _, test := range []struct {
 		name string
@@ -205,6 +249,270 @@ func TestPackageStreamIndependentValidationAndLimits(t *testing.T) {
 			var limit *ResourceLimitError
 			if !errors.As(err, &limit) || limit.Metric != "identity_bytes" {
 				t.Fatal("retained identities escaped the buffer budget or lost its cause", err)
+			}
+		}
+	}
+}
+
+func TestPackageStreamToolContractCompilation(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		edit func(*ProtocolPackage)
+		path string
+	}{
+		{"missing-name", func(p *ProtocolPackage) { p.Spec.Stream.Events[string(packageToolStarted)].Tool.Name = "" }, "/spec/stream/events/tool.started/tool/name"},
+		{"missing-call-id", func(p *ProtocolPackage) { p.Spec.Stream.Events[string(packageToolStarted)].Tool.CallID = "" }, "/spec/stream/events/tool.started/tool/callId"},
+		{"missing-arguments", func(p *ProtocolPackage) {
+			p.Spec.Stream.Events[string(packageToolDelta)] = ProtocolStreamEventSpec{Action: "tool_delta"}
+		}, "/spec/stream/events/tool.delta"},
+		{"misplaced-tool", func(p *ProtocolPackage) {
+			p.Spec.Stream.Events[string(packageToolFinished)] = ProtocolStreamEventSpec{Action: "tool_finish", Tool: &ProtocolStreamToolSpec{Name: "/name", CallID: "/call_id"}}
+		}, "/spec/stream/events/tool.finished"},
+		{"tools-cannot-replace-text", func(p *ProtocolPackage) { delete(p.Spec.Stream.Events, string(ItemDelta)) }, "/spec/stream/events"},
+		{"snapshot-not-supported", func(p *ProtocolPackage) {
+			p.Spec.Stream.Events["tool.snapshot"] = ProtocolStreamEventSpec{Action: "tool_snapshot"}
+		}, "/spec/stream/events/tool.snapshot/action"},
+		{"missing-capability", func(p *ProtocolPackage) {
+			entry := p.Mapping.Directions[EncodeEvent]
+			entry.Capabilities = CapabilitySet{TextCapability: true, UsageCapability: true}
+			p.Mapping.Directions[EncodeEvent] = entry
+		}, "/mapping/directions/encode_event/capabilities"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			document := toolStreamPackage(t)
+			test.edit(&document)
+			if err := document.Validate(DefaultLimits()); err == nil || !strings.Contains(err.Error(), test.path) {
+				t.Fatalf("expected tool declaration error at %s, got %v", test.path, err)
+			}
+		})
+	}
+}
+
+func TestPackageStreamJSONToolLifecycle(t *testing.T) {
+	compiled := compilePackageForTest(t, toolStreamPackage(t))
+	for _, direction := range []Direction{DecodeEvent, EncodeEvent} {
+		t.Run(string(direction), func(t *testing.T) {
+			validation, _ := compiled.newWireStreamValidation(direction, Scope{})
+			frames := []Value{
+				packageStreamFrame(ResponseStarted, 0, ""),
+				packageStreamFrame(packageToolStarted, 1, `,"item_id":"tool","name":"lookup","call_id":"call"`),
+				packageToolDeltaFrame(2, "tool", `{"n":`),
+				packageToolDeltaFrame(3, "tool", `9007199254740993}`),
+				packageStreamFrame(packageToolFinished, 4, `,"item_id":"tool"`),
+				packageStreamFrame(ResponseFinished, 5, ""),
+				packageStreamFrame(UsageUpdated, 6, `,"usage":{"output":0}`),
+			}
+			for index, frame := range frames {
+				if err := validation.Consume(t.Context(), frame); err != nil {
+					t.Fatal(err)
+				}
+				if index == 3 && validation.packageStream.replay.state.buffered != len(`{"n":9007199254740993}`) {
+					t.Fatal("tool fragments bypassed bounded accumulation")
+				}
+				if index >= 4 && validation.packageStream.replay.state.buffered != 0 {
+					t.Fatal("completed tool retained argument bytes")
+				}
+			}
+			if err := validation.Finish(); err != nil || validation.packageStream.identityBytes != len("rtoollookupcall") || validation.packageStream.replay.Usage().Output.Count != 0 {
+				t.Fatal("tool completion changed identities, usage or terminal", err)
+			}
+		})
+	}
+}
+
+func TestPackageStreamToolMappingRoundTrip(t *testing.T) {
+	sourceDocument := toolStreamPackage(t)
+	sourceDocument.Spec.ID = "tool-source"
+	sourceDocument.Mapping.Native.Preserve = false
+	targetDocument := toolStreamPackage(t)
+	targetDocument.Spec.ID = "tool-target"
+	targetDocument.Mapping.Native.Preserve = false
+	// The authored target closes both kinds with item_finish. It needs no
+	// tool-specific end tag, remembered item kind or fabricated input snapshot.
+	delete(targetDocument.Spec.Stream.Events, string(packageToolFinished))
+	source, target := compilePackageForTest(t, sourceDocument), compilePackageForTest(t, targetDocument)
+	sourceValidation, err := source.NewWireInputStreamValidation(Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finalValidation, err := target.NewWireStreamValidation(Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	collector, err := NewResponseCollector(target.Target(EncodeEvent, Scope{}), DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fragments := []string{` { "n" : `, `9007199254740993 } `}
+	frames := []Value{
+		packageStreamFrame(ResponseStarted, 0, ""),
+		packageStreamFrame(packageToolStarted, 1, `,"item_id":"tool","name":"lookup","call_id":"call"`),
+		packageToolDeltaFrame(2, "tool", fragments[0]),
+		packageToolDeltaFrame(3, "tool", fragments[1]),
+		packageStreamFrame(packageToolFinished, 4, `,"item_id":"tool"`),
+		packageStreamFrame(ResponseFinished, 5, ""),
+		packageStreamFrame(UsageUpdated, 6, `,"usage":{"input":5,"output":2,"total":7}`),
+	}
+	for index, wire := range frames {
+		if err := sourceValidation.Consume(t.Context(), wire); err != nil {
+			t.Fatal(err)
+		}
+		decoded, err := source.DecodeFrame(t.Context(), wire, EvaluationContext{})
+		if err != nil || len(decoded.Events) != 1 {
+			t.Fatal("tool mapping failed to decode one event", err)
+		}
+		if index == 4 && decoded.Events[0].Item != nil {
+			t.Fatal("tool completion invented a snapshot")
+		}
+		encoded, err := target.EncodeFrame(t.Context(), decoded, EvaluationContext{})
+		if err != nil || len(encoded) != 1 {
+			t.Fatal("tool mapping failed to encode one frame", err)
+		}
+		fields, err := wire.ReadObject()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if index == 4 {
+			fields["kind"] = StringValue(string(ItemFinished))
+		}
+		// Compare the declared canonical output, not the source frame's raw
+		// bytes: the final tag intentionally differs and Native is disabled.
+		if encoded[0] != fixtureValue(t, fields) {
+			t.Fatal("mapping changed fields outside its declared end tag", encoded[0])
+		}
+		if err := finalValidation.Consume(t.Context(), encoded[0]); err != nil {
+			t.Fatal(err)
+		}
+		if err := finalValidation.CommitDelivery(); err != nil {
+			t.Fatal(err)
+		}
+		delivered, err := target.DecodeFrame(t.Context(), encoded[0], EvaluationContext{})
+		if err != nil || len(delivered.Events) != 1 {
+			t.Fatal("delivered tool mapping failed", err)
+		}
+		if index == 2 || index == 3 {
+			if !delivered.Events[0].Delta.IsString(fragments[index-2]) {
+				t.Fatal("tool fragment spelling or boundary changed")
+			}
+		}
+		if _, _, err := collector.Consume(delivered.Events[0]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := errors.Join(sourceValidation.Finish(), finalValidation.Finish()); err != nil {
+		t.Fatal(err)
+	}
+	response, err := collector.Finish()
+	if err != nil || len(response.Content) != 1 || collector.replay.terminal != ResponseFinished || !finalValidation.packageStream.delivered.isTerminal || response.Usage.Input.Count != 5 || response.Usage.Output.Count != 2 || response.Usage.Total.Count != 7 {
+		t.Fatal("tool collection lost its terminal or usage", response, err)
+	}
+	tool := response.Content[0]
+	if tool.Kind != ToolCallNode || !tool.Name.IsString("lookup") || !tool.CallID.IsString("call") || tool.Input == nil || tool.Input.Kind != JSONInput || tool.Input.Value.raw != strings.Join(fragments, "") {
+		t.Fatal("tool collection changed identities, exact argument bytes or input kind", tool)
+	}
+}
+
+func TestPackageStreamRejectsInvalidToolLifecycle(t *testing.T) {
+	compiled := compilePackageForTest(t, toolStreamPackage(t))
+	start := packageStreamFrame(ResponseStarted, 0, "")
+	tool := packageStreamFrame(packageToolStarted, 1, `,"item_id":"tool","name":"lookup","call_id":"call"`)
+	text := packageStreamFrame(ItemStarted, 1, `,"item_id":"text"`)
+	delta := packageToolDeltaFrame(2, "tool", `{}`)
+	finish := packageStreamFrame(packageToolFinished, 3, `,"item_id":"tool"`)
+	for _, test := range []struct {
+		name   string
+		frames []Value
+		path   string
+	}{
+		{"missing-name", []Value{start, packageStreamFrame(packageToolStarted, 1, `,"item_id":"tool","call_id":"call"`)}, "/name"},
+		{"empty-call-id", []Value{start, packageStreamFrame(packageToolStarted, 1, `,"item_id":"tool","name":"lookup","call_id":""`)}, "/call_id"},
+		{"arguments-must-be-string", []Value{start, tool, packageStreamFrame(packageToolDelta, 2, `,"item_id":"tool","arguments":null`)}, "/arguments"},
+		{"text-delta-on-tool", []Value{start, tool, packageStreamFrame(ItemDelta, 2, `,"item_id":"tool","text":"{}"`)}, "/item_id"},
+		{"tool-delta-on-text", []Value{start, text, packageToolDeltaFrame(2, "text", `{}`)}, "/item_id"},
+		{"tool-finish-on-text", []Value{start, text, packageStreamFrame(packageToolFinished, 2, `,"item_id":"text"`)}, "/item_id"},
+		{"duplicate-call-id", []Value{start, tool, packageStreamFrame(packageToolStarted, 2, `,"item_id":"other","name":"lookup","call_id":"call"`)}, "/call_id"},
+		{"unfinished-json", []Value{start, tool, packageToolDeltaFrame(2, "tool", `{"n":`), packageStreamFrame(ItemFinished, 3, `,"item_id":"tool"`)}, "/item_id"},
+		{"duplicate-finish", []Value{start, tool, delta, finish, packageStreamFrame(packageToolFinished, 4, `,"item_id":"tool"`)}, "/item_id"},
+		{"terminal-with-open-tool", []Value{start, tool, delta, packageStreamFrame(ResponseFinished, 3, "")}, "/kind"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			validation, _ := compiled.NewWireInputStreamValidation(Scope{})
+			for index, frame := range test.frames {
+				err := validation.Consume(t.Context(), frame)
+				if index < len(test.frames)-1 {
+					if err != nil {
+						t.Fatal("valid prefix rejected", err)
+					}
+				} else {
+					assertPackageRuntimeIssue(t, err, UpstreamContractViolation, test.path)
+				}
+			}
+		})
+	}
+}
+
+func TestPackageStreamToolTerminationAndBudgets(t *testing.T) {
+	compiled := compilePackageForTest(t, toolStreamPackage(t))
+	for _, terminal := range []EventType{OperationCancelled, OperationFailed} {
+		t.Run(string(terminal), func(t *testing.T) {
+			validation, _ := compiled.NewWireInputStreamValidation(Scope{})
+			for _, frame := range []Value{
+				packageStreamFrame(ResponseStarted, 0, ""),
+				packageStreamFrame(packageToolStarted, 1, `,"item_id":"tool","name":"lookup","call_id":"call"`),
+				packageToolDeltaFrame(2, "tool", `{"partial":`),
+				packageStreamFrame(terminal, 3, `,"error":{"code":"synthetic"}`),
+				packageStreamFrame(UsageUpdated, 4, `,"usage":{"output":1}`),
+			} {
+				if err := validation.Consume(t.Context(), frame); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := validation.Finish(); err != nil || validation.packageStream.replay.state.buffered != 0 {
+				t.Fatal("unsuccessful terminal kept partial JSON or required completion", err)
+			}
+		})
+	}
+	compiled.limits.BufferBytes = 512
+	arguments := `{"text":"` + strings.Repeat("x", 300) + `"}`
+	for _, shouldFinish := range []bool{false, true} {
+		t.Run(fmt.Sprintf("release-before-next=%t", shouldFinish), func(t *testing.T) {
+			validation, _ := compiled.NewWireInputStreamValidation(Scope{})
+			frames := []Value{
+				packageStreamFrame(ResponseStarted, 0, ""),
+				packageStreamFrame(packageToolStarted, 1, `,"item_id":"one","name":"lookup","call_id":"first"`),
+				packageToolDeltaFrame(2, "one", arguments),
+			}
+			if shouldFinish {
+				frames = append(frames, packageStreamFrame(packageToolFinished, 3, `,"item_id":"one"`))
+			}
+			frames = append(frames, packageStreamFrame(packageToolStarted, 4, `,"item_id":"two","name":"lookup","call_id":"second"`))
+			for _, frame := range frames {
+				if err := validation.Consume(t.Context(), frame); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err := validation.Consume(t.Context(), packageToolDeltaFrame(5, "two", arguments))
+			if !shouldFinish {
+				assertPackageRuntimeIssue(t, err, LimitExceeded, "/arguments")
+			} else if err != nil || validation.packageStream.replay.state.buffered != len(arguments) {
+				t.Fatal("completed argument budget was not reusable", err)
+			}
+		})
+	}
+	validation, _ := compiled.NewWireInputStreamValidation(Scope{})
+	if err := validation.Consume(t.Context(), packageStreamFrame(ResponseStarted, 0, "")); err != nil {
+		t.Fatal(err)
+	}
+	for index := 1; index <= 2; index++ {
+		frame := packageStreamFrame(packageToolStarted, index, fmt.Sprintf(`,"item_id":%q,"name":%q,"call_id":%q`, fmt.Sprint(index), strings.Repeat("n", 150), strings.Repeat("c", 150)+fmt.Sprint(index)))
+		err := validation.Consume(t.Context(), frame)
+		if index == 1 && err != nil {
+			t.Fatal(err)
+		}
+		if index == 2 {
+			var failure *ResourceLimitError
+			if !errors.As(err, &failure) || failure.Metric != "identity_bytes" {
+				t.Fatal("tool name and call ID bypassed the identity budget", err)
 			}
 		}
 	}
