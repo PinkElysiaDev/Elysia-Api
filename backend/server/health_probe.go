@@ -57,27 +57,32 @@ func (s *Server) prepareHealthProbe(ctx context.Context, model storage.Model) (g
 	if candidate.operation.Kind != "generate" {
 		return candidate, nil, gatewayIssue(candidate.compiled.Identity(), protocol.UnsupportedCapability, "/operations", "background health probes require synchronous generation")
 	}
+	request, err := prepareHealthProbeRequest(ctx, candidate)
+	return candidate, request, err
+}
+
+func prepareHealthProbeRequest(ctx context.Context, candidate gatewayCandidate) (*protocol.Request, error) {
 	budget, err := protocol.EncodeValue(HealthProbeMaxTokens)
 	if err != nil {
-		return candidate, nil, err
+		return nil, err
 	}
 	stream, err := protocol.EncodeValue(candidate.operation.Transport != protocol.HTTPJSON)
 	if err != nil {
-		return candidate, nil, err
+		return nil, err
 	}
 	request := &protocol.Request{
-		SchemaVersion: protocol.SemanticSchemaVersion,
+		SchemaVersion: candidate.compiled.CoreVersion(),
 		Source:        protocol.Identity{Family: "elysia-health", WireVersion: "1"},
-		Model:         protocol.StringValue(model.Name),
+		Model:         protocol.StringValue(candidate.model.Name),
 		Content:       []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("ping")}}}},
 		Parameters:    protocol.Object{"max_output_tokens": budget, "stream": stream},
 	}
 	if err := protocol.IssuesError(protocol.CheckRoute(request, candidate.compiled, candidate.binding, candidate.scope, candidate.operation.Transport)); err != nil {
-		return candidate, nil, err
+		return nil, err
 	}
 	body, err := candidate.compiled.EncodeRequest(ctx, request, protocol.EvaluationContext{Scope: candidate.scope})
 	if err != nil {
-		return candidate, nil, err
+		return nil, err
 	}
-	return candidate, request, candidate.compiled.CheckOperationInput(ctx, candidate.operationName, body)
+	return request, candidate.compiled.CheckOperationInput(ctx, candidate.operationName, body)
 }

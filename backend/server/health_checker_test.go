@@ -69,6 +69,84 @@ func TestHealthProbeUsesVerifiedWireAndCredentials(t *testing.T) {
 	}
 }
 
+func TestHealthProbeUsesTargetCoreVersion(t *testing.T) {
+	server := newHealthTestServer(t)
+	document := sourceStreamPackage(t)
+	document.Spec.Stream = nil
+	for direction := range document.Mapping.Directions {
+		if direction != protocol.EncodeRequest && direction != protocol.DecodeResponse {
+			delete(document.Mapping.Directions, direction)
+			delete(document.Spec.WireContracts, direction)
+		}
+	}
+	read := func(path string) protocol.Expression {
+		return protocol.Expression{Op: "read", From: "input", Path: path}
+	}
+	requestMapping := document.Mapping.Directions[protocol.EncodeRequest]
+	for _, field := range []struct{ name, path string }{
+		{"prompt", "/content/0/children/0/payload"},
+		{"limit", "/parameters/max_output_tokens"},
+		{"stream", "/parameters/stream"},
+	} {
+		requestMapping.Program.Fields[field.name] = read(field.path)
+		requestMapping.Effects = append(requestMapping.Effects, protocol.ProtocolSemanticEffect{ID: field.name, Kind: "emit", Path: field.path, Target: "/" + field.name})
+	}
+	document.Mapping.Directions[protocol.EncodeRequest] = requestMapping
+	responseMapping := document.Mapping.Directions[protocol.DecodeResponse]
+	responseMapping.Program.Fields["status"] = protocol.Expression{Op: "literal", Value: protocol.StringValue("completed")}
+	for _, field := range []string{"content", "usage"} {
+		responseMapping.Program.Fields[field] = read("/" + field)
+		responseMapping.Effects = append(responseMapping.Effects, protocol.ProtocolSemanticEffect{ID: field, Kind: "emit", Path: "/" + field, Target: "/" + field})
+	}
+	document.Mapping.Directions[protocol.DecodeResponse] = responseMapping
+	operation := document.Spec.Operations["generate"]
+	operation.Auth = protocol.Credential{Location: "header", Name: "Authorization", Prefix: "Bearer "}
+	document.Spec.Operations["generate"] = operation
+	compiled := compileSourceStreamPackage(t, document)
+
+	const modelName = "probe-target"
+	expected := mustEncodedProtocolValue(t, map[string]any{"model": modelName, "prompt": "ping", "limit": HealthProbeMaxTokens, "stream": false})
+	var calls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != operation.Path || r.Header.Get("Authorization") != "Bearer probe-key" || string(body) != expected.JSONString() {
+			t.Errorf("unexpected core2 probe: method=%s path=%s headers=%v body=%s", r.Method, r.URL.Path, r.Header, body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"content":[{"kind":"text","payload":"pong"}],"usage":{"input":{"count":7,"origin":"observed"},"output":{"count":1,"origin":"observed"},"total":{"count":8,"origin":"observed"}}}`)
+	}))
+	defer upstream.Close()
+	candidate := gatewayCandidate{compiled: compiled, operation: operation, operationName: "generate",
+		model:   config.ModelRef{ID: "probe-model", Name: modelName, BaseURL: upstream.URL, APIKey: "probe-key"},
+		binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: document.Mapping.Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
+	// Package activation is a separate migration boundary; exercise the same
+	// preparation used after production routing has pinned its candidate.
+	request, err := prepareHealthProbeRequest(t.Context(), candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.SchemaVersion != protocol.ProtocolCoreVersion || !request.Model.IsString(modelName) || calls.Load() != 0 {
+		t.Fatal("probe preparation changed its target or sent a request", request, calls.Load())
+	}
+	response, err := server.collectProtocolGenerationAttempt(t.Context(), candidate, request, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.SchemaVersion != protocol.ProtocolCoreVersion || len(response.Content) != 1 || !response.Content[0].Payload.IsString("pong") {
+		t.Fatal("core2 probe lost its response", response)
+	}
+	usage := response.Usage
+	if usage == nil || usage.Input == nil || usage.Output == nil || usage.Total == nil || usage.Input.Count != 7 || usage.Output.Count != 1 || usage.Total.Count != 8 || calls.Load() != 1 {
+		t.Fatal("core2 probe lost usage or sent more than one request", usage, calls.Load())
+	}
+}
+
 func TestHealthProbeRequiresSuccessfulContract(t *testing.T) {
 	server := newHealthTestServer(t)
 	checker := newHealthChecker(server)
