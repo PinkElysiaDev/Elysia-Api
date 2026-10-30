@@ -73,7 +73,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	plan.hasCapture = expression.op == "capture_native"
 	plan.hasNativeTarget = expression.op == "replay_native" || expression.op == "native_matches"
 	plan.hasOutputStreamRead = expression.op == "read" && expression.from == "runtime" && len(expression.pointer) == 2 && expression.pointer[0] == "stream"
-	if expression.op == "keys" && expression.source.op == "read" && (expression.source.from == "input" || expression.source.from == "root") {
+	if expression.op == "keys" && expression.source != nil && expression.source.op == "read" && (expression.source.from == "input" || expression.source.from == "root") {
 		plan.hasRequestObjectSource = isCoreRequestPointerObjectPath(expression.source.pointer)
 	}
 	// Nested iteration bodies bind a different item; their reads cannot justify

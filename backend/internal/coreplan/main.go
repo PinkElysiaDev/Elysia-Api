@@ -70,7 +70,7 @@ func main() {
 		g.emitWriter(g.name(g.types[index]), g.types[index])
 		g.emitReader(g.name(g.types[index]), g.types[index])
 	}
-	objectTypes := requestObjectTypes()
+	objectTypes := collectRequestObjectTypes()
 	for _, kind := range g.types {
 		if objectTypes[kind] {
 			g.emitObjectSelector(g.name(kind), kind, objectTypes)
@@ -237,7 +237,7 @@ func (g *generator) emitReader(name string, t reflect.Type) {
 
 // Object selectors stop at opaque Values. Their field conditions come from the
 // same tags as readers so selecting keys cannot resurrect omitted containers.
-func requestObjectTypes() map[reflect.Type]bool {
+func collectRequestObjectTypes() map[reflect.Type]bool {
 	object := reflect.TypeFor[p.Object]()
 	reachable := map[reflect.Type]bool{}
 	var visit func(reflect.Type)
