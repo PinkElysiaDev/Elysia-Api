@@ -16,6 +16,20 @@
         "location": "header",
         "name": "x-goog-api-key"
       }
+    },
+    "models": {
+      "kind": "models",
+      "method": "GET",
+      "path": "/v1beta/models",
+      "transport": "http_json",
+      "auth": {
+        "location": "header",
+        "name": "x-goog-api-key"
+      },
+      "response": "model-page",
+      "models": {
+        "cursorParameter": "pageToken"
+      }
     }
   },
   "documents": {
@@ -234,6 +248,12 @@
       }
     },
     "client-response": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "model-page": {
       "schema": {
         "type": "object",
         "allowUnknown": true

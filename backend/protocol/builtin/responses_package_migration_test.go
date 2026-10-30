@@ -12,6 +12,40 @@ import (
 
 // The four JSON directions are a standalone declaration candidate. The package
 // compiler has no codec modules, and its samples are not activation evidence.
+func TestResponsesPackageGroupedHistory(t *testing.T) {
+	legacy := shippedProjectionProtocol(t, Responses)
+	draft := compileBuiltinPackage(t, "openai-responses")
+	content := []p.Node{
+		{Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{
+			{Kind: p.TextNode, Payload: p.StringValue("before")},
+			{Kind: p.TextNode, Payload: p.StringValue("adjacent")},
+			{Kind: p.ToolCallNode, Name: p.StringValue("lookup"), CallID: p.StringValue("call"), Input: &p.ToolInput{Kind: p.JSONInput, Value: testValue(t, `{"n":9007199254740993}`)}},
+			{Kind: p.TextNode, Payload: p.StringValue("after")},
+		}},
+		{Kind: p.MessageNode, Role: p.StringValue("assistant")},
+	}
+	for _, direction := range []p.Direction{p.EncodeRequest, p.EncodeResponse} {
+		t.Run(string(direction), func(t *testing.T) {
+			var oldWire, newWire []byte
+			var oldErr, newErr error
+			if direction == p.EncodeRequest {
+				request := &p.Request{SchemaVersion: legacy.CoreVersion(), Model: p.StringValue("m"), Content: content}
+				oldWire, oldErr = legacy.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+				request.SchemaVersion = draft.CoreVersion()
+				newWire, newErr = draft.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+			} else {
+				response := &p.Response{SchemaVersion: legacy.CoreVersion(), ID: p.StringValue("r"), Model: p.StringValue("m"), Content: content}
+				oldWire, oldErr = legacy.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+				response.SchemaVersion = draft.CoreVersion()
+				newWire, newErr = draft.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+			}
+			if oldErr != nil || newErr != nil || !bytes.Equal(oldWire, newWire) {
+				t.Fatalf("message runs changed: old=%s new=%s errors=%v / %v", oldWire, newWire, oldErr, newErr)
+			}
+		})
+	}
+}
+
 func TestResponsesPackageDraftMigration(t *testing.T) {
 	legacyRaw, err := os.ReadFile("definitions/openai-responses.json")
 	if err != nil {

@@ -3,6 +3,32 @@
     "generate": {
       "request": "encode_request",
       "response": "decode_response"
+    },
+    "models": {
+      "decodeModels": {
+        "op": "object",
+        "fields": {
+          "models": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "path": "/data",
+              "required": true
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "id": {
+                  "op": "read",
+                  "path": "/id",
+                  "from": "item",
+                  "required": true
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "coreVersion": 2,
@@ -7784,45 +7810,84 @@
         ]
       },
       "then": {
-        "op": "object",
-        "fields": {
-          "type": {
-            "op": "literal",
-            "value": "message"
-          },
-          "role": {
-            "op": "read",
-            "from": "item",
-            "path": "/role"
-          },
-          "id": {
-            "op": "read",
-            "from": "item",
-            "path": "/id"
-          },
-          "status": {
-            "op": "read",
-            "from": "item",
-            "path": "/status"
-          },
-          "content": {
-            "op": "if",
-            "when": {
-              "op": "equal",
-              "items": [
-                {
+        "op": "let",
+        "name": "message",
+        "source": {
+          "op": "read",
+          "from": "item",
+          "path": ""
+        },
+        "body": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/children"
+                  }
+                },
+                "then": {
                   "op": "read",
                   "from": "item",
-                  "path": "/role"
+                  "path": "/children"
                 },
-                {
-                  "op": "literal",
-                  "value": "assistant"
+                "otherwise": {
+                  "op": "array",
+                  "items": []
                 }
-              ]
-            },
-            "then": {
-              "op": "map",
+              },
+              {
+                "op": "array",
+                "items": []
+              }
+            ]
+          },
+          "then": {
+            "op": "array",
+            "items": [
+              {
+                "op": "object",
+                "fields": {
+                  "type": {
+                    "op": "literal",
+                    "value": "message"
+                  },
+                  "role": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/role",
+                    "name": "message"
+                  },
+                  "id": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/id",
+                    "name": "message"
+                  },
+                  "status": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/status",
+                    "name": "message"
+                  },
+                  "content": {
+                    "op": "array",
+                    "items": []
+                  }
+                }
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "flatmap",
+            "source": {
+              "op": "group_runs",
               "source": {
                 "op": "if",
                 "when": {
@@ -7843,44 +7908,164 @@
                   "items": []
                 }
               },
-              "body": {
+              "when": {
                 "op": "ref",
-                "ref": "encode-response-block"
+                "ref": "is-standalone-item"
               }
             },
-            "otherwise": {
-              "op": "map",
-              "source": {
-                "op": "if",
-                "when": {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/children"
+            "body": {
+              "op": "if",
+              "when": {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/0/kind"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tool_call"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/0/kind"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tool_result"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/0/kind"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "reasoning"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/0/kind"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "opaque"
+                      }
+                    ]
                   }
-                },
-                "then": {
+                ]
+              },
+              "then": {
+                "op": "map",
+                "source": {
                   "op": "read",
                   "from": "item",
-                  "path": "/children"
+                  "path": ""
                 },
-                "otherwise": {
-                  "op": "array",
-                  "items": []
+                "body": {
+                  "op": "ref",
+                  "ref": "encode-request-block"
                 }
               },
-              "body": {
-                "op": "ref",
-                "ref": "encode-request-block"
+              "otherwise": {
+                "op": "array",
+                "items": [
+                  {
+                    "op": "object",
+                    "fields": {
+                      "type": {
+                        "op": "literal",
+                        "value": "message"
+                      },
+                      "role": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/role",
+                        "name": "message"
+                      },
+                      "id": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/id",
+                        "name": "message"
+                      },
+                      "status": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/status",
+                        "name": "message"
+                      },
+                      "content": {
+                        "op": "map",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": ""
+                        },
+                        "body": {
+                          "op": "if",
+                          "when": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/role",
+                                "name": "message"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "assistant"
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "ref",
+                            "ref": "encode-response-block"
+                          },
+                          "otherwise": {
+                            "op": "ref",
+                            "ref": "encode-request-block"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
               }
             }
           }
         }
       },
       "otherwise": {
-        "op": "ref",
-        "ref": "encode-request-block"
+        "op": "array",
+        "items": [
+          {
+            "op": "ref",
+            "ref": "encode-request-block"
+          }
+        ]
       }
     },
     "encode-response-block": {
@@ -8730,45 +8915,84 @@
         ]
       },
       "then": {
-        "op": "object",
-        "fields": {
-          "type": {
-            "op": "literal",
-            "value": "message"
-          },
-          "role": {
-            "op": "read",
-            "from": "item",
-            "path": "/role"
-          },
-          "id": {
-            "op": "read",
-            "from": "item",
-            "path": "/id"
-          },
-          "status": {
-            "op": "read",
-            "from": "item",
-            "path": "/status"
-          },
-          "content": {
-            "op": "if",
-            "when": {
-              "op": "equal",
-              "items": [
-                {
+        "op": "let",
+        "name": "message",
+        "source": {
+          "op": "read",
+          "from": "item",
+          "path": ""
+        },
+        "body": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/children"
+                  }
+                },
+                "then": {
                   "op": "read",
                   "from": "item",
-                  "path": "/role"
+                  "path": "/children"
                 },
-                {
-                  "op": "literal",
-                  "value": "assistant"
+                "otherwise": {
+                  "op": "array",
+                  "items": []
                 }
-              ]
-            },
-            "then": {
-              "op": "map",
+              },
+              {
+                "op": "array",
+                "items": []
+              }
+            ]
+          },
+          "then": {
+            "op": "array",
+            "items": [
+              {
+                "op": "object",
+                "fields": {
+                  "type": {
+                    "op": "literal",
+                    "value": "message"
+                  },
+                  "role": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/role",
+                    "name": "message"
+                  },
+                  "id": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/id",
+                    "name": "message"
+                  },
+                  "status": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/status",
+                    "name": "message"
+                  },
+                  "content": {
+                    "op": "array",
+                    "items": []
+                  }
+                }
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "flatmap",
+            "source": {
+              "op": "group_runs",
               "source": {
                 "op": "if",
                 "when": {
@@ -8789,44 +9013,142 @@
                   "items": []
                 }
               },
-              "body": {
+              "when": {
                 "op": "ref",
-                "ref": "encode-response-block"
+                "ref": "is-standalone-item"
               }
             },
-            "otherwise": {
-              "op": "map",
-              "source": {
-                "op": "if",
-                "when": {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/children"
+            "body": {
+              "op": "if",
+              "when": {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/0/kind"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tool_call"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/0/kind"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tool_result"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/0/kind"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "reasoning"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/0/kind"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "opaque"
+                      }
+                    ]
                   }
-                },
-                "then": {
+                ]
+              },
+              "then": {
+                "op": "map",
+                "source": {
                   "op": "read",
                   "from": "item",
-                  "path": "/children"
+                  "path": ""
                 },
-                "otherwise": {
-                  "op": "array",
-                  "items": []
+                "body": {
+                  "op": "ref",
+                  "ref": "encode-response-block"
                 }
               },
-              "body": {
-                "op": "ref",
-                "ref": "encode-response-block"
+              "otherwise": {
+                "op": "array",
+                "items": [
+                  {
+                    "op": "object",
+                    "fields": {
+                      "type": {
+                        "op": "literal",
+                        "value": "message"
+                      },
+                      "role": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/role",
+                        "name": "message"
+                      },
+                      "id": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/id",
+                        "name": "message"
+                      },
+                      "status": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/status",
+                        "name": "message"
+                      },
+                      "content": {
+                        "op": "map",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": ""
+                        },
+                        "body": {
+                          "op": "ref",
+                          "ref": "encode-response-block"
+                        }
+                      }
+                    }
+                  }
+                ]
               }
             }
           }
         }
       },
       "otherwise": {
-        "op": "ref",
-        "ref": "encode-response-block"
+        "op": "array",
+        "items": [
+          {
+            "op": "ref",
+            "ref": "encode-response-block"
+          }
+        ]
       }
     },
     "decode-usage": {
@@ -9845,7 +10167,7 @@
           "path": "/model"
         },
         "input": {
-          "op": "map",
+          "op": "flatmap",
           "source": {
             "op": "filter",
             "source": {
@@ -10852,6 +11174,67 @@
         "op": "object",
         "fields": {}
       }
+    },
+    "is-standalone-item": {
+      "op": "any",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "item",
+              "path": "/kind"
+            },
+            {
+              "op": "literal",
+              "value": "tool_call"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "item",
+              "path": "/kind"
+            },
+            {
+              "op": "literal",
+              "value": "tool_result"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "item",
+              "path": "/kind"
+            },
+            {
+              "op": "literal",
+              "value": "reasoning"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "item",
+              "path": "/kind"
+            },
+            {
+              "op": "literal",
+              "value": "opaque"
+            }
+          ]
+        }
+      ]
     }
   },
   "directions": {
@@ -11652,7 +12035,7 @@
                 }
               },
               "output": {
-                "op": "map",
+                "op": "flatmap",
                 "source": {
                   "op": "read",
                   "from": "input",
@@ -11783,5 +12166,407 @@
       }
     }
   },
-  "samples": []
+  "samples": [],
+  "agent": {
+    "thinkingEfforts": [
+      "",
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "parameters": {
+      "op": "merge",
+      "policy": "reject",
+      "items": [
+        {
+          "op": "object",
+          "fields": {
+            "max_output_tokens": {
+              "op": "read",
+              "path": "/maxOutputTokens",
+              "required": true
+            },
+            "stream": {
+              "op": "read",
+              "path": "/stream",
+              "required": true
+            },
+            "store": {
+              "op": "literal",
+              "value": false
+            },
+            "responses_include": {
+              "op": "literal",
+              "value": [
+                "reasoning.encrypted_content"
+              ]
+            }
+          }
+        },
+        {
+          "op": "object",
+          "fields": {
+            "reasoning": {
+              "op": "if",
+              "when": {
+                "op": "read",
+                "path": "/thinkingEnabled",
+                "required": true
+              },
+              "then": {
+                "op": "object",
+                "fields": {
+                  "mode": {
+                    "op": "literal",
+                    "value": "enabled"
+                  },
+                  "effort": {
+                    "op": "enum",
+                    "source": {
+                      "op": "read",
+                      "path": "/thinkingEffort",
+                      "required": true
+                    },
+                    "values": {
+                      "": "medium",
+                      "low": "low",
+                      "medium": "medium",
+                      "high": "high",
+                      "xhigh": "xhigh"
+                    }
+                  },
+                  "effortScope": {
+                    "op": "literal",
+                    "value": "reasoning"
+                  },
+                  "summary": {
+                    "op": "literal",
+                    "value": "auto"
+                  }
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": {
+                  "mode": "disabled"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "samples": [
+      {
+        "id": "agent-thinking-disabled",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": false,
+          "thinkingEffort": "",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "disabled"
+          },
+          "stream": false,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
+      },
+      {
+        "id": "agent-thinking-disabled-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": false,
+          "thinkingEffort": "",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "disabled"
+          },
+          "stream": true,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
+      },
+      {
+        "id": "agent-effort-default",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          },
+          "stream": false,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
+      },
+      {
+        "id": "agent-effort-default-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          },
+          "stream": true,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
+      },
+      {
+        "id": "agent-effort-low",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "low",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "low",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          },
+          "stream": false,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
+      },
+      {
+        "id": "agent-effort-low-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "low",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "low",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          },
+          "stream": true,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
+      },
+      {
+        "id": "agent-effort-medium",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "medium",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          },
+          "stream": false,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
+      },
+      {
+        "id": "agent-effort-medium-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "medium",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          },
+          "stream": true,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
+      },
+      {
+        "id": "agent-effort-high",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "high",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "high",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          },
+          "stream": false,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
+      },
+      {
+        "id": "agent-effort-high-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "high",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "high",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          },
+          "stream": true,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
+      },
+      {
+        "id": "agent-effort-xhigh",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "xhigh",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "xhigh",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          },
+          "stream": false,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
+      },
+      {
+        "id": "agent-effort-xhigh-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "xhigh",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "xhigh",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          },
+          "stream": true,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
+      }
+    ],
+    "toolResults": "text"
+  },
+  "modelSamples": [
+    {
+      "id": "models-terminal",
+      "operation": "models",
+      "input": {
+        "data": [
+          {
+            "id": "alpha"
+          },
+          {
+            "id": "beta"
+          }
+        ]
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "alpha"
+          },
+          {
+            "id": "beta"
+          }
+        ]
+      }
+    }
+  ]
 }

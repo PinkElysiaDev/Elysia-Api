@@ -31,6 +31,23 @@
         },
         "allowUnknown": true
       }
+    },
+    "models": {
+      "kind": "models",
+      "method": "GET",
+      "path": "/v1/models",
+      "transport": "http_json",
+      "auth": {
+        "location": "header",
+        "name": "x-api-key"
+      },
+      "headers": {
+        "anthropic-version": "2023-06-01"
+      },
+      "response": "model-page",
+      "models": {
+        "cursorParameter": "after_id"
+      }
     }
   },
   "documents": {
@@ -1664,6 +1681,12 @@
       ]
     },
     "client-response": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "model-page": {
       "schema": {
         "type": "object",
         "allowUnknown": true

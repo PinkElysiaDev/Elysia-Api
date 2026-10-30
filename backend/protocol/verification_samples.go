@@ -25,3 +25,11 @@ func (compiled *Compiled) verificationTaskSamples() []TaskSample {
 	}
 	return compiled.Definition().TaskSamples
 }
+
+func (compiled *Compiled) verificationAgentSamples() []AgentSample {
+	if compiled.packagePlan != nil {
+		document, _ := compiled.Package()
+		return document.Mapping.Agent.Samples
+	}
+	return compiled.Definition().Agent.Samples
+}

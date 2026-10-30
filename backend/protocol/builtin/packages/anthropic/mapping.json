@@ -3,6 +3,50 @@
     "generate": {
       "request": "encode_request",
       "response": "decode_response"
+    },
+    "models": {
+      "decodeModels": {
+        "op": "object",
+        "fields": {
+          "models": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "path": "/data",
+              "required": true
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "id": {
+                  "op": "read",
+                  "path": "/id",
+                  "from": "item",
+                  "required": true
+                }
+              }
+            }
+          },
+          "next": {
+            "op": "if",
+            "when": {
+              "op": "read",
+              "path": "/has_more",
+              "required": true
+            },
+            "then": {
+              "op": "read",
+              "path": "/last_id",
+              "required": true
+            }
+          },
+          "hasMore": {
+            "op": "read",
+            "path": "/has_more",
+            "required": true
+          }
+        }
+      }
     }
   },
   "coreVersion": 2,
@@ -4961,136 +5005,200 @@
         }
       },
       "body": {
-        "op": "merge",
-        "policy": "reject",
-        "items": [
-          {
-            "op": "object",
-            "fields": {
-              "role": {
-                "op": "read",
-                "from": "item",
-                "path": "/role"
-              },
-              "content": {
-                "op": "walk",
-                "source": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
-                    "source": {
+        "op": "if",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "item",
+              "path": "/kind"
+            },
+            {
+              "op": "literal",
+              "value": "message"
+            }
+          ]
+        },
+        "then": {
+          "op": "merge",
+          "policy": "reject",
+          "items": [
+            {
+              "op": "object",
+              "fields": {
+                "role": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/role"
+                },
+                "content": {
+                  "op": "walk",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/children"
+                      }
+                    },
+                    "then": {
                       "op": "read",
                       "from": "item",
                       "path": "/children"
+                    },
+                    "otherwise": {
+                      "op": "array",
+                      "items": []
                     }
                   },
-                  "then": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/children"
-                  },
-                  "otherwise": {
-                    "op": "array",
-                    "items": []
+                  "body": {
+                    "op": "ref",
+                    "ref": "encode-block"
                   }
-                },
-                "body": {
-                  "op": "ref",
-                  "ref": "encode-block"
                 }
               }
-            }
-          },
-          {
-            "op": "if",
-            "when": {
-              "op": "exists",
-              "source": {
-                "op": "read",
-                "from": "item",
-                "path": "/cache/0"
-              }
             },
-            "then": {
-              "op": "object",
-              "fields": {
-                "cache_control": {
-                  "op": "if",
-                  "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "item",
-                        "path": "/cache/0/value"
-                      },
-                      {
-                        "op": "literal",
-                        "value": null
-                      }
-                    ]
-                  },
-                  "then": {
-                    "op": "literal",
-                    "value": null
-                  },
-                  "otherwise": {
-                    "op": "merge",
-                    "policy": "reject",
-                    "items": [
-                      {
-                        "op": "project",
-                        "source": {
+            {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/cache/0"
+                }
+              },
+              "then": {
+                "op": "object",
+                "fields": {
+                  "cache_control": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
                           "op": "read",
                           "from": "item",
                           "path": "/cache/0/value"
                         },
-                        "keys": [
-                          "ttl"
-                        ],
-                        "policy": "exclude"
-                      },
-                      {
-                        "op": "object",
-                        "fields": {
-                          "ttl": {
+                        {
+                          "op": "literal",
+                          "value": null
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": null
+                    },
+                    "otherwise": {
+                      "op": "merge",
+                      "policy": "reject",
+                      "items": [
+                        {
+                          "op": "project",
+                          "source": {
                             "op": "read",
                             "from": "item",
-                            "path": "/cache/0/ttl"
+                            "path": "/cache/0/value"
+                          },
+                          "keys": [
+                            "ttl"
+                          ],
+                          "policy": "exclude"
+                        },
+                        {
+                          "op": "object",
+                          "fields": {
+                            "ttl": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/cache/0/ttl"
+                            }
                           }
                         }
-                      }
-                    ]
+                      ]
+                    }
                   }
                 }
+              },
+              "otherwise": {
+                "op": "object",
+                "fields": {}
               }
             },
-            "otherwise": {
-              "op": "object",
-              "fields": {}
-            }
-          },
-          {
-            "op": "if",
-            "when": {
-              "op": "exists",
-              "source": {
+            {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/attributes/wire:claude"
+                }
+              },
+              "then": {
                 "op": "read",
                 "from": "item",
                 "path": "/attributes/wire:claude"
+              },
+              "otherwise": {
+                "op": "object",
+                "fields": {}
+              }
+            }
+          ]
+        },
+        "otherwise": {
+          "op": "object",
+          "fields": {
+            "role": {
+              "op": "if",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/kind"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "tool_result"
+                  }
+                ]
+              },
+              "then": {
+                "op": "literal",
+                "value": "user"
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": "assistant"
               }
             },
-            "then": {
-              "op": "read",
-              "from": "item",
-              "path": "/attributes/wire:claude"
-            },
-            "otherwise": {
-              "op": "object",
-              "fields": {}
+            "content": {
+              "op": "walk",
+              "source": {
+                "op": "array",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "item",
+                    "path": ""
+                  }
+                ]
+              },
+              "body": {
+                "op": "ref",
+                "ref": "encode-block"
+              }
             }
           }
-        ]
+        }
       }
     },
     "encode-native-tool": {
@@ -6840,5 +6948,415 @@
       }
     }
   },
-  "samples": []
+  "samples": [],
+  "agent": {
+    "thinkingEfforts": [
+      "",
+      "low",
+      "medium",
+      "high",
+      "max",
+      "adaptive"
+    ],
+    "parameters": {
+      "op": "merge",
+      "policy": "reject",
+      "items": [
+        {
+          "op": "object",
+          "fields": {
+            "max_output_tokens": {
+              "op": "read",
+              "path": "/maxOutputTokens",
+              "required": true
+            },
+            "stream": {
+              "op": "read",
+              "path": "/stream",
+              "required": true
+            }
+          }
+        },
+        {
+          "op": "object",
+          "fields": {
+            "reasoning": {
+              "op": "if",
+              "when": {
+                "op": "read",
+                "path": "/thinkingEnabled",
+                "required": true
+              },
+              "then": {
+                "op": "object",
+                "fields": {
+                  "mode": {
+                    "op": "literal",
+                    "value": "enabled"
+                  },
+                  "effort": {
+                    "op": "enum",
+                    "source": {
+                      "op": "read",
+                      "path": "/thinkingEffort",
+                      "required": true
+                    },
+                    "values": {
+                      "": "medium",
+                      "low": "low",
+                      "medium": "medium",
+                      "high": "high",
+                      "max": "max",
+                      "adaptive": "medium"
+                    }
+                  },
+                  "effortScope": {
+                    "op": "literal",
+                    "value": "reasoning"
+                  },
+                  "summary": {
+                    "op": "literal",
+                    "value": "summarized"
+                  }
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": {
+                  "mode": "disabled"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "samples": [
+      {
+        "id": "agent-thinking-disabled",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": false,
+          "thinkingEffort": "",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "disabled"
+          },
+          "stream": false
+        },
+        "model": "claude-opus-4-6"
+      },
+      {
+        "id": "agent-thinking-disabled-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": false,
+          "thinkingEffort": "",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "disabled"
+          },
+          "stream": true
+        },
+        "model": "claude-opus-4-6"
+      },
+      {
+        "id": "agent-effort-default",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "summarized"
+          },
+          "stream": false
+        },
+        "model": "claude-opus-4-6"
+      },
+      {
+        "id": "agent-effort-default-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "summarized"
+          },
+          "stream": true
+        },
+        "model": "claude-opus-4-6"
+      },
+      {
+        "id": "agent-effort-low",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "low",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "low",
+            "effortScope": "reasoning",
+            "summary": "summarized"
+          },
+          "stream": false
+        },
+        "model": "claude-opus-4-6"
+      },
+      {
+        "id": "agent-effort-low-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "low",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "low",
+            "effortScope": "reasoning",
+            "summary": "summarized"
+          },
+          "stream": true
+        },
+        "model": "claude-opus-4-6"
+      },
+      {
+        "id": "agent-effort-medium",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "medium",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "summarized"
+          },
+          "stream": false
+        },
+        "model": "claude-opus-4-6"
+      },
+      {
+        "id": "agent-effort-medium-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "medium",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "summarized"
+          },
+          "stream": true
+        },
+        "model": "claude-opus-4-6"
+      },
+      {
+        "id": "agent-effort-high",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "high",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "high",
+            "effortScope": "reasoning",
+            "summary": "summarized"
+          },
+          "stream": false
+        },
+        "model": "claude-opus-4-6"
+      },
+      {
+        "id": "agent-effort-high-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "high",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "high",
+            "effortScope": "reasoning",
+            "summary": "summarized"
+          },
+          "stream": true
+        },
+        "model": "claude-opus-4-6"
+      },
+      {
+        "id": "agent-effort-max",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "max",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "max",
+            "effortScope": "reasoning",
+            "summary": "summarized"
+          },
+          "stream": false
+        },
+        "model": "claude-opus-4-6"
+      },
+      {
+        "id": "agent-effort-max-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "max",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "max",
+            "effortScope": "reasoning",
+            "summary": "summarized"
+          },
+          "stream": true
+        },
+        "model": "claude-opus-4-6"
+      },
+      {
+        "id": "agent-effort-adaptive",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "adaptive",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "summarized"
+          },
+          "stream": false
+        },
+        "model": "claude-opus-4-6"
+      },
+      {
+        "id": "agent-effort-adaptive-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "adaptive",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "summarized"
+          },
+          "stream": true
+        },
+        "model": "claude-opus-4-6"
+      }
+    ],
+    "toolResults": "text"
+  },
+  "modelSamples": [
+    {
+      "id": "models-terminal",
+      "operation": "models",
+      "input": {
+        "data": [
+          {
+            "id": "alpha"
+          },
+          {
+            "id": "beta"
+          }
+        ],
+        "has_more": false
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "alpha"
+          },
+          {
+            "id": "beta"
+          }
+        ]
+      }
+    },
+    {
+      "id": "models-continuation",
+      "operation": "models",
+      "input": {
+        "data": [
+          {
+            "id": "alpha",
+            "display_name": "Alpha"
+          }
+        ],
+        "has_more": true,
+        "last_id": "alpha"
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "alpha"
+          }
+        ],
+        "next": "alpha",
+        "hasMore": true
+      }
+    }
+  ]
 }

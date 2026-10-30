@@ -81,7 +81,7 @@ func checkAgentModel(view protocol.RegistryView, bindings []storage.ProtocolBind
 	if !found {
 		return fail("protocol_inactive", "/binding", "绑定的协议未启用，请先验证并启用协议")
 	}
-	if !compiled.Capabilities(protocol.EncodeRequest)[protocol.FunctionToolsCapability] || compiled.Definition().Agent == nil {
+	if !compiled.Capabilities(protocol.EncodeRequest)[protocol.FunctionToolsCapability] || !compiled.HasAgentPolicy() {
 		return fail("protocol_mapping_missing", "/binding/protocol", "协议缺少函数工具映射或 Agent 参数映射")
 	}
 	if !model.Enabled {

@@ -156,3 +156,32 @@ choice，草案输出空数组。本批不处理这一消息布局缺口；usage
 
 最终 builtin 全量通过，记录为 `checks/completion-chat-cache-builtin-final.*`。
 本批只补声明中的已有计量语义，尚未重测 DSL 性能。
+
+## 第五批：Agent 参数、目录声明与工具历史（dev.85）
+
+四份 Mapping 继承原预置的全部 Agent 偏好样例与模型发现样例，Spec 独立声明目录端点、
+分页参数及目录文档。Agent 参数程序由同一计划编译器执行，不再要求旧 Mapping/module。
+工具结果格式在编译时保存；每次 BuildAgentRequest 不再解码整份协议定义。调用方读取
+编译后的核心版本和 Agent 能力，离线验证读取 Mapping 的证据并报告正确的配置路径。
+
+迁移对照实际发现三类历史编码缺口：Anthropic/Gemini 草案漏掉顶层工具结果；Responses
+把消息内工具调用放入 content 而非独立 input/output 项。映射现按旧编码规则承接这些布局。
+Responses 用通用 group_runs 保留相邻正文段及独立项顺序；原语只增加临时数组容器，
+不含协议字段或供应商判断。大整数及工具结果原始 JSON 字符串保持不变，调用者历史不修改。
+
+本阶段边界必须区分：Agent 参数与本地工具结果准备、模型目录是新旧直接对照；请求编码
+对照的输入先经已有模型策略投影，验证的是相同投影后核心对象的渲染。模型能力／reasoning
+投影尚未声明式迁移，不能据此称新 Agent 完整链路已可替代生产路径。首轮直接渲染还暴露
+旧 Anthropic encoder 可输出缺预算的 enabled，而新 Spec 会拒绝；生产旧链先经模型投影，
+该直接 API 接受边界仍登记为待闭合，不删除新 Spec 检查来掩盖差异。
+
+四份草案真实流操作仍未配置；保留原 stream=true 样例，当前参数入口明确拒绝未声明的流
+传输。完整离线验证不能通过，也未接入生产激活。原失败记录包括 `completion-agent-migration`
+（测试目录名和格式比较问题）、`completion-agent-migration-comparison`（实际布局缺口）、
+`completion-agent-history`（未投影思考设置及一次静态来源证明失败）；修复后对照为
+`completion-agent-history-projected`。这些记录不作为完整流或模型策略迁移的验收。
+
+随后 protocol/builtin 全量、Agent server 定向和全后端 vet 通过；Responses 请求／响应的
+“连续正文→工具→正文→空消息”也与旧编码完整字节一致。日志为
+`completion-agent-{protocol,server-history,vet}`，新增原语为 `completion-group-runs`。
+尚未重测本阶段性能，也未更新六目标二进制；归档仍是修改前 dev.81。

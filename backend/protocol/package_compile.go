@@ -143,12 +143,13 @@ func (compiled *Compiled) bindPackageIdentity(document ProtocolPackage) error {
 	}
 	compiled.hash = hashValue(identity)
 	samples, err := EncodeValue(struct {
-		CoreVersion  int           `json:"coreVersion"`
-		DSLVersion   int           `json:"dslVersion"`
-		Samples      []Sample      `json:"samples"`
-		ModelSamples []ModelSample `json:"modelSamples,omitempty"`
-		TaskSamples  []TaskSample  `json:"taskSamples,omitempty"`
-	}{document.Mapping.CoreVersion, document.Mapping.DSLVersion, document.Mapping.Samples, document.Mapping.ModelSamples, document.Mapping.TaskSamples})
+		CoreVersion  int                   `json:"coreVersion"`
+		DSLVersion   int                   `json:"dslVersion"`
+		Samples      []Sample              `json:"samples"`
+		ModelSamples []ModelSample         `json:"modelSamples,omitempty"`
+		TaskSamples  []TaskSample          `json:"taskSamples,omitempty"`
+		Agent        *ProtocolAgentMapping `json:"agent,omitempty"`
+	}{document.Mapping.CoreVersion, document.Mapping.DSLVersion, document.Mapping.Samples, document.Mapping.ModelSamples, document.Mapping.TaskSamples, document.Mapping.Agent})
 	if err != nil {
 		return err
 	}

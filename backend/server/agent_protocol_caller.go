@@ -71,7 +71,7 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 	preferences := input.Preferences
 	preferences.MaxOutputTokens = agentStreamMaxOutputTokens
 	preferences.Stream = transport != protocol.HTTPJSON
-	request, err := compiled.BuildAgentRequest(ctx, protocol.Request{SchemaVersion: protocol.SemanticSchemaVersion, Source: protocol.AgentIdentity(), Model: protocol.StringValue(model.Identifier()), Content: content, Tools: input.Tools}, preferences)
+	request, err := compiled.BuildAgentRequest(ctx, protocol.Request{SchemaVersion: compiled.CoreVersion(), Source: protocol.AgentIdentity(), Model: protocol.StringValue(model.Identifier()), Content: content, Tools: input.Tools}, preferences)
 	if err != nil {
 		return nil, err
 	}

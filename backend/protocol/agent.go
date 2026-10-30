@@ -43,18 +43,8 @@ func (compiler *Compiler) compileAgentMapping(compiled *Compiled, definition Def
 	if configuration == nil {
 		return nil
 	}
-	if configuration.ToolResults != JSONInput && configuration.ToolResults != TextInput {
-		return fmt.Errorf("agent toolResults must declare json or text serialization")
-	}
-	if !definition.Capabilities[FunctionToolsCapability] || !hasDefinitionDirections(definition, EncodeRequest, DecodeRequest) {
-		return fmt.Errorf("agent configuration requires function tools and request encoding/decoding for offline validation")
-	}
-	hasGeneration := false
-	for _, operation := range definition.Operations {
-		hasGeneration = hasGeneration || (operation.Kind == "generate" && operation.Transport != WebSocket)
-	}
-	if !hasGeneration {
-		return fmt.Errorf("agent requires a synchronous HTTP generation operation")
+	if err := compiled.checkAgentRequirements(configuration.ToolResults); err != nil {
+		return err
 	}
 	mapping := configuration.Parameters
 	if mapping.Transform == nil || mapping.Module != "" || len(mapping.Rules) > 0 || mapping.After != nil || mapping.FrameBatch || mapping.UnknownEvent != "" || mapping.Capabilities != nil {
@@ -64,21 +54,46 @@ func (compiler *Compiler) compileAgentMapping(compiled *Compiled, definition Def
 	if err != nil {
 		return err
 	}
+	if err := checkAgentEvidence(configuration.ThinkingEfforts, configuration.Samples); err != nil {
+		return err
+	}
+	compiled.agentMapping, compiled.agentEfforts = &entry, append([]string(nil), configuration.ThinkingEfforts...)
+	compiled.agentToolResults = configuration.ToolResults
+	return nil
+}
+
+func (compiled *Compiled) checkAgentRequirements(toolResults InputKind) error {
+	if toolResults != JSONInput && toolResults != TextInput {
+		return fmt.Errorf("agent toolResults must declare json or text serialization")
+	}
+	if !compiled.capabilities[FunctionToolsCapability] || (!compiled.Supports(EncodeRequest) || !compiled.Supports(DecodeRequest)) {
+		return fmt.Errorf("agent configuration requires function tools and request encoding/decoding for offline validation")
+	}
+	hasGeneration := false
+	for _, operation := range compiled.operations {
+		hasGeneration = hasGeneration || (operation.Kind == "generate" && operation.Transport != WebSocket)
+	}
+	if !hasGeneration {
+		return fmt.Errorf("agent requires a synchronous HTTP generation operation")
+	}
+	return nil
+}
+
+func checkAgentEvidence(efforts []string, samples []AgentSample) error {
 	seen := map[string]bool{}
-	for _, effort := range configuration.ThinkingEfforts {
+	for _, effort := range efforts {
 		if seen[effort] {
 			return fmt.Errorf("agent thinking efforts must be unique")
 		}
 		seen[effort] = true
 	}
 	seen = map[string]bool{}
-	for _, sample := range configuration.Samples {
+	for _, sample := range samples {
 		if sample.ID == "" || seen[sample.ID] || sample.Expected.IsZero() {
 			return fmt.Errorf("agent samples require unique identities and expected parameters")
 		}
 		seen[sample.ID] = true
 	}
-	compiled.agentMapping, compiled.agentEfforts = &entry, append([]string(nil), configuration.ThinkingEfforts...)
 	return nil
 }
 
@@ -97,7 +112,7 @@ func (compiled *Compiled) BuildAgentRequest(ctx context.Context, request Request
 		return nil, err
 	}
 	request.ClientOutput = &ClientOutput{CollectUsage: preferences.Stream}
-	resultKind := compiled.Definition().Agent.ToolResults
+	resultKind := compiled.agentToolResults
 	var prepare func([]Node) ([]Node, error)
 	prepare = func(nodes []Node) ([]Node, error) {
 		result := append([]Node(nil), nodes...)
@@ -149,7 +164,12 @@ func (compiled *Compiled) BuildAgentParameters(ctx context.Context, preferences 
 	if err != nil {
 		return nil, err
 	}
-	output, err := compiled.executeOperationMapping(ctx, *compiled.agentMapping, EncodeRequest, "/agent/parameters", input, EvaluationContext{})
+	var output Value
+	if compiled.packagePlan != nil {
+		output, err = compiled.executePackageOperationPlan(ctx, *compiled.agentMapping, EncodeRequest, "/mapping/agent/parameters", input, Value{raw: "null"}, compiledWireContract{}, compiledWireContract{})
+	} else {
+		output, err = compiled.executeOperationMapping(ctx, *compiled.agentMapping, EncodeRequest, "/agent/parameters", input, EvaluationContext{})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -157,14 +177,17 @@ func (compiled *Compiled) BuildAgentParameters(ctx context.Context, preferences 
 }
 
 func verifyAgentSamples(ctx context.Context, compiled *Compiled, report *VerificationReport) {
-	configuration := compiled.Definition().Agent
-	if configuration == nil {
+	if !compiled.HasAgentPolicy() {
 		return
+	}
+	samplePath := "/agent/samples"
+	if compiled.packagePlan != nil {
+		samplePath = "/mapping" + samplePath
 	}
 	hasDisabled := false
 	hasStream := false
 	covered := map[string]bool{}
-	for _, sample := range configuration.Samples {
+	for _, sample := range compiled.verificationAgentSamples() {
 		parameters, err := compiled.BuildAgentParameters(ctx, sample.Preferences)
 		if err == nil {
 			actual, encodeErr := EncodeValue(parameters)
@@ -178,7 +201,7 @@ func verifyAgentSamples(ctx context.Context, compiled *Compiled, report *Verific
 		}
 		report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: EncodeRequest, Passed: err == nil})
 		if err != nil {
-			report.Issues = append(report.Issues, verificationIssue(compiled, EncodeRequest, "/agent/samples/"+sample.ID, VerificationMismatch, err.Error(), sample.ID))
+			report.Issues = append(report.Issues, verificationIssue(compiled, EncodeRequest, samplePath+"/"+sample.ID, VerificationMismatch, err.Error(), sample.ID))
 			continue
 		}
 		if sample.Preferences.ThinkingEnabled {
@@ -189,16 +212,16 @@ func verifyAgentSamples(ctx context.Context, compiled *Compiled, report *Verific
 		hasStream = hasStream || sample.Preferences.Stream
 	}
 	if !hasDisabled {
-		report.Issues = append(report.Issues, verificationIssue(compiled, EncodeRequest, "/agent/samples", IncompleteCoverage, "Agent requires a passing fixture with thinking disabled", ""))
+		report.Issues = append(report.Issues, verificationIssue(compiled, EncodeRequest, samplePath, IncompleteCoverage, "Agent requires a passing fixture with thinking disabled", ""))
 	}
-	for _, effort := range configuration.ThinkingEfforts {
+	for _, effort := range compiled.agentEfforts {
 		if !covered[effort] {
-			report.Issues = append(report.Issues, verificationIssue(compiled, EncodeRequest, "/agent/samples", IncompleteCoverage, "Agent lacks passing evidence for thinking effort: "+effort, ""))
+			report.Issues = append(report.Issues, verificationIssue(compiled, EncodeRequest, samplePath, IncompleteCoverage, "Agent lacks passing evidence for thinking effort: "+effort, ""))
 		}
 	}
 	for _, operation := range compiled.Operations() {
 		if operation.Kind == "generate" && (operation.Transport == SSE || operation.Transport == NDJSON) && !hasStream {
-			report.Issues = append(report.Issues, verificationIssue(compiled, EncodeRequest, "/agent/samples", IncompleteCoverage, "streaming Agent use requires a passing streaming preferences fixture", ""))
+			report.Issues = append(report.Issues, verificationIssue(compiled, EncodeRequest, samplePath, IncompleteCoverage, "streaming Agent use requires a passing streaming preferences fixture", ""))
 			break
 		}
 	}
@@ -241,6 +264,26 @@ func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, parameter
 		if err != nil {
 			return err
 		}
+		if compiled.packagePlan != nil {
+			before, err := EncodeValue(struct {
+				Parameters Object
+				Reasoning  *ReasoningIntent
+			}{request.Parameters, request.Reasoning})
+			if err != nil {
+				return err
+			}
+			after, err := EncodeValue(struct {
+				Parameters Object
+				Reasoning  *ReasoningIntent
+			}{decoded.Parameters, decoded.Reasoning})
+			if err != nil {
+				return err
+			}
+			if !equalValues(before, after) {
+				return fmt.Errorf("agent parameters or reasoning changed through the declared wire")
+			}
+			return verifyAgentToolResult(ctx, compiled, decoded.Model, request.Parameters, request.Reasoning, options)
+		}
 		beforeParams, err := ReasoningParameters(request, compiled.Codec(EncodeRequest))
 		if err != nil {
 			return err
@@ -254,19 +297,19 @@ func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, parameter
 		if !equalValues(before, after) {
 			return fmt.Errorf("agent parameters are lost or changed by the wire adapter")
 		}
-		return verifyAgentToolResult(ctx, compiled, decoded.Model, beforeParams, options)
+		return verifyAgentToolResult(ctx, compiled, decoded.Model, beforeParams, nil, options)
 	}
 	return fmt.Errorf("agent policy requires a positive request fixture")
 }
 
-func verifyAgentToolResult(ctx context.Context, compiled *Compiled, model Value, parameters Object, options EvaluationContext) error {
+func verifyAgentToolResult(ctx context.Context, compiled *Compiled, model Value, parameters Object, reasoning *ReasoningIntent, options EvaluationContext) error {
 	arguments, _ := ParseValue([]byte(`{"value":9007199254740993}`))
 	payload, _ := ParseValue([]byte(`{"ok":false,"data":{"value":9007199254740993,"empty":null}}`))
-	if compiled.Definition().Agent.ToolResults == TextInput {
+	if compiled.agentToolResults == TextInput {
 		payload = StringValue(string(payload.Bytes()))
 	}
 	schema, _ := ParseValue([]byte(`{"type":"object"}`))
-	request := &Request{SchemaVersion: SemanticSchemaVersion, Model: model, Parameters: parameters,
+	request := &Request{SchemaVersion: compiled.CoreVersion(), Model: model, Parameters: parameters, Reasoning: reasoning,
 		Tools: []Tool{{Kind: FunctionTool, Name: StringValue("agent_verify"), InputSchema: schema}},
 		Content: []Node{
 			{Kind: MessageNode, Role: StringValue("user"), Children: []Node{{Kind: TextNode, Payload: StringValue("verify Agent tool history")}}},
@@ -313,5 +356,8 @@ func (compiled *Compiled) normalizeAgentReasoning(request *Request) error {
 	request.Parameters = maps.Clone(request.Parameters)
 	delete(request.Parameters, "reasoning")
 	request.Reasoning = &reasoning
+	if compiled.packagePlan != nil {
+		return ValidateReasoningIntent(request.Reasoning)
+	}
 	return NormalizeReasoningParameters(request, compiled.Codec(EncodeRequest), false)
 }

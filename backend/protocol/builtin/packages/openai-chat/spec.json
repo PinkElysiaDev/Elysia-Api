@@ -17,6 +17,19 @@
         "name": "Authorization",
         "prefix": "Bearer "
       }
+    },
+    "models": {
+      "kind": "models",
+      "method": "GET",
+      "path": "/models",
+      "transport": "http_json",
+      "auth": {
+        "location": "header",
+        "name": "Authorization",
+        "prefix": "Bearer "
+      },
+      "response": "model-page",
+      "models": {}
     }
   },
   "documents": {
@@ -97,6 +110,12 @@
             }
           }
         },
+        "allowUnknown": true
+      }
+    },
+    "model-page": {
+      "schema": {
+        "type": "object",
         "allowUnknown": true
       }
     }

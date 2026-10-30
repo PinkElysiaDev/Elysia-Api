@@ -157,6 +157,7 @@ type Compiled struct {
 	modelMappings      map[string]compiledMapping
 	agentMapping       *compiledMapping
 	agentEfforts       []string
+	agentToolResults   InputKind
 	packagePlan        *compiledPackagePlan
 }
 

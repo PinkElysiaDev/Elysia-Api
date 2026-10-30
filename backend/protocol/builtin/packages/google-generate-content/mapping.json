@@ -3,6 +3,60 @@
     "generate": {
       "request": "encode_request",
       "response": "decode_response"
+    },
+    "models": {
+      "decodeModels": {
+        "op": "object",
+        "fields": {
+          "models": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "path": "/models",
+              "required": true
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "id": {
+                  "op": "trim_prefix",
+                  "source": {
+                    "op": "read",
+                    "path": "/name",
+                    "from": "item",
+                    "required": true
+                  },
+                  "value": "models/"
+                },
+                "maxTokens": {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "path": "/inputTokenLimit",
+                      "from": "item"
+                    }
+                  },
+                  "then": {
+                    "op": "cast",
+                    "to": "integer",
+                    "source": {
+                      "op": "read",
+                      "path": "/inputTokenLimit",
+                      "from": "item"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "next": {
+            "op": "read",
+            "path": "/nextPageToken"
+          }
+        }
+      }
     }
   },
   "coreVersion": 2,
@@ -2591,88 +2645,144 @@
       ]
     },
     "encode-message": {
-      "op": "merge",
-      "policy": "reject",
-      "items": [
-        {
-          "op": "object",
-          "fields": {
-            "role": {
-              "op": "if",
-              "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/role"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "assistant"
-                  }
-                ]
-              },
-              "then": {
-                "op": "literal",
-                "value": "model"
-              },
-              "otherwise": {
-                "op": "read",
-                "from": "item",
-                "path": "/role"
-              }
-            },
-            "parts": {
-              "op": "map",
-              "source": {
+      "op": "if",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "read",
+            "from": "item",
+            "path": "/kind"
+          },
+          {
+            "op": "literal",
+            "value": "message"
+          }
+        ]
+      },
+      "then": {
+        "op": "merge",
+        "policy": "reject",
+        "items": [
+          {
+            "op": "object",
+            "fields": {
+              "role": {
                 "op": "if",
                 "when": {
-                  "op": "present",
-                  "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/role"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "assistant"
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "literal",
+                  "value": "model"
+                },
+                "otherwise": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/role"
+                }
+              },
+              "parts": {
+                "op": "map",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/children"
+                    }
+                  },
+                  "then": {
                     "op": "read",
                     "from": "item",
                     "path": "/children"
+                  },
+                  "otherwise": {
+                    "op": "array",
+                    "items": []
                   }
                 },
-                "then": {
-                  "op": "read",
-                  "from": "item",
-                  "path": "/children"
-                },
-                "otherwise": {
-                  "op": "array",
-                  "items": []
+                "body": {
+                  "op": "ref",
+                  "ref": "encode-part"
                 }
-              },
-              "body": {
-                "op": "ref",
-                "ref": "encode-part"
               }
             }
-          }
-        },
-        {
-          "op": "if",
-          "when": {
-            "op": "present",
-            "source": {
+          },
+          {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/attributes/wire:gemini"
+              }
+            },
+            "then": {
               "op": "read",
               "from": "item",
               "path": "/attributes/wire:gemini"
+            },
+            "otherwise": {
+              "op": "object",
+              "fields": {}
+            }
+          }
+        ]
+      },
+      "otherwise": {
+        "op": "object",
+        "fields": {
+          "role": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/kind"
+                },
+                {
+                  "op": "literal",
+                  "value": "tool_result"
+                }
+              ]
+            },
+            "then": {
+              "op": "literal",
+              "value": "user"
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": "model"
             }
           },
-          "then": {
-            "op": "read",
-            "from": "item",
-            "path": "/attributes/wire:gemini"
-          },
-          "otherwise": {
-            "op": "object",
-            "fields": {}
+          "parts": {
+            "op": "array",
+            "items": [
+              {
+                "op": "ref",
+                "ref": "encode-part"
+              }
+            ]
           }
         }
-      ]
+      }
     },
     "encode-contents": {
       "op": "map",
@@ -5641,5 +5751,388 @@
       }
     }
   },
-  "samples": []
+  "samples": [],
+  "agent": {
+    "thinkingEfforts": [
+      "",
+      "low",
+      "medium",
+      "high"
+    ],
+    "parameters": {
+      "op": "merge",
+      "policy": "reject",
+      "items": [
+        {
+          "op": "object",
+          "fields": {
+            "max_output_tokens": {
+              "op": "read",
+              "path": "/maxOutputTokens",
+              "required": true
+            }
+          }
+        },
+        {
+          "op": "object",
+          "fields": {
+            "reasoning": {
+              "op": "if",
+              "when": {
+                "op": "read",
+                "path": "/thinkingEnabled",
+                "required": true
+              },
+              "then": {
+                "op": "object",
+                "fields": {
+                  "mode": {
+                    "op": "literal",
+                    "value": "enabled"
+                  },
+                  "effort": {
+                    "op": "enum",
+                    "source": {
+                      "op": "read",
+                      "path": "/thinkingEffort",
+                      "required": true
+                    },
+                    "values": {
+                      "": "medium",
+                      "low": "low",
+                      "medium": "medium",
+                      "high": "high"
+                    }
+                  },
+                  "effortScope": {
+                    "op": "literal",
+                    "value": "reasoning"
+                  },
+                  "summary": {
+                    "op": "literal",
+                    "value": "auto"
+                  }
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": {
+                  "mode": "disabled"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "samples": [
+      {
+        "id": "agent-thinking-disabled",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": false,
+          "thinkingEffort": "",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "disabled"
+          }
+        },
+        "model": "gemini-2.5-flash"
+      },
+      {
+        "id": "agent-thinking-disabled-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": false,
+          "thinkingEffort": "",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "disabled"
+          }
+        },
+        "model": "gemini-2.5-flash"
+      },
+      {
+        "id": "agent-effort-default",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          }
+        },
+        "model": "gemini-3.5-flash-lite"
+      },
+      {
+        "id": "agent-effort-default-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          }
+        },
+        "model": "gemini-3.5-flash-lite"
+      },
+      {
+        "id": "agent-effort-low",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "low",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "low",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          }
+        },
+        "model": "gemini-3.5-flash-lite"
+      },
+      {
+        "id": "agent-effort-low-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "low",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "low",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          }
+        },
+        "model": "gemini-3.5-flash-lite"
+      },
+      {
+        "id": "agent-effort-medium",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "medium",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          }
+        },
+        "model": "gemini-3.5-flash-lite"
+      },
+      {
+        "id": "agent-effort-medium-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "medium",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          }
+        },
+        "model": "gemini-3.5-flash-lite"
+      },
+      {
+        "id": "agent-effort-high",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "high",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "high",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          }
+        },
+        "model": "gemini-3.5-flash-lite"
+      },
+      {
+        "id": "agent-effort-high-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "high",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "high",
+            "effortScope": "reasoning",
+            "summary": "auto"
+          }
+        },
+        "model": "gemini-3.5-flash-lite"
+      }
+    ],
+    "toolResults": "json"
+  },
+  "modelSamples": [
+    {
+      "id": "models-terminal",
+      "operation": "models",
+      "input": {
+        "models": [
+          {
+            "name": "models/alpha",
+            "displayName": "Alpha",
+            "inputTokenLimit": 1000000
+          }
+        ]
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "alpha",
+            "maxTokens": 1000000
+          }
+        ]
+      }
+    },
+    {
+      "id": "models-continuation",
+      "operation": "models",
+      "input": {
+        "models": [
+          {
+            "name": "models/beta"
+          }
+        ],
+        "nextPageToken": "p2"
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "beta"
+          }
+        ],
+        "next": "p2"
+      }
+    },
+    {
+      "id": "models-null-limit",
+      "operation": "models",
+      "input": {
+        "models": [
+          {
+            "name": "models/relay-null-limit",
+            "inputTokenLimit": null
+          }
+        ]
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "relay-null-limit"
+          }
+        ]
+      }
+    },
+    {
+      "id": "models-string-limit",
+      "operation": "models",
+      "input": {
+        "models": [
+          {
+            "name": "models/relay-string-limit",
+            "inputTokenLimit": "8192"
+          }
+        ]
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "relay-string-limit",
+            "maxTokens": 8192
+          }
+        ]
+      }
+    },
+    {
+      "id": "models-bare-identity",
+      "operation": "models",
+      "input": {
+        "models": [
+          {
+            "name": "gemini-bare",
+            "displayName": "Bare Relay"
+          }
+        ]
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "gemini-bare"
+          }
+        ]
+      }
+    },
+    {
+      "id": "models-new-api-null-cursor",
+      "operation": "models",
+      "input": {
+        "models": [
+          {
+            "name": "gemini-2.5-flash",
+            "displayName": null,
+            "inputTokenLimit": null
+          }
+        ],
+        "nextPageToken": null
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "gemini-2.5-flash"
+          }
+        ]
+      }
+    }
+  ]
 }

@@ -77,6 +77,10 @@ func (expression *compiledExpression) inheritCoreType() {
 		if coreArrayElement(expression.source.coreType) != nil {
 			expression.coreType = expression.source.coreType
 		}
+	case "group_runs":
+		if coreArrayElement(expression.source.coreType) != nil {
+			expression.coreType = reflect.SliceOf(expression.source.coreType)
+		}
 	case "map":
 		if expression.body.coreType != nil {
 			expression.coreType = reflect.SliceOf(expression.body.coreType)

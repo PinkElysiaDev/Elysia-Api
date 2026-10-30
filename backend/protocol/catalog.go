@@ -29,6 +29,7 @@ var expressionOperations = []OperationInfo{
 	{"native_matches", []string{"source", "path", "operation"}, []string{"source", "operation"}, BooleanType, "Classify native provenance as an array_item below a declared parent pointer and a compatible target wire; this does not authorize replay or check resource scope."},
 	{"flatmap", []string{"source", "body"}, []string{"source", "body"}, ArrayType, "Map each element to an array and flatten one level."},
 	{"filter", []string{"source", "when"}, []string{"source", "when"}, ArrayType, "Select elements with a strictly boolean predicate."},
+	{"group_runs", []string{"source", "when"}, []string{"source", "when"}, ArrayType, "Partition an array into consecutive runs with the same boolean predicate result; retain every original member in order without merging separated runs."},
 	{"choose", []string{"source", "cases", "otherwise"}, []string{"source", "cases"}, AnyType, "Select a required branch by string discriminator; no implicit fallback."},
 	{"if", []string{"when", "then", "otherwise"}, []string{"when", "then"}, AnyType, "Conditionally emit a value; false without otherwise means omission."},
 	{"enum", []string{"source", "values"}, []string{"source", "values"}, AnyType, "Map an explicit enum; an unmapped input is an error."},

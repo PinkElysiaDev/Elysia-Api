@@ -193,3 +193,17 @@ Spec 的 `WireAssertion.check` 在 schema 通过后检查选中值，`when` 检�
 显式 `reject` effect 可用 `diagnostic` 指定 code、stage 和可选 suggestion，path、reason、id
 继续取自 effect。仅实际拒绝时采用该分类，条件求值、emit 缺失和 aggregate 失败不会被捕获。
 带投影 scope 的 effect 暂不接受此字段，避免配置被另一处理边界静默忽略。
+
+## 相邻分组
+
+`group_runs` 对数组的每项计算一次布尔 `when`，把相邻、判断结果相同的项放入同一子数组。
+不排序、不丢弃成员、不合并隔开的同类组；空数组仍为空数组。缺失、null、非数组来源及
+非布尔条件均拒绝。`item` 和 `index` 指向本次输入数组的元素和位置。
+
+```json
+{"op":"group_runs","source":{"op":"read","path":"/items"},"when":{"op":"read","from":"item","path":"/isStandalone"}}
+```
+
+输出只增加数组容器，成员保留不可变视图和已证明的核心类型，不重新编码大正文，也不
+授予新的 Native 来源。条件求值沿用步骤／取消检查，分组容器计入逻辑字节与最终节点、
+深度预算。协议配置可据此保留正文段与独立条目的交错顺序；原语不认识消息或工具类型。

@@ -52,7 +52,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	switch expression.op {
 	case "omit", "literal", "read", "let", "with_index", "remember", "recall", "index", "capture_native", "replay_native", "native_matches", "object", "project", "keys", "array", "map", "walk", "recur", "flatmap", "filter", "if", "choose",
 		"merge", "merge_deep", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
-		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "equal", "all", "any", "entries", "from_entries":
+		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "equal", "all", "any", "entries", "from_entries", "group_runs":
 	default:
 		return nil, false
 	}
@@ -85,7 +85,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	}{
 		{expression.source, &plan.source, true},
 		{expression.body, &plan.body, expression.op != "map" && expression.op != "flatmap" && expression.op != "walk"},
-		{expression.when, &plan.when, expression.op != "filter"},
+		{expression.when, &plan.when, expression.op != "filter" && expression.op != "group_runs"},
 		{expression.then, &plan.then, true},
 		{expression.otherwise, &plan.otherwise, true},
 	} {
@@ -239,6 +239,8 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.buildWalk(state)
 	case "filter":
 		return plan.buildFilter(state)
+	case "group_runs":
+		return plan.buildRuns(state)
 	case "if":
 		condition, err := plan.when.build(state)
 		if err != nil {

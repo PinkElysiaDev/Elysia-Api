@@ -263,7 +263,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		}
 		childScope.bindings[expression.Name] = expressionBinding{slot: compiled.bindingSlot, result: compiled.source.result, schema: compiled.source.schema, coreType: compiled.source.coreType}
 	}
-	if slices.Contains([]string{"map", "flatmap", "filter", "walk"}, compiled.op) {
+	if slices.Contains([]string{"map", "flatmap", "filter", "walk", "group_runs"}, compiled.op) {
 		if !isAssignable(compiled.source.result, ArrayType) {
 			return nil, fmt.Errorf("%s/source must produce an array", path)
 		}
