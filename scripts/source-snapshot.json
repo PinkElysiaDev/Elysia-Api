@@ -455,6 +455,8 @@
     "backend/protocol/plan_runtime_metadata_test.go",
     "backend/protocol/plan_runtime_test.go",
     "backend/protocol/plan_scalar.go",
+    "backend/protocol/plan_text_compare.go",
+    "backend/protocol/plan_text_compare_test.go",
     "backend/protocol/plan_walk.go",
     "backend/protocol/plan_walk_test.go",
     "backend/protocol/profiling_workspace_bench_test.go",

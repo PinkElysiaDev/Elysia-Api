@@ -50,6 +50,7 @@ var expressionOperations = []OperationInfo{
 	{"is_integer", []string{"source"}, []string{"source"}, BooleanType, "Test whether a present non-null JSON number decodes as int64, without coercion or truncation."},
 	{"integer", []string{"operation", "items"}, []string{"operation", "items"}, AnyType, "Checked int64 add (at least two operands), subtract, lt, lte, gt or gte (two operands); evaluate all operands before numeric validation."},
 	{"equal", []string{"items"}, []string{"items"}, BooleanType, "Compare two JSON values semantically with exact numbers."},
+	{"equal_text", []string{"items"}, []string{"items"}, BooleanType, "Compare two text operands, each a string or an array of strings, without concatenating them. Evaluate both operands before validating their text; missing, null and non-string members fail."},
 	{"all", []string{"items"}, []string{"items"}, BooleanType, "Boolean conjunction, with no truthiness coercion."},
 	{"any", []string{"items"}, []string{"items"}, BooleanType, "Boolean disjunction, with no truthiness coercion."},
 	{"not", []string{"source"}, []string{"source"}, BooleanType, "Invert a boolean."},

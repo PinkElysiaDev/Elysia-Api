@@ -432,6 +432,15 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		if !isAssignable(expression.body.result, ArrayType) {
 			return fail("flatmap body must produce an array")
 		}
+	case "equal_text":
+		if len(expression.items) != 2 {
+			return fail("equal_text requires exactly two operands")
+		}
+		for _, item := range expression.items {
+			if !isAssignable(item.result, StringType) && !isAssignable(item.result, ArrayType) {
+				return fail("equal_text operands must be strings or arrays of strings")
+			}
+		}
 	case "cast":
 		if !slices.Contains([]JSONType{StringType, NumberType, IntegerType, BooleanType}, expression.to) {
 			return fail("cast supports scalar types only")

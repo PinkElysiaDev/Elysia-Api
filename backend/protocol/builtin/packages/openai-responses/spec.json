@@ -155,6 +155,22 @@
           "reason": "invalid response metadata type; expected object or null"
         },
         {
+          "path": "/output_text",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/output_text"
+            }
+          },
+          "schema": {
+            "type": "string"
+          },
+          "code": "invalid_input",
+          "reason": "output_text requires a string"
+        },
+        {
           "path": "/parallel_tool_calls",
           "when": {
             "op": "exists",
@@ -410,6 +426,215 @@
           },
           "code": "invalid_input",
           "reason": "invalid response metadata type; expected string or null"
+        },
+        {
+          "path": "/output",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/output_text"
+            }
+          },
+          "schema": {
+            "type": "array"
+          },
+          "code": "unsupported_capability",
+          "reason": "output_text requires an explicit output array"
+        },
+        {
+          "path": "/output_text",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/output_text"
+            }
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "equal_text",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "flatmap",
+                "source": {
+                  "op": "filter",
+                  "source": {
+                    "op": "read",
+                    "from": "root",
+                    "path": "/output"
+                  },
+                  "when": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "not",
+                        "source": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/type"
+                          }
+                        }
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/type"
+                          },
+                          {
+                            "op": "literal",
+                            "value": ""
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/type"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "message"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "body": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/content"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "string"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "array",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/content"
+                      }
+                    ]
+                  },
+                  "otherwise": {
+                    "op": "if",
+                    "when": {
+                      "op": "not",
+                      "source": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/content"
+                        }
+                      }
+                    },
+                    "then": {
+                      "op": "array",
+                      "items": []
+                    },
+                    "otherwise": {
+                      "op": "map",
+                      "source": {
+                        "op": "filter",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/content"
+                        },
+                        "when": {
+                          "op": "any",
+                          "items": [
+                            {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/type"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "text"
+                                }
+                              ]
+                            },
+                            {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/type"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "input_text"
+                                }
+                              ]
+                            },
+                            {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/type"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "output_text"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      "body": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/text",
+                        "required": true
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "code": "invalid_input",
+          "reason": "output_text conflicts with ordered visible output"
         }
       ]
     },

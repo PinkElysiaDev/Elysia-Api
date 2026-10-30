@@ -46,6 +46,55 @@ func TestResponsesPackageGroupedHistory(t *testing.T) {
 	}
 }
 
+func TestResponsesPackageDerivedTextAndNullFilters(t *testing.T) {
+	legacy, draft := shippedProjectionProtocol(t, Responses), compileBuiltinPackage(t, "openai-responses")
+	for _, raw := range []string{
+		`{"id":"r","model":"m","output":[],"output_text":"","content_filters":null}`,
+		`{"id":"r","model":"m","output_text":"A&B","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"A\u0026"}]},{"type":"function_call","call_id":"c","name":"lookup","arguments":"{\"n\":9007199254740993}"},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"B"}]}]}`,
+		`{"id":"r","model":"m","output":[],"content_filters":{"vendor":true}}`,
+		`{"id":"r","model":"m","output_text":"short","output":[{"role":"assistant","content":"short"}]}`,
+		`{"id":"r","model":"m","output_text":"","output":[{"type":"message","role":"assistant"}]}`,
+	} {
+		oldResponse, oldErr := legacy.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
+		newResponse, newErr := draft.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
+		if oldErr != nil || newErr != nil {
+			t.Fatal("valid response was rejected", oldErr, newErr)
+		}
+		oldResponse.SchemaVersion = draft.CoreVersion()
+		want, _ := p.EncodeValue(oldResponse)
+		got, _ := p.EncodeValue(newResponse)
+		checkPackageMigration(t, want.Bytes(), got.Bytes(), nil, nil, packageMigrationGap{})
+		oldResponse.SchemaVersion = legacy.CoreVersion()
+		oldResponse.Native, newResponse.Native = nil, nil
+		oldWire, oldErr := legacy.EncodeResponse(t.Context(), oldResponse, p.EvaluationContext{})
+		newWire, newErr := draft.EncodeResponse(t.Context(), newResponse, p.EvaluationContext{})
+		checkPackageMigration(t, oldWire, newWire, oldErr, newErr, packageMigrationGap{})
+	}
+	for _, raw := range []string{
+		`{"output":[],"output_text":null}`,
+		`{"output":[],"output_text":42}`,
+		`{"output":[],"output_text":[]}`,
+		`{"output":[],"output_text":"different"}`,
+		`{"output_text":""}`,
+		`{"output":null,"output_text":""}`,
+		`{"output_text":"","output":[{"type":"message","role":"assistant","content":null}]}`,
+	} {
+		_, oldErr := legacy.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
+		_, newErr := draft.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
+		var oldFailure, newFailure *p.ConversionError
+		if !errors.As(oldErr, &oldFailure) || !errors.As(newErr, &newFailure) || len(oldFailure.Issues) != 1 || len(newFailure.Issues) != 1 {
+			t.Fatal("derived-text rejection was lost", raw, oldErr, newErr)
+		}
+		before, after := oldFailure.Issues[0], newFailure.Issues[0]
+		if before.Code != after.Code || before.Path != after.Path {
+			t.Fatal("derived-text rejection changed its code or business path", before, after)
+		}
+		if before.Stage != after.Stage || before.Direction != after.Direction || before.Reason != after.Reason {
+			t.Log("diagnostic difference retained for migration review", before, after)
+		}
+	}
+}
+
 func TestResponsesPackageDraftMigration(t *testing.T) {
 	legacyRaw, err := os.ReadFile("definitions/openai-responses.json")
 	if err != nil {

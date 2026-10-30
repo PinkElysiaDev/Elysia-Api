@@ -10923,37 +10923,78 @@
       "source": {
         "op": "map",
         "source": {
-          "op": "entries",
+          "op": "filter",
           "source": {
-            "op": "project",
+            "op": "entries",
             "source": {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            "policy": "include",
-            "keys": [
-              "background",
-              "completed_at",
-              "frequency_penalty",
-              "max_output_tokens",
-              "max_tool_calls",
-              "metadata",
-              "parallel_tool_calls",
-              "presence_penalty",
-              "prompt_cache_key",
-              "prompt_cache_retention",
-              "reasoning",
-              "safety_identifier",
-              "service_tier",
-              "store",
-              "temperature",
-              "text",
-              "tools",
-              "top_logprobs",
-              "top_p",
-              "truncation",
-              "user"
+              "op": "project",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              "policy": "include",
+              "keys": [
+                "background",
+                "completed_at",
+                "frequency_penalty",
+                "max_output_tokens",
+                "max_tool_calls",
+                "metadata",
+                "parallel_tool_calls",
+                "presence_penalty",
+                "prompt_cache_key",
+                "prompt_cache_retention",
+                "reasoning",
+                "safety_identifier",
+                "service_tier",
+                "store",
+                "temperature",
+                "text",
+                "tools",
+                "top_logprobs",
+                "top_p",
+                "truncation",
+                "user",
+                "output_text",
+                "content_filters"
+              ]
+            }
+          },
+          "when": {
+            "op": "any",
+            "items": [
+              {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/key"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "content_filters"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/value"
+                  },
+                  {
+                    "op": "literal",
+                    "value": null
+                  }
+                ]
+              }
             ]
           }
         },
@@ -11031,46 +11072,114 @@
       "op": "let",
       "name": "extra",
       "source": {
-        "op": "project",
-        "source": {
-          "op": "read",
-          "from": "input",
-          "path": ""
+        "op": "if",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/content_filters"
+            },
+            {
+              "op": "literal",
+              "value": null
+            }
+          ]
         },
-        "policy": "exclude",
-        "keys": [
-          "id",
-          "model",
-          "status",
-          "error",
-          "usage",
-          "object",
-          "created",
-          "created_at",
-          "output",
-          "incomplete_details",
-          "background",
-          "completed_at",
-          "frequency_penalty",
-          "max_output_tokens",
-          "max_tool_calls",
-          "metadata",
-          "parallel_tool_calls",
-          "presence_penalty",
-          "prompt_cache_key",
-          "prompt_cache_retention",
-          "reasoning",
-          "safety_identifier",
-          "service_tier",
-          "store",
-          "temperature",
-          "text",
-          "tools",
-          "top_logprobs",
-          "top_p",
-          "truncation",
-          "user"
-        ]
+        "then": {
+          "op": "project",
+          "source": {
+            "op": "project",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            "policy": "exclude",
+            "keys": [
+              "id",
+              "model",
+              "status",
+              "error",
+              "usage",
+              "object",
+              "created",
+              "created_at",
+              "output",
+              "incomplete_details",
+              "background",
+              "completed_at",
+              "frequency_penalty",
+              "max_output_tokens",
+              "max_tool_calls",
+              "metadata",
+              "parallel_tool_calls",
+              "presence_penalty",
+              "prompt_cache_key",
+              "prompt_cache_retention",
+              "reasoning",
+              "safety_identifier",
+              "service_tier",
+              "store",
+              "temperature",
+              "text",
+              "tools",
+              "top_logprobs",
+              "top_p",
+              "truncation",
+              "user",
+              "output_text"
+            ]
+          },
+          "keys": [
+            "content_filters"
+          ],
+          "policy": "exclude"
+        },
+        "otherwise": {
+          "op": "project",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": ""
+          },
+          "policy": "exclude",
+          "keys": [
+            "id",
+            "model",
+            "status",
+            "error",
+            "usage",
+            "object",
+            "created",
+            "created_at",
+            "output",
+            "incomplete_details",
+            "background",
+            "completed_at",
+            "frequency_penalty",
+            "max_output_tokens",
+            "max_tool_calls",
+            "metadata",
+            "parallel_tool_calls",
+            "presence_penalty",
+            "prompt_cache_key",
+            "prompt_cache_retention",
+            "reasoning",
+            "safety_identifier",
+            "service_tier",
+            "store",
+            "temperature",
+            "text",
+            "tools",
+            "top_logprobs",
+            "top_p",
+            "truncation",
+            "user",
+            "output_text"
+          ]
+        }
       },
       "body": {
         "op": "if",
@@ -11680,126 +11789,137 @@
                   }
                 },
                 "finishReason": {
-                  "op": "choose",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/status"
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/status"
+                    }
                   },
-                  "cases": {
-                    "completed": {
-                      "op": "if",
-                      "when": {
-                        "op": "exists",
-                        "source": {
-                          "op": "let",
-                          "name": "calls",
+                  "then": {
+                    "op": "choose",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/status"
+                    },
+                    "cases": {
+                      "completed": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
                           "source": {
-                            "op": "filter",
+                            "op": "let",
+                            "name": "calls",
                             "source": {
-                              "op": "if",
-                              "when": {
-                                "op": "present",
-                                "source": {
+                              "op": "filter",
+                              "source": {
+                                "op": "if",
+                                "when": {
+                                  "op": "present",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/output"
+                                  }
+                                },
+                                "then": {
                                   "op": "read",
                                   "from": "input",
                                   "path": "/output"
+                                },
+                                "otherwise": {
+                                  "op": "array",
+                                  "items": []
                                 }
                               },
-                              "then": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/output"
-                              },
-                              "otherwise": {
-                                "op": "array",
-                                "items": []
+                              "when": {
+                                "op": "any",
+                                "items": [
+                                  {
+                                    "op": "equal",
+                                    "items": [
+                                      {
+                                        "op": "read",
+                                        "from": "item",
+                                        "path": "/type"
+                                      },
+                                      {
+                                        "op": "literal",
+                                        "value": "function_call"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "op": "equal",
+                                    "items": [
+                                      {
+                                        "op": "read",
+                                        "from": "item",
+                                        "path": "/type"
+                                      },
+                                      {
+                                        "op": "literal",
+                                        "value": "custom_tool_call"
+                                      }
+                                    ]
+                                  }
+                                ]
                               }
                             },
-                            "when": {
-                              "op": "any",
-                              "items": [
-                                {
-                                  "op": "equal",
-                                  "items": [
-                                    {
-                                      "op": "read",
-                                      "from": "item",
-                                      "path": "/type"
-                                    },
-                                    {
-                                      "op": "literal",
-                                      "value": "function_call"
-                                    }
-                                  ]
-                                },
-                                {
-                                  "op": "equal",
-                                  "items": [
-                                    {
-                                      "op": "read",
-                                      "from": "item",
-                                      "path": "/type"
-                                    },
-                                    {
-                                      "op": "literal",
-                                      "value": "custom_tool_call"
-                                    }
-                                  ]
-                                }
-                              ]
+                            "body": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/0",
+                              "name": "calls"
                             }
+                          }
+                        },
+                        "then": {
+                          "op": "literal",
+                          "value": "tool_calls"
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": "stop"
+                        }
+                      },
+                      "incomplete": {
+                        "op": "choose",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/incomplete_details/reason"
+                        },
+                        "cases": {
+                          "max_output_tokens": {
+                            "op": "literal",
+                            "value": "length"
                           },
-                          "body": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/0",
-                            "name": "calls"
+                          "content_filter": {
+                            "op": "literal",
+                            "value": "content_filter"
                           }
                         }
                       },
-                      "then": {
-                        "op": "literal",
-                        "value": "tool_calls"
+                      "queued": {
+                        "op": "omit"
                       },
-                      "otherwise": {
-                        "op": "literal",
-                        "value": "stop"
+                      "in_progress": {
+                        "op": "omit"
+                      },
+                      "failed": {
+                        "op": "omit"
+                      },
+                      "cancelled": {
+                        "op": "omit"
                       }
                     },
-                    "incomplete": {
-                      "op": "choose",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/incomplete_details/reason"
-                      },
-                      "cases": {
-                        "max_output_tokens": {
-                          "op": "literal",
-                          "value": "length"
-                        },
-                        "content_filter": {
-                          "op": "literal",
-                          "value": "content_filter"
-                        }
-                      }
-                    },
-                    "queued": {
-                      "op": "omit"
-                    },
-                    "in_progress": {
-                      "op": "omit"
-                    },
-                    "failed": {
-                      "op": "omit"
-                    },
-                    "cancelled": {
+                    "otherwise": {
                       "op": "omit"
                     }
-                  },
-                  "otherwise": {
-                    "op": "omit"
                   }
                 },
                 "wire:openai_responses": {

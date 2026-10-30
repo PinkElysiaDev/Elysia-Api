@@ -212,3 +212,48 @@ Realtime 供应商、也没有宣称四预置真实 SSE 已完成。管理／激
 staticcheck v0.8.2 仍为既有 45 条；归一化行号后新增 0、移除 0，未把退出 1 写为通过。
 记录为 `completion-session-{go-all,vet,staticcheck}`、`completion-agent-session-race` 及
 `completion-session-staticcheck-comparison.json`。没有改前端，未重跑六目标或性能矩阵。
+
+## 第七批：Responses 派生正文与比较分配（dev.87）
+
+实际对照发现草案会因缺少 status 而拒绝旧版接受的响应，且把 output_text 和
+content_filters:null 都归入未知扩展。现由 Mapping 保留缺失 status，识别派生正文与已知
+null 标记；非 null 的 content_filters 继续进入原 wire owner。Spec 要求 output_text 为
+字符串、有显式 output 数组，并与按顺序提取的可见正文一致。普通消息字符串、分段正文、
+空正文、工具穿插、大整数及无根 Native 的重建对照通过。
+
+未闭合的诊断差异继续显式保留：旧 JSON 错误可能标为 decode_event/stream，新声明在
+decode_response/wire；非法可见文本的新静态原因归入正文不一致，旧实现使用单独的文本
+类型说明。错误码和业务位置的对照通过，多个字段同时非法时的首错顺序尚未统一。
+这批没有迁移非空 tool_usage、access_programs、完整错误包络及响应输出侧的全部规则。
+
+第一版用 equal(join(...))，256 KiB 派生正文约分配 2.01 MB/次，明显存在整段临时副本。
+新增供应商无关的 equal_text 原语，按分段直接比较并在同步调用内借用字符串，降至约
+0.87 MB/次；没有通过删除正文一致性检查取得该结果。普通 JSON equal 的既有行为不变。
+Unicode／转义、空片段、后续非法值、取消和预算回归通过；protocol/builtin 全量、vet、
+相关 race 通过，见 `completion-{output-text-*,text-comparison*,derived-text-protocol,text-vet,text-race}`。
+
+### 必须保留的性能反向结果
+
+本次补做 DecodeResponse 组件测试：同进程编译两版配置，固定 Go 1.27.2、GOMAXPROCS=4、
+GOGC=100、GOMEMLIMIT=2GiB、PGO 关闭；每场景五对交替，短响应每批 5,000 次，大响应每批
+40 次，预热后计时，不启用 profiler、不强制 GC。它不是独立客户端／网关／上游 HTTP 验收，
+也没有测峰值。对旧生产 Responses 模块的回退另做一次五对确认，结果仍存在：
+
+| 场景 | 旧模块中位耗时 | 新声明中位耗时 | 旧／新 B/次 | 结论 |
+|---|---:|---:|---:|---|
+| 128 字节正文 | 10.43 μs | 53.08 μs | 8,773／53,389 | 新声明约慢 5.09 倍，分配约 6.09 倍 |
+| 256 KiB 正文 | 326.32 μs | 339.63 μs | 1,645,641／328,595 | 分配约少 80%；耗时配对变化 -4.1%～13.0%，不称稳定无回退 |
+| 256 KiB 正文及 output_text | 618.22 μs | 815.27 μs | 3,494,790／876,737 | 分配约少 75%，耗时约增加 31.9% |
+
+与 e9f7dea0 的旧草案相比，普通路径分配约增加 0.4%～0.6%；带 output_text 的草案过去
+没有验证正文一致性，不能把新增校验耗时与旧草案直接解释为等价实现回退。与完整旧模块
+的表格则确认了尚须解决的开销，不能把较低的大正文分配写成“DSL 全面无损”。
+
+原始数据／配置身份与首轮失败实现留在
+`.tmp-dev/protocol-dsl-completion-2026-10-30/derived-text-{benchmark,legacy-benchmark}`。
+独立的 12 秒短响应诊断得到 17.42 CPU 秒、199,818 次解码：分配中 Sonic newLazyObject
+约占 54.2%，readSonicObjectMember 累计约占 60.5%（两者不可相加）；CPU 还包含明显 GC
+和计划递归开销。它是定位样本，不是正式三次 60 秒采样，未保留 go run 的临时可执行文件。
+原始 profile 与 top 已保存；下一步首先减少指针读取产生的临时对象，再复核同一组件。
+
+四预置仍未切换生产；真实流、模型策略、管理激活、旧格式退役和最终性能验收继续未完成。
