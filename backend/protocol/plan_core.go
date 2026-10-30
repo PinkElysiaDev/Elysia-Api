@@ -254,6 +254,13 @@ func readCoreScalar(value Value, pointer []string) (JSONOutput, error) {
 	return JSONLeaf(value), nil
 }
 
+func selectNullCoreObject(pointer []string) (Object, bool, error) {
+	if len(pointer) != 0 {
+		return nil, false, fmt.Errorf("JSON pointer traverses a scalar")
+	}
+	return nil, true, nil
+}
+
 func coreInteger(value int64) Value { return Value{raw: strconv.FormatInt(value, 10)} }
 
 func coreBoolean(value bool) Value {

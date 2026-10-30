@@ -61,6 +61,23 @@ func (expression *compiledExpression) buildReadOutput(state evaluation) (value p
 	return plannedOutput{output, bytes}, nil
 }
 
+func (expression *compiledExpression) readRequestObject(state evaluation) (object Object, isPresent bool, err error) {
+	defer func() { err = locateMappingError(expression.path, err) }()
+	if err := state.advance(); err != nil {
+		return nil, false, err
+	}
+	object, isPresent, err = selectCoreRequestPointerObject(state.coreRequest, expression.pointer)
+	if err != nil {
+		return nil, false, fmt.Errorf("%s: %w", expression.path, err)
+	}
+	if expression.isRequired && !isPresent {
+		return nil, false, fmt.Errorf("%s: required field is absent", expression.path)
+	}
+	// coreRequest is bound only after the whole input fits this evaluation's
+	// budget. Shape queries do not need a normalized copy of every member value.
+	return object, isPresent, nil
+}
+
 func readOutputPointer(output JSONOutput, pointer []string, reader *valueReader) (JSONOutput, error) {
 	return readOutputPointerWithObjectReader(output, pointer, reader, nil)
 }

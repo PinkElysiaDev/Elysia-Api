@@ -90,7 +90,16 @@ func TestKeysMeasuresEscapingBeforeOutput(t *testing.T) {
 }
 
 func TestKeysTypedRequestObjectParity(t *testing.T) {
-	parameters := Object{"bad\xff": StringValue("first"), "bad\ufffd": StringValue("last"), "<>&\u2028": Value{raw: "null"}, "number": Value{raw: "9007199254740993"}, "payload": Value{raw: ` { "body":"` + strings.Repeat("<", 32<<10) + `" } `}}
+	checkTypedRequestObjectQuery(t, "keys")
+}
+
+func TestTypeTypedRequestObjectParity(t *testing.T) {
+	checkTypedRequestObjectQuery(t, "type")
+}
+
+func checkTypedRequestObjectQuery(t *testing.T, operation string) {
+	t.Helper()
+	parameters := Object{"bad\xff": StringValue("first"), "bad\ufffd": StringValue("last"), "<>&\u2028": Value{raw: "null"}, "null": Value{raw: "null"}, "number": Value{raw: "9007199254740993"}, "payload": Value{raw: ` { "body":"` + strings.Repeat("<", 32<<10) + `" } `}}
 	request := &Request{SchemaVersion: ProtocolCoreVersion, Parameters: parameters,
 		Content: []Node{{Attributes: parameters, Payload: Value{raw: `{"nested":{"own":true}}`}, Children: []Node{{Attributes: parameters}}}},
 		Tools:   []Tool{{Options: parameters}},
@@ -114,9 +123,10 @@ func TestKeysTypedRequestObjectParity(t *testing.T) {
 		{"empty-slice", "input", "/content/0/attributes", &Request{Content: []Node{}}, false, 0, 0},
 		{"invalid-index", "input", "/content/00/attributes", request, false, 0, 0},
 		{"opaque-value", "input", "/content/0/payload/nested", request, false, 0, 0},
+		{"opaque-null", "input", "/parameters/null", request, false, 0, 0},
 		{"read-step-limit", "input", "/parameters", request, false, 1, 0},
 		{"exact-steps", "input", "/parameters", request, false, 2, 0},
-		{"keys-cancellation", "input", "/parameters", request, false, 0, 1},
+		{"query-cancellation", "input", "/parameters", request, false, 0, 1},
 		{"read-cancellation", "input", "/parameters", request, false, 0, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -125,7 +135,7 @@ func TestKeysTypedRequestObjectParity(t *testing.T) {
 			}
 			read := readExpression(tc.from, tc.path)
 			read.Required = tc.isRequired
-			plan, _ := compileOutputPlan(compileTestOutputExpression(t, Expression{Op: "keys", Source: &read}))
+			plan, _ := compileOutputPlan(compileTestOutputExpression(t, Expression{Op: operation, Source: &read}))
 			run := func(hasRequest bool) (Value, int, int, error) {
 				ctx := t.Context()
 				if tc.cancelAt != 0 {
@@ -146,47 +156,56 @@ func TestKeysTypedRequestObjectParity(t *testing.T) {
 			want, wantSteps, _, wantErr := run(false)
 			got, gotSteps, reads, gotErr := run(true)
 			if got != want || gotSteps != wantSteps || !reflect.DeepEqual(gotErr, wantErr) {
-				t.Fatal("typed keys changed output, error chain or steps", got, gotErr, gotSteps, want, wantErr, wantSteps)
+				t.Fatal("typed query changed output, error chain or steps", got, gotErr, gotSteps, want, wantErr, wantSteps)
 			}
 			if plan.hasRequestObjectSource && reads != 0 {
-				t.Fatal("typed Object keys still constructed member values")
+				t.Fatal("typed Object query still constructed member values")
 			}
 			if plan.expression.coreType != nil {
-				t.Fatal("keys acquired core provenance")
+				t.Fatal("shape query acquired core provenance")
 			}
 		})
 	}
 }
 
 func TestKeysTypedRequestInputAndOutputBudgets(t *testing.T) {
+	checkTypedRequestQueryBudgets(t, "keys")
+}
+
+func TestTypeTypedRequestInputAndOutputBudgets(t *testing.T) {
+	checkTypedRequestQueryBudgets(t, "type")
+}
+
+func checkTypedRequestQueryBudgets(t *testing.T, operation string) {
+	t.Helper()
 	document := textProtocolPackage(t)
 	document.Spec.WireContracts[EncodeRequest].Schema.AllowUnknown = true
-	document.Mapping.Directions[EncodeRequest].Program.Fields["keys"] = Expression{Op: "keys", Source: expressionPointer(readExpression("input", "/parameters"))}
+	document.Mapping.Directions[EncodeRequest].Program.Fields["query"] = Expression{Op: operation, Source: expressionPointer(readExpression("input", "/parameters"))}
 	compiled := compilePackageForTest(t, document)
 	request, err := compiled.DecodeRequestValue(t.Context(), Value{raw: `{"model":"m","prompt":"hello"}`}, EvaluationContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var keysPlan *compiledOutputPlan
+	var queryPlan *compiledOutputPlan
 	for _, field := range compiled.mappings[EncodeRequest].outputPlan.fields {
-		if field.key == "keys" {
-			keysPlan = field.expression
+		if field.key == "query" {
+			queryPlan = field.expression
 		}
 	}
-	if keysPlan == nil || !keysPlan.hasRequestObjectSource {
+	if queryPlan == nil || !queryPlan.hasRequestObjectSource {
 		t.Fatal("request Object selector was not compiled")
 	}
 	for _, tc := range []struct {
-		name       string
-		parameters Object
-		limit      int64
-		wantError  bool
+		name                     string
+		parameters               Object
+		limit                    int64
+		wantError, wantTypeError bool
 	}{
-		{"absent-value", Object{"invalid": {}}, 1024, true},
-		{"normalized-key-collision", Object{"bad\xff": StringValue("first"), "bad\ufffd": Value{raw: "null"}}, 1024, false},
-		{"whole-input-limit", Object{strings.Repeat("<", 20): StringValue("value")}, 16, true},
-		{"escaped-output-limit", Object{strings.Repeat("<", 20): StringValue("value")}, 64, true},
-		{"escaped-output-success", Object{strings.Repeat("<", 20): StringValue("value")}, 256, false},
+		{"absent-value", Object{"invalid": {}}, 1024, true, true},
+		{"normalized-key-collision", Object{"bad\xff": StringValue("first"), "bad\ufffd": Value{raw: "null"}}, 1024, false, false},
+		{"whole-input-limit", Object{strings.Repeat("<", 20): StringValue("value")}, 16, true, true},
+		{"escaped-output-limit", Object{strings.Repeat("<", 20): StringValue("value")}, 64, true, false},
+		{"escaped-output-success", Object{strings.Repeat("<", 20): StringValue("value")}, 256, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			request.Parameters = tc.parameters
@@ -194,20 +213,24 @@ func TestKeysTypedRequestInputAndOutputBudgets(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			keysPlan.hasRequestObjectSource = false
+			queryPlan.hasRequestObjectSource = false
 			want, wantErr := compiled.EncodeRequestValue(ctx, request, EvaluationContext{})
-			keysPlan.hasRequestObjectSource = true
+			queryPlan.hasRequestObjectSource = true
 			got, gotErr := compiled.EncodeRequestValue(ctx, request, EvaluationContext{})
-			if (gotErr != nil) != tc.wantError || got != want || !reflect.DeepEqual(gotErr, wantErr) {
-				t.Fatal("keys bypassed input validation or changed a resource boundary", gotErr, wantErr)
+			shouldFail := tc.wantError
+			if operation == "type" {
+				shouldFail = tc.wantTypeError
+			}
+			if (gotErr != nil) != shouldFail || got != want || !reflect.DeepEqual(gotErr, wantErr) {
+				t.Fatal("shape query bypassed input validation or changed a resource boundary", gotErr, wantErr)
 			}
 			if tc.name == "absent-value" && !strings.Contains(gotErr.Error(), "absent JSON value requires omission") {
-				t.Fatal("invalid Value member was not rejected before keys", gotErr)
+				t.Fatal("invalid Value member was not rejected before the shape query", gotErr)
 			}
 			if gotErr == nil {
 				raw, rawErr := compiled.executeMapping(context.Background(), EncodeRequest, fixtureValue(t, request), EvaluationContext{})
 				if rawErr != nil || raw != got {
-					t.Fatal("raw execution diverged from typed keys", rawErr, raw, got)
+					t.Fatal("raw execution diverged from the typed query", rawErr, raw, got)
 				}
 			}
 		})
@@ -220,6 +243,11 @@ func TestKeysTypedRequestKeepsIterationAndBindingScopes(t *testing.T) {
 	}
 	child := readExpression("item", "/children")
 	program := objectExpression(map[string]Expression{
+		"types": objectExpression(map[string]Expression{
+			"binding": {Op: "let", Name: "local", Source: expressionPointer(literalExpression(map[string]any{"parameters": nil})), Body: expressionPointer(Expression{Op: "type", Source: expressionPointer(bindingTestRead("local", "/parameters"))})},
+			"item":    {Op: "map", Source: expressionPointer(literalExpression([]any{map[string]any{"parameters": []any{}}})), Body: expressionPointer(Expression{Op: "type", Source: expressionPointer(readExpression("item", "/parameters"))})},
+			"root":    {Op: "type", Source: expressionPointer(readExpression("root", "/parameters"))},
+		}),
 		"binding": {Op: "let", Name: "local", Source: expressionPointer(literalExpression(map[string]any{"parameters": map[string]any{"bound": true}})), Body: expressionPointer(Expression{Op: "keys", Source: expressionPointer(bindingTestRead("local", "/parameters"))})},
 		"items": {Op: "map", Source: expressionPointer(literalExpression([]any{map[string]any{"parameters": map[string]any{"item": true}}})), Body: expressionPointer(objectExpression(map[string]Expression{
 			"item": keys("item", "/parameters"), "root": keys("root", "/parameters"),
@@ -234,7 +262,7 @@ func TestKeysTypedRequestKeepsIterationAndBindingScopes(t *testing.T) {
 	reader := func(pointer []string) (JSONOutput, error) { return readCoreRequestOutput(request, pointer) }
 	state := evaluation{ctx: t.Context(), coreRequest: request, inputReader: reader, rootReader: reader, budget: &evaluationBudget{limits: DefaultLimits()}}
 	got, err := plan.evaluate(state)
-	want := parseTestValue(t, `{"binding":["bound"],"items":[{"item":["item"],"root":["root"]}],"walk":[{"children":[{"root":["root"]}],"root":["root"]}]}`)
+	want := parseTestValue(t, `{"binding":["bound"],"items":[{"item":["item"],"root":["root"]}],"types":{"binding":"null","item":["array"],"root":"object"},"walk":[{"children":[{"root":["root"]}],"root":["root"]}]}`)
 	if err != nil || got != want {
 		t.Fatal("typed keys read the request in place of a local scope or lost its root", got, err)
 	}

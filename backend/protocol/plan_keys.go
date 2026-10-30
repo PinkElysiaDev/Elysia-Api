@@ -54,30 +54,6 @@ func (plan *compiledOutputPlan) readObjectKeys(state evaluation) ([]string, erro
 	return outputObjectKeys(source.output)
 }
 
-func (expression *compiledExpression) readRequestObject(state evaluation) (object Object, isPresent bool, err error) {
-	defer func() { err = locateMappingError(expression.path, err) }()
-	if err := state.advance(); err != nil {
-		return nil, false, err
-	}
-	object, isPresent, err = selectCoreRequestPointerObject(state.coreRequest, expression.pointer)
-	if err != nil {
-		return nil, false, fmt.Errorf("%s: %w", expression.path, err)
-	}
-	if expression.isRequired && !isPresent {
-		return nil, false, fmt.Errorf("%s: required field is absent", expression.path)
-	}
-	// coreRequest is bound only after the whole input fits this evaluation's
-	// budget. Keys need its names, not another normalized copy of every value.
-	return object, isPresent, nil
-}
-
-func selectNullCoreObject(pointer []string) (Object, bool, error) {
-	if len(pointer) != 0 {
-		return nil, false, fmt.Errorf("JSON pointer traverses a scalar")
-	}
-	return nil, true, nil
-}
-
 // outputObjectKeys never materializes or normalizes member values. buildKeys
 // copies only these names into its independent result.
 func outputObjectKeys(output JSONOutput) ([]string, error) {

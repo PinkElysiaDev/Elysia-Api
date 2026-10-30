@@ -7,6 +7,19 @@ import (
 )
 
 func (plan *compiledOutputPlan) buildTypeQuery(state evaluation) (plannedOutput, error) {
+	if plan.hasRequestObjectSource && state.coreRequest != nil {
+		object, isPresent, err := plan.source.expression.readRequestObject(state)
+		if err != nil {
+			return plannedOutput{}, err
+		}
+		kind := "object"
+		if !isPresent {
+			kind = "missing"
+		} else if object == nil {
+			kind = "null"
+		}
+		return plannedLeaf(StringValue(kind)), nil
+	}
 	source, err := plan.source.build(state)
 	if err != nil {
 		return plannedOutput{}, err
