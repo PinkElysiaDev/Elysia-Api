@@ -163,3 +163,20 @@ Windows amd64为本机测试平台；其他五个目标仅交叉编译，不构�
 
 尚未重做真实后端页面运行验收。四生产预置仍未切换，v3编辑、加载、激活、完整供应商流及
 最终性能矩阵未完成；当前已有的SSE峰值反向结果继续保留，不将组件改善外推为全部请求无损。
+
+## 后续声明、工具Spec与对象类型查询
+
+`ca4f0d1a`新增两份身份声明及差分账本，`ac505bbc`新增显式JSON工具Spec和真正双向Mapping
+集成，`e5a0935d`让type查询复用已验证的Object selector。仍未切换生产预置。
+
+protocol/builtin全量在工具阶段和type阶段分别通过；两阶段对应vet及相关race通过。
+日志分别为`checks/tool-stage-protocol.*`、`tool-stage-vet.*`、`tool-stage-race.*`和
+`checks/object-type-final-protocol.*`、`object-type-vet.*`、`object-type-race.*`。
+tool首次新增集成错误地期待Collector自动补Status，原失败保留，随后仅修正新测试的终态断言。
+
+原文本七帧Spec验证未观察到稳定回退，全部344 allocs/op一致；type组件配对两组大参数耗时
+方向均改善，幅度不稳，所有反向结果保留于性能记录。两项均不是生产HTTP／堆峰值验收。
+
+这三批未重跑全工程、前端页面或六目标；匹配六目标仍为a4a8f275/dev.80，不能当作包含
+这些新声明／工具动作的当前源码产物。typed空白null接受差异正在等待用户独立决定，
+没有擅自扩展已批准的字符串等价修复。

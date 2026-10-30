@@ -74,7 +74,9 @@ item_finish根据已建立项目类型完成文本或工具；严格tool_finish�
 文本与工具delta必须匹配已建立种类，已完成项目拒绝后续内容和重复完成。
 
 工具名称和callId加入已有identityBytes预算；未完成JSON参数使用已有StreamState.buffered
-预算，完成、失败或取消后释放参数缓冲，只保留必要身份／摘要。两种逻辑预算各自有界，
+预算，成功完成及协议failure/cancel终帧后释放参数缓冲，只保留必要身份／摘要。
+context取消、无效帧或提前EOF依请求结束释放所属validator，不保证每次Consume报错即清空。
+两种逻辑预算各自有界，
 不等于总物理内存只有一个BufferBytes。纯文本契约跳过新增类型关联查询，不增加每帧Node
 或辅助map；编译态工具选择器仅工具开始动作持有，text与arguments共用delta字段。
 
