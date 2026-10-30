@@ -8043,6 +8043,216 @@
         "from": "input",
         "path": "/clientOutput/rawStreamOptions"
       }
+    },
+    "response-content": {
+      "op": "if",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/content"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "input",
+        "path": "/content"
+      },
+      "otherwise": {
+        "op": "array",
+        "items": []
+      }
+    },
+    "has-response-groups": {
+      "op": "let",
+      "name": "groups",
+      "source": {
+        "op": "ref",
+        "ref": "response-content"
+      },
+      "body": {
+        "op": "any",
+        "items": [
+          {
+            "op": "all",
+            "items": [
+              {
+                "op": "not",
+                "source": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/1",
+                    "name": "groups"
+                  }
+                }
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/0/kind",
+                    "name": "groups"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "op": "all",
+            "items": [
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "/1",
+                  "name": "groups"
+                }
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "filter",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "groups",
+                      "path": ""
+                    },
+                    "when": {
+                      "op": "not",
+                      "source": {
+                        "op": "all",
+                        "items": [
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/kind"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "message"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/attributes/choiceIndex"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "op": "array",
+                    "items": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "response-groups": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "has-response-groups"
+      },
+      "then": {
+        "op": "ref",
+        "ref": "response-content"
+      },
+      "otherwise": {
+        "op": "array",
+        "items": [
+          {
+            "op": "object",
+            "fields": {
+              "kind": {
+                "op": "literal",
+                "value": "message"
+              },
+              "role": {
+                "op": "literal",
+                "value": "assistant"
+              },
+              "children": {
+                "op": "flatmap",
+                "source": {
+                  "op": "ref",
+                  "ref": "response-content"
+                },
+                "body": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/kind"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "message"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/children"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/children"
+                    },
+                    "otherwise": {
+                      "op": "array",
+                      "items": []
+                    }
+                  },
+                  "otherwise": {
+                    "op": "array",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
     }
   },
   "directions": {
@@ -8945,15 +9155,30 @@
           "choices": {
             "op": "map",
             "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/content"
+              "op": "ref",
+              "ref": "response-groups"
             },
             "body": {
               "op": "object",
               "fields": {
                 "index": {
-                  "op": "index"
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/attributes/choiceIndex"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/attributes/choiceIndex"
+                  },
+                  "otherwise": {
+                    "op": "index"
+                  }
                 },
                 "message": {
                   "op": "ref",
@@ -8962,21 +9187,50 @@
                 "finish_reason": {
                   "op": "if",
                   "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/attributes/finishReason"
-                    }
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/attributes/choiceIndex"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/attributes/finishReason"
+                        }
+                      }
+                    ]
                   },
                   "then": {
                     "op": "read",
-                    "from": "input",
+                    "from": "item",
                     "path": "/attributes/finishReason"
                   },
                   "otherwise": {
-                    "op": "literal",
-                    "value": "stop"
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/attributes/finishReason"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/attributes/finishReason"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": "stop"
+                    }
                   }
                 }
               }
@@ -9149,6 +9403,225 @@
         }
       },
       "effects": [
+        {
+          "id": "response-group-identity",
+          "kind": "reject",
+          "path": "/content",
+          "reason": "target cannot combine independently identified or annotated output messages",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "not",
+                "source": {
+                  "op": "ref",
+                  "ref": "has-response-groups"
+                }
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "filter",
+                      "source": {
+                        "op": "ref",
+                        "ref": "response-content"
+                      },
+                      "when": {
+                        "op": "all",
+                        "items": [
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/kind"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "message"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "any",
+                            "items": [
+                              {
+                                "op": "not",
+                                "source": {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": "/role"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "assistant"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "op": "exists",
+                                "source": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/id"
+                                }
+                              },
+                              {
+                                "op": "exists",
+                                "source": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/status"
+                                }
+                              },
+                              {
+                                "op": "all",
+                                "items": [
+                                  {
+                                    "op": "present",
+                                    "source": {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": "/attributes"
+                                    }
+                                  },
+                                  {
+                                    "op": "not",
+                                    "source": {
+                                      "op": "equal",
+                                      "items": [
+                                        {
+                                          "op": "read",
+                                          "from": "item",
+                                          "path": "/attributes"
+                                        },
+                                        {
+                                          "op": "literal",
+                                          "value": {}
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
+                              {
+                                "op": "all",
+                                "items": [
+                                  {
+                                    "op": "present",
+                                    "source": {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": "/cache"
+                                    }
+                                  },
+                                  {
+                                    "op": "not",
+                                    "source": {
+                                      "op": "equal",
+                                      "items": [
+                                        {
+                                          "op": "read",
+                                          "from": "item",
+                                          "path": "/cache"
+                                        },
+                                        {
+                                          "op": "literal",
+                                          "value": []
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
+                              {
+                                "op": "all",
+                                "items": [
+                                  {
+                                    "op": "present",
+                                    "source": {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": "/resources"
+                                    }
+                                  },
+                                  {
+                                    "op": "not",
+                                    "source": {
+                                      "op": "equal",
+                                      "items": [
+                                        {
+                                          "op": "read",
+                                          "from": "item",
+                                          "path": "/resources"
+                                        },
+                                        {
+                                          "op": "literal",
+                                          "value": []
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
+                              {
+                                "op": "all",
+                                "items": [
+                                  {
+                                    "op": "present",
+                                    "source": {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": "/metadata"
+                                    }
+                                  },
+                                  {
+                                    "op": "not",
+                                    "source": {
+                                      "op": "equal",
+                                      "items": [
+                                        {
+                                          "op": "read",
+                                          "from": "item",
+                                          "path": "/metadata"
+                                        },
+                                        {
+                                          "op": "literal",
+                                          "value": []
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "op": "array",
+                      "items": []
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "diagnostic": {
+            "code": "unsupported_capability",
+            "stage": "wire",
+            "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+          }
+        },
         {
           "id": "model",
           "kind": "emit",

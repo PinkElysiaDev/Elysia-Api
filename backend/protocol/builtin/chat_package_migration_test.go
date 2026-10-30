@@ -173,16 +173,56 @@ func checkChatCacheUsage(t *testing.T, legacy, draft *p.Compiled) {
 			checkPackageMigration(t, want.Bytes(), got.Bytes(), wantErr, gotErr, packageMigrationGap{})
 			original.SchemaVersion = p.SemanticSchemaVersion
 			original.Native, candidate.Native = nil, nil
-			// Empty-choice synthesis is a separate migration gap; use the same
-			// ordinary message to compare usage rendering without native replay.
-			original.Content = []p.Node{{Kind: p.MessageNode, Role: p.StringValue("assistant")}}
-			candidate.Content = []p.Node{{Kind: p.MessageNode, Role: p.StringValue("assistant")}}
 			wantWire, wantErr := legacy.EncodeResponse(t.Context(), original, p.EvaluationContext{})
 			gotWire, gotErr := draft.EncodeResponse(t.Context(), candidate, p.EvaluationContext{})
 			if wantErr != nil {
 				t.Fatal("legacy usage must encode without root Native", wantErr)
 			}
 			checkPackageMigration(t, wantWire, gotWire, wantErr, gotErr, packageMigrationGap{})
+		})
+	}
+}
+
+func TestChatPackageResponseGroups(t *testing.T) {
+	legacy, draft := shippedProjectionProtocol(t, Chat), compileBuiltinPackage(t, "openai-chat")
+	text := p.Node{Kind: p.TextNode, Payload: p.StringValue("text")}
+	message := p.Node{Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{text}}
+	annotated := message
+	annotated.ID = p.StringValue("independent")
+	firstChoice, secondChoice := message, message
+	firstChoice.Attributes = p.Object{"choiceIndex": testValue(t, `3`), "finishReason": p.StringValue("length")}
+	secondChoice.Attributes = p.Object{"choiceIndex": testValue(t, `7`), "finishReason": p.StringValue("stop")}
+	for _, fixture := range []struct {
+		name       string
+		content    []p.Node
+		isRejected bool
+	}{
+		{"empty", nil, false},
+		{"standalone", []p.Node{text}, false},
+		{"messages", []p.Node{message, message}, false},
+		{"mixed", []p.Node{message, {Kind: p.ToolCallNode, Name: p.StringValue("lookup"), CallID: p.StringValue("c"), Input: &p.ToolInput{Kind: p.JSONInput, Value: testValue(t, `{"n":9007199254740993}`)}}}, false},
+		{"choices", []p.Node{firstChoice, secondChoice}, false},
+		{"annotated-message", []p.Node{annotated, text}, true},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			response := &p.Response{SchemaVersion: legacy.CoreVersion(), ID: p.StringValue("r"), Model: p.StringValue("m"), Status: p.StringValue("completed"), Content: fixture.content, Attributes: p.Object{"finishReason": p.StringValue("stop")}}
+			want, oldErr := legacy.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+			response.SchemaVersion = draft.CoreVersion()
+			got, newErr := draft.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+			if !fixture.isRejected {
+				if oldErr != nil || newErr != nil || !bytes.Equal(want, got) {
+					t.Fatalf("response grouping changed: old=%s new=%s errors=%v / %v", want, got, oldErr, newErr)
+				}
+				return
+			}
+			var before, after *p.ConversionError
+			if !errors.As(oldErr, &before) || !errors.As(newErr, &after) || len(before.Issues) != 1 || len(after.Issues) != 1 {
+				t.Fatal("annotated output was silently combined", oldErr, newErr)
+			}
+			left, right := before.Issues[0], after.Issues[0]
+			if left.Code != right.Code || left.Path != right.Path || left.Stage != right.Stage || left.Reason != right.Reason {
+				t.Fatal("grouping rejection lost its classification", left, right)
+			}
 		})
 	}
 }

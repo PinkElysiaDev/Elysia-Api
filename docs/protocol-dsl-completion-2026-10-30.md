@@ -284,3 +284,17 @@ GOGC=100、GOMEMLIMIT=2GiB、PGO 关闭；每场景五对交替，短响应每�
 
 最终 Go 全量再次通过（约 92 秒）、vet 和相关 race 通过；固定 staticcheck 仍为既有
 45 条，新增 0／移除 0。记录为 `completion-reader-{go-all,vet,race,staticcheck}`。
+
+## 第九批：Chat 响应分组声明
+
+关闭第三批记录的空 choices 重建缺口：草案现在与旧编码器一样生成一个空 assistant
+choice。对 standalone 正文、相邻无注解消息及工具穿插，Mapping 合成同一个输出消息，
+不把片段变成多个候选；已有多候选保留 choiceIndex 和各自 finishReason。独立标识、状态
+或注解阻止合并时，仍返回原 unsupported_capability／wire／/content 和原因。
+
+没有增加 Go 供应商分支。新表达式显式处理核心 nil/空 content，其余已有消息字段与权限
+沿用原映射。原 usage 测试移除“用普通消息替换空结果”的临时绕行，直接比较真正的空
+choices 在无根 Native 时的完整编码。修改前六种分组差异有失败记录，修复后对应原输出
+字节和拒绝分类通过；protocol/builtin 全量通过。记录为
+`completion-chat-groups-{before,mapping,null,builtin}`。本批未测 Chat 编码性能；候选 metadata、
+未知 choice 扩展与全协议终止状态仍有其他迁移边界，不以本组测试替代它们。
