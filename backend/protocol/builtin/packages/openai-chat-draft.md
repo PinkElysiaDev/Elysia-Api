@@ -76,6 +76,20 @@
 `ObjectMergeConflictError.Path`；旧 null owner 在 runtime 拒绝，新声明在 evaluate 拒绝。
 双方均拒绝不等于完整错误树相等。本切片也不覆盖重复 cache 意图、节点／工具的所有 owner。
 
+### 已闭合：请求 legacy effort 取值与拒绝边界
+
+请求编码在typed effort存在时使用它，否则保留`parameters.reasoning_effort`；缺失、null和
+空Reasoning仍按旧编码器处理，不增加effort枚举限制。声明先拒绝任何存在的budget／summary，
+再拒绝typed与legacy effort同时存在；null和相同值不绕过冲突。
+
+修复前实测5个字段丢失、5个原草案误接受；修复后完整Chat迁移定向通过，新增8个成功表示
+逐字节相等，5个必要拒绝保持条件及先后顺序。这里仅验证公开typed EncodeRequest，
+没有把raw Execute首错顺序当作已完成。
+
+拒绝诊断仍未闭合：旧侧为`invalid_input`或`unsupported_capability / request.validation`，
+新侧为`conversion_rejected / mapping.effects`。测试记录完整错误树并显式标记NOT CLOSED，
+不修改原静态gap。证据在`.tmp-dev/protocol-dsl-2026-10-29/chat-legacy-effort-2026-10-30/`。
+
 ### 未闭合 1：Chat 响应中的旧来源位置
 
 旧 `response.go` 把单个 `message` 包装成临时数组，再交给 `decodeMessages`，所以 message 的 Source／Native 路径为 `/choices/0/message/0`，工具调用也多一层 `/0`。草案捕获的是实际输入位置 `/choices/0/message`。

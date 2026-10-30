@@ -106,6 +106,7 @@ func TestChatPackageDraftMigration(t *testing.T) {
 		})
 	}
 	checkChatRequestOwners(t, legacy, draft)
+	checkChatReasoningParameters(t, legacy, draft)
 	checkPackageMediaURIs(t, legacy, draft, definition)
 	wire := testValue(t, `{"model":"m","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{"q":{"type":"string"}}}}}],"tool_choice":{"type":"function","function":{"name":"lookup"}}}`)
 	for _, direction := range []p.Direction{p.DecodeRequest, p.EncodeRequest} {
@@ -126,6 +127,60 @@ func TestChatPackageDraftMigration(t *testing.T) {
 			want, wantErr := executePackageMigrationSample(t, legacy, sample, options, false)
 			got, gotErr := executePackageMigrationSample(t, draft, sample, options, true)
 			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+		})
+	}
+}
+
+func checkChatReasoningParameters(t *testing.T, legacy, draft *p.Compiled) {
+	t.Helper()
+	for _, fixture := range []struct{ name, reasoning, effort, rejection string }{
+		{"absent", "", "", ""},
+		{"legacy", "", `"high"`, ""},
+		{"legacy-null", "", `null`, ""},
+		{"legacy-unknown-value", "", `"future"`, ""},
+		{"empty-reasoning", `{}`, `"high"`, ""},
+		{"null-reasoning", `null`, `"high"`, ""},
+		{"typed", `{"effort":"high","effortScope":"reasoning"}`, "", ""},
+		{"typed-null", `{"effort":null}`, "", ""},
+		{"equal-effort-conflict", `{"effort":"high","effortScope":"reasoning"}`, `"high"`, "legacy-effort-conflict"},
+		{"legacy-null-conflict", `{"effort":"high","effortScope":"reasoning"}`, `null`, "legacy-effort-conflict"},
+		{"typed-null-conflict", `{"effort":null}`, `null`, "legacy-effort-conflict"},
+		{"null-budget-before-conflict", `{"effort":"high","effortScope":"reasoning","budget":null}`, `"high"`, "unresolved-reasoning-controls"},
+		{"null-summary", `{"summary":null}`, `"high"`, "unresolved-reasoning-controls"},
+	} {
+		t.Run("reasoning-parameters/"+fixture.name, func(t *testing.T) {
+			request := &p.Request{SchemaVersion: p.SemanticSchemaVersion, Model: p.StringValue("m"), Content: []p.Node{}, Parameters: p.Object{}}
+			if fixture.reasoning != "" {
+				if err := testValue(t, fixture.reasoning).Decode(&request.Reasoning); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if fixture.effort != "" {
+				request.Parameters["reasoning_effort"] = testValue(t, fixture.effort)
+			}
+			// This comparison exercises public typed encoding. Raw Execute has its
+			// own preflight boundary and is not covered by these error assertions.
+			want, wantErr := legacy.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+			candidate := request.Clone()
+			candidate.SchemaVersion = p.ProtocolCoreVersion
+			got, gotErr := draft.EncodeRequest(t.Context(), candidate, p.EvaluationContext{})
+			if fixture.rejection == "" {
+				if wantErr != nil {
+					t.Fatal("legacy reasoning fixture must encode", wantErr)
+				}
+				checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+				return
+			}
+			code, path, reason := p.InvalidInput, "/reasoning/effort", "conflicting typed and legacy effort"
+			if fixture.rejection == "unresolved-reasoning-controls" {
+				code, path, reason = p.UnsupportedCapability, "/reasoning", "Chat cannot encode unresolved budget or summary controls"
+			}
+			var oldFailure, newFailure *p.ConversionError
+			if !errors.As(wantErr, &oldFailure) || len(oldFailure.Issues) != 1 || oldFailure.Issues[0].Code != code || oldFailure.Issues[0].Stage != "request.validation" || oldFailure.Issues[0].Path != path || oldFailure.Issues[0].Reason != reason ||
+				!errors.As(gotErr, &newFailure) || len(newFailure.Issues) != 1 || newFailure.Issues[0].Code != p.ConversionRejected || newFailure.Issues[0].Stage != "mapping.effects" || newFailure.Issues[0].Path != path || newFailure.Issues[0].Reason != reason || newFailure.Issues[0].RuleID != fixture.rejection {
+				t.Fatal("reasoning rejection or precedence changed", wantErr, gotErr)
+			}
+			t.Log("NOT CLOSED: request validation and declarative effect diagnostics differ", migrationError(wantErr), migrationError(gotErr))
 		})
 	}
 }

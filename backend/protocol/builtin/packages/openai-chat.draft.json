@@ -6722,9 +6722,8 @@
                 "ref": "encode-tool-choice"
               },
               "reasoning_effort": {
-                "op": "read",
-                "from": "input",
-                "path": "/reasoning/effort"
+                "op": "ref",
+                "ref": "encode-reasoning-effort"
               },
               "stream_options": {
                 "op": "read",
@@ -6823,6 +6822,42 @@
             "ref": "encode-cache"
           }
         ]
+      },
+      "encode-reasoning-effort": {
+        "op": "if",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/reasoning"
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/reasoning/effort"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "then": {
+          "op": "read",
+          "from": "input",
+          "path": "/reasoning/effort"
+        },
+        "otherwise": {
+          "op": "read",
+          "from": "input",
+          "path": "/parameters/reasoning_effort"
+        }
       }
     },
     "directions": {
@@ -6948,6 +6983,90 @@
           }
         },
         "effects": [
+          {
+            "id": "unresolved-reasoning-controls",
+            "kind": "reject",
+            "path": "/reasoning",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                }
+              },
+              "then": {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/budget"
+                    }
+                  },
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/summary"
+                    }
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "reason": "Chat cannot encode unresolved budget or summary controls"
+          },
+          {
+            "id": "legacy-effort-conflict",
+            "kind": "reject",
+            "path": "/reasoning/effort",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                }
+              },
+              "then": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/effort"
+                    }
+                  },
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/reasoning_effort"
+                    }
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "reason": "conflicting typed and legacy effort"
+          },
           {
             "id": "request-resource-mapping",
             "kind": "reject",
