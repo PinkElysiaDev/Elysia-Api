@@ -786,9 +786,12 @@ func (compiled *Compiled) mappingError(direction Direction, err error) error {
 	if errors.As(err, &conversion) {
 		return err
 	}
-	var conflict *mergeConflictDiagnosticError
-	if errors.As(err, &conflict) {
-		return &ConversionError{cause: err, Issues: []ConversionIssue{conflict.issue(compiled.identity, direction)}}
+	var classified interface {
+		error
+		issue(Identity, Direction) ConversionIssue
+	}
+	if errors.As(err, &classified) {
+		return &ConversionError{cause: err, Issues: []ConversionIssue{classified.issue(compiled.identity, direction)}}
 	}
 	code := InvalidInput
 	if direction == DecodeResponse || direction == DecodeEvent {

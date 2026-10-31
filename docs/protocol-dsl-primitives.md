@@ -1,6 +1,6 @@
 # 编译式 DSL 的局部值、遍历与原生来源
 
-本文记录 `refactor/protocol-dsl` 中已经实现的构件，不代表四个生产预置已经迁移。新包仍通过独立的 `CompilePackage` 入口使用；生产加载器、core1 预置及 dev.78 尚未切换。迁移状态见 [进度记录](protocol-dsl-migration.md)。
+本文记录 `refactor/protocol-dsl` 中已经实现的构件，不代表四个生产预置已经迁移。两份源通过 `CompileSources` 编译，完整包通过 `CompilePackage` 编译，管理入口共同保存其修订；生产切换与验收状态见 [进度记录](protocol-dsl-migration.md)。
 
 表达式在配置编译时解析成计划。运行时执行选中的计划，不重新解释 JSON 声明，不在错误后换另一种转换算法。以下构件不包含供应商字段或跨协议取舍政策。
 
@@ -204,6 +204,54 @@ Spec 的 `WireAssertion.check` 在 schema 通过后检查选中值，`when` 检�
 显式 `reject` effect 可用 `diagnostic` 指定 code、stage 和可选 suggestion，path、reason、id
 继续取自 effect。仅实际拒绝时采用该分类，条件求值、emit 缺失和 aggregate 失败不会被捕获。
 带投影 scope 的 effect 暂不接受此字段，避免配置被另一处理边界静默忽略。
+
+## 对象字段约束与有序拒绝
+
+`check_fields` 校验当前选中的对象，成功后返回同一个不可变结果，不重新编码它。`keys` 是
+允许的精确成员名，`prefixes` 是允许的非空前缀；其余成员按解码键排序后拒绝首项。
+缺失、null 和数组不会被当成空对象。字段名、前缀和诊断在编译期固定，运行时只检查该对象。
+
+```json
+{
+  "op": "check_fields",
+  "source": {"op": "read", "path": "/attributes"},
+  "keys": ["label"],
+  "prefixes": ["ext:"],
+  "policy": "member",
+  "onUnknown": {
+    "code": "unsupported_capability",
+    "stage": "wire",
+    "pathPrefix": "/attributes",
+    "reason": "attribute has no declared mapping"
+  }
+}
+```
+
+`policy:"member"` 定位未知成员；`policy:"leaf"` 继续沿其对象内字典序首成员定位，遇到
+标量、数组或空对象即停止。路径由静态 `pathPrefix` 和真实成员键组成，键使用 RFC 6901
+转义，不从正文值生成路径。首叶定位与既有未知扩展保护共用实现。检查计入执行步骤，
+不增加请求外缓存；对象读取产生的临时分配仍需通过性能测量评估。
+
+`reject` 表达式用于在程序的确定位置终止选中分支。它与预先执行的 `reject` effect 不同，
+可表达“先检查字段，再校验分类，再合并原生余项”的顺序，而无需构造一个故意非法的值。
+
+```json
+{
+  "op": "reject",
+  "path": "/error/category",
+  "reason": "target has no equivalent failure category",
+  "diagnostic": {"code": "unsupported_capability", "stage": "wire"}
+}
+```
+
+`path`、`reason` 和诊断分类都是静态配置；此操作不捕获之前的错误、不重跑分支，也不把
+正文值插入错误说明。取消和资源预算检查仍在执行前生效。编译器只对明确的 `reject`
+分支承认“它不会成功输出”，不猜测其它条件永远为假；`emit` 证明仍检查所有能返回的分支。
+
+WireAssertion 的可选 `diagnostic` 复用同一分类结构，并允许静态 `direction`、`path`
+覆盖，支持 wire 计数对应到核心账本位置的情况。未声明时保持原 wire 归因；声明空 stage
+或已有 stream 归因用于迁移既有边界，不意味着推荐新协议沿用历史错标。Mapping effect
+继续从自身取得方向和位置，对这些覆盖字段明确拒绝，不能静默忽略。
 
 ## 相邻分组
 

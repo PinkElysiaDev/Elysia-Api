@@ -119,18 +119,8 @@ func compileWireAssertions(assertions []WireAssertion, path string, input, root 
 		}
 		check := compiledWireAssertion{path: assertion.Path, pointer: pointer, code: assertion.Code, reason: assertion.Reason}
 		if assertion.Diagnostic != nil {
-			stage := assertion.Diagnostic.Stage
-			if stage == "" || stage == "stream" {
-				stage = "wire"
-			}
-			if err := validateDiagnosticClassification(assertion.Diagnostic.Code, stage, at+"/diagnostic"); err != nil {
+			if err := validateBoundaryDiagnostic(*assertion.Diagnostic, at+"/diagnostic"); err != nil {
 				return nil, err
-			}
-			if direction := assertion.Diagnostic.Direction; direction != "" && !slices.Contains(DirectionCatalog(), direction) {
-				return nil, fmt.Errorf("%s/diagnostic/direction: unsupported direction", at)
-			}
-			if _, err := parsePointer(assertion.Diagnostic.Path); err != nil {
-				return nil, locateMappingError(at+"/diagnostic/path", err)
 			}
 			classification := *assertion.Diagnostic
 			check.diagnostic = &classification

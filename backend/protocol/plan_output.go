@@ -51,7 +51,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	}
 	plan := &compiledOutputPlan{expression: expression}
 	switch expression.op {
-	case "omit", "literal", "read", "let", "with_index", "remember", "recall", "index", "capture_native", "capture_source", "replay_native", "native_matches", "object", "project", "keys", "array", "map", "walk", "recur", "flatmap", "filter", "if", "choose",
+	case "omit", "reject", "literal", "read", "let", "with_index", "remember", "recall", "index", "capture_native", "capture_source", "replay_native", "native_matches", "object", "check_fields", "project", "keys", "array", "map", "walk", "recur", "flatmap", "filter", "if", "choose",
 		"merge", "merge_deep", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
 		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "lower", "has_prefix", "contains", "equal", "equal_text", "all", "any", "entries", "from_entries", "group_runs":
 	default:
@@ -208,6 +208,10 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.captureSource(state)
 	case "replay_native", "native_matches":
 		return plan.buildNativeTarget(state)
+	case "reject":
+		return plannedOutput{}, expression.rejection
+	case "check_fields":
+		return plan.checkObjectFields(state)
 	case "object":
 		return plan.buildObject(state)
 	case "project":

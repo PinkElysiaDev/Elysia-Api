@@ -32,6 +32,8 @@ type compiledExpression struct {
 	to                                  JSONType
 	policy                              string
 	onConflict                          *MergeConflictDiagnostic
+	fieldCheck                          *compiledObjectFieldCheck
+	rejection                           *declaredRejectionError
 	isRequired                          bool
 	result                              JSONType
 	schema                              *ValueSchema
@@ -376,6 +378,28 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		return fail("condition must produce a boolean")
 	}
 	switch expression.op {
+	case "reject":
+		if source.Diagnostic == nil || strings.TrimSpace(source.Reason) == "" {
+			return fail("reject requires a static diagnostic and reason")
+		}
+		if source.Diagnostic.Path != "" {
+			return fail("reject uses path on the expression, not inside diagnostic")
+		}
+		diagnostic := *source.Diagnostic
+		diagnostic.Path = source.Path
+		if err := validateBoundaryDiagnostic(diagnostic, expression.path+"/diagnostic"); err != nil {
+			return err
+		}
+		expression.rejection = &declaredRejectionError{diagnostic: diagnostic, reason: source.Reason}
+	case "check_fields":
+		if !isAssignable(expression.source.result, ObjectType) {
+			return fail("check_fields requires an object source")
+		}
+		var err error
+		expression.fieldCheck, err = compileObjectFieldCheck(source, expression.path)
+		if err != nil {
+			return err
+		}
 	case "replay_native", "native_matches":
 		if !isAssignable(expression.source.result, ObjectType) {
 			return fail("native source must produce an object")

@@ -5,7 +5,7 @@ package protocol
 const DefinitionSchemaVersion = 2
 
 // CompilerVersion binds verification evidence to execution semantics.
-const CompilerVersion = "2.0.0-dev.91"
+const CompilerVersion = "2.0.0-dev.92"
 
 // Preset protocol identifiers. Presets ship with the engine, are read-only for
 // authoring, and are refreshed to the shipped revision on every startup;
@@ -247,8 +247,12 @@ type Expression struct {
 	To         JSONType                 `json:"to,omitempty"`
 	Key        string                   `json:"key,omitempty"`
 	Keys       []string                 `json:"keys,omitzero"`
+	Prefixes   []string                 `json:"prefixes,omitzero"`
 	Policy     string                   `json:"policy,omitempty"`
 	OnConflict *MergeConflictDiagnostic `json:"onConflict,omitempty"`
+	OnUnknown  *ObjectFieldDiagnostic   `json:"onUnknown,omitempty"`
+	Diagnostic *RejectDiagnostic        `json:"diagnostic,omitempty"`
+	Reason     string                   `json:"reason,omitempty"`
 	Ref        string                   `json:"ref,omitempty"`
 	Required   bool                     `json:"required,omitempty"`
 }

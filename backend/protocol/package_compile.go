@@ -354,6 +354,9 @@ func provesPackageEmission(program *compiledExpression, output, input []string) 
 		return false
 	}
 	switch program.op {
+	case "reject":
+		// A branch that cannot return output cannot violate a successful emit.
+		return true
 	case "let":
 		// Binding a local value does not replace the input observed by body
 		// reads. The proof still refuses reads from the binding itself.
@@ -404,7 +407,7 @@ func alwaysPresentOutput(program *compiledExpression) bool {
 		return false
 	}
 	switch program.op {
-	case "object", "array", "literal":
+	case "object", "array", "literal", "reject":
 		return true
 	case "read":
 		return program.isRequired

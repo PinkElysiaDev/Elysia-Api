@@ -124,7 +124,7 @@ func (adapter module) preserveExtensions(fields p.Object, extensions p.Object) e
 			continue
 		}
 		if strings.TrimPrefix(key, wireExtensionPrefix) != adapter.family {
-			return unsupported(extensionFieldPath("/"+key, value), "protocol-specific field has no declared cross-protocol mapping")
+			return unsupported(p.FirstObjectLeafPath("/"+key, value), "protocol-specific field has no declared cross-protocol mapping")
 		}
 		values, err := value.ReadObject()
 		if err != nil {
@@ -139,27 +139,6 @@ func (adapter module) preserveExtensions(fields p.Object, extensions p.Object) e
 		}
 	}
 	return nil
-}
-
-// Report a stable field path, never its value. The wire family alone cannot
-// distinguish an SDK envelope field from an unsupported generation constraint.
-// Arrays remain a single field: their item semantics are not known here.
-func extensionFieldPath(path string, value p.Value) string {
-	for value.IsObject() {
-		fields, _ := value.ReadObject()
-		if len(fields) == 0 {
-			break
-		}
-		keys := make([]string, 0, len(fields))
-		for key := range fields {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		key := keys[0]
-		path += "/" + strings.ReplaceAll(strings.ReplaceAll(key, "~", "~0"), "/", "~1")
-		value = fields[key]
-	}
-	return path
 }
 
 func mergeExtensionValue(mapped, extra p.Value, path string) (p.Value, error) {

@@ -19,6 +19,8 @@ var expressionOperations = []OperationInfo{
 	{"index", nil, nil, IntegerType, "Read the zero-based position in the immediate iteration source array, not an original wire location."},
 	{"literal", []string{"value"}, []string{"value"}, AnyType, "Return declared JSON without number coercion."},
 	{"omit", nil, nil, AnyType, "Explicitly omit an object field or array-map result."},
+	{"reject", []string{"path", "reason", "diagnostic"}, []string{"path", "reason", "diagnostic"}, AnyType, "Stop the selected branch with a static classified error; preserve authored validation order without manufacturing an output value."},
+	{"check_fields", []string{"source", "keys", "prefixes", "policy", "onUnknown"}, []string{"source", "keys", "policy", "onUnknown"}, ObjectType, "Keep an object unchanged after checking its declared member names and prefixes; reject the first unknown member or its first object leaf using a static diagnostic base."},
 	{"object", []string{"fields"}, nil, ObjectType, "Construct an object; omit only missing expression values."},
 	{"array", []string{"items"}, nil, ArrayType, "Construct an ordered array."},
 	{"map", []string{"source", "body"}, []string{"source", "body"}, ArrayType, "Map each array element in original order."},

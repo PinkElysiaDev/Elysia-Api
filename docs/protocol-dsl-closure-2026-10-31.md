@@ -140,3 +140,27 @@ model_controls 复用默认规则 ID `reasoning-controls`、顺序 175 和用户
 对照通过；日志 `closure-model-capabilities-ready`、`closure-model-errors-indexes`。
 后一组仅其他代理的错误包络用例失败，模型／索引对应检查无失败。
 完整 reasoning 模式、预算与等级的投影仍在迁移，不以本批通过替代 Agent 全链路验收。
+
+## 第八批：Responses 错误包络与有序拒绝（dev.92）
+
+错误的类别、type/code 优先级、HTTP 状态、新 API 包装、未知 owner 和反向渲染迁入
+Responses Mapping。纯错误包络继续保留不会作为生成参数校验的扩展。配置抽出共用
+响应字段、正文 metadata 和错误表达式；不在 Go 中添加 Responses 策略分支。
+
+`check_fields` 检查选中对象的静态允许字段／前缀，错误位置来自实际成员键或首个叶，
+共用旧首叶定位实现。`reject` 在实际选中的分支中停止，用来维持类型、字段、类别、
+owner 合并与 details 的检查顺序；不使用虚假字段或永不生效的规则模拟拒绝。
+这些动作不解析完整请求历史，不把原文值放进诊断。
+
+完整错误核心、原 Native 回放、删除 Native 后重建、无 HTTP 上下文、显式 null、未知
+扩展及已覆盖负例的 code/direction/stage/path/reason 对照通过，见
+`closure-responses-errors-final` 与 `closure-anthropic-source` 中的 Responses 检查。
+无 HTTP 上下文的首版绑定错误和此前反向结果保留，未通过修改旧预期消除。
+
+仍有明确边界：多个未知核心 error 字段在旧 Go map 遍历中的首错不稳定；非 null 非法
+字符串类型的新静态原因与旧 Sonic 详细文字／内部错误树不同，已在测试中标记，不能称
+逐字一致。普通响应中 metadata 和 error 同时非法的完整首错组合仍待补齐。
+
+逐提交复核还发现分块暂存遗漏了编译器分支边界，已在 `19948419`、`77715520` 修正。
+`closure-committed-protocol-fixed` 对独立的实际提交源码执行协议全量通过；此前只测工作区
+不能作为这些提交自身通过的证据。后续最终整理将同时核验提交边界。

@@ -16,6 +16,23 @@ func validateDiagnosticClassification(code IssueCode, stage, path string) error 
 	return nil
 }
 
+func validateBoundaryDiagnostic(diagnostic RejectDiagnostic, path string) error {
+	stage := diagnostic.Stage
+	if stage == "" || stage == "stream" || stage == "decode.error" {
+		stage = "wire"
+	}
+	if err := validateDiagnosticClassification(diagnostic.Code, stage, path); err != nil {
+		return err
+	}
+	if diagnostic.Direction != "" && !slices.Contains(DirectionCatalog(), diagnostic.Direction) {
+		return fmt.Errorf("%s/direction: unsupported direction", path)
+	}
+	if _, err := parsePointer(diagnostic.Path); err != nil {
+		return locateMappingError(path+"/path", err)
+	}
+	return nil
+}
+
 // mappingError retains the innermost configuration location through nested
 // expressions. Human-readable messages never need to be parsed by the editor.
 type mappingError struct {
