@@ -16,16 +16,15 @@ type finalWireCase struct {
 
 func TestPackageFinalResponseContracts(t *testing.T) {
 	for _, protocol := range []struct {
-		codec, name string
-		cases       []finalWireCase
+		name  string
+		cases []finalWireCase
 	}{
-		{Chat, "openai-chat", chatFinalResponseCases()},
-		{Responses, "openai-responses", responsesFinalResponseCases()},
-		{Anthropic, "anthropic", anthropicFinalResponseCases()},
-		{Gemini, "google-generate-content", geminiFinalResponseCases()},
+		{"openai-chat", chatFinalResponseCases()},
+		{"openai-responses", responsesFinalResponseCases()},
+		{"anthropic", anthropicFinalResponseCases()},
+		{"google-generate-content", geminiFinalResponseCases()},
 	} {
 		t.Run(protocol.name, func(t *testing.T) {
-			legacy := shippedProjectionProtocol(t, protocol.codec)
 			draft := compileBuiltinPackage(t, protocol.name)
 			cases := append([]finalWireCase{
 				{"null-root", `null`, ""},
@@ -36,29 +35,30 @@ func TestPackageFinalResponseContracts(t *testing.T) {
 			}, protocol.cases...)
 			for _, fixture := range cases {
 				t.Run(fixture.name, func(t *testing.T) {
-					checkFinalWireCase(t, legacy, draft, p.EncodeResponse, fixture)
+					checkFinalWireCase(t, draft, p.EncodeResponse, fixture)
 				})
 			}
 		})
 	}
 }
 
-func checkFinalWireCase(t *testing.T, legacy, draft *p.Compiled, direction p.Direction, fixture finalWireCase) {
+func checkFinalWireCase(t *testing.T, compiled *p.Compiled, direction p.Direction, fixture finalWireCase) {
 	t.Helper()
-	wire := testValue(t, fixture.wire)
-	oldErr := legacy.ValidateWireOutput(direction, wire)
-	newErr := draft.ValidateWireOutput(direction, wire)
+	err := compiled.ValidateWireOutput(direction, testValue(t, fixture.wire))
 	if fixture.path == acceptedFinalWire {
-		if oldErr != nil || newErr != nil {
-			t.Fatal("accepted final wire was rejected", oldErr, newErr)
+		if err != nil {
+			t.Fatal("accepted final wire was rejected", err)
 		}
 		return
 	}
 	var rejected *p.ConversionError
-	if !errors.As(oldErr, &rejected) || len(rejected.Issues) != 1 || rejected.Issues[0].Path != fixture.path {
-		t.Fatalf("legacy fixture expected first failure at %q: %v", fixture.path, oldErr)
+	if !errors.As(err, &rejected) || len(rejected.Issues) != 1 {
+		t.Fatal("final wire did not produce a structured rejection", err)
 	}
-	checkPackageFailureRejection(t, oldErr, newErr)
+	issue := rejected.Issues[0]
+	if issue.Code != p.ConversionRejected || issue.Direction != direction || issue.Path != fixture.path || issue.Protocol != compiled.Identity() || issue.Stage != "wire" && issue.Stage != "wire.output" {
+		t.Fatal("final wire rejection lost its contract boundary", issue, fixture.path)
+	}
 }
 
 func chatFinalResponseCases() []finalWireCase {

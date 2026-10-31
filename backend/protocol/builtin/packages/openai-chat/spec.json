@@ -21,7 +21,7 @@
     "models": {
       "kind": "models",
       "method": "GET",
-      "path": "/models",
+      "path": "/v1/models",
       "transport": "http_json",
       "auth": {
         "location": "header",
@@ -136,12 +136,7 @@
             "type": "array"
           },
           "code": "upstream_contract_violation",
-          "reason": "expected array, got null",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "path": "/"
-          }
+          "reason": "expected array, got null"
         },
         {
           "path": "/choices",
@@ -158,11 +153,6 @@
           },
           "code": "upstream_contract_violation",
           "reason": "choices must be an array",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "path": "/"
-          },
           "each": [
             {
               "path": "",
@@ -171,12 +161,7 @@
                 "allowUnknown": true
               },
               "code": "upstream_contract_violation",
-              "reason": "expected JSON object",
-              "diagnostic": {
-                "code": "upstream_contract_violation",
-                "stage": "runtime",
-                "path": "/"
-              }
+              "reason": "expected JSON object"
             }
           ]
         }
@@ -1155,11 +1140,6 @@
                   "op": "literal",
                   "value": true
                 }
-              },
-              "diagnostic": {
-                "code": "upstream_contract_violation",
-                "stage": "runtime",
-                "path": "/"
               }
             },
             {
@@ -1209,7 +1189,6 @@
               "diagnostic": {
                 "code": "unsupported_capability",
                 "stage": "wire",
-                "path": "/choices/index",
                 "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
               }
             },
@@ -1262,7 +1241,6 @@
               "diagnostic": {
                 "code": "unsupported_capability",
                 "stage": "wire",
-                "path": "/choices/0/delta/role",
                 "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
               }
             },
@@ -1401,11 +1379,6 @@
                       "op": "literal",
                       "value": true
                     }
-                  },
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/"
                   }
                 },
                 {
@@ -1699,12 +1672,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "usage counter cannot be null",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "usage counter cannot be null"
         },
         {
           "path": "",
@@ -1833,12 +1801,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "usage counter must be a nonnegative int64",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "usage counter must be a nonnegative int64"
         },
         {
           "path": "",
@@ -1981,12 +1944,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "cache_write_tokens disagrees with another cache creation counter",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "cache_write_tokens disagrees with another cache creation counter"
         },
         {
           "path": "",
@@ -2068,12 +2026,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "cached_creation_tokens disagrees with another cache creation counter",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "cached_creation_tokens disagrees with another cache creation counter"
         },
         {
           "path": "",
@@ -2187,12 +2140,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "prompt_cache_hit_tokens disagrees with cached input",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "prompt_cache_hit_tokens disagrees with cached input"
         },
         {
           "path": "",
@@ -2347,12 +2295,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "usage count overflow",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "usage count overflow"
         },
         {
           "path": "",
@@ -2507,12 +2450,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "prompt_cache_miss_tokens disagrees with prompt input and cache hits",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "prompt_cache_miss_tokens disagrees with prompt input and cache hits"
         },
         {
           "path": "",
@@ -2677,12 +2615,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "cache creation exceeds prompt cache misses",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "cache creation exceeds prompt cache misses"
         },
         {
           "path": "",
@@ -2896,12 +2829,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "usage count overflow",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "usage count overflow"
         }
       ]
     },
@@ -3496,11 +3424,6 @@
                   "op": "literal",
                   "value": true
                 }
-              },
-              "diagnostic": {
-                "code": "upstream_contract_violation",
-                "stage": "runtime",
-                "path": "/"
               }
             },
             {
@@ -3550,7 +3473,6 @@
               "diagnostic": {
                 "code": "unsupported_capability",
                 "stage": "wire",
-                "path": "/choices/index",
                 "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
               }
             },
@@ -3603,7 +3525,6 @@
               "diagnostic": {
                 "code": "unsupported_capability",
                 "stage": "wire",
-                "path": "/choices/0/delta/role",
                 "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
               }
             },
@@ -3742,11 +3663,6 @@
                       "op": "literal",
                       "value": true
                     }
-                  },
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/"
                   }
                 },
                 {
@@ -4040,12 +3956,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "usage counter cannot be null",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "usage counter cannot be null"
         },
         {
           "path": "",
@@ -4174,12 +4085,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "usage counter must be a nonnegative int64",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "usage counter must be a nonnegative int64"
         },
         {
           "path": "",
@@ -4322,12 +4228,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "cache_write_tokens disagrees with another cache creation counter",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "cache_write_tokens disagrees with another cache creation counter"
         },
         {
           "path": "",
@@ -4409,12 +4310,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "cached_creation_tokens disagrees with another cache creation counter",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "cached_creation_tokens disagrees with another cache creation counter"
         },
         {
           "path": "",
@@ -4528,12 +4424,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "prompt_cache_hit_tokens disagrees with cached input",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "prompt_cache_hit_tokens disagrees with cached input"
         },
         {
           "path": "",
@@ -4688,12 +4579,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "usage count overflow",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "usage count overflow"
         },
         {
           "path": "",
@@ -4848,12 +4734,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "prompt_cache_miss_tokens disagrees with prompt input and cache hits",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "prompt_cache_miss_tokens disagrees with prompt input and cache hits"
         },
         {
           "path": "",
@@ -5018,12 +4899,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "cache creation exceeds prompt cache misses",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "cache creation exceeds prompt cache misses"
         },
         {
           "path": "",
@@ -5237,12 +5113,7 @@
             }
           },
           "code": "upstream_contract_violation",
-          "reason": "usage count overflow",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "usage count overflow"
         }
       ]
     },
@@ -5549,12 +5420,7 @@
             "allowUnknown": true
           },
           "code": "invalid_input",
-          "reason": "stream options must be an object or null; include_usage must be a boolean",
-          "diagnostic": {
-            "code": "invalid_input",
-            "direction": "decode_request",
-            "stage": "decode"
-          }
+          "reason": "stream options must be an object or null; include_usage must be a boolean"
         },
         {
           "path": "/stream_options/include_usage",
@@ -5585,12 +5451,7 @@
             "type": "boolean"
           },
           "code": "invalid_input",
-          "reason": "stream options must be an object or null; include_usage must be a boolean",
-          "diagnostic": {
-            "code": "invalid_input",
-            "direction": "decode_request",
-            "stage": "decode"
-          }
+          "reason": "stream options must be an object or null; include_usage must be a boolean"
         },
         {
           "path": "/max_tokens",
@@ -5623,12 +5484,6 @@
           "check": {
             "op": "literal",
             "value": false
-          },
-          "diagnostic": {
-            "code": "invalid_input",
-            "stage": "runtime",
-            "path": "/",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
           }
         },
         {

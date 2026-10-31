@@ -84,6 +84,8 @@ type expressionScope struct {
 	isWalk                 bool
 	wireCapture            bool
 	canReadRuntime         bool
+	canReadOperation       bool
+	canReadFrameUsage      bool
 	canReadOutputStream    bool
 	outputNamespaces       map[string]int
 	canReadNative          bool
@@ -187,10 +189,17 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			compiled.stateSlot, schema, coreType = slot.slot, slot.schema, nil
 			pointer, compiled.pointer = pointer[1:], pointer[1:]
 		case "runtime":
-			if !scope.canReadRuntime {
+			isFrameUsage := scope.canReadFrameUsage && len(pointer) >= 2 && pointer[0] == "frame" && pointer[1] == "usage"
+			isOperation := scope.canReadOperation && len(pointer) == 2 && pointer[0] == "operation" && (pointer[1] == "id" || pointer[1] == "startedAt")
+			if !scope.canReadRuntime && !isFrameUsage && !isOperation {
 				return nil, fmt.Errorf("%s/from: runtime metadata requires a package mapping program or effect", path)
 			}
 			switch {
+			case isFrameUsage:
+				if !validFrameUsagePointer(pointer[2:]) {
+					return nil, fmt.Errorf("%s/path: frame usage exposes only declared numeric counters", path)
+				}
+				compiled.result = AnyType
 			case len(pointer) > 0 && pointer[0] == "clientOutput":
 				compiled.result = AnyType
 			case len(pointer) > 0 && pointer[0] == "nativeFrame" && scope.canReadNativeFrame:
@@ -222,6 +231,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 				return nil, fmt.Errorf("%s/path: unknown runtime metadata field", path)
 			}
 			schema, coreType = nil, nil
+			if isFrameUsage {
+				coreType, pointer = reflect.TypeFor[Usage](), pointer[2:]
+			}
 		case "binding":
 			binding, exists := scope.bindings[expression.Name]
 			if !exists {
@@ -262,7 +274,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	if (compiled.op == "replay_native" || compiled.op == "native_matches") && !scope.canReadNative {
 		return nil, fmt.Errorf("%s: native target operations require a package encode program", path)
 	}
-	if compiled.op == "read_delivered_item" || compiled.op == "resume_text" {
+	if compiled.op == "read_delivered_item" || compiled.op == "resume_text" || compiled.op == "resume_tool" {
 		if !scope.canReadOutputStream || scope.canReadNativeFrame {
 			return nil, fmt.Errorf("%s: delivered item access requires an event encoder, outside native observation", path)
 		}
@@ -274,18 +286,20 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		}
 		compiled.streamNamespace = expression.Namespace
 	}
-	if compiled.op == "resolve_item" || compiled.op == "track_text" || compiled.op == "track_tool" || compiled.op == "resume_text" || compiled.op == "buffer_text" || compiled.op == "buffer_array" {
+	if compiled.op == "resolve_item" || compiled.op == "track_text" || compiled.op == "track_array" || compiled.op == "track_tool" || compiled.op == "resume_text" || compiled.op == "resume_tool" || compiled.op == "buffer_text" || compiled.op == "buffer_array" {
 		if !scope.canUseStreamPrimitives || !scope.canWriteStreamIndexes {
 			return nil, fmt.Errorf("%s: stream primitives require an event program", path)
 		}
 		*scope.streamPrimitiveUsed = true
-		if compiled.op == "track_text" || compiled.op == "track_tool" || compiled.op == "resume_text" || compiled.op == "buffer_text" || compiled.op == "buffer_array" {
+		if compiled.op == "track_text" || compiled.op == "track_array" || compiled.op == "track_tool" || compiled.op == "resume_text" || compiled.op == "resume_tool" || compiled.op == "buffer_text" || compiled.op == "buffer_array" {
 			if !definitionIdentifier.MatchString(expression.Name) {
 				return nil, fmt.Errorf("%s/name: expected a fixed tracker channel identifier", path)
 			}
 			channel := compiled.op + ":" + expression.Name
 			if compiled.op == "resume_text" {
 				channel = "track_text:" + expression.Name
+			} else if compiled.op == "resume_tool" {
+				channel = "track_tool:" + expression.Name
 			}
 			if !scope.trackerChannels[channel] && len(scope.trackerChannels) >= streamTrackersPerItem {
 				return nil, fmt.Errorf("%s/name: stream programs support at most %d fixed tracker channels", path, streamTrackersPerItem)
@@ -495,9 +509,9 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 				return fail("pointer_join segments must be strings")
 			}
 		}
-	case "resume_text":
+	case "resume_text", "resume_tool":
 		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, StringType) {
-			return fail("resume_text requires string tracker and wire identities")
+			return fail(expression.op + " requires string tracker and wire identities")
 		}
 	case "track_tool":
 		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, ObjectType) {
@@ -510,6 +524,10 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 	case "track_text":
 		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, StringType) || !slices.Contains([]string{"delta", "snapshot"}, expression.policy) {
 			return fail("track_text requires a string key, text body and explicit delta or snapshot policy")
+		}
+	case "track_array":
+		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, ArrayType) || !slices.Contains([]string{"delta", "snapshot"}, expression.policy) {
+			return fail("track_array requires a string key, array body and explicit delta or snapshot policy")
 		}
 	case "resolve_item":
 		if !isAssignable(expression.source.result, ObjectType) {

@@ -119,6 +119,7 @@ type ProtocolStreamActionSpec struct {
 	ChildrenCount       *ProtocolStreamValueSpec           `json:"childrenCount,omitempty"`
 	ChildrenNamespace   string                             `json:"childrenNamespace,omitempty"`
 	SealPayload         bool                               `json:"sealPayload,omitempty"`
+	Placeholder         bool                               `json:"placeholder,omitempty"`
 	VerifyChildren      []string                           `json:"verifyChildren,omitempty"`
 	VerifyCompleted     bool                               `json:"verifyCompleted,omitempty"`
 	RequireVerified     []string                           `json:"requireVerified,omitempty"`

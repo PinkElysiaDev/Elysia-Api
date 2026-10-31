@@ -39,7 +39,7 @@ func (state *conversionState) accepts(phase ConversionPhase, rule ConversionRule
 		return phase == ConversionEvent
 	}
 	if rule.Action == "core_controls" {
-		return phase == ConversionRequest || phase == ConversionResponse
+		return phase == ConversionRequest || phase == ConversionResponse || phase == ConversionEvent
 	}
 	if phase == ConversionResponse || phase == ConversionEvent {
 		switch rule.Action {
@@ -107,7 +107,7 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 	if !isNodeRule && !state.matches(rule.Match, route) {
 		return "", nil
 	}
-	isStrict := isNodeRule || rule.Action == "responses_turn_state" || (phase == ConversionRequest && rule.Action != "response_metadata")
+	isStrict := isNodeRule || rule.Action == "core_controls" || rule.Action == "responses_turn_state" || (phase == ConversionRequest && rule.Action != "response_metadata")
 	if err := state.load(phase, isStrict); err != nil {
 		return "", err
 	}
@@ -132,6 +132,9 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 		state.auxiliary, state.omittedAuxiliary = event.auxiliary, event.omittedAuxiliary
 	} else if rule.Action == "core_controls" {
 		shouldEncode, err = c.applyCoreControls(ctx, state.document, route, rule, sink)
+		if event, ok := state.document.(*Event); ok {
+			state.auxiliary, state.omittedAuxiliary, state.control, state.omittedControl = event.auxiliary, event.omittedAuxiliary, event.controlReceipt, event.omittedControl
+		}
 	} else if isNodeRule {
 		err = c.applyNodeObject(ctx, phase, state.document, route, sink, rule, state.cache)
 	} else if rule.Action == "response_metadata" {

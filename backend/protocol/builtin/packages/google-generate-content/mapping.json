@@ -13815,7 +13815,1256 @@
     "op": "literal",
     "value": false
   }
-}
+},
+    "conversion-public-annotations": {
+      "op": "map",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/value"
+      },
+      "body": {
+        "op": "let",
+        "name": "annotation-path",
+        "source": {
+          "op": "pointer_join",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/path"
+          },
+          "items": [
+            {
+              "op": "cast",
+              "to": "string",
+              "source": {
+                "op": "index"
+              }
+            }
+          ]
+        },
+        "body": {
+          "op": "let",
+          "name": "annotation",
+          "source": {
+            "op": "read",
+            "from": "item",
+            "path": ""
+          },
+          "body": {
+            "op": "let",
+            "name": "citation",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/type",
+                    "name": "annotation"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "url_citation"
+                  }
+                ]
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/codec"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "openai-chat"
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "let",
+                  "name": "checked-citation-fields",
+                  "source": {
+                    "op": "map",
+                    "source": {
+                      "op": "entries",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "annotation"
+                      }
+                    },
+                    "body": {
+                      "op": "if",
+                      "when": {
+                        "op": "any",
+                        "items": [
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/key"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "type"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/key"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "url_citation"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "literal",
+                        "value": true
+                      },
+                      "otherwise": {
+                        "op": "reject",
+                        "source": {
+                          "op": "pointer_join",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "annotation-path"
+                          },
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/key"
+                            }
+                          ]
+                        },
+                        "reason": "unknown citation extension requires explicit mapping",
+                        "diagnostic": {
+                          "code": "unsupported_capability",
+                          "stage": "evaluate"
+                        }
+                      }
+                    }
+                  },
+                  "body": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/url_citation",
+                    "name": "annotation"
+                  }
+                },
+                "otherwise": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "annotation"
+                }
+              },
+              "otherwise": {
+                "op": "reject",
+                "source": {
+                  "op": "pointer_join",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "annotation-path"
+                  },
+                  "items": [
+                    {
+                      "op": "literal",
+                      "value": "type"
+                    }
+                  ]
+                },
+                "reason": "non-URL citation requires a resource mapping",
+                "diagnostic": {
+                  "code": "unsupported_capability",
+                  "stage": "evaluate"
+                }
+              }
+            },
+            "body": {
+              "op": "let",
+              "name": "checked-citation-fields",
+              "source": {
+                "op": "map",
+                "source": {
+                  "op": "entries",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "citation"
+                  }
+                },
+                "body": {
+                  "op": "if",
+                  "when": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/key"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "type"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/key"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "url"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/key"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "title"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/key"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "start_index"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/key"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "end_index"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": true
+                  },
+                  "otherwise": {
+                    "op": "reject",
+                    "source": {
+                      "op": "pointer_join",
+                      "source": {
+                        "op": "if",
+                        "when": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/codec"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "openai-chat"
+                            }
+                          ]
+                        },
+                        "then": {
+                          "op": "pointer_join",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "annotation-path"
+                          },
+                          "items": [
+                            {
+                              "op": "literal",
+                              "value": "url_citation"
+                            }
+                          ]
+                        },
+                        "otherwise": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "annotation-path"
+                        }
+                      },
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/key"
+                        }
+                      ]
+                    },
+                    "reason": "unknown citation extension requires explicit mapping",
+                    "diagnostic": {
+                      "code": "unsupported_capability",
+                      "stage": "evaluate"
+                    }
+                  }
+                }
+              },
+              "body": {
+                "op": "let",
+                "name": "checked-citation-values",
+                "source": {
+                  "op": "let",
+                  "name": "checked-citation-values",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "type",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/url",
+                            "name": "citation"
+                          }
+                        },
+                        {
+                          "op": "literal",
+                          "value": "string"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/title",
+                              "name": "citation"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "string"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "if",
+                        "when": {
+                          "op": "if",
+                          "when": {
+                            "op": "is_integer",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/start_index",
+                              "name": "citation"
+                            }
+                          },
+                          "then": {
+                            "op": "integer",
+                            "operation": "gte",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/start_index",
+                                "name": "citation"
+                              },
+                              {
+                                "op": "literal",
+                                "value": 0
+                              }
+                            ]
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": false
+                          }
+                        },
+                        "then": {
+                          "op": "if",
+                          "when": {
+                            "op": "if",
+                            "when": {
+                              "op": "is_integer",
+                              "source": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/end_index",
+                                "name": "citation"
+                              }
+                            },
+                            "then": {
+                              "op": "integer",
+                              "operation": "gte",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "/end_index",
+                                  "name": "citation"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": 0
+                                }
+                              ]
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": false
+                            }
+                          },
+                          "then": {
+                            "op": "literal",
+                            "value": true
+                          },
+                          "otherwise": {
+                            "op": "reject",
+                            "source": {
+                              "op": "pointer_join",
+                              "source": {
+                                "op": "if",
+                                "when": {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "input",
+                                      "path": "/codec"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "openai-chat"
+                                    }
+                                  ]
+                                },
+                                "then": {
+                                  "op": "pointer_join",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "binding",
+                                    "path": "",
+                                    "name": "annotation-path"
+                                  },
+                                  "items": [
+                                    {
+                                      "op": "literal",
+                                      "value": "url_citation"
+                                    }
+                                  ]
+                                },
+                                "otherwise": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "",
+                                  "name": "annotation-path"
+                                }
+                              },
+                              "items": [
+                                {
+                                  "op": "literal",
+                                  "value": "end_index"
+                                }
+                              ]
+                            },
+                            "reason": "URL citation requires end_index",
+                            "diagnostic": {
+                              "code": "invalid_input",
+                              "stage": "evaluate"
+                            }
+                          }
+                        },
+                        "otherwise": {
+                          "op": "reject",
+                          "source": {
+                            "op": "pointer_join",
+                            "source": {
+                              "op": "if",
+                              "when": {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/codec"
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": "openai-chat"
+                                  }
+                                ]
+                              },
+                              "then": {
+                                "op": "pointer_join",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "",
+                                  "name": "annotation-path"
+                                },
+                                "items": [
+                                  {
+                                    "op": "literal",
+                                    "value": "url_citation"
+                                  }
+                                ]
+                              },
+                              "otherwise": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "",
+                                "name": "annotation-path"
+                              }
+                            },
+                            "items": [
+                              {
+                                "op": "literal",
+                                "value": "start_index"
+                              }
+                            ]
+                          },
+                          "reason": "URL citation requires start_index",
+                          "diagnostic": {
+                            "code": "invalid_input",
+                            "stage": "evaluate"
+                          }
+                        }
+                      },
+                      "otherwise": {
+                        "op": "reject",
+                        "source": {
+                          "op": "pointer_join",
+                          "source": {
+                            "op": "if",
+                            "when": {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/codec"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "openai-chat"
+                                }
+                              ]
+                            },
+                            "then": {
+                              "op": "pointer_join",
+                              "source": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "",
+                                "name": "annotation-path"
+                              },
+                              "items": [
+                                {
+                                  "op": "literal",
+                                  "value": "url_citation"
+                                }
+                              ]
+                            },
+                            "otherwise": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "annotation-path"
+                            }
+                          },
+                          "items": [
+                            {
+                              "op": "literal",
+                              "value": "title"
+                            }
+                          ]
+                        },
+                        "reason": "URL citation requires title",
+                        "diagnostic": {
+                          "code": "invalid_input",
+                          "stage": "evaluate"
+                        }
+                      }
+                    },
+                    "otherwise": {
+                      "op": "reject",
+                      "source": {
+                        "op": "pointer_join",
+                        "source": {
+                          "op": "if",
+                          "when": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/codec"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "openai-chat"
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "pointer_join",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "annotation-path"
+                            },
+                            "items": [
+                              {
+                                "op": "literal",
+                                "value": "url_citation"
+                              }
+                            ]
+                          },
+                          "otherwise": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "annotation-path"
+                          }
+                        },
+                        "items": [
+                          {
+                            "op": "literal",
+                            "value": "url"
+                          }
+                        ]
+                      },
+                      "reason": "URL citation requires url",
+                      "diagnostic": {
+                        "code": "invalid_input",
+                        "stage": "evaluate"
+                      }
+                    }
+                  },
+                  "body": {
+                    "op": "if",
+                    "when": {
+                      "op": "integer",
+                      "operation": "gte",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/end_index",
+                          "name": "citation"
+                        },
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/start_index",
+                          "name": "citation"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": true
+                    },
+                    "otherwise": {
+                      "op": "reject",
+                      "source": {
+                        "op": "if",
+                        "when": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/codec"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "openai-chat"
+                            }
+                          ]
+                        },
+                        "then": {
+                          "op": "pointer_join",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "annotation-path"
+                          },
+                          "items": [
+                            {
+                              "op": "literal",
+                              "value": "url_citation"
+                            }
+                          ]
+                        },
+                        "otherwise": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "annotation-path"
+                        }
+                      },
+                      "reason": "citation end precedes its start",
+                      "diagnostic": {
+                        "code": "invalid_input",
+                        "stage": "evaluate"
+                      }
+                    }
+                  }
+                },
+                "body": {
+                  "op": "object",
+                  "fields": {
+                    "type": {
+                      "op": "literal",
+                      "value": "url_citation"
+                    },
+                    "url": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/url",
+                      "name": "citation"
+                    },
+                    "title": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/title",
+                      "name": "citation"
+                    },
+                    "start_index": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/start_index",
+                      "name": "citation"
+                    },
+                    "end_index": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/end_index",
+                      "name": "citation"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "conversion-metadata-empty": {
+      "op": "any",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/value"
+            },
+            {
+              "op": "literal",
+              "value": null
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/value"
+            },
+            {
+              "op": "literal",
+              "value": []
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/value"
+            },
+            {
+              "op": "literal",
+              "value": {}
+            }
+          ]
+        }
+      ]
+    },
+    "conversion-metadata-empty-special": {
+      "op": "if",
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/codec"
+              },
+              {
+                "op": "literal",
+                "value": "responses"
+              }
+            ]
+          },
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/name"
+              },
+              {
+                "op": "literal",
+                "value": "tool_usage"
+              }
+            ]
+          }
+        ]
+      },
+      "then": {
+        "op": "if",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/value"
+            },
+            {
+              "op": "literal",
+              "value": null
+            }
+          ]
+        },
+        "then": {
+          "op": "literal",
+          "value": true
+        },
+        "otherwise": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "type",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/value"
+                }
+              },
+              {
+                "op": "literal",
+                "value": "object"
+              }
+            ]
+          },
+          "then": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "length",
+                "source": {
+                  "op": "filter",
+                  "source": {
+                    "op": "entries",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/value"
+                    }
+                  },
+                  "when": {
+                    "op": "not",
+                    "source": {
+                      "op": "choose",
+                      "source": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/key"
+                      },
+                      "cases": {
+                        "web_search": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/value"
+                            },
+                            {
+                              "op": "literal",
+                              "value": {}
+                            }
+                          ]
+                        },
+                        "image_gen": {
+                          "op": "if",
+                          "when": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "type",
+                                "source": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/value"
+                                }
+                              },
+                              {
+                                "op": "literal",
+                                "value": "object"
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "length",
+                                "source": {
+                                  "op": "filter",
+                                  "source": {
+                                    "op": "entries",
+                                    "source": {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": "/value"
+                                    }
+                                  },
+                                  "when": {
+                                    "op": "not",
+                                    "source": {
+                                      "op": "choose",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "item",
+                                        "path": "/key"
+                                      },
+                                      "cases": {
+                                        "input_tokens_details": {
+                                          "op": "equal",
+                                          "items": [
+                                            {
+                                              "op": "read",
+                                              "from": "item",
+                                              "path": "/value"
+                                            },
+                                            {
+                                              "op": "literal",
+                                              "value": {}
+                                            }
+                                          ]
+                                        },
+                                        "output_tokens_details": {
+                                          "op": "equal",
+                                          "items": [
+                                            {
+                                              "op": "read",
+                                              "from": "item",
+                                              "path": "/value"
+                                            },
+                                            {
+                                              "op": "literal",
+                                              "value": {}
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "otherwise": {
+                                        "op": "literal",
+                                        "value": false
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "op": "literal",
+                                "value": 0
+                              }
+                            ]
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": false
+                          }
+                        }
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": false
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      },
+      "otherwise": {
+        "op": "any",
+        "items": [
+          {
+            "op": "ref",
+            "ref": "conversion-metadata-empty"
+          },
+          {
+            "op": "all",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/codec"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "anthropic"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/name"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "context_management"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/value"
+                  },
+                  {
+                    "op": "literal",
+                    "value": {
+                      "applied_edits": []
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "conversion-metadata-state": {
+      "op": "any",
+      "items": [
+        {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/codec"
+                },
+                {
+                  "op": "literal",
+                  "value": "responses"
+                }
+              ]
+            },
+            {
+              "op": "any",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/name"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "previous_response_id"
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/name"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "moderation"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/codec"
+                },
+                {
+                  "op": "literal",
+                  "value": "anthropic"
+                }
+              ]
+            },
+            {
+              "op": "any",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/name"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "container"
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/name"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "context_management"
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/name"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "stop_details"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
 },
   "directions": {
     "decode_request": {
@@ -19194,6 +20443,899 @@
         "account": "fixture",
         "model": "m"
       }
+    },
+    {
+      "id": "declared-stream-native-decode",
+      "direction": "decode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "hi"
+                  }
+                ]
+              }
+            }
+          ],
+          "extension": {
+            "long": 9007199254740993,
+            "empty": []
+          }
+        },
+        {
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": []
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 2,
+            "totalTokenCount": 22,
+            "cachedContentTokenCount": 15
+          }
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          },
+          "unmapped": {
+            "value": {
+              "responseId": "r",
+              "modelVersion": "m",
+              "candidates": [
+                {
+                  "index": 0,
+                  "content": {
+                    "role": "model",
+                    "parts": [
+                      {
+                        "text": "hi"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "extension": {
+                "long": 9007199254740993,
+                "empty": []
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "item": {
+            "kind": "text"
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "declared-stream-text-encode",
+      "direction": "encode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "item": {
+            "kind": "text"
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "hi"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 2,
+            "totalTokenCount": 22,
+            "cachedContentTokenCount": 15
+          }
+        },
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 2,
+            "totalTokenCount": 22,
+            "cachedContentTokenCount": 15
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "declared-stream-tool-decode",
+      "direction": "decode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "functionCall": {
+                      "id": "call",
+                      "name": "lookup",
+                      "args": {
+                        "n": 9007199254740993
+                      }
+                    }
+                  }
+                ]
+              },
+              "finishReason": "STOP"
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "tool:call",
+          "index": 0,
+          "item": {
+            "kind": "tool_call",
+            "name": "lookup",
+            "callId": "call",
+            "input": {
+              "kind": "json",
+              "value": {
+                "n": 9007199254740993
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "tool:call",
+          "index": 0
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "tool_calls"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "declared-stream-tool-encode",
+      "direction": "encode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "tool",
+          "index": 0,
+          "item": {
+            "kind": "tool_call",
+            "name": "lookup",
+            "callId": "call",
+            "input": {
+              "kind": "json"
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "tool",
+          "index": 0,
+          "delta": "{\"n\":9007199254740993}"
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "tool",
+          "index": 0
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "tool_calls"
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "functionCall": {
+                      "id": "call",
+                      "name": "lookup",
+                      "args": {
+                        "n": 9007199254740993
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "finishReason": "STOP"
+            }
+          ]
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "declared-signed-stream-reasoning-decode",
+      "direction": "decode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "hi",
+                    "thought": true,
+                    "thoughtSignature": "signed"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": []
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 2,
+            "totalTokenCount": 22,
+            "cachedContentTokenCount": 15
+          }
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "item": {
+            "kind": "reasoning"
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.snapshot",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "item": {
+            "kind": "reasoning",
+            "resources": [
+              {
+                "kind": "signature",
+                "id": "signed",
+                "scope": {
+                  "provider": "fixture",
+                  "account": "fixture",
+                  "model": "m"
+                }
+              }
+            ],
+            "source": {
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.0.0"
+              },
+              "direction": "decode_event",
+              "path": "/reasoning",
+              "scope": {
+                "provider": "fixture",
+                "account": "fixture",
+                "model": "m"
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "declared-signed-stream-reasoning-encode",
+      "direction": "encode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "item": {
+            "kind": "reasoning"
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.snapshot",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "item": {
+            "kind": "reasoning",
+            "resources": [
+              {
+                "kind": "signature",
+                "id": "signed",
+                "scope": {
+                  "provider": "fixture",
+                  "account": "fixture",
+                  "model": "m"
+                }
+              }
+            ],
+            "source": {
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "google-generate-content",
+                "revision": "2.0.0"
+              },
+              "direction": "decode_event",
+              "path": "/reasoning",
+              "scope": {
+                "provider": "fixture",
+                "account": "fixture",
+                "model": "m"
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "hi",
+                    "thought": true
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "thoughtSignature": "signed"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 2,
+            "totalTokenCount": 22,
+            "cachedContentTokenCount": 15
+          }
+        },
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 2,
+            "totalTokenCount": 22,
+            "cachedContentTokenCount": 15
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
     }
   ],
   "agent": {
@@ -27564,11 +29706,538 @@
   "order": 220,
   "enabled": true,
   "phase": "event",
-  "auxiliary": {
-    "disposition": "omit",
-    "path": "/metadata",
-    "reason": "target cannot represent the source auxiliary event"
-  }
+      "steps": [
+        {
+          "auxiliary": {
+            "disposition": "omit",
+            "path": "/metadata",
+            "reason": "target cannot express this auxiliary metadata event"
+          }
+        },
+        {
+          "each": {
+            "select": "metadata",
+            "steps": [
+              {
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/codec"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "gemini"
+                    }
+                  ]
+                },
+                "stop": true
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/codec"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "responses"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/name"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "output_text"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "verified output_text duplicates the ordered visible output; emitted once in target content"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/codec"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "responses"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/name"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "safety_buffering"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/value"
+                        },
+                        {
+                          "op": "literal",
+                          "value": false
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "inactive source safety buffering carries no buffered content; target output remains unchanged"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/codec"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "responses"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/name"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "safety_buffering"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "active source safety buffering has no declared target mapping"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/codec"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "responses"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/name"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "obfuscation"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "source event padding cannot preserve payload-size obfuscation after protocol conversion"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "annotations"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "citations"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "logprobs"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "ref",
+                      "ref": "conversion-metadata-empty"
+                    }
+                  ]
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "empty known response metadata normalized for target"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/name"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "annotations"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "any",
+                        "items": [
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/codec"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "openai-chat"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/codec"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "responses"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "let",
+                    "name": "checked-annotations",
+                    "source": {
+                      "op": "ref",
+                      "ref": "conversion-public-annotations"
+                    },
+                    "body": {
+                      "op": "literal",
+                      "value": true
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this recognized response metadata field"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "ref",
+                      "ref": "conversion-metadata-state"
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "ref",
+                        "ref": "conversion-metadata-empty-special"
+                      }
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "nonempty context/container state requires a scoped state mapping"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "citations"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "citationMetadata"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "groundingMetadata"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "ref",
+                        "ref": "conversion-metadata-empty"
+                      }
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "non-URL citation or grounding resources require an explicit scoped mapping"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "ref",
+                  "ref": "conversion-metadata-empty-special"
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "empty known response metadata normalized for target"
+                  }
+                }
+              },
+              {
+                "omit": true,
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this recognized response metadata field"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
 },
   {
     "id": "responses-context",
@@ -27655,6 +30324,2918 @@
         }
       }
     ]
-  }
+  },
+    {
+      "id": "history-response-metadata",
+      "order": 160,
+      "enabled": true,
+      "phase": "request",
+      "steps": [
+        {
+          "each": {
+            "select": "metadata",
+            "steps": [
+              {
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/codec"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "gemini"
+                    }
+                  ]
+                },
+                "stop": true
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/codec"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "responses"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/name"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "output_text"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "verified output_text duplicates the ordered visible output; emitted once in target content"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/codec"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "responses"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/name"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "safety_buffering"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/value"
+                        },
+                        {
+                          "op": "literal",
+                          "value": false
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "inactive source safety buffering carries no buffered content; target output remains unchanged"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/codec"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "responses"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/name"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "safety_buffering"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "active source safety buffering has no declared target mapping"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/codec"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "responses"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/name"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "obfuscation"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "source event padding cannot preserve payload-size obfuscation after protocol conversion"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "annotations"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "citations"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "logprobs"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "ref",
+                      "ref": "conversion-metadata-empty"
+                    }
+                  ]
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "empty known response metadata normalized for target"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/name"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "annotations"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "any",
+                        "items": [
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/codec"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "openai-chat"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/codec"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "responses"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "let",
+                    "name": "checked-annotations",
+                    "source": {
+                      "op": "ref",
+                      "ref": "conversion-public-annotations"
+                    },
+                    "body": {
+                      "op": "literal",
+                      "value": true
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this recognized response metadata field"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "ref",
+                      "ref": "conversion-metadata-state"
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "ref",
+                        "ref": "conversion-metadata-empty-special"
+                      }
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "nonempty context/container state requires a scoped state mapping"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "citations"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "citationMetadata"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "groundingMetadata"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "ref",
+                        "ref": "conversion-metadata-empty"
+                      }
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "non-URL citation or grounding resources require an explicit scoped mapping"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "ref",
+                  "ref": "conversion-metadata-empty-special"
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "empty known response metadata normalized for target"
+                  }
+                }
+              },
+              {
+                "omit": true,
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this recognized response metadata field"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "response-metadata",
+      "order": 220,
+      "enabled": true,
+      "phase": "response",
+      "steps": [
+        {
+          "each": {
+            "select": "metadata",
+            "steps": [
+              {
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/codec"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "gemini"
+                    }
+                  ]
+                },
+                "stop": true
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/codec"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "responses"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/name"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "output_text"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "verified output_text duplicates the ordered visible output; emitted once in target content"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/codec"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "responses"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/name"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "safety_buffering"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/value"
+                        },
+                        {
+                          "op": "literal",
+                          "value": false
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "inactive source safety buffering carries no buffered content; target output remains unchanged"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/codec"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "responses"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/name"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "safety_buffering"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "active source safety buffering has no declared target mapping"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/codec"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "responses"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/name"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "obfuscation"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "source event padding cannot preserve payload-size obfuscation after protocol conversion"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "annotations"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "citations"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "logprobs"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "ref",
+                      "ref": "conversion-metadata-empty"
+                    }
+                  ]
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "empty known response metadata normalized for target"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/name"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "annotations"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "any",
+                        "items": [
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/codec"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "openai-chat"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/codec"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "responses"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "let",
+                    "name": "checked-annotations",
+                    "source": {
+                      "op": "ref",
+                      "ref": "conversion-public-annotations"
+                    },
+                    "body": {
+                      "op": "literal",
+                      "value": true
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this recognized response metadata field"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "ref",
+                      "ref": "conversion-metadata-state"
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "ref",
+                        "ref": "conversion-metadata-empty-special"
+                      }
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "nonempty context/container state requires a scoped state mapping"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "citations"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "citationMetadata"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "groundingMetadata"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "ref",
+                        "ref": "conversion-metadata-empty"
+                      }
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "non-URL citation or grounding resources require an explicit scoped mapping"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "ref",
+                  "ref": "conversion-metadata-empty-special"
+                },
+                "omit": true,
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "empty known response metadata normalized for target"
+                  }
+                }
+              },
+              {
+                "omit": true,
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this recognized response metadata field"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "response-usage-projection",
+      "order": 300,
+      "enabled": true,
+      "phase": "response",
+      "steps": [
+        {
+          "each": {
+            "select": "usage",
+            "pathBinding": "usage-path",
+            "steps": [
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/attribution"
+                    }
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/attribution"
+                        },
+                        {
+                          "op": "literal",
+                          "value": null
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": true
+                    },
+                    "otherwise": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "length",
+                          "source": {
+                            "op": "filter",
+                            "source": {
+                              "op": "entries",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/attribution"
+                              }
+                            },
+                            "when": {
+                              "op": "not",
+                              "source": {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "item",
+                                    "path": "/value"
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": {}
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "op": "literal",
+                          "value": 0
+                        }
+                      ]
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "set": {
+                  "/attribution": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "attribution"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "empty usage attribution normalized for target"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/attribution"
+                    }
+                  },
+                  "then": {
+                    "op": "not",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/attribution"
+                          },
+                          {
+                            "op": "literal",
+                            "value": null
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "literal",
+                        "value": true
+                      },
+                      "otherwise": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "length",
+                            "source": {
+                              "op": "filter",
+                              "source": {
+                                "op": "entries",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/attribution"
+                                }
+                              },
+                              "when": {
+                                "op": "not",
+                                "source": {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": "/value"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": {}
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": 0
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "set": {
+                  "/attribution": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "attribution"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express per-item usage attribution; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/cacheBilling"
+                    }
+                  },
+                  "then": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/cacheBilling"
+                          },
+                          {
+                            "op": "literal",
+                            "value": null
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/cacheBilling"
+                          },
+                          {
+                            "op": "literal",
+                            "value": []
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/cacheBilling"
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "set": {
+                  "/cacheBilling": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "cacheBilling"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "empty usage cacheBilling normalized for target"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/cacheBilling"
+                    }
+                  },
+                  "then": {
+                    "op": "not",
+                    "source": {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/cacheBilling"
+                            },
+                            {
+                              "op": "literal",
+                              "value": null
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/cacheBilling"
+                            },
+                            {
+                              "op": "literal",
+                              "value": []
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/cacheBilling"
+                            },
+                            {
+                              "op": "literal",
+                              "value": {}
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "set": {
+                  "/cacheBilling": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "cacheBilling"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express the provider's disclosed cache allocation; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/ephemeral_1h_input_tokens"
+                  }
+                },
+                "set": {
+                  "/details/ephemeral_1h_input_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "ephemeral_1h_input_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/ephemeral_5m_input_tokens"
+                  }
+                },
+                "set": {
+                  "/details/ephemeral_5m_input_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "ephemeral_5m_input_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.image_generation.input.image_tokens"
+                  }
+                },
+                "set": {
+                  "/details/tools.image_generation.input.image_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.image_generation.input.image_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.image_generation.input.text_tokens"
+                  }
+                },
+                "set": {
+                  "/details/tools.image_generation.input.text_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.image_generation.input.text_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.image_generation.input_tokens"
+                  }
+                },
+                "set": {
+                  "/details/tools.image_generation.input_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.image_generation.input_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.image_generation.output.image_tokens"
+                  }
+                },
+                "set": {
+                  "/details/tools.image_generation.output.image_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.image_generation.output.image_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.image_generation.output.text_tokens"
+                  }
+                },
+                "set": {
+                  "/details/tools.image_generation.output.text_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.image_generation.output.text_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.image_generation.output_tokens"
+                  }
+                },
+                "set": {
+                  "/details/tools.image_generation.output_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.image_generation.output_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.image_generation.total_tokens"
+                  }
+                },
+                "set": {
+                  "/details/tools.image_generation.total_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.image_generation.total_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.web_search_calls"
+                  }
+                },
+                "set": {
+                  "/details/tools.web_search_calls": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.web_search_calls"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/cacheCreation"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "cacheCreation"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express cache creation; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/cacheCreation"
+                      }
+                    },
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/details/uncached_input_tokens"
+                      }
+                    }
+                  ]
+                },
+                "set": {
+                  "/details/uncached_input_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "uncached_input_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "subtotal depends on omitted cache creation; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/cacheCreation"
+                  }
+                },
+                "set": {
+                  "/cacheCreation": {
+                    "op": "omit"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "event-usage-projection",
+      "order": 300,
+      "enabled": true,
+      "phase": "event",
+      "steps": [
+        {
+          "each": {
+            "select": "usage",
+            "pathBinding": "usage-path",
+            "steps": [
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/attribution"
+                    }
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/attribution"
+                        },
+                        {
+                          "op": "literal",
+                          "value": null
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": true
+                    },
+                    "otherwise": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "length",
+                          "source": {
+                            "op": "filter",
+                            "source": {
+                              "op": "entries",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/attribution"
+                              }
+                            },
+                            "when": {
+                              "op": "not",
+                              "source": {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "item",
+                                    "path": "/value"
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": {}
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "op": "literal",
+                          "value": 0
+                        }
+                      ]
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "set": {
+                  "/attribution": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "attribution"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "empty usage attribution normalized for target"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/attribution"
+                    }
+                  },
+                  "then": {
+                    "op": "not",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/attribution"
+                          },
+                          {
+                            "op": "literal",
+                            "value": null
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "literal",
+                        "value": true
+                      },
+                      "otherwise": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "length",
+                            "source": {
+                              "op": "filter",
+                              "source": {
+                                "op": "entries",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/attribution"
+                                }
+                              },
+                              "when": {
+                                "op": "not",
+                                "source": {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": "/value"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": {}
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": 0
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "set": {
+                  "/attribution": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "attribution"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express per-item usage attribution; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/cacheBilling"
+                    }
+                  },
+                  "then": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/cacheBilling"
+                          },
+                          {
+                            "op": "literal",
+                            "value": null
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/cacheBilling"
+                          },
+                          {
+                            "op": "literal",
+                            "value": []
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/cacheBilling"
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "set": {
+                  "/cacheBilling": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "cacheBilling"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "empty usage cacheBilling normalized for target"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/cacheBilling"
+                    }
+                  },
+                  "then": {
+                    "op": "not",
+                    "source": {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/cacheBilling"
+                            },
+                            {
+                              "op": "literal",
+                              "value": null
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/cacheBilling"
+                            },
+                            {
+                              "op": "literal",
+                              "value": []
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/cacheBilling"
+                            },
+                            {
+                              "op": "literal",
+                              "value": {}
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "set": {
+                  "/cacheBilling": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "cacheBilling"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express the provider's disclosed cache allocation; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/ephemeral_1h_input_tokens"
+                  }
+                },
+                "set": {
+                  "/details/ephemeral_1h_input_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "ephemeral_1h_input_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/ephemeral_5m_input_tokens"
+                  }
+                },
+                "set": {
+                  "/details/ephemeral_5m_input_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "ephemeral_5m_input_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.image_generation.input.image_tokens"
+                  }
+                },
+                "set": {
+                  "/details/tools.image_generation.input.image_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.image_generation.input.image_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.image_generation.input.text_tokens"
+                  }
+                },
+                "set": {
+                  "/details/tools.image_generation.input.text_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.image_generation.input.text_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.image_generation.input_tokens"
+                  }
+                },
+                "set": {
+                  "/details/tools.image_generation.input_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.image_generation.input_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.image_generation.output.image_tokens"
+                  }
+                },
+                "set": {
+                  "/details/tools.image_generation.output.image_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.image_generation.output.image_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.image_generation.output.text_tokens"
+                  }
+                },
+                "set": {
+                  "/details/tools.image_generation.output.text_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.image_generation.output.text_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.image_generation.output_tokens"
+                  }
+                },
+                "set": {
+                  "/details/tools.image_generation.output_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.image_generation.output_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.image_generation.total_tokens"
+                  }
+                },
+                "set": {
+                  "/details/tools.image_generation.total_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.image_generation.total_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/details/tools.web_search_calls"
+                  }
+                },
+                "set": {
+                  "/details/tools.web_search_calls": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tools.web_search_calls"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this usage detail; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/cacheCreation"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "cacheCreation"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express cache creation; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/cacheCreation"
+                      }
+                    },
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/details/uncached_input_tokens"
+                      }
+                    }
+                  ]
+                },
+                "set": {
+                  "/details/uncached_input_tokens": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "usage-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "details"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "uncached_input_tokens"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "subtotal depends on omitted cache creation; original accounting is retained"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/cacheCreation"
+                  }
+                },
+                "set": {
+                  "/cacheCreation": {
+                    "op": "omit"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
 ]
 }

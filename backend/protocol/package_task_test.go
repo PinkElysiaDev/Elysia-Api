@@ -101,6 +101,8 @@ func TestTaskPackageRequiresFlowAndEvidence(t *testing.T) {
 }
 
 func TestTaskPackageChecksActualWireAndCancellation(t *testing.T) {
+	options := newVerificationContext(Scope{}, nil)
+	defer options.State.Release()
 	compiler, document, _ := loadTaskPackage(t, "job-alpha")
 	contract := document.Spec.Documents["task-status"]
 	contract.Assertions = []WireAssertion{{Path: "/valid", Schema: &ValueSchema{Type: BooleanType, Enum: []Value{Value{raw: "true"}}}, Code: UpstreamContractViolation, Reason: "invalid task reply"}}
@@ -109,14 +111,40 @@ func TestTaskPackageChecksActualWireAndCancellation(t *testing.T) {
 	if err := IssuesError(issues); err != nil {
 		t.Fatal(err)
 	}
-	_, err := compiled.DecodeTaskUpdate(t.Context(), "submit", "status", parseTestValue(t, `{"valid":false}`))
+	_, err := compiled.DecodeTaskUpdate(t.Context(), "submit", "status", parseTestValue(t, `{"valid":false}`), options)
 	var failure *ConversionError
 	if !errors.As(err, &failure) || failure.Issues[0].Path != "/valid" {
 		t.Fatal("task mapping hid invalid wire", err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := compiled.ConvertTask(ctx, "submit", "control", "status", parseTestValue(t, `{"id":"local"}`)); !errors.Is(err, context.Canceled) {
+	if _, err := compiled.ConvertTask(ctx, "submit", "control", "status", parseTestValue(t, `{"id":"local"}`), options); !errors.Is(err, context.Canceled) {
 		t.Fatal("task mapping ignored cancellation", err)
+	}
+}
+
+func TestTaskPackageRetainsBoundOperationFacts(t *testing.T) {
+	compiler, document, _ := loadTaskPackage(t, "job-alpha")
+	query := document.Mapping.Operations["submit"].Task.Control.Fields["query"].Fields
+	query["execution"] = readExpression("runtime", "/operation/id")
+	query["started"] = Expression{Op: "cast", To: StringType, Source: expressionPointer(readExpression("runtime", "/operation/startedAt"))}
+	query["purpose"] = readExpression("context", "/operation")
+	compiled, issues := compiler.CompilePackage(fixtureValue(t, document).Bytes())
+	if err := IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	spoofed := parseTestValue(t, `{"id":"untrusted","startedAt":999}`)
+	options, err := (EvaluationContext{Values: Object{"operation": spoofed}}).WithOperation("durable-fixture", 1234)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, purpose := range []string{"status", "result", "status"} {
+		control, err := compiled.EncodeTaskControl(t.Context(), "submit", purpose, "provider-task", options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if control.Query["execution"] != "durable-fixture" || control.Query["started"] != "1234" || control.Query["purpose"] != purpose || control.Query["ticket"] != "provider-task" || options.Values["operation"] != spoofed {
+			t.Fatal("task phase lost execution facts or mutated caller context", control, options.Values)
+		}
 	}
 }

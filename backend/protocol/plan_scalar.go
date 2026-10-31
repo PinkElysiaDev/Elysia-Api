@@ -88,6 +88,20 @@ func (plan *compiledOutputPlan) buildReadValue(state evaluation) (plannedOutput,
 			}
 			return plannedLeaf(state.runtime.operation.startedAt), nil
 		}
+		if expression.pointer[0] == "frame" {
+			if !state.runtime.hasFrameUsage {
+				return plannedOutput{}, operationMetadataError("/frame/usage", "source frame usage observation is not bound")
+			}
+			var value JSONOutput
+			var err error
+			if state.runtime.frameUsage != nil {
+				value, err = readCoreUsage(*state.runtime.frameUsage, expression.pointer[2:])
+			}
+			if err == nil && expression.isRequired && value.IsZero() {
+				return plannedOutput{}, fmt.Errorf("%s: required field is absent", expression.path)
+			}
+			return plannedOutput{output: value, bytes: normalizedOutputBytes(value)}, err
+		}
 		if expression.pointer[0] == "emission" {
 			state.budget.hasReadOutputStream = true
 			return plannedLeaf(coreInteger(int64(state.runtime.emissionOffset))), nil

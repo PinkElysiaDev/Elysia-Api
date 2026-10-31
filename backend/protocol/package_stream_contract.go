@@ -96,6 +96,7 @@ type compiledPackageStreamEvent struct {
 	isControl, isImplicit, canPrecedeResponse, canFollowTerminal, isResponseIndependent bool
 	isArrayItem                                                                         bool
 	isJSONValue                                                                         bool
+	isPlaceholder                                                                       bool
 	itemBinding, indexBinding                                                           int
 	canBindItem, canBindIndex                                                           bool
 	sealsPayload, verifiesCompleted                                                     bool

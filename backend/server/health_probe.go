@@ -16,12 +16,16 @@ import (
 func (s *Server) probeModelHealth(ctx context.Context, model storage.Model, timeoutSeconds int) healthProbeResult {
 	probeCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
-	candidate, request, err := s.prepareHealthProbe(probeCtx, model)
+	options, err := generationOperationContext(nil)
+	if err != nil {
+		return probeUnavailable
+	}
+	candidate, request, err := s.prepareHealthProbe(probeCtx, model, options)
 	if err != nil {
 		s.logEvent("warn").Str("model_name", model.Name).Err(err).Msg("health check: model has no usable probe contract")
 		return probeUnavailable
 	}
-	_, err = s.collectProtocolGenerationAttempt(probeCtx, candidate, request, nil, nil)
+	_, err = s.collectProtocolGenerationAttempt(probeCtx, candidate, request, nil, nil, options)
 	var failure *gatewayFailure
 	if errors.As(err, &failure) && failure.status == http.StatusTooManyRequests {
 		return probeUnavailable
@@ -32,7 +36,7 @@ func (s *Server) probeModelHealth(ctx context.Context, model storage.Model, time
 	return probeHealthy
 }
 
-func (s *Server) prepareHealthProbe(ctx context.Context, model storage.Model) (gatewayCandidate, *protocol.Request, error) {
+func (s *Server) prepareHealthProbe(ctx context.Context, model storage.Model, options protocol.EvaluationContext) (gatewayCandidate, *protocol.Request, error) {
 	service, err := s.protocolService()
 	if err != nil {
 		return gatewayCandidate{}, nil, err
@@ -57,11 +61,11 @@ func (s *Server) prepareHealthProbe(ctx context.Context, model storage.Model) (g
 	if candidate.operation.Kind != "generate" {
 		return candidate, nil, gatewayIssue(candidate.compiled.Identity(), protocol.UnsupportedCapability, "/operations", "background health probes require synchronous generation")
 	}
-	request, err := prepareHealthProbeRequest(ctx, candidate)
+	request, err := prepareHealthProbeRequest(ctx, candidate, options)
 	return candidate, request, err
 }
 
-func prepareHealthProbeRequest(ctx context.Context, candidate gatewayCandidate) (*protocol.Request, error) {
+func prepareHealthProbeRequest(ctx context.Context, candidate gatewayCandidate, options protocol.EvaluationContext) (*protocol.Request, error) {
 	budget, err := protocol.EncodeValue(HealthProbeMaxTokens)
 	if err != nil {
 		return nil, err
@@ -80,7 +84,8 @@ func prepareHealthProbeRequest(ctx context.Context, candidate gatewayCandidate) 
 	if err := protocol.IssuesError(protocol.CheckRoute(request, candidate.compiled, candidate.binding, candidate.scope, candidate.operation.Transport)); err != nil {
 		return nil, err
 	}
-	body, err := candidate.compiled.EncodeRequest(ctx, request, protocol.EvaluationContext{Scope: candidate.scope})
+	options.Scope, options.InterleavedThinking = candidate.scope, protocol.OperationInterleavedThinking(candidate.operation)
+	body, err := candidate.compiled.EncodeRequest(ctx, request, options)
 	if err != nil {
 		return nil, err
 	}

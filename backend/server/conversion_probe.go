@@ -190,7 +190,11 @@ func (s *Server) adminConversionSignatureProbe(ctx context.Context, c *app.Reque
 		fail(err)
 		return
 	}
-	options := protocol.EvaluationContext{Scope: candidate.scope}
+	options, err := (protocol.EvaluationContext{Scope: candidate.scope}).WithOperation(c.GetString("requestID"), time.Now().Unix())
+	if err != nil {
+		fail(err)
+		return
+	}
 	body, err := candidate.compiled.EncodeRequest(ctx, request, options)
 	if err != nil {
 		fail(err)

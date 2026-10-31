@@ -311,6 +311,10 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 	eventState := NewConversionEventState(conversion, route)
 	convertedFrames := []*EventFrame{}
 	for _, frame := range result.frames {
+		route, err = conversion.WithFrameUsage(route, frame.Events)
+		if err != nil {
+			return err
+		}
 		original, _ := EncodeValue(frame.Events)
 		events := []Event{}
 		deliveryEvents := frame.Events
@@ -351,6 +355,10 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 		convertedFrames = append(convertedFrames, frame)
 	}
 	tailEvents, err := eventState.Drain()
+	if err != nil {
+		return err
+	}
+	route, err = conversion.WithFrameUsage(route, tailEvents)
 	if err != nil {
 		return err
 	}

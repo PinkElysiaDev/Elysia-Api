@@ -333,6 +333,7 @@ func TestProviderSignatureProbeRequiresAcceptedScopedEvidence(t *testing.T) {
 	}
 	call := func() *httptest.ResponseRecorder {
 		c, rec := adminProtocolContext("POST", "/probe-signature", fmt.Sprintf(`{"hash":%q,"ruleId":"configured-fallback","ingressId":"anthropic-messages","sourceId":"gateway-source","modelId":"upstream-model"}`, draft.Hash))
+		c.Set("requestID", "signature-probe-fixture")
 		addTestParam(c, "policyId", policy.ID)
 		s.adminConversionSignatureProbe(contextForTest(c), c)
 		flushTestResponse(c)
@@ -373,6 +374,7 @@ func TestProviderSignatureProbeRequiresAcceptedScopedEvidence(t *testing.T) {
 	}
 	keyCall := func(index int) *httptest.ResponseRecorder {
 		c, rec := adminProtocolContext("POST", "/probe-signature", fmt.Sprintf(`{"hash":%q,"ruleId":"configured-fallback","ingressId":"anthropic-messages","sourceId":"gateway-source","modelId":"upstream-model","keyIndex":%d}`, draft.Hash, index))
+		c.Set("requestID", "signature-key-probe-fixture")
 		addTestParam(c, "policyId", policy.ID)
 		s.adminConversionSignatureProbe(contextForTest(c), c)
 		flushTestResponse(c)

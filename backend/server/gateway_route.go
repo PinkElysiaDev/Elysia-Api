@@ -64,7 +64,13 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 	if err != nil {
 		return nil, err
 	}
-	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(protocol.Operation{Headers: map[string]string{"anthropic-beta": string(c.GetHeader("anthropic-beta"))}}), Values: protocol.Object{"path": protocol.StringValue(path)}}
+	operationOptions, err := (protocol.EvaluationContext{}).WithOperation(record.RequestID, record.StartedAt.Unix())
+	if err != nil {
+		return nil, err
+	}
+	options := operationOptions
+	options.InterleavedThinking = protocol.OperationInterleavedThinking(protocol.Operation{Headers: map[string]string{"anthropic-beta": string(c.GetHeader("anthropic-beta"))}})
+	options.Values = protocol.Object{"path": protocol.StringValue(path)}
 	for _, operation := range ingress.OperationRoutes() {
 		if parameters, matches := protocol.MatchOperationPath(operation.Path, path); matches {
 			for name, value := range parameters {
@@ -150,7 +156,8 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 		}
 		probe := candidate.prepared.Clone()
 		probe.Model = protocol.StringValue(candidate.model.Identifier())
-		probeOptions := protocol.EvaluationContext{Scope: candidate.scope, InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), ClientOutput: probe.ClientOutput}
+		probeOptions := operationOptions
+		probeOptions.Scope, probeOptions.InterleavedThinking, probeOptions.ClientOutput = candidate.scope, protocol.OperationInterleavedThinking(candidate.operation), probe.ClientOutput
 		canRetainEncoding := len(eligible) == 0 && !candidate.model.CacheSynthesis && candidate.operation.Kind == "generate" && candidate.compiled.CanReuseRequestEncoding()
 		if canRetainEncoding {
 			probeOptions.Diagnostics = &protocol.DiagnosticSink{}

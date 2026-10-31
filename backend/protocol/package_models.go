@@ -51,5 +51,5 @@ func (compiled *Compiled) compilePackageModelMappings(spec ProtocolSpec, mapping
 // or native replay. It still uses the shared wire validator and expression plan.
 func (compiled *Compiled) executePackageModelMapping(ctx context.Context, operation string, mapping compiledMapping, input Value) (Value, error) {
 	path := "/mapping/operations/" + escapePointer(operation) + "/decodeModels"
-	return compiled.executePackageOperationPlan(ctx, mapping, DecodeResponse, path, input, Value{raw: "null"}, compiled.packagePlan.modelContracts[operation], compiledWireContract{})
+	return compiled.executePackageOperationPlan(ctx, mapping, DecodeResponse, path, input, Value{raw: "null"}, compiled.packagePlan.modelContracts[operation], compiledWireContract{}, EvaluationContext{})
 }

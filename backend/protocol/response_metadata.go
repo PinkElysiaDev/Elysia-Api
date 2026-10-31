@@ -136,6 +136,20 @@ func MetadataFieldType(codec, location, name string) string {
 	return ""
 }
 
+func validateCoreMetadataValue(version int, field ResponseMetadata) error {
+	if version == ProtocolCoreVersion && field.Name == "logprobs" {
+		return validateCoreLogprobs(field)
+	}
+	return ValidateMetadataValue(field.Codec, field.Location, field.Name, field.Value, field.Path)
+}
+
+func validateCoreLogprobs(field ResponseMetadata) error {
+	if field.Location != "content" {
+		return streamIssue(InvalidInput, field.Path, "token probabilities require a content owner")
+	}
+	return validateLogprobTokens(field.Value, field.Path)
+}
+
 func ValidateMetadataValue(codec, location, name string, v Value, at string) error {
 	kind := MetadataFieldType(codec, location, name)
 	if kind == "" {

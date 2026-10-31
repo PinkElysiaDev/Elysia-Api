@@ -274,7 +274,10 @@ func (s *Server) adminConversionPreview(ctx context.Context, c *app.RequestConte
 	case protocol.ConversionEvent:
 		var event protocol.Event
 		if err = input.Input.Decode(&event); err == nil {
-			output, err = policy.Event(ctx, event, input.Context, sink)
+			route, err = policy.WithFrameUsage(input.Context, []protocol.Event{event})
+			if err == nil {
+				output, err = policy.Event(ctx, event, route, sink)
+			}
 		}
 	default:
 		output, err = policy.ApplyValue(ctx, input.Phase, input.Input, input.Context, sink)

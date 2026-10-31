@@ -8,8 +8,8 @@ import (
 )
 
 // Delivered items are borrowed only while validation has no newer, unsent
-// state. Resuming copies the digest once; native-only streams keep no renderer
-// item or second text tracker.
+// state. Resuming copies only the state required to continue encoding;
+// native-only streams keep no renderer item or second tracker.
 func (runtime evaluationRuntime) deliveredItems() (*packageStreamValidation, error) {
 	state := runtime.outputStream
 	if state == nil {
@@ -85,39 +85,50 @@ func (plan *compiledOutputPlan) readDeliveredItem(state evaluation) (plannedOutp
 	return plannedOutput{output: output, bytes: normalizedOutputBytes(output)}, nil
 }
 
-func (plan *compiledOutputPlan) resumeDeliveredText(state evaluation) (plannedOutput, error) {
+func (plan *compiledOutputPlan) selectDeliveredContinuation(state evaluation) (string, *wireEntityState, error) {
 	keyOutput, err := plan.source.build(state)
 	if err != nil {
-		return plannedOutput{}, err
+		return "", nil, err
 	}
 	idOutput, err := plan.body.build(state)
 	if err != nil {
-		return plannedOutput{}, err
+		return "", nil, err
 	}
 	key, err := readPlannedString(keyOutput.output)
 	if err != nil {
-		return plannedOutput{}, err
+		return "", nil, err
 	}
 	id, err := readPlannedString(idOutput.output)
 	if err != nil {
-		return plannedOutput{}, err
+		return "", nil, err
 	}
-	item, tracker, err := state.runtime.deliveredItem(plan.expression.streamNamespace, id)
+	item, _, err := state.runtime.deliveredItem(plan.expression.streamNamespace, id)
 	if err != nil {
-		return plannedOutput{}, err
+		return "", nil, err
 	}
 	if state.runtime.outputStream != nil {
 		state.budget.hasReadOutputStream = true
 	}
-	if item == nil || item.isFinished || state.runtime.outputStream.contract.entities[item.definition].payload != "text" {
-		return plannedOutput{}, fmt.Errorf("text continuation requires an open delivered text item")
+	if item == nil || item.isFinished {
+		return "", nil, fmt.Errorf("continuation requires an open delivered entity")
+	}
+	return key, item, nil
+}
+
+func (plan *compiledOutputPlan) resumeDeliveredText(state evaluation) (plannedOutput, error) {
+	key, item, err := plan.selectDeliveredContinuation(state)
+	if err != nil {
+		return plannedOutput{}, err
+	}
+	if state.runtime.outputStream.contract.entities[item.definition].payload != "text" {
+		return plannedOutput{}, fmt.Errorf("text continuation requires a text entity")
 	}
 	transaction := state.streamTransaction
 	channel := streamTrackKey{channel: plan.expression.trackerName, item: key}
 	if transaction.textUpdates[channel] != nil || transaction.primitives().texts[channel] != nil {
 		return plannedOutput{}, fmt.Errorf("text tracker already has a prefix")
 	}
-	copy, err := cloneTextTracker(tracker)
+	copy, err := cloneTextTracker(&item.text)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -128,6 +139,40 @@ func (plan *compiledOutputPlan) resumeDeliveredText(state evaluation) (plannedOu
 		transaction.textUpdates = make(map[streamTrackKey]*pendingStreamText)
 	}
 	transaction.textUpdates[channel] = &pendingStreamText{tracker: copy}
+	return plannedOutput{}, nil
+}
+
+func (plan *compiledOutputPlan) resumeDeliveredTool(state evaluation) (plannedOutput, error) {
+	key, item, err := plan.selectDeliveredContinuation(state)
+	if err != nil {
+		return plannedOutput{}, err
+	}
+	definition := state.runtime.outputStream.contract.entities[item.definition]
+	if definition.payload != "json" || definition.isArray {
+		return plannedOutput{}, fmt.Errorf("tool continuation requires a JSON entity")
+	}
+	transaction := state.streamTransaction
+	channel := streamTrackKey{channel: plan.expression.trackerName, item: key}
+	if transaction.toolUpdates[channel] != nil || transaction.primitives().tools[channel] != nil {
+		return plannedOutput{}, fmt.Errorf("tool tracker already has a prefix")
+	}
+	prefix := item.json.String()
+	if err := transaction.checkRetainedBytes(len(prefix)); err != nil {
+		return plannedOutput{}, err
+	}
+	transaction.toolBufferDelta += len(prefix)
+	if err := transaction.reserveTrackChannel(key, state.budget.limits); err != nil {
+		return plannedOutput{}, err
+	}
+	// Snapshots and completion need the JSON prefix. Acquire it once when
+	// semantic rendering starts; later native frames update this same tracker.
+	tool := &streamTrackedTool{kind: JSONInput, emitted: len(prefix), isPlaceholder: item.isPlaceholder}
+	tool.input.WriteString(prefix)
+	tool.text.Append(prefix)
+	if transaction.toolUpdates == nil {
+		transaction.toolUpdates = make(map[streamTrackKey]*pendingStreamTool)
+	}
+	transaction.toolUpdates[channel] = &pendingStreamTool{tool: tool, kind: JSONInput, emitted: len(prefix), retainedBytes: len(prefix)}
 	return plannedOutput{}, nil
 }
 

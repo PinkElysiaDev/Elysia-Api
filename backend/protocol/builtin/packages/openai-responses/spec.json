@@ -21,7 +21,7 @@
     "models": {
       "kind": "models",
       "method": "GET",
-      "path": "/models",
+      "path": "/v1/models",
       "transport": "http_json",
       "auth": {
         "location": "header",
@@ -34,7 +34,7 @@
     "stream": {
       "kind": "generate",
       "method": "POST",
-      "path": "/responses",
+      "path": "/v1/responses",
       "transport": "sse",
       "request": "generation-request",
       "response": "provider-event",
@@ -3528,13 +3528,7 @@
             "ref": "is-nonnegative-count"
           },
           "code": "upstream_contract_violation",
-          "reason": "invalid stream index",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "path": "/",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "invalid stream index"
         },
         {
           "path": "/content_index",
@@ -3554,13 +3548,7 @@
             "ref": "is-nonnegative-count"
           },
           "code": "upstream_contract_violation",
-          "reason": "invalid stream index",
-          "diagnostic": {
-            "code": "upstream_contract_violation",
-            "stage": "runtime",
-            "path": "/",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-          }
+          "reason": "invalid stream index"
         },
         {
           "path": "/item_id",
@@ -7346,13 +7334,7 @@
                     "allowUnknown": true
                   },
                   "code": "upstream_contract_violation",
-                  "reason": "response update requires its response object",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  }
+                  "reason": "response update requires its response object"
                 },
                 {
                   "path": "/safety_buffering",
@@ -7484,12 +7466,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage requires an object",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "ref",
                     "ref": "has-response-usage"
@@ -7502,12 +7478,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -7539,12 +7509,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -7576,12 +7540,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -7613,12 +7571,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -7650,12 +7602,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -7688,12 +7634,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage detail requires an object",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -7721,12 +7661,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -7758,12 +7692,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -7795,12 +7723,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -7832,12 +7754,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -7869,12 +7785,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -7906,12 +7816,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -7944,12 +7848,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage detail requires an object",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -7977,12 +7875,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -8014,12 +7906,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -8051,12 +7937,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -8088,12 +7968,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -8125,12 +7999,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -8162,12 +8030,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "usage counter must be a nonnegative int64",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -8200,12 +8062,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "cache creation counters disagree",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -8262,12 +8118,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "cache creation counters disagree",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -8324,12 +8174,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "cache creation counters disagree",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "if",
                     "when": {
@@ -8386,12 +8230,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "external cumulative token counts are inconsistent",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "ref",
                     "ref": "has-response-usage"
@@ -8786,12 +8624,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "external cumulative token counts are inconsistent",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "when": {
                     "op": "ref",
                     "ref": "has-response-usage"
@@ -9299,12 +9131,6 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "external cumulative token counts are inconsistent",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  },
                   "check": {
                     "op": "ref",
                     "ref": "is-consistent-progress-usage"
@@ -9331,11 +9157,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected bool or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected bool or null"
                 },
                 {
                   "path": "/response/completed_at",
@@ -9352,11 +9174,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected number or null"
                 },
                 {
                   "path": "/response/frequency_penalty",
@@ -9373,11 +9191,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected number or null"
                 },
                 {
                   "path": "/response/max_output_tokens",
@@ -9394,11 +9208,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected number or null"
                 },
                 {
                   "path": "/response/max_tool_calls",
@@ -9415,11 +9225,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected number or null"
                 },
                 {
                   "path": "/response/metadata",
@@ -9437,11 +9243,7 @@
                     "allowUnknown": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected object or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected object or null"
                 },
                 {
                   "path": "/response/parallel_tool_calls",
@@ -9458,11 +9260,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected bool or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected bool or null"
                 },
                 {
                   "path": "/response/presence_penalty",
@@ -9479,11 +9277,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected number or null"
                 },
                 {
                   "path": "/response/prompt_cache_key",
@@ -9500,11 +9294,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected string or null"
                 },
                 {
                   "path": "/response/prompt_cache_retention",
@@ -9521,11 +9311,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected string or null"
                 },
                 {
                   "path": "/response/reasoning",
@@ -9543,11 +9329,7 @@
                     "allowUnknown": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected object or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected object or null"
                 },
                 {
                   "path": "/response/safety_identifier",
@@ -9564,11 +9346,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected string or null"
                 },
                 {
                   "path": "/response/service_tier",
@@ -9585,11 +9363,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected string or null"
                 },
                 {
                   "path": "/response/store",
@@ -9606,11 +9380,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected bool or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected bool or null"
                 },
                 {
                   "path": "/response/temperature",
@@ -9627,11 +9397,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected number or null"
                 },
                 {
                   "path": "/response/text",
@@ -9649,11 +9415,7 @@
                     "allowUnknown": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected object or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected object or null"
                 },
                 {
                   "path": "/response/tools",
@@ -9670,11 +9432,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected array or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected array or null"
                 },
                 {
                   "path": "/response/top_logprobs",
@@ -9691,11 +9449,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected number or null"
                 },
                 {
                   "path": "/response/top_p",
@@ -9712,11 +9466,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected number or null"
                 },
                 {
                   "path": "/response/truncation",
@@ -9733,11 +9483,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected string or null"
                 },
                 {
                   "path": "/response/user",
@@ -9754,11 +9500,7 @@
                     "nullable": true
                   },
                   "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "stream"
-                  }
+                  "reason": "invalid response metadata type; expected string or null"
                 }
               ],
               "afterTerminal": true
@@ -9887,12 +9629,7 @@
                   }
                 }
               },
-              "allowBeforeStart": true,
-              "diagnostic": {
-                "code": "upstream_contract_violation",
-                "stage": "stream",
-                "suggestion": "correct the upstream stream or declared /type rule"
-              }
+              "allowBeforeStart": true
             },
             {
               "action": "control",
@@ -10007,12 +9744,7 @@
                   ]
                 }
               },
-              "allowBeforeStart": true,
-              "diagnostic": {
-                "code": "upstream_contract_violation",
-                "stage": "stream",
-                "suggestion": "correct the upstream stream or declared /type rule"
-              }
+              "allowBeforeStart": true
             }
           ],
           "response.failed": [
@@ -10026,13 +9758,7 @@
                     "allowUnknown": true
                   },
                   "code": "upstream_contract_violation",
-                  "reason": "response failure requires its response object",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime",
-                    "path": "/",
-                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
-                  }
+                  "reason": "response failure requires its response object"
                 },
                 {
                   "path": "/response/error",
@@ -10079,245 +9805,126 @@
                   }
                 },
                 {
-                  "path": "/response/error",
-                  "code": "upstream_contract_violation",
-                  "reason": "invalid provider failure payload",
-                  "check": {
-                    "op": "let",
-                    "name": "wire-failure",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": ""
-                    },
-                    "body": {
-                      "op": "if",
-                      "when": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "type",
-                            "source": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "",
-                              "name": "wire-failure"
-                            }
-                          },
-                          {
-                            "op": "literal",
-                            "value": "object"
-                          }
-                        ]
-                      },
-                      "then": {
-                        "op": "let",
-                        "name": "error-type",
-                        "source": {
-                          "op": "if",
-                          "when": {
-                            "op": "exists",
-                            "source": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/type",
-                              "name": "wire-failure"
-                            }
-                          },
-                          "then": {
-                            "op": "if",
-                            "when": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "type",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "/type",
-                                    "name": "wire-failure"
-                                  }
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": "string"
-                                }
-                              ]
-                            },
-                            "then": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/type",
-                              "name": "wire-failure"
-                            },
-                            "otherwise": {
-                              "op": "if",
-                              "when": {
-                                "op": "equal",
-                                "items": [
-                                  {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "/type",
-                                    "name": "wire-failure"
-                                  },
-                                  {
-                                    "op": "literal",
-                                    "value": null
-                                  }
-                                ]
-                              },
-                              "then": {
-                                "op": "reject",
-                                "path": "/",
-                                "reason": "expected string, got null",
-                                "diagnostic": {
-                                  "code": "upstream_contract_violation",
-                                  "stage": "runtime"
-                                }
-                              },
-                              "otherwise": {
-                                "op": "reject",
-                                "path": "/",
-                                "reason": "error field requires a string",
-                                "diagnostic": {
-                                  "code": "upstream_contract_violation",
-                                  "stage": "runtime"
-                                }
-                              }
-                            }
-                          },
-                          "otherwise": {
-                            "op": "literal",
-                            "value": ""
+                  "path": "/response/error/type",
+                  "when": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "type",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/response/error"
                           }
                         },
-                        "body": {
-                          "op": "let",
-                          "name": "error-code",
-                          "source": {
-                            "op": "if",
-                            "when": {
-                              "op": "present",
-                              "source": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "/code",
-                                "name": "wire-failure"
-                              }
-                            },
-                            "then": {
-                              "op": "if",
-                              "when": {
-                                "op": "equal",
-                                "items": [
-                                  {
-                                    "op": "type",
-                                    "source": {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "/code",
-                                      "name": "wire-failure"
-                                    }
-                                  },
-                                  {
-                                    "op": "literal",
-                                    "value": "string"
-                                  }
-                                ]
-                              },
-                              "then": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "/code",
-                                "name": "wire-failure"
-                              },
-                              "otherwise": {
-                                "op": "reject",
-                                "path": "/error/code",
-                                "reason": "provider error code requires a string or null",
-                                "diagnostic": {
-                                  "code": "upstream_contract_violation",
-                                  "stage": "decode.error"
-                                }
-                              }
-                            },
-                            "otherwise": {
-                              "op": "literal",
-                              "value": ""
-                            }
-                          },
-                          "body": {
-                            "op": "let",
-                            "name": "checked-param",
-                            "source": {
-                              "op": "if",
-                              "when": {
-                                "op": "present",
-                                "source": {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "/param",
-                                  "name": "wire-failure"
-                                }
-                              },
-                              "then": {
-                                "op": "if",
-                                "when": {
-                                  "op": "equal",
-                                  "items": [
-                                    {
-                                      "op": "type",
-                                      "source": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "/param",
-                                        "name": "wire-failure"
-                                      }
-                                    },
-                                    {
-                                      "op": "literal",
-                                      "value": "string"
-                                    }
-                                  ]
-                                },
-                                "then": {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "/param",
-                                  "name": "wire-failure"
-                                },
-                                "otherwise": {
-                                  "op": "reject",
-                                  "path": "/error/param",
-                                  "reason": "provider error param requires a string or null",
-                                  "diagnostic": {
-                                    "code": "unsupported_capability",
-                                    "stage": "wire",
-                                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
-                                  }
-                                }
-                              },
-                              "otherwise": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "/param",
-                                "name": "wire-failure"
-                              }
-                            },
-                            "body": {
-                              "op": "literal",
-                              "value": true
-                            }
-                          }
+                        {
+                          "op": "literal",
+                          "value": "object"
                         }
-                      },
-                      "otherwise": {
-                        "op": "literal",
-                        "value": true
+                      ]
+                    },
+                    "then": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/response/error/type"
                       }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": false
                     }
-                  }
+                  },
+                  "schema": {
+                    "type": "string"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "provider error type requires a string"
+                },
+                {
+                  "path": "/response/error/code",
+                  "when": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "type",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/response/error"
+                          }
+                        },
+                        {
+                          "op": "literal",
+                          "value": "object"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/response/error/code"
+                      }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": false
+                    }
+                  },
+                  "schema": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "provider error code requires a string or null"
+                },
+                {
+                  "path": "/response/error/param",
+                  "when": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "type",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/response/error"
+                          }
+                        },
+                        {
+                          "op": "literal",
+                          "value": "object"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/response/error/param"
+                      }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": false
+                    }
+                  },
+                  "schema": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "code": "unsupported_capability",
+                  "reason": "provider error param requires a string or null"
                 }
               ]
             },
@@ -10705,12 +10312,7 @@
             {
               "action": "stream_fail",
               "error": "/response/error",
-              "allowBeforeStart": true,
-              "diagnostic": {
-                "code": "upstream_contract_violation",
-                "stage": "stream",
-                "suggestion": "correct the upstream stream or declared /type rule"
-              }
+              "allowBeforeStart": true
             }
           ],
           "error": [
@@ -11548,12 +11150,7 @@
                   "path": "/error"
                 }
               },
-              "allowBeforeStart": true,
-              "diagnostic": {
-                "code": "upstream_contract_violation",
-                "stage": "stream",
-                "suggestion": "correct the upstream stream or declared /type rule"
-              }
+              "allowBeforeStart": true
             },
             {
               "action": "stream_fail",
@@ -11569,12 +11166,7 @@
                   }
                 }
               },
-              "allowBeforeStart": true,
-              "diagnostic": {
-                "code": "upstream_contract_violation",
-                "stage": "stream",
-                "suggestion": "correct the upstream stream or declared /type rule"
-              }
+              "allowBeforeStart": true
             }
           ],
           "response.reasoning_summary_part.added": [

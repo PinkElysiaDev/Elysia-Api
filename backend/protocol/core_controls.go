@@ -11,6 +11,7 @@ type controlStepResult struct {
 	hasChanges       bool
 	changedReasoning bool
 	shouldStop       bool
+	shouldOmit       bool
 }
 
 func compileTypedControlSetter(root reflect.Type, path string) (func(any, JSONOutput, *valueReader) error, JSONType, error) {
@@ -28,10 +29,26 @@ func compileTypedControlSetter(root reflect.Type, path string) (func(any, JSONOu
 			return assignCoreValue(output, &document.(*Response).Model, reader)
 		}, AnyType, nil
 	}
+	if root == reflect.TypeFor[Response]() && path == "/usage" {
+		return func(document any, output JSONOutput, reader *valueReader) error {
+			return replaceControlUsage(output, &document.(*Response).Usage, reader)
+		}, ObjectType, nil
+	}
+	if root == reflect.TypeFor[Event]() && path == "/usage" {
+		return func(document any, output JSONOutput, reader *valueReader) error {
+			return replaceControlUsage(output, &document.(*Event).Usage, reader)
+		}, ObjectType, nil
+	}
+	if root == reflect.TypeFor[ResponseMetadata]() {
+		return compileMetadataControlSetter(path)
+	}
+	if root == reflect.TypeFor[Usage]() {
+		return compileUsageControlSetter(path)
+	}
 	return nil, "", fmt.Errorf("control update does not support %s field %s", root.Name(), path)
 }
 
-func applyControlSteps(state evaluation, conversion *CompiledConversion, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, steps []compiledControlStep) (controlStepResult, error) {
+func applyControlSteps(state evaluation, conversion *CompiledConversion, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, steps []compiledControlStep, owner *coreControlOptions) (controlStepResult, error) {
 	result := controlStepResult{}
 	for _, step := range steps {
 		if err := state.ctx.Err(); err != nil {
@@ -51,6 +68,20 @@ func applyControlSteps(state evaluation, conversion *CompiledConversion, documen
 			}
 		}
 		if diagnostic := step.diagnostic; diagnostic != nil {
+			declaration := diagnostic.declaration
+			if diagnostic.source != nil {
+				location, err := diagnostic.source.evaluate(state)
+				if err != nil {
+					return result, err
+				}
+				declaration.Path, err = readString(location)
+				if err != nil {
+					return result, err
+				}
+				if _, err := parsePointer(declaration.Path); err != nil {
+					return result, err
+				}
+			}
 			message, err := diagnostic.reason.evaluate(state)
 			if err != nil {
 				return result, err
@@ -59,9 +90,28 @@ func applyControlSteps(state evaluation, conversion *CompiledConversion, documen
 			if err != nil {
 				return result, err
 			}
-			if err := conversion.controlDiagnostic(rule, route, diagnostic.declaration, reason, sink); err != nil {
+			if err := conversion.controlDiagnostic(rule, route, declaration, reason, sink); err != nil {
 				return result, err
 			}
+		}
+		if step.shouldOmit {
+			result.shouldOmit = true
+			return result, nil
+		}
+		if step.each != nil {
+			changed, err := step.each.apply(state, conversion, document, route, rule, sink, owner)
+			if err != nil {
+				return result, err
+			}
+			result.hasChanges = result.hasChanges || changed
+		}
+		if step.auxiliary != nil {
+			options := auxiliaryConversionOptions{CoreVersion: owner.CoreVersion, Target: owner.Target, EncoderHash: owner.MappingHash, DecoderHash: owner.DecoderHash, PreserveNative: owner.PreserveNative, Disposition: *step.auxiliary}
+			changed, err := conversion.applyAuxiliaryDisposition(document.(*Event), route, rule, sink, options)
+			if err != nil {
+				return result, err
+			}
+			result.hasChanges = result.hasChanges || changed
 		}
 		values := make([]JSONOutput, len(step.updates))
 		for index, update := range step.updates {
@@ -167,8 +217,13 @@ func (conversion *CompiledConversion) applySelectedCoreControls(ctx context.Cont
 			return false, streamIssue(InvalidInput, "/schemaVersion", "core controls require their declared core version")
 		}
 		read = func(pointer []string) (JSONOutput, error) { return readCoreResponseOutput(current, pointer) }
+	case *Event:
+		if current.SchemaVersion != options.CoreVersion {
+			return false, streamIssue(InvalidInput, "/schemaVersion", "core controls require their declared core version")
+		}
+		read = func(pointer []string) (JSONOutput, error) { return readCoreEventOutput(current, pointer) }
 	default:
-		return false, fmt.Errorf("core controls require their compiled request or response")
+		return false, fmt.Errorf("core controls require their compiled core document")
 	}
 	limits := conversion.phaseLimits(ctx, rule.Phase)
 	ownerLimits := options.Limits
@@ -179,7 +234,20 @@ func (conversion *CompiledConversion) applySelectedCoreControls(ctx context.Cont
 	state := evaluation{ctx: ctx, inputReader: read, rootReader: read, context: contextValue, valueReader: &valueReader{},
 		objectReader: newPlanObjectReader(contextValue, objectReuseReads), bindings: make([]JSONOutput, options.bindingSlots), budget: &evaluationBudget{limits: limits, stepLimit: min(conversion.limits.Nodes, options.Limits.Nodes)}}
 	state.coreRequest, _ = document.(*Request)
-	result, err := applyControlSteps(state, conversion, document, route, rule, sink, options.steps)
+	if options.FrameUsage {
+		if facts := route.frameUsage; facts != nil && (facts.source != route.Source || facts.target != route.Target || facts.scope != route.Scope) {
+			return false, operationMetadataError("/frame/usage", "frame usage belongs to a different route or scope")
+		}
+		state.runtime.isBound, state.runtime.hasFrameUsage = true, route.frameUsage != nil
+		if route.frameUsage != nil {
+			var err error
+			state.runtime.frameUsage, err = route.frameUsage.forEvent(*document.(*Event))
+			if err != nil {
+				return false, err
+			}
+		}
+	}
+	result, err := applyControlSteps(state, conversion, document, route, rule, sink, options.steps, &options)
 	if err != nil {
 		var classified interface {
 			issue(Identity, Direction) ConversionIssue

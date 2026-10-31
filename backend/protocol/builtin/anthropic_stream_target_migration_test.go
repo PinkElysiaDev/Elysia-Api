@@ -20,12 +20,14 @@ func TestAnthropicPackageTargetStreamMigration(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, isPrepared := range []bool{false, true} {
-				input := events
+				beforeInput := events
+				afterInput := streamEventsAtVersion(events, p.ProtocolCoreVersion)
 				if isPrepared {
-					input = prepareTargetUsage(t, legacy, events, sample.Scope)
+					beforeInput = prepareLegacyTargetUsage(t, legacy, events, sample.Scope)
+					afterInput = prepareDeclaredTargetUsage(t, candidate, afterInput, sample.Scope)
 				}
-				before := encodeDeclaredTargetStream(t, legacy, input, sample, isPrepared)
-				after := encodeDeclaredTargetStream(t, candidate, streamEventsAtVersion(input, p.ProtocolCoreVersion), sample, isPrepared)
+				before := encodeDeclaredTargetStream(t, legacy, beforeInput, sample, isPrepared)
+				after := encodeDeclaredTargetStream(t, candidate, afterInput, sample, isPrepared)
 				if !bytes.Equal(before.Bytes(), after.Bytes()) {
 					t.Fatalf("target frames changed (prepared=%v):\nold: %s\nnew: %s", isPrepared, before.JSONString(), after.JSONString())
 				}
@@ -89,9 +91,11 @@ func TestAnthropicPackageTargetStreamContinuations(t *testing.T) {
 			if err := sample.Input.Decode(&events); err != nil {
 				t.Fatal(err)
 			}
-			events = prepareTargetUsage(t, legacy, fixture.transform(events), sample.Scope)
-			before := encodeDeclaredTargetStream(t, legacy, events, sample, true)
-			after := encodeDeclaredTargetStream(t, candidate, streamEventsAtVersion(events, p.ProtocolCoreVersion), sample, true)
+			events = fixture.transform(events)
+			beforeInput := prepareLegacyTargetUsage(t, legacy, events, sample.Scope)
+			afterInput := prepareDeclaredTargetUsage(t, candidate, streamEventsAtVersion(events, p.ProtocolCoreVersion), sample.Scope)
+			before := encodeDeclaredTargetStream(t, legacy, beforeInput, sample, true)
+			after := encodeDeclaredTargetStream(t, candidate, afterInput, sample, true)
 			if !bytes.Equal(before.Bytes(), after.Bytes()) {
 				t.Fatalf("continuation changed:\nold: %s\nnew: %s", before.JSONString(), after.JSONString())
 			}
@@ -140,7 +144,6 @@ func TestAnthropicPackageTargetResourceOrigin(t *testing.T) {
 }
 
 func TestAnthropicPackageFinalEventContract(t *testing.T) {
-	legacy := shippedProjectionProtocol(t, Anthropic)
 	candidate := compileBuiltinPackage(t, "anthropic")
 	for _, fixture := range []finalWireCase{
 		{"start", `{"type":"message_start","message":{"id":"r","model":"m","type":"message","role":"assistant","content":[],"usage":{"input_tokens":0,"output_tokens":0}}}`, acceptedFinalWire},
@@ -157,7 +160,7 @@ func TestAnthropicPackageFinalEventContract(t *testing.T) {
 		{"missing-stop-before-usage", `{"type":"message_delta","delta":{},"usage":null}`, "/delta/stop_reason"},
 		{"null-usage", `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":null}`, "/usage"},
 	} {
-		t.Run(fixture.name, func(t *testing.T) { checkFinalWireCase(t, legacy, candidate, p.EncodeEvent, fixture) })
+		t.Run(fixture.name, func(t *testing.T) { checkFinalWireCase(t, candidate, p.EncodeEvent, fixture) })
 	}
 }
 
@@ -218,10 +221,9 @@ func encodeDeclaredTargetStream(t *testing.T, compiled *p.Compiled, events []p.E
 	return output
 }
 
-// Existing bare encoder fixtures intentionally omit initial usage. Keep their
-// byte comparison, and separately validate final wire after the actual legacy
-// preparation rule; these are different boundaries, not changed expectations.
-func prepareTargetUsage(t *testing.T, target *p.Compiled, events []p.Event, scope p.Scope) []p.Event {
+// The historical baseline retains its own preparation policy. It is never
+// used to supply the new package's target envelope.
+func prepareLegacyTargetUsage(t *testing.T, target *p.Compiled, events []p.Event, scope p.Scope) []p.Event {
 	t.Helper()
 	source := shippedProjectionProtocol(t, Chat)
 	policy := p.DefaultConversionPolicy(target, source)
@@ -241,6 +243,31 @@ func prepareTargetUsage(t *testing.T, target *p.Compiled, events []p.Event, scop
 	prepared := make([]p.Event, len(events))
 	for index, event := range events {
 		prepared[index], err = conversion.Event(t.Context(), event, p.ConversionContext{Source: source.Identity(), Target: target.Identity(), Scope: scope}, &p.DiagnosticSink{})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return prepared
+}
+
+func prepareDeclaredTargetUsage(t *testing.T, target *p.Compiled, events []p.Event, scope p.Scope) []p.Event {
+	t.Helper()
+	source := compileBuiltinPackage(t, "openai-chat")
+	policy := declaredRulePolicy(t, target, source, "event-anthropic-usage-envelope", "compatible")
+	conversion, err := p.ResolveConversion(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := p.ConversionContext{Source: source.Identity(), Target: target.Identity(), Scope: scope, Transport: p.SSE}
+	prepared := make([]p.Event, len(events))
+	for index, event := range events {
+		// These direct encoder fixtures author one event per source frame.
+		// Real compound-frame fixtures bind the complete decoded batch instead.
+		frameRoute, err := conversion.WithFrameUsage(route, []p.Event{event})
+		if err != nil {
+			t.Fatal(err)
+		}
+		prepared[index], err = conversion.Event(t.Context(), event, frameRoute, &p.DiagnosticSink{})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -1,6 +1,6 @@
 # 三部分架构实施记录
 
-基线：`refactor/protocol-dsl`，`b2844846 / dev.101`。第一阶段提交为 `acc97556 / dev.102`；当前开发编译器为 `dev.103`，仅本地提交。新验收依据见[契约](protocol-three-part-contract.md)。
+基线：`refactor/protocol-dsl`，`b2844846 / dev.101`。第一阶段提交为 `acc97556 / dev.102`，第二阶段为 `1841b04b / dev.103`；当前开发编译器为 `dev.104`，仅本地提交。新验收依据见[契约](protocol-three-part-contract.md)。
 
 ## 基线留档
 
@@ -72,10 +72,53 @@ race 编译失败时系统可用物理内存约 8.7 GiB，提交额度占用约 
 
 本阶段沿用第一阶段已通过的前端与审计结果；最终新引擎切换仍需重新执行完整页面、审计、六目标构建和实际调用矩阵。性能收益等待功能完整后的正式测量。
 
+## 第三阶段：元数据、计量处置与真实接续
+
+- 四份 Mapping 接入 typed `core_controls` 的 metadata／usage 遍历、目标处置及 Anthropic 计数包络。普通元数据与辅助帧共享稳定的 `event-metadata` 规则 ID；严格拒绝、兼容告警和用户整条替换仍使用原策略入口。
+- `/frame/usage` 来自原始事件批次的数字观察。未知与零计数分开处理，按原顺序合并，复制前约束规模；不保存原始事件、attribution 或 billing。没有数值的帧不建立响应 map。目标包络只取必需主计数，不恢复先前明确省略的细分；原始上游记账独立保留。
+- Chat JSON／SSE 的 logprobs 统一为核心 token 数组，保留正文／拒绝节点归属、choice index 和 finish reason。未知 choice／概率成员继续受扩展保护；新增测试移除所有 Native 后重建，避免仅靠原样转发掩盖映射遗漏。
+- `track_array` 保存固定前缀摘要，`resume_tool` 接续已交付工具参数；Anthropic 工具与 thinking 原生帧后的语义修改已接通。占位 JSON 的替换在帧事务内提交，失败不污染后续状态。
+- Responses 文本 part、delta、done 与完整快照统一保存概率字段的存在性。之前 delta／done 无条件补 `[]`、最终快照却省略字段，会正确触发 Spec 的不一致拒绝；本轮修正 Mapping，没有放松外部校验。
+- 原始核心 JSON 的 `core_controls` 入口使用严格解码，防止规则重新编码时静默删除未知核心字段；typed 路径不增加这次解码。
+- 网关入站、候选准备、after 流校验、任务、health 与签名 probe 补齐可信执行事实。持久任务复用本地 ID／创建时间；Task 仅获准读取 operation 的 ID／开始时间，命名程序缓存同步隔离权限。
+- 新 Spec 统一完整官方端点与服务器 origin 的组合。显式迁移旧 baseURL 的说明已写入契约；旧配置与通用 URL 构造器没有自动改写。
+
+本阶段的表示与诊断说明：
+
+- Anthropic 响应块的 `cache_control` 没有官方输出字段证据，按未知扩展保护，不假造响应缓存能力；请求缓存语义保留。官方 SDK 类型及下载哈希保存在本地调查目录。
+- Responses 输出 logprobs 缺失属于现有客户端兼容范围；官方参考将该字段描述为数组。重建区分未出现、显式空数组和实际概率，正常原生帧仍保留原字节。
+- 最终请求的 thinking／output_config 错误指向真实 `/thinking`、`/output_config`；Chat 双上限冲突指向 `/max_tokens`。最终校验测试改为检查明确的拒绝码、方向与来源位置，不再比较旧错误文字、伪造核心路径或 `request.validation` 阶段。
+- Responses 既有 `response.failed.error` 对象／字符串兼容保留。对象成员检查改为显式条件分支，避免对字符串执行嵌套字段读取。
+
+验证证据仍位于 `.tmp-dev/protocol-three-part-2026-10-31/checks/`：
+
+| 记录 | 结果与范围 |
+|---|---|
+| `phase-three-protocol-all` | 核心协议包全量通过；builtin 发现字符串 error 条件错误及旧诊断断言，均已修正 |
+| `phase-three-builtin-confirm` | builtin 全量运行只剩一项新测试的错误码期望；按已声明的语义约束／外部结构边界分别固定期望 |
+| `phase-three-boundary-confirm` | 修正后的最终响应／请求／事件合同、签名 probe 定向复核全部通过；没有批量刷新输出快照 |
+| `phase-three-vet` | `go vet -p=1 ./...` 通过；采用同一组受限编译设置 |
+| `phase-three-server-constrained` | health、任务、收集／预览、网关源流定向测试通过；签名 probe 的直接 handler 夹具缺中间件 ID，已补齐并在上一行复核 |
+| `phase-three-activation-audit` | 四包正式 Verify 均完成；Gemini 全部通过，其余存在下表所列能力证据缺口。命令退出 0 仅表示审计正常执行，不表示四包均可激活 |
+| `phase-three-matrix-activation-gate` | 网关矩阵在正式激活验证阶段拒绝不完整的 Chat 能力证据，尚未进入上游调用 |
+
+系统剩余提交额度约 0.7 GiB 时，普通协议编译与网关测试编译分别发生内存不足／Windows errno 1455。核对后未发现本轮遗留 Go 进程，也没有终止用户进程或调整分页文件。测试最终使用 `-p=1`，编译器 `-c=1`，`GOMAXPROCS=1/2`、`GOGC=10/20`、`GOMEMLIMIT=256/384MiB` 完成相应复核；具体设置逐命令记录。这些结果只验证功能，不能用于计划要求的正式性能比较。
+
+正式激活审计的剩余项：
+
+| 默认包 | 检查数 | 未闭合证据 |
+|---|---:|---|
+| Chat | 44 | JSON 响应双向的 images、audio、documents |
+| Responses | 58 | JSON 响应双向的 tools.server、images、documents |
+| Anthropic | 55 | 请求双向的 reasoning.history_retention |
+| Gemini | 50 | 无；尚未替代四协议组合验收 |
+
+完整报告为 `phase-three-activation-reports.json`。已准备的 16 方向 JSON／SSE 网关矩阵暂存于 `pending-tests/protocol_package_matrix_test.go`，待上述能力实现和真实证据闭合后接入；不会伪造报告绕过激活，也不将这个门槛失败写成已完成网关验收。
+
 ## 尚未完成的门槛
 
-- Gemini／Responses 已接入双向流，但尚未完成全部跨协议 HTTP/Agent 组合验收；Chat 目标 logprobs、Anthropic 混合接续及 Responses 宿主工具原生事件还需闭合。
-- 跨协议 metadata、usage、错误及输出组织的默认策略尚未全部配置化；四份默认包的完整激活样例与组合证据仍需补齐。
+- 四协议已接入双向流，Chat 目标 logprobs 与 Anthropic 混合接续已有组件验收；Responses 服务端工具输出、跨协议父子输出组织及全部 HTTP/Agent 组合仍需闭合。
+- metadata／usage 默认处置已配置化；错误、签名、部分目标形状及请求策略仍需完成配置化。四份默认包的完整激活样例与组合证据未齐。
 - 新资源契约尚未覆盖所有保留状态；默认转换策略仍有供应商 Go 分支。
 - 生产预置仍走旧加载器；旧执行路径、自动修复绑定及旧格式执行尚未退役。
 - 四协议 16 方向实际调用、最终全量/静态/race/页面/六目标验收，以及三版本正式配对性能与火焰图尚未完成。

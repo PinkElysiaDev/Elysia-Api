@@ -353,8 +353,18 @@ func (check *capabilityCheck) resources(resources []Resource, path string) {
 
 func (check *capabilityCheck) metadataSnapshot(metadata []ResponseMetadata, path string) {
 	for index, field := range metadata {
+		check.logprobMetadata(field)
 		if field.Update != "" {
 			check.add(InvalidInput, fmt.Sprintf("%s/%d/update", path, index), "", "metadata snapshots cannot carry update instructions")
 		}
+	}
+}
+
+func (check *capabilityCheck) logprobMetadata(field ResponseMetadata) {
+	if check.target.coreSchemaVersion() != ProtocolCoreVersion || field.Name != "logprobs" {
+		return
+	}
+	if err := validateCoreLogprobs(field); err != nil {
+		check.add(InvalidInput, field.Path, "", err.Error())
 	}
 }

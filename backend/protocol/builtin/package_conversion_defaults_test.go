@@ -34,6 +34,11 @@ func TestPackageDeclaredRequestDefaults(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				absent := &p.Request{SchemaVersion: p.ProtocolCoreVersion}
+				absentSink := &p.DiagnosticSink{}
+				if _, err := conversion.Request(t.Context(), absent, p.ConversionContext{Source: source.Identity(), Target: target.Identity()}, absentSink); err != nil || len(absentSink.Issues()) != 0 {
+					t.Fatal("absent safety settings triggered a disposition", absentSink.Issues(), err)
+				}
 				request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Parameters: p.Object{"gemini_safety_settings": testValue(t, `[{"category":"HARM_CATEGORY_HARASSMENT","threshold":"OFF"}]`)}}
 				sink := &p.DiagnosticSink{}
 				result, err := conversion.Request(t.Context(), request, p.ConversionContext{Source: source.Identity(), Target: target.Identity()}, sink)

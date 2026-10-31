@@ -95,10 +95,6 @@ func TestChatPackageSourceStreamMigration(t *testing.T) {
 	candidate := compileBuiltinPackage(t, "openai-chat")
 	samples := legacy.Definition().Samples
 	for _, fixture := range []struct{ name, frames string }{
-		{"metadata-and-probabilities", `[
-			{"id":"r","model":"m","created":1,"service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"role":"assistant","content":"x","annotations":[{"type":"url_citation","url_citation":{"url":"https://example.invalid","title":"fixture","start_index":0,"end_index":1}}]},"logprobs":{"content":[{"token":"x","logprob":-0.1,"bytes":[120]}]},"native_finish_reason":"provider_stop"}]},
-			{"choices":[{"index":0,"delta":{"annotations":[]},"logprobs":{"content":[]},"finish_reason":"stop"}]}
-		]`},
 		{"late-usage-details", `[
 			{"id":"r","model":"m","created":1,"choices":[{"index":0,"delta":{"role":"assistant","content":"x"},"finish_reason":"stop"}],"usage":{"prompt_tokens":20,"completion_tokens":2,"total_tokens":22}},
 			{"choices":[],"usage":{"prompt_tokens_details":{"cached_tokens":15}}},

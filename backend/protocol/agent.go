@@ -166,7 +166,7 @@ func (compiled *Compiled) BuildAgentParameters(ctx context.Context, preferences 
 	}
 	var output Value
 	if compiled.packagePlan != nil {
-		output, err = compiled.executePackageOperationPlan(ctx, *compiled.agentMapping, EncodeRequest, "/mapping/agent/parameters", input, Value{raw: "null"}, compiledWireContract{}, compiledWireContract{})
+		output, err = compiled.executePackageOperationPlan(ctx, *compiled.agentMapping, EncodeRequest, "/mapping/agent/parameters", input, Value{raw: "null"}, compiledWireContract{}, compiledWireContract{}, EvaluationContext{})
 	} else {
 		output, err = compiled.executeOperationMapping(ctx, *compiled.agentMapping, EncodeRequest, "/agent/parameters", input, EvaluationContext{})
 	}

@@ -27,7 +27,11 @@ func (s *Server) collectProtocolGeneration(ctx context.Context, candidate gatewa
 	}
 	defer s.protocolUses.acquire(candidate.binding.ProtocolID, candidate.compiled.Hash())()
 	for attempt := 0; ; attempt++ {
-		result, err := s.collectProtocolGenerationAttempt(ctx, candidate, request, record, onText)
+		options, err := generationOperationContext(record)
+		if err != nil {
+			return nil, err
+		}
+		result, err := s.collectProtocolGenerationAttempt(ctx, candidate, request, record, onText, options)
 		if err == nil || ctx.Err() != nil || attempt == len(generationRetryDelays) || !canRetryGeneration(err) {
 			return result, err
 		}
@@ -45,7 +49,16 @@ func (s *Server) collectProtocolGeneration(ctx context.Context, candidate gatewa
 	}
 }
 
-func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate gatewayCandidate, request *protocol.Request, record *usageRecord, onText func(protocol.NodeKind, string)) (*protocol.Response, error) {
+// Bind a real generation attempt before any preparation that executes Mapping.
+func generationOperationContext(record *usageRecord) (protocol.EvaluationContext, error) {
+	if record != nil {
+		return (protocol.EvaluationContext{}).WithOperation(record.RequestID, record.StartedAt.Unix())
+	}
+	started := time.Now()
+	return (protocol.EvaluationContext{}).WithOperation(usageRequestID(started), started.Unix())
+}
+
+func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate gatewayCandidate, request *protocol.Request, record *usageRecord, onText func(protocol.NodeKind, string), options protocol.EvaluationContext) (*protocol.Response, error) {
 	if record != nil {
 		record.UpstreamHTTPStatus = 0
 		record.TransportFailure = nil
@@ -63,18 +76,8 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if record != nil {
 		s.estimateGatewayAttempt(record, request)
 	}
-	var operationID string
-	var startedAt time.Time
-	if record != nil {
-		operationID, startedAt = record.RequestID, record.StartedAt
-	} else {
-		startedAt = time.Now()
-		operationID = usageRequestID(startedAt)
-	}
-	options, err := (protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}).WithOperation(operationID, startedAt.Unix())
-	if err != nil {
-		return nil, err
-	}
+	options.InterleavedThinking, options.Scope = protocol.OperationInterleavedThinking(candidate.operation), candidate.scope
+	options.State, options.Diagnostics = protocol.NewEvaluationState(), &protocol.DiagnosticSink{}
 	defer options.State.Release()
 	defer func() {
 		if record != nil {

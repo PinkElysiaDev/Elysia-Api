@@ -102,3 +102,86 @@ func TestDeliveredTextResumesOnlyCommittedState(t *testing.T) {
 		t.Fatal("schema rejection was missed before the lifecycle observer")
 	}
 }
+
+func TestDeliveredToolResumesJSONAndPlaceholder(t *testing.T) {
+	for _, fixture := range []struct {
+		name, prefix, snapshot, suffix string
+		isSnapshot                     bool
+	}{
+		{"partial-json", `{"n":`, `{"n":9007199254740993}`, `9007199254740993}`, true},
+		{"empty-placeholder", "", "", "", false},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			document := toolStreamPackage(t)
+			document.Mapping.Native.Preserve = false
+			start := &document.Spec.Documents["client-event"].Stream.Events[string(packageToolStarted)][0]
+			start.Payload = &ProtocolStreamValueSpec{Path: "/input"}
+			start.Encoding, start.Placeholder = "value", true
+			mapping := document.Mapping.Directions[EncodeEvent]
+			observe := objectExpression(map[string]Expression{
+				"kind": literalExpression(JSONInput), "callId": literalExpression("call"), "text": readExpression("input", "/delta"),
+				"snapshot": literalExpression(fixture.isSnapshot), "done": literalExpression(true), "emit": literalExpression(true),
+			})
+			mapping.Program = objectExpression(map[string]Expression{
+				"kind": literalExpression(packageToolDelta), "item_id": literalExpression("wire"),
+				"response_id": readExpression("input", "/responseId"), "seq": readExpression("input", "/sequence"),
+				"arguments": {Op: "track_tool", Name: "arguments", Source: expressionPointer(literalExpression("target")), Body: &observe},
+			})
+			mapping.Program = Expression{Op: "let", Name: "resumed", Source: &Expression{
+				Op: "resume_tool", Namespace: "item", Name: "arguments", Source: expressionPointer(literalExpression("target")), Body: expressionPointer(literalExpression("wire")),
+			}, Body: expressionPointer(mapping.Program)}
+			mapping.Effects = []ProtocolSemanticEffect{{ID: "response", Kind: "emit", Path: "/responseId", Target: "/response_id"}}
+			document.Mapping.Directions[EncodeEvent] = mapping
+			compiled := compilePackageForTest(t, document)
+			validation, err := compiled.NewWireStreamValidation(Scope{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, frame := range []Value{
+				packageStreamFrame(ResponseStarted, 0, ""),
+				packageStreamFrame(packageToolStarted, 1, `,"item_id":"wire","name":"lookup","call_id":"call","input":{}`),
+				packageToolDeltaFrame(2, "wire", fixture.prefix),
+			} {
+				if err := validation.Consume(t.Context(), frame); err != nil {
+					t.Fatal(err)
+				}
+				if err := validation.CommitDelivery(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			options := (EvaluationContext{State: NewEvaluationState()}).WithOutputStream(validation)
+			defer options.State.Release()
+			event := Event{SchemaVersion: compiled.CoreVersion(), Type: ItemDelta, ResponseID: StringValue("r"), ItemID: StringValue("target"), Sequence: coreInteger(3), Delta: StringValue(`{"changed":1}`)}
+			if !fixture.isSnapshot {
+				event.Delta = StringValue("invalid JSON")
+			}
+			if _, err := compiled.EncodeEvent(t.Context(), event, options); err == nil || options.State.packageStateBytes != 0 {
+				t.Fatal("failed continuation committed the argument prefix", err)
+			}
+			event.Delta = StringValue(fixture.snapshot)
+			wire, err := compiled.EncodeEvent(t.Context(), event, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fields, _ := wire.ReadObject()
+			if !fields["arguments"].IsString(fixture.suffix) {
+				t.Fatal("continuation repeated or changed the delivered prefix", wire)
+			}
+			item := validation.packageStream.entities[validation.packageStream.contract.namespaceSlots["item"]]["wire"]
+			prefix := fixture.prefix
+			if prefix == "" {
+				prefix = "{}"
+			}
+			if item.json.String() != prefix || item.isPlaceholder != (fixture.prefix == "") {
+				t.Fatal("continuation changed the independent wire state")
+			}
+			retained := options.State.packageStates[moduleStateKey{compiled: compiled, direction: EncodeEvent}]
+			if retained.primitives.toolBuffered != 0 {
+				t.Fatal("completed argument tracker retained its prefix")
+			}
+			if _, err := compiled.EncodeEvent(t.Context(), event, options); err == nil {
+				t.Fatal("continuation reinitialized an existing argument tracker")
+			}
+		})
+	}
+}

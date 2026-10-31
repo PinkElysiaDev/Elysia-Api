@@ -58,25 +58,6 @@ type auxiliaryConversionOptions struct {
 	Disposition    ProtocolAuxiliaryDisposition `json:"auxiliary"`
 }
 
-func (compiled *Compiled) compileAuxiliaryDefault(declaration ProtocolConversionDefault) (ConversionRule, error) {
-	if declaration.Phase != ConversionEvent || declaration.Steps != nil || declaration.Collection || declaration.Match.NodeKind != "" {
-		return ConversionRule{}, fmt.Errorf("auxiliary disposition requires the event phase, without control steps or collection")
-	}
-	encoder, hasEncoder := compiled.mappings[EncodeEvent]
-	decoder, hasDecoder := compiled.mappings[DecodeEvent]
-	if !hasEncoder || !hasDecoder {
-		return ConversionRule{}, fmt.Errorf("auxiliary disposition requires paired event directions")
-	}
-	options := auxiliaryConversionOptions{CoreVersion: compiled.CoreVersion(), Target: compiled.identity, EncoderHash: encoder.definitionHash, DecoderHash: decoder.definitionHash, PreserveNative: compiled.native.Preserve, Disposition: *declaration.Auxiliary}
-	value, err := EncodeValue(options)
-	if err != nil {
-		return ConversionRule{}, err
-	}
-	rule := ConversionRule{ID: declaration.ID, Order: declaration.Order, Enabled: declaration.Enabled, Phase: declaration.Phase, Match: declaration.Match, Action: "auxiliary_event", Value: value}
-	_, err = compileAuxiliaryOption(rule)
-	return rule, err
-}
-
 func compileAuxiliaryOption(rule ConversionRule) (conversionOption, error) {
 	if rule.Phase != ConversionEvent || rule.Expression != nil || rule.Path != "" || rule.Match.NodeKind != "" {
 		return conversionOption{}, fmt.Errorf("auxiliary_event requires a complete event declaration")
@@ -95,15 +76,22 @@ func compileAuxiliaryOption(rule ConversionRule) (conversionOption, error) {
 }
 
 func (conversion *CompiledConversion) applyAuxiliaryEvent(event *Event, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (bool, error) {
+	if event.auxiliary == nil {
+		return false, nil
+	}
+	options, err := readConversionOption[auxiliaryConversionOptions](conversion, rule)
+	if err != nil {
+		return false, err
+	}
+	return conversion.applyAuxiliaryDisposition(event, route, rule, sink, options)
+}
+
+func (conversion *CompiledConversion) applyAuxiliaryDisposition(event *Event, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, options auxiliaryConversionOptions) (bool, error) {
 	proof := event.auxiliary
 	if proof == nil {
 		return false, nil
 	}
 	if err := restoreAuxiliaryEvent(event, proof, nil, false); err != nil {
-		return false, err
-	}
-	options, err := readConversionOption[auxiliaryConversionOptions](conversion, rule)
-	if err != nil {
 		return false, err
 	}
 	if options.Target != route.Target || proof.compiled.identity != route.Source || proof.direction != DecodeEvent || event.SchemaVersion != options.CoreVersion {

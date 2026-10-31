@@ -33,6 +33,8 @@ type evaluationRuntime struct {
 	outputStream          *packageStreamValidation
 	operation             *operationMetadata
 	emissionOffset        int
+	frameUsage            *Usage
+	hasFrameUsage         bool
 }
 
 func bindEvaluationRuntime(compiled *Compiled, direction Direction, options EvaluationContext) evaluationRuntime {

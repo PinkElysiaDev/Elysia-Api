@@ -88,6 +88,7 @@ type ConversionSelection struct {
 }
 
 type ConversionContext struct {
+	frameUsage        *frameUsageObservation
 	fieldObservations map[string]fieldObservation
 	// ResponseWire is trusted delivery metadata, unavailable to mapping JSON.
 	ResponseWire        bool                   `json:"-"`
@@ -105,6 +106,7 @@ type ConversionContext struct {
 }
 
 type CompiledConversion struct {
+	needsFrameUsage       bool
 	phases                map[ConversionPhase][]ConversionRule
 	ownedPhases           map[ConversionPhase]bool
 	options               map[string]conversionOption
@@ -327,6 +329,10 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 			continue
 		}
 		c.phases[rule.Phase] = append(c.phases[rule.Phase], rule)
+		if rule.Action == "core_controls" && rule.Phase == ConversionEvent {
+			option := c.options[rule.ID].value.(coreControlOptions)
+			c.needsFrameUsage = c.needsFrameUsage || option.FrameUsage
+		}
 		c.ownedPhases[rule.Phase] = c.ownedPhases[rule.Phase] && state.accepts(rule.Phase, rule)
 	}
 	markRequestPartitions(c.phases[ConversionRequest])
@@ -474,6 +480,7 @@ func (c *CompiledConversion) Wire(ctx context.Context, body []byte, route Conver
 }
 
 func (c *CompiledConversion) WithVerificationContext(route ConversionContext) *CompiledConversion {
+	route.frameUsage = nil
 	// Observed response fields belong to a single attempt, never a binding proof.
 	route.ResponseModel = nil
 	route.fieldObservations = nil

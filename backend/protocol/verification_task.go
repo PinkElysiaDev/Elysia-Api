@@ -6,9 +6,11 @@ import (
 )
 
 func executeTaskSample(ctx context.Context, compiled *Compiled, sample TaskSample) (Value, error) {
+	options := newVerificationContext(Scope{}, nil)
+	defer options.State.Release()
 	switch sample.Kind {
 	case "decode":
-		update, err := compiled.DecodeTaskUpdate(ctx, sample.Operation, sample.Purpose, sample.Input)
+		update, err := compiled.DecodeTaskUpdate(ctx, sample.Operation, sample.Purpose, sample.Input, options)
 		if err != nil {
 			return Value{}, err
 		}
@@ -18,7 +20,7 @@ func executeTaskSample(ctx context.Context, compiled *Compiled, sample TaskSampl
 		if err := decodeContract(sample.Input.Bytes(), &receipt); err != nil {
 			return Value{}, err
 		}
-		return compiled.EncodeTaskReceipt(ctx, sample.Operation, sample.Purpose, receipt)
+		return compiled.EncodeTaskReceipt(ctx, sample.Operation, sample.Purpose, receipt, options)
 	case "control":
 		var input struct {
 			ID string `json:"id"`
@@ -26,7 +28,7 @@ func executeTaskSample(ctx context.Context, compiled *Compiled, sample TaskSampl
 		if err := decodeContract(sample.Input.Bytes(), &input); err != nil {
 			return Value{}, err
 		}
-		control, err := compiled.EncodeTaskControl(ctx, sample.Operation, sample.Purpose, input.ID)
+		control, err := compiled.EncodeTaskControl(ctx, sample.Operation, sample.Purpose, input.ID, options)
 		if err != nil {
 			return Value{}, err
 		}
@@ -40,6 +42,8 @@ func verifyTaskSamples(ctx context.Context, compiled *Compiled, report *Verifica
 	if len(compiled.taskMappings) == 0 {
 		return false
 	}
+	options := newVerificationContext(Scope{}, nil)
+	defer options.State.Release()
 	coverage := map[string]map[string]bool{}
 	samplePath, operationPath := "/taskSamples/", "/operations/"
 	if compiled.packagePlan != nil {
@@ -56,7 +60,7 @@ func verifyTaskSamples(ctx context.Context, compiled *Compiled, report *Verifica
 		// Encoding a local ID/state must remain decodable. This prevents a
 		// constant receipt from passing fixtures while hiding the actual job ID.
 		if err == nil && sample.Kind == "encode" {
-			decoded, issues := compiled.ConvertTask(ctx, sample.Operation, "decode", sample.Purpose, output)
+			decoded, issues := compiled.ConvertTask(ctx, sample.Operation, "decode", sample.Purpose, output, options)
 			if issues != nil {
 				err = issues
 			} else if !equalValues(decoded, sample.Input) {

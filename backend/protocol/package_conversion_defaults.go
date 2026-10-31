@@ -16,12 +16,16 @@ type ProtocolConversionDefault struct {
 	Auxiliary  *ProtocolAuxiliaryDisposition `json:"auxiliary,omitempty"`
 	Control    *ProtocolControlDisposition   `json:"control,omitempty"`
 	Collection bool                          `json:"collection,omitempty"`
+	FrameUsage bool                          `json:"frameUsage,omitempty"`
 }
 
 type coreControlOptions struct {
 	CoreVersion    int                   `json:"coreVersion"`
 	Target         Identity              `json:"target"`
 	MappingHash    string                `json:"mappingHash"`
+	DecoderHash    string                `json:"decoderHash,omitempty"`
+	PreserveNative bool                  `json:"preserveNative,omitempty"`
+	FrameUsage     bool                  `json:"frameUsage,omitempty"`
 	Limits         Limits                `json:"limits"`
 	ExplicitLimits bool                  `json:"explicitLimits"`
 	Phase          ConversionPhase       `json:"phase"`
@@ -56,7 +60,13 @@ func (compiled *Compiled) compileConversionDefaults(mapping ProtocolMapping, com
 			return fmt.Errorf("%s/order: ambiguous rule order", path)
 		}
 		orders[order] = declaration.Enabled || orders[order]
+		if declaration.FrameUsage && declaration.Phase != ConversionEvent {
+			return fmt.Errorf("%s/frameUsage: requires event controls", path)
+		}
 		if declaration.Control != nil {
+			if declaration.FrameUsage {
+				return fmt.Errorf("%s/frameUsage: control dispositions do not consume usage", path)
+			}
 			rule, err := compiled.compileControlDefault(declaration)
 			if err != nil {
 				return locateMappingError(path, err)
@@ -65,12 +75,10 @@ func (compiled *Compiled) compileConversionDefaults(mapping ProtocolMapping, com
 			continue
 		}
 		if declaration.Auxiliary != nil {
-			rule, err := compiled.compileAuxiliaryDefault(declaration)
-			if err != nil {
-				return locateMappingError(path, err)
+			if declaration.Steps != nil || declaration.Collection {
+				return fmt.Errorf("%s/auxiliary: shorthand cannot also declare steps or collection", path)
 			}
-			compiled.packagePlan.conversionDefaults = append(compiled.packagePlan.conversionDefaults, rule)
-			continue
+			declaration.Steps = []ProtocolControlStep{{Auxiliary: declaration.Auxiliary}}
 		}
 		root, err := coreControlRoot(declaration.Phase)
 		if err != nil {
@@ -84,7 +92,7 @@ func (compiled *Compiled) compileConversionDefaults(mapping ProtocolMapping, com
 		references := map[string]Expression{}
 		previous := compiler.mappingReferences
 		compiler.mappingReferences = references
-		steps, err := compileTypedControlSteps(declaration.Steps, compiler, path+"/steps", false, root)
+		steps, err := compileConversionControlSteps(declaration.Steps, compiler, path+"/steps", root, declaration.FrameUsage)
 		compiler.mappingReferences = previous
 		if err != nil {
 			return err
@@ -92,7 +100,10 @@ func (compiled *Compiled) compileConversionDefaults(mapping ProtocolMapping, com
 		if len(steps) == 0 {
 			return fmt.Errorf("%s/steps: requires a control step", path)
 		}
-		options := coreControlOptions{CoreVersion: compiled.CoreVersion(), Target: compiled.identity, MappingHash: program.definitionHash, Limits: compiler.limits, ExplicitLimits: compiled.explicitLimits,
+		if controlsUseAuxiliary(steps) && compiled.mappings[DecodeEvent].definitionHash == "" {
+			return fmt.Errorf("%s: auxiliary disposition requires paired event mappings", path)
+		}
+		options := coreControlOptions{CoreVersion: compiled.CoreVersion(), Target: compiled.identity, MappingHash: program.definitionHash, DecoderHash: compiled.mappings[eventDecoder(direction)].definitionHash, PreserveNative: compiled.native.Preserve, FrameUsage: declaration.FrameUsage, Limits: compiler.limits, ExplicitLimits: compiled.explicitLimits,
 			Phase: declaration.Phase, Steps: declaration.Steps, Expressions: references, Collection: declaration.Collection,
 			steps: steps, bindingSlots: controlBindingSlots(steps), hasContext: controlsReadContext(steps)}
 		value, err := EncodeValue(options)
@@ -119,8 +130,10 @@ func coreControlRoot(phase ConversionPhase) (reflect.Type, error) {
 		return reflect.TypeFor[Request](), nil
 	case ConversionResponse:
 		return reflect.TypeFor[Response](), nil
+	case ConversionEvent:
+		return reflect.TypeFor[Event](), nil
 	default:
-		return nil, fmt.Errorf("core controls require request or response phase")
+		return nil, fmt.Errorf("core controls require request, response or event phase")
 	}
 }
 
@@ -148,6 +161,9 @@ func compileCoreControlOption(rule ConversionRule, limits Limits) (conversionOpt
 	if options.CoreVersion != ProtocolCoreVersion || options.Target.DefinitionID == "" || options.MappingHash == "" || options.Phase != rule.Phase || len(options.Steps) == 0 || options.Collection && options.Phase != ConversionResponse {
 		return conversionOption{}, fmt.Errorf("core controls require a pinned target, matching phase and nonempty steps")
 	}
+	if options.FrameUsage && options.Phase != ConversionEvent {
+		return conversionOption{}, fmt.Errorf("frame usage requires event controls")
+	}
 	if err := options.Limits.Validate(); err != nil {
 		return conversionOption{}, err
 	}
@@ -156,9 +172,12 @@ func compileCoreControlOption(rule ConversionRule, limits Limits) (conversionOpt
 		return conversionOption{}, err
 	}
 	compiler := newExpressionCompiler(intersectControlLimits(limits, options.Limits), options.Expressions)
-	options.steps, err = compileTypedControlSteps(options.Steps, compiler, "/rules/"+rule.ID+"/value/steps", false, root)
+	options.steps, err = compileConversionControlSteps(options.Steps, compiler, "/rules/"+rule.ID+"/value/steps", root, options.FrameUsage)
 	if err != nil {
 		return conversionOption{}, err
+	}
+	if controlsUseAuxiliary(options.steps) && options.DecoderHash == "" {
+		return conversionOption{}, fmt.Errorf("auxiliary disposition requires a pinned decoder mapping")
 	}
 	for name := range options.Expressions {
 		if !compiler.used[name] {
@@ -168,6 +187,15 @@ func compileCoreControlOption(rule ConversionRule, limits Limits) (conversionOpt
 	options.bindingSlots = controlBindingSlots(options.steps)
 	options.hasContext = controlsReadContext(options.steps)
 	return conversionOption{raw: rule.Value, value: options}, nil
+}
+
+func controlsUseAuxiliary(steps []compiledControlStep) bool {
+	for _, step := range steps {
+		if step.auxiliary != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func intersectControlLimits(left, right Limits) Limits {
@@ -206,7 +234,10 @@ func controlsReadContext(steps []compiledControlStep) bool {
 		return false
 	}
 	for _, step := range steps {
-		if reads(step.when) || step.diagnostic != nil && reads(step.diagnostic.reason) {
+		if step.each != nil && controlsReadContext(step.each.steps) {
+			return true
+		}
+		if reads(step.when) || step.diagnostic != nil && (reads(step.diagnostic.reason) || reads(step.diagnostic.source)) {
 			return true
 		}
 		for _, update := range step.updates {

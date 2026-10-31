@@ -54,7 +54,7 @@ func (compiled *Compiled) compilePackageTaskMappings(spec ProtocolSpec, mapping 
 			path := "/mapping/operations/" + name + "/task/" + item.kind
 			references := map[string]Expression{}
 			expressions.mappingReferences = references
-			plan, err := expressions.compilePlan(item.program, path, expressionScope{}, 1)
+			plan, err := expressions.compilePlan(item.program, path, expressionScope{canReadOperation: true}, 1)
 			expressions.mappingReferences = nil
 			if err != nil {
 				return err
@@ -82,7 +82,7 @@ func (compiled *Compiled) compilePackageTaskMappings(spec ProtocolSpec, mapping 
 	return compiled.checkTaskSamples(mapping.TaskSamples)
 }
 
-func (compiled *Compiled) executePackageTask(ctx context.Context, operation, kind, purpose string, mapping compiledMapping, input Value) (Value, error) {
+func (compiled *Compiled) executePackageTask(ctx context.Context, operation, kind, purpose string, mapping compiledMapping, input Value, options EvaluationContext) (Value, error) {
 	contracts, exists := compiled.packagePlan.taskContracts[operation][purpose]
 	if !exists {
 		return Value{}, fmt.Errorf("task purpose has no declared operation")
@@ -95,11 +95,11 @@ func (compiled *Compiled) executePackageTask(ctx context.Context, operation, kin
 	} else if kind == "encode" {
 		target = contracts.response
 	}
-	contextValue, err := EncodeValue(Object{"operation": StringValue(purpose)})
+	contextValue, err := EncodeValue(options.Values)
 	if err != nil {
 		return Value{}, err
 	}
-	output, err := compiled.executePackageOperationPlan(ctx, mapping, direction, path, input, contextValue, source, target)
+	output, err := compiled.executePackageOperationPlan(ctx, mapping, direction, path, input, contextValue, source, target, options)
 	if err != nil || kind != "control" || contracts.request.contextValidator == nil {
 		return output, err
 	}

@@ -92,7 +92,8 @@ func (compiled *Compiled) checkTaskSamples(samples []TaskSample) error {
 
 // ConvertTask uses the compiled mapping evaluator shared with all adapters.
 // Purpose is gateway-owned metadata and cannot be supplied by a client body.
-func (compiled *Compiled) ConvertTask(ctx context.Context, operation, kind, purpose string, input Value) (Value, error) {
+// Options carry the same bound execution facts across the durable task phases.
+func (compiled *Compiled) ConvertTask(ctx context.Context, operation, kind, purpose string, input Value, options EvaluationContext) (Value, error) {
 	mapping, exists := compiled.taskMappings[operation][kind]
 	if !exists {
 		return Value{}, fmt.Errorf("task mapping is unavailable")
@@ -101,16 +102,18 @@ func (compiled *Compiled) ConvertTask(ctx context.Context, operation, kind, purp
 	if kind == "decode" {
 		direction = DecodeResponse
 	}
+	options.Values = copyObject(options.Values)
+	options.Values["operation"] = StringValue(purpose)
 	if compiled.packagePlan != nil {
-		return compiled.executePackageTask(ctx, operation, kind, purpose, mapping, input)
+		return compiled.executePackageTask(ctx, operation, kind, purpose, mapping, input, options)
 	}
-	return compiled.executeOperationMapping(ctx, mapping, direction, "/operations/"+operation+"/task/"+kind, input, EvaluationContext{Values: Object{"operation": StringValue(purpose)}})
+	return compiled.executeOperationMapping(ctx, mapping, direction, "/operations/"+operation+"/task/"+kind, input, options)
 }
 
 // DecodeTaskUpdate validates provider state without inventing identities or
 // treating missing usage as observed zero. State transitions are checked later.
-func (compiled *Compiled) DecodeTaskUpdate(ctx context.Context, operation, purpose string, input Value) (JobUpdate, error) {
-	value, err := compiled.ConvertTask(ctx, operation, "decode", purpose, input)
+func (compiled *Compiled) DecodeTaskUpdate(ctx context.Context, operation, purpose string, input Value, options EvaluationContext) (JobUpdate, error) {
+	value, err := compiled.ConvertTask(ctx, operation, "decode", purpose, input, options)
 	var update JobUpdate
 	if err != nil {
 		return update, err
@@ -144,7 +147,7 @@ func checkTaskUpdate(update JobUpdate, isReceipt bool) error {
 // EncodeTaskReceipt exposes the gateway identity in the declared client shape.
 // Upstream account identities, pinned credentials and internal lease data stay
 // outside this mapping input.
-func (compiled *Compiled) EncodeTaskReceipt(ctx context.Context, operation, purpose string, receipt JobUpdate) (Value, error) {
+func (compiled *Compiled) EncodeTaskReceipt(ctx context.Context, operation, purpose string, receipt JobUpdate, options EvaluationContext) (Value, error) {
 	if err := checkTaskUpdate(receipt, true); err != nil {
 		return Value{}, err
 	}
@@ -152,16 +155,16 @@ func (compiled *Compiled) EncodeTaskReceipt(ctx context.Context, operation, purp
 	if err != nil {
 		return Value{}, err
 	}
-	return compiled.ConvertTask(ctx, operation, "encode", purpose, value)
+	return compiled.ConvertTask(ctx, operation, "encode", purpose, value, options)
 }
 
 // EncodeTaskControl encodes a fixed provider operation using its upstream ID.
-func (compiled *Compiled) EncodeTaskControl(ctx context.Context, operation, purpose, id string) (TaskControl, error) {
+func (compiled *Compiled) EncodeTaskControl(ctx context.Context, operation, purpose, id string, options EvaluationContext) (TaskControl, error) {
 	input, err := EncodeValue(Object{"id": StringValue(id)})
 	if err != nil {
 		return TaskControl{}, err
 	}
-	output, err := compiled.ConvertTask(ctx, operation, "control", purpose, input)
+	output, err := compiled.ConvertTask(ctx, operation, "control", purpose, input, options)
 	var control TaskControl
 	if err != nil {
 		return control, err

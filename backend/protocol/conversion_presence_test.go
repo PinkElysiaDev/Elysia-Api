@@ -58,6 +58,27 @@ func TestConversionPresenceKeepsRawWireAndErrorOrder(t *testing.T) {
 			t.Fatal("unmatched rule changed the wire or triggered strict decoding", output, err)
 		}
 	}
+	for _, phase := range []ConversionPhase{ConversionResponse, ConversionEvent} {
+		for _, present := range []bool{false, true} {
+			document := eventProtocolPackage(t)
+			document.Mapping.ConversionDefaults = []ProtocolConversionDefault{{ID: "core-fields", Order: 1, Enabled: true, Phase: phase,
+				Match: ConversionMatch{Path: "/future", Present: boolPtr(present)}, Steps: []ProtocolControlStep{{Set: map[string]Expression{"/usage": {Op: "omit"}}}}}}
+			compiled := compilePackageForTest(t, document)
+			conversion, err := ResolveConversion(DefaultConversionPolicy(compiled, compiled))
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw := Value{raw: `{"schemaVersion":2,"future":true}`}
+			output, err := conversion.ApplyValue(t.Context(), phase, raw, ConversionContext{Source: compiled.Identity(), Target: compiled.Identity()}, nil)
+			if present {
+				if err == nil || !strings.Contains(err.Error(), "unknown field") {
+					t.Fatal("core projection silently removed an unknown field", phase, err)
+				}
+			} else if err != nil || output != raw {
+				t.Fatal("unmatched core projection changed its raw boundary", phase, output, err)
+			}
+		}
+	}
 }
 
 func TestOwnedPresenceConversionBoundaries(t *testing.T) {

@@ -14,20 +14,22 @@ func verifyTaskCombination(ctx context.Context, ingress, upstream *Compiled, cap
 		report.Issues = append(report.Issues, proof.Issues...)
 		return
 	}
+	options := newVerificationContext(Scope{}, nil)
+	defer options.State.Release()
 	for _, sample := range upstream.verificationTaskSamples() {
 		if sample.Kind != "decode" {
 			continue
 		}
-		update, err := upstream.DecodeTaskUpdate(ctx, sample.Operation, sample.Purpose, sample.Input)
+		update, err := upstream.DecodeTaskUpdate(ctx, sample.Operation, sample.Purpose, sample.Input, options)
 		if err != nil {
 			continue
 		} // Own-flow proof already reports decoding errors.
 		isPassed := true
 		for name := range ingress.taskMappings {
-			wire, err := ingress.EncodeTaskReceipt(ctx, name, sample.Purpose, update)
+			wire, err := ingress.EncodeTaskReceipt(ctx, name, sample.Purpose, update, options)
 			if err == nil {
 				var decoded JobUpdate
-				decoded, err = ingress.DecodeTaskUpdate(ctx, name, sample.Purpose, wire)
+				decoded, err = ingress.DecodeTaskUpdate(ctx, name, sample.Purpose, wire, options)
 				if err == nil {
 					before, _ := EncodeValue(update)
 					after, _ := EncodeValue(decoded)

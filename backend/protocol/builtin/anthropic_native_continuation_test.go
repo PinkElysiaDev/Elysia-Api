@@ -1,0 +1,129 @@
+package builtin
+
+import (
+	"testing"
+
+	p "github.com/elysia-api/backend/protocol"
+)
+
+func TestAnthropicPackageNativeToolAndThinkingContinuation(t *testing.T) {
+	compiled := compileBuiltinPackage(t, "anthropic")
+	scope := p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}
+	const start = `{"type":"message_start","message":{"id":"r","model":"m","type":"message","role":"assistant","content":[],"usage":{"input_tokens":3,"output_tokens":0}}}`
+	for _, fixture := range []struct {
+		name   string
+		frames []string
+		edit   func(int, p.Event) p.Event
+		check  func(*testing.T, *p.Response)
+	}{
+		{
+			name: "tool",
+			frames: []string{
+				start,
+				`{"type":"content_block_start","index":7,"content_block":{"type":"tool_use","id":"call","name":"lookup","input":{}}}`,
+				`{"type":"content_block_delta","index":7,"delta":{"type":"input_json_delta","partial_json":"{\"a\":"}}`,
+				`{"type":"content_block_delta","index":7,"delta":{"type":"input_json_delta","partial_json":"0"}}`,
+				`{"type":"content_block_delta","index":7,"delta":{"type":"input_json_delta","partial_json":",\"b\":"}}`,
+				`{"type":"content_block_delta","index":7,"delta":{"type":"input_json_delta","partial_json":"0}"}}`,
+				`{"type":"content_block_stop","index":7}`,
+				`{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}`,
+				`{"type":"message_stop"}`,
+			},
+			edit: func(index int, event p.Event) p.Event {
+				if index == 3 {
+					event.Delta = p.StringValue("1")
+				}
+				if index == 5 {
+					event.Type, event.Delta = p.ItemSnapshot, p.Value{}
+					event.Item = &p.Node{Kind: p.ToolCallNode, CallID: p.StringValue("call"), Name: p.StringValue("lookup"), Input: &p.ToolInput{Kind: p.JSONInput, Value: testValue(t, `{"a":1,"b":2}`)}}
+				}
+				return event
+			},
+			check: func(t *testing.T, response *p.Response) {
+				item := response.Content[0]
+				if item.Kind != p.ToolCallNode || !item.CallID.IsString("call") || !item.Name.IsString("lookup") || item.Input == nil {
+					t.Fatal("tool identity did not survive continuation", item)
+				}
+				sameJSON(t, item.Input.Value.Bytes(), `{"a":1,"b":2}`)
+			},
+		},
+		{
+			name: "thinking",
+			frames: []string{
+				start,
+				`{"type":"content_block_start","index":7,"content_block":{"type":"thinking","thinking":"prefix","signature":"sig-"}}`,
+				`{"type":"content_block_delta","index":7,"delta":{"type":"thinking_delta","thinking":"original"}}`,
+				`{"type":"content_block_delta","index":7,"delta":{"type":"thinking_delta","thinking":"native"}}`,
+				`{"type":"content_block_delta","index":7,"delta":{"type":"signature_delta","signature":"original"}}`,
+				`{"type":"content_block_delta","index":7,"delta":{"type":"signature_delta","signature":"native"}}`,
+				`{"type":"content_block_delta","index":7,"delta":{"type":"signature_delta","signature":"!"}}`,
+				`{"type":"content_block_stop","index":7}`,
+				`{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}`,
+				`{"type":"message_stop"}`,
+			},
+			edit: func(index int, event p.Event) p.Event {
+				if index == 2 {
+					event.Delta = p.StringValue("edited")
+				}
+				if index == 4 || index == 6 {
+					signature := "sig-edited"
+					if index == 6 {
+						signature += "native!"
+					}
+					item := *event.Item
+					item.Resources = []p.Resource{{Kind: "signature", ID: p.StringValue(signature), Scope: scope}}
+					event.Item = &item
+				}
+				return event
+			},
+			check: func(t *testing.T, response *p.Response) {
+				item := response.Content[0]
+				if item.Kind != p.ReasoningNode || !item.Payload.IsString("prefixeditednative") || len(item.Resources) != 1 || !item.Resources[0].ID.IsString("sig-editednative!") {
+					t.Fatal("thinking or signature prefix was emitted again", item)
+				}
+			},
+		},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			frames, _ := decodePackageStream(t, compiled, fixture.frames, scope)
+			wire, err := compiled.NewWireStreamValidation(scope)
+			if err != nil {
+				t.Fatal(err)
+			}
+			options := (p.EvaluationContext{Scope: scope, State: p.NewEvaluationState()}).WithOutputStream(wire)
+			defer options.State.Release()
+			var rendered []string
+			consume := func(batch []p.Value, err error) {
+				t.Helper()
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, frame := range batch {
+					if err := wire.Consume(t.Context(), frame); err != nil {
+						t.Fatal(frame.JSONString(), err)
+					}
+					if err := wire.CommitDelivery(); err != nil {
+						t.Fatal(err)
+					}
+					rendered = append(rendered, frame.JSONString())
+				}
+			}
+			for index, frame := range frames {
+				events := make([]p.Event, len(frame.Events))
+				for position, event := range frame.Events {
+					events[position] = fixture.edit(index, event)
+				}
+				consume(compiled.EncodeConvertedFrame(t.Context(), frame, events, options))
+			}
+			consume(compiled.FinishEvents(t.Context(), options))
+			if err := wire.Finish(); err != nil {
+				t.Fatal(err)
+			}
+			_, response := decodePackageStream(t, compiled, rendered, scope)
+			if len(response.Content) != 1 || response.Usage == nil || response.Usage.Output == nil || response.Usage.Output.Count != 2 {
+				t.Fatal("continuation changed item count or accounting", response)
+			}
+			fixture.check(t, response)
+		})
+	}
+}

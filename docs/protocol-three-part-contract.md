@@ -12,6 +12,19 @@
 
 Spec 和 Mapping 各有自己的 `expressions` 符号表。命名程序按静态输入、词法槽位和权限编译复用，执行值与可变状态不共享。引用闭包进入实际使用方向的指纹。循环、未定义或不可达引用，以及深度超限，在编译时拒绝。
 
+## 预置端点与基地址
+
+新四预置以供应商 origin 作为 `baseURL` 示例，Spec 声明包含 API 版本的完整路径。同一个 API 的 JSON 和 SSE 使用同一路径。
+
+| 预置 | baseURL 示例 | 生成路径 | 模型目录路径 |
+|---|---|---|---|
+| Chat Completions | `https://api.openai.com` | `/v1/chat/completions` | `/v1/models` |
+| Responses | `https://api.openai.com` | `/v1/responses` | `/v1/models` |
+| Anthropic | `https://api.anthropic.com` | `/v1/messages` | `/v1/models` |
+| Gemini | `https://generativelanguage.googleapis.com` | `/v1beta/models/{model}:generateContent`；流式为 `:streamGenerateContent` | `/v1beta/models` |
+
+通用传输仍按配置的 `baseURL + operation.path` 拼接，不自动删除或去重 `/v1`、`/v1beta`。自定义网关前缀由其显式配置决定。已有 baseURL 包含 API 版本前缀的来源，必须在选择新修订时同步明确新基地址或自定义路径；不自动改写旧配置、绑定或任务。旧预置的相对 API-root 路径约定继续属于旧修订历史。
+
 ## 检查与所有权
 
 执行链为读取与外部校验、核心映射、目标规则、编码与必要最终校验、交付。
@@ -26,9 +39,15 @@ Spec 的流合同声明外部 `namespaces`、`entities` 及父子关系；实体
 
 Mapping 的 `buffer_text`／`buffer_array` 按固定通道和项目身份保存必要增量，支持 append、snapshot、read、length、release。append 返回新增部分；snapshot 拒绝改变既有前缀；read 才物化完整结果。文本状态不逐帧保存微小片段对象，数组状态保留独立元素并共享不可变输出叶子。
 
+只需识别已发送数组前缀时，使用 `track_array`：delta 追加成员摘要，snapshot 校对既有语义前缀并返回新增后缀。状态只保存固定摘要和成员数，不保存完整数组；JSON 数值按精确十进制比较，不转为浮点数。它不能代替需要最终完整数组的收集器。
+
+`resume_text`／`resume_tool` 从实际已交付的外部实体接续语义输出，核对当前 Scope 和开放实体，不从普通上下文 JSON 恢复发送位置。Spec 可将 JSON 实体的初始载荷显式声明为 `placeholder`；第一次真实参数更新替换该占位，空增量不会清除它，失败的帧不提交替换。
+
 原生复合帧由 `nativeReplay: "original_frame"` 声明动态字段属于原帧，配套 observer 只同步后续重建需要的状态。`nativeWhen` 可进一步限定哪些合法来源帧适合原样交付；不满足时按正常语义重建，不以目标校验失败作为回退条件。原生回放仍检查双向映射指纹、Scope 与语义摘要。输出批次使用实际已交付位置及当前批次偏移计算序号；计算序号不提前提交交付。
 
 需要生成输出身份的 Mapping 从 `/operation/id`、`/operation/startedAt` 读取调用者绑定的一轮执行元数据。网关复用请求记录；离线验证使用明确的合成值。DSL 不产生随机身份，也不使用缺失时的常量兜底。
+
+任务 Mapping 仅获准读取上述两项执行事实；持久任务复用本地任务 ID 和创建时间，轮询、恢复及读取结果不会重新生成身份。health 预检与实际发送共享同一次执行事实。纯字段读取、模型目录解析和 Agent 参数策略不为此制造调用身份。
 
 ## 关联与资源
 
@@ -50,9 +69,15 @@ Mapping 的 `buffer_text`／`buffer_array` 按固定通道和项目身份保存�
 
 默认规则由目标 Mapping 编译；用户按稳定 ID 整条替换，禁用不产生隐式替代规则。同阶段顺序冲突在编译期拒绝。规则不能关闭外部结构、权限和资源硬约束。签名、加密内容和续传控制继续受来源及 Scope 限制。
 
+`core_controls` 的 `each.select` 仅遍历核心中已定义的 metadata 或 usage 所属位置。局部 `input` 指向当前条目，`root` 仍指向完整核心对象；不通过任意反射查询或重新解析完整正文执行。省略前检查原值，诊断可引用真实来源路径。规则不能改写 Source、Scope、Native 或私有来源凭据。普通 metadata 与辅助帧共用 `event-metadata` 默认规则的完整覆盖／禁用边界。
+
+需要补齐目标首帧计数的事件规则显式声明 `frameUsage`。调用入口从当前原始事件批次绑定只读数字观察，按批次顺序合并；未绑定与本帧没有计数是两种状态。观察不保存原始帧、attribution 或 billing 对象。交付占位计数标为 `placeholder`，不能覆盖原始上游用量账本，也不能重新引入此前明确省略的细分字段。
+
 来源流将普通事件、辅助事件、状态事件和纯传输控制分开声明。辅助／状态事件的权限凭据由成功的外部合同校验产生，绑定来源帧、方向和 Scope，不能通过用户 JSON 伪造。纯传输控制不生成核心事件；辅助 metadata 通过验证后不进入正文收集器；状态通过通用 `control.updated` 保留类型及原始载荷。跨协议省略只能由目标配置列出的 `auxiliary_event`／`control_event` 规则授权，并遵守兼容／严格模式；未知生成载荷不能借此省略。
 
 核心流的 `collection` 区分 reasoning 的 summary 与 reasoning_content，保留父子关系而不伪造消息节点。metadata 的 `update: "append"` 是增量指令，收集器按段追加数组，在需要完整结果时物化；最终节点和响应不得遗留该指令。来源位置、帧序号属于输入事实，开发语义对照不将其视为正文变化；真实凭据仍核验这些事实。
+
+核心版本 2 的 `logprobs` 使用 token 数组，归属于对应的正文或拒绝节点；Chat 的 content/refusal 外层对象只在 wire 编码时建立。Codec 标签不决定核心容器形状。缺失概率字段与显式空数组分开保留；Responses 现有客户端样例允许缺失的行为属于具名兼容范围，不称为官方字段定义要求。未识别的概率对象成员继续受原始扩展保护。
 
 诊断使用真实来源位置、统一阶段和业务错误码，不包含秘密值。不保留旧错误文字、多故障首错顺序、重复身份计费或旧 renderer 的检查时点。下列旧差分要求重新分类：
 

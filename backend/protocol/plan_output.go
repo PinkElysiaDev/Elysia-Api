@@ -56,7 +56,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	plan := &compiledOutputPlan{expression: expression}
 	switch expression.op {
 	case "omit", "reject", "literal", "read", "let", "with_input", "with_index", "remember", "recall", "forget", "index_size", "index", "capture_native", "capture_source", "replay_native", "native_matches", "object", "check_fields", "project", "keys", "array", "map", "walk", "visit", "recur", "flatmap", "filter", "if", "choose",
-		"merge", "merge_deep", "merge_usage", "check_usage", "check_links", "resolve_item", "track_text", "track_tool", "buffer_text", "buffer_array", "read_delivered_item", "resume_text", "pointer_join", "index_values", "length", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
+		"merge", "merge_deep", "merge_usage", "check_usage", "check_links", "resolve_item", "track_text", "track_array", "track_tool", "buffer_text", "buffer_array", "read_delivered_item", "resume_text", "resume_tool", "pointer_join", "index_values", "length", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
 		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains", "has_control", "equal", "equal_text", "all", "any", "entries", "from_entries", "group_runs":
 	default:
 		return nil, false
@@ -75,7 +75,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			plan.itemObjectReads = 1
 		}
 	}
-	plan.hasStreamWrites = expression.op == "resolve_item" || expression.op == "track_text" || expression.op == "track_tool" || expression.op == "buffer_text" || expression.op == "buffer_array" || expression.op == "resume_text" || expression.op == "remember" && expression.isStreamIndex
+	plan.hasStreamWrites = expression.op == "resolve_item" || expression.op == "track_text" || expression.op == "track_array" || expression.op == "track_tool" || expression.op == "buffer_text" || expression.op == "buffer_array" || expression.op == "resume_text" || expression.op == "resume_tool" || expression.op == "remember" && expression.isStreamIndex
 	plan.hasCapture = expression.op == "capture_native"
 	plan.hasSourceCapture = expression.op == "capture_source"
 	plan.hasNativeTarget = expression.op == "replay_native" || expression.op == "native_matches"
@@ -213,6 +213,8 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.resolveStreamItem(state)
 	case "track_text":
 		return plan.trackStreamText(state)
+	case "track_array":
+		return plan.trackStreamArray(state)
 	case "track_tool":
 		return plan.trackStreamTool(state)
 	case "buffer_text", "buffer_array":
@@ -221,6 +223,8 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.readDeliveredItem(state)
 	case "resume_text":
 		return plan.resumeDeliveredText(state)
+	case "resume_tool":
+		return plan.resumeDeliveredTool(state)
 	case "index_values":
 		return plan.readStreamIndexValues(state)
 	case "with_index":

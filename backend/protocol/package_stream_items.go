@@ -23,6 +23,7 @@ type wireEntityState struct {
 	json                       strings.Builder
 	payloadPath                string
 	isFinished, sealed         bool
+	isPlaceholder              bool
 	verifiedFrame              uint64
 }
 
@@ -58,7 +59,7 @@ func (state *packageStreamValidation) consumeEntity(ctx context.Context, action 
 			if err := state.checkRetainedBytes(state.identityBytes+len(key), action.key.path); err != nil {
 				return err
 			}
-			item = &wireEntityState{definition: action.entity, key: strings.Clone(key)}
+			item = &wireEntityState{definition: action.entity, key: strings.Clone(key), isPlaceholder: action.isPlaceholder}
 			definition := state.contract.entities[action.entity]
 			item.identities = make([]string, len(definition.identities))
 			item.identityPaths = make([]string, len(definition.identities))
@@ -242,31 +243,54 @@ func (state *packageStreamValidation) consumeEntityPayload(ctx context.Context, 
 			}
 			item.text.Append(suffix)
 		}
-	} else {
-		suffix := text
-		if action.action != wireEntityAppend {
-			parsed, err := ParseValue([]byte(text))
-			if err != nil {
-				return state.itemIssue(action, action.delta.path, "entity snapshot contains invalid JSON", err)
-			}
-			if err := definition.schema.validate(ctx, parsed, action.delta.path, state.limits); err != nil {
-				return state.itemIssue(action, action.delta.path, "entity snapshot violates its payload schema", err)
-			}
-			suffix, err = JSONToolSnapshotSuffix(item.json.String(), text)
-			if err != nil {
-				return state.itemIssue(action, action.delta.path, "JSON snapshot changed established content", err)
-			}
-		}
-		if (item.sealed || item.isFinished) && suffix != "" {
-			return state.itemIssue(action, action.delta.path, "JSON payload changed after it was sealed", nil)
-		}
-		if err := state.checkRetainedState(state.identityBytes, state.snapshotBytes+len(suffix), action.delta.path); err != nil {
-			return err
-		}
-		item.json.WriteString(suffix)
-		state.bufferedBytes += len(suffix)
+	} else if err := state.consumeEntityJSON(ctx, item, action, text); err != nil {
+		return err
 	}
 	return state.retainPayloadLocation(item, action)
+}
+
+func (state *packageStreamValidation) consumeEntityJSON(ctx context.Context, item *wireEntityState, action compiledPackageStreamEvent, text string) error {
+	suffix, previous := text, item.json.String()
+	// A placeholder completes an idle entity but does not constrain later input.
+	replacesPlaceholder := item.isPlaceholder && action.action != wireEntityStart && (action.action != wireEntityAppend || text != "")
+	if replacesPlaceholder {
+		previous = ""
+	}
+	if action.action != wireEntityAppend {
+		parsed, err := ParseValue([]byte(text))
+		if err != nil {
+			return state.itemIssue(action, action.delta.path, "entity snapshot contains invalid JSON", err)
+		}
+		if action.isPlaceholder && parsed.IsArray() {
+			return state.itemIssue(action, action.delta.path, "JSON placeholder cannot be an array", nil)
+		}
+		definition := state.contract.entities[item.definition]
+		if err := definition.schema.validate(ctx, parsed, action.delta.path, state.limits); err != nil {
+			return state.itemIssue(action, action.delta.path, "entity snapshot violates its payload schema", err)
+		}
+		suffix, err = JSONToolSnapshotSuffix(previous, text)
+		if err != nil {
+			return state.itemIssue(action, action.delta.path, "JSON snapshot changed established content", err)
+		}
+	}
+	if (item.sealed || item.isFinished) && suffix != "" {
+		return state.itemIssue(action, action.delta.path, "JSON payload changed after it was sealed", nil)
+	}
+	addedBytes := len(suffix)
+	if replacesPlaceholder {
+		addedBytes -= item.json.Len()
+	}
+	if err := state.checkRetainedState(state.identityBytes, state.snapshotBytes+addedBytes, action.delta.path); err != nil {
+		return err
+	}
+	if replacesPlaceholder {
+		state.bufferedBytes -= item.json.Len()
+		item.json.Reset()
+		item.isPlaceholder = false
+	}
+	item.json.WriteString(suffix)
+	state.bufferedBytes += len(suffix)
+	return nil
 }
 
 func (state *packageStreamValidation) retainPayloadLocation(item *wireEntityState, action compiledPackageStreamEvent) error {

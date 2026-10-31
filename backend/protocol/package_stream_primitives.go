@@ -37,6 +37,7 @@ type packageStreamPrimitives struct {
 	toolCalls     map[streamTrackKey]string
 	toolBuffered  int
 	texts         map[streamTrackKey]*TextTracker
+	arrays        map[streamTrackKey]streamArrayTracker
 	identities    *ItemIdentities
 	aliasBytes    int
 	trackedBytes  int
@@ -152,6 +153,7 @@ func (transaction *packageStreamTransaction) commitPrimitives() *packageStreamPr
 
 	transaction.commitBuffers(base)
 	transaction.commitTools(base)
+	transaction.commitArrays(base)
 	if len(transaction.textUpdates) != 0 && base.texts == nil {
 		base.texts = make(map[streamTrackKey]*TextTracker)
 	}

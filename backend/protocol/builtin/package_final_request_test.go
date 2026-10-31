@@ -115,9 +115,9 @@ func TestChatPackageFinalRequestControls(t *testing.T) {
 		{"nonobject-options", `{"model":"m","messages":[],"stream_options":false}`, "/stream_options"},
 		{"null-include-usage", `{"model":"m","messages":[],"stream_options":{"include_usage":null}}`, "/stream_options/include_usage"},
 		{"nonboolean-include-usage", `{"model":"m","messages":[],"stream_options":{"include_usage":"true"}}`, "/stream_options/include_usage"},
-		{"both-null-limits", `{"model":"m","messages":[],"max_tokens":null,"max_completion_tokens":null}`, "/"},
+		{"both-null-limits", `{"model":"m","messages":[],"max_tokens":null,"max_completion_tokens":null}`, "/max_tokens"},
 		{"options-before-limit-conflict", `{"model":"m","messages":[],"stream_options":{"include_usage":null},"max_tokens":1,"max_completion_tokens":1}`, "/stream_options/include_usage"},
-		{"valid-options-limit-conflict", `{"model":"m","messages":[],"stream_options":{"include_usage":true},"max_tokens":1,"max_completion_tokens":1}`, "/"},
+		{"valid-options-limit-conflict", `{"model":"m","messages":[],"stream_options":{"include_usage":true},"max_tokens":1,"max_completion_tokens":1}`, "/max_tokens"},
 		{"role-before-options", `{"model":"m","messages":[{"role":"future"}],"stream_options":false}`, "/messages/0/role"},
 		{"options-before-content-decode", `{"model":"m","messages":[{"role":"user","content":false}],"stream_options":false}`, "/stream_options"},
 	} {
@@ -162,32 +162,36 @@ func anthropicFinalRequestCases() []finalWireCase {
 		{"null-role", `{"model":"m","max_tokens":32,"messages":[{"role":null,"content":"hello"}]}`, "/messages/0/role"},
 		{"thinking-controls", `{"model":"m","max_tokens":2048,"messages":[],"thinking":{"type":"enabled","budget_tokens":1024},"output_config":{"effort":"medium"}}`, acceptedFinalWire},
 		{"role-before-thinking", `{"model":"m","max_tokens":32,"messages":[{"role":"future"}],"thinking":false}`, "/messages/0/role"},
-		{"thinking-object", `{"model":"m","max_tokens":32,"messages":[],"thinking":false}`, "/parameters/anthropic_thinking"},
+		{"thinking-object", `{"model":"m","max_tokens":32,"messages":[],"thinking":false}`, "/thinking"},
 		{"thinking-before-output-config", `{"model":"m","max_tokens":32,"messages":[],"thinking":{"type":"future"},"output_config":false}`, "/thinking/type"},
 		{"adaptive-null-budget", `{"model":"m","max_tokens":32,"messages":[],"thinking":{"type":"adaptive","budget_tokens":null}}`, "/thinking/budget_tokens"},
 		{"thinking-display", `{"model":"m","max_tokens":32,"messages":[],"thinking":{"type":"adaptive","display":[]}}`, "/thinking/display"},
-		{"output-config-object", `{"model":"m","max_tokens":32,"messages":[],"output_config":false}`, "/parameters/anthropic_output_config"},
+		{"output-config-object", `{"model":"m","max_tokens":32,"messages":[],"output_config":false}`, "/output_config"},
 	}
 }
 
 func TestPackageFinalRequestRejectsWireEdits(t *testing.T) {
-	legacy, draft := shippedProjectionProtocol(t, Anthropic), compileBuiltinPackage(t, "anthropic")
+	draft := compileBuiltinPackage(t, "anthropic")
 	const original = `{"model":"m","max_tokens":2048,"messages":[{"role":"user","content":"hello"}],"thinking":{"type":"enabled","budget_tokens":1024},"output_config":{"effort":"medium"}}`
-	checkFinalWireCase(t, legacy, draft, p.EncodeRequest, finalWireCase{"original", original, acceptedFinalWire})
+	checkFinalWireCase(t, draft, p.EncodeRequest, finalWireCase{"original", original, acceptedFinalWire})
 	for _, fixture := range []struct {
 		name, path string
+		code       p.IssueCode
 		edits      []p.Mutation
 	}{
-		{"thinking-budget", "/thinking/budget_tokens", []p.Mutation{{Op: p.SetValue, Path: "/thinking/budget_tokens", Value: testValue(t, `4`)}}},
-		{"output-effort", "/output_config/effort", []p.Mutation{{Op: p.SetValue, Path: "/output_config/effort", Value: p.StringValue("none")}}},
-		{"role-before-thinking", "/messages/0/role", []p.Mutation{{Op: p.SetValue, Path: "/thinking/budget_tokens", Value: testValue(t, `4`)}, {Op: p.SetValue, Path: "/messages/0/role", Value: p.StringValue("developer")}}},
+		{"thinking-budget", "/thinking/budget_tokens", p.InvalidInput, []p.Mutation{{Op: p.SetValue, Path: "/thinking/budget_tokens", Value: testValue(t, `4`)}}},
+		{"output-effort", "/output_config/effort", p.InvalidInput, []p.Mutation{{Op: p.SetValue, Path: "/output_config/effort", Value: p.StringValue("none")}}},
+		{"role-before-thinking", "/messages/0/role", p.ConversionRejected, []p.Mutation{{Op: p.SetValue, Path: "/thinking/budget_tokens", Value: testValue(t, `4`)}, {Op: p.SetValue, Path: "/messages/0/role", Value: p.StringValue("developer")}}},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
 			wire, err := p.ApplyMutations(testValue(t, original), fixture.edits, p.DefaultLimits())
 			if err != nil {
 				t.Fatal(err)
 			}
-			checkFinalWireCase(t, legacy, draft, p.EncodeRequest, finalWireCase{fixture.name, wire.JSONString(), fixture.path})
+			issue := checkFinalRequestCase(t, draft, finalWireCase{fixture.name, wire.JSONString(), fixture.path})
+			if issue.Code != fixture.code || issue.Direction != p.EncodeRequest || issue.Stage != "wire" && issue.Stage != "wire.output" {
+				t.Fatal("edited request lost its declared failure boundary", issue)
+			}
 		})
 	}
 }
@@ -195,7 +199,7 @@ func TestPackageFinalRequestRejectsWireEdits(t *testing.T) {
 func TestPackageFinalRequestKeepsOperationConstraints(t *testing.T) {
 	legacy, draft := shippedProjectionProtocol(t, Anthropic), compileBuiltinPackage(t, "anthropic")
 	fixture := finalWireCase{"missing-operation-limit", `{"model":"m","messages":[]}`, acceptedFinalWire}
-	checkFinalWireCase(t, legacy, draft, p.EncodeRequest, fixture)
+	checkFinalWireCase(t, draft, p.EncodeRequest, fixture)
 	for _, operation := range []string{"generate", "stream"} {
 		wire := testValue(t, fixture.wire)
 		if oldErr, newErr := legacy.CheckOperationValueInput(t.Context(), operation, wire), draft.CheckOperationValueInput(t.Context(), operation, wire); oldErr == nil || newErr == nil {

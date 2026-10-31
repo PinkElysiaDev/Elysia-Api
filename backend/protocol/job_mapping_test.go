@@ -23,6 +23,8 @@ func loadJobDefinition(t *testing.T, name string) (*Compiler, Definition, *Compi
 }
 
 func TestJobMappingsIndependentFieldsAndVerification(t *testing.T) {
+	options := newVerificationContext(Scope{}, nil)
+	defer options.State.Release()
 	_, _, alpha := loadJobDefinition(t, "job-alpha")
 	_, _, beta := loadJobDefinition(t, "job-beta")
 	for _, compiled := range []*Compiled{alpha, beta} {
@@ -36,7 +38,7 @@ func TestJobMappingsIndependentFieldsAndVerification(t *testing.T) {
 		t.Fatalf("pair: %+v", report.Issues)
 	}
 	var wire = StringValue("invalid")
-	if _, err := alpha.DecodeTaskUpdate(t.Context(), "submit", "status", wire); err == nil {
+	if _, err := alpha.DecodeTaskUpdate(t.Context(), "submit", "status", wire, options); err == nil {
 		t.Fatal("invalid provider shape accepted")
 	}
 }

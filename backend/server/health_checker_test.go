@@ -130,14 +130,18 @@ func TestHealthProbeUsesTargetCoreVersion(t *testing.T) {
 		binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: document.Mapping.Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
 	// Package activation is a separate migration boundary; exercise the same
 	// preparation used after production routing has pinned its candidate.
-	request, err := prepareHealthProbeRequest(t.Context(), candidate)
+	options, err := (protocol.EvaluationContext{}).WithOperation("health-probe-fixture", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := prepareHealthProbeRequest(t.Context(), candidate, options)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if request.SchemaVersion != protocol.ProtocolCoreVersion || !request.Model.IsString(modelName) || calls.Load() != 0 {
 		t.Fatal("probe preparation changed its target or sent a request", request, calls.Load())
 	}
-	response, err := server.collectProtocolGenerationAttempt(t.Context(), candidate, request, nil, nil)
+	response, err := server.collectProtocolGenerationAttempt(t.Context(), candidate, request, nil, nil, options)
 	if err != nil {
 		t.Fatal(err)
 	}

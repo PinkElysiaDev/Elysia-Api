@@ -44,10 +44,12 @@ type gatewayStream struct {
 
 func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext, record *usageRecord, plan *gatewayResponsePlan, candidate gatewayCandidate, response *http.Response) error {
 	limits := plan.ingress.ResourceLimits()
-	options, err := (protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}).WithOperation(record.RequestID, record.StartedAt.Unix())
+	operationOptions, err := (protocol.EvaluationContext{Scope: candidate.scope}).WithOperation(record.RequestID, record.StartedAt.Unix())
 	if err != nil {
 		return err
 	}
+	options := operationOptions
+	options.State, options.Diagnostics = protocol.NewEvaluationState(), &protocol.DiagnosticSink{}
 	defer options.State.Release()
 	options.ClientOutput = plan.clientOutput
 	defer func() { record.appendConversionIssues(options.Diagnostics.Issues()) }()
@@ -71,7 +73,8 @@ func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext
 	c.Header("Content-Type", protocol.TransportContentType(plan.operation.Transport))
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Trailer", gatewayStreamErrorTrailer)
-	wireValidation := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState()}
+	wireValidation := operationOptions
+	wireValidation.State = protocol.NewEvaluationState()
 	defer wireValidation.State.Release()
 	finalValidation, err := plan.ingress.NewWireStreamValidation(candidate.scope)
 	if err != nil {
@@ -142,6 +145,10 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, metadata protocol.Object) error {
 	stream.options.Values = metadata
 	var err error
+	stream.route, err = stream.candidate.conversion.WithFrameUsage(stream.route, decoded.Events)
+	if err != nil {
+		return err
+	}
 	acceptedEvents := stream.acceptedScratch[:0]
 	if acceptedEvents == nil {
 		acceptedEvents = []protocol.Event{}
@@ -235,6 +242,9 @@ func (stream *gatewayStream) finish(err error) error {
 	if err == nil {
 		var tail []protocol.Event
 		tail, err = stream.eventState.Drain()
+		if err == nil {
+			stream.route, err = stream.candidate.conversion.WithFrameUsage(stream.route, tail)
+		}
 		for _, event := range tail {
 			if err != nil {
 				break

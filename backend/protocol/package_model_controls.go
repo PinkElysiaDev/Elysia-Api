@@ -7,26 +7,38 @@ import (
 	"slices"
 )
 
-// ProtocolControlStep reads the current request, reports any disposition, then
-// applies its field updates together. Stop ends this projection, not its checks.
+// ProtocolControlStep reads the current core value, reports any disposition,
+// then applies its field updates together. Stop ends the local step sequence.
 type ProtocolControlStep struct {
-	When       *Expression                `json:"when,omitempty"`
-	Set        map[string]Expression      `json:"set,omitempty"`
-	Diagnostic *ProtocolControlDiagnostic `json:"diagnostic,omitempty"`
-	Stop       bool                       `json:"stop,omitempty"`
+	When       *Expression                   `json:"when,omitempty"`
+	Set        map[string]Expression         `json:"set,omitempty"`
+	Diagnostic *ProtocolControlDiagnostic    `json:"diagnostic,omitempty"`
+	Stop       bool                          `json:"stop,omitempty"`
+	Each       *ProtocolControlEach          `json:"each,omitempty"`
+	Auxiliary  *ProtocolAuxiliaryDisposition `json:"auxiliary,omitempty"`
+	Omit       bool                          `json:"omit,omitempty"`
+}
+
+// ProtocolControlEach selects fixed typed metadata or usage owners. Input is
+// local to the selected value; root remains the complete core document.
+type ProtocolControlEach struct {
+	Select      string                `json:"select"`
+	PathBinding string                `json:"pathBinding,omitempty"`
+	Steps       []ProtocolControlStep `json:"steps"`
 }
 
 // ProtocolControlDiagnostic declares the observable consequence of a control
 // change. Dynamic messages read the same pre-update input as the step's values.
 type ProtocolControlDiagnostic struct {
-	Kind        string     `json:"kind"`
-	Attribution string     `json:"attribution,omitempty"`
-	Path        string     `json:"path"`
-	Reason      Expression `json:"reason"`
-	Code        IssueCode  `json:"code,omitempty"`
-	Direction   Direction  `json:"direction,omitempty"`
-	Stage       string     `json:"stage,omitempty"`
-	Suggestion  string     `json:"suggestion,omitempty"`
+	Kind        string      `json:"kind"`
+	Attribution string      `json:"attribution,omitempty"`
+	Path        string      `json:"path,omitempty"`
+	Source      *Expression `json:"source,omitempty"`
+	Reason      Expression  `json:"reason"`
+	Code        IssueCode   `json:"code,omitempty"`
+	Direction   Direction   `json:"direction,omitempty"`
+	Stage       string      `json:"stage,omitempty"`
+	Suggestion  string      `json:"suggestion,omitempty"`
 }
 
 type compiledControlStep struct {
@@ -34,6 +46,9 @@ type compiledControlStep struct {
 	updates    []compiledControlUpdate
 	diagnostic *compiledControlDiagnostic
 	shouldStop bool
+	shouldOmit bool
+	each       *compiledControlEach
+	auxiliary  *ProtocolAuxiliaryDisposition
 }
 
 type compiledControlUpdate struct {
@@ -45,6 +60,7 @@ type compiledControlUpdate struct {
 type compiledControlDiagnostic struct {
 	declaration ProtocolControlDiagnostic
 	reason      *compiledOutputPlan
+	source      *compiledOutputPlan
 }
 
 type modelControlOptions struct {
@@ -81,11 +97,17 @@ func controlBindingSlots(sequences ...[]compiledControlStep) int {
 	count := 0
 	for _, sequence := range sequences {
 		for _, step := range sequence {
+			if step.each != nil {
+				count = max(count, step.each.pathSlot+1, controlBindingSlots(step.each.steps))
+			}
 			if step.when != nil {
 				count = max(count, step.when.bindingSlots)
 			}
 			if step.diagnostic != nil {
 				count = max(count, step.diagnostic.reason.bindingSlots)
+				if step.diagnostic.source != nil {
+					count = max(count, step.diagnostic.source.bindingSlots)
+				}
 			}
 			for _, update := range step.updates {
 				count = max(count, update.program.bindingSlots)
@@ -130,21 +152,45 @@ func stampReasoningValidation(reasoning *ReasoningIntent) reasoningValidationSta
 }
 
 func compileControlSteps(steps []ProtocolControlStep, compiler *expressionCompiler, path string, isCheck bool) ([]compiledControlStep, error) {
-	return compileTypedControlSteps(steps, compiler, path, isCheck, reflect.TypeFor[Request]())
+	scope := controlCompileScope{expression: expressionScope{coreInput: reflect.TypeFor[Request]()}, whole: reflect.TypeFor[Request]()}
+	return compileScopedControlSteps(steps, compiler, path, isCheck, scope, new(int))
 }
 
-func compileTypedControlSteps(steps []ProtocolControlStep, compiler *expressionCompiler, path string, isCheck bool, root reflect.Type) ([]compiledControlStep, error) {
+func compileConversionControlSteps(steps []ProtocolControlStep, compiler *expressionCompiler, path string, root reflect.Type, frameUsage bool) ([]compiledControlStep, error) {
+	scope := controlCompileScope{expression: expressionScope{coreInput: root, canReadFrameUsage: frameUsage}, whole: root, canSelect: true, canUseAuxiliary: root == reflect.TypeFor[Event]()}
+	return compileScopedControlSteps(steps, compiler, path, false, scope, new(int))
+}
+
+func compileScopedControlSteps(steps []ProtocolControlStep, compiler *expressionCompiler, path string, isCheck bool, context controlCompileScope, count *int) ([]compiledControlStep, error) {
 	if len(steps) > compiler.limits.Mutations {
 		return nil, fmt.Errorf("%s: control step count exceeds mutation limit", path)
 	}
 	result := make([]compiledControlStep, 0, len(steps))
-	scope := expressionScope{coreInput: root}
+	scope, root := context.expression, context.expression.coreInput
 	for index, declaration := range steps {
 		at := fmt.Sprintf("%s/%d", path, index)
-		if isCheck && len(declaration.Set) != 0 || len(declaration.Set) == 0 && declaration.Diagnostic == nil && !declaration.Stop {
+		*count = *count + 1
+		if *count > compiler.limits.Mutations {
+			return nil, fmt.Errorf("%s: complete control program exceeds mutation limit", path)
+		}
+		if isCheck && (len(declaration.Set) != 0 || declaration.Each != nil || declaration.Auxiliary != nil || declaration.Omit) || len(declaration.Set) == 0 && declaration.Diagnostic == nil && !declaration.Stop && declaration.Each == nil && declaration.Auxiliary == nil && !declaration.Omit {
 			return nil, fmt.Errorf("%s: checks cannot change fields and every step must have an effect", at)
 		}
-		step := compiledControlStep{shouldStop: declaration.Stop}
+		step := compiledControlStep{shouldStop: declaration.Stop, shouldOmit: declaration.Omit}
+		if err := validateControlStepForm(declaration, context, at); err != nil {
+			return nil, err
+		}
+		if declaration.Each != nil {
+			var err error
+			step.each, err = compileControlEach(*declaration.Each, compiler, at+"/each", context, count)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if declaration.Auxiliary != nil {
+			copy := *declaration.Auxiliary
+			step.auxiliary = &copy
+		}
 		if declaration.When != nil {
 			condition, err := compiler.compilePlan(*declaration.When, at+"/when", scope, 1)
 			if err != nil {
@@ -176,6 +222,9 @@ func compileTypedControlSteps(steps []ProtocolControlStep, compiler *expressionC
 			if !slices.Contains([]string{"normalize", "degrade", "reject", "invalid"}, diagnostic.Kind) {
 				return nil, fmt.Errorf("%s/diagnostic/kind: unsupported control diagnostic", at)
 			}
+			if diagnostic.Source != nil && diagnostic.Path != "" {
+				return nil, fmt.Errorf("%s/diagnostic: source and path are mutually exclusive", at)
+			}
 			if _, err := parsePointer(diagnostic.Path); err != nil {
 				return nil, fmt.Errorf("%s/diagnostic/path: %w", at, err)
 			}
@@ -197,6 +246,15 @@ func compileTypedControlSteps(steps []ProtocolControlStep, compiler *expressionC
 				return nil, fmt.Errorf("%s/diagnostic/reason: message must be a string", at)
 			}
 			step.diagnostic = &compiledControlDiagnostic{declaration: *diagnostic, reason: reason}
+			if diagnostic.Source != nil {
+				step.diagnostic.source, err = compiler.compilePlan(*diagnostic.Source, at+"/diagnostic/source", scope, 1)
+				if err != nil {
+					return nil, err
+				}
+				if !isAssignable(step.diagnostic.source.expression.result, StringType) {
+					return nil, fmt.Errorf("%s/diagnostic/source: location must be a string pointer", at)
+				}
+			}
 		}
 		result = append(result, step)
 	}
@@ -357,7 +415,7 @@ func (execution *modelControlExecution) apply(ctx context.Context, conversion *C
 	read := func(pointer []string) (JSONOutput, error) { return readCoreRequest(*request, pointer) }
 	reader := &valueReader{}
 	state := evaluation{ctx: ctx, coreRequest: request, inputReader: read, rootReader: read, context: execution.context, valueReader: reader, objectReader: execution.contextReader, bindings: execution.bindings, budget: &evaluationBudget{limits: execution.limits, stepLimit: execution.limits.Nodes}}
-	result, err := applyControlSteps(state, conversion, request, route, execution.rule, sink, steps)
+	result, err := applyControlSteps(state, conversion, request, route, execution.rule, sink, steps, nil)
 	execution.changedReasoning = execution.changedReasoning || result.changedReasoning
 	execution.stoppedProjection = execution.stoppedProjection || isProjection && result.shouldStop
 	return err

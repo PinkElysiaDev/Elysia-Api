@@ -12,6 +12,7 @@ type streamTrackedTool struct {
 	input                strings.Builder
 	bufferStart, emitted int
 	isDone               bool
+	isPlaceholder        bool
 }
 
 type pendingStreamTool struct {
@@ -124,6 +125,13 @@ func (plan *compiledOutputPlan) trackStreamTool(state evaluation) (plannedOutput
 	}
 	if pending.callID != "" && observation.callID != "" && pending.callID != observation.callID {
 		return plannedOutput{}, streamIssue(InvalidAssociation, key, "tool identity or input type changed during a call")
+	}
+	if !pending.isDone && pending.tool.isPlaceholder && observation.hasText && (observation.text != "" || observation.isSnapshot) {
+		// A declared initial placeholder owns no argument prefix once real input
+		// arrives. Stage a fresh tracker so a rejected frame preserves the old one.
+		transaction.toolBufferDelta -= pending.retainedBytes
+		pending.tool = &streamTrackedTool{kind: pending.kind, callID: pending.callID}
+		pending.retainedBytes, pending.emitted = 0, 0
 	}
 	callID := pending.callID
 	if observation.callID != "" {
