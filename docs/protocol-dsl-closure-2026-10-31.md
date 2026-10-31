@@ -4,7 +4,7 @@
 再对功能等价的完整链路测量并优化；未通过门槛前不切换四预置，不移除生产旧入口。
 仅本地提交，使用合成数据和模拟上游。
 
-当前阶段为 dev.99：已补 Chat 请求工具邻接与根控制字段、Responses 普通文本/容器源流，
+当前阶段为 dev.100：已补 Chat 请求工具邻接与根控制字段、Responses 普通文本/容器及进度源流，
 并独立修复有交付校验器的 Anthropic 原生文本接续。四协议 SSE、完整请求动态约束、
 组合调用、正式性能测量及最终退役仍未全部完成，生产预置继续使用旧执行链。
 
@@ -452,3 +452,55 @@ options 诊断保留原 DecodeRequest / decode 归因；冲突保留 EncodeReque
 移除均为零，明细见 `closure-dev99-staticcheck-diff.json`。
 独立审查另补齐实际读取交付状态时的 Native 协调依赖标记，定向回归
 `closure-native-delivered-reconcile` 通过；静态原生快速路径仍不强制重渲染。
+
+## 第十五批：Responses 普通进度与独立来源状态（dev.100）
+
+普通 `response.in_progress`、模型 usage 更新、托管工具 usage 及晚到 usage 迁入两源声明。
+复用现有 JSON usage/metadata 表达式；输出仍是当前帧的观察值，累积账本只用于旧有
+算术检查。created/completed 不为该账本填初值，普通进度中的 output/error 不被误当成
+完整响应。无载荷进度不补终态；metadata-only 帧与 usage 尾帧维持各自的生命周期。
+
+Spec 新增独立编译的状态槽及有序 `assert` / `state_update` 动作，复用 Mapping 的
+槽位求值和所有权处理。两侧不共享可变状态；断言可以读取本帧暂存值，失败不提交槽位
+或序号。`check_usage` 复用核心计数算术，不加供应商分支；显式检查保留原诊断错误链。
+动作的位置拒绝使用其已声明的诊断，其他未声明动作仍沿用原 wire.stream 归因。
+
+精确对照发现并修复两处空值问题：JSON 响应的空 content 为 `[]`，直接流终态中的
+空 content 为 null；共享 JSON helper 不再为流专属表示改变 JSON 结果。另一个空事件
+差异来自测试辅助函数的 append 克隆把非 nil 空数组变成 nil，现使用 `slices.Clone`
+保留真实旧值，没有为此修改生产解码或放宽比较。
+
+去掉了仅为判断有无载荷而重复构造 metadata 的两套表达式，按前置类型检查后的剩余
+字段是否为空分派 observe/control。原生帧与未知扩展仍保留，不靠丢弃未知值减小状态。
+覆盖同名大 usage 字段时，旧值与新值不能先进入同一临时数组或 merge 操作数预算。
+声明现按键排除被覆盖旧成员，再组装结果；子对象仍只合并一层。没有调整 BufferBytes。
+两个约 4 MiB 字段连续覆盖的旧源链与新独立合同对照通过。
+
+已通过的定向记录为 `closure-responses-progress-exact`、
+`closure-progress-overlay-budget`；精简之前的协议全量为 `closure-progress-protocol-all`。
+中间失败日志保留，尤其 `closure-progress-compact-and-budget` 表明仅把 concat 换成
+merge 仍会重复计量操作数，不能作为修复后的结果。
+
+本批仍不覆盖 safety_buffering、派生 output_text 的完整响应检查、billing/attribution、
+全部 metadata/turn-state、reasoning、annotation/logprobs 或 Responses 目标编码。
+资源预算仍须独立对齐：旧引擎分别限制身份与流正文，新合同合计身份和槽位；旧累计
+未知 usage 仅限字节，新槽还检查累计节点。其组合边界尚未闭合，不能宣布完整接受边界
+或性能等价，更不能据此切换预置。相关代码推断与后续实测必须分别记录。
+
+`closure-progress-identity-budget-probe` 已确认其中的字节差异：相同 8 MiB 限额下，
+2 MiB 合成响应 ID 加 5 MiB 未知 usage 值，旧解码、EventReplay、真实终态和 EOF 均成功，
+新独立 wire 合同在 `/state` 提前拒绝。探针退出成功仅表示采集完成；这是切换阻断项，
+不是通过的回归。单独跳过 wire 观察 Mapping 也不代表完整成功，其目标 replay 还会因
+草案未声明 unmapped 能力拒绝；没有用这一旁路绕过真实入口。累计节点差异暂为代码推断。
+
+尚未接入任何预置的 Chat logprobs 目标计量草稿、测试及审查笔记完整归档于
+`.tmp-dev/protocol-dsl-closure-2026-10-31/unwired-trackers/`。它们尚未证明容量与旧
+checkpoint 一致，因此没有随本阶段注册为 DSL 原语；后续从实际目标映射继续接入。
+这不是该功能已完成或已取消。当前生产预置继续使用旧执行链，本批没有正式性能结论。
+
+`closure-dev100-go-all` 全后端测试通过（约 104 秒），`closure-dev100-vet` 通过。
+staticcheck 首轮指出本次提取后已无调用的旧 predicate 包装方法；确认唯一声明后删除，
+`closure-dev100-staticcheck-clean` 仍以既有 45 条诊断退出 1，与 dev.99 按内容及数量
+对比新增/移除均为零。结果见 `closure-dev100-staticcheck-diff.json`，未把退出 1 写成通过。
+`closure-dev100-race` 的状态槽、有序断言、Responses 进度、Anthropic 原生接续及事件
+运行期定向 race 通过；本阶段没有改动 WebUI，也没有把以前的跨平台产物当成本版本构建。
