@@ -54,7 +54,7 @@ func (plan *compiledOutputPlan) buildObjectEntries(state evaluation) (plannedOut
 			return plannedOutput{}, err
 		}
 		value := members[1].value
-		if previous, exists := fields[key]; exists {
+		if previous, exists := fields[key]; exists && plan.expression.policy != "last" {
 			if plan.expression.policy == "identical" {
 				isEqual, err := equalJSONOutputBytes(state.ctx, previous, value)
 				if err != nil {

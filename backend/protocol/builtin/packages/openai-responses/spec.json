@@ -4941,16 +4941,796 @@
 ]
     },
     "client-response": {
+  "schema": {
+    "type": "any"
+  },
+  "assertions": [
+    {
+      "path": "",
       "schema": {
         "type": "object",
         "allowUnknown": true
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires an object",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
       }
     },
+    {
+      "path": "/error",
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires an object",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/error"
+        }
+      }
+    },
+    {
+      "path": "/object",
+      "schema": {
+        "type": "any"
+      },
+      "code": "conversion_rejected",
+      "reason": "unexpected Responses object type",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "check": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "read",
+            "from": "input",
+            "path": ""
+          },
+          {
+            "op": "literal",
+            "value": "response"
+          }
+        ]
+      },
+      "when": {
+        "op": "not",
+        "source": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/error"
+          }
+        }
+      }
+    },
+    {
+      "path": "/id",
+      "schema": {
+        "type": "string"
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires a nonempty string",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "check": {
+        "op": "not",
+        "source": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            {
+              "op": "literal",
+              "value": ""
+            }
+          ]
+        }
+      },
+      "when": {
+        "op": "not",
+        "source": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/error"
+          }
+        }
+      }
+    },
+    {
+      "path": "/object",
+      "schema": {
+        "type": "string"
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires a nonempty string",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "check": {
+        "op": "not",
+        "source": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            {
+              "op": "literal",
+              "value": ""
+            }
+          ]
+        }
+      },
+      "when": {
+        "op": "not",
+        "source": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/error"
+          }
+        }
+      }
+    },
+    {
+      "path": "/model",
+      "schema": {
+        "type": "string"
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires a nonempty string",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "check": {
+        "op": "not",
+        "source": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            {
+              "op": "literal",
+              "value": ""
+            }
+          ]
+        }
+      },
+      "when": {
+        "op": "not",
+        "source": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/error"
+          }
+        }
+      }
+    },
+    {
+      "path": "/status",
+      "schema": {
+        "type": "string"
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires a nonempty string",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "check": {
+        "op": "not",
+        "source": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            {
+              "op": "literal",
+              "value": ""
+            }
+          ]
+        }
+      },
+      "when": {
+        "op": "not",
+        "source": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/error"
+          }
+        }
+      }
+    },
+    {
+      "path": "/created_at",
+      "schema": {
+        "type": "any"
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires a nonnegative integer",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "check": {
+        "op": "if",
+        "when": {
+          "op": "is_integer",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": ""
+          }
+        },
+        "then": {
+          "op": "integer",
+          "operation": "gte",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            {
+              "op": "literal",
+              "value": 0
+            }
+          ]
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "when": {
+        "op": "not",
+        "source": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/error"
+          }
+        }
+      }
+    },
+    {
+      "path": "/output",
+      "schema": {
+        "type": "array"
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires an array",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "each": [
+        {
+          "path": "",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an object",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          }
+        },
+        {
+          "path": "/id",
+          "schema": {
+            "type": "string"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonempty string",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/summary",
+          "schema": {
+            "type": "array"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an array",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "reasoning"
+              }
+            ]
+          },
+          "each": [
+            {
+              "path": "",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              }
+            },
+            {
+              "path": "/type",
+              "schema": {
+                "type": "any"
+              },
+              "code": "conversion_rejected",
+              "reason": "reasoning part has the wrong text representation",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "check": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "summary_text"
+                  }
+                ]
+              }
+            },
+            {
+              "path": "/text",
+              "schema": {
+                "type": "string"
+              },
+              "code": "conversion_rejected",
+              "reason": "text part requires a string",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              }
+            }
+          ]
+        },
+        {
+          "path": "/content",
+          "schema": {
+            "type": "array"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an array",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "reasoning"
+                  }
+                ]
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/content"
+                }
+              }
+            ]
+          },
+          "each": [
+            {
+              "path": "",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              }
+            },
+            {
+              "path": "/type",
+              "schema": {
+                "type": "any"
+              },
+              "code": "conversion_rejected",
+              "reason": "reasoning part has the wrong text representation",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "check": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "reasoning_text"
+                  }
+                ]
+              }
+            },
+            {
+              "path": "/text",
+              "schema": {
+                "type": "string"
+              },
+              "code": "conversion_rejected",
+              "reason": "text part requires a string",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              }
+            }
+          ]
+        },
+        {
+          "path": "/phase",
+          "schema": {
+            "type": "string",
+            "nullable": true,
+            "enum": ["commentary", "final_answer"]
+          },
+          "code": "conversion_rejected",
+          "reason": "message phase must be commentary, final_answer or null",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message"
+                  }
+                ]
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/phase"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "path": "/role",
+          "schema": {
+            "type": "any"
+          },
+          "code": "conversion_rejected",
+          "reason": "Responses output message requires assistant role",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": "assistant"
+              }
+            ]
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/status",
+          "schema": {
+            "type": "string"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonempty string",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/content",
+          "schema": {
+            "type": "array"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an array",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message"
+              }
+            ]
+          },
+          "each": [
+            {
+              "path": "",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              }
+            },
+            {
+              "path": "/text",
+              "schema": {
+                "type": "string"
+              },
+              "code": "conversion_rejected",
+              "reason": "text part requires a string",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "output_text"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "reasoning_text"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "summary_text"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "path": "/annotations",
+              "schema": {
+                "type": "array"
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an array",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "output_text"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "when": {
+        "op": "not",
+        "source": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/error"
+          }
+        }
+      }
+    }
+  ]
+},
     "model-page": {
       "schema": {
         "type": "object",
         "allowUnknown": true
       }
     }
+  ,
+"response-candidate": {
+  "schema": {
+    "type": "object",
+    "allowUnknown": true
   }
+}
+}
 }

@@ -52,7 +52,7 @@ func (c *Compiled) NewWireInputStreamValidation(scope Scope) (*WireStreamValidat
 
 func (c *Compiled) newWireStreamValidation(direction Direction, scope Scope) (*WireStreamValidation, error) {
 	v := &WireStreamValidation{compiled: c, direction: direction, options: EvaluationContext{Scope: scope, identity: c.identity}}
-	contract := c.wireContracts[direction]
+	contract := c.selectFinalWireContract(direction)
 	if contract.packageStream != nil {
 		var err error
 		v.packageStream, err = newPackageStreamValidation(contract.packageStream, c.target(direction, v.options), c.limits)
@@ -75,14 +75,15 @@ func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 		v.packageStream.hasPendingDelivery = false
 	}
 	var fields Object
-	if v.compiled.wireContracts[v.direction].objectValidator != nil && frame.IsObject() {
+	contract := v.compiled.selectFinalWireContract(v.direction)
+	if contract.objectValidator != nil && frame.IsObject() {
 		var err error
 		fields, err = (EvaluationContext{}).WithValueReader(frame).ReadObject(frame)
 		if err != nil {
 			return err
 		}
 	}
-	if err := v.compiled.validateWireContract(ctx, v.direction, frame, fields, v.compiled.wireLimits(ctx, v.direction)); err != nil {
+	if err := v.compiled.validateSelectedWireContract(ctx, v.direction, frame, fields, v.compiled.wireLimits(ctx, v.direction), contract); err != nil {
 		return err
 	}
 	if v.packageStream != nil {

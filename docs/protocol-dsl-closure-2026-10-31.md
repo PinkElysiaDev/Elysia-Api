@@ -235,3 +235,58 @@ Anthropic 两份源增加 `stream` 传输、`provider-event` / `client-event` �
 
 本阶段没有新的正式性能结果。最终审计、页面验收及六目标新版本产物仍随完整迁移验收，
 不能用开始时的基线六目标产物替代。
+
+## 提交边界复核
+
+本轮自己的 `de405b9e` 与其编译修补 `19948419`、`77715520` 已整理为可独立构建的
+`6e7ad73c`，之后 Responses 错误包络提交为 `6035284f`，第九阶段为 `25e20735`。
+整理前后的阶段末尾源码树均为 `2ea0f29e29659b86e88b7769cca4f03a12140073`。
+原提交保存在忽略目录的 `before-history-fold.bundle`，历史检查日志不改写。
+`closure-dev93-committed-protocol` 在独立检出的 `25e20735` 上执行协议全量通过；
+本轮之前的提交未重写，没有推送。
+
+## 第十批：真实 Chat 流、最终交付合同与证据分层（dev.94）
+
+Spec 增加有序数组动作、结构选帧、隐式开始、稀疏工具身份及声明的终态关闭。
+当前成员与根帧的读取分开，终态缺失名称/ID、非法参数仍定位原 `/choices/...` 路径。
+缺失可选数组与 null 不混为一谈；前置失败、空主计数 usage 都必须显式声明，默认
+合同继续拒绝。Wire 观察器身份/诊断路径与未完成工具正文共用原始字节上限，原身份
+自身超限的错误链和计量名保留。
+
+Chat 目前通过四个原源样例、三个 metadata/晚到 usage/晚到工具身份补充序列，
+目标三个原样例分别比较四种 ClientOutput 意图；四条原生流逐帧原字节重放一次，
+Finish 不补帧。其目标 choice/message metadata 仍显式拒绝，尚未迁完，不能默认切换。
+
+Anthropic 目标已迁入当前帧 metadata、终态 metadata、usage metadata 的覆盖与冲突
+处理；不额外积累整轮帧。两种 source/target 身份合同都只从真实 `message_start.message.id`
+取身份；未知同名 `response_id` 扩展不再干扰独立校验。`finalDocument` 扩展到事件方向，
+构造合同和最终生命周期须类型匹配；最终文件还检查初始 message/usage、终态 stop_reason
+以及帧索引，保持裸组件编码与发送检查的原有区别。
+
+四协议 JSON 响应的最终结构与首错已由独立 Spec 声明。完整对照清单及四个旧片段的
+去向见 [最终响应合同说明](../backend/protocol/builtin/packages/json-final-response-contracts.md)。
+旧片段仍由原 Definition 原样对照，并检查新旧最终拒绝相同；线上样例换为四个独立新 ID
+的完整响应，原输入/预期未修改，JSON 证据仍为 119 项。组件执行器不负责授予激活证据；
+Verify 在输出匹配、往返和最终文档检查全部通过后才计入方向与能力覆盖。
+
+实际缺口带来的通用构件包括数组 `length`、显式最后值覆盖的 `from_entries`、读取
+原诊断位置的 `reject.source`、仅失败时求值的 `reasonExpression`，以及当前调用的
+`runtime /clientOutput`。没有引入供应商专用执行器；未给 missing/null 增加隐式默认。
+
+验证：`closure-dev94-protocol`、`closure-dev94-go-all`、`closure-dev94-vet`、
+`closure-dev94-race` 均通过；staticcheck v0.8.2 仍以原 45 条诊断退出 1，归一化后新增/
+移除均为零。定向过程中的 nil ClientOutput、组合预算错误链和新样例 null 来源差异均已
+修正并保留原始失败日志，未通过放宽断言处理。
+
+现阶段的主要未完成项：
+
+- Chat 目标 logprobs/annotations/native_finish_reason、源端多故障首错与细节预算。
+- Anthropic 源端跨帧签名的可信来源保存、完整 metadata/usage 和多容器未知字段来源。
+- Responses/Gemini 的真实 SSE 双向声明，以及原有任务/会话/Agent/续传的完整组合。
+- 请求最终 wire 的完整角色、工具关联、参数与媒体约束。不能用再次调用公开 DecodeRequest
+  代替它，因为该入口还有额外能力/scope 行为并物化完整 Request。
+- 所有新功能版本的正式性能测量与火焰图、等价优化、预置切换及旧生产引擎退役。
+
+代码审查另发现 wire assertions、Mapping 和生命周期仍存在重复读取/计量，以及旧
+Chat logprobs 保留预算的检查时点差异。它们分别是待测性能线索与待差分的行为边界，
+不是已经证实的收益，也不能据此提前删除校验或放宽预算。

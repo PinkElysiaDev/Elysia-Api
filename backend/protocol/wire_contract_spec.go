@@ -28,9 +28,12 @@ type WireAssertion struct {
 	When   *Expression     `json:"when,omitempty"`
 	Schema ValueSchema     `json:"schema"`
 	Code   IssueCode       `json:"code"`
-	Reason string          `json:"reason"`
+	Reason string          `json:"reason,omitempty"`
 	Check  *Expression     `json:"check,omitempty"`
 	Each   []WireAssertion `json:"each,omitempty"`
+	// ReasonExpression replaces Reason and reads the same current container and
+	// root as When. It runs only after this assertion fails, under its budget.
+	ReasonExpression *Expression `json:"reasonExpression,omitempty"`
 	// Diagnostic preserves the declared boundary's classification. A non-nil
 	// diagnostic may explicitly retain an unspecified stage from that boundary.
 	Diagnostic *RejectDiagnostic `json:"diagnostic,omitempty"`
@@ -43,6 +46,7 @@ type compiledWireAssertion struct {
 	schema     *wireSchemaPlan
 	code       IssueCode
 	reason     string
+	reasonPlan *compiledOutputPlan
 	check      *compiledOutputPlan
 	each       []compiledWireAssertion
 	diagnostic *RejectDiagnostic
@@ -114,10 +118,11 @@ func compileWireAssertions(assertions []WireAssertion, path string, input, root 
 		if !slices.Contains([]IssueCode{InvalidInput, UnsupportedCapability, UpstreamContractViolation, InvalidAssociation, ConversionRejected}, assertion.Code) {
 			return nil, fmt.Errorf("%s/code: expected an input, capability, association or wire-contract diagnostic", at)
 		}
-		if strings.TrimSpace(assertion.Reason) == "" {
-			return nil, fmt.Errorf("%s/reason: static diagnostic text is required", at)
-		}
 		check := compiledWireAssertion{path: assertion.Path, pointer: pointer, code: assertion.Code, reason: assertion.Reason}
+		check.reasonPlan, err = compileWireReason(assertion, at, input, root, expressions, depth)
+		if err != nil {
+			return nil, err
+		}
 		if assertion.Diagnostic != nil {
 			if err := validateBoundaryDiagnostic(*assertion.Diagnostic, at+"/diagnostic"); err != nil {
 				return nil, err
@@ -159,6 +164,27 @@ func compileWirePredicate(expression *Expression, path string, input, root *Valu
 	}
 	if !isAssignable(plan.expression.result, BooleanType) {
 		return nil, fmt.Errorf("%s: condition must produce a boolean", path)
+	}
+	return plan, nil
+}
+
+func compileWireReason(assertion WireAssertion, path string, input, root *ValueSchema, compiler *expressionCompiler, depth int) (*compiledOutputPlan, error) {
+	if assertion.ReasonExpression == nil {
+		if strings.TrimSpace(assertion.Reason) == "" {
+			return nil, fmt.Errorf("%s/reason: diagnostic text or reasonExpression is required", path)
+		}
+		return nil, nil
+	}
+	if assertion.Reason != "" {
+		return nil, fmt.Errorf("%s/reasonExpression: cannot be combined with reason", path)
+	}
+	path += "/reasonExpression"
+	plan, err := compiler.compilePlan(*assertion.ReasonExpression, path, expressionScope{input: input, root: root}, depth)
+	if err != nil {
+		return nil, err
+	}
+	if plan.expression.result != StringType || !localProjectionCondition(plan) {
+		return nil, fmt.Errorf("%s: diagnostic must produce a string using only the current wire input or root", path)
 	}
 	return plan, nil
 }
@@ -210,7 +236,7 @@ func validateWireAssertions(assertions []compiledWireAssertion, state evaluation
 			err = assertion.schema.validate(ctx, selected, path, state.budget.limits)
 		}
 		if err != nil {
-			return assertion.failure(path, err)
+			return assertion.failure(state, path, err)
 		}
 		if assertion.check != nil {
 			selection := state
@@ -221,7 +247,7 @@ func validateWireAssertions(assertions []compiledWireAssertion, state evaluation
 				isValid, err = readBoolean(value)
 			}
 			if err != nil || !isValid {
-				return assertion.failure(path, err)
+				return assertion.failure(state, path, err)
 			}
 		}
 		if len(assertion.each) != 0 {
@@ -245,14 +271,27 @@ func wireAssertionError(code IssueCode, path, reason string, cause error) error 
 	return classifiedWireAssertionError(code, "", "wire", path, reason, "", cause)
 }
 
-func (assertion compiledWireAssertion) failure(path string, cause error) error {
+func (assertion compiledWireAssertion) failure(state evaluation, path string, cause error) error {
+	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
+		return cause
+	}
+	reason := assertion.reason
+	if assertion.reasonPlan != nil {
+		value, err := assertion.reasonPlan.evaluate(state)
+		if err == nil {
+			reason, err = readString(value)
+		}
+		if err != nil {
+			return errors.Join(cause, err)
+		}
+	}
 	if diagnostic := assertion.diagnostic; diagnostic != nil {
 		if diagnostic.Path != "" {
 			path = diagnostic.Path
 		}
-		return classifiedWireAssertionError(diagnostic.Code, diagnostic.Direction, diagnostic.Stage, path, assertion.reason, diagnostic.Suggestion, cause)
+		return classifiedWireAssertionError(diagnostic.Code, diagnostic.Direction, diagnostic.Stage, path, reason, diagnostic.Suggestion, cause)
 	}
-	return wireAssertionError(assertion.code, path, assertion.reason, cause)
+	return wireAssertionError(assertion.code, path, reason, cause)
 }
 
 func classifiedWireAssertionError(code IssueCode, direction Direction, stage, path, reason, suggestion string, cause error) error {

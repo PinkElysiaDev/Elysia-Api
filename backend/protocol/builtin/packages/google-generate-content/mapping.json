@@ -9143,7 +9143,7 @@
   }
 },
     "encode_response": {
-  "document": "client-response",
+  "document": "response-candidate",
   "program": {
     "op": "let",
     "name": "encoded-failure",
@@ -9231,6 +9231,8 @@
     "reasoning": true,
     "reasoning.signatures": true
   }
+,
+"finalDocument": "client-response"
 }
   },
   "samples": [

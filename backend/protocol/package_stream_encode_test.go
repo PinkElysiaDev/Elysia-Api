@@ -51,3 +51,36 @@ func TestPackageDeclaredFrameBatch(t *testing.T) {
 		}
 	}
 }
+
+func TestPackageFinalEventDocument(t *testing.T) {
+	document := eventProtocolPackage(t)
+	entry := document.Mapping.Directions[EncodeEvent]
+	final := document.Spec.Documents[entry.Document]
+	final.Assertions = append(final.Assertions, WireAssertion{Path: "/delivery_tag", Schema: ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "delivery marker is required"})
+	document.Spec.Documents["delivered-event"] = final
+	entry.FinalDocument = "delivered-event"
+	document.Mapping.Directions[EncodeEvent] = entry
+	compiled := compilePackageForTest(t, document)
+	event := Event{SchemaVersion: ProtocolCoreVersion, Type: ResponseStarted, ResponseID: StringValue("r"), Sequence: coreInteger(0)}
+	frames, err := compiled.EncodeFrames(t.Context(), event, EvaluationContext{State: NewEvaluationState()})
+	if err != nil || len(frames) != 1 {
+		t.Fatal("delivery contract changed the component boundary", frames, err)
+	}
+	validation, err := compiled.NewWireStreamValidation(Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPackageRuntimeIssue(t, validation.Consume(t.Context(), frames[0]), ConversionRejected, "/delivery_tag")
+	fields, err := frames[0].ReadObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields["delivery_tag"] = StringValue("ready")
+	valid, err := EncodeValue(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validation.Consume(t.Context(), valid); err != nil {
+		t.Fatal("failed final contract advanced the stream", err)
+	}
+}

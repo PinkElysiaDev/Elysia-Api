@@ -8,6 +8,27 @@ import (
 	"testing"
 )
 
+func TestPlanArrayLength(t *testing.T) {
+	plan := numericTestPlan(t, Expression{Op: "length", Source: expressionPointer(readExpression("input", ""))})
+	for _, fixture := range []struct {
+		raw  string
+		want int64
+	}{{`[]`, 0}, {`[null,{"n":9007199254740993},"x"]`, 3}, {``, -1}, {`null`, -1}, {`{}`, -1}} {
+		output, err := plan.evaluate(numericTestState(t, numericTestInput(t, fixture.raw)))
+		if fixture.want < 0 {
+			if err == nil {
+				t.Fatal("non-array was counted", fixture.raw)
+			}
+		} else if err != nil || output != coreInteger(fixture.want) {
+			t.Fatal("array member count changed", output, err)
+		}
+	}
+	constructed := numericTestPlan(t, Expression{Op: "length", Source: &Expression{Op: "array", Items: []Expression{literalExpression(1), literalExpression(false)}}})
+	if output, err := constructed.evaluate(numericTestState(t, Value{})); err != nil || output != coreInteger(2) {
+		t.Fatal("constructed array length changed", output, err)
+	}
+}
+
 func TestPlanTypeQueries(t *testing.T) {
 	read := readExpression("input", "")
 	for _, tc := range []struct {

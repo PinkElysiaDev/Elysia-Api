@@ -2,6 +2,28 @@ package protocol
 
 import "fmt"
 
+func (plan *compiledOutputPlan) reject(state evaluation) error {
+	if plan.source == nil {
+		return plan.expression.rejection
+	}
+	location, err := plan.source.build(state)
+	if err != nil {
+		return err
+	}
+	path, err := readPlannedString(location.output)
+	if err != nil {
+		return fmt.Errorf("rejection location requires a pointer string: %w", err)
+	}
+	if _, err := parsePointer(path); err != nil {
+		return fmt.Errorf("invalid rejection location: %w", err)
+	}
+	// The compiled diagnostic is shared by requests; only a taken rejection
+	// owns its selected source location.
+	failure := *plan.expression.rejection
+	failure.diagnostic.Path = path
+	return &failure
+}
+
 type declaredRejectionError struct {
 	diagnostic RejectDiagnostic
 	reason     string

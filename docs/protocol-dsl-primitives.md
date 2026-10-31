@@ -4,9 +4,9 @@
 
 表达式在配置编译时解析成计划。运行时执行选中的计划，不重新解释 JSON 声明，不在错误后换另一种转换算法。以下构件不包含供应商字段或跨协议取舍政策。
 
-## JSON 响应构造与最终交付
+## 响应构造与最终交付
 
-`encode_response` 可用 `finalDocument` 引用另一份 Spec 命名文档。原 `document` 仍约束
+`encode_response`、`encode_event` 可用 `finalDocument` 引用另一份 Spec 命名文档。原 `document` 仍约束
 编码结果及 Native 协调后的结果；未声明 `finalDocument` 时，最终交付继续使用同一文档。
 用户原有的严格 schema 不会因为保留 Native 而被绕过。
 
@@ -16,15 +16,20 @@
 {"document":"response-candidate","finalDocument":"client-response"}
 ```
 
-两份文档分别描述允许构造／恢复的响应和实际可交付的响应。当前实际消费者为 Chat：
+两份文档分别描述允许构造／恢复的响应和实际可交付的响应。例如 Chat：
 旧 typed 编码允许原样恢复来源中的裸 `error` 字符串，但最终 wire 检查要求错误对象。
 将两者绑定到同一 schema 会提前改变组件接受边界；把最终 schema 放宽又会漏掉发送检查。
 现在这个差异由明确的配置表达，不依赖失败后的回退或供应商 Go 分支。
 
 `ValidateWireOutput`、`ValidateWireOutputContext` 和相应对象读取入口选择最终文档；
-EncodeResponse 样例证据及组合发送验证也检查它。两个实际文档内容都进入方向指纹，
-改变最终合同会使相关验证证据失效。编译期只接受 JSON `encode_response` 和非流式文档，
-尚未扩展到事件、请求、任务或会话。
+`NewWireStreamValidation` 同样选取最终事件文档。两个实际文档内容都进入方向指纹，
+改变最终合同会使相关验证证据失效。JSON 响应必须绑定非流文档，事件必须绑定流文档；
+尚未扩展到请求、任务或上游会话编码。组件样例执行器只执行编解码；`Verify` 在匹配、
+往返之后检查已声明的最终响应文档，通过后才计入能力证据。组合发送验证仍独立检查最终字节。
+
+Anthropic 使用事件构造文档保留旧裸编码样例的边界，最终文档要求初始 message 的
+完整身份、角色、content 和 usage，以及 message_delta 的 stop_reason 与输出计数。
+Thinking 的初始空块不需要完成签名，不能直接套用完整 JSON 响应的 thinking 约束。
 
 `closure-dev93-protocol` 已通过本边界定向、四协议错误映射、119 份迁入 JSON 样例及
 原自定义严格 Native 保护。该记录不表示四预置完整迁移或性能验收完成；原 invalid
@@ -200,6 +205,14 @@ v3 program 与普通 effect 条件可读取两个运行时事实：
 null 是否覆盖缺省模型，由声明表达。Spec 断言、局部处置条件与 v2 不能使用此入口；
 未列出的运行时路径在编译期拒绝，来源身份及其余 scope 字段不在这里开放。
 
+事件程序也可读取 `runtime /clientOutput` 及其核心字段。未提供交付意图时是 missing；
+空对象、IncludeUsage 缺失、false、true 分别保留。字段由既有 typed 读取器直接访问，
+不序列化请求历史。Chat 的 usage 尾帧是否输出由 Mapping 使用这些值决定。
+
+`length` 对 `source` 数组计数。构造中的数组直接读取成员数；原始数组使用现有数组读取。
+缺失、null、非数组都报错，不把它们当成空集合。它可用于把辅助字段附在一个事件批次的
+末事件，不需要为此新增跨帧计数器。
+
 `type` 区分 missing/null/string/array/object/boolean/number；查询本身不解码大正文，但source求值仍可能读取、规范化字段。`is_integer` 按现有 int64 解码契约判断。`integer` 支持 add/subtract/lt/lte/gt/gte，先按顺序计算所有操作数，再验证类型及溢出，不使用浮点数或默认零掩盖错误。
 
 `keys` 返回排序、去重并独立拥有的对象键名。编译器可为直接读取typed Request中Object字段的
@@ -211,7 +224,14 @@ null 是否覆盖缺省模型，由声明表达。Spec 断言、局部处置条�
 也不消除完整输入计量及实际输出编码。`type`的这条路径仍严格区分missing、null和object；
 任意Value叶、raw输入及其他作用域保持原求值路径。
 
-Spec 的 `WireAssertion.check` 在 schema 通过后检查选中值，`when` 检查所在对象，root 保持原始文档。`each` 只对明确声明的非 nullable 数组逐项应用子断言，诊断路径按原始索引追加。断言按声明顺序返回首错，错误原因使用静态说明，不把正文带进日志。
+Spec 的 `WireAssertion.check` 在 schema 通过后检查选中值，`when` 检查所在对象，root 保持原始文档。`each` 只对明确声明的非 nullable 数组逐项应用子断言，诊断路径按原始索引追加。断言按声明顺序返回首错。
+
+错误说明在静态 `reason` 和 `reasonExpression` 中选择一个。后者必须编译为字符串，
+只读取当前 wire 容器或 root，沿用现有表达式与预算；仅在断言失败后求值一次。
+它与 `when` 的 input 相同，不改为 `check` 的选中字段，便于从兄弟字段读取事件类型。
+例如 `join` 静态前缀与 `quote_string(read input /type)` 可保留既有 `%q` 事件名诊断。
+声明应只引用需要报告的标识，不能引用私有正文；分类、阶段和诊断位置仍由静态配置决定。
+表达式失败时保留原校验原因和表达式错误，不退回另一条说明；取消仍保持取消错误。
 
 转换取舍属于 Mapping effects，不能放进这些原语。缓存及 historyRetention 的有限处置分别见 [缓存说明](protocol-cache-dispositions.md) 和 [历史保留说明](protocol-history-declarations.md)。
 
@@ -222,6 +242,8 @@ Spec 的 `WireAssertion.check` 在 schema 通过后检查选中值，`when` 检�
 `from_entries` 反向构造对象，每项必须恰有字符串 key 和 value；空字符串键是合法 JSON 键。
 `policy:"reject"` 拒绝任何重复键，`policy:"identical"` 只允许编码字节完全相同的重复值，
 数字 `1` 与 `1.0` 仍冲突。支持与 `merge_deep` 相同的局部 `onConflict` 诊断。
+`policy:"last"` 显式选择同名键最后一个值，用于累计 metadata 更新；不允许同时声明
+不会触发的 `onConflict`。其它策略的接受边界不变。
 
 二者复用延迟容器和不可变叶子，不逐项编码正文，也不授予 Native 来源。
 遍历逐项执行原有步数／取消检查，构造结果继续受逻辑字节和最终节点／深度预算限制。
@@ -270,8 +292,10 @@ Spec 的 `WireAssertion.check` 在 schema 通过后检查选中值，`when` 检�
 }
 ```
 
-`path`、`reason` 和诊断分类都是静态配置；此操作不捕获之前的错误、不重跑分支，也不把
-正文值插入错误说明。取消和资源预算检查仍在执行前生效。编译器只对明确的 `reject`
+`reason` 和诊断分类都是静态配置；诊断位置在静态 `path` 与返回指针字符串的 `source`
+中二选一。后者用于复用核心 metadata 中已记录的原始路径，只在该拒绝分支执行时读取，
+不改写请求间共享的编译诊断。此操作不捕获之前的错误、不重跑分支，也不把正文值插入
+错误说明。取消和资源预算检查仍在执行前生效。编译器只对明确的 `reject`
 分支承认“它不会成功输出”，不猜测其它条件永远为假；`emit` 证明仍检查所有能返回的分支。
 
 WireAssertion 的可选 `diagnostic` 复用同一分类结构，并允许静态 `direction`、`path`

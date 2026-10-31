@@ -248,16 +248,430 @@
       }
     },
     "client-response": {
+  "schema": {
+    "type": "any"
+  },
+  "assertions": [
+    {
+      "path": "",
       "schema": {
         "type": "object",
         "allowUnknown": true
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires an object",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
       }
     },
+    {
+      "path": "/error",
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires an object",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/error"
+        }
+      }
+    },
+    {
+      "path": "/candidates",
+      "schema": {
+        "type": "array"
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires an array",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "not",
+            "source": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/error"
+              }
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/candidates"
+            }
+          }
+        ]
+      },
+      "each": [
+        {
+          "path": "",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an object",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          }
+        },
+        {
+          "path": "/content",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an object",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/content"
+            }
+          }
+        },
+        {
+          "path": "/content/parts",
+          "schema": {
+            "type": "array"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an array",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/content"
+            }
+          },
+          "each": [
+            {
+              "path": "",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              }
+            },
+            {
+              "path": "/text",
+              "schema": {
+                "type": "string"
+              },
+              "code": "conversion_rejected",
+              "reason": "Gemini text must be a string, including explicit empty text",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/text"
+                }
+              }
+            },
+            {
+              "path": "/inlineData",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/inlineData"
+                }
+              }
+            },
+            {
+              "path": "/fileData",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/fileData"
+                }
+              }
+            },
+            {
+              "path": "/functionCall",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/functionCall"
+                }
+              }
+            },
+            {
+              "path": "/functionResponse",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/functionResponse"
+                }
+              }
+            },
+            {
+              "path": "/executableCode",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/executableCode"
+                }
+              }
+            },
+            {
+              "path": "/codeExecutionResult",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/codeExecutionResult"
+                }
+              }
+            },
+            {
+              "path": "/thoughtSignature",
+              "schema": {
+                "type": "string"
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires a nonempty string",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "check": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": ""
+                    },
+                    {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  ]
+                }
+              },
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thoughtSignature"
+                }
+              }
+            },
+            {
+              "path": "",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "Gemini part requires data or a thought signature",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "check": {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/text"
+                    }
+                  },
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/inlineData"
+                    }
+                  },
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/fileData"
+                    }
+                  },
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/functionCall"
+                    }
+                  },
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/functionResponse"
+                    }
+                  },
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/executableCode"
+                    }
+                  },
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/codeExecutionResult"
+                    }
+                  },
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thoughtSignature"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+},
     "model-page": {
       "schema": {
         "type": "object",
         "allowUnknown": true
       }
     }
+  ,
+"response-candidate": {
+  "schema": {
+    "type": "object",
+    "allowUnknown": true
   }
+}
+}
 }

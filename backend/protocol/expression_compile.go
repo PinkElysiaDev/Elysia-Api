@@ -187,6 +187,8 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 				return nil, fmt.Errorf("%s/from: runtime metadata requires a package mapping program or effect", path)
 			}
 			switch {
+			case len(pointer) > 0 && pointer[0] == "clientOutput":
+				compiled.result = AnyType
 			case len(pointer) > 0 && pointer[0] == "nativeFrame" && scope.canReadNativeFrame:
 				compiled.result = AnyType
 			case len(pointer) == 1 && pointer[0] == "interleavedThinking":
@@ -447,6 +449,13 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		if source.Diagnostic == nil || strings.TrimSpace(source.Reason) == "" {
 			return fail("reject requires a static diagnostic and reason")
 		}
+		hasPath := source.Path != "" || source.present["path"]
+		if hasPath == (expression.source != nil) {
+			return fail("reject requires exactly one of path or source")
+		}
+		if expression.source != nil && !isAssignable(expression.source.result, StringType) {
+			return fail("reject source must produce a diagnostic pointer string")
+		}
 		if source.Diagnostic.Path != "" {
 			return fail("reject uses path on the expression, not inside diagnostic")
 		}
@@ -586,8 +595,15 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 			expression.schema.Items = &ValueSchema{Type: ObjectType, Required: []string{"key", "value"}, Properties: map[string]ValueSchema{"key": {Type: StringType}, "value": {Type: AnyType}}}
 		}
 	case "from_entries":
-		if !isAssignable(expression.source.result, ArrayType) || !slices.Contains([]string{"reject", "identical"}, expression.policy) {
-			return fail("from_entries requires an array and reject or identical duplicate policy")
+		if !isAssignable(expression.source.result, ArrayType) || !slices.Contains([]string{"reject", "identical", "last"}, expression.policy) {
+			return fail("from_entries requires an array and reject, identical or last duplicate policy")
+		}
+		if expression.policy == "last" && expression.onConflict != nil {
+			return fail("last duplicate policy cannot produce a conflict diagnostic")
+		}
+	case "length":
+		if !isAssignable(expression.source.result, ArrayType) {
+			return fail("length requires an array")
 		}
 	case "project":
 		if !isAssignable(expression.source.result, ObjectType) {

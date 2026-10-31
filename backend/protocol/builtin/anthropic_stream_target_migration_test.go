@@ -64,6 +64,18 @@ func TestAnthropicPackageTargetStreamContinuations(t *testing.T) {
 			events[len(events)-1].Response.Attributes = nil
 			return events
 		}},
+		{"late-usage-metadata", "stream-text-encode", func(events []p.Event) []p.Event {
+			events[len(events)-1].Metadata = []p.ResponseMetadata{{Codec: Anthropic, Location: "usage", Name: "service_tier", Path: "/usage/service_tier", Value: p.StringValue("standard")}}
+			return append(events, p.Event{SchemaVersion: legacy.CoreVersion(), Type: p.MetadataUpdated, ResponseID: p.StringValue("r"), Metadata: []p.ResponseMetadata{{Codec: Anthropic, Location: "usage", Name: "service_tier", Path: "/usage/service_tier", Value: p.StringValue("priority")}}})
+		}},
+		{"frame-metadata", "stream-text-encode", func(events []p.Event) []p.Event {
+			events[2].Metadata = []p.ResponseMetadata{{Codec: Anthropic, Location: "event:content_block_delta", Name: "extension", Path: "/extension", Value: testValue(t, `{"n":9007199254740993,"label":"\u0078"}`)}}
+			return events
+		}},
+		{"terminal-metadata", "stream-text-encode", func(events []p.Event) []p.Event {
+			events[4].Metadata = []p.ResponseMetadata{{Codec: Anthropic, Location: "event:message_delta", Name: "extension", Path: "/extension", Value: testValue(t, `{"n":9007199254740993}`)}}
+			return events
+		}},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
 			var sample p.Sample
@@ -87,6 +99,27 @@ func TestAnthropicPackageTargetStreamContinuations(t *testing.T) {
 	}
 }
 
+func TestAnthropicPackageTargetMetadataRejections(t *testing.T) {
+	legacy := shippedProjectionProtocol(t, Anthropic)
+	candidate := compileBuiltinPackage(t, "anthropic")
+	for _, metadata := range []p.ResponseMetadata{
+		{Codec: Chat, Location: "response", Name: "service_tier", Path: "/choices/0/message/service_tier", Value: p.StringValue("standard")},
+		{Codec: Anthropic, Location: "event:message_delta", Name: "extension", Path: "/extension", Value: p.StringValue("value")},
+		{Codec: Anthropic, Location: "content", Name: "citations", Path: "/content/0/citations", Value: testValue(t, `[]`)},
+	} {
+		event := p.Event{SchemaVersion: legacy.CoreVersion(), Type: p.ResponseStarted, ResponseID: p.StringValue("r"),
+			Response: &p.Response{SchemaVersion: legacy.CoreVersion(), ID: p.StringValue("r"), Model: p.StringValue("m")}, Metadata: []p.ResponseMetadata{metadata}}
+		before := p.EvaluationContext{State: p.NewEvaluationState()}
+		after := p.EvaluationContext{State: p.NewEvaluationState()}
+		_, oldErr := legacy.EncodeFrames(t.Context(), event, before)
+		converted := streamEventsAtVersion([]p.Event{event}, candidate.CoreVersion())[0]
+		_, newErr := candidate.EncodeFrames(t.Context(), converted, after)
+		before.State.Release()
+		after.State.Release()
+		checkPackageFailureRejection(t, oldErr, newErr)
+	}
+}
+
 func TestAnthropicPackageTargetResourceOrigin(t *testing.T) {
 	legacy := shippedProjectionProtocol(t, Anthropic)
 	candidate := compileBuiltinPackage(t, "anthropic")
@@ -103,6 +136,28 @@ func TestAnthropicPackageTargetResourceOrigin(t *testing.T) {
 		before.State.Release()
 		after.State.Release()
 		checkPackageFailureRejection(t, oldErr, newErr)
+	}
+}
+
+func TestAnthropicPackageFinalEventContract(t *testing.T) {
+	legacy := shippedProjectionProtocol(t, Anthropic)
+	candidate := compileBuiltinPackage(t, "anthropic")
+	for _, fixture := range []finalWireCase{
+		{"start", `{"type":"message_start","message":{"id":"r","model":"m","type":"message","role":"assistant","content":[],"usage":{"input_tokens":0,"output_tokens":0}}}`, acceptedFinalWire},
+		{"missing-usage", `{"type":"message_start","message":{"id":"r","model":"m","type":"message","role":"assistant","content":[]}}`, "/message/usage"},
+		{"missing-identity-before-usage", `{"type":"message_start","message":{"model":"m","type":"message","role":"assistant","content":[]}}`, "/message/id"},
+		{"early-error", `{"type":"error","error":{}}`, acceptedFinalWire},
+		{"string-error", `{"type":"error","error":"failed"}`, "/error"},
+		{"missing-type", `{}`, "/type"},
+		{"unknown-type", `{"type":"unknown\"\n"}`, "/type"},
+		{"thinking-start-needs-no-signature", `{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}`, acceptedFinalWire},
+		{"decimal-index", `{"type":"content_block_stop","index":1.0}`, "/index"},
+		{"signature-delta", `{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"signed"}}`, acceptedFinalWire},
+		{"terminal", `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}`, acceptedFinalWire},
+		{"missing-stop-before-usage", `{"type":"message_delta","delta":{},"usage":null}`, "/delta/stop_reason"},
+		{"null-usage", `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":null}`, "/usage"},
+	} {
+		t.Run(fixture.name, func(t *testing.T) { checkFinalWireCase(t, legacy, candidate, p.EncodeEvent, fixture) })
 	}
 }
 

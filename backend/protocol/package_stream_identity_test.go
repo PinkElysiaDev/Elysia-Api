@@ -132,3 +132,38 @@ func TestPackageStreamDeclaredIdentityDefaults(t *testing.T) {
 		t.Fatal("wire identity normalization read mapping state")
 	}
 }
+
+func TestPackageStreamDeclaredResponseIdentity(t *testing.T) {
+	spec := sparseIdentityStream(t)
+	spec.ResponseID = "/message/id"
+	isStart := Expression{Op: "equal", Items: []Expression{readExpression("input", "/type"), literalExpression("message_start")}}
+	spec.ResponseIDValue = &Expression{Op: "if", When: &isStart, Then: expressionPointer(readExpression("input", "/message/id")), Otherwise: &Expression{Op: "omit"}}
+	for index := range spec.Events["message_start"] {
+		spec.Events["message_start"][index].ResponseID = ""
+	}
+	for _, direction := range []Direction{DecodeEvent, EncodeEvent} {
+		t.Run(string(direction), func(t *testing.T) {
+			state := newSparseIdentityValidation(t, spec)
+			state.direction, state.target.Direction, state.replay.target.Direction = direction, direction, direction
+			for _, raw := range []string{
+				`{"type":"message_start","message":{"id":"actual"},"response_id":false}`,
+				`{"type":"content_block_start","index":0,"content_block":{"type":"text"},"response_id":"extension"}`,
+				`{"type":"content_block_stop","index":0,"response_id":null}`,
+				`{"type":"message_stop","response_id":{"opaque":true}}`,
+			} {
+				if err := state.consume(t.Context(), Value{raw: raw}); err != nil {
+					t.Fatal("extension field was interpreted as a response identity", err)
+				}
+			}
+			if state.accepted.responseID != "actual" || state.finish() != nil {
+				t.Fatal("declared identity was not inherited")
+			}
+		})
+	}
+	state := newSparseIdentityValidation(t, spec)
+	assertPackageRuntimeIssue(t, state.consume(t.Context(), Value{raw: `{"type":"message_start","message":{"id":null}}`}), UpstreamContractViolation, "/message/id")
+	spec.ResponseIDValue = expressionPointer(readExpression("state", "/identity"))
+	if _, err := compilePackageStreamContract(spec, "/stream", DefaultLimits()); err == nil {
+		t.Fatal("wire response identity read mapping state")
+	}
+}

@@ -16233,7 +16233,7 @@
       }
     },
     "encode_response": {
-      "document": "client-response",
+      "document": "response-candidate",
       "program": {
   "op": "let",
   "name": "completed-envelope",
@@ -16428,7 +16428,9 @@
         "reasoning": true,
         "reasoning.encrypted": true
       }
-    }
+    ,
+"finalDocument": "client-response"
+}
   },
   "samples": [
     {

@@ -34,3 +34,26 @@ func TestPackageRejectBranchKeepsDeclaredBoundary(t *testing.T) {
 		}
 	}
 }
+
+func TestPackageRejectUsesOriginalLocation(t *testing.T) {
+	document := textProtocolPackage(t)
+	entry := document.Mapping.Directions[EncodeResponse]
+	entry.Program = Expression{Op: "reject", Source: expressionPointer(readExpression("input", "/metadata/0/path")),
+		Reason: "stream metadata requires target projection", Diagnostic: &RejectDiagnostic{Code: UnsupportedCapability, Stage: "wire"}}
+	document.Mapping.Directions[EncodeResponse] = entry
+	compiled := compilePackageForTest(t, document)
+	for _, path := range []string{"/usage/service_tier", "/choices/0/message/a~1b~0c"} {
+		response := Response{SchemaVersion: ProtocolCoreVersion, Metadata: []ResponseMetadata{{Path: path, Value: StringValue("synthetic")}},
+			Content: []Node{{Kind: MessageNode, Role: StringValue("assistant"), Children: []Node{{Kind: TextNode, Payload: StringValue("hello")}}}}}
+		_, err := compiled.EncodeResponse(t.Context(), &response, EvaluationContext{})
+		issue := assertPackageRuntimeIssue(t, err, UnsupportedCapability, path)
+		if issue.Reason != entry.Program.Reason || issue.Stage != "wire" {
+			t.Fatal("source location changed the diagnostic classification", issue)
+		}
+	}
+	entry.Program.Path = "/metadata"
+	document.Mapping.Directions[EncodeResponse] = entry
+	if err := document.Validate(DefaultLimits()); err == nil {
+		t.Fatal("ambiguous diagnostic location was accepted")
+	}
+}

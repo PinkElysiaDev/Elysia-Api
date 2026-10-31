@@ -115,6 +115,27 @@ func TestPackageVerificationRejectsMissingOrIncorrectEvidence(t *testing.T) {
 	}
 }
 
+func TestPackageVerificationRejectsInvalidFinalResponse(t *testing.T) {
+	document := verifiedTextPackage(t, "invalid-final-response")
+	document.Spec.Documents["delivered-response"] = WireContractSpec{Schema: &ValueSchema{
+		Type: ObjectType, Required: []string{"reply"},
+		Properties: map[string]ValueSchema{"reply": {Type: StringType, Enum: []Value{StringValue("deliverable")}}},
+	}}
+	entry := document.Mapping.Directions[EncodeResponse]
+	entry.FinalDocument = "delivered-response"
+	document.Mapping.Directions[EncodeResponse] = entry
+	compiled := compilePackageForTest(t, document)
+	report := Verify(t.Context(), compiled)
+	if report.Passed || !containsVerificationCode(report, ConversionRejected) || IssuesError(CanActivate(compiled, report)) == nil {
+		t.Fatal("component-only response authorized activation", report)
+	}
+	for _, check := range report.Checks {
+		if check.Direction == EncodeResponse && (check.Passed || len(check.Capabilities) != 0) {
+			t.Fatal("invalid final response supplied positive direction or capability evidence", check)
+		}
+	}
+}
+
 func TestPackageVerificationCombinationUsesPinnedFixtures(t *testing.T) {
 	first := compilePackageForTest(t, verifiedTextPackage(t, "package-a"))
 	document := verifiedTextPackage(t, "package-b")

@@ -1,6 +1,6 @@
 # DSL 流式契约与执行状态
 
-本文描述已经接入 v3 编译入口的能力及剩余缺口，不代表四预置已完成迁移或通过性能验收。总进度见 `protocol-dsl-completion-2026-10-30.md`。
+本文描述已经接入 v3 编译入口的能力及剩余缺口，不代表四预置已完成迁移或通过性能验收。总进度见 [本轮闭合记录](protocol-dsl-closure-2026-10-31.md)。
 
 ## Spec 独立校验
 
@@ -29,13 +29,28 @@
 
 动作 `when` 是只读原始帧的布尔表达式，不访问 Mapping 状态。没有动作命中的帧被拒绝。`responseId`、`itemId` 可在动作上覆盖；`kind` 区分 text、reasoning、refusal。`observe` 仅观察已开始响应，`control` 不创建响应，适用于独立心跳。
 
+没有固定标签的帧可用 `discriminatorValue` 从原文结构选择已声明的动作组。动作中的
+`foreach` / `actions` 有序遍历原始数组，可嵌套：`input` 是当前成员，`root` 始终是整帧，
+错误路径附真实数组索引。缺失数组为零次动作，显式 null 和非数组仍拒绝；条件在选中
+数组前检查。帧序号只检查一次，不因多 choice/tool 成员重复推进。
+
+`implicit:true` 显式声明首次出现时建立 response/item，后续出现观察已有身份；
+`sparseIdentity:true` 允许工具名称和 call ID 晚到，冲突及终态完整 JSON 仍检查。
+`closeItemsOnFinish:true` 用于没有逐项 stop 的协议，成功终态关闭已建立项并完成参数
+校验。`allowBeforeStart:true` 只允许 failure/cancel 先于 response_start，默认仍拒绝。
+`usage.allowEmpty:true` 允许声明的无主计数辅助帧，不补零、不建立响应；未声明仍拒绝。
+
 `inheritResponseId:true` 允许省略已建立的身份；默认仍拒绝显式 null、空字符串及身份变化。`optionalResponseId:true` 明确允许缺失、null、空字符串，直到首次非空身份；之后仍禁止变化。
+
+`responseIdValue` 可用纯表达式选择当前帧的响应身份，始终读取原始根帧，不访问 Mapping 状态。`responseId` 保留真实字段位置用于诊断。例如 Anthropic 只在 `message_start` 读取 `/message/id`，其他帧返回 `omit` 并按声明继承；顶层未知扩展 `response_id` 不参与身份校验。动作显式覆盖 `responseId` 时仍使用该动作的局部选择器。
 
 `itemIdIsIndex:true` 使用非负 int64 整数字面量作为身份。可用 `itemIdValue` 纯表达式声明归一化，例如缺失/null 索引为 0；归一化后仍检查身份类型，`itemId` 指针继续用于错误定位。未声明时不自动补 0。
 
 `sequence` 和 usage 计数要求非负 int64 整数字面量，不接受小数或指数拼写。缺失 usage 字段不补零；必需字段由 schema/assertions 声明。只有 usage 可以出现在成功终态之后，EOF 仍检查终态。
 
 `tool_start`、`tool_delta`、`tool_finish` 复用核心工具关联及 JSON 完成校验。普通 `item_finish` 关闭既有类型，`tool_finish` 额外要求工具项。关联表及保留字节受原有限额约束。
+Wire 观察器的身份、必要诊断路径及未完成工具参数共同消耗原 BufferBytes。身份自身超限
+保留原 `identity_bytes` 诊断及错误链，只有组合超限才报告实际 `state_bytes`。
 
 ## Mapping 状态与事务
 
@@ -81,6 +96,13 @@
 
 ## 当前验证范围
 
-已接通 Anthropic source 四份既有文本、工具、reasoning、加密块样例，对照完整核心事件及文本/工具的 Chat 输出。Anthropic target 初始样例由独立迁移测试验证。新增身份归一化测试单独核对；空事件批次 nil/[] 属于内部表示差异，事件数量和内容继续逐项比较。
+Anthropic source 四份既有文本、工具、reasoning、加密块样例对照完整核心事件；target
+五份样例及晚到工具身份、文本快照、自动关闭、metadata、最终 wire 边界均有对照。
+Chat source 四份样例及 metadata/logprobs、晚到 usage/工具身份已验证；target 三份
+样例分别验证四种 ClientOutput 意图，四条同协议流逐帧原字节只重放一次。
+空事件批次 nil/[] 是内部表示差异；嵌入 Native 按现有容器规则规范化，顶层原帧独立保留，
+不通过删除数字、字段或来源断言消除差异。
 
-这不代表四协议 SSE 完成。Chat 结构帧、数组动作、隐式开始及稀疏工具身份，Anthropic 签名片段、晚到缓存 usage、未知字段精确路径，以及 Responses/Gemini 生命周期仍须逐项闭合。原生前缀后修改语义增量的旧失败边界单独记录，未获批准前不作为预置新增接受行为。
+这不代表四协议 SSE 完成。Chat target 的 choice/message metadata、Anthropic source
+签名片段与完整 metadata、未知字段精确路径，以及 Responses/Gemini 生命周期仍须闭合。
+原生前缀后修改语义增量的旧失败边界单独记录，未获批准前不作为预置新增接受行为。

@@ -34,6 +34,7 @@ func TestAnthropicPackageDraftMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	draft := compileBuiltinPackage(t, "anthropic")
+	componentSamples := 0
 	for _, sample := range definition.Samples {
 		if sample.Direction == p.DecodeEvent || sample.Direction == p.EncodeEvent {
 			continue
@@ -43,7 +44,20 @@ func TestAnthropicPackageDraftMigration(t *testing.T) {
 			want, wantErr := executePackageMigrationSample(t, legacy, sample, options, false)
 			got, gotErr := executePackageMigrationSample(t, draft, sample, options, true)
 			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+			if fixture, exists := anthropicComponentResponseSamples[sample.ID]; exists {
+				componentSamples++
+				oldFinalErr := legacy.ValidateWireOutput(p.EncodeResponse, testValue(t, string(want)))
+				newFinalErr := draft.ValidateWireOutput(p.EncodeResponse, testValue(t, string(got)))
+				checkPackageFailureRejection(t, oldFinalErr, newFinalErr)
+				var failure *p.ConversionError
+				if !errors.As(oldFinalErr, &failure) || failure.Issues[0].Path != fixture.finalPath {
+					t.Fatal("component fixture changed its final-delivery rejection", oldFinalErr)
+				}
+			}
 		})
+	}
+	if componentSamples != len(anthropicComponentResponseSamples) {
+		t.Fatal("legacy component fixtures were removed from the differential suite")
 	}
 	for _, fixture := range []struct {
 		name, wire string

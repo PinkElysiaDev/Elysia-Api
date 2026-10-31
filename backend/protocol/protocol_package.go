@@ -26,19 +26,32 @@ type ProtocolPackage struct {
 // its mapping. Both event directions use these selectors and wire tag meanings.
 // Sequence, when declared, selects strictly increasing nonnegative int64 JSON
 // integer literals; decimal and exponent spellings are not sequence integers.
-// ItemIDValue optionally normalizes the selected identity with a pure wire
-// expression. OptionalResponseID allows missing, null or empty identities until
-// the first nonempty identity, without allowing a later identity change.
+// ResponseIDValue and ItemIDValue select identities with pure wire expressions.
+// ResponseIDValue always observes the original frame. OptionalResponseID allows
+// missing, null or empty identities until the first nonempty identity, without
+// allowing a later identity change.
 type ProtocolStreamSpec struct {
 	Discriminator      string                             `json:"discriminator"`
+	DiscriminatorValue *Expression                        `json:"discriminatorValue,omitempty"`
 	ResponseID         string                             `json:"responseId"`
+	ResponseIDValue    *Expression                        `json:"responseIdValue,omitempty"`
 	ItemID             string                             `json:"itemId"`
 	ItemIDValue        *Expression                        `json:"itemIdValue,omitempty"`
 	InheritResponseID  bool                               `json:"inheritResponseId,omitempty"`
 	OptionalResponseID bool                               `json:"optionalResponseId,omitempty"`
 	IsItemIDIndex      bool                               `json:"itemIdIsIndex,omitempty"`
 	Sequence           string                             `json:"sequence,omitempty"`
+	CloseItemsOnFinish bool                               `json:"closeItemsOnFinish,omitempty"`
+	Identities         []ProtocolStreamIdentitySpec       `json:"identities,omitempty"`
 	Events             map[string]ProtocolStreamEventSpec `json:"events"`
+}
+
+// ProtocolStreamIdentitySpec binds a present frame field for the response's
+// lifetime. When gates observation of that field, including its type check.
+type ProtocolStreamIdentitySpec struct {
+	Path string      `json:"path"`
+	Type JSONType    `json:"type"`
+	When *Expression `json:"when,omitempty"`
 }
 
 // ProtocolStreamEventSpec lists the ordered actions carried by one wire frame.
@@ -46,25 +59,35 @@ type ProtocolStreamSpec struct {
 type ProtocolStreamEventSpec []ProtocolStreamActionSpec
 
 // ProtocolStreamActionSpec selects an explicit text or JSON-tool lifecycle
-// action. When observes the original wire frame. Identity selectors override
+// action, or applies Actions to each member selected by ForEach. When reads the
+// current member as input and the original frame as root. Identity selectors override
 // the stream defaults only for this action; absent response IDs can inherit
 // an established identity only when the stream explicitly permits it.
 // item_finish closes the established kind; tool_finish requires a tool item.
+// AllowBeforeStart makes failure/cancel independent of response identity; any
+// required identity checks still belong to the stream's Identities declarations.
 type ProtocolStreamActionSpec struct {
-	Action     string                   `json:"action"`
-	Kind       NodeKind                 `json:"kind,omitempty"`
-	When       *Expression              `json:"when,omitempty"`
-	ResponseID string                   `json:"responseId,omitempty"`
-	ItemID     string                   `json:"itemId,omitempty"`
-	Text       string                   `json:"text,omitempty"`
-	Arguments  string                   `json:"arguments,omitempty"`
-	Tool       *ProtocolStreamToolSpec  `json:"tool,omitempty"`
-	Error      string                   `json:"error,omitempty"`
-	Usage      *ProtocolStreamUsageSpec `json:"usage,omitempty"`
+	Action           string                     `json:"action,omitempty"`
+	ForEach          string                     `json:"foreach,omitempty"`
+	Actions          []ProtocolStreamActionSpec `json:"actions,omitempty"`
+	Kind             NodeKind                   `json:"kind,omitempty"`
+	When             *Expression                `json:"when,omitempty"`
+	ResponseID       string                     `json:"responseId,omitempty"`
+	ItemID           string                     `json:"itemId,omitempty"`
+	ItemIDValue      *Expression                `json:"itemIdValue,omitempty"`
+	Implicit         bool                       `json:"implicit,omitempty"`
+	SparseIdentity   bool                       `json:"sparseIdentity,omitempty"`
+	AllowBeforeStart bool                       `json:"allowBeforeStart,omitempty"`
+	Text             string                     `json:"text,omitempty"`
+	Arguments        string                     `json:"arguments,omitempty"`
+	Tool             *ProtocolStreamToolSpec    `json:"tool,omitempty"`
+	Error            string                     `json:"error,omitempty"`
+	Usage            *ProtocolStreamUsageSpec   `json:"usage,omitempty"`
 }
 
-// ProtocolStreamToolSpec selects the complete identity required at tool_start.
-// Both fields must be nonempty strings on that frame; input is always JSON.
+// ProtocolStreamToolSpec selects a JSON tool's identity at tool_start. By default
+// both fields are nonempty strings. SparseIdentity permits absent or empty
+// strings until later updates supply them; null and other types remain invalid.
 type ProtocolStreamToolSpec struct {
 	Name   string `json:"name"`
 	CallID string `json:"callId"`
@@ -78,6 +101,8 @@ type ProtocolStreamUsageSpec struct {
 	Input  string `json:"input,omitempty"`
 	Output string `json:"output,omitempty"`
 	Total  string `json:"total,omitempty"`
+	// AllowEmpty permits snapshots containing only separately declared details.
+	AllowEmpty bool `json:"allowEmpty,omitempty"`
 }
 
 // ProtocolMapping contains only declarative programs and their semantic effects.
@@ -102,7 +127,8 @@ type ProtocolMapping struct {
 // ProtocolDirectionMapping transforms one wire/core boundary without a codec module.
 type ProtocolDirectionMapping struct {
 	Document string `json:"document"`
-	// FinalDocument optionally narrows the completed JSON response for delivery.
+	// FinalDocument optionally selects a separate delivery contract for response
+	// or event output; the rendering document still validates constructed bytes.
 	// Document continues to constrain construction and native reconciliation.
 	FinalDocument  string                        `json:"finalDocument,omitempty"`
 	IsEventBatch   bool                          `json:"eventBatch,omitempty"`

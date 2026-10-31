@@ -72,12 +72,10 @@ func checkPackageFailureEnvelope(t *testing.T, legacy, draft *p.Compiled, wire, 
 	if oldErr != nil || newErr != nil || !bytes.Equal(oldNativeWire, newNativeWire) {
 		t.Fatalf("native failure replay changed: old=%s new=%s errors=%v / %v", oldNativeWire, newNativeWire, oldErr, newErr)
 	}
-	if draft.Identity().Family == "openai_chat" {
-		oldFinalErr := legacy.ValidateWireOutput(p.EncodeResponse, testValue(t, string(oldNativeWire)))
-		newFinalErr := draft.ValidateWireOutput(p.EncodeResponse, testValue(t, string(newNativeWire)))
-		if oldFinalErr != nil || newFinalErr != nil {
-			checkPackageFailureRejection(t, oldFinalErr, newFinalErr)
-		}
+	oldFinalErr := legacy.ValidateWireOutput(p.EncodeResponse, testValue(t, string(oldNativeWire)))
+	newFinalErr := draft.ValidateWireOutput(p.EncodeResponse, testValue(t, string(newNativeWire)))
+	if oldFinalErr != nil || newFinalErr != nil {
+		checkPackageFailureRejection(t, oldFinalErr, newFinalErr)
 	}
 	oldResponse.Native, newResponse.Native = nil, nil
 	oldWire, oldErr := legacy.EncodeResponse(t.Context(), oldResponse, options)

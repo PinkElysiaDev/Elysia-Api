@@ -7,15 +7,15 @@ func (compiled *Compiled) bindFinalDocument(direction Direction, mapping Protoco
 		return nil, nil
 	}
 	path := "/mapping/directions/" + string(direction) + "/finalDocument"
-	if direction != EncodeResponse {
-		return nil, fmt.Errorf("%s: requires JSON response encoding", path)
+	if direction != EncodeResponse && direction != EncodeEvent {
+		return nil, fmt.Errorf("%s: requires response or event encoding", path)
 	}
 	contract, exists := documents[mapping.FinalDocument]
 	if !exists {
 		return nil, fmt.Errorf("%s: requires a declared wire document", path)
 	}
-	if contract.packageStream != nil {
-		return nil, fmt.Errorf("%s: requires a non-stream document", path)
+	if (contract.packageStream != nil) != (direction == EncodeEvent) {
+		return nil, fmt.Errorf("%s: document lifecycle must match the encoding direction", path)
 	}
 	if compiled.packagePlan.finalContracts == nil {
 		compiled.packagePlan.finalContracts = make(map[Direction]compiledWireContract)

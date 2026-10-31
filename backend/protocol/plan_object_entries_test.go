@@ -80,3 +80,12 @@ func TestObjectEntriesBudgetAndCancellation(t *testing.T) {
 		t.Fatal("entry traversal ignored cancellation", err)
 	}
 }
+
+func TestObjectEntriesLastMetadataUpdate(t *testing.T) {
+	plan, _ := compileOutputPlan(compileTestOutputExpression(t, Expression{Op: "from_entries", Source: expressionPointer(readExpression("input", "")), Policy: "last"}))
+	input := parseTestValue(t, `[{"key":"count","value":0},{"key":"count","value":9007199254740993},{"key":"tier","value":"old"},{"key":"tier","value":null}]`)
+	output, err := plan.evaluate(evaluation{ctx: t.Context(), input: input, budget: &evaluationBudget{limits: DefaultLimits()}})
+	if err != nil || output.raw != `{"count":9007199254740993,"tier":null}` {
+		t.Fatal("last metadata update lost its value or number spelling", output.raw, err)
+	}
+}

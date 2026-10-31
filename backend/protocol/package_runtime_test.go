@@ -291,8 +291,10 @@ func TestPackageFinalResponseDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = executeVerificationSample(t.Context(), compiled, Sample{Direction: EncodeResponse, Input: input})
-	assertPackageRuntimeIssue(t, err, ConversionRejected, "")
+	result, err := executeVerificationSample(t.Context(), compiled, Sample{Direction: EncodeResponse, Input: input})
+	if err != nil || result.output.JSONString() != string(wire) {
+		t.Fatal("component fixture unexpectedly applied the final delivery contract", result.output, err)
+	}
 	response.Native = nil
 	wire, err = compiled.EncodeResponse(t.Context(), response, EvaluationContext{})
 	if err != nil {

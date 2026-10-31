@@ -10,6 +10,18 @@ import (
 
 const scalarOperandCapacity = 2
 
+func (plan *compiledOutputPlan) countArrayMembers(state evaluation) (plannedOutput, error) {
+	source, err := plan.source.build(state)
+	if err != nil {
+		return plannedOutput{}, err
+	}
+	items, err := plannedArrayItems(source.output)
+	if err != nil {
+		return plannedOutput{}, err
+	}
+	return plannedLeaf(coreInteger(int64(len(items)))), nil
+}
+
 func plannedLeaf(value Value) plannedOutput {
 	return plannedOutput{JSONLeaf(value), value.Len()}
 }
@@ -41,6 +53,17 @@ func (plan *compiledOutputPlan) buildReadValue(state evaluation) (plannedOutput,
 	case "runtime":
 		if !state.runtime.isBound {
 			return plannedOutput{}, fmt.Errorf("runtime metadata is not bound")
+		}
+		if expression.pointer[0] == "clientOutput" {
+			var value JSONOutput
+			var err error
+			if state.runtime.clientOutput != nil {
+				value, err = readCoreClientOutput(*state.runtime.clientOutput, expression.pointer[1:])
+			}
+			if err == nil && expression.isRequired && value.IsZero() {
+				return plannedOutput{}, fmt.Errorf("%s: required field is absent", expression.path)
+			}
+			return plannedOutput{output: value, bytes: normalizedOutputBytes(value)}, err
 		}
 		if expression.pointer[0] == "nativeFrame" {
 			if state.runtime.observedNativeFrame.IsZero() {

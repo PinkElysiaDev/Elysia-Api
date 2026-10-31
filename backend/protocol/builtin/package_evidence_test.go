@@ -6,6 +6,15 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
+// These original fixtures remain in the legacy differential suite. Their
+// complete replacements supply activation evidence without changing that suite.
+var anthropicComponentResponseSamples = map[string]struct{ replacement, finalPath string }{
+	"tool-encode-response":                        {"completed-tool-encode-response", "/usage"},
+	"reasoning-response-encode":                   {"completed-reasoning-response-encode", "/content/0/signature"},
+	"signature-reasoning-response-encode":         {"completed-signature-reasoning-response-encode", "/usage"},
+	"encrypted_content-reasoning-response-encode": {"completed-encrypted-reasoning-response-encode", "/usage"},
+}
+
 // The fixtures in the package must also pass the actual verification pipeline,
 // including roundtrip and declared-capability checks used during activation.
 func TestBuiltinPackageJSONEvidence(t *testing.T) {
@@ -20,6 +29,16 @@ func TestBuiltinPackageJSONEvidence(t *testing.T) {
 			for _, sample := range document.Mapping.Samples {
 				if sample.Direction == p.DecodeRequest || sample.Direction == p.EncodeRequest || sample.Direction == p.DecodeResponse || sample.Direction == p.EncodeResponse {
 					samples[sample.ID] = false
+				}
+			}
+			if name == "anthropic" {
+				for original, fixture := range anthropicComponentResponseSamples {
+					if _, exists := samples[original]; exists {
+						t.Errorf("component-only fixture %s was promoted to final delivery evidence", original)
+					}
+					if _, exists := samples[fixture.replacement]; !exists {
+						t.Errorf("complete delivery replacement %s is missing", fixture.replacement)
+					}
 				}
 			}
 			report := p.Verify(t.Context(), compiled)
