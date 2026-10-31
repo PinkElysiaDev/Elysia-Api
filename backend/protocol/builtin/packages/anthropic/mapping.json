@@ -10398,5 +10398,1195 @@
         "hasMore": true
       }
     }
-  ]
+  ],
+  "modelPolicy": {
+    "reasoning": {
+      "op": "let",
+      "name": "model",
+      "source": {
+        "op": "trim_prefix",
+        "value": "models/",
+        "source": {
+          "op": "lower",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": ""
+          }
+        }
+      },
+      "body": {
+        "op": "if",
+        "when": {
+          "op": "not",
+          "source": {
+            "op": "any",
+            "items": [
+              {
+                "op": "has_prefix",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "name": "model",
+                  "path": ""
+                },
+                "value": "claude-3-7-sonnet"
+              },
+              {
+                "op": "has_prefix",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "name": "model",
+                  "path": ""
+                },
+                "value": "claude-sonnet-4"
+              },
+              {
+                "op": "has_prefix",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "name": "model",
+                  "path": ""
+                },
+                "value": "claude-opus-4"
+              },
+              {
+                "op": "has_prefix",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "name": "model",
+                  "path": ""
+                },
+                "value": "claude-haiku-4-5"
+              },
+              {
+                "op": "has_prefix",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "name": "model",
+                  "path": ""
+                },
+                "value": "claude-opus-5"
+              },
+              {
+                "op": "has_prefix",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "name": "model",
+                  "path": ""
+                },
+                "value": "claude-sonnet-5"
+              },
+              {
+                "op": "has_prefix",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "name": "model",
+                  "path": ""
+                },
+                "value": "claude-fable-5"
+              },
+              {
+                "op": "has_prefix",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "name": "model",
+                  "path": ""
+                },
+                "value": "claude-mythos-5"
+              },
+              {
+                "op": "has_prefix",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "name": "model",
+                  "path": ""
+                },
+                "value": "claude-haiku-5-5"
+              }
+            ]
+          }
+        },
+        "then": {
+          "op": "literal",
+          "value": {
+            "kind": "unknown",
+            "disable": false,
+            "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+          }
+        },
+        "otherwise": {
+          "op": "if",
+          "when": {
+            "op": "has_prefix",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "name": "model",
+              "path": ""
+            },
+            "value": "claude-opus-4-6"
+          },
+          "then": {
+            "op": "literal",
+            "value": {
+              "kind": "adaptive",
+              "disable": true,
+              "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+              "manual": true,
+              "minBudget": 1024,
+              "defaultMode": "disabled",
+              "levels": [
+                "low",
+                "medium",
+                "high",
+                "max"
+              ],
+              "defaultEffort": "high"
+            }
+          },
+          "otherwise": {
+            "op": "if",
+            "when": {
+              "op": "has_prefix",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "name": "model",
+                "path": ""
+              },
+              "value": "claude-sonnet-4-6"
+            },
+            "then": {
+              "op": "literal",
+              "value": {
+                "kind": "adaptive",
+                "disable": true,
+                "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+                "manual": true,
+                "minBudget": 1024,
+                "defaultMode": "disabled",
+                "levels": [
+                  "low",
+                  "medium",
+                  "high",
+                  "max"
+                ],
+                "defaultEffort": "high",
+                "interleaved": true
+              }
+            },
+            "otherwise": {
+              "op": "if",
+              "when": {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "has_prefix",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "model",
+                      "path": ""
+                    },
+                    "value": "claude-opus-4-7"
+                  },
+                  {
+                    "op": "has_prefix",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "model",
+                      "path": ""
+                    },
+                    "value": "claude-opus-4-8"
+                  },
+                  {
+                    "op": "has_prefix",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "model",
+                      "path": ""
+                    },
+                    "value": "claude-opus-5"
+                  },
+                  {
+                    "op": "has_prefix",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "model",
+                      "path": ""
+                    },
+                    "value": "claude-sonnet-5"
+                  },
+                  {
+                    "op": "has_prefix",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "model",
+                      "path": ""
+                    },
+                    "value": "claude-fable-5"
+                  },
+                  {
+                    "op": "has_prefix",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "model",
+                      "path": ""
+                    },
+                    "value": "claude-mythos-5"
+                  },
+                  {
+                    "op": "has_prefix",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "model",
+                      "path": ""
+                    },
+                    "value": "claude-haiku-5-5"
+                  }
+                ]
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "has_prefix",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      "value": "claude-opus-4-7"
+                    },
+                    {
+                      "op": "has_prefix",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      "value": "claude-opus-4-8"
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "literal",
+                  "value": {
+                    "kind": "adaptive",
+                    "disable": true,
+                    "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+                    "manual": false,
+                    "minBudget": 1024,
+                    "defaultMode": "disabled",
+                    "levels": [
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh",
+                      "max"
+                    ],
+                    "defaultEffort": "high"
+                  }
+                },
+                "otherwise": {
+                  "op": "if",
+                  "when": {
+                    "op": "has_prefix",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "model",
+                      "path": ""
+                    },
+                    "value": "claude-opus-5-5"
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": {
+                      "kind": "adaptive",
+                      "disable": false,
+                      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+                      "manual": false,
+                      "minBudget": 1024,
+                      "defaultMode": "auto",
+                      "levels": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ],
+                      "defaultEffort": "medium",
+                      "disabledLevels": [
+                        "low",
+                        "medium",
+                        "high"
+                      ]
+                    }
+                  },
+                  "otherwise": {
+                    "op": "if",
+                    "when": {
+                      "op": "has_prefix",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      "value": "claude-opus-5"
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": {
+                        "kind": "adaptive",
+                        "disable": true,
+                        "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+                        "manual": false,
+                        "minBudget": 1024,
+                        "defaultMode": "auto",
+                        "levels": [
+                          "low",
+                          "medium",
+                          "high",
+                          "xhigh",
+                          "max"
+                        ],
+                        "defaultEffort": "high",
+                        "disabledLevels": [
+                          "low",
+                          "medium",
+                          "high"
+                        ]
+                      }
+                    },
+                    "otherwise": {
+                      "op": "if",
+                      "when": {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "model",
+                          "path": ""
+                        },
+                        "value": "claude-haiku-5-5"
+                      },
+                      "then": {
+                        "op": "literal",
+                        "value": {
+                          "kind": "adaptive",
+                          "disable": true,
+                          "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+                          "manual": false,
+                          "minBudget": 1024,
+                          "defaultMode": "auto",
+                          "levels": [
+                            "low",
+                            "medium",
+                            "high",
+                            "xhigh",
+                            "max"
+                          ],
+                          "defaultEffort": "medium",
+                          "disabledLevels": [
+                            "low",
+                            "medium",
+                            "high"
+                          ]
+                        }
+                      },
+                      "otherwise": {
+                        "op": "if",
+                        "when": {
+                          "op": "has_prefix",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "model",
+                            "path": ""
+                          },
+                          "value": "claude-sonnet-5-5"
+                        },
+                        "then": {
+                          "op": "literal",
+                          "value": {
+                            "kind": "adaptive",
+                            "disable": false,
+                            "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+                            "manual": false,
+                            "minBudget": 1024,
+                            "defaultMode": "auto",
+                            "levels": [
+                              "low",
+                              "medium",
+                              "high",
+                              "xhigh",
+                              "max"
+                            ],
+                            "defaultEffort": "high",
+                            "betweenToolsLevels": [
+                              "low",
+                              "medium",
+                              "high"
+                            ]
+                          }
+                        },
+                        "otherwise": {
+                          "op": "if",
+                          "when": {
+                            "op": "any",
+                            "items": [
+                              {
+                                "op": "has_prefix",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "name": "model",
+                                  "path": ""
+                                },
+                                "value": "claude-fable-5"
+                              },
+                              {
+                                "op": "has_prefix",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "name": "model",
+                                  "path": ""
+                                },
+                                "value": "claude-mythos-5"
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "literal",
+                            "value": {
+                              "kind": "adaptive",
+                              "disable": false,
+                              "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+                              "manual": false,
+                              "minBudget": 1024,
+                              "defaultMode": "auto",
+                              "levels": [
+                                "low",
+                                "medium",
+                                "high",
+                                "xhigh",
+                                "max"
+                              ],
+                              "defaultEffort": "high"
+                            }
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": {
+                              "kind": "adaptive",
+                              "disable": true,
+                              "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+                              "manual": false,
+                              "minBudget": 1024,
+                              "defaultMode": "auto",
+                              "levels": [
+                                "low",
+                                "medium",
+                                "high",
+                                "xhigh",
+                                "max"
+                              ],
+                              "defaultEffort": "high"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "otherwise": {
+                "op": "if",
+                "when": {
+                  "op": "has_prefix",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "model",
+                    "path": ""
+                  },
+                  "value": "claude-opus-4-5"
+                },
+                "then": {
+                  "op": "literal",
+                  "value": {
+                    "kind": "budget",
+                    "disable": true,
+                    "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+                    "manual": true,
+                    "minBudget": 1024,
+                    "defaultMode": "disabled",
+                    "levels": [
+                      "low",
+                      "medium",
+                      "high"
+                    ],
+                    "interleaved": true
+                  }
+                },
+                "otherwise": {
+                  "op": "if",
+                  "when": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "model",
+                          "path": ""
+                        },
+                        "value": "claude-sonnet-4-5"
+                      },
+                      {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "model",
+                          "path": ""
+                        },
+                        "value": "claude-sonnet-4-"
+                      },
+                      {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "model",
+                          "path": ""
+                        },
+                        "value": "claude-opus-4-1"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": {
+                      "kind": "budget",
+                      "disable": true,
+                      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+                      "manual": true,
+                      "minBudget": 1024,
+                      "defaultMode": "disabled",
+                      "interleaved": true
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": {
+                      "kind": "budget",
+                      "disable": true,
+                      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+                      "manual": true,
+                      "minBudget": 1024,
+                      "defaultMode": "disabled"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "steps": [
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/max_output_tokens"
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/max_output_tokens"
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "lt",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": true
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "literal",
+            "value": "output limit must be a nonnegative integer"
+          },
+          "code": "invalid_input",
+          "direction": "decode_event",
+          "stage": "stream",
+          "suggestion": "correct the upstream stream or declared /parameters/max_output_tokens rule"
+        }
+      },
+      {
+        "when": {
+          "op": "not",
+          "source": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/max_output_tokens"
+            }
+          }
+        },
+        "diagnostic": {
+          "kind": "normalize",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "required system output default resolved to "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/maxOutputTokens"
+                    }
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "integer",
+                      "operation": "lt",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "context",
+                          "path": "/capability/maxOutputTokens"
+                        },
+                        {
+                          "op": "literal",
+                          "value": 8192
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/maxOutputTokens"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": 8192
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": 8192
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "set": {
+          "/parameters/max_output_tokens": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "context",
+                "path": "/capability/maxOutputTokens"
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "integer",
+                "operation": "lt",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/maxOutputTokens"
+                  },
+                  {
+                    "op": "literal",
+                    "value": 8192
+                  }
+                ]
+              },
+              "then": {
+                "op": "read",
+                "from": "context",
+                "path": "/capability/maxOutputTokens"
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": 8192
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": 8192
+            }
+          },
+          "/outputLimitDefault": {
+            "op": "literal",
+            "value": true
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                }
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/maxOutputTokens"
+                  }
+                },
+                "then": {
+                  "op": "integer",
+                  "operation": "gt",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/max_output_tokens"
+                    },
+                    {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/maxOutputTokens"
+                    }
+                  ]
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/outputLimitDefault"
+                }
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "reject",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "explicit output limit "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                }
+              },
+              {
+                "op": "literal",
+                "value": " exceeds confirmed hard limit "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/capability/maxOutputTokens"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                }
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/maxOutputTokens"
+                  }
+                },
+                "then": {
+                  "op": "integer",
+                  "operation": "gt",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/max_output_tokens"
+                    },
+                    {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/maxOutputTokens"
+                    }
+                  ]
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/outputLimitDefault"
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "normalize",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "required system output default resolved to "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/capability/maxOutputTokens"
+                }
+              }
+            ]
+          }
+        },
+        "set": {
+          "/parameters/max_output_tokens": {
+            "op": "read",
+            "from": "context",
+            "path": "/capability/maxOutputTokens"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/parameters/max_output_tokens"
+          }
+        },
+        "set": {
+          "/parameters/max_output_tokens": {
+            "op": "integer",
+            "operation": "add",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/max_output_tokens"
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "checks": [
+      {
+        "when": {
+          "op": "not",
+          "source": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/max_output_tokens"
+            }
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "literal",
+            "value": "target requires an output limit"
+          },
+          "code": "invalid_input",
+          "direction": "decode_event",
+          "stage": "stream",
+          "suggestion": "correct the upstream stream or declared /parameters/max_output_tokens rule"
+        }
+      },
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/max_output_tokens"
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/max_output_tokens"
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "lt",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": true
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "literal",
+            "value": "output limit must be a nonnegative integer"
+          },
+          "code": "invalid_input",
+          "direction": "decode_event",
+          "stage": "stream",
+          "suggestion": "correct the upstream stream or declared /parameters/max_output_tokens rule"
+        }
+      },
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/max_output_tokens"
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "context",
+                "path": "/capability/maxOutputTokens"
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gt",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/capability/maxOutputTokens"
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "output limit "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                }
+              },
+              {
+                "op": "literal",
+                "value": " exceeds confirmed hard limit "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/capability/maxOutputTokens"
+                }
+              }
+            ]
+          },
+          "code": "invalid_input",
+          "direction": "decode_event",
+          "stage": "stream",
+          "suggestion": "correct the upstream stream or declared /parameters/max_output_tokens rule"
+        }
+      }
+    ]
+  }
 }

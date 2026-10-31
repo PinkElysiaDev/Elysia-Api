@@ -17780,5 +17780,1048 @@
         ]
       }
     }
-  ]
+  ],
+  "modelPolicy": {
+    "reasoning": {
+      "op": "let",
+      "name": "model",
+      "source": {
+        "op": "trim_prefix",
+        "value": "models/",
+        "source": {
+          "op": "lower",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": ""
+          }
+        }
+      },
+      "body": {
+        "op": "if",
+        "when": {
+          "op": "any",
+          "items": [
+            {
+              "op": "contains",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "name": "model",
+                "path": ""
+              },
+              "value": "pro"
+            },
+            {
+              "op": "contains",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "name": "model",
+                "path": ""
+              },
+              "value": "codex"
+            }
+          ]
+        },
+        "then": {
+          "op": "literal",
+          "value": {
+            "kind": "unknown",
+            "disable": false
+          }
+        },
+        "otherwise": {
+          "op": "if",
+          "when": {
+            "op": "any",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "model",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "gpt-4o"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "model",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "gpt-4o-mini"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "model",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "gpt-4.1"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "model",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "gpt-4.1-mini"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "model",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "gpt-4.1-nano"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "model",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "gpt-4o-2024-05-13"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "model",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "gpt-4o-2024-08-06"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "model",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "gpt-4o-2024-11-20"
+                  }
+                ]
+              }
+            ]
+          },
+          "then": {
+            "op": "literal",
+            "value": {
+              "kind": "none",
+              "disable": true,
+              "source": "https://developers.openai.com/api/docs/guides/reasoning",
+              "defaultMode": "disabled"
+            }
+          },
+          "otherwise": {
+            "op": "if",
+            "when": {
+              "op": "any",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "model",
+                      "path": ""
+                    },
+                    {
+                      "op": "literal",
+                      "value": "gpt-5.6"
+                    }
+                  ]
+                },
+                {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "has_prefix",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      "value": "gpt-5.6-sol"
+                    },
+                    {
+                      "op": "has_prefix",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      "value": "gpt-6.1-sol"
+                    },
+                    {
+                      "op": "has_prefix",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      "value": "gpt-6-astra"
+                    },
+                    {
+                      "op": "has_prefix",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      "value": "gpt-6-sol"
+                    },
+                    {
+                      "op": "has_prefix",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      "value": "gpt-6-luna"
+                    }
+                  ]
+                }
+              ]
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": "gpt-5.6"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "model",
+                          "path": ""
+                        },
+                        "value": "gpt-5.6-sol"
+                      },
+                      {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "model",
+                          "path": ""
+                        },
+                        "value": "gpt-6-sol"
+                      },
+                      {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "model",
+                          "path": ""
+                        },
+                        "value": "gpt-6-luna"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "then": {
+                "op": "literal",
+                "value": {
+                  "kind": "level",
+                  "disable": true,
+                  "source": "https://developers.openai.com/api/docs/guides/reasoning",
+                  "defaultMode": "enabled",
+                  "defaultEffort": "medium",
+                  "levels": [
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max"
+                  ],
+                  "maxOutputTokens": 128000
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": {
+                  "kind": "level",
+                  "disable": false,
+                  "source": "https://developers.openai.com/api/docs/guides/reasoning",
+                  "defaultMode": "enabled",
+                  "defaultEffort": "medium",
+                  "levels": [
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max"
+                  ],
+                  "maxOutputTokens": 128000
+                }
+              }
+            },
+            "otherwise": {
+              "op": "if",
+              "when": {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": "gpt-5"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "model",
+                          "path": ""
+                        },
+                        "value": "gpt-5.1"
+                      },
+                      {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "model",
+                          "path": ""
+                        },
+                        "value": "gpt-5.2"
+                      },
+                      {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "model",
+                          "path": ""
+                        },
+                        "value": "gpt-5.4"
+                      },
+                      {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "model",
+                          "path": ""
+                        },
+                        "value": "gpt-5.5"
+                      },
+                      {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "model",
+                          "path": ""
+                        },
+                        "value": "gpt-5-"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "has_prefix",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "model",
+                    "path": ""
+                  },
+                  "value": "gpt-5.5"
+                },
+                "then": {
+                  "op": "literal",
+                  "value": {
+                    "kind": "level",
+                    "disable": true,
+                    "source": "https://developers.openai.com/api/docs/guides/reasoning",
+                    "defaultMode": "enabled",
+                    "defaultEffort": "medium",
+                    "levels": [
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh"
+                    ]
+                  }
+                },
+                "otherwise": {
+                  "op": "if",
+                  "when": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "model",
+                          "path": ""
+                        },
+                        "value": "gpt-5.2"
+                      },
+                      {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "model",
+                          "path": ""
+                        },
+                        "value": "gpt-5.4"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": {
+                      "kind": "level",
+                      "disable": true,
+                      "source": "https://developers.openai.com/api/docs/guides/reasoning",
+                      "defaultMode": "disabled",
+                      "defaultEffort": "medium",
+                      "levels": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh"
+                      ]
+                    }
+                  },
+                  "otherwise": {
+                    "op": "if",
+                    "when": {
+                      "op": "has_prefix",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      "value": "gpt-5."
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": {
+                        "kind": "level",
+                        "disable": true,
+                        "source": "https://developers.openai.com/api/docs/guides/reasoning",
+                        "defaultMode": "disabled",
+                        "defaultEffort": "medium",
+                        "levels": [
+                          "low",
+                          "medium",
+                          "high"
+                        ]
+                      }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": {
+                        "kind": "level",
+                        "disable": false,
+                        "source": "https://developers.openai.com/api/docs/guides/reasoning",
+                        "defaultMode": "enabled",
+                        "defaultEffort": "medium",
+                        "levels": [
+                          "minimal",
+                          "low",
+                          "medium",
+                          "high"
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              "otherwise": {
+                "op": "if",
+                "when": {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "has_prefix",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      "value": "o1"
+                    },
+                    {
+                      "op": "has_prefix",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      "value": "o3"
+                    },
+                    {
+                      "op": "has_prefix",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      "value": "o4"
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "literal",
+                  "value": {
+                    "kind": "level",
+                    "disable": false,
+                    "source": "https://developers.openai.com/api/docs/guides/reasoning",
+                    "defaultMode": "enabled",
+                    "defaultEffort": "medium",
+                    "levels": [
+                      "low",
+                      "medium",
+                      "high"
+                    ]
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": {
+                    "kind": "unknown",
+                    "disable": false,
+                    "source": "https://developers.openai.com/api/docs/guides/reasoning"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "steps": [
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/max_output_tokens"
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/max_output_tokens"
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "lt",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": true
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "literal",
+            "value": "output limit must be a nonnegative integer"
+          },
+          "code": "invalid_input",
+          "direction": "decode_event",
+          "stage": "stream",
+          "suggestion": "correct the upstream stream or declared /parameters/max_output_tokens rule"
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                }
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/maxOutputTokens"
+                  }
+                },
+                "then": {
+                  "op": "integer",
+                  "operation": "gt",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/max_output_tokens"
+                    },
+                    {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/maxOutputTokens"
+                    }
+                  ]
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/outputLimitDefault"
+                }
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "reject",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "explicit output limit "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                }
+              },
+              {
+                "op": "literal",
+                "value": " exceeds confirmed hard limit "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/capability/maxOutputTokens"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                }
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/maxOutputTokens"
+                  }
+                },
+                "then": {
+                  "op": "integer",
+                  "operation": "gt",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/max_output_tokens"
+                    },
+                    {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/maxOutputTokens"
+                    }
+                  ]
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/outputLimitDefault"
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "normalize",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "required system output default resolved to "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/capability/maxOutputTokens"
+                }
+              }
+            ]
+          }
+        },
+        "set": {
+          "/parameters/max_output_tokens": {
+            "op": "read",
+            "from": "context",
+            "path": "/capability/maxOutputTokens"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/parameters/max_output_tokens"
+          }
+        },
+        "set": {
+          "/parameters/max_output_tokens": {
+            "op": "integer",
+            "operation": "add",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/max_output_tokens"
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "checks": [
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/max_output_tokens"
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/max_output_tokens"
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "lt",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": true
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "literal",
+            "value": "output limit must be a nonnegative integer"
+          },
+          "code": "invalid_input",
+          "direction": "decode_event",
+          "stage": "stream",
+          "suggestion": "correct the upstream stream or declared /parameters/max_output_tokens rule"
+        }
+      },
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/max_output_tokens"
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "context",
+                "path": "/capability/maxOutputTokens"
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gt",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/capability/maxOutputTokens"
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "output limit "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                }
+              },
+              {
+                "op": "literal",
+                "value": " exceeds confirmed hard limit "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/capability/maxOutputTokens"
+                }
+              }
+            ]
+          },
+          "code": "invalid_input",
+          "direction": "decode_event",
+          "stage": "stream",
+          "suggestion": "correct the upstream stream or declared /parameters/max_output_tokens rule"
+        }
+      }
+    ]
+  }
 }

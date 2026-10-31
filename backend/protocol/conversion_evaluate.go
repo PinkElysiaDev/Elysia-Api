@@ -75,6 +75,7 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 	}
 	value := input
 	var reasoningTarget string
+	var modelControls *modelControlExecution
 	for _, rule := range c.phases[phase] {
 		activeRule = rule
 		if err := ctx.Err(); err != nil {
@@ -89,6 +90,11 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 			}
 			if target != "" {
 				reasoningTarget = target
+				modelControls = nil
+			}
+			if state.resolvedModelControls != nil {
+				modelControls, state.resolvedModelControls = state.resolvedModelControls, nil
+				reasoningTarget = ""
 			}
 			continue
 		}
@@ -105,6 +111,7 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 			value, resolvedTarget, err = c.applyRequestAction(ctx, value, route, rule, sink)
 			if resolvedTarget != "" {
 				reasoningTarget = resolvedTarget
+				modelControls = nil
 			}
 		case rule.Action == "chat_response_model" || rule.Action == "anthropic_usage_envelope" || rule.Action == "response_shape" || rule.Action == "response_envelope" || rule.Action == "response_metadata" || rule.Action == "error_metadata" || rule.Action == "usage_projection" || rule.Action == "responses_turn_state":
 			if rule.Match.matches(route, value) {
@@ -136,6 +143,14 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 		return Value{}, candidateFailure(err)
 	}
 	// Later authored rules must not invalidate the resolved target controls.
+	if modelControls != nil {
+		if err := state.load(ConversionRequest, false); err != nil {
+			return Value{}, err
+		}
+		if err := modelControls.apply(ctx, c, state.document.(*Request), route, sink, modelControls.plan.checks); err != nil {
+			return Value{}, candidateFailure(err)
+		}
+	}
 	if reasoningTarget != "" {
 		if err := state.load(ConversionRequest, false); err != nil {
 			return Value{}, err

@@ -9,14 +9,15 @@ import (
 // actions. Authored JSON operations synchronize it before observing any value.
 // It is never retained by the compiled policy or shared with another call.
 type conversionState struct {
-	wire              Value
-	document          any
-	limits            Limits
-	isStrict          bool
-	needsEncoding     bool
-	cache             *semanticCache
-	requestNormalized bool
-	requestPartition  *requestPartition
+	wire                  Value
+	document              any
+	limits                Limits
+	isStrict              bool
+	needsEncoding         bool
+	cache                 *semanticCache
+	requestNormalized     bool
+	requestPartition      *requestPartition
+	resolvedModelControls *modelControlExecution
 }
 
 func (state *conversionState) validateContext(phase ConversionPhase) error {
@@ -41,7 +42,7 @@ func (state *conversionState) accepts(phase ConversionPhase, rule ConversionRule
 		return false
 	}
 	switch rule.Action {
-	case "system_instruction_hoist", "chat_history", "assistant_history", "stream_options", "request_projection", "responses_include", "responses_context", "responses_storage", "gemini_safety_settings", "reasoning_controls", "response_metadata", "signatures", "tool_result_text", "tool_result_object":
+	case "system_instruction_hoist", "chat_history", "assistant_history", "stream_options", "request_projection", "responses_include", "responses_context", "responses_storage", "gemini_safety_settings", "reasoning_controls", "model_controls", "response_metadata", "signatures", "tool_result_text", "tool_result_object":
 		return true
 	}
 	return false
@@ -110,6 +111,8 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 		err = c.applyNodeObject(ctx, phase, state.document, route, sink, rule, state.cache)
 	} else if rule.Action == "response_metadata" {
 		err = c.metadataObject(phase, state.document, route, rule, sink)
+	} else if rule.Action == "model_controls" {
+		state.resolvedModelControls, err = c.applyModelControls(ctx, state.document.(*Request), route, rule, sink)
 	} else if phase == ConversionRequest {
 		target, err = c.applyRequestObject(ctx, state.document.(*Request), route, rule, sink)
 	} else {

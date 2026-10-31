@@ -49,7 +49,7 @@ var expressionOperations = []OperationInfo{
 	{"present", []string{"source"}, []string{"source"}, BooleanType, "Test presence with a non-null value; explicit null counts as absent."},
 	{"type", []string{"source"}, []string{"source"}, StringType, "Read the JSON kind as missing, null, string, array, object, boolean or number without decoding its contents."},
 	{"is_integer", []string{"source"}, []string{"source"}, BooleanType, "Test whether a present non-null JSON number decodes as int64, without coercion or truncation."},
-	{"integer", []string{"operation", "items"}, []string{"operation", "items"}, AnyType, "Checked int64 add (at least two operands), subtract, lt, lte, gt or gte (two operands); evaluate all operands before numeric validation."},
+	{"integer", []string{"operation", "items"}, []string{"operation", "items"}, AnyType, "Checked int64 add (at least two operands), subtract, multiply, divide, remainder, lt, lte, gt or gte (two operands); evaluate all operands before numeric validation. Division truncates toward zero; zero divisors and overflow fail."},
 	{"equal", []string{"items"}, []string{"items"}, BooleanType, "Compare two JSON values semantically with exact numbers."},
 	{"equal_text", []string{"items"}, []string{"items"}, BooleanType, "Compare two text operands, each a string or an array of strings, without concatenating them. Evaluate both operands before validating their text; missing, null and non-string members fail."},
 	{"all", []string{"items"}, []string{"items"}, BooleanType, "Boolean conjunction, with no truthiness coercion."},
@@ -60,6 +60,9 @@ var expressionOperations = []OperationInfo{
 	{"split_data_uri", []string{"source"}, []string{"source"}, ObjectType, "Split an exact data URI base64 marker into kind, MIME and opaque data without decoding or validating the payload."},
 	{"strip_prefix", []string{"source", "value"}, []string{"source", "value"}, StringType, "Remove a required literal string prefix; a mismatching input is an error."},
 	{"trim_prefix", []string{"source", "value"}, []string{"source", "value"}, StringType, "Remove a literal string prefix when present; a mismatching input passes through unchanged."},
+	{"lower", []string{"source"}, []string{"source"}, StringType, "Convert a string to Unicode lower case without coercing other JSON values."},
+	{"has_prefix", []string{"source", "value"}, []string{"source", "value"}, BooleanType, "Test whether a string begins with a declared literal string; matching is case sensitive."},
+	{"contains", []string{"source", "value"}, []string{"source", "value"}, BooleanType, "Test whether a string contains a declared literal string; matching is case sensitive."},
 	{"ref", []string{"ref"}, []string{"ref"}, AnyType, "Expand a named expression at compile time; recursive references fail."},
 }
 

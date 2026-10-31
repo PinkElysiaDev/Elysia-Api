@@ -105,12 +105,20 @@ func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, er
 			return plannedOutput{}, fmt.Errorf("%s/values: enum value is unmapped", expression.path)
 		}
 		return plannedLeaf(value), nil
-	case "strip_prefix", "trim_prefix":
+	case "strip_prefix", "trim_prefix", "lower", "has_prefix", "contains":
 		text, err := readPlannedString(source.output)
 		if err != nil {
 			return plannedOutput{}, err
 		}
-		prefix, _ := readString(expression.value)
+		switch expression.op {
+		case "lower":
+			return plannedLeaf(StringValue(strings.ToLower(text))), nil
+		case "has_prefix":
+			return plannedLeaf(coreBoolean(strings.HasPrefix(text, expression.literalText))), nil
+		case "contains":
+			return plannedLeaf(coreBoolean(strings.Contains(text, expression.literalText))), nil
+		}
+		prefix := expression.literalText
 		if expression.op == "strip_prefix" && !strings.HasPrefix(text, prefix) {
 			return plannedOutput{}, fmt.Errorf("string does not have the declared prefix")
 		}

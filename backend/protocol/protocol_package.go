@@ -90,6 +90,7 @@ type ProtocolMapping struct {
 	TaskSamples    []TaskSample                           `json:"taskSamples,omitempty"`
 	SessionSamples []SessionSample                        `json:"sessionSamples,omitempty"`
 	Agent          *ProtocolAgentMapping                  `json:"agent,omitempty"`
+	ModelPolicy    *ProtocolModelPolicy                   `json:"modelPolicy,omitempty"`
 }
 
 // ProtocolDirectionMapping transforms one wire/core boundary without a codec module.
@@ -267,6 +268,9 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 		return nil, err
 	}
 	if err := compiled.compilePackageAgent(mapping.Agent, expressions); err != nil {
+		return nil, err
+	}
+	if err := compiled.compileModelPolicy(mapping.ModelPolicy, expressions); err != nil {
 		return nil, err
 	}
 	for _, name := range sortedKeys(mapping.Expressions) {

@@ -16,6 +16,7 @@ type compiledPackagePlan struct {
 	hasHistoryProjection bool
 	modelContracts       map[string]compiledWireContract
 	taskContracts        map[string]map[string]packageTaskContracts
+	modelPolicy          *compiledModelPolicy
 }
 
 type compiledSemanticEffect struct {

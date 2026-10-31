@@ -70,6 +70,15 @@ func TestPlanIntegerOperations(t *testing.T) {
 		{"lte", "[2,2]", "true", 2},
 		{"gt", "[9007199254740993,9007199254740992]", "true", 2},
 		{"gte", "[2,3]", "false", 2},
+		{"multiply", "[9007199254740993,3]", "27021597764222979", 2},
+		{"multiply", "[-9223372036854775808,1]", "-9223372036854775808", 2},
+		{"multiply", "[0,-9223372036854775808]", "0", 2},
+		{"multiply", "[-3,-7]", "21", 2},
+		{"divide", "[-8,3]", "-2", 2},
+		{"divide", "[8,-3]", "-2", 2},
+		{"remainder", "[-8,3]", "-2", 2},
+		{"remainder", "[8,-3]", "2", 2},
+		{"remainder", "[-9223372036854775808,-1]", "0", 2},
 	} {
 		t.Run(tc.operation+tc.input, func(t *testing.T) {
 			state := numericTestState(t, numericTestInput(t, tc.input))
@@ -89,6 +98,12 @@ func TestPlanIntegerOperations(t *testing.T) {
 		{"subtract", "[0,-9223372036854775808]", "subtraction overflow", 2},
 		{"subtract", "[-9223372036854775808,1]", "subtraction overflow", 2},
 		{"subtract", "[9223372036854775807,-1]", "subtraction overflow", 2},
+		{"multiply", "[9223372036854775807,2]", "multiplication overflow", 2},
+		{"multiply", "[-9223372036854775808,-1]", "multiplication overflow", 2},
+		{"multiply", "[-1,-9223372036854775808]", "multiplication overflow", 2},
+		{"divide", "[-9223372036854775808,-1]", "division overflow", 2},
+		{"divide", "[1,0]", "division by zero", 2},
+		{"remainder", "[1,0]", "division by zero", 2},
 	} {
 		_, err := numericTestPlan(t, numericTestExpression(tc.operation, tc.operands)).evaluate(numericTestState(t, numericTestInput(t, tc.input)))
 		if err == nil || !strings.Contains(err.Error(), tc.message) {
@@ -150,7 +165,8 @@ func TestPlanNumericCompilation(t *testing.T) {
 	read := readExpression("input", "")
 	for _, expression := range []Expression{
 		{Op: "type"}, {Op: "type", Source: &read, Operation: "add"},
-		{Op: "integer", Operation: "multiply", Items: []Expression{read, read}},
+		{Op: "integer", Operation: "power", Items: []Expression{read, read}},
+		numericTestExpression("multiply", 3), numericTestExpression("divide", 1), numericTestExpression("remainder", 0),
 		numericTestExpression("add", 1), numericTestExpression("subtract", 3), numericTestExpression("gte", 1),
 		{Op: "integer", Operation: "add", Items: []Expression{literalExpression("1"), read}},
 	} {
@@ -162,10 +178,51 @@ func TestPlanNumericCompilation(t *testing.T) {
 	for _, tc := range []struct {
 		operation string
 		result    JSONType
-	}{{"add", IntegerType}, {"subtract", IntegerType}, {"lt", BooleanType}, {"lte", BooleanType}, {"gt", BooleanType}, {"gte", BooleanType}} {
+	}{{"add", IntegerType}, {"subtract", IntegerType}, {"multiply", IntegerType}, {"divide", IntegerType}, {"remainder", IntegerType}, {"lt", BooleanType}, {"lte", BooleanType}, {"gt", BooleanType}, {"gte", BooleanType}} {
 		plan := numericTestPlan(t, numericTestExpression(tc.operation, 2))
 		if plan.expression.result != tc.result {
 			t.Fatal("numeric operation has wrong static type", tc.operation, plan.expression.result)
+		}
+	}
+}
+
+func TestPlanStringSelectors(t *testing.T) {
+	read := readExpression("input", "")
+	for _, fixture := range []struct {
+		operation, input, pattern, want string
+	}{
+		{"lower", `"MODELS/ÄBC-Σ"`, "", `"models/äbc-σ"`},
+		{"lower", `""`, "", `""`},
+		{"has_prefix", `"models/name"`, "models/", "true"},
+		{"has_prefix", `"Models/name"`, "models/", "false"},
+		{"contains", `"model-audio-preview"`, "audio", "true"},
+		{"contains", `"model"`, "audio", "false"},
+		{"contains", `"\u0070ro"`, "pro", "true"},
+		{"has_prefix", `"value"`, "", "true"},
+	} {
+		expression := Expression{Op: fixture.operation, Source: &read}
+		if fixture.operation != "lower" {
+			expression.Value = StringValue(fixture.pattern)
+		}
+		plan := numericTestPlan(t, expression)
+		value, err := plan.evaluate(numericTestState(t, numericTestInput(t, fixture.input)))
+		if err != nil || value.JSONString() != fixture.want {
+			t.Fatal(fixture, value.JSONString(), err)
+		}
+		for _, invalid := range []string{"", "null", "1", "false", "[]", "{}"} {
+			if _, err := plan.evaluate(numericTestState(t, numericTestInput(t, invalid))); err == nil {
+				t.Fatal("string source was coerced", fixture.operation, invalid)
+			}
+		}
+	}
+	for _, expression := range []Expression{
+		{Op: "lower"}, {Op: "lower", Source: expressionPointer(literalExpression(1))},
+		{Op: "contains", Source: &read, Value: coreBoolean(true)},
+		{Op: "has_prefix", Source: expressionPointer(literalExpression(false)), Value: StringValue("prefix")},
+	} {
+		compiler := expressionCompiler{limits: DefaultLimits()}
+		if _, err := compiler.compilePlan(expression, "/string", expressionScope{}, 1); err == nil {
+			t.Fatal("invalid string expression compiled", expression)
 		}
 	}
 }

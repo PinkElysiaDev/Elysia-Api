@@ -235,7 +235,13 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if err := action.validate(r); err != nil {
 			return nil, err
 		}
-		if r.Action == "request_projection" {
+		if r.Action == "model_controls" {
+			option, err := compileModelControlOptions(r.Value, limits)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
+		} else if r.Action == "request_projection" {
 			option, err := compileRequestProjectionOption(r.Value, limits)
 			if err != nil {
 				return nil, err

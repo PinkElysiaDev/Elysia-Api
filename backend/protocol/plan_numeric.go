@@ -100,6 +100,23 @@ func (plan *compiledOutputPlan) buildInteger(state evaluation) (plannedOutput, e
 			return plannedOutput{}, fmt.Errorf("int64 subtraction overflow")
 		}
 		return plannedLeaf(coreInteger(left - right)), nil
+	case "multiply":
+		product := left * right
+		if left != 0 && product/left != right || left == -1 && right == math.MinInt64 {
+			return plannedOutput{}, fmt.Errorf("int64 multiplication overflow")
+		}
+		return plannedLeaf(coreInteger(product)), nil
+	case "divide", "remainder":
+		if right == 0 {
+			return plannedOutput{}, fmt.Errorf("int64 division by zero")
+		}
+		if plan.expression.operation == "remainder" {
+			return plannedLeaf(coreInteger(left % right)), nil
+		}
+		if left == math.MinInt64 && right == -1 {
+			return plannedOutput{}, fmt.Errorf("int64 division overflow")
+		}
+		return plannedLeaf(coreInteger(left / right)), nil
 	case "add":
 		total := left
 		for _, next := range values[1:] {

@@ -22,6 +22,7 @@ type compiledExpression struct {
 	stateSlot                           int
 	indexSlot                           int
 	value                               Value
+	literalText                         string
 	fields                              map[string]*compiledExpression
 	keys                                []string
 	items                               []*compiledExpression
@@ -159,7 +160,6 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			schema, coreType = scope.item, scope.coreItem
 		case "context":
 			schema, coreType = nil, nil
-		case "runtime":
 		case "state":
 			if len(pointer) == 0 {
 				return nil, fmt.Errorf("%s/path: state reads require a declared slot", path)
@@ -170,6 +170,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			}
 			compiled.stateSlot, schema, coreType = slot.slot, slot.schema, nil
 			pointer, compiled.pointer = pointer[1:], pointer[1:]
+		case "runtime":
 			if !scope.canReadRuntime {
 				return nil, fmt.Errorf("%s/from: runtime metadata requires a package mapping program or effect", path)
 			}
@@ -419,6 +420,17 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		if err != nil || prefix == "" || !isAssignable(expression.source.result, StringType) {
 			return fail(expression.op + " requires a nonempty literal string prefix and a string source")
 		}
+		expression.literalText = prefix
+	case "has_prefix", "contains":
+		text, err := readString(expression.value)
+		if err != nil || !isAssignable(expression.source.result, StringType) {
+			return fail(expression.op + " requires a literal string and a string source")
+		}
+		expression.literalText = text
+	case "lower":
+		if !isAssignable(expression.source.result, StringType) {
+			return fail("lower source must produce a string")
+		}
 	case "split_data_uri":
 		if !isAssignable(expression.source.result, StringType) {
 			return fail("split_data_uri source must produce a string")
@@ -536,16 +548,16 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 				return fail("integer add requires at least two operands")
 			}
 			expression.result = IntegerType
-		case "subtract", "lt", "lte", "gt", "gte":
+		case "subtract", "multiply", "divide", "remainder", "lt", "lte", "gt", "gte":
 			if len(expression.items) != 2 {
 				return fail("integer " + expression.operation + " requires exactly two operands")
 			}
 			expression.result = BooleanType
-			if expression.operation == "subtract" {
+			if slices.Contains([]string{"subtract", "multiply", "divide", "remainder"}, expression.operation) {
 				expression.result = IntegerType
 			}
 		default:
-			return fail("integer operation must be add, subtract, lt, lte, gt or gte")
+			return fail("integer operation must be add, subtract, multiply, divide, remainder, lt, lte, gt or gte")
 		}
 		for _, item := range expression.items {
 			if !isAssignable(item.result, NumberType) {

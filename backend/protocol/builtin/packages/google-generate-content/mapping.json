@@ -8779,5 +8779,798 @@
         ]
       }
     }
-  ]
+  ],
+  "modelPolicy": {
+    "reasoning": {
+      "op": "let",
+      "name": "model",
+      "source": {
+        "op": "trim_prefix",
+        "value": "models/",
+        "source": {
+          "op": "lower",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": ""
+          }
+        }
+      },
+      "body": {
+        "op": "if",
+        "when": {
+          "op": "any",
+          "items": [
+            {
+              "op": "contains",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "name": "model",
+                "path": ""
+              },
+              "value": "image"
+            },
+            {
+              "op": "contains",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "name": "model",
+                "path": ""
+              },
+              "value": "tts"
+            },
+            {
+              "op": "contains",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "name": "model",
+                "path": ""
+              },
+              "value": "audio"
+            },
+            {
+              "op": "contains",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "name": "model",
+                "path": ""
+              },
+              "value": "live"
+            }
+          ]
+        },
+        "then": {
+          "op": "literal",
+          "value": {
+            "kind": "unknown",
+            "disable": false,
+            "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+          }
+        },
+        "otherwise": {
+          "op": "if",
+          "when": {
+            "op": "has_prefix",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "name": "model",
+              "path": ""
+            },
+            "value": "gemini-2.5-pro"
+          },
+          "then": {
+            "op": "literal",
+            "value": {
+              "kind": "budget",
+              "disable": false,
+              "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking",
+              "minBudget": 128,
+              "maxBudget": 32768,
+              "defaultMode": "auto"
+            }
+          },
+          "otherwise": {
+            "op": "if",
+            "when": {
+              "op": "has_prefix",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "name": "model",
+                "path": ""
+              },
+              "value": "gemini-2.5-flash-lite"
+            },
+            "then": {
+              "op": "literal",
+              "value": {
+                "kind": "budget",
+                "disable": true,
+                "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking",
+                "minBudget": 512,
+                "maxBudget": 24576,
+                "defaultMode": "disabled"
+              }
+            },
+            "otherwise": {
+              "op": "if",
+              "when": {
+                "op": "has_prefix",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "name": "model",
+                  "path": ""
+                },
+                "value": "gemini-2.5-flash"
+              },
+              "then": {
+                "op": "literal",
+                "value": {
+                  "kind": "budget",
+                  "disable": true,
+                  "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking",
+                  "maxBudget": 24576,
+                  "defaultMode": "auto"
+                }
+              },
+              "otherwise": {
+                "op": "if",
+                "when": {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "has_prefix",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      "value": "gemini-3-"
+                    },
+                    {
+                      "op": "has_prefix",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "model",
+                        "path": ""
+                      },
+                      "value": "gemini-3."
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "if",
+                  "when": {
+                    "op": "has_prefix",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "model",
+                      "path": ""
+                    },
+                    "value": "gemini-3.1-pro"
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": {
+                      "kind": "level",
+                      "disable": false,
+                      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking",
+                      "defaultMode": "enabled",
+                      "defaultEffort": "high",
+                      "levels": [
+                        "low",
+                        "medium",
+                        "high"
+                      ]
+                    }
+                  },
+                  "otherwise": {
+                    "op": "if",
+                    "when": {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "has_prefix",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "model",
+                            "path": ""
+                          },
+                          "value": "gemini-3.7-flash"
+                        },
+                        {
+                          "op": "has_prefix",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "model",
+                            "path": ""
+                          },
+                          "value": "gemini-3.8-flash"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": {
+                        "kind": "level",
+                        "disable": false,
+                        "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking",
+                        "defaultMode": "enabled",
+                        "defaultEffort": "medium",
+                        "levels": [
+                          "low",
+                          "medium",
+                          "high"
+                        ]
+                      }
+                    },
+                    "otherwise": {
+                      "op": "if",
+                      "when": {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "model",
+                          "path": ""
+                        },
+                        "value": "gemini-3-pro"
+                      },
+                      "then": {
+                        "op": "literal",
+                        "value": {
+                          "kind": "level",
+                          "disable": false,
+                          "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking",
+                          "defaultMode": "enabled",
+                          "defaultEffort": "high",
+                          "levels": [
+                            "low",
+                            "high"
+                          ]
+                        }
+                      },
+                      "otherwise": {
+                        "op": "if",
+                        "when": {
+                          "op": "contains",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "model",
+                            "path": ""
+                          },
+                          "value": "flash-lite"
+                        },
+                        "then": {
+                          "op": "literal",
+                          "value": {
+                            "kind": "level",
+                            "disable": false,
+                            "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking",
+                            "defaultMode": "enabled",
+                            "defaultEffort": "minimal",
+                            "levels": [
+                              "minimal",
+                              "low",
+                              "medium",
+                              "high"
+                            ]
+                          }
+                        },
+                        "otherwise": {
+                          "op": "if",
+                          "when": {
+                            "op": "any",
+                            "items": [
+                              {
+                                "op": "has_prefix",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "name": "model",
+                                  "path": ""
+                                },
+                                "value": "gemini-3.5-flash"
+                              },
+                              {
+                                "op": "has_prefix",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "name": "model",
+                                  "path": ""
+                                },
+                                "value": "gemini-3.6-flash"
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "literal",
+                            "value": {
+                              "kind": "level",
+                              "disable": false,
+                              "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking",
+                              "defaultMode": "enabled",
+                              "defaultEffort": "medium",
+                              "levels": [
+                                "minimal",
+                                "low",
+                                "medium",
+                                "high"
+                              ]
+                            }
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": {
+                              "kind": "level",
+                              "disable": false,
+                              "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking",
+                              "defaultMode": "enabled",
+                              "defaultEffort": "high",
+                              "levels": [
+                                "minimal",
+                                "low",
+                                "medium",
+                                "high"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": {
+                    "kind": "unknown",
+                    "disable": false,
+                    "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "steps": [
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/max_output_tokens"
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/max_output_tokens"
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "lt",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": true
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "literal",
+            "value": "output limit must be a nonnegative integer"
+          },
+          "code": "invalid_input",
+          "direction": "decode_event",
+          "stage": "stream",
+          "suggestion": "correct the upstream stream or declared /parameters/max_output_tokens rule"
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                }
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/maxOutputTokens"
+                  }
+                },
+                "then": {
+                  "op": "integer",
+                  "operation": "gt",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/max_output_tokens"
+                    },
+                    {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/maxOutputTokens"
+                    }
+                  ]
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/outputLimitDefault"
+                }
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "reject",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "explicit output limit "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                }
+              },
+              {
+                "op": "literal",
+                "value": " exceeds confirmed hard limit "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/capability/maxOutputTokens"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                }
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/maxOutputTokens"
+                  }
+                },
+                "then": {
+                  "op": "integer",
+                  "operation": "gt",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/max_output_tokens"
+                    },
+                    {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/maxOutputTokens"
+                    }
+                  ]
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/outputLimitDefault"
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "normalize",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "required system output default resolved to "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/capability/maxOutputTokens"
+                }
+              }
+            ]
+          }
+        },
+        "set": {
+          "/parameters/max_output_tokens": {
+            "op": "read",
+            "from": "context",
+            "path": "/capability/maxOutputTokens"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/parameters/max_output_tokens"
+          }
+        },
+        "set": {
+          "/parameters/max_output_tokens": {
+            "op": "integer",
+            "operation": "add",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/max_output_tokens"
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "checks": [
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/max_output_tokens"
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/max_output_tokens"
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "lt",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": true
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "literal",
+            "value": "output limit must be a nonnegative integer"
+          },
+          "code": "invalid_input",
+          "direction": "decode_event",
+          "stage": "stream",
+          "suggestion": "correct the upstream stream or declared /parameters/max_output_tokens rule"
+        }
+      },
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/max_output_tokens"
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "context",
+                "path": "/capability/maxOutputTokens"
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gt",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                },
+                {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/capability/maxOutputTokens"
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/max_output_tokens",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "output limit "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/max_output_tokens"
+                }
+              },
+              {
+                "op": "literal",
+                "value": " exceeds confirmed hard limit "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/capability/maxOutputTokens"
+                }
+              }
+            ]
+          },
+          "code": "invalid_input",
+          "direction": "decode_event",
+          "stage": "stream",
+          "suggestion": "correct the upstream stream or declared /parameters/max_output_tokens rule"
+        }
+      }
+    ]
+  }
 }

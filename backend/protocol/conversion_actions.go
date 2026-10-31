@@ -26,6 +26,7 @@ func conversionActionCatalog() []conversionAction {
 		{name: "set", phases: valueConversionPhases()},
 		{name: "remove", phases: valueConversionPhases()},
 		{name: "transform", phases: valueConversionPhases()},
+		{name: "model_controls", phases: []ConversionPhase{ConversionRequest}, valueSchema: map[string]any{"type": "object", "required": []string{"coreVersion", "target", "policy"}}, description: "Apply declared model controls to typed request fields; retain binding overrides, ordered diagnostics and final constraints after authored rules.", isWholeValue: true},
 		{name: "warn", phases: valueConversionPhases()},
 		{name: "reject", phases: valueConversionPhases()},
 		{name: "signatures", phases: []ConversionPhase{ConversionRequest, ConversionResponse, ConversionEvent}, description: "将外协议 signature 与 encrypted_content 纳入认证续传；成功封装后诊断为可恢复，恢复仍校验身份、账号、模型及原节点。不转换文件或会话引用，不将加密内容冒充供应商签名。"},
