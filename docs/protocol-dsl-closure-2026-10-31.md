@@ -93,3 +93,13 @@ scope 不再因关闭快照而丢失。
 修复后完整核心及无根 Native 编码、未知余项、类型/小计诊断、Native 开关及 metadata
 重建通过，见 `closure-responses-tool-source`。中途编译证明和诊断包装失败均保留原日志。
 本批没有迁完完整错误包络或所有 usage 扩展，也尚未测量这一切片的性能。
+
+## 第五批：四包的实际 JSON 样例证据
+
+四份 Mapping 不再保持空 samples：从原预置迁入 Anthropic 30、Chat 25、Responses 36、
+Gemini 28 项 JSON 样例，共 119 项。用已有 ProtocolDocument 精确源片段编辑器搬移，
+仅调整核心输入／预期根部的 schemaVersion 1→2，不经过数值转换、不重新生成预期输出。
+
+`closure-authored-json-evidence` 对这些样例执行真实 Verify 流程；JSON 方向的输出、
+往返和能力证据全部通过。测试明确只断言这 119 项，其他尚缺的流和 Agent 能力证据
+仍影响完整报告，不能把本批通过写成四预置已满足激活要求。

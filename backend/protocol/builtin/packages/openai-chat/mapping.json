@@ -9652,7 +9652,2023 @@
       }
     }
   },
-  "samples": [],
+  "samples": [
+    {
+      "id": "text-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "text-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "openai-chat-completions",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": "hello"
+              }
+            ],
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "history-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          },
+          {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "type": "function",
+                "id": "call",
+                "function": {
+                  "name": "lookup",
+                  "arguments": "{\"n\":9007199254740993}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "call",
+            "name": "lookup",
+            "content": "ok"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "type": "object"
+              }
+            }
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "tool_result",
+            "name": "lookup",
+            "callId": "call",
+            "payload": "ok"
+          }
+        ],
+        "tools": [
+          {
+            "kind": "function",
+            "name": "lookup",
+            "inputSchema": {
+              "type": "object"
+            }
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "history-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "tool_result",
+            "name": "lookup",
+            "callId": "call",
+            "payload": "ok"
+          }
+        ],
+        "tools": [
+          {
+            "kind": "function",
+            "name": "lookup",
+            "inputSchema": {
+              "type": "object"
+            }
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "openai-chat-completions",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": "hello"
+              },
+              {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "type": "function",
+                    "id": "call",
+                    "function": {
+                      "name": "lookup",
+                      "arguments": "{\"n\":9007199254740993}"
+                    }
+                  }
+                ]
+              },
+              {
+                "role": "tool",
+                "tool_call_id": "call",
+                "name": "lookup",
+                "content": "ok"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "lookup",
+                  "parameters": {
+                    "type": "object"
+                  }
+                }
+              }
+            ],
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          },
+          {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "type": "function",
+                "id": "call",
+                "function": {
+                  "name": "lookup",
+                  "arguments": "{\"n\":9007199254740993}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "call",
+            "name": "lookup",
+            "content": "ok"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "type": "object"
+              }
+            }
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "text-decode-response",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "id": "r",
+        "model": "m",
+        "object": "chat.completion",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "hi"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 2,
+          "total_tokens": 22,
+          "prompt_tokens_details": {
+            "cached_tokens": 15
+          }
+        },
+        "created": 1
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop",
+          "created_at": 1
+        },
+        "usage": {
+          "input": {
+            "count": 20,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 22,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 15,
+            "origin": "observed"
+          }
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "text-encode-response",
+      "direction": "encode_response",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop",
+          "created_at": 1
+        },
+        "usage": {
+          "input": {
+            "count": 20,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 22,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 15,
+            "origin": "observed"
+          }
+        },
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "openai-chat-completions",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_response",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "id": "r",
+            "model": "m",
+            "object": "chat.completion",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "hi"
+                },
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 20,
+              "completion_tokens": 2,
+              "total_tokens": 22,
+              "prompt_tokens_details": {
+                "cached_tokens": 15
+              }
+            },
+            "created": 1
+          }
+        }
+      },
+      "expected": {
+        "id": "r",
+        "model": "m",
+        "object": "chat.completion",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "hi"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 2,
+          "total_tokens": 22,
+          "prompt_tokens_details": {
+            "cached_tokens": 15
+          }
+        },
+        "created": 1
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "tool-decode-response",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "id": "r",
+        "model": "m",
+        "object": "chat.completion",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "type": "function",
+                  "id": "call",
+                  "function": {
+                    "name": "lookup",
+                    "arguments": "{\"n\":9007199254740993}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": "tool_calls"
+          }
+        ],
+        "created": 1
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "tool_calls",
+          "created_at": 1
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "tool-encode-response",
+      "direction": "encode_response",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "tool_calls",
+          "created_at": 1
+        },
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "openai-chat-completions",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_response",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "id": "r",
+            "model": "m",
+            "object": "chat.completion",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "type": "function",
+                      "id": "call",
+                      "function": {
+                        "name": "lookup",
+                        "arguments": "{\"n\":9007199254740993}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "created": 1
+          }
+        }
+      },
+      "expected": {
+        "id": "r",
+        "model": "m",
+        "object": "chat.completion",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "type": "function",
+                  "id": "call",
+                  "function": {
+                    "name": "lookup",
+                    "arguments": "{\"n\":9007199254740993}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": "tool_calls"
+          }
+        ],
+        "created": 1
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-policy-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "prompt_cache_key": "prefix-key",
+        "prompt_cache_retention": "24h",
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "cache": [
+          {
+            "kind": "key",
+            "location": "request",
+            "value": "prefix-key"
+          },
+          {
+            "kind": "retention",
+            "location": "request",
+            "value": "24h"
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-policy-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "cache": [
+          {
+            "kind": "key",
+            "location": "request",
+            "value": "prefix-key"
+          },
+          {
+            "kind": "retention",
+            "location": "request",
+            "value": "24h"
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "openai-chat-completions",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": "hello"
+              }
+            ],
+            "prompt_cache_key": "prefix-key",
+            "prompt_cache_retention": "24h",
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "prompt_cache_key": "prefix-key",
+        "prompt_cache_retention": "24h",
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-options-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "prompt_cache_options": {
+          "mode": "explicit",
+          "ttl": "30m"
+        },
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "cache": [
+          {
+            "kind": "mode",
+            "location": "request",
+            "value": "explicit"
+          },
+          {
+            "kind": "options.ttl",
+            "location": "request",
+            "value": "30m"
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-options-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "cache": [
+          {
+            "kind": "mode",
+            "location": "request",
+            "value": "explicit"
+          },
+          {
+            "kind": "options.ttl",
+            "location": "request",
+            "value": "30m"
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "openai-chat-completions",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": "hello"
+              }
+            ],
+            "prompt_cache_options": {
+              "mode": "explicit",
+              "ttl": "30m"
+            },
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "prompt_cache_options": {
+          "mode": "explicit",
+          "ttl": "30m"
+        },
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "image-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "https://example.invalid/image.png"
+                }
+              }
+            ]
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "image",
+                "payload": {
+                  "url": "https://example.invalid/image.png"
+                }
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "image-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "image",
+                "payload": {
+                  "url": "https://example.invalid/image.png"
+                }
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "openai-chat-completions",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "image_url",
+                    "image_url": {
+                      "url": "https://example.invalid/image.png"
+                    }
+                  }
+                ]
+              }
+            ],
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "https://example.invalid/image.png"
+                }
+              }
+            ]
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "audio-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "input_audio",
+                "input_audio": {
+                  "data": "AAAA",
+                  "format": "wav"
+                }
+              }
+            ]
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "audio",
+                "payload": {
+                  "data": "AAAA",
+                  "mime": "audio/wav"
+                }
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "audio-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "audio",
+                "payload": {
+                  "data": "AAAA",
+                  "mime": "audio/wav"
+                }
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "openai-chat-completions",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "input_audio",
+                    "input_audio": {
+                      "data": "AAAA",
+                      "format": "wav"
+                    }
+                  }
+                ]
+              }
+            ],
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "input_audio",
+                "input_audio": {
+                  "data": "AAAA",
+                  "format": "wav"
+                }
+              }
+            ]
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "document-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "file",
+                "file": {
+                  "file_data": "data:application/pdf;base64,AAAA",
+                  "filename": "note.pdf"
+                }
+              }
+            ]
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "document",
+                "payload": {
+                  "data": "AAAA",
+                  "mime": "application/pdf",
+                  "name": "note.pdf"
+                }
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "document-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "document",
+                "payload": {
+                  "data": "AAAA",
+                  "mime": "application/pdf",
+                  "name": "note.pdf"
+                }
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "openai-chat-completions",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "file",
+                    "file": {
+                      "file_data": "data:application/pdf;base64,AAAA",
+                      "filename": "note.pdf"
+                    }
+                  }
+                ]
+              }
+            ],
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "file",
+                "file": {
+                  "file_data": "data:application/pdf;base64,AAAA",
+                  "filename": "note.pdf"
+                }
+              }
+            ]
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "reasoning-history-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          },
+          {
+            "role": "assistant",
+            "reasoning_content": "consider",
+            "content": "hi"
+          },
+          {
+            "role": "user",
+            "content": "continue"
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider"
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "continue"
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "reasoning-history-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider"
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "continue"
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "openai-chat-completions",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": "hello"
+              },
+              {
+                "role": "assistant",
+                "reasoning_content": "consider",
+                "content": "hi"
+              },
+              {
+                "role": "user",
+                "content": "continue"
+              }
+            ],
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          },
+          {
+            "role": "assistant",
+            "reasoning_content": "consider",
+            "content": "hi"
+          },
+          {
+            "role": "user",
+            "content": "continue"
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "reasoning-response-decode",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "id": "r",
+        "model": "m",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "reasoning_content": "consider",
+              "content": "hi"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "created": 1,
+        "object": "chat.completion"
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider"
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop",
+          "created_at": 1
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "reasoning-response-encode",
+      "direction": "encode_response",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider"
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop",
+          "created_at": 1
+        },
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "openai-chat-completions",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_response",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "id": "r",
+            "model": "m",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "reasoning_content": "consider",
+                  "content": "hi"
+                },
+                "finish_reason": "stop"
+              }
+            ],
+            "created": 1,
+            "object": "chat.completion"
+          }
+        }
+      },
+      "expected": {
+        "id": "r",
+        "model": "m",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "reasoning_content": "consider",
+              "content": "hi"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "created": 1,
+        "object": "chat.completion"
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-creation-decode-response",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "id": "r",
+        "model": "m",
+        "object": "chat.completion",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "hi"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 30,
+          "completion_tokens": 2,
+          "total_tokens": 32,
+          "prompt_tokens_details": {
+            "cached_tokens": 4,
+            "cache_write_tokens": 7
+          }
+        },
+        "created": 1
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop",
+          "created_at": 1
+        },
+        "usage": {
+          "input": {
+            "count": 30,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 32,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 4,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 7,
+            "origin": "observed"
+          }
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-creation-missing-decode-response",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "id": "r",
+        "model": "m",
+        "object": "chat.completion",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "hi"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 2,
+          "total_tokens": 22,
+          "prompt_tokens_details": {
+            "cached_tokens": 15
+          }
+        },
+        "created": 1
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop",
+          "created_at": 1
+        },
+        "usage": {
+          "input": {
+            "count": 20,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 22,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 15,
+            "origin": "observed"
+          }
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "text-stateless-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "max_completion_tokens": 10,
+        "store": false
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10,
+          "store": false
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    }
+  ],
   "agent": {
     "thinkingEfforts": [
       "",
