@@ -1,11 +1,20 @@
 package protocol
 
+import "strings"
+
 func (state *packageStreamValidation) readItemPayload(event *Event, definition *compiledPackageStreamEvent, read func(streamField) (Value, error)) (int, error) {
 	itemID, err := state.readItemIdentity(definition.itemID, read)
 	if err != nil {
 		return 0, err
 	}
 	event.ItemID = StringValue(itemID)
+	if definition.parentID.path != "" {
+		parent, err := state.readIdentity(definition.parentID, read)
+		if err != nil {
+			return 0, err
+		}
+		event.ParentID = StringValue(parent)
+	}
 	// Generic finishes close the established item, as on transports whose
 	// end marker carries no kind. Tool finishes still promise a tool item.
 	if (state.contract.hasTools || state.contract.hasTypedItems) && (event.Type == ItemDelta || (event.Type == ItemSnapshot || event.Type == ItemFinished) && definition.isTool) {
@@ -15,9 +24,13 @@ func (state *packageStreamValidation) readItemPayload(event *Event, definition *
 		}
 	}
 	if event.Type == ItemStarted {
-		return state.readStartedItem(event, definition, itemID, read)
+		bytes, err := state.readStartedItem(event, definition, itemID, read)
+		if err != nil || definition.isTool {
+			return bytes, err
+		}
+		return bytes, state.readItemSnapshotFields(event, definition, read)
 	}
-	if event.Type == ItemSnapshot {
+	if event.Type == ItemSnapshot && definition.isTool {
 		value, err := read(definition.delta)
 		if err != nil {
 			return 0, err
@@ -44,7 +57,43 @@ func (state *packageStreamValidation) readItemPayload(event *Event, definition *
 			return 0, state.issue(definition.delta.path, "text delta must be a string", nil)
 		}
 	}
+	if !definition.isTool && event.Type != ItemDelta {
+		return 0, state.readItemSnapshotFields(event, definition, read)
+	}
 	return 0, nil
+}
+
+func (state *packageStreamValidation) readItemSnapshotFields(event *Event, definition *compiledPackageStreamEvent, read func(streamField) (Value, error)) error {
+	if event.Item == nil && (definition.delta.path != "" || definition.kind == MessageNode || definition.verifiesItem) {
+		event.Item = &Node{Kind: definition.kind}
+	}
+	if event.Item == nil {
+		return nil
+	}
+	if definition.delta.path != "" {
+		value, err := read(definition.delta)
+		if err != nil {
+			return err
+		}
+		if !value.IsStringValue() {
+			return state.itemIssue(*definition, definition.delta.path, "text snapshot requires a string", nil)
+		}
+		event.Item.Payload = value
+	}
+	for _, selector := range []struct {
+		field streamField
+		value *Value
+	}{{definition.wireID, &event.Item.ID}, {definition.role, &event.Item.Role}, {definition.status, &event.Item.Status}} {
+		if selector.field.path == "" {
+			continue
+		}
+		value, err := read(selector.field)
+		if err != nil {
+			return err
+		}
+		*selector.value = Value{raw: strings.Clone(value.raw)}
+	}
+	return nil
 }
 
 func (state *packageStreamValidation) readStartedItem(event *Event, definition *compiledPackageStreamEvent, itemID string, read func(streamField) (Value, error)) (int, error) {

@@ -1190,222 +1190,559 @@
     }
   },
   "decode-message": {
-    "op": "let",
-    "name": "native",
-    "source": {
-      "op": "capture_native",
+      "op": "let",
+      "name": "native",
       "source": {
-        "op": "read",
-        "from": "item",
-        "path": ""
-      }
-    },
-    "body": {
-      "op": "object",
-      "fields": {
-        "kind": {
-          "op": "literal",
-          "value": "message"
-        },
-        "role": {
+        "op": "capture_native",
+        "source": {
           "op": "read",
           "from": "item",
-          "path": "/role"
-        },
-        "id": {
-          "op": "read",
-          "from": "item",
-          "path": "/id"
-        },
-        "status": {
-          "op": "read",
-          "from": "item",
-          "path": "/status"
-        },
-        "native": {
-          "op": "read",
-          "from": "binding",
-          "path": "",
-          "name": "native"
-        },
-        "cache": {
-          "op": "if",
-          "when": {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "item",
-              "path": "/cache_control"
-            }
+          "path": ""
+        }
+      },
+      "body": {
+        "op": "object",
+        "fields": {
+          "kind": {
+            "op": "literal",
+            "value": "message"
           },
-          "then": {
-            "op": "array",
-            "items": [
-              {
-                "op": "if",
-                "when": {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/cache_control"
-                  }
-                },
-                "then": {
-                  "op": "object",
-                  "fields": {
-                    "kind": {
-                      "op": "literal",
-                      "value": "breakpoint"
-                    },
-                    "location": {
-                      "op": "literal",
-                      "value": "message"
-                    },
-                    "value": {
-                      "op": "project",
-                      "policy": "exclude",
-                      "source": {
-                        "op": "read",
-                        "from": "item",
-                        "path": "/cache_control"
-                      },
-                      "keys": [
-                        "ttl"
-                      ]
-                    },
-                    "ttl": {
-                      "op": "read",
-                      "from": "item",
-                      "path": "/cache_control/ttl"
-                    }
-                  }
-                },
-                "otherwise": {
-                  "op": "object",
-                  "fields": {
-                    "kind": {
-                      "op": "literal",
-                      "value": "breakpoint"
-                    },
-                    "location": {
-                      "op": "literal",
-                      "value": "message"
-                    },
-                    "value": {
+          "role": {
+            "op": "read",
+            "from": "item",
+            "path": "/role"
+          },
+          "id": {
+            "op": "read",
+            "from": "item",
+            "path": "/id"
+          },
+          "status": {
+            "op": "read",
+            "from": "item",
+            "path": "/status"
+          },
+          "native": {
+            "op": "read",
+            "from": "binding",
+            "path": "",
+            "name": "native"
+          },
+          "cache": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/cache_control"
+              }
+            },
+            "then": {
+              "op": "array",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
                       "op": "read",
                       "from": "item",
                       "path": "/cache_control"
                     }
+                  },
+                  "then": {
+                    "op": "object",
+                    "fields": {
+                      "kind": {
+                        "op": "literal",
+                        "value": "breakpoint"
+                      },
+                      "location": {
+                        "op": "literal",
+                        "value": "message"
+                      },
+                      "value": {
+                        "op": "project",
+                        "policy": "exclude",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/cache_control"
+                        },
+                        "keys": [
+                          "ttl"
+                        ]
+                      },
+                      "ttl": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/cache_control/ttl"
+                      }
+                    }
+                  },
+                  "otherwise": {
+                    "op": "object",
+                    "fields": {
+                      "kind": {
+                        "op": "literal",
+                        "value": "breakpoint"
+                      },
+                      "location": {
+                        "op": "literal",
+                        "value": "message"
+                      },
+                      "value": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/cache_control"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "children": {
+            "op": "let",
+            "name": "content",
+            "source": {
+              "op": "read",
+              "from": "item",
+              "path": "/content"
+            },
+            "body": {
+              "op": "ref",
+              "ref": "decode-content"
+            }
+          },
+          "attributes": {
+            "op": "let",
+            "name": "selected",
+            "source": {
+              "op": "object",
+              "fields": {
+                "wire:openai_responses": {
+                  "op": "let",
+                  "name": "selected",
+                  "source": {
+                    "op": "merge",
+                    "policy": "reject",
+                    "items": [
+                      {
+                        "op": "project",
+                        "policy": "exclude",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": ""
+                        },
+                        "keys": [
+                          "type",
+                          "role",
+                          "content",
+                          "id",
+                          "status",
+                          "cache_control",
+                          "phase",
+                          "metadata",
+                          "internal_chat_message_metadata_passthrough"
+                        ]
+                      },
+                      {
+                        "op": "object",
+                        "fields": {
+                          "metadata": {
+                            "op": "if",
+                            "when": {
+                              "op": "not",
+                              "source": {
+                                "op": "if",
+                                "when": {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "type",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "item",
+                                        "path": "/metadata"
+                                      }
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "object"
+                                    }
+                                  ]
+                                },
+                                "then": {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "project",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "item",
+                                        "path": "/metadata"
+                                      },
+                                      "keys": [
+                                        "turn_id"
+                                      ],
+                                      "policy": "exclude"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": {}
+                                    }
+                                  ]
+                                },
+                                "otherwise": {
+                                  "op": "literal",
+                                  "value": true
+                                }
+                              }
+                            },
+                            "then": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/metadata"
+                            }
+                          },
+                          "internal_chat_message_metadata_passthrough": {
+                            "op": "if",
+                            "when": {
+                              "op": "not",
+                              "source": {
+                                "op": "if",
+                                "when": {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "type",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "item",
+                                        "path": "/internal_chat_message_metadata_passthrough"
+                                      }
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "object"
+                                    }
+                                  ]
+                                },
+                                "then": {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "project",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "item",
+                                        "path": "/internal_chat_message_metadata_passthrough"
+                                      },
+                                      "keys": [
+                                        "turn_id",
+                                        "create_time"
+                                      ],
+                                      "policy": "exclude"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": {}
+                                    }
+                                  ]
+                                },
+                                "otherwise": {
+                                  "op": "literal",
+                                  "value": true
+                                }
+                              }
+                            },
+                            "then": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/internal_chat_message_metadata_passthrough"
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "body": {
+                    "op": "if",
+                    "when": {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "selected"
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "selected"
+                    }
                   }
                 }
               }
-            ]
-          }
-        },
-        "children": {
-          "op": "let",
-          "name": "content",
-          "source": {
-            "op": "read",
-            "from": "item",
-            "path": "/content"
-          },
-          "body": {
-            "op": "ref",
-            "ref": "decode-content"
-          }
-        },
-        "attributes": {
-          "op": "let",
-          "name": "selected",
-          "source": {
-            "op": "object",
-            "fields": {
-              "wire:openai_responses": {
-                "op": "let",
-                "name": "selected",
+            },
+            "body": {
+              "op": "if",
+              "when": {
+                "op": "not",
                 "source": {
-                  "op": "project",
-                  "policy": "exclude",
-                  "source": {
-                    "op": "read",
-                    "from": "item",
-                    "path": ""
-                  },
-                  "keys": [
-                    "type",
-                    "role",
-                    "content",
-                    "id",
-                    "status",
-                    "cache_control",
-                    "phase",
-                    "metadata",
-                    "internal_chat_message_metadata_passthrough"
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "selected"
+                    },
+                    {
+                      "op": "literal",
+                      "value": {}
+                    }
                   ]
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "selected"
+              }
+            }
+          },
+          "metadata": {
+            "op": "let",
+            "name": "message-source",
+            "source": {
+              "op": "capture_source",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": ""
+              }
+            },
+            "body": {
+              "op": "let",
+              "name": "nonempty",
+              "source": {
+                "op": "map",
+                "source": {
+                  "op": "entries",
+                  "source": {
+                    "op": "object",
+                    "fields": {
+                      "phase": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/phase"
+                      },
+                      "metadata": {
+                        "op": "if",
+                        "when": {
+                          "op": "if",
+                          "when": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "type",
+                                "source": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/metadata"
+                                }
+                              },
+                              {
+                                "op": "literal",
+                                "value": "object"
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "project",
+                                "source": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/metadata"
+                                },
+                                "keys": [
+                                  "turn_id"
+                                ],
+                                "policy": "exclude"
+                              },
+                              {
+                                "op": "literal",
+                                "value": {}
+                              }
+                            ]
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": true
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/metadata"
+                        }
+                      },
+                      "internal_chat_message_metadata_passthrough": {
+                        "op": "if",
+                        "when": {
+                          "op": "if",
+                          "when": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "type",
+                                "source": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/internal_chat_message_metadata_passthrough"
+                                }
+                              },
+                              {
+                                "op": "literal",
+                                "value": "object"
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "project",
+                                "source": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/internal_chat_message_metadata_passthrough"
+                                },
+                                "keys": [
+                                  "turn_id",
+                                  "create_time"
+                                ],
+                                "policy": "exclude"
+                              },
+                              {
+                                "op": "literal",
+                                "value": {}
+                              }
+                            ]
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": true
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/internal_chat_message_metadata_passthrough"
+                        }
+                      }
+                    }
+                  }
                 },
                 "body": {
-                  "op": "if",
-                  "when": {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
+                  "op": "object",
+                  "fields": {
+                    "codec": {
+                      "op": "literal",
+                      "value": "responses"
+                    },
+                    "sourceCodec": {
+                      "op": "literal",
+                      "value": "responses"
+                    },
+                    "location": {
+                      "op": "literal",
+                      "value": "message"
+                    },
+                    "name": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/key"
+                    },
+                    "path": {
+                      "op": "join",
                       "items": [
                         {
                           "op": "read",
                           "from": "binding",
-                          "path": "",
-                          "name": "selected"
+                          "path": "/path",
+                          "name": "message-source"
                         },
                         {
                           "op": "literal",
-                          "value": {}
+                          "value": "/"
+                        },
+                        {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/key"
                         }
                       ]
+                    },
+                    "value": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/value"
                     }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "selected"
                   }
                 }
-              }
-            }
-          },
-          "body": {
-            "op": "if",
-            "when": {
-              "op": "not",
-              "source": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "selected"
-                  },
-                  {
-                    "op": "literal",
-                    "value": {}
+              },
+              "body": {
+                "op": "if",
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "nonempty"
+                      },
+                      {
+                        "op": "literal",
+                        "value": []
+                      }
+                    ]
                   }
-                ]
+                },
+                "then": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "nonempty"
+                }
               }
-            },
-            "then": {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "selected"
             }
           }
         }
       }
-    }
-  },
+    },
   "decode-request-item": {
     "op": "if",
     "when": {
@@ -15854,6 +16191,927 @@
           }
         }
       }
+    },
+    "merge-stream-node-metadata": {
+      "op": "let",
+      "name": "nonempty",
+      "source": {
+        "op": "concat",
+        "items": [
+          {
+            "op": "map",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "prior-metadata"
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "prior-metadata"
+              },
+              "otherwise": {
+                "op": "array",
+                "items": []
+              }
+            },
+            "body": {
+              "op": "let",
+              "name": "old-field",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": ""
+              },
+              "body": {
+                "op": "let",
+                "name": "replacement",
+                "source": {
+                  "op": "filter",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "current-metadata"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "current-metadata"
+                    },
+                    "otherwise": {
+                      "op": "array",
+                      "items": []
+                    }
+                  },
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/name",
+                            "name": "old-field"
+                          },
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/name"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/location",
+                            "name": "old-field"
+                          },
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/location"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/codec",
+                            "name": "old-field"
+                          },
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/codec"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "body": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/0",
+                      "name": "replacement"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/0",
+                    "name": "replacement"
+                  },
+                  "otherwise": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "old-field"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "op": "filter",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "current-metadata"
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "current-metadata"
+              },
+              "otherwise": {
+                "op": "array",
+                "items": []
+              }
+            },
+            "when": {
+              "op": "let",
+              "name": "new-field",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": ""
+              },
+              "body": {
+                "op": "let",
+                "name": "matches",
+                "source": {
+                  "op": "filter",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "prior-metadata"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "prior-metadata"
+                    },
+                    "otherwise": {
+                      "op": "array",
+                      "items": []
+                    }
+                  },
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/name",
+                            "name": "new-field"
+                          },
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/name"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/location",
+                            "name": "new-field"
+                          },
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/location"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/codec",
+                            "name": "new-field"
+                          },
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/codec"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "body": {
+                  "op": "not",
+                  "source": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/0",
+                      "name": "matches"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "body": {
+        "op": "if",
+        "when": {
+          "op": "not",
+          "source": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "nonempty"
+              },
+              {
+                "op": "literal",
+                "value": []
+              }
+            ]
+          }
+        },
+        "then": {
+          "op": "read",
+          "from": "binding",
+          "path": "",
+          "name": "nonempty"
+        }
+      }
+    },
+    "decode-stream-content-part": {
+      "op": "let",
+      "name": "source",
+      "source": {
+        "op": "capture_source",
+        "source": {
+          "op": "read",
+          "from": "item",
+          "path": ""
+        }
+      },
+      "body": {
+        "op": "object",
+        "fields": {
+          "kind": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "refusal"
+                }
+              ]
+            },
+            "then": {
+              "op": "literal",
+              "value": "refusal"
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": "text"
+            }
+          },
+          "payload": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "refusal"
+                }
+              ]
+            },
+            "then": {
+              "op": "read",
+              "from": "item",
+              "path": "/refusal"
+            },
+            "otherwise": {
+              "op": "read",
+              "from": "item",
+              "path": "/text"
+            }
+          },
+          "metadata": {
+            "op": "ref",
+            "ref": "decode-block-metadata"
+          }
+        }
+      }
+    },
+    "finish-stream-message": {
+      "op": "let",
+      "name": "registered-message",
+      "source": {
+        "op": "recall",
+        "name": "items",
+        "source": {
+          "op": "read",
+          "from": "binding",
+          "path": "",
+          "name": "stream-message-position"
+        },
+        "policy": "reject"
+      },
+      "body": {
+        "op": "let",
+        "name": "decoded-message",
+        "source": {
+          "op": "visit",
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "path": "",
+            "name": "stream-message-value"
+          },
+          "body": {
+            "op": "ref",
+            "ref": "decode-message"
+          }
+        },
+        "body": {
+          "op": "let",
+          "name": "finished-message",
+          "source": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "/node",
+                  "name": "registered-message"
+                },
+                "keys": [
+                  "metadata",
+                  "status"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "status": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/status",
+                    "name": "decoded-message"
+                  },
+                  "metadata": {
+                    "op": "let",
+                    "name": "prior-metadata",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/node/metadata",
+                      "name": "registered-message"
+                    },
+                    "body": {
+                      "op": "let",
+                      "name": "current-metadata",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/metadata",
+                        "name": "decoded-message"
+                      },
+                      "body": {
+                        "op": "ref",
+                        "ref": "merge-stream-node-metadata"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "body": {
+            "op": "let",
+            "name": "stored-message",
+            "source": {
+              "op": "remember",
+              "name": "items",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "stream-message-position"
+              },
+              "body": {
+                "op": "object",
+                "fields": {
+                  "finished": {
+                    "op": "literal",
+                    "value": true
+                  },
+                  "node": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "finished-message"
+                  },
+                  "position": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/position",
+                    "name": "registered-message"
+                  }
+                }
+              }
+            },
+            "body": {
+              "op": "if",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "stream-message-terminal"
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/finished",
+                        "name": "registered-message"
+                      },
+                      {
+                        "op": "literal",
+                        "value": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              "then": {
+                "op": "array",
+                "items": []
+              },
+              "otherwise": {
+                "op": "array",
+                "items": [
+                  {
+                    "op": "object",
+                    "fields": {
+                      "schemaVersion": {
+                        "op": "literal",
+                        "value": 2
+                      },
+                      "type": {
+                        "op": "literal",
+                        "value": "item.finished"
+                      },
+                      "responseId": {
+                        "op": "ref",
+                        "ref": "stream-response-identity"
+                      },
+                      "itemId": {
+                        "op": "join",
+                        "items": [
+                          {
+                            "op": "literal",
+                            "value": "output:"
+                          },
+                          {
+                            "op": "cast",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "stream-message-position"
+                            },
+                            "to": "string"
+                          }
+                        ]
+                      },
+                      "index": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/position",
+                        "name": "registered-message"
+                      },
+                      "item": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "finished-message"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "stream-response-identity": {
+      "op": "if",
+      "when": {
+        "op": "exists",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/response/id"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "input",
+        "path": "/response/id"
+      },
+      "otherwise": {
+        "op": "read",
+        "from": "state",
+        "path": "/response"
+      }
+    },
+    "stream-output-index": {
+      "op": "if",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/output_index"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "input",
+        "path": "/output_index"
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": 0
+      }
+    },
+    "stream-content-index": {
+      "op": "if",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/content_index"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "input",
+        "path": "/content_index"
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": 0
+      }
+    },
+    "stream-output-key": {
+      "op": "join",
+      "items": [
+        {
+          "op": "literal",
+          "value": "output:"
+        },
+        {
+          "op": "cast",
+          "source": {
+            "op": "ref",
+            "ref": "stream-output-index"
+          },
+          "to": "string"
+        }
+      ]
+    },
+    "stream-content-key": {
+      "op": "join",
+      "items": [
+        {
+          "op": "ref",
+          "ref": "stream-output-key"
+        },
+        {
+          "op": "literal",
+          "value": ":"
+        },
+        {
+          "op": "cast",
+          "source": {
+            "op": "ref",
+            "ref": "stream-content-index"
+          },
+          "to": "string"
+        }
+      ]
+    },
+    "register-stream-output-item": {
+      "op": "if",
+      "when": {
+        "op": "exists",
+        "source": {
+          "op": "recall",
+          "name": "items",
+          "source": {
+            "op": "ref",
+            "ref": "stream-output-index"
+          },
+          "policy": "omit"
+        }
+      },
+      "then": {
+        "op": "if",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/item/type"
+            },
+            {
+              "op": "literal",
+              "value": "message"
+            }
+          ]
+        },
+        "then": {
+          "op": "reject",
+          "path": "/output_index",
+          "reason": "message started twice",
+          "diagnostic": {
+            "code": "unsupported_capability",
+            "stage": "wire",
+            "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+          }
+        },
+        "otherwise": {
+          "op": "reject",
+          "path": "/",
+          "reason": "stream item started twice",
+          "diagnostic": {"code":"upstream_contract_violation","stage":"runtime","suggestion":"Correct the wire input or semantic mapping and verify the revision again."}
+        }
+      },
+      "otherwise": {
+        "op": "remember",
+        "name": "items",
+        "source": {
+          "op": "ref",
+          "ref": "stream-output-index"
+        },
+        "body": {
+          "op": "object",
+          "fields": {
+            "position": {
+              "op": "read",
+              "from": "state",
+              "path": "/nextItem"
+            },
+            "node": {
+              "op": "if",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message"
+                  }
+                ]
+              },
+              "then": {
+                "op": "let",
+                "name": "message-node",
+                "source": {
+                  "op": "visit",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item"
+                  },
+                  "body": {
+                    "op": "ref",
+                    "ref": "decode-message"
+                  }
+                },
+                "body": {
+                  "op": "merge",
+                  "policy": "reject",
+                  "items": [
+                    {
+                      "op": "project",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "message-node"
+                      },
+                      "keys": [
+                        "native",
+                        "children",
+                        "source"
+                      ],
+                      "policy": "exclude"
+                    },
+                    {
+                      "op": "object",
+                      "fields": {
+                        "source": {
+                          "op": "capture_source",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/item"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "otherwise": {
+                "op": "object",
+                "fields": {
+                  "kind": {
+                    "op": "literal",
+                    "value": "tool_call"
+                  },
+                  "id": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/id"
+                  },
+                  "callId": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/call_id"
+                  },
+                  "name": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/name"
+                  },
+                  "status": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/status"
+                  },
+                  "input": {
+                    "op": "object",
+                    "fields": {
+                      "kind": {
+                        "op": "literal",
+                        "value": "json"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "register-stream-content-part": {
+      "op": "if",
+      "when": {
+        "op": "exists",
+        "source": {
+          "op": "recall",
+          "name": "parts",
+          "source": {
+            "op": "ref",
+            "ref": "stream-content-key"
+          },
+          "policy": "omit"
+        }
+      },
+      "then": {
+        "op": "reject",
+        "path": "/content_index",
+        "reason": "message part must append to its open message",
+        "diagnostic": {
+          "code": "unsupported_capability",
+          "stage": "wire",
+          "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+        }
+      },
+      "otherwise": {
+        "op": "remember",
+        "name": "parts",
+        "source": {
+          "op": "ref",
+          "ref": "stream-content-key"
+        },
+        "body": {
+          "op": "object",
+          "fields": {
+            "position": {
+              "op": "read",
+              "from": "state",
+              "path": "/nextItem"
+            },
+            "node": {
+              "op": "project",
+              "source": {
+                "op": "visit",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/part"
+                },
+                "body": {
+                  "op": "ref",
+                  "ref": "decode-stream-content-part"
+                }
+              },
+              "keys": [
+                "payload"
+              ],
+              "policy": "exclude"
+            }
+          }
+        }
+      }
     }
   },
   "directions": {
@@ -16447,7 +17705,8 @@
       "capabilities": {
         "tools.function": true,
         "native_extensions": true,
-        "usage": true
+        "usage": true,
+        "text": true
       },
       "state": {
         "response": {
@@ -16455,25 +17714,8 @@
             "type": "any"
           },
           "update": {
-            "op": "if",
-            "when": {
-              "op": "exists",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/response/id"
-              }
-            },
-            "then": {
-              "op": "read",
-              "from": "input",
-              "path": "/response/id"
-            },
-            "otherwise": {
-              "op": "read",
-              "from": "state",
-              "path": "/response"
-            }
+            "op": "ref",
+            "ref": "stream-response-identity"
           }
         },
         "nextItem": {
@@ -16484,16 +17726,35 @@
           "update": {
             "op": "if",
             "when": {
-              "op": "equal",
+              "op": "any",
               "items": [
                 {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/type"
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "response.output_item.added"
+                    }
+                  ]
                 },
                 {
-                  "op": "literal",
-                  "value": "response.output_item.added"
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "response.content_part.added"
+                    }
+                  ]
                 }
               ]
             },
@@ -16523,7 +17784,7 @@
       "indexes": {
         "items": {
           "keyMode": "integer",
-          "policy": "reject",
+          "policy": "last",
           "schema": {
             "type": "object",
             "required": [
@@ -16537,8 +17798,20 @@
               "node": {
                 "type": "object",
                 "allowUnknown": true
+              },
+              "finished": {
+                "type": "boolean"
               }
             }
+          },
+          "retainSource": true
+        },
+        "parts": {
+          "keyMode": "string",
+          "policy": "last",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
           }
         }
       },
@@ -16562,76 +17835,8 @@
             ]
           },
           "then": {
-            "op": "remember",
-            "name": "items",
-            "source": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/output_index"
-                }
-              },
-              "then": {
-                "op": "read",
-                "from": "input",
-                "path": "/output_index"
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": 0
-              }
-            },
-            "body": {
-              "op": "object",
-              "fields": {
-                "position": {
-                  "op": "read",
-                  "from": "state",
-                  "path": "/nextItem"
-                },
-                "node": {
-                  "op": "object",
-                  "fields": {
-                    "kind": {
-                      "op": "literal",
-                      "value": "tool_call"
-                    },
-                    "id": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/item/id"
-                    },
-                    "callId": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/item/call_id"
-                    },
-                    "name": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/item/name"
-                    },
-                    "status": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/item/status"
-                    },
-                    "input": {
-                      "op": "object",
-                      "fields": {
-                        "kind": {
-                          "op": "literal",
-                          "value": "json"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
+            "op": "ref",
+            "ref": "register-stream-output-item"
           }
         },
         "body": {
@@ -16675,25 +17880,8 @@
                           "value": "response.started"
                         },
                         "responseId": {
-                          "op": "if",
-                          "when": {
-                            "op": "exists",
-                            "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/response/id"
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/response/id"
-                          },
-                          "otherwise": {
-                            "op": "read",
-                            "from": "state",
-                            "path": "/response"
-                          }
+                          "op": "ref",
+                          "ref": "stream-response-identity"
                         },
                         "response": {
                           "op": "object",
@@ -16762,58 +17950,12 @@
                         "value": "item.started"
                       },
                       "responseId": {
-                        "op": "if",
-                        "when": {
-                          "op": "exists",
-                          "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/response/id"
-                          }
-                        },
-                        "then": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/response/id"
-                        },
-                        "otherwise": {
-                          "op": "read",
-                          "from": "state",
-                          "path": "/response"
-                        }
+                        "op": "ref",
+                        "ref": "stream-response-identity"
                       },
                       "itemId": {
-                        "op": "join",
-                        "items": [
-                          {
-                            "op": "literal",
-                            "value": "output:"
-                          },
-                          {
-                            "op": "cast",
-                            "source": {
-                              "op": "if",
-                              "when": {
-                                "op": "present",
-                                "source": {
-                                  "op": "read",
-                                  "from": "input",
-                                  "path": "/output_index"
-                                }
-                              },
-                              "then": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/output_index"
-                              },
-                              "otherwise": {
-                                "op": "literal",
-                                "value": 0
-                              }
-                            },
-                            "to": "string"
-                          }
-                        ]
+                        "op": "ref",
+                        "ref": "stream-output-key"
                       },
                       "index": {
                         "op": "let",
@@ -16822,24 +17964,8 @@
                           "op": "recall",
                           "name": "items",
                           "source": {
-                            "op": "if",
-                            "when": {
-                              "op": "present",
-                              "source": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/output_index"
-                              }
-                            },
-                            "then": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/output_index"
-                            },
-                            "otherwise": {
-                              "op": "literal",
-                              "value": 0
-                            }
+                            "op": "ref",
+                            "ref": "stream-output-index"
                           },
                           "policy": "reject"
                         },
@@ -16851,38 +17977,67 @@
                         }
                       },
                       "item": {
-                        "op": "object",
-                        "fields": {
-                          "kind": {
-                            "op": "literal",
-                            "value": "tool_call"
-                          },
-                          "id": {
+                        "op": "if",
+                        "when": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item/type"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "message"
+                            }
+                          ]
+                        },
+                        "then": {
+                          "op": "visit",
+                          "source": {
                             "op": "read",
                             "from": "input",
-                            "path": "/item/id"
+                            "path": "/item"
                           },
-                          "callId": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/item/call_id"
-                          },
-                          "name": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/item/name"
-                          },
-                          "status": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/item/status"
-                          },
-                          "input": {
-                            "op": "object",
-                            "fields": {
-                              "kind": {
-                                "op": "literal",
-                                "value": "json"
+                          "body": {
+                            "op": "ref",
+                            "ref": "decode-message"
+                          }
+                        },
+                        "otherwise": {
+                          "op": "object",
+                          "fields": {
+                            "kind": {
+                              "op": "literal",
+                              "value": "tool_call"
+                            },
+                            "id": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item/id"
+                            },
+                            "callId": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item/call_id"
+                            },
+                            "name": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item/name"
+                            },
+                            "status": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item/status"
+                            },
+                            "input": {
+                              "op": "object",
+                              "fields": {
+                                "kind": {
+                                  "op": "literal",
+                                  "value": "json"
+                                }
                               }
                             }
                           }
@@ -16907,58 +18062,12 @@
                         "value": "item.delta"
                       },
                       "responseId": {
-                        "op": "if",
-                        "when": {
-                          "op": "exists",
-                          "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/response/id"
-                          }
-                        },
-                        "then": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/response/id"
-                        },
-                        "otherwise": {
-                          "op": "read",
-                          "from": "state",
-                          "path": "/response"
-                        }
+                        "op": "ref",
+                        "ref": "stream-response-identity"
                       },
                       "itemId": {
-                        "op": "join",
-                        "items": [
-                          {
-                            "op": "literal",
-                            "value": "output:"
-                          },
-                          {
-                            "op": "cast",
-                            "source": {
-                              "op": "if",
-                              "when": {
-                                "op": "present",
-                                "source": {
-                                  "op": "read",
-                                  "from": "input",
-                                  "path": "/output_index"
-                                }
-                              },
-                              "then": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/output_index"
-                              },
-                              "otherwise": {
-                                "op": "literal",
-                                "value": 0
-                              }
-                            },
-                            "to": "string"
-                          }
-                        ]
+                        "op": "ref",
+                        "ref": "stream-output-key"
                       },
                       "index": {
                         "op": "let",
@@ -16967,24 +18076,8 @@
                           "op": "recall",
                           "name": "items",
                           "source": {
-                            "op": "if",
-                            "when": {
-                              "op": "present",
-                              "source": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/output_index"
-                              }
-                            },
-                            "then": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/output_index"
-                            },
-                            "otherwise": {
-                              "op": "literal",
-                              "value": 0
-                            }
+                            "op": "ref",
+                            "ref": "stream-output-index"
                           },
                           "policy": "reject"
                         },
@@ -17014,24 +18107,8 @@
                       "op": "recall",
                       "name": "items",
                       "source": {
-                        "op": "if",
-                        "when": {
-                          "op": "present",
-                          "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/output_index"
-                          }
-                        },
-                        "then": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/output_index"
-                        },
-                        "otherwise": {
-                          "op": "literal",
-                          "value": 0
-                        }
+                        "op": "ref",
+                        "ref": "stream-output-index"
                       },
                       "policy": "reject"
                     },
@@ -17047,58 +18124,12 @@
                           "value": "item.snapshot"
                         },
                         "responseId": {
-                          "op": "if",
-                          "when": {
-                            "op": "exists",
-                            "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/response/id"
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/response/id"
-                          },
-                          "otherwise": {
-                            "op": "read",
-                            "from": "state",
-                            "path": "/response"
-                          }
+                          "op": "ref",
+                          "ref": "stream-response-identity"
                         },
                         "itemId": {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "literal",
-                              "value": "output:"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "if",
-                                "when": {
-                                  "op": "present",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/output_index"
-                                  }
-                                },
-                                "then": {
-                                  "op": "read",
-                                  "from": "input",
-                                  "path": "/output_index"
-                                },
-                                "otherwise": {
-                                  "op": "literal",
-                                  "value": 0
-                                }
-                              },
-                              "to": "string"
-                            }
-                          ]
+                          "op": "ref",
+                          "ref": "stream-output-key"
                         },
                         "index": {
                           "op": "read",
@@ -17153,129 +18184,113 @@
                 ]
               },
               "response.output_item.done": {
-                "op": "array",
-                "items": [
-                  {
-                    "op": "object",
-                    "fields": {
-                      "schemaVersion": {
+                "op": "if",
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "message"
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "let",
+                  "name": "stream-message-position",
+                  "source": {
+                    "op": "ref",
+                    "ref": "stream-output-index"
+                  },
+                  "body": {
+                    "op": "let",
+                    "name": "stream-message-value",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item"
+                    },
+                    "body": {
+                      "op": "let",
+                      "name": "stream-message-terminal",
+                      "source": {
                         "op": "literal",
-                        "value": 2
+                        "value": false
                       },
-                      "type": {
-                        "op": "literal",
-                        "value": "item.finished"
-                      },
-                      "responseId": {
-                        "op": "if",
-                        "when": {
-                          "op": "exists",
+                      "body": {
+                        "op": "ref",
+                        "ref": "finish-stream-message"
+                      }
+                    }
+                  }
+                },
+                "otherwise": {
+                  "op": "array",
+                  "items": [
+                    {
+                      "op": "object",
+                      "fields": {
+                        "schemaVersion": {
+                          "op": "literal",
+                          "value": 2
+                        },
+                        "type": {
+                          "op": "literal",
+                          "value": "item.finished"
+                        },
+                        "responseId": {
+                          "op": "ref",
+                          "ref": "stream-response-identity"
+                        },
+                        "itemId": {
+                          "op": "ref",
+                          "ref": "stream-output-key"
+                        },
+                        "index": {
+                          "op": "let",
+                          "name": "registered-item",
                           "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/response/id"
-                          }
-                        },
-                        "then": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/response/id"
-                        },
-                        "otherwise": {
-                          "op": "read",
-                          "from": "state",
-                          "path": "/response"
-                        }
-                      },
-                      "itemId": {
-                        "op": "join",
-                        "items": [
-                          {
-                            "op": "literal",
-                            "value": "output:"
-                          },
-                          {
-                            "op": "cast",
+                            "op": "recall",
+                            "name": "items",
                             "source": {
-                              "op": "if",
-                              "when": {
-                                "op": "present",
-                                "source": {
-                                  "op": "read",
-                                  "from": "input",
-                                  "path": "/output_index"
-                                }
-                              },
-                              "then": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/output_index"
-                              },
-                              "otherwise": {
-                                "op": "literal",
-                                "value": 0
-                              }
+                              "op": "ref",
+                              "ref": "stream-output-index"
                             },
-                            "to": "string"
-                          }
-                        ]
-                      },
-                      "index": {
-                        "op": "let",
-                        "name": "registered-item",
-                        "source": {
-                          "op": "recall",
-                          "name": "items",
-                          "source": {
-                            "op": "if",
-                            "when": {
-                              "op": "present",
-                              "source": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/output_index"
-                              }
-                            },
-                            "then": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/output_index"
-                            },
-                            "otherwise": {
-                              "op": "literal",
-                              "value": 0
-                            }
-                          },
-                          "policy": "reject"
-                        },
-                        "body": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/position",
-                          "name": "registered-item"
-                        }
-                      },
-                      "item": {
-                        "op": "with_index",
-                        "name": "calls",
-                        "keyMode": "raw_json",
-                        "policy": "last",
-                        "body": {
-                          "op": "visit",
-                          "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/item"
+                            "policy": "reject"
                           },
                           "body": {
-                            "op": "ref",
-                            "ref": "decode-response-item"
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/position",
+                            "name": "registered-item"
+                          }
+                        },
+                        "item": {
+                          "op": "with_index",
+                          "name": "calls",
+                          "keyMode": "raw_json",
+                          "policy": "last",
+                          "body": {
+                            "op": "visit",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item"
+                            },
+                            "body": {
+                              "op": "ref",
+                              "ref": "decode-response-item"
+                            }
                           }
                         }
                       }
                     }
-                  }
-                ]
+                  ]
+                }
               },
               "response.completed": {
                 "op": "let",
@@ -17293,6 +18308,261 @@
                   }
                 },
                 "body": {
+                  "op": "concat",
+                  "items": [
+                    {
+                      "op": "flatmap",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/response/output"
+                      },
+                      "body": {
+                        "op": "let",
+                        "name": "output-index",
+                        "source": {
+                          "op": "index"
+                        },
+                        "body": {
+                          "op": "let",
+                          "name": "output-item",
+                          "source": {
+                            "op": "read",
+                            "from": "item",
+                            "path": ""
+                          },
+                          "body": {
+                            "op": "if",
+                            "when": {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "/type",
+                                  "name": "output-item"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "message"
+                                }
+                              ]
+                            },
+                            "then": {
+                              "op": "let",
+                              "name": "stream-message-position",
+                              "source": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "",
+                                "name": "output-index"
+                              },
+                              "body": {
+                                "op": "let",
+                                "name": "stream-message-value",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "",
+                                  "name": "output-item"
+                                },
+                                "body": {
+                                  "op": "let",
+                                  "name": "stream-message-terminal",
+                                  "source": {
+                                    "op": "literal",
+                                    "value": true
+                                  },
+                                  "body": {
+                                    "op": "ref",
+                                    "ref": "finish-stream-message"
+                                  }
+                                }
+                              }
+                            },
+                            "otherwise": {
+                              "op": "array",
+                              "items": []
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "op": "array",
+                      "items": [
+                        {
+                          "op": "object",
+                          "fields": {
+                            "schemaVersion": {
+                              "op": "literal",
+                              "value": 2
+                            },
+                            "type": {
+                              "op": "literal",
+                              "value": "response.finished"
+                            },
+                            "responseId": {
+                              "op": "ref",
+                              "ref": "stream-response-identity"
+                            },
+                            "response": {
+                              "op": "merge",
+                              "policy": "reject",
+                              "items": [
+                                {
+                                  "op": "project",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "binding",
+                                    "path": "",
+                                    "name": "decoded-response"
+                                  },
+                                  "keys": [
+                                    "content"
+                                  ],
+                                  "policy": "exclude"
+                                },
+                                {
+                                  "op": "object",
+                                  "fields": {
+                                    "content": {
+                                      "op": "map",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "binding",
+                                        "path": "/content",
+                                        "name": "decoded-response"
+                                      },
+                                      "body": {
+                                        "op": "let",
+                                        "name": "output-index",
+                                        "source": {
+                                          "op": "index"
+                                        },
+                                        "body": {
+                                          "op": "let",
+                                          "name": "output-node",
+                                          "source": {
+                                            "op": "read",
+                                            "from": "item",
+                                            "path": ""
+                                          },
+                                          "body": {
+                                            "op": "if",
+                                            "when": {
+                                              "op": "equal",
+                                              "items": [
+                                                {
+                                                  "op": "read",
+                                                  "from": "binding",
+                                                  "path": "/kind",
+                                                  "name": "output-node"
+                                                },
+                                                {
+                                                  "op": "literal",
+                                                  "value": "message"
+                                                }
+                                              ]
+                                            },
+                                            "then": {
+                                              "op": "let",
+                                              "name": "stored-message",
+                                              "source": {
+                                                "op": "recall",
+                                                "name": "items",
+                                                "source": {
+                                                  "op": "read",
+                                                  "from": "binding",
+                                                  "path": "",
+                                                  "name": "output-index"
+                                                },
+                                                "policy": "reject"
+                                              },
+                                              "body": {
+                                                "op": "merge",
+                                                "policy": "reject",
+                                                "items": [
+                                                  {
+                                                    "op": "project",
+                                                    "source": {
+                                                      "op": "read",
+                                                      "from": "binding",
+                                                      "path": "",
+                                                      "name": "output-node"
+                                                    },
+                                                    "keys": [
+                                                      "metadata"
+                                                    ],
+                                                    "policy": "exclude"
+                                                  },
+                                                  {
+                                                    "op": "object",
+                                                    "fields": {
+                                                      "metadata": {
+                                                        "op": "let",
+                                                        "name": "prior-metadata",
+                                                        "source": {
+                                                          "op": "read",
+                                                          "from": "binding",
+                                                          "path": "/metadata",
+                                                          "name": "output-node"
+                                                        },
+                                                        "body": {
+                                                          "op": "let",
+                                                          "name": "current-metadata",
+                                                          "source": {
+                                                            "op": "read",
+                                                            "from": "binding",
+                                                            "path": "/node/metadata",
+                                                            "name": "stored-message"
+                                                          },
+                                                          "body": {
+                                                            "op": "ref",
+                                                            "ref": "merge-stream-node-metadata"
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                ]
+                                              }
+                                            },
+                                            "otherwise": {
+                                              "op": "read",
+                                              "from": "binding",
+                                              "path": "",
+                                              "name": "output-node"
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            "usage": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/usage",
+                              "name": "decoded-response"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              "response.content_part.added": {
+                "op": "let",
+                "name": "registered-part",
+                "source": {
+                  "op": "ref",
+                  "ref": "register-stream-content-part"
+                },
+                "body": {
                   "op": "array",
                   "items": [
                     {
@@ -17304,44 +18574,597 @@
                         },
                         "type": {
                           "op": "literal",
-                          "value": "response.finished"
+                          "value": "item.started"
                         },
                         "responseId": {
-                          "op": "if",
-                          "when": {
-                            "op": "exists",
+                          "op": "ref",
+                          "ref": "stream-response-identity"
+                        },
+                        "itemId": {
+                          "op": "ref",
+                          "ref": "stream-content-key"
+                        },
+                        "parentId": {
+                          "op": "ref",
+                          "ref": "stream-output-key"
+                        },
+                        "index": {
+                          "op": "let",
+                          "name": "registered-item",
+                          "source": {
+                            "op": "recall",
+                            "name": "parts",
                             "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/response/id"
-                            }
+                              "op": "ref",
+                              "ref": "stream-content-key"
+                            },
+                            "policy": "reject"
                           },
-                          "then": {
+                          "body": {
                             "op": "read",
-                            "from": "input",
-                            "path": "/response/id"
-                          },
-                          "otherwise": {
-                            "op": "read",
-                            "from": "state",
-                            "path": "/response"
+                            "from": "binding",
+                            "path": "/position",
+                            "name": "registered-item"
                           }
                         },
-                        "response": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "decoded-response"
-                        },
-                        "usage": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/usage",
-                          "name": "decoded-response"
+                        "item": {
+                          "op": "visit",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/part"
+                          },
+                          "body": {
+                            "op": "ref",
+                            "ref": "decode-stream-content-part"
+                          }
                         }
                       }
                     }
                   ]
+                }
+              },
+              "response.output_text.delta": {
+                "op": "array",
+                "items": [
+                  {
+                    "op": "object",
+                    "fields": {
+                      "schemaVersion": {
+                        "op": "literal",
+                        "value": 2
+                      },
+                      "type": {
+                        "op": "literal",
+                        "value": "item.delta"
+                      },
+                      "responseId": {
+                        "op": "ref",
+                        "ref": "stream-response-identity"
+                      },
+                      "itemId": {
+                        "op": "ref",
+                        "ref": "stream-content-key"
+                      },
+                      "parentId": {
+                        "op": "ref",
+                        "ref": "stream-output-key"
+                      },
+                      "index": {
+                        "op": "let",
+                        "name": "registered-item",
+                        "source": {
+                          "op": "recall",
+                          "name": "parts",
+                          "source": {
+                            "op": "ref",
+                            "ref": "stream-content-key"
+                          },
+                          "policy": "reject"
+                        },
+                        "body": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/position",
+                          "name": "registered-item"
+                        }
+                      },
+                      "delta": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/delta"
+                      },
+                      "metadata": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/logprobs"
+                          }
+                        },
+                        "then": {
+                          "op": "array",
+                          "items": [
+                            {
+                              "op": "object",
+                              "fields": {
+                                "name": {
+                                  "op": "literal",
+                                  "value": "logprobs"
+                                },
+                                "location": {
+                                  "op": "literal",
+                                  "value": "content"
+                                },
+                                "codec": {
+                                  "op": "literal",
+                                  "value": "responses"
+                                },
+                                "sourceCodec": {
+                                  "op": "literal",
+                                  "value": "responses"
+                                },
+                                "path": {
+                                  "op": "literal",
+                                  "value": "/logprobs"
+                                },
+                                "value": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/logprobs"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              "response.output_text.done": {
+                "op": "let",
+                "name": "registered-part",
+                "source": {
+                  "op": "recall",
+                  "name": "parts",
+                  "source": {
+                    "op": "ref",
+                    "ref": "stream-content-key"
+                  },
+                  "policy": "reject"
+                },
+                "body": {
+                  "op": "array",
+                  "items": [
+                    {
+                      "op": "object",
+                      "fields": {
+                        "schemaVersion": {
+                          "op": "literal",
+                          "value": 2
+                        },
+                        "type": {
+                          "op": "literal",
+                          "value": "item.snapshot"
+                        },
+                        "responseId": {
+                          "op": "ref",
+                          "ref": "stream-response-identity"
+                        },
+                        "itemId": {
+                          "op": "ref",
+                          "ref": "stream-content-key"
+                        },
+                        "parentId": {
+                          "op": "ref",
+                          "ref": "stream-output-key"
+                        },
+                        "index": {
+                          "op": "let",
+                          "name": "registered-item",
+                          "source": {
+                            "op": "recall",
+                            "name": "parts",
+                            "source": {
+                              "op": "ref",
+                              "ref": "stream-content-key"
+                            },
+                            "policy": "reject"
+                          },
+                          "body": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/position",
+                            "name": "registered-item"
+                          }
+                        },
+                        "item": {
+                          "op": "merge",
+                          "policy": "reject",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/node",
+                              "name": "registered-part"
+                            },
+                            {
+                              "op": "object",
+                              "fields": {
+                                "payload": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/text"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "response.refusal.delta": {
+                "op": "array",
+                "items": [
+                  {
+                    "op": "object",
+                    "fields": {
+                      "schemaVersion": {
+                        "op": "literal",
+                        "value": 2
+                      },
+                      "type": {
+                        "op": "literal",
+                        "value": "item.delta"
+                      },
+                      "responseId": {
+                        "op": "ref",
+                        "ref": "stream-response-identity"
+                      },
+                      "itemId": {
+                        "op": "ref",
+                        "ref": "stream-content-key"
+                      },
+                      "parentId": {
+                        "op": "ref",
+                        "ref": "stream-output-key"
+                      },
+                      "index": {
+                        "op": "let",
+                        "name": "registered-item",
+                        "source": {
+                          "op": "recall",
+                          "name": "parts",
+                          "source": {
+                            "op": "ref",
+                            "ref": "stream-content-key"
+                          },
+                          "policy": "reject"
+                        },
+                        "body": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/position",
+                          "name": "registered-item"
+                        }
+                      },
+                      "delta": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/delta"
+                      },
+                      "metadata": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/logprobs"
+                          }
+                        },
+                        "then": {
+                          "op": "array",
+                          "items": [
+                            {
+                              "op": "object",
+                              "fields": {
+                                "name": {
+                                  "op": "literal",
+                                  "value": "logprobs"
+                                },
+                                "location": {
+                                  "op": "literal",
+                                  "value": "content"
+                                },
+                                "codec": {
+                                  "op": "literal",
+                                  "value": "responses"
+                                },
+                                "sourceCodec": {
+                                  "op": "literal",
+                                  "value": "responses"
+                                },
+                                "path": {
+                                  "op": "literal",
+                                  "value": "/logprobs"
+                                },
+                                "value": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/logprobs"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              "response.refusal.done": {
+                "op": "let",
+                "name": "registered-part",
+                "source": {
+                  "op": "recall",
+                  "name": "parts",
+                  "source": {
+                    "op": "ref",
+                    "ref": "stream-content-key"
+                  },
+                  "policy": "reject"
+                },
+                "body": {
+                  "op": "array",
+                  "items": [
+                    {
+                      "op": "object",
+                      "fields": {
+                        "schemaVersion": {
+                          "op": "literal",
+                          "value": 2
+                        },
+                        "type": {
+                          "op": "literal",
+                          "value": "item.snapshot"
+                        },
+                        "responseId": {
+                          "op": "ref",
+                          "ref": "stream-response-identity"
+                        },
+                        "itemId": {
+                          "op": "ref",
+                          "ref": "stream-content-key"
+                        },
+                        "parentId": {
+                          "op": "ref",
+                          "ref": "stream-output-key"
+                        },
+                        "index": {
+                          "op": "let",
+                          "name": "registered-item",
+                          "source": {
+                            "op": "recall",
+                            "name": "parts",
+                            "source": {
+                              "op": "ref",
+                              "ref": "stream-content-key"
+                            },
+                            "policy": "reject"
+                          },
+                          "body": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/position",
+                            "name": "registered-item"
+                          }
+                        },
+                        "item": {
+                          "op": "merge",
+                          "policy": "reject",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/node",
+                              "name": "registered-part"
+                            },
+                            {
+                              "op": "object",
+                              "fields": {
+                                "payload": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/refusal"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "response.content_part.done": {
+                "op": "let",
+                "name": "registered-part",
+                "source": {
+                  "op": "recall",
+                  "name": "parts",
+                  "source": {
+                    "op": "ref",
+                    "ref": "stream-content-key"
+                  },
+                  "policy": "reject"
+                },
+                "body": {
+                  "op": "let",
+                  "name": "finished-part",
+                  "source": {
+                    "op": "let",
+                    "name": "new-part",
+                    "source": {
+                      "op": "visit",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/part"
+                      },
+                      "body": {
+                        "op": "ref",
+                        "ref": "decode-stream-content-part"
+                      }
+                    },
+                    "body": {
+                      "op": "let",
+                      "name": "old-part",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/node",
+                        "name": "registered-part"
+                      },
+                      "body": {
+                        "op": "merge",
+                        "policy": "reject",
+                        "items": [
+                          {
+                            "op": "project",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "old-part"
+                            },
+                            "keys": [
+                              "metadata"
+                            ],
+                            "policy": "exclude"
+                          },
+                          {
+                            "op": "object",
+                            "fields": {
+                              "payload": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/payload",
+                                "name": "new-part"
+                              },
+                              "metadata": {
+                                "op": "let",
+                                "name": "prior-metadata",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "/metadata",
+                                  "name": "old-part"
+                                },
+                                "body": {
+                                  "op": "let",
+                                  "name": "current-metadata",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "binding",
+                                    "path": "/metadata",
+                                    "name": "new-part"
+                                  },
+                                  "body": {
+                                    "op": "ref",
+                                    "ref": "merge-stream-node-metadata"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "body": {
+                    "op": "let",
+                    "name": "stored-part",
+                    "source": {
+                      "op": "remember",
+                      "name": "parts",
+                      "source": {
+                        "op": "ref",
+                        "ref": "stream-content-key"
+                      },
+                      "body": {
+                        "op": "object",
+                        "fields": {
+                          "position": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/position",
+                            "name": "registered-part"
+                          },
+                          "node": {
+                            "op": "project",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "finished-part"
+                            },
+                            "keys": [
+                              "payload"
+                            ],
+                            "policy": "exclude"
+                          }
+                        }
+                      }
+                    },
+                    "body": {
+                      "op": "array",
+                      "items": [
+                        {
+                          "op": "object",
+                          "fields": {
+                            "schemaVersion": {
+                              "op": "literal",
+                              "value": 2
+                            },
+                            "type": {
+                              "op": "literal",
+                              "value": "item.finished"
+                            },
+                            "responseId": {
+                              "op": "ref",
+                              "ref": "stream-response-identity"
+                            },
+                            "itemId": {
+                              "op": "ref",
+                              "ref": "stream-content-key"
+                            },
+                            "parentId": {
+                              "op": "ref",
+                              "ref": "stream-output-key"
+                            },
+                            "index": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/position",
+                              "name": "registered-part"
+                            },
+                            "item": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "finished-part"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
                 }
               }
             }
@@ -17416,7 +19239,12 @@
                           "call_id",
                           "name",
                           "arguments",
-                          "status"
+                          "status",
+                          "role",
+                          "content",
+                          "phase",
+                          "metadata",
+                          "internal_chat_message_metadata_passthrough"
                         ],
                         "policy": "exclude"
                       },
@@ -17428,6 +19256,106 @@
                     {
                       "op": "literal",
                       "value": {}
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "if",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/part"
+                        }
+                      },
+                      "then": {
+                        "op": "project",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/part"
+                        },
+                        "keys": [
+                          "type",
+                          "text",
+                          "refusal",
+                          "annotations",
+                          "logprobs"
+                        ],
+                        "policy": "exclude"
+                      },
+                      "otherwise": {
+                        "op": "object",
+                        "fields": {}
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": {}
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "filter",
+                      "source": {
+                        "op": "if",
+                        "when": {
+                          "op": "present",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/item/content"
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/item/content"
+                        },
+                        "otherwise": {
+                          "op": "array",
+                          "items": []
+                        }
+                      },
+                      "when": {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "project",
+                              "source": {
+                                "op": "read",
+                                "from": "item",
+                                "path": ""
+                              },
+                              "keys": [
+                                "type",
+                                "text",
+                                "refusal",
+                                "annotations",
+                                "logprobs"
+                              ],
+                              "policy": "exclude"
+                            },
+                            {
+                              "op": "literal",
+                              "value": {}
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": []
                     }
                   ]
                 }

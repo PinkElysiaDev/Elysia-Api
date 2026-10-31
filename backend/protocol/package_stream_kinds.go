@@ -10,7 +10,7 @@ func (compiler *packageStreamCompiler) recordItemAction(event compiledPackageStr
 		return nil
 	}
 	// A generic finish closes the established kind; it declares no new kind.
-	if event.action == ItemFinished && !event.isTool {
+	if event.action == ItemFinished && !event.isTool && event.kind != MessageNode {
 		return nil
 	}
 	kind := event.kind
@@ -40,6 +40,9 @@ func (compiler *packageStreamCompiler) checkLifecycle(path string) error {
 	}
 	for _, kind := range compiler.contract.itemKinds {
 		for _, action := range []EventType{ItemStarted, ItemDelta, ItemFinished} {
+			if kind == MessageNode && action == ItemDelta {
+				continue
+			}
 			if compiler.itemActions[kind][action] || action == ItemFinished && (compiler.contract.closeItemsOnFinish || compiler.actions[ItemFinished]) {
 				continue
 			}

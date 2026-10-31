@@ -352,3 +352,52 @@ Chat 最终文档现在按原顺序完成工具调用邻接扫描：逐消息对
 阶段提交另在独立源码检出中通过协议全量 `closure-dev96-isolated-protocol` 和相关
 race `closure-dev96-isolated-race`。工作区同名首次全量尝试遇到并行编写的 Responses
 合同尚未补齐方法，日志原样保留；该临时状态不计作本提交的验证结果。
+
+## Anthropic 原生文本接续：首版未通过资源验收
+
+用户已允许修复原生前缀后修改文本增量的旧失败。首版 observer 能保留真实块索引、
+inline 文本摘要和终态编码事实，新旧文本回归及独立协议全量通过，见
+`closure-anthropic-native-transition`、`closure-dev97-isolated-protocol`。
+
+进一步对照发现原生流新增了 renderer item、索引标记及两个常数登记项。真实网关的
+源和目标共用 EvaluationState，这些记录会与源状态一起占用原条目预算：
+
+| StateItems | 原生文本块数 | dev.96 | 首版 observer |
+|---:|---:|---|---|
+| 64 | 21 | 成功 | state_items 65，拒绝 |
+| 128 | 43 | 成功 | state_items 129，拒绝 |
+| 256 | 85 | 成功 | state_items 257，拒绝 |
+| 4096 | 1365 | 成功 | state_items 4097，拒绝 |
+
+证据为 `closure-anthropic-native-shared-budget`；其探针退出 0 只代表成功收集到差异，
+不代表修复验收通过。独立 State 的较早探针也观察到回退；小 BufferBytes 两组因配置
+本身超过编译上限而失败，不能据此判断请求保留量。
+
+此首版没有提交，已还原工作区中的 Anthropic 变化；完整补丁保存在忽略目录
+`anthropic-native-eager-rejected.patch`。下一实现需复用已有交付状态，不能通过调高
+预算、忽略观察错误或把原成功变拒绝当作获批例外解决。当前该独立修复仍未完成。
+
+## 第十三批：Responses 文本容器及完成快照（dev.97）
+
+真实 Responses 源流新增普通文本、refusal、多消息、多片段、空消息和终态补完成。
+同一 JSON 消息解码程序也补齐 phase 与已知轮次标签，终态复用它，不另写流专用的
+语义替代物。来源继续定位原始帧，Native 片段仍逐项保留；既有工具切片与样例字节未改。
+
+Spec 声明父子关系、子位置、文本封口、完成快照核验及终态的完整容器覆盖。普通文本
+允许不单独发送 text.done；显式 item.done 重复仍拒绝，终态对已完成项只核验、不再次
+发 ItemFinished。文本沿用摘要，不保存累计正文；属性独立持有并计入既有共享字节预算。
+
+独立审查发现并修正了两处问题：不带 ordinal 的完成核验原来漏比 parent；Mapping
+原来将开始和完成状态各存一条记录，可能提前耗尽条目预算。现在 items/parts 每项
+只有一条记录，原位更新完成状态；message 与工具开始共用重复登记检查。
+既有少量轨迹继续逐帧比较完整核心事件，另以相同 StateItems=64 对照 48 个空消息。
+
+本切片没有闭合 reasoning、annotation.added、完整 logprobs/usage 尾帧、metadata/
+turn-state、心跳或 Responses 目标编码。异常字段、多故障首错也未完全闭合：例如
+终态同时修改 phase 与 text，旧实现先核对 message metadata，新合同先核对子片段。
+不能将正常轨迹的精确对照当成异常归因全部一致，更不能据此切换生产预置。
+
+最终独立源码的 `closure-dev97-stream-final-protocol` 协议全量、
+`closure-dev97-stream-final-race` 相关 race 通过，包含合并后的 48 消息容量对照。
+合并状态时一次声明把诊断 path 放到了错误层级，编译器明确拒绝；已修正声明并保留
+`closure-dev97-stream-review-confirm` 原失败日志，没有放宽编译检查或测试期望。

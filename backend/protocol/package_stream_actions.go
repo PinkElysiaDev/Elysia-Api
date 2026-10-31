@@ -107,7 +107,13 @@ func (frame *streamActionFrame) consumeArray(action compiledPackageStreamEvent, 
 	}
 	for index, item := range items {
 		child := input
-		child.input = item
+		child.input, child.item, child.itemIndex = item, item, index
+		if action.canBindItem {
+			child.bindings[action.itemBinding] = JSONLeaf(item)
+		}
+		if action.canBindIndex {
+			child.bindings[action.indexBinding] = JSONLeaf(coreInteger(int64(index)))
+		}
 		reader := planObjectReader{root: spanIdentity(item.raw), parent: input.objectReader}
 		child.objectReader = &reader
 		err := frame.consume(action.actions, child, action.foreach.path+"/"+strconv.Itoa(index))
@@ -169,7 +175,7 @@ func qualifyStreamAction(action compiledPackageStreamEvent, path string) compile
 			field.path = path + field.path
 		}
 	}
-	for _, field := range []*streamField{&action.foreach, &action.responseID, &action.itemID, &action.delta, &action.failure, &action.usage[0], &action.usage[1], &action.usage[2]} {
+	for _, field := range []*streamField{&action.foreach, &action.responseID, &action.itemID, &action.parentID, &action.ordinal, &action.wireID, &action.role, &action.status, &action.properties, &action.childrenCount, &action.delta, &action.failure, &action.usage[0], &action.usage[1], &action.usage[2]} {
 		qualify(field)
 	}
 	if action.tool != nil {

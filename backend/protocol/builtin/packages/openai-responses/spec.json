@@ -6213,14 +6213,15 @@
               "type": {
                 "type": "string",
                 "enum": [
-                  "function_call"
+                  "function_call",
+                  "message"
                 ]
               }
             },
             "allowUnknown": true
           },
           "code": "unsupported_capability",
-          "reason": "this migration slice supports JSON function-call items"
+          "reason": "this migration slice supports messages and JSON function-call items"
         },
         {
           "path": "/item",
@@ -6247,14 +6248,15 @@
               "type": {
                 "type": "string",
                 "enum": [
-                  "function_call"
+                  "function_call",
+                  "message"
                 ]
               }
             },
             "allowUnknown": true
           },
           "code": "unsupported_capability",
-          "reason": "this migration slice supports JSON function-call items"
+          "reason": "this migration slice supports messages and JSON function-call items"
         },
         {
           "path": "/response",
@@ -6342,7 +6344,8 @@
                 "type": {
                   "type": "string",
                   "enum": [
-                    "function_call"
+                    "function_call",
+                    "message"
                   ]
                 }
               },
@@ -6350,14 +6353,71 @@
             }
           },
           "code": "unsupported_capability",
-          "reason": "this migration slice supports JSON function-call terminal items"
+          "reason": "this migration slice supports message and JSON function-call terminal items"
+        },
+        {
+          "path": "/part",
+          "when": {
+            "op": "any",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "response.content_part.added"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "response.content_part.done"
+                  }
+                ]
+              }
+            ]
+          },
+          "schema": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "output_text",
+                  "refusal"
+                ]
+              }
+            },
+            "allowUnknown": true
+          },
+          "code": "unsupported_capability",
+          "reason": "this migration slice supports output text and refusal parts"
         }
       ],
       "stream": {
         "discriminator": "/type",
         "responseId": "/response/id",
         "itemKinds": [
-          "tool_call"
+          "tool_call",
+          "message",
+          "text",
+          "refusal"
         ],
         "responseIdValue": {
           "op": "if",
@@ -6522,6 +6582,184 @@
               "tool": {
                 "name": "/item/name",
                 "callId": "/item/call_id"
+              },
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "function_call"
+                  }
+                ]
+              }
+            },
+            {
+              "action": "item_start",
+              "kind": "message",
+              "wireId": "/item/id",
+              "role": "/item/role",
+              "status": "/item/status",
+              "properties": {
+                "op": "object",
+                "fields": {
+                  "phase": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/phase"
+                  },
+                  "metadata": {
+                    "op": "if",
+                    "when": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item/metadata"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "object"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "project",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item/metadata"
+                            },
+                            "keys": [
+                              "turn_id"
+                            ],
+                            "policy": "exclude"
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": true
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item/metadata"
+                    }
+                  },
+                  "internal_chat_message_metadata_passthrough": {
+                    "op": "if",
+                    "when": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item/internal_chat_message_metadata_passthrough"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "object"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "project",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item/internal_chat_message_metadata_passthrough"
+                            },
+                            "keys": [
+                              "turn_id",
+                              "create_time"
+                            ],
+                            "policy": "exclude"
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": true
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item/internal_chat_message_metadata_passthrough"
+                    }
+                  }
+                }
+              },
+              "propertiesPath": "/item",
+              "childrenCount": {
+                "op": "if",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/content"
+                  }
+                },
+                "then": {
+                  "op": "length",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/content"
+                  }
+                }
+              },
+              "childrenPath": "/item/content",
+              "diagnostic": {
+                "code": "unsupported_capability",
+                "stage": "wire",
+                "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+              },
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message"
+                  }
+                ]
               }
             }
           ],
@@ -6540,13 +6778,883 @@
           "response.output_item.done": [
             {
               "action": "tool_snapshot",
-              "arguments": "/item/arguments"
+              "arguments": "/item/arguments",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "function_call"
+                  }
+                ]
+              }
             },
             {
-              "action": "tool_finish"
+              "action": "tool_finish",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "function_call"
+                  }
+                ]
+              }
+            },
+            {
+              "foreach": "/item/content",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message"
+                  }
+                ]
+              },
+              "actions": [
+                {
+                  "action": "item_verify",
+                  "kind": "text",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "output_text"
+                      }
+                    ]
+                  },
+                  "itemId": "/content_index",
+                  "itemIdValue": {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "join",
+                        "items": [
+                          {
+                            "op": "literal",
+                            "value": "output:"
+                          },
+                          {
+                            "op": "cast",
+                            "source": {
+                              "op": "if",
+                              "when": {
+                                "op": "present",
+                                "source": {
+                                  "op": "read",
+                                  "from": "root",
+                                  "path": "/output_index"
+                                }
+                              },
+                              "then": {
+                                "op": "read",
+                                "from": "root",
+                                "path": "/output_index"
+                              },
+                              "otherwise": {
+                                "op": "literal",
+                                "value": 0
+                              }
+                            },
+                            "to": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "literal",
+                        "value": ":"
+                      },
+                      {
+                        "op": "cast",
+                        "source": {
+                          "op": "index"
+                        },
+                        "to": "string"
+                      }
+                    ]
+                  },
+                  "parentId": "/output_index",
+                  "parentIdValue": {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "output:"
+                      },
+                      {
+                        "op": "cast",
+                        "source": {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "root",
+                              "path": "/output_index"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "root",
+                            "path": "/output_index"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": 0
+                          }
+                        },
+                        "to": "string"
+                      }
+                    ]
+                  },
+                  "ordinal": "/content_index",
+                  "ordinalValue": {
+                    "op": "index"
+                  },
+                  "text": "/text",
+                  "properties": {
+                    "op": "project",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": ""
+                    },
+                    "keys": [
+                      "annotations",
+                      "logprobs"
+                    ],
+                    "policy": "include"
+                  },
+                  "propertiesPath": "/type",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire",
+                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                  }
+                },
+                {
+                  "action": "item_verify",
+                  "kind": "refusal",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "refusal"
+                      }
+                    ]
+                  },
+                  "itemId": "/content_index",
+                  "itemIdValue": {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "join",
+                        "items": [
+                          {
+                            "op": "literal",
+                            "value": "output:"
+                          },
+                          {
+                            "op": "cast",
+                            "source": {
+                              "op": "if",
+                              "when": {
+                                "op": "present",
+                                "source": {
+                                  "op": "read",
+                                  "from": "root",
+                                  "path": "/output_index"
+                                }
+                              },
+                              "then": {
+                                "op": "read",
+                                "from": "root",
+                                "path": "/output_index"
+                              },
+                              "otherwise": {
+                                "op": "literal",
+                                "value": 0
+                              }
+                            },
+                            "to": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "literal",
+                        "value": ":"
+                      },
+                      {
+                        "op": "cast",
+                        "source": {
+                          "op": "index"
+                        },
+                        "to": "string"
+                      }
+                    ]
+                  },
+                  "parentId": "/output_index",
+                  "parentIdValue": {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "output:"
+                      },
+                      {
+                        "op": "cast",
+                        "source": {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "root",
+                              "path": "/output_index"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "root",
+                            "path": "/output_index"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": 0
+                          }
+                        },
+                        "to": "string"
+                      }
+                    ]
+                  },
+                  "ordinal": "/content_index",
+                  "ordinalValue": {
+                    "op": "index"
+                  },
+                  "text": "/refusal",
+                  "properties": {
+                    "op": "project",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": ""
+                    },
+                    "keys": [
+                      "annotations",
+                      "logprobs"
+                    ],
+                    "policy": "include"
+                  },
+                  "propertiesPath": "/type",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire",
+                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                  }
+                }
+              ]
+            },
+            {
+              "action": "item_finish",
+              "kind": "message",
+              "wireId": "/item/id",
+              "role": "/item/role",
+              "status": "/item/status",
+              "properties": {
+                "op": "object",
+                "fields": {
+                  "phase": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/phase"
+                  },
+                  "metadata": {
+                    "op": "if",
+                    "when": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item/metadata"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "object"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "project",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item/metadata"
+                            },
+                            "keys": [
+                              "turn_id"
+                            ],
+                            "policy": "exclude"
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": true
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item/metadata"
+                    }
+                  },
+                  "internal_chat_message_metadata_passthrough": {
+                    "op": "if",
+                    "when": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item/internal_chat_message_metadata_passthrough"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "object"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "project",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item/internal_chat_message_metadata_passthrough"
+                            },
+                            "keys": [
+                              "turn_id",
+                              "create_time"
+                            ],
+                            "policy": "exclude"
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": true
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item/internal_chat_message_metadata_passthrough"
+                    }
+                  }
+                }
+              },
+              "propertiesPath": "/item",
+              "childrenCount": {
+                "op": "if",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/content"
+                  }
+                },
+                "then": {
+                  "op": "length",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/content"
+                  }
+                }
+              },
+              "childrenPath": "/item/content",
+              "diagnostic": {
+                "code": "unsupported_capability",
+                "stage": "wire",
+                "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+              },
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message"
+                  }
+                ]
+              }
             }
           ],
           "response.completed": [
+            {
+              "foreach": "/response/output",
+              "as": "output-item",
+              "indexAs": "output-position",
+              "actions": [
+                {
+                  "foreach": "/content",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "message"
+                      }
+                    ]
+                  },
+                  "actions": [
+                    {
+                      "action": "item_verify",
+                      "kind": "text",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/type"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "output_text"
+                          }
+                        ]
+                      },
+                      "itemId": "/content_index",
+                      "itemIdValue": {
+                        "op": "join",
+                        "items": [
+                          {
+                            "op": "join",
+                            "items": [
+                              {
+                                "op": "literal",
+                                "value": "output:"
+                              },
+                              {
+                                "op": "cast",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "",
+                                  "name": "output-position"
+                                },
+                                "to": "string"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "literal",
+                            "value": ":"
+                          },
+                          {
+                            "op": "cast",
+                            "source": {
+                              "op": "index"
+                            },
+                            "to": "string"
+                          }
+                        ]
+                      },
+                      "parentId": "/output_index",
+                      "parentIdValue": {
+                        "op": "join",
+                        "items": [
+                          {
+                            "op": "literal",
+                            "value": "output:"
+                          },
+                          {
+                            "op": "cast",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "output-position"
+                            },
+                            "to": "string"
+                          }
+                        ]
+                      },
+                      "ordinal": "/content_index",
+                      "ordinalValue": {
+                        "op": "index"
+                      },
+                      "text": "/text",
+                      "properties": {
+                        "op": "project",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": ""
+                        },
+                        "keys": [
+                          "annotations",
+                          "logprobs"
+                        ],
+                        "policy": "include"
+                      },
+                      "propertiesPath": "/type",
+                      "diagnostic": {
+                        "code": "unsupported_capability",
+                        "stage": "wire",
+                        "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                      }
+                    },
+                    {
+                      "action": "item_verify",
+                      "kind": "refusal",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/type"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "refusal"
+                          }
+                        ]
+                      },
+                      "itemId": "/content_index",
+                      "itemIdValue": {
+                        "op": "join",
+                        "items": [
+                          {
+                            "op": "join",
+                            "items": [
+                              {
+                                "op": "literal",
+                                "value": "output:"
+                              },
+                              {
+                                "op": "cast",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "",
+                                  "name": "output-position"
+                                },
+                                "to": "string"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "literal",
+                            "value": ":"
+                          },
+                          {
+                            "op": "cast",
+                            "source": {
+                              "op": "index"
+                            },
+                            "to": "string"
+                          }
+                        ]
+                      },
+                      "parentId": "/output_index",
+                      "parentIdValue": {
+                        "op": "join",
+                        "items": [
+                          {
+                            "op": "literal",
+                            "value": "output:"
+                          },
+                          {
+                            "op": "cast",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "output-position"
+                            },
+                            "to": "string"
+                          }
+                        ]
+                      },
+                      "ordinal": "/content_index",
+                      "ordinalValue": {
+                        "op": "index"
+                      },
+                      "text": "/refusal",
+                      "properties": {
+                        "op": "project",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": ""
+                        },
+                        "keys": [
+                          "annotations",
+                          "logprobs"
+                        ],
+                        "policy": "include"
+                      },
+                      "propertiesPath": "/type",
+                      "diagnostic": {
+                        "code": "unsupported_capability",
+                        "stage": "wire",
+                        "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                      }
+                    }
+                  ]
+                },
+                {
+                  "action": "item_finish",
+                  "kind": "message",
+                  "wireId": "/id",
+                  "role": "/role",
+                  "status": "/status",
+                  "properties": {
+                    "op": "object",
+                    "fields": {
+                      "phase": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/phase"
+                      },
+                      "metadata": {
+                        "op": "if",
+                        "when": {
+                          "op": "if",
+                          "when": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "type",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/metadata"
+                                }
+                              },
+                              {
+                                "op": "literal",
+                                "value": "object"
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "project",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/metadata"
+                                },
+                                "keys": [
+                                  "turn_id"
+                                ],
+                                "policy": "exclude"
+                              },
+                              {
+                                "op": "literal",
+                                "value": {}
+                              }
+                            ]
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": true
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/metadata"
+                        }
+                      },
+                      "internal_chat_message_metadata_passthrough": {
+                        "op": "if",
+                        "when": {
+                          "op": "if",
+                          "when": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "type",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/internal_chat_message_metadata_passthrough"
+                                }
+                              },
+                              {
+                                "op": "literal",
+                                "value": "object"
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "project",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/internal_chat_message_metadata_passthrough"
+                                },
+                                "keys": [
+                                  "turn_id",
+                                  "create_time"
+                                ],
+                                "policy": "exclude"
+                              },
+                              {
+                                "op": "literal",
+                                "value": {}
+                              }
+                            ]
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": true
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/internal_chat_message_metadata_passthrough"
+                        }
+                      }
+                    }
+                  },
+                  "propertiesPath": "/id",
+                  "childrenCount": {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    },
+                    "then": {
+                      "op": "length",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  "childrenPath": "/content",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire",
+                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                  },
+                  "itemId": "/id",
+                  "itemIdValue": {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "output:"
+                      },
+                      {
+                        "op": "cast",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "output-position"
+                        },
+                        "to": "string"
+                      }
+                    ]
+                  },
+                  "verifyCompleted": true,
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "message"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
             {
               "action": "usage",
               "when": {
@@ -6565,7 +7673,1114 @@
               }
             },
             {
-              "action": "response_finish"
+              "action": "response_finish",
+              "requireItems": [
+                "message"
+              ],
+              "diagnostic": {
+                "code": "unsupported_capability",
+                "stage": "wire",
+                "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability.",
+                "path": "/response/output"
+              }
+            }
+          ],
+          "response.content_part.added": [
+            {
+              "action": "item_start",
+              "kind": "text",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/part/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "output_text"
+                  }
+                ]
+              },
+              "itemId": "/content_index",
+              "itemIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "output:"
+                      },
+                      {
+                        "op": "cast",
+                        "source": {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/output_index"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/output_index"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": 0
+                          }
+                        },
+                        "to": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "literal",
+                    "value": ":"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/content_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "parentId": "/output_index",
+              "parentIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "literal",
+                    "value": "output:"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/output_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "ordinal": "/content_index",
+              "ordinalValue": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_index"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/content_index"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": 0
+                }
+              },
+              "text": "/part/text",
+              "properties": {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/part"
+                },
+                "keys": [
+                  "annotations",
+                  "logprobs"
+                ],
+                "policy": "include"
+              },
+              "propertiesPath": "/part",
+              "diagnostic": {
+                "code": "unsupported_capability",
+                "stage": "wire",
+                "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+              }
+            },
+            {
+              "action": "item_start",
+              "kind": "refusal",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/part/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "refusal"
+                  }
+                ]
+              },
+              "itemId": "/content_index",
+              "itemIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "output:"
+                      },
+                      {
+                        "op": "cast",
+                        "source": {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/output_index"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/output_index"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": 0
+                          }
+                        },
+                        "to": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "literal",
+                    "value": ":"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/content_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "parentId": "/output_index",
+              "parentIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "literal",
+                    "value": "output:"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/output_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "ordinal": "/content_index",
+              "ordinalValue": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_index"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/content_index"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": 0
+                }
+              },
+              "text": "/part/refusal",
+              "properties": {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/part"
+                },
+                "keys": [
+                  "annotations",
+                  "logprobs"
+                ],
+                "policy": "include"
+              },
+              "propertiesPath": "/part",
+              "diagnostic": {
+                "code": "unsupported_capability",
+                "stage": "wire",
+                "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+              }
+            }
+          ],
+          "response.content_part.done": [
+            {
+              "action": "item_finish",
+              "kind": "text",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/part/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "output_text"
+                  }
+                ]
+              },
+              "itemId": "/content_index",
+              "itemIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "output:"
+                      },
+                      {
+                        "op": "cast",
+                        "source": {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/output_index"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/output_index"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": 0
+                          }
+                        },
+                        "to": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "literal",
+                    "value": ":"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/content_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "parentId": "/output_index",
+              "parentIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "literal",
+                    "value": "output:"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/output_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "ordinal": "/content_index",
+              "ordinalValue": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_index"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/content_index"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": 0
+                }
+              },
+              "text": "/part/text",
+              "properties": {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/part"
+                },
+                "keys": [
+                  "annotations",
+                  "logprobs"
+                ],
+                "policy": "include"
+              },
+              "propertiesPath": "/part",
+              "diagnostic": {
+                "code": "unsupported_capability",
+                "stage": "wire",
+                "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+              }
+            },
+            {
+              "action": "item_finish",
+              "kind": "refusal",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/part/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "refusal"
+                  }
+                ]
+              },
+              "itemId": "/content_index",
+              "itemIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "output:"
+                      },
+                      {
+                        "op": "cast",
+                        "source": {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/output_index"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/output_index"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": 0
+                          }
+                        },
+                        "to": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "literal",
+                    "value": ":"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/content_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "parentId": "/output_index",
+              "parentIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "literal",
+                    "value": "output:"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/output_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "ordinal": "/content_index",
+              "ordinalValue": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_index"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/content_index"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": 0
+                }
+              },
+              "text": "/part/refusal",
+              "properties": {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/part"
+                },
+                "keys": [
+                  "annotations",
+                  "logprobs"
+                ],
+                "policy": "include"
+              },
+              "propertiesPath": "/part",
+              "diagnostic": {
+                "code": "unsupported_capability",
+                "stage": "wire",
+                "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+              }
+            }
+          ],
+          "response.output_text.delta": [
+            {
+              "action": "text_delta",
+              "kind": "text",
+              "itemId": "/content_index",
+              "itemIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "output:"
+                      },
+                      {
+                        "op": "cast",
+                        "source": {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/output_index"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/output_index"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": 0
+                          }
+                        },
+                        "to": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "literal",
+                    "value": ":"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/content_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "parentId": "/output_index",
+              "parentIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "literal",
+                    "value": "output:"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/output_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "text": "/delta",
+              "diagnostic": {
+                "code": "unsupported_capability",
+                "stage": "wire",
+                "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+              }
+            }
+          ],
+          "response.output_text.done": [
+            {
+              "action": "text_snapshot",
+              "kind": "text",
+              "itemId": "/content_index",
+              "itemIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "output:"
+                      },
+                      {
+                        "op": "cast",
+                        "source": {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/output_index"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/output_index"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": 0
+                          }
+                        },
+                        "to": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "literal",
+                    "value": ":"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/content_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "parentId": "/output_index",
+              "parentIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "literal",
+                    "value": "output:"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/output_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "text": "/text",
+              "sealText": true,
+              "diagnostic": {
+                "code": "unsupported_capability",
+                "stage": "wire",
+                "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+              }
+            }
+          ],
+          "response.refusal.delta": [
+            {
+              "action": "text_delta",
+              "kind": "refusal",
+              "itemId": "/content_index",
+              "itemIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "output:"
+                      },
+                      {
+                        "op": "cast",
+                        "source": {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/output_index"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/output_index"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": 0
+                          }
+                        },
+                        "to": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "literal",
+                    "value": ":"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/content_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "parentId": "/output_index",
+              "parentIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "literal",
+                    "value": "output:"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/output_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "text": "/delta",
+              "diagnostic": {
+                "code": "unsupported_capability",
+                "stage": "wire",
+                "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+              }
+            }
+          ],
+          "response.refusal.done": [
+            {
+              "action": "text_snapshot",
+              "kind": "refusal",
+              "itemId": "/content_index",
+              "itemIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "output:"
+                      },
+                      {
+                        "op": "cast",
+                        "source": {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/output_index"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/output_index"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": 0
+                          }
+                        },
+                        "to": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "literal",
+                    "value": ":"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/content_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "parentId": "/output_index",
+              "parentIdValue": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "literal",
+                    "value": "output:"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/output_index"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output_index"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "text": "/refusal",
+              "sealText": true,
+              "diagnostic": {
+                "code": "unsupported_capability",
+                "stage": "wire",
+                "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+              }
             }
           ]
         }

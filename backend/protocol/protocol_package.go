@@ -80,12 +80,29 @@ type ProtocolStreamEventSpec []ProtocolStreamActionSpec
 type ProtocolStreamActionSpec struct {
 	Action           string                     `json:"action,omitempty"`
 	ForEach          string                     `json:"foreach,omitempty"`
+	As               string                     `json:"as,omitempty"`
+	IndexAs          string                     `json:"indexAs,omitempty"`
 	Actions          []ProtocolStreamActionSpec `json:"actions,omitempty"`
 	Kind             NodeKind                   `json:"kind,omitempty"`
 	When             *Expression                `json:"when,omitempty"`
 	ResponseID       string                     `json:"responseId,omitempty"`
 	ItemID           string                     `json:"itemId,omitempty"`
 	ItemIDValue      *Expression                `json:"itemIdValue,omitempty"`
+	ParentID         string                     `json:"parentId,omitempty"`
+	ParentIDValue    *Expression                `json:"parentIdValue,omitempty"`
+	Ordinal          string                     `json:"ordinal,omitempty"`
+	OrdinalValue     *Expression                `json:"ordinalValue,omitempty"`
+	WireID           string                     `json:"wireId,omitempty"`
+	Role             string                     `json:"role,omitempty"`
+	Status           string                     `json:"status,omitempty"`
+	Properties       *Expression                `json:"properties,omitempty"`
+	PropertiesPath   string                     `json:"propertiesPath,omitempty"`
+	ChildrenCount    *Expression                `json:"childrenCount,omitempty"`
+	ChildrenPath     string                     `json:"childrenPath,omitempty"`
+	SealText         bool                       `json:"sealText,omitempty"`
+	VerifyCompleted  bool                       `json:"verifyCompleted,omitempty"`
+	RequireItems     []NodeKind                 `json:"requireItems,omitempty"`
+	Diagnostic       *RejectDiagnostic          `json:"diagnostic,omitempty"`
 	Implicit         bool                       `json:"implicit,omitempty"`
 	SparseIdentity   bool                       `json:"sparseIdentity,omitempty"`
 	AllowBeforeStart bool                       `json:"allowBeforeStart,omitempty"`

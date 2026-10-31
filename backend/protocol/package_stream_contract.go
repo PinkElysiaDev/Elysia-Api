@@ -25,6 +25,7 @@ type compiledPackageStreamContract struct {
 	closeItemsOnFinish                          bool
 	identities                                  []compiledStreamIdentity
 	itemKinds                                   []NodeKind
+	bindingSlots                                int
 }
 
 type compiledStreamIdentity struct {
@@ -39,21 +40,29 @@ type compiledStreamIdentity struct {
 }
 
 type compiledPackageStreamEvent struct {
-	kind                 NodeKind
-	action               EventType
-	when                 *compiledOutputPlan
-	foreach              streamField
-	actions              []compiledPackageStreamEvent
-	responseID, itemID   streamField
-	delta, failure       streamField
-	usage                [3]streamField
-	tool                 *compiledStreamTool
-	isTool               bool
-	isControl            bool
-	isImplicit           bool
-	isSparseIdentity     bool
-	canPrecedeResponse   bool
-	canOmitUsageCounters bool
+	kind                                       NodeKind
+	action                                     EventType
+	when                                       *compiledOutputPlan
+	foreach                                    streamField
+	actions                                    []compiledPackageStreamEvent
+	responseID, itemID                         streamField
+	parentID, ordinal                          streamField
+	wireID, role, status                       streamField
+	properties, childrenCount                  streamField
+	delta, failure                             streamField
+	usage                                      [3]streamField
+	tool                                       *compiledStreamTool
+	isTool                                     bool
+	isControl                                  bool
+	isImplicit                                 bool
+	isSparseIdentity                           bool
+	canPrecedeResponse                         bool
+	canOmitUsageCounters                       bool
+	itemBinding, indexBinding                  int
+	canBindItem, canBindIndex                  bool
+	sealsText, verifiesItem, verifiesCompleted bool
+	requiredItems                              []NodeKind
+	diagnostic                                 *RejectDiagnostic
 }
 
 type compiledStreamTool struct {
@@ -101,7 +110,7 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 			return nil, fmt.Errorf("%s/itemKinds: explicit item kinds must not be empty", path)
 		}
 		for _, kind := range spec.ItemKinds {
-			if !slices.Contains([]NodeKind{TextNode, ReasoningNode, RefusalNode, ToolCallNode}, kind) || slices.Contains(contract.itemKinds, kind) {
+			if !slices.Contains([]NodeKind{TextNode, ReasoningNode, RefusalNode, ToolCallNode, MessageNode}, kind) || slices.Contains(contract.itemKinds, kind) {
 				return nil, fmt.Errorf("%s/itemKinds: requires distinct supported item kinds", path)
 			}
 			contract.itemKinds = append(contract.itemKinds, kind)
@@ -145,15 +154,17 @@ type packageStreamCompiler struct {
 	actions, toolActions map[EventType]bool
 	itemActions          map[NodeKind]map[EventType]bool
 	actionCount          int
+	scope                expressionScope
 }
 
 func (compiler *packageStreamCompiler) compileValue(value *Expression, path string, field *streamField) error {
 	if value == nil {
 		return nil
 	}
-	program, err := compiler.expressions.compilePlan(*value, path, expressionScope{}, 1)
+	program, err := compiler.expressions.compilePlan(*value, path, compiler.scope, 1)
 	if err == nil {
 		field.value = program
+		compiler.contract.bindingSlots = max(compiler.contract.bindingSlots, program.bindingSlots)
 	}
 	return err
 }
@@ -172,7 +183,7 @@ func (compiler *packageStreamCompiler) compileIdentities(identities []ProtocolSt
 		if err != nil {
 			return err
 		}
-		condition, err := compileWirePredicate(identity.When, at+"/when", nil, nil, compiler.expressions, 1)
+		condition, err := compiler.compilePredicate(identity.When, at+"/when")
 		if err != nil {
 			return err
 		}
@@ -203,10 +214,11 @@ func (compiler *packageStreamCompiler) compileIdentitySelection(spec ProtocolStr
 			return err
 		}
 		var err error
-		identity.key, err = compiler.expressions.compilePlan(*spec.Key, path+"/key", expressionScope{}, 1)
+		identity.key, err = compiler.expressions.compilePlan(*spec.Key, path+"/key", compiler.scope, 1)
 		if err != nil {
 			return err
 		}
+		compiler.contract.bindingSlots = max(compiler.contract.bindingSlots, identity.key.bindingSlots)
 		identity.keyPath = spec.KeyPath
 	}
 	if spec.Diagnostic != nil {
@@ -230,15 +242,20 @@ func (compiler *packageStreamCompiler) compileActions(entries []ProtocolStreamAc
 		var event compiledPackageStreamEvent
 		var err error
 		if entry.ForEach != "" {
-			if entry.Action != "" || entry.Kind != "" || entry.ResponseID != "" || entry.ItemID != "" || entry.ItemIDValue != nil || entry.Text != "" || entry.Arguments != "" || entry.Tool != nil || entry.Error != "" || entry.Usage != nil || entry.Implicit || entry.SparseIdentity || entry.AllowBeforeStart {
+			if entry.Action != "" || entry.Kind != "" || entry.ResponseID != "" || entry.ItemID != "" || entry.ItemIDValue != nil || entry.Text != "" || entry.Arguments != "" || entry.Tool != nil || entry.Error != "" || entry.Usage != nil || entry.Implicit || entry.SparseIdentity || entry.AllowBeforeStart || hasStreamItemSelectors(entry) {
 				return nil, fmt.Errorf("%s: foreach declares only its selector, condition and nested actions", at)
 			}
 			event.foreach, err = compileStreamField(entry.ForEach, at+"/foreach", compiler.limits)
 			if err == nil {
-				event.actions, err = compiler.compileActions(entry.Actions, at+"/actions", depth+1)
+				previous := compiler.scope
+				err = compiler.bindIteration(entry, &event, at)
+				if err == nil {
+					event.actions, err = compiler.compileActions(entry.Actions, at+"/actions", depth+1)
+				}
+				compiler.scope = previous
 			}
 		} else {
-			if len(entry.Actions) != 0 {
+			if len(entry.Actions) != 0 || entry.As != "" || entry.IndexAs != "" {
 				return nil, fmt.Errorf("%s/actions: nested actions require foreach", at)
 			}
 			event, err = compiler.compileAction(entry, at)
@@ -246,7 +263,7 @@ func (compiler *packageStreamCompiler) compileActions(entries []ProtocolStreamAc
 		if err != nil {
 			return nil, err
 		}
-		event.when, err = compileWirePredicate(entry.When, at+"/when", nil, nil, compiler.expressions, 1)
+		event.when, err = compiler.compilePredicate(entry.When, at+"/when")
 		if err != nil {
 			return nil, err
 		}
@@ -283,6 +300,9 @@ func (compiler *packageStreamCompiler) compileAction(entry ProtocolStreamActionS
 	if err := compiler.compileValue(entry.ItemIDValue, path+"/itemIdValue", &event.itemID); err != nil {
 		return event, err
 	}
+	if err := compiler.compileItemSelectors(entry, &event, path); err != nil {
+		return event, err
+	}
 	compiler.contract.hasTypedItems = compiler.contract.hasTypedItems || entry.Kind != ""
 	if err := compiler.recordItemAction(event, path); err != nil {
 		return event, err
@@ -315,6 +335,10 @@ func compileStreamEvent(spec ProtocolStreamActionSpec, path string, limits Limit
 		event.action = ItemStarted
 	case "text_delta":
 		event.action = ItemDelta
+	case "text_snapshot":
+		event.action = ItemSnapshot
+	case "item_verify":
+		event.action, event.verifiesItem = ItemSnapshot, true
 	case "item_finish":
 		event.action = ItemFinished
 	case "tool_start":
@@ -340,14 +364,15 @@ func compileStreamEvent(spec ProtocolStreamActionSpec, path string, limits Limit
 	default:
 		return event, fmt.Errorf("%s/action: unsupported lifecycle action", path)
 	}
-	if spec.Kind != "" && ((spec.Action != "item_start" && spec.Action != "text_delta") || !slices.Contains([]NodeKind{TextNode, ReasoningNode, RefusalNode}, spec.Kind)) {
-		return event, fmt.Errorf("%s/kind: kind requires a text-like item start or delta", path)
+	if spec.Kind != "" && (!slices.Contains([]string{"item_start", "text_delta", "text_snapshot", "item_finish", "item_verify"}, spec.Action) || !slices.Contains([]NodeKind{TextNode, ReasoningNode, RefusalNode, MessageNode}, spec.Kind) || spec.Kind == MessageNode && (spec.Action == "text_delta" || spec.Action == "text_snapshot")) {
+		return event, fmt.Errorf("%s/kind: kind requires a compatible item lifecycle action", path)
 	}
 	event.kind = spec.Kind
 	if event.kind == "" {
 		event.kind = TextNode
 	}
-	if (spec.Action == "text_delta") != (spec.Text != "") || (event.action == OperationFailed) != (spec.Error != "") || (event.action == UsageUpdated) != (spec.Usage != nil) {
+	canReadText := slices.Contains([]string{"item_start", "text_delta", "text_snapshot", "item_finish", "item_verify"}, spec.Action) && event.kind != MessageNode
+	if spec.Text != "" && !canReadText || (spec.Action == "text_delta" || spec.Action == "text_snapshot") && spec.Text == "" || (event.action == OperationFailed) != (spec.Error != "") || (event.action == UsageUpdated) != (spec.Usage != nil) {
 		return event, fmt.Errorf("%s: text, error and usage selectors belong only to their respective actions and are required there", path)
 	}
 	if spec.Action == "tool_snapshot" && spec.Arguments == "" {

@@ -17,6 +17,7 @@ type packageStreamValidation struct {
 	direction          Direction
 	openItems          int
 	identityBytes      int
+	snapshotBytes      int
 	identities         []string
 	identityBindings   []streamIdentityBindings
 	identityItems      int
@@ -24,6 +25,8 @@ type packageStreamValidation struct {
 	accepted           streamPosition
 	delivered          streamPosition
 	hasPendingDelivery bool
+	itemSnapshots      map[string]*streamItemSnapshot
+	frameNumber        uint64
 }
 
 type streamPosition struct {
@@ -43,10 +46,14 @@ func newPackageStreamValidation(contract *compiledPackageStreamContract, target 
 }
 
 func (state *packageStreamValidation) consume(ctx context.Context, frame Value) error {
+	state.frameNumber++
 	reader := newNativeComparisonReader(frame)
 	objects := &planObjectReader{root: spanIdentity(frame.raw)}
 	conditions := evaluation{ctx: ctx, input: frame, root: frame, valueReader: reader, objectReader: objects,
 		budget: &evaluationBudget{limits: state.replay.limits, stepLimit: state.replay.limits.Nodes}}
+	if state.contract.bindingSlots != 0 {
+		conditions.bindings = make([]JSONOutput, state.contract.bindingSlots)
+	}
 	read := state.fieldReader(conditions)
 	tag, err := state.readIdentity(state.contract.discriminator, read)
 	if err != nil {
@@ -106,11 +113,17 @@ func (state *packageStreamValidation) consumeAction(ctx context.Context, definit
 		isRepeatedStart = state.replay.items[state.replay.identities.aliases["item:"+itemID]] != nil
 	}
 	identityBytes += itemBytes
+	snapshot, snapshotBytes, skipReplay, err := state.prepareItemSnapshot(event, definition, read)
+	if err != nil {
+		return err
+	}
+	snapshotBytes += state.snapshotBytes
+	isRepeatedStart = isRepeatedStart || skipReplay
 	toolKey, toolPaths, pathBytes := state.prepareToolPaths(event, definition)
 	identityBytes += pathBytes
 	// Bound retained identity bytes as well as identity count. This is a logical
 	// payload budget, not an estimate of Go map or allocator overhead.
-	if err := state.checkRetainedBytes(identityBytes, state.contract.itemID.path); err != nil {
+	if err := state.checkRetainedState(identityBytes, snapshotBytes, state.contract.itemID.path); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
@@ -120,7 +133,7 @@ func (state *packageStreamValidation) consumeAction(ctx context.Context, definit
 		// The replay buffer owns decoded tool arguments. Give it the remaining
 		// retention allowance, without reducing frame or semantic input limits.
 		bufferLimit := state.replay.state.limits.BufferBytes
-		state.replay.state.limits.BufferBytes = state.replay.limits.BufferBytes - identityBytes
+		state.replay.state.limits.BufferBytes = state.replay.limits.BufferBytes - identityBytes - snapshotBytes
 		_, err := state.replay.Consume(event)
 		state.replay.state.limits.BufferBytes = bufferLimit
 		if err != nil {
@@ -132,6 +145,8 @@ func (state *packageStreamValidation) consumeAction(ctx context.Context, definit
 	}
 	state.accepted.hasStarted = state.accepted.hasStarted || event.Type == ResponseStarted
 	state.identityBytes = identityBytes
+	state.snapshotBytes = snapshotBytes
+	state.commitItemSnapshot(event, definition, snapshot)
 	if toolKey != "" {
 		if state.toolPaths == nil {
 			state.toolPaths = make(map[string]streamToolPaths)
@@ -144,7 +159,9 @@ func (state *packageStreamValidation) consumeAction(ctx context.Context, definit
 			state.openItems++
 		}
 	case ItemFinished:
-		state.openItems--
+		if !skipReplay {
+			state.openItems--
+		}
 	case ResponseFinished, OperationFailed, OperationCancelled:
 		state.accepted.isTerminal = true
 		if state.contract.closeItemsOnFinish {
@@ -161,7 +178,11 @@ func (state *packageStreamValidation) consumeAction(ctx context.Context, definit
 }
 
 func (state *packageStreamValidation) checkRetainedBytes(identityBytes int, path string) error {
-	retained := identityBytes + state.replay.state.buffered
+	return state.checkRetainedState(identityBytes, state.snapshotBytes, path)
+}
+
+func (state *packageStreamValidation) checkRetainedState(identityBytes, snapshotBytes int, path string) error {
+	retained := identityBytes + snapshotBytes + state.replay.state.buffered
 	limit := state.replay.limits.BufferBytes
 	if retained <= limit {
 		return nil
@@ -184,6 +205,9 @@ func (state *packageStreamValidation) readPayload(event *Event, definition *comp
 		event.Usage, err = state.readUsage(definition.usage[:], definition.canOmitUsageCounters, read)
 		return 0, err
 	case ResponseFinished:
+		if err := state.checkRequiredItems(*definition); err != nil {
+			return 0, err
+		}
 		if state.openItems != 0 && !state.contract.closeItemsOnFinish {
 			if state.contract.hasTools {
 				return 0, state.issue(state.contract.discriminator.path, "response finished before all stream items", nil)

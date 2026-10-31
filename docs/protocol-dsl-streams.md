@@ -115,12 +115,33 @@ Chat source 四份样例及 metadata/logprobs、晚到 usage/工具身份已验�
 
 ## Responses JSON 工具输入切片
 
-本切片仅接入既有 `stream-tool-decode` 的六帧生命周期：响应开始、JSON 工具开始、参数增量、参数快照、工具完成和响应完成。配置复用 JSON 解码表达式，`with_input` 只切换所选 `/response` 输入，`root` 仍为原帧。尚未接入 Responses 事件编码器，不据此宣布同协议原帧重放通过。
+最初的工具切片接入既有 `stream-tool-decode` 的六帧生命周期：响应开始、JSON 工具开始、参数增量、参数快照、工具完成和响应完成。配置复用 JSON 解码表达式，`with_input` 只切换所选 `/response` 输入，`root` 仍为原帧。尚未接入 Responses 事件编码器，不据此宣布同协议原帧重放通过。
 
-该文档显式声明 `itemKinds:["tool_call"]`，只缩小 `decode_event` 方向的能力，协议全局及 JSON 方向的 text 能力保留。省略 `itemKinds` 时仍要求原有文本生命周期，工具动作不能代替文本动作；显式类型必须与实际动作及方向能力一致。后续接入文本流时必须同时补动作和恢复该方向的 text 能力。
+初始文档显式声明 `itemKinds:["tool_call"]`，只缩小 `decode_event` 方向的能力，协议全局及 JSON 方向的 text 能力保留。省略 `itemKinds` 时仍要求原有文本生命周期，工具动作不能代替文本动作；显式类型必须与实际动作及方向能力一致。下述文本切片已同步补动作和恢复该方向的 text 能力。
 
 来源差异采用明确边界核对：旧终态工具节点的 `Source.Path`、`Native.Source.Path` 是相对包络的 `/output/0`，新值为原帧位置 `/response/output/0`。旧节点的 Native 值保留片段缩进，新节点沿用 `capture_native` 的 ConfigStd 容器规范化；测试对原片段使用相同规范化后比较全部字节，不解码为 `any`，不忽略数字、字段或路径。顶层 `Response.Native` 在旧、新两边均缺失；整帧由 EventFrame 独立保存。
 
 Spec 的 `optionalSequence` 只允许缺失序号，不允许 null 或倒退，缺失帧不会重置已建立的水位。`tool_snapshot` 复用既有 JSON 参数前缀规则。带 `key` 的身份声明把输出索引和 wire ID 关联起来；`comparison:raw_json` 保留旧的原始字符串拼写比较，`unique:true` 拒绝相同原始 ID 被另一个索引复用，关联项与现有 wire 状态共用保留预算。
 
-文本父子项、reasoning、自由文本工具、辅助 metadata、turn-state、心跳特殊处置和 Responses 目标累计缓冲仍在此切片范围之外；它们不能由本组六帧对照代替验收。
+这组六帧不能代替文本父子项、reasoning、自由文本工具、辅助 metadata、turn-state、心跳特殊处置和 Responses 目标累计缓冲的验收。文本输入的后续进展如下。
+
+## Responses 文本输入切片
+
+`decode_event` 现声明 `tool_call`、`message`、`text`、`refusal`，并恢复该方向的 text 能力。普通文本和 refusal 共用消息／内容片段关系，工具分支继续保留；没有用缩小全局能力的方式通过测试。
+
+独立 Spec 合同增加以下通用声明，供应商标签和字段仍只在配置中出现：
+
+- `message` 是无自身 delta 的容器，只要求 start／finish。`wireId`、`role`、`status` 选择其身份字段；`parentId`／`parentIdValue` 关联子项，`ordinal`／`ordinalValue` 约束子项顺序。
+- `text` 选择初始正文或完整快照。`text_snapshot` 可用 `sealText:true` 封口；封口后不再接受 delta 或第二次封口，随后完成快照必须与摘要完全一致。普通内容片段不强制要求单独的 text.done。
+- `item_verify` 校验已经完成的内容，不能再次推进 EventReplay。`verifyCompleted:true` 仅用于容器完成：已完成容器必须一致，并且不再完成第二次。预置只在 response 终态使用它，显式 output_item.done 仍拒绝重复。
+- `childrenCount`／`childrenPath` 核对声明快照的子项数量以及本帧是否逐一校验；终态 `requireItems:["message"]` 要求覆盖所有已注册消息，包括此前已显式完成的消息。
+- `properties`／`propertiesPath` 选择需要保存与冻结的 wire 属性，不包含 Source 或 Native。完成前合并已观察字段，完成后拒绝变更；子项核验使用完整属性集合，不能悄悄删除已完成的 annotations。
+- `foreach` 的 `as`、`indexAs` 为子动作绑定当前成员和位置；嵌套仍使用真实数组路径，根帧不变。条件和选择器不访问 Mapping 可变状态。
+
+新增状态只持有独立身份、属性、父子关联和文本摘要，不保存已发送文本前缀。属性、身份和未完成工具正文共用原 `BufferBytes`；组合超限报告 `state_bytes`。普通 delta 只检查封口状态，不复制属性快照或更新其索引。
+
+Mapping 复用 JSON 消息解码、已命名的消息完成表达式和有界索引。共用 `decode-message` 补齐 phase 与已知 turn tag metadata；不认识的 tag 继续留在 wire 扩展中。首次消息来源通过 `retainSource` 保存，后续完成节点不再持有初始 Native 正文；终态正文来自当前终态帧。
+
+`TestResponsesPackageTextSourceStream` 复用三消息、双内容片段、空消息的既有 phase 夹具，比较 phase 在 start、done、terminal 到达以及 refusal 对应序列的逐帧核心结果。表示差异明确限定为 core v2、真实 `/item`／`/response/output/...` 来源与既有 ConfigStd Native 片段编码；正文、消息顺序、usage、身份及其余字段继续完整比较。通用合同测试覆盖封口、重复完成、子顺序、终态遗漏／改写和共享保留预算。
+
+这仍不是 Responses SSE 全部闭合：annotation.added、reasoning、完整 logprobs 累积、in_progress／晚到 usage、辅助 metadata／turn-state、心跳和目标编码器尚未接通。未知扩展当前保留原始帧证据，其与旧虚拟扩展路径的完整差分、混合错误首错顺序、异常 part 类型接受边界仍需独立核对；不能用当前正常序列的成功替代这些验收。未接入事件编码器，因此仍不宣称 Responses 同协议原帧重放已经通过。
