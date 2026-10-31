@@ -1,5 +1,30 @@
 package protocol
 
+// A check deliberately invokes a semantic constraint. Wire assertions retain
+// its existing business diagnostic instead of treating it as a failed predicate.
+type declaredCheckError struct{ err error }
+
+func (failure *declaredCheckError) Error() string { return failure.err.Error() }
+func (failure *declaredCheckError) Unwrap() error { return failure.err }
+
+func (plan *compiledOutputPlan) checkUsage(state evaluation) (plannedOutput, error) {
+	value, err := plan.source.build(state)
+	if err != nil {
+		return plannedOutput{}, err
+	}
+	if value.output.IsZero() {
+		return value, nil
+	}
+	var usage *Usage
+	if err := writeCoreUsagePointer(value.output, &usage, coreOutputReader(value.output, state.valueReader)); err != nil {
+		return plannedOutput{}, err
+	}
+	if err := ValidateUsageArithmetic(usage); err != nil {
+		return plannedOutput{}, &declaredCheckError{err: err}
+	}
+	return value, nil
+}
+
 func (plan *compiledOutputPlan) mergeUsage(state evaluation) (plannedOutput, error) {
 	operands, err := plan.buildOperandValues(state)
 	if err != nil {

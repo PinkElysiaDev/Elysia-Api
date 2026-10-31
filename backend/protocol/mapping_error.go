@@ -18,7 +18,7 @@ func validateDiagnosticClassification(code IssueCode, stage, path string) error 
 
 func validateBoundaryDiagnostic(diagnostic RejectDiagnostic, path string) error {
 	stage := diagnostic.Stage
-	if stage == "" || stage == "stream" || stage == "decode" || stage == "decode.error" || stage == "wire.output" || stage == "request.validation" {
+	if stage == "" || stage == "stream" || stage == "decode" || stage == "decode.error" || stage == "decode.event" || stage == "wire.output" || stage == "request.validation" {
 		stage = "wire"
 	}
 	if err := validateDiagnosticClassification(diagnostic.Code, stage, path); err != nil {

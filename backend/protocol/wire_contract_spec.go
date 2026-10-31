@@ -102,6 +102,10 @@ func countAssertionRootReads(assertions []compiledWireAssertion) int {
 }
 
 func compileWireAssertions(assertions []WireAssertion, path string, input, root *ValueSchema, expressions *expressionCompiler, depth int) ([]compiledWireAssertion, error) {
+	return compileWireAssertionsInScope(assertions, path, expressionScope{input: input, root: root}, expressions, depth)
+}
+
+func compileWireAssertionsInScope(assertions []WireAssertion, path string, scope expressionScope, expressions *expressionCompiler, depth int) ([]compiledWireAssertion, error) {
 	if len(assertions) == 0 {
 		return nil, nil
 	}
@@ -120,7 +124,7 @@ func compileWireAssertions(assertions []WireAssertion, path string, input, root 
 			return nil, fmt.Errorf("%s/code: expected an input, capability, association or wire-contract diagnostic", at)
 		}
 		check := compiledWireAssertion{path: assertion.Path, pointer: pointer, code: assertion.Code, reason: assertion.Reason}
-		check.reasonPlan, err = compileWireReason(assertion, at, input, root, expressions, depth)
+		check.reasonPlan, err = compileWireReasonInScope(assertion, at, scope, expressions, depth)
 		if err != nil {
 			return nil, err
 		}
@@ -131,7 +135,7 @@ func compileWireAssertions(assertions []WireAssertion, path string, input, root 
 			classification := *assertion.Diagnostic
 			check.diagnostic = &classification
 		}
-		check.when, err = compileWirePredicate(assertion.When, at+"/when", input, root, expressions, depth)
+		check.when, err = compileWirePredicateInScope(assertion.When, at+"/when", scope, expressions, depth)
 		if err != nil {
 			return nil, err
 		}
@@ -139,14 +143,17 @@ func compileWireAssertions(assertions []WireAssertion, path string, input, root 
 		if err != nil {
 			return nil, locateMappingError(at+"/schema", err)
 		}
-		check.check, err = compileWirePredicate(assertion.Check, at+"/check", &assertion.Schema, root, expressions, depth)
+		selected := scope
+		selected.input = &assertion.Schema
+		check.check, err = compileWirePredicateInScope(assertion.Check, at+"/check", selected, expressions, depth)
 		if err != nil {
 			return nil, err
 		}
 		if len(assertion.Each) != 0 && (assertion.Schema.Type != ArrayType || assertion.Schema.Nullable) {
 			return nil, fmt.Errorf("%s/each: requires a non-nullable array schema", at)
 		}
-		check.each, err = compileWireAssertions(assertion.Each, at+"/each", assertion.Schema.Items, root, expressions, depth+1)
+		selected.input = assertion.Schema.Items
+		check.each, err = compileWireAssertionsInScope(assertion.Each, at+"/each", selected, expressions, depth+1)
 		if err != nil {
 			return nil, err
 		}
@@ -155,11 +162,11 @@ func compileWireAssertions(assertions []WireAssertion, path string, input, root 
 	return checks, nil
 }
 
-func compileWirePredicate(expression *Expression, path string, input, root *ValueSchema, compiler *expressionCompiler, depth int) (*compiledOutputPlan, error) {
+func compileWirePredicateInScope(expression *Expression, path string, scope expressionScope, compiler *expressionCompiler, depth int) (*compiledOutputPlan, error) {
 	if expression == nil {
 		return nil, nil
 	}
-	plan, err := compiler.compilePlan(*expression, path, expressionScope{input: input, root: root}, depth)
+	plan, err := compiler.compilePlan(*expression, path, scope, depth)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +176,7 @@ func compileWirePredicate(expression *Expression, path string, input, root *Valu
 	return plan, nil
 }
 
-func compileWireReason(assertion WireAssertion, path string, input, root *ValueSchema, compiler *expressionCompiler, depth int) (*compiledOutputPlan, error) {
+func compileWireReasonInScope(assertion WireAssertion, path string, scope expressionScope, compiler *expressionCompiler, depth int) (*compiledOutputPlan, error) {
 	if assertion.ReasonExpression == nil {
 		if strings.TrimSpace(assertion.Reason) == "" {
 			return nil, fmt.Errorf("%s/reason: diagnostic text or reasonExpression is required", path)
@@ -180,7 +187,7 @@ func compileWireReason(assertion WireAssertion, path string, input, root *ValueS
 		return nil, fmt.Errorf("%s/reasonExpression: cannot be combined with reason", path)
 	}
 	path += "/reasonExpression"
-	plan, err := compiler.compilePlan(*assertion.ReasonExpression, path, expressionScope{input: input, root: root}, depth)
+	plan, err := compiler.compilePlan(*assertion.ReasonExpression, path, scope, depth)
 	if err != nil {
 		return nil, err
 	}
@@ -248,6 +255,10 @@ func validateWireAssertions(assertions []compiledWireAssertion, state evaluation
 				isValid, err = readBoolean(value)
 			}
 			if err != nil || !isValid {
+				var checked *declaredCheckError
+				if errors.As(err, &checked) {
+					return err
+				}
 				var rejection *declaredRejectionError
 				if errors.As(err, &rejection) {
 					return &ConversionError{cause: err, Issues: []ConversionIssue{rejection.issue(Identity{}, "")}}

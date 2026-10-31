@@ -26,6 +26,7 @@ type compiledPackageStreamContract struct {
 	identities                                  []compiledStreamIdentity
 	itemKinds                                   []NodeKind
 	bindingSlots                                int
+	state                                       *compiledPackageState
 }
 
 type compiledStreamIdentity struct {
@@ -63,6 +64,8 @@ type compiledPackageStreamEvent struct {
 	sealsText, verifiesItem, verifiesCompleted bool
 	requiredItems                              []NodeKind
 	diagnostic                                 *RejectDiagnostic
+	assertions                                 []compiledWireAssertion
+	isAssertion, isStateUpdate                 bool
 }
 
 type compiledStreamTool struct {
@@ -105,6 +108,16 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 	}
 	compiler := packageStreamCompiler{contract: contract, expressions: &expressionCompiler{limits: limits}, limits: limits,
 		actions: map[EventType]bool{}, toolActions: map[EventType]bool{}}
+	var err error
+	contract.state, err = compilePackageState(spec.State, nil, DecodeEvent, path+"/state", compiler.expressions, &compiler.scope)
+	if err != nil {
+		return nil, err
+	}
+	if contract.state != nil {
+		for _, slot := range contract.state.slots {
+			contract.bindingSlots = max(contract.bindingSlots, slot.update.bindingSlots)
+		}
+	}
 	if spec.ItemKinds != nil {
 		if len(spec.ItemKinds) == 0 {
 			return nil, fmt.Errorf("%s/itemKinds: explicit item kinds must not be empty", path)
@@ -242,7 +255,7 @@ func (compiler *packageStreamCompiler) compileActions(entries []ProtocolStreamAc
 		var event compiledPackageStreamEvent
 		var err error
 		if entry.ForEach != "" {
-			if entry.Action != "" || entry.Kind != "" || entry.ResponseID != "" || entry.ItemID != "" || entry.ItemIDValue != nil || entry.Text != "" || entry.Arguments != "" || entry.Tool != nil || entry.Error != "" || entry.Usage != nil || entry.Implicit || entry.SparseIdentity || entry.AllowBeforeStart || hasStreamItemSelectors(entry) {
+			if entry.Action != "" || entry.Kind != "" || entry.ResponseID != "" || entry.ItemID != "" || entry.ItemIDValue != nil || entry.Text != "" || entry.Arguments != "" || entry.Tool != nil || entry.Error != "" || entry.Usage != nil || entry.Implicit || entry.SparseIdentity || entry.AllowBeforeStart || len(entry.Assertions) != 0 || hasStreamItemSelectors(entry) {
 				return nil, fmt.Errorf("%s: foreach declares only its selector, condition and nested actions", at)
 			}
 			event.foreach, err = compileStreamField(entry.ForEach, at+"/foreach", compiler.limits)
@@ -258,7 +271,14 @@ func (compiler *packageStreamCompiler) compileActions(entries []ProtocolStreamAc
 			if len(entry.Actions) != 0 || entry.As != "" || entry.IndexAs != "" {
 				return nil, fmt.Errorf("%s/actions: nested actions require foreach", at)
 			}
-			event, err = compiler.compileAction(entry, at)
+			if entry.Action == "assert" || entry.Action == "state_update" {
+				event, err = compiler.compileCheckAction(entry, at, depth)
+			} else {
+				if len(entry.Assertions) != 0 {
+					return nil, fmt.Errorf("%s/assertions: assertions require an assert action", at)
+				}
+				event, err = compiler.compileAction(entry, at)
+			}
 		}
 		if err != nil {
 			return nil, err
@@ -280,8 +300,8 @@ func (compiler *packageStreamCompiler) compileAction(entry ProtocolStreamActionS
 	if entry.Implicit && event.action != ResponseStarted && event.action != ItemStarted || entry.SparseIdentity && (!event.isTool || event.action != ItemStarted) {
 		return event, fmt.Errorf("%s: implicit requires a start action and sparseIdentity requires tool_start", path)
 	}
-	if entry.AllowBeforeStart && event.action != OperationFailed && event.action != OperationCancelled && event.action != UsageUpdated {
-		return event, fmt.Errorf("%s/allowBeforeStart: only failure, cancel or usage may precede the response", path)
+	if entry.AllowBeforeStart && event.action != OperationFailed && event.action != OperationCancelled && event.action != UsageUpdated && entry.Action != "observe" {
+		return event, fmt.Errorf("%s/allowBeforeStart: only failure, cancel, usage or observation may precede the response", path)
 	}
 	event.canPrecedeResponse = entry.AllowBeforeStart
 	event.isImplicit, event.isSparseIdentity = entry.Implicit, entry.SparseIdentity

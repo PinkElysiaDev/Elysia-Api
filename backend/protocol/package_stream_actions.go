@@ -13,6 +13,9 @@ type streamActionFrame struct {
 	hasSequence        bool
 	hasCheckedSequence bool
 	hasAction          bool
+	slots              []Value
+	slotBytes          int
+	hasStagedSlots     bool
 }
 
 func (state *packageStreamValidation) fieldReader(input evaluation) func(streamField) (Value, error) {
@@ -52,10 +55,16 @@ func (state *packageStreamValidation) matches(condition *compiledOutputPlan, inp
 }
 
 func (frame *streamActionFrame) consume(actions []compiledPackageStreamEvent, input evaluation, path string) error {
-	read := frame.state.fieldReader(input)
 	for _, action := range actions {
+		input.streamSlots = frame.slots
+		read := frame.state.fieldReader(input)
 		if err := input.advance(); err != nil {
 			return err
+		}
+		if action.isAssertion || action.isStateUpdate {
+			if err := frame.checkSequence(); err != nil {
+				return err
+			}
 		}
 		isApplicable, err := frame.state.matches(action.when, input, path+frame.state.contract.discriminator.path)
 		if err != nil {
@@ -65,6 +74,19 @@ func (frame *streamActionFrame) consume(actions []compiledPackageStreamEvent, in
 			continue
 		}
 		action = qualifyStreamAction(action, path)
+		if action.isAssertion || action.isStateUpdate {
+			var err error
+			if action.isAssertion {
+				err = validateWireAssertions(action.assertions, input, path)
+			} else {
+				err = frame.stageSlots(input)
+			}
+			if err != nil {
+				return err
+			}
+			frame.hasAction = true
+			continue
+		}
 		if action.foreach.path != "" {
 			if err := frame.consumeArray(action, input, read); err != nil {
 				return err

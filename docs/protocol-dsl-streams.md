@@ -27,7 +27,7 @@
 }
 ```
 
-动作 `when` 是只读原始帧的布尔表达式，不访问 Mapping 状态。没有动作命中的帧被拒绝。`responseId`、`itemId` 可在动作上覆盖；`kind` 区分 text、reasoning、refusal。`observe` 仅观察已开始响应，`control` 不创建响应，适用于独立心跳。
+动作 `when` 是只读原始帧的布尔表达式，不访问 Mapping 状态。没有动作命中的帧被拒绝。`responseId`、`itemId` 可在动作上覆盖；`kind` 区分 text、reasoning、refusal。`observe` 默认要求响应已经开始；`control` 不创建响应，适用于独立心跳。
 
 没有固定标签的帧可用 `discriminatorValue` 从原文结构选择已声明的动作组。动作中的
 `foreach` / `actions` 有序遍历原始数组，可嵌套：`input` 是当前成员，`root` 始终是整帧，
@@ -37,7 +37,7 @@
 `implicit:true` 显式声明首次出现时建立 response/item，后续出现观察已有身份；
 `sparseIdentity:true` 允许工具名称和 call ID 晚到，冲突及终态完整 JSON 仍检查。
 `closeItemsOnFinish:true` 用于没有逐项 stop 的协议，成功终态关闭已建立项并完成参数
-校验。`allowBeforeStart:true` 只允许 failure/cancel 先于 response_start，默认仍拒绝。
+校验。`allowBeforeStart:true` 允许 failure/cancel、usage 或 observe 先于 response_start，默认仍拒绝；它不允许 observe 出现在终态之后。
 `usage.allowEmpty:true` 允许声明的无主计数辅助帧，不补零、不建立响应；未声明仍拒绝。
 
 `inheritResponseId:true` 允许省略已建立的身份；默认仍拒绝显式 null、空字符串及身份变化。`optionalResponseId:true` 明确允许缺失、null、空字符串，直到首次非空身份；之后仍禁止变化。
@@ -144,7 +144,27 @@ Mapping 复用 JSON 消息解码、已命名的消息完成表达式和有界索
 
 `TestResponsesPackageTextSourceStream` 复用三消息、双内容片段、空消息的既有 phase 夹具，比较 phase 在 start、done、terminal 到达以及 refusal 对应序列的逐帧核心结果。表示差异明确限定为 core v2、真实 `/item`／`/response/output/...` 来源与既有 ConfigStd Native 片段编码；正文、消息顺序、usage、身份及其余字段继续完整比较。通用合同测试覆盖封口、重复完成、子顺序、终态遗漏／改写和共享保留预算。
 
-这仍不是 Responses SSE 全部闭合：annotation.added、reasoning、完整 logprobs 累积、in_progress／晚到 usage、辅助 metadata／turn-state、心跳和目标编码器尚未接通。未知扩展当前保留原始帧证据，其与旧虚拟扩展路径的完整差分、混合错误首错顺序、异常 part 类型接受边界仍需独立核对；不能用当前正常序列的成功替代这些验收。未接入事件编码器，因此仍不宣称 Responses 同协议原帧重放已经通过。
+这仍不是 Responses SSE 全部闭合：annotation.added、reasoning、完整 logprobs 累积、in_progress 的特殊分支、辅助 metadata／turn-state、心跳和目标编码器尚未接通。未知扩展当前保留原始帧证据，其与旧虚拟扩展路径的完整差分、混合错误首错顺序、异常 part 类型接受边界仍需独立核对；不能用当前正常序列的成功替代这些验收。未接入事件编码器，因此仍不宣称 Responses 同协议原帧重放已经通过。
+
+## Responses 普通进度与 usage 尾帧
+
+普通 `response.in_progress` 复用 JSON 的模型 usage、托管工具 usage 和 metadata 表达式；不把普通进度更新送入完整响应解码，因此不会因为其中存在 `output` 或 `error` 就改变事件含义。帧只输出本次实际观察到的 usage，内部原始计数账本用于发现跨帧算术冲突，不用累计快照替换当前更新。只有普通进度的模型 usage 更新这个账本；created、completed 以及独立特殊分支不为它填入初值。
+
+原始 usage 的合并先以本次更新的键集合排除旧同名成员，再组装保留成员和更新成员；同名对象也按这个顺序完成一层浅合并。新增的局部索引只记录键，不同时保存两份大值。不能先拼接旧、新全部成员再去重，也不能直接把旧、新对象交给累计操作数大小的 `merge`，否则被覆盖的值仍会重复占用临时预算，错误拒绝原本可容纳的更新。Spec 与 Mapping 使用相同声明结构，仍各自持有状态，通用操作的预算没有放宽。
+
+Spec 的 `state` 与 Mapping 的同名槽位分别编译、分别持有。`assert` 和 `state_update` 按帧内声明顺序执行，序号在动作前检查；一次帧至多更新一次 Spec 状态。所有槽位更新读取同一旧快照，后续断言能读取暂存的新快照，整帧失败不提交。Spec 不得访问 Mapping 索引、Native 或目标运行时；槽位、身份、容器快照和未完成工具正文共同使用原有 `BufferBytes`，不是各占一份额度。固定槽位数量不扣除动态条目容量。
+
+`check_usage` 检查已有核心计数结构和算术，返回原输出值，不重新编码或补默认计数。明确的检查拒绝保留其业务诊断；其他表达式错误仍归到当前断言。来源 identity 保留 `decode.event` 归因，普通计数错误保持旧 runtime 路径。
+
+无 usage 的普通进度按实际载荷产生 metadata 事件或空事件批次，既不建立响应，也不产生终态。metadata 可以先于 created，但不能跟随终态；usage 尾帧可以携带 metadata。空进度控制帧可以位于终态之后，EOF 仍要求真实终态。测试的旧侧使用解码器和来源 EventReplay，区分解码拒绝与后置生命周期拒绝。
+
+Spec 的 observe/control 只需区分“还有载荷”和“空控制帧”，不用再次构造 metadata 数组。计数与形状检查通过且没有 usage 后，投影移除 `id/model/status/usage/object/created_at/output/error/incomplete_details`，剩余字段必然属于 metadata 或未映射载荷。`created` 不在这个排除表中：它在普通进度里仍是未知扩展，不能套用完整 JSON 响应的时间别名。`content_filters:null` 是 metadata，非 null 是不透明扩展，两者都属于载荷；无计数的 `tool_usage` 空容器与未知残余也分别保留。`output_text` 的特殊验证在此前执行，不能因这一存在性判断绕过。实际 metadata 解码、原文位置和排序继续由 Mapping 的共享 JSON 表达式决定。
+
+完整 JSON 解码的空 `content` 保持公开旧路径的 `[]`；直接流终态响应保持旧流中的 `null`。这项差异在事件装配处表达，不修改共享 JSON helper。事件批次的测试版本归一必须保留原 slice 的 nil 性，不能由测试克隆方法制造差异，再反向修改生产结果。
+
+当前特殊分支仍明确拒绝并单列待迁移：`safety_buffering`、需要完整响应验证的 `output_text`、`linapi_cache_billing` 和 `attribution` 的已识别／未识别形态。它们不能通过省略字段或伪造默认值绕过。独立 Spec 中的普通模型计数检查、累计检查和托管工具检查按旧顺序运行；文档级 index/item 断言与 keyed identity 的完整首错顺序仍需后续闭合，当前定向用例不能代表全部多故障输入。
+
+Spec 仍展开独立模型计数与托管工具检查；不能引用 Mapping 的可变状态来缩短配置。observe/control 已改用现有投影表达式，避免为存在性判断重复构造 metadata。其余共享不可变帧读取结果的优化仍需测量；此处没有最新性能无回退结论，也没有默认切换预置。
 
 ## 从已交付文本按需接续
 

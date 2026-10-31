@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"slices"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
@@ -190,7 +191,7 @@ func TestAnthropicPackageSignatureSource(t *testing.T) {
 // Version is the reviewed core contract difference; payload and provenance
 // remain in the comparison. Nested responses are copied before adjustment.
 func streamEventsAtVersion(events []p.Event, version int) []p.Event {
-	output := append([]p.Event(nil), events...)
+	output := slices.Clone(events)
 	for index := range output {
 		output[index].SchemaVersion = version
 		if output[index].Response != nil {

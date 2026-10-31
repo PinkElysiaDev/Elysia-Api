@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -89,7 +90,7 @@ func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 	if v.packageStream != nil {
 		err := v.packageStream.consume(ctx, frame)
 		if err != nil {
-			return v.rejectPackageFrame(err)
+			return v.annotatePackageFailure(v.rejectPackageFrame(err))
 		}
 		return nil
 	}
@@ -150,6 +151,21 @@ func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 		}
 	}
 	return nil
+}
+
+func (v *WireStreamValidation) annotatePackageFailure(err error) error {
+	var failure *ConversionError
+	if errors.As(err, &failure) {
+		for _, issue := range failure.Issues {
+			if issue.Protocol.DefinitionID == "" || issue.Direction == "" {
+				return v.compiled.runtimeError(v.direction, err)
+			}
+		}
+		// Already attributed boundaries may intentionally wrap a resource cause.
+		// Preserve that outer classification instead of reclassifying the cause.
+		return err
+	}
+	return v.compiled.runtimeError(v.direction, err)
 }
 
 func (v *WireStreamValidation) rejectPackageFrame(err error) error {

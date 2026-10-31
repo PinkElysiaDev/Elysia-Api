@@ -84,17 +84,21 @@ func TestResponsesHostedUsageProjection(t *testing.T) {
 	}
 }
 
-func TestResponsesHostedUsageStreamSnapshots(t *testing.T) {
-	from := shippedProjectionProtocol(t, Responses)
+func hostedUsageStreamFrames() []string {
 	created := `{"type":"response.created","response":{"id":"r","model":"m","created_at":1,"status":"in_progress","output":[],"usage":{"input_tokens":3,"output_tokens":0}}}`
 	progress := `{"type":"response.in_progress","response":{"id":"r","model":"m","status":"in_progress","output":[],"tool_usage":` + hostedUsageFixture + `}}`
 	terminal := `{"type":"response.completed","response":` + hostedUsageResponse(hostedUsageFixture) + `}`
-	raw := []string{created, progress, progress,
+	return []string{created, progress, progress,
 		`{"type":"response.output_item.added","output_index":0,"item":{"id":"msg","type":"message","role":"assistant","status":"in_progress","content":[]}}`,
 		`{"type":"response.content_part.added","output_index":0,"content_index":0,"item_id":"msg","part":{"type":"output_text","text":""}}`,
 		`{"type":"response.output_text.delta","output_index":0,"content_index":0,"item_id":"msg","delta":"OK"}`,
 		`{"type":"response.content_part.done","output_index":0,"content_index":0,"item_id":"msg","part":{"type":"output_text","text":"OK"}}`,
 		terminal}
+}
+
+func TestResponsesHostedUsageStreamSnapshots(t *testing.T) {
+	from := shippedProjectionProtocol(t, Responses)
+	raw := hostedUsageStreamFrames()
 	options := p.EvaluationContext{State: p.NewEvaluationState()}
 	var original *p.Usage
 	for _, body := range raw {

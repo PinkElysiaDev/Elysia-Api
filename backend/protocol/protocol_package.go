@@ -48,6 +48,7 @@ type ProtocolStreamSpec struct {
 	SequenceDiagnostic *RejectDiagnostic                  `json:"sequenceDiagnostic,omitempty"`
 	CloseItemsOnFinish bool                               `json:"closeItemsOnFinish,omitempty"`
 	Identities         []ProtocolStreamIdentitySpec       `json:"identities,omitempty"`
+	State              map[string]ProtocolStateSlot       `json:"state,omitempty"`
 	Events             map[string]ProtocolStreamEventSpec `json:"events"`
 }
 
@@ -75,14 +76,15 @@ type ProtocolStreamEventSpec []ProtocolStreamActionSpec
 // the stream defaults only for this action; absent response IDs can inherit
 // an established identity only when the stream explicitly permits it.
 // item_finish closes the established kind; tool_finish requires a tool item.
-// AllowBeforeStart makes failure/cancel independent of response identity; any
-// required identity checks still belong to the stream's Identities declarations.
+// AllowBeforeStart permits failure, cancel, usage and observe before a response
+// starts. Identity checks still belong to the stream's Identities declarations.
 type ProtocolStreamActionSpec struct {
 	Action           string                     `json:"action,omitempty"`
 	ForEach          string                     `json:"foreach,omitempty"`
 	As               string                     `json:"as,omitempty"`
 	IndexAs          string                     `json:"indexAs,omitempty"`
 	Actions          []ProtocolStreamActionSpec `json:"actions,omitempty"`
+	Assertions       []WireAssertion            `json:"assertions,omitempty"`
 	Kind             NodeKind                   `json:"kind,omitempty"`
 	When             *Expression                `json:"when,omitempty"`
 	ResponseID       string                     `json:"responseId,omitempty"`

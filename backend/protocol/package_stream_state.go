@@ -161,31 +161,7 @@ func (transaction *packageStreamTransaction) stage(state evaluation, isRendered 
 		return nil
 	}
 	previous := transaction.values()
-	state.streamSlots = previous
-	next := make([]Value, len(transaction.plan.slots))
-	for index, slot := range transaction.plan.slots {
-		output, err := slot.update.build(state)
-		if err != nil {
-			return err
-		}
-		if output.output.IsZero() {
-			continue
-		}
-		value, err := output.output.Encode(state.ctx)
-		if err != nil {
-			return err
-		}
-		if err := slot.schema.validate(state.ctx, value, slot.path, state.budget.limits); err != nil {
-			return err
-		}
-		// Even a tiny selected string can alias the entire original frame.
-		// Already-owned slots can be retained by storage identity without a scan.
-		if spanIdentity(value.raw) != spanIdentity(previous[index].raw) {
-			value.raw = strings.Clone(value.raw)
-		}
-		next[index] = value
-	}
-	bytes, err := measurePackageState(next, state.budget.limits)
+	next, bytes, err := evaluatePackageStateSlots(transaction.plan, previous, state)
 	if err != nil {
 		return err
 	}
@@ -206,6 +182,40 @@ func (transaction *packageStreamTransaction) stage(state evaluation, isRendered 
 	transaction.next, transaction.slotBytes = next, bytes
 	transaction.bytes = transaction.retainedBytes()
 	return nil
+}
+
+// Slot evaluation shares the preceding snapshot and returns owned staged values.
+// Each consumer accounts for those values with its own identities and buffers.
+func evaluatePackageStateSlots(plan *compiledPackageState, previous []Value, state evaluation) ([]Value, int, error) {
+	state.streamSlots = previous
+	next := make([]Value, len(plan.slots))
+	for index, slot := range plan.slots {
+		output, err := slot.update.build(state)
+		if err != nil {
+			return nil, 0, err
+		}
+		if output.output.IsZero() {
+			continue
+		}
+		value, err := output.output.Encode(state.ctx)
+		if err != nil {
+			return nil, 0, err
+		}
+		if err := slot.schema.validate(state.ctx, value, slot.path, state.budget.limits); err != nil {
+			return nil, 0, err
+		}
+		// Even a tiny selected string can alias the entire original frame.
+		// Already-owned slots can be retained by storage identity without a scan.
+		if spanIdentity(value.raw) != spanIdentity(previous[index].raw) {
+			value.raw = strings.Clone(value.raw)
+		}
+		next[index] = value
+	}
+	bytes, err := measurePackageState(next, state.budget.limits)
+	if err != nil {
+		return nil, 0, err
+	}
+	return next, bytes, nil
 }
 
 func (transaction *packageStreamTransaction) currentSlotBytes() int {

@@ -460,6 +460,11 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		return fail("condition must produce a boolean")
 	}
 	switch expression.op {
+	case "check_usage":
+		if !isAssignable(expression.source.result, ObjectType) && expression.source.result != NullType {
+			return fail("check_usage requires a core usage object or null")
+		}
+		expression.result, expression.schema, expression.coreType = expression.source.result, expression.source.schema, expression.source.coreType
 	case "read_delivered_item":
 		if !isAssignable(expression.source.result, StringType) {
 			return fail("read_delivered_item requires a string wire identity")

@@ -18,6 +18,10 @@ type packageStreamValidation struct {
 	openItems            int
 	identityBytes        int
 	snapshotBytes        int
+	slots                []Value
+	slotBytes            int
+	pendingSlotBytes     int
+	hasPendingSlots      bool
 	identities           []string
 	identityBindings     []streamIdentityBindings
 	identityItems        int
@@ -46,14 +50,21 @@ func newPackageStreamValidation(contract *compiledPackageStreamContract, target 
 	if err != nil {
 		return nil, err
 	}
-	return &packageStreamValidation{contract: contract, replay: replay, target: target, direction: target.Direction, identities: make([]string, len(contract.identities))}, nil
+	state := &packageStreamValidation{contract: contract, replay: replay, target: target, direction: target.Direction, identities: make([]string, len(contract.identities))}
+	if contract.state != nil {
+		state.slots, state.slotBytes = contract.state.initial, contract.state.initialBytes
+	}
+	return state, nil
 }
 
 func (state *packageStreamValidation) consume(ctx context.Context, frame Value) error {
+	defer func() {
+		state.pendingSlotBytes, state.hasPendingSlots = 0, false
+	}()
 	state.frameNumber++
 	reader := newNativeComparisonReader(frame)
 	objects := &planObjectReader{root: spanIdentity(frame.raw)}
-	conditions := evaluation{ctx: ctx, input: frame, root: frame, valueReader: reader, objectReader: objects,
+	conditions := evaluation{ctx: ctx, input: frame, root: frame, valueReader: reader, objectReader: objects, streamSlots: state.slots,
 		budget: &evaluationBudget{limits: state.replay.limits, stepLimit: state.replay.limits.Nodes}}
 	if state.contract.bindingSlots != 0 {
 		conditions.bindings = make([]JSONOutput, state.contract.bindingSlots)
@@ -70,7 +81,7 @@ func (state *packageStreamValidation) consume(ctx context.Context, frame Value) 
 	if err := state.bindIdentities(conditions); err != nil {
 		return err
 	}
-	current := streamActionFrame{state: state, root: conditions, sequence: state.accepted.sequence}
+	current := streamActionFrame{state: state, root: conditions, sequence: state.accepted.sequence, slots: state.slots, slotBytes: state.slotBytes}
 	if err := current.consume(actions, conditions, ""); err != nil {
 		return err
 	}
@@ -78,6 +89,9 @@ func (state *packageStreamValidation) consume(ctx context.Context, frame Value) 
 		return state.issue(state.contract.discriminator.path, "stream event does not match a declared action", nil)
 	}
 	state.accepted.sequence, state.accepted.hasSequence = current.sequence, state.accepted.hasSequence || current.hasSequence
+	if current.hasStagedSlots {
+		state.slots, state.slotBytes = current.slots, current.slotBytes
+	}
 	state.hasPendingDelivery = state.direction == EncodeEvent
 	return nil
 }
@@ -87,13 +101,13 @@ func (state *packageStreamValidation) checkActionPosition(action compiledPackage
 		return nil
 	}
 	if state.replay.isTerminal && action.action != UsageUpdated {
-		return state.issue(state.contract.discriminator.path, "event arrived after terminal; only usage tails are permitted", nil)
+		return state.boundaryIssue(action.diagnostic, state.contract.discriminator.path, "event arrived after terminal; only usage tails are permitted", nil)
 	}
 	if action.action == ResponseStarted && state.accepted.hasStarted && !action.isImplicit {
-		return state.issue(state.contract.discriminator.path, "response started more than once", nil)
+		return state.boundaryIssue(action.diagnostic, state.contract.discriminator.path, "response started more than once", nil)
 	}
 	if action.action != ResponseStarted && !action.canPrecedeResponse && !state.accepted.hasStarted {
-		return state.issue(state.contract.discriminator.path, "event requires a preceding response start", nil)
+		return state.boundaryIssue(action.diagnostic, state.contract.discriminator.path, "event requires a preceding response start", nil)
 	}
 	return nil
 }
@@ -137,7 +151,7 @@ func (state *packageStreamValidation) consumeAction(ctx context.Context, definit
 		// The replay buffer owns decoded tool arguments. Give it the remaining
 		// retention allowance, without reducing frame or semantic input limits.
 		bufferLimit := state.replay.state.limits.BufferBytes
-		state.replay.state.limits.BufferBytes = state.replay.limits.BufferBytes - identityBytes - snapshotBytes
+		state.replay.state.limits.BufferBytes = state.replay.limits.BufferBytes - identityBytes - snapshotBytes - state.retainedSlotBytes()
 		_, err := state.replay.Consume(event)
 		state.replay.state.limits.BufferBytes = bufferLimit
 		if err != nil {
@@ -192,7 +206,18 @@ func (state *packageStreamValidation) checkRetainedBytes(identityBytes int, path
 }
 
 func (state *packageStreamValidation) checkRetainedState(identityBytes, snapshotBytes int, path string) error {
-	retained := identityBytes + snapshotBytes + state.replay.state.buffered
+	return state.checkRetainedStateWithSlots(identityBytes, snapshotBytes, state.retainedSlotBytes(), path)
+}
+
+func (state *packageStreamValidation) retainedSlotBytes() int {
+	if state.hasPendingSlots {
+		return state.pendingSlotBytes
+	}
+	return state.slotBytes
+}
+
+func (state *packageStreamValidation) checkRetainedStateWithSlots(identityBytes, snapshotBytes, slotBytes int, path string) error {
+	retained := identityBytes + snapshotBytes + slotBytes + state.replay.state.buffered
 	limit := state.replay.limits.BufferBytes
 	if retained <= limit {
 		return nil
