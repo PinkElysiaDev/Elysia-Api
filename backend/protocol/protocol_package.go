@@ -27,11 +27,13 @@ type ProtocolPackage struct {
 // Sequence, when declared, selects strictly increasing nonnegative int64 JSON
 // integer literals; decimal and exponent spellings are not sequence integers.
 type ProtocolStreamSpec struct {
-	Discriminator string                             `json:"discriminator"`
-	ResponseID    string                             `json:"responseId"`
-	ItemID        string                             `json:"itemId"`
-	Sequence      string                             `json:"sequence,omitempty"`
-	Events        map[string]ProtocolStreamEventSpec `json:"events"`
+	Discriminator     string                             `json:"discriminator"`
+	ResponseID        string                             `json:"responseId"`
+	ItemID            string                             `json:"itemId"`
+	InheritResponseID bool                               `json:"inheritResponseId,omitempty"`
+	IsItemIDIndex     bool                               `json:"itemIdIsIndex,omitempty"`
+	Sequence          string                             `json:"sequence,omitempty"`
+	Events            map[string]ProtocolStreamEventSpec `json:"events"`
 }
 
 // ProtocolStreamEventSpec lists the ordered actions carried by one wire frame.
@@ -39,15 +41,20 @@ type ProtocolStreamSpec struct {
 type ProtocolStreamEventSpec []ProtocolStreamActionSpec
 
 // ProtocolStreamActionSpec selects an explicit text or JSON-tool lifecycle
-// action. It does not infer starts, late identities, snapshots or controls.
+// action. When observes the original wire frame. Identity selectors override
+// the stream defaults only for this action; absent response IDs can inherit
+// an established identity only when the stream explicitly permits it.
 // item_finish closes the established kind; tool_finish requires a tool item.
 type ProtocolStreamActionSpec struct {
-	Action    string                   `json:"action"`
-	Text      string                   `json:"text,omitempty"`
-	Arguments string                   `json:"arguments,omitempty"`
-	Tool      *ProtocolStreamToolSpec  `json:"tool,omitempty"`
-	Error     string                   `json:"error,omitempty"`
-	Usage     *ProtocolStreamUsageSpec `json:"usage,omitempty"`
+	Action     string                   `json:"action"`
+	When       *Expression              `json:"when,omitempty"`
+	ResponseID string                   `json:"responseId,omitempty"`
+	ItemID     string                   `json:"itemId,omitempty"`
+	Text       string                   `json:"text,omitempty"`
+	Arguments  string                   `json:"arguments,omitempty"`
+	Tool       *ProtocolStreamToolSpec  `json:"tool,omitempty"`
+	Error      string                   `json:"error,omitempty"`
+	Usage      *ProtocolStreamUsageSpec `json:"usage,omitempty"`
 }
 
 // ProtocolStreamToolSpec selects the complete identity required at tool_start.
@@ -87,11 +94,23 @@ type ProtocolMapping struct {
 
 // ProtocolDirectionMapping transforms one wire/core boundary without a codec module.
 type ProtocolDirectionMapping struct {
-	Document     string                   `json:"document"`
-	IsEventBatch bool                     `json:"eventBatch,omitempty"`
-	Program      Expression               `json:"program"`
-	Effects      []ProtocolSemanticEffect `json:"effects"`
-	Capabilities CapabilitySet            `json:"capabilities,omitzero"`
+	Document     string                       `json:"document"`
+	IsEventBatch bool                         `json:"eventBatch,omitempty"`
+	IsFrameBatch bool                         `json:"frameBatch,omitempty"`
+	State        map[string]ProtocolStateSlot `json:"state,omitempty"`
+	Finalize     *Expression                  `json:"finalize,omitempty"`
+	Program      Expression                   `json:"program"`
+	Effects      []ProtocolSemanticEffect     `json:"effects"`
+	Capabilities CapabilitySet                `json:"capabilities,omitzero"`
+}
+
+// ProtocolStateSlot retains one bounded value between events. All updates read
+// the preceding event's state; an omitted result clears that slot. Initial is
+// optional, so a declaration can distinguish an absent identity from JSON null.
+type ProtocolStateSlot struct {
+	Schema  ValueSchema `json:"schema"`
+	Initial Value       `json:"initial,omitzero"`
+	Update  Expression  `json:"update"`
 }
 
 // ProtocolSemanticEffect declares how a program handles a core semantic location.

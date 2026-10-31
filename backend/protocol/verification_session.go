@@ -20,6 +20,7 @@ type sessionTraceFrame struct {
 func executeSessionSample(ctx context.Context, compiled *Compiled, sample SessionSample) (sessionEvidence, error) {
 	result := sessionEvidence{coverage: map[Direction]CapabilitySet{}}
 	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	defer options.State.Release()
 	operation := compiled.operations[sample.Operation]
 	replay, err := NewSessionReplay(sessionLaneTarget(compiled, ClientEvent, options), sessionLaneTarget(compiled, UpstreamEvent, options), compiled.limits, SessionPolicy{Model: sample.Model, CanGenerateAutomatically: operation.Session.CanGenerateAutomatically})
 	if err != nil {

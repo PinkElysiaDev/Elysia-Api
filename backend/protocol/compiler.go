@@ -24,14 +24,15 @@ type EvaluationContext struct {
 	State               *EvaluationState
 	// Diagnostics collects non-blocking conversion issues for this request.
 	// It is gateway-owned; mappings can report through it but cannot read it.
-	Diagnostics      *DiagnosticSink
-	identity         Identity
-	compoundFrame    bool
-	transportControl *bool
-	wireLimits       Limits
-	valueReader      *valueReader
-	requestReplay    *requestReplay
-	outputStream     *WireStreamValidation
+	Diagnostics        *DiagnosticSink
+	identity           Identity
+	compoundFrame      bool
+	transportControl   *bool
+	wireLimits         Limits
+	valueReader        *valueReader
+	requestReplay      *requestReplay
+	outputStream       *WireStreamValidation
+	packageTransaction *packageStreamTransaction
 	// ResolveRequestScope is supplied by the gateway after model/authorization
 	// lookup. Definitions cannot execute it or replace its returned binding.
 	ResolveRequestScope func(*Request) (Scope, error)
@@ -125,6 +126,8 @@ type compiledMapping struct {
 	capabilities      CapabilitySet
 	module            Module
 	outputPlan        *compiledOutputPlan
+	streamState       *compiledPackageState
+	streamFinalizer   *compiledOutputPlan
 	hasCoreInputPlan  bool
 	hasCoreOutputPlan bool
 	after             *compiledOutputPlan
@@ -796,7 +799,12 @@ func (compiled *Compiled) mappingError(direction Direction, err error) error {
 
 // executeMapping retains causes for runtime consumers; Execute exposes diagnostics
 // for authoring callers whose API returns a report instead of a Go error.
-func (compiled *Compiled) executeMapping(ctx context.Context, direction Direction, input Value, options EvaluationContext) (Value, error) {
+func (compiled *Compiled) executeMapping(ctx context.Context, direction Direction, input Value, options EvaluationContext) (result Value, err error) {
+	options, transaction, err := compiled.beginPackageTransaction(direction, options)
+	if err != nil {
+		return Value{}, compiled.mappingError(direction, err)
+	}
+	defer func() { transaction.finish(err) }()
 	fail := func(err error) (Value, error) { return Value{}, compiled.mappingError(direction, err) }
 	if err := ctx.Err(); err != nil {
 		return fail(err)
@@ -816,7 +824,7 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	if err != nil {
 		return fail(err)
 	}
-	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, runtime: bindEvaluationRuntime(compiled, direction, options), budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	var packageState *packageExecution
 	if compiled.packagePlan != nil {
 		if isPackageDecodeDirection(direction) {
@@ -875,6 +883,9 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 		if err := compiled.finishPackageExecution(ctx, direction, output, outputLimits); err != nil {
 			return fail(err)
 		}
+	}
+	if err := options.packageTransaction.stage(state, true); err != nil {
+		return fail(err)
 	}
 	if isInitial {
 		options.State.initialized[moduleStateKey{compiled: compiled, direction: direction}] = true

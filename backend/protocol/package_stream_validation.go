@@ -56,39 +56,55 @@ func (state *packageStreamValidation) consume(ctx context.Context, frame Value) 
 	if !exists {
 		return state.issue(state.contract.discriminator.path, "undeclared stream event tag", nil)
 	}
-	if err := state.checkActionPosition(actions[0]); err != nil {
-		return err
-	}
-	responseID, err := state.readIdentity(state.contract.responseID, read)
-	if err != nil {
-		return err
-	}
-	if state.accepted.hasStarted && responseID != state.accepted.responseID {
-		return state.issue(state.contract.responseID.path, "response identity changed", nil)
-	}
+	conditions := evaluation{ctx: ctx, input: frame, root: frame, valueReader: reader, objectReader: objects,
+		budget: &evaluationBudget{limits: state.replay.limits, stepLimit: state.replay.limits.Nodes}}
 	sequence := state.accepted.sequence
-	if state.contract.sequence.path != "" {
-		value, err := read(state.contract.sequence)
-		if err != nil {
+	hasAction := false
+	var responseID, responsePath string
+	for _, action := range actions {
+		if action.when != nil {
+			condition, err := action.when.evaluate(conditions)
+			if err != nil {
+				return state.issue(state.contract.discriminator.path, "stream action condition failed", err)
+			}
+			isApplicable, err := readBoolean(condition)
+			if err != nil {
+				return state.issue(state.contract.discriminator.path, "stream action condition must produce a boolean", err)
+			}
+			if !isApplicable {
+				continue
+			}
+		}
+		if err := state.checkActionPosition(action); err != nil {
 			return err
 		}
-		sequence, err = state.readCount(value, state.contract.sequence.path)
-		if err != nil {
-			return err
-		}
-		if state.accepted.hasSequence && sequence <= state.accepted.sequence {
-			return state.issue(state.contract.sequence.path, "stream sequence must increase strictly", nil)
-		}
-	}
-	for index, action := range actions {
-		if index > 0 {
-			if err := state.checkActionPosition(action); err != nil {
+		if !hasAction || action.responseID.path != responsePath {
+			responseID, err = state.readResponseIdentity(action.responseID, read)
+			if err != nil {
 				return err
+			}
+			responsePath = action.responseID.path
+		}
+		if !hasAction && state.contract.sequence.path != "" {
+			value, err := read(state.contract.sequence)
+			if err != nil {
+				return err
+			}
+			sequence, err = state.readCount(value, state.contract.sequence.path)
+			if err != nil {
+				return err
+			}
+			if state.accepted.hasSequence && sequence <= state.accepted.sequence {
+				return state.issue(state.contract.sequence.path, "stream sequence must increase strictly", nil)
 			}
 		}
 		if err := state.consumeAction(ctx, action, responseID, read); err != nil {
 			return err
 		}
+		hasAction = true
+	}
+	if !hasAction {
+		return state.issue(state.contract.discriminator.path, "stream event does not match a declared action", nil)
 	}
 	state.accepted.sequence, state.accepted.hasSequence = sequence, state.contract.sequence.path != ""
 	state.hasPendingDelivery = state.direction == EncodeEvent
@@ -155,7 +171,7 @@ func (state *packageStreamValidation) consumeAction(ctx context.Context, definit
 func (state *packageStreamValidation) readPayload(event *Event, definition *compiledPackageStreamEvent, read func(streamField) (Value, error)) (int, error) {
 	switch event.Type {
 	case ItemStarted, ItemDelta, ItemFinished:
-		itemID, err := state.readIdentity(state.contract.itemID, read)
+		itemID, err := state.readItemIdentity(definition.itemID, read)
 		if err != nil {
 			return 0, err
 		}
@@ -165,7 +181,7 @@ func (state *packageStreamValidation) readPayload(event *Event, definition *comp
 		if state.contract.hasTools && (event.Type == ItemDelta || event.Type == ItemFinished && definition.isTool) {
 			key := state.replay.identities.aliases["item:"+itemID]
 			if item := state.replay.items[key]; item != nil && (item.kind == ToolCallNode) != definition.isTool {
-				return 0, state.issue(state.contract.itemID.path, "stream action does not match the established item kind", nil)
+				return 0, state.issue(definition.itemID.path, "stream action does not match the established item kind", nil)
 			}
 		}
 		if event.Type == ItemStarted {
@@ -246,14 +262,51 @@ func (state *packageStreamValidation) readUsage(fields []streamField, read func(
 	return usage, nil
 }
 
+func (state *packageStreamValidation) readResponseIdentity(field streamField, read func(streamField) (Value, error)) (string, error) {
+	value, err := read(field)
+	if err != nil {
+		return "", err
+	}
+	if value.IsZero() && state.contract.canInheritResponseID && state.accepted.hasStarted {
+		return state.accepted.responseID, nil
+	}
+	identity, err := state.readIdentityValue(value, field.path)
+	if err != nil {
+		return "", err
+	}
+	if state.accepted.hasStarted && identity != state.accepted.responseID {
+		return "", state.issue(field.path, "response identity changed", nil)
+	}
+	return identity, nil
+}
+
+func (state *packageStreamValidation) readItemIdentity(field streamField, read func(streamField) (Value, error)) (string, error) {
+	if !state.contract.isItemIDIndex {
+		return state.readIdentity(field, read)
+	}
+	value, err := read(field)
+	if err != nil {
+		return "", err
+	}
+	index, err := state.readCount(value, field.path)
+	if err != nil {
+		return "", err
+	}
+	return strconv.FormatInt(index, 10), nil
+}
+
 func (state *packageStreamValidation) readIdentity(field streamField, read func(streamField) (Value, error)) (string, error) {
 	value, err := read(field)
 	if err != nil {
 		return "", err
 	}
+	return state.readIdentityValue(value, field.path)
+}
+
+func (state *packageStreamValidation) readIdentityValue(value Value, path string) (string, error) {
 	text, err := readString(value)
 	if err != nil || text == "" {
-		return "", state.issue(field.path, "stream identity must be a nonempty string", err)
+		return "", state.issue(path, "stream identity must be a nonempty string", err)
 	}
 	return text, nil
 }
@@ -267,7 +320,7 @@ func (state *packageStreamValidation) readCount(value Value, path string) (int64
 }
 
 func (state *packageStreamValidation) finish() error {
-	return state.replayError(state.replay.Finish(), compiledPackageStreamEvent{})
+	return state.replayError(state.replay.Finish(), compiledPackageStreamEvent{itemID: state.contract.itemID})
 }
 
 func (state *packageStreamValidation) issue(path, reason string, cause error) error {
@@ -297,16 +350,16 @@ func (state *packageStreamValidation) replayError(err error, event compiledPacka
 		case "/type":
 			issue.Path = state.contract.discriminator.path
 		case "/item", "/itemId", "/item/kind":
-			issue.Path = state.contract.itemID.path
+			issue.Path = event.itemID.path
 		case "/delta":
 			issue.Path = event.delta.path
 		case "/item/name":
-			issue.Path = state.contract.itemID.path
+			issue.Path = event.itemID.path
 			if event.tool != nil {
 				issue.Path = event.tool.name.path
 			}
 		case "/item/callId", "/callId":
-			issue.Path = state.contract.itemID.path
+			issue.Path = event.itemID.path
 			if event.tool != nil {
 				issue.Path = event.tool.callID.path
 			}
@@ -322,7 +375,7 @@ func (state *packageStreamValidation) replayError(err error, event compiledPacka
 			case ItemDelta:
 				issue.Path = event.delta.path
 			case ItemFinished:
-				issue.Path = state.contract.itemID.path
+				issue.Path = event.itemID.path
 			}
 		}
 		if issue.Code != LimitExceeded {

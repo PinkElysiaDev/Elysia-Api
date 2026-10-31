@@ -103,3 +103,24 @@ Gemini 28 项 JSON 样例，共 119 项。用已有 ProtocolDocument 精确源�
 `closure-authored-json-evidence` 对这些样例执行真实 Verify 流程；JSON 方向的输出、
 往返和能力证据全部通过。测试明确只断言这 119 项，其他尚缺的流和 Agent 能力证据
 仍影响完整报告，不能把本批通过写成四预置已满足激活要求。
+
+## 第六批：真实帧所需的通用流执行（dev.90）
+
+Spec 支持动作条件、动作自身的身份字段、显式缺失身份继承和整数 item 索引；
+条件只读当前 wire，不能依赖 Mapping 隐藏源生命周期。使用 Anthropic 实际帧形状验证
+message_start、文本／工具 block、usage 和 message_stop，null 身份仍不能充当缺失。
+
+事件 Mapping 的命名 state 在编译期绑定槽位。每次更新读取同一旧快照，成功完成整个
+事件边界才替换；类型、累计字节、节点和槽位数受原预算控制。跨帧值独立拥有正文，
+不能让小片段保留整个输入帧；scope 不同不得复用状态。状态不授予 Native 来源权限。
+
+frameBatch 将核心事件渲染为帧数组，逐帧直接编码与验证，不先编码整个数组再拆解。
+finalize 只在观察真实核心终态且实际渲染过事件后执行；Native-only 不补帧，已交付终态
+不重复输出，晚到 usage 仍可先合并。成功、失败和顶层请求结束均释放所属状态。
+源与目标共享 EvaluationState 时，source.Finish 只释放自身方向，顶层结束才统一 Release，
+避免清掉下游 finalizer。后台任务和会话仍在其真实生命周期结束时释放。
+
+`closure-stream-state`、`closure-stream-frame-batch` 与 `closure-stream-lifecycle` 通过，
+覆盖状态回滚、scope、取消、原生一次回放、批量输出、终态/usage/EOF，以及网关流与会话回归。
+`closure-protocol-all` 在前一批量帧修改集上协议全量通过；完整工程与性能验收仍未执行。
+四预置真实 SSE 声明继续迁移，不能将本机制提交称为四协议流功能已完成。

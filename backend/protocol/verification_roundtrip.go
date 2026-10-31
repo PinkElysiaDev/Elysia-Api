@@ -4,6 +4,7 @@ import "context"
 
 func verifyRoundTrip(ctx context.Context, compiled *Compiled, sample Sample, result verificationResult) error {
 	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	defer options.State.Release()
 	var semantic any
 	var wire Value
 	switch sample.Direction {
@@ -119,6 +120,7 @@ func verifyEventRoundTrip(ctx context.Context, compiled *Compiled, sample Sample
 		return nil
 	}
 	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	defer options.State.Release()
 	var frames []Value
 	if isEventDecoder(sample.Direction) {
 		for _, frame := range result.frames {

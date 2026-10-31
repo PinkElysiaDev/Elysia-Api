@@ -11,14 +11,18 @@ type compiledPackageStreamContract struct {
 	discriminator, responseID, itemID, sequence streamField
 	events                                      map[string][]compiledPackageStreamEvent
 	hasTools                                    bool
+	canInheritResponseID                        bool
+	isItemIDIndex                               bool
 }
 
 type compiledPackageStreamEvent struct {
-	action         EventType
-	delta, failure streamField
-	usage          [3]streamField
-	tool           *compiledStreamTool
-	isTool         bool
+	action             EventType
+	when               *compiledOutputPlan
+	responseID, itemID streamField
+	delta, failure     streamField
+	usage              [3]streamField
+	tool               *compiledStreamTool
+	isTool             bool
 }
 
 type compiledStreamTool struct {
@@ -29,7 +33,7 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 	if spec == nil {
 		return nil, nil
 	}
-	contract := &compiledPackageStreamContract{events: make(map[string][]compiledPackageStreamEvent, len(spec.Events))}
+	contract := &compiledPackageStreamContract{events: make(map[string][]compiledPackageStreamEvent, len(spec.Events)), canInheritResponseID: spec.InheritResponseID, isItemIDIndex: spec.IsItemIDIndex}
 	for _, selector := range []struct {
 		name, path string
 		field      *streamField
@@ -49,6 +53,7 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 	actions := map[EventType]bool{}
 	toolActions := map[EventType]bool{}
 	actionCount := 0
+	expressions := &expressionCompiler{limits: limits}
 	for _, tag := range sortedKeys(spec.Events) {
 		eventPath := path + "/events/" + escapePointer(tag)
 		if tag == "" {
@@ -60,7 +65,25 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 			return nil, fmt.Errorf("%s: requires nonempty actions within the stream item limit", eventPath)
 		}
 		for index, entry := range entries {
-			event, err := compileStreamEvent(entry, fmt.Sprintf("%s/%d", eventPath, index), limits)
+			path := fmt.Sprintf("%s/%d", eventPath, index)
+			event, err := compileStreamEvent(entry, path, limits)
+			if err != nil {
+				return nil, err
+			}
+			event.responseID, event.itemID = contract.responseID, contract.itemID
+			for _, selector := range []struct {
+				name, pointer string
+				field         *streamField
+			}{{"responseId", entry.ResponseID, &event.responseID}, {"itemId", entry.ItemID, &event.itemID}} {
+				if selector.pointer == "" {
+					continue
+				}
+				*selector.field, err = compileStreamField(selector.pointer, path+"/"+selector.name, limits)
+				if err != nil {
+					return nil, err
+				}
+			}
+			event.when, err = compileWirePredicate(entry.When, path+"/when", nil, nil, expressions, 1)
 			if err != nil {
 				return nil, err
 			}

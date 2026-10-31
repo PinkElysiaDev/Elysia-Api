@@ -19,6 +19,7 @@ type compiledExpression struct {
 	pointer                             []string
 	from                                string
 	bindingSlot                         int
+	stateSlot                           int
 	indexSlot                           int
 	value                               Value
 	fields                              map[string]*compiledExpression
@@ -65,6 +66,7 @@ type expressionScope struct {
 	canReadNative       bool
 	bindings            map[string]expressionBinding
 	bindingDepth        int
+	stateSlots          map[string]expressionBinding
 	indexes             map[string]int
 	indexDepth          int
 }
@@ -141,7 +143,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		if compiled.from == "" {
 			compiled.from = "input"
 		}
-		if !slices.Contains([]string{"input", "root", "item", "context", "binding", "runtime"}, compiled.from) {
+		if !slices.Contains([]string{"input", "root", "item", "context", "binding", "runtime", "state"}, compiled.from) {
 			return nil, fmt.Errorf("%s/from: unknown input scope", path)
 		}
 		if compiled.from == "item" && !scope.isIteration {
@@ -158,6 +160,16 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		case "context":
 			schema, coreType = nil, nil
 		case "runtime":
+		case "state":
+			if len(pointer) == 0 {
+				return nil, fmt.Errorf("%s/path: state reads require a declared slot", path)
+			}
+			slot, exists := scope.stateSlots[pointer[0]]
+			if !exists {
+				return nil, fmt.Errorf("%s/path: state slot is not declared in this event direction", path)
+			}
+			compiled.stateSlot, schema, coreType = slot.slot, slot.schema, nil
+			pointer, compiled.pointer = pointer[1:], pointer[1:]
 			if !scope.canReadRuntime {
 				return nil, fmt.Errorf("%s/from: runtime metadata requires a package mapping program or effect", path)
 			}

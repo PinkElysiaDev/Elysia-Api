@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direction, input any, options EvaluationContext) (Value, error) {
+func preparePlannedCoreEncoding(ctx context.Context, compiled *Compiled, direction Direction, input any, options EvaluationContext) (evaluation, Limits, error) {
 	semanticBudget := DefaultLimits()
 	if isRequestDirection(direction) {
 		semanticBudget = requestLimits(ctx, semanticBudget, false)
@@ -14,9 +14,11 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 	// or the target mapping's potentially smaller request budget.
 	size, err := measureSemanticValue(input, semanticLimits(semanticBudget))
 	if err != nil {
-		return Value{}, err
+		return evaluation{}, Limits{}, err
 	}
-	fail := func(err error) (Value, error) { return Value{}, compiled.mappingError(direction, err) }
+	fail := func(err error) (evaluation, Limits, error) {
+		return evaluation{}, Limits{}, compiled.mappingError(direction, err)
+	}
 	if err := ctx.Err(); err != nil {
 		return fail(err)
 	}
@@ -45,7 +47,7 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 		}
 	}
 	reader := valueReader{minimumSharedBytes: minimumSharedValueBytes(size.maxRawBytes), canGrowThreshold: true}
-	state := evaluation{ctx: ctx, context: contextValue, runtime: bindEvaluationRuntime(compiled, direction, options), inputReader: read, rootReader: read, valueReader: &reader, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	state := evaluation{ctx: ctx, context: contextValue, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), inputReader: read, rootReader: read, valueReader: &reader, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	state.coreRequest, _ = input.(*Request)
 	if compiled.packagePlan != nil {
 		if err := compiled.preparePackageState(direction, state, inputLimits, options); err != nil {
@@ -53,6 +55,15 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 		}
 		state.native = compiled.newNativeEvaluation(ctx, direction, options)
 	}
+	return state, outputLimits, nil
+}
+
+func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direction, input any, options EvaluationContext) (Value, error) {
+	state, outputLimits, err := preparePlannedCoreEncoding(ctx, compiled, direction, input, options)
+	if err != nil {
+		return Value{}, err
+	}
+	fail := func(err error) (Value, error) { return Value{}, compiled.mappingError(direction, err) }
 	mapping := compiled.mappings[direction]
 	output, err := mapping.outputPlan.evaluate(state)
 	if err != nil {
@@ -88,6 +99,9 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 				Stage: "preserve", Path: "/native", Reason: "output stream metadata cannot be combined with automatic native reconciliation without declared dynamic field ownership"}}))
 		}
 	}
+	if err := options.packageTransaction.stage(state, true); err != nil {
+		return fail(err)
+	}
 	return output, nil
 }
 
@@ -99,10 +113,10 @@ func (compiled *Compiled) checkNativeEventEffects(ctx context.Context, direction
 		return fail(err)
 	}
 	read := func(pointer []string) (JSONOutput, error) { return readCoreEventOutput(&event, pointer) }
-	state := evaluation{ctx: ctx, context: contextValue, inputReader: read, rootReader: read, runtime: bindEvaluationRuntime(compiled, direction, options),
+	state := evaluation{ctx: ctx, context: contextValue, inputReader: read, rootReader: read, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(),
 		budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	if err := compiled.checkPackageEffects(direction, state, inputLimits); err != nil {
 		return fail(err)
 	}
-	return nil
+	return options.packageTransaction.stage(state, false)
 }

@@ -169,6 +169,9 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	if mapping.IsEventBatch && !isEventDecoder(direction) {
 		return compiledMapping{}, nil, fmt.Errorf("%s/eventBatch: requires an event decoder", path)
 	}
+	if mapping.IsFrameBatch && direction != EncodeEvent && direction != EncodeUpstreamEvent {
+		return compiledMapping{}, nil, fmt.Errorf("%s/frameBatch: requires an event encoder", path)
+	}
 	scope := expressionScope{canReadRuntime: true, canReadOutputStream: direction == EncodeEvent}
 	if isDecode {
 		scope.input = wire.Schema
@@ -178,6 +181,29 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	references := map[string]Expression{}
 	compiler.mappingReferences = references
 	defer func() { compiler.mappingReferences = nil }()
+	streamState, err := compilePackageState(mapping.State, direction, path+"/state", compiler, &scope)
+	if err != nil {
+		return compiledMapping{}, nil, err
+	}
+	var finalizer *compiledOutputPlan
+	if mapping.Finalize != nil {
+		if !mapping.IsFrameBatch {
+			return compiledMapping{}, nil, fmt.Errorf("%s/finalize: requires a frame-batch event encoder", path)
+		}
+		finalizer, err = compiler.compilePlan(*mapping.Finalize, path+"/finalize", scope, 1)
+		if err != nil {
+			return compiledMapping{}, nil, err
+		}
+		if !isAssignable(finalizer.expression.result, ArrayType) || hasCurrentEventRead(finalizer) {
+			return compiledMapping{}, nil, fmt.Errorf("%s/finalize: requires a frame array without current-event reads", path)
+		}
+		if err := checkExpressionOutput(finalizer.expression, &ValueSchema{Type: ArrayType, Items: wire.Schema}, compiler.limits); err != nil {
+			return compiledMapping{}, nil, fmt.Errorf("%s/finalize: %w", path, err)
+		}
+		if streamState == nil {
+			streamState = &compiledPackageState{initial: []Value{}}
+		}
+	}
 	programScope := scope
 	programScope.wireCapture = isDecode
 	programScope.canReadNative = !isDecode
@@ -188,8 +214,15 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	if mapping.IsEventBatch && !isAssignable(program.result, ArrayType) {
 		return compiledMapping{}, nil, fmt.Errorf("%s/program: eventBatch requires an array output", path)
 	}
+	if mapping.IsFrameBatch && !isAssignable(program.result, ArrayType) {
+		return compiledMapping{}, nil, fmt.Errorf("%s/program: frameBatch requires an array output", path)
+	}
 	if !isDecode {
-		if err := checkExpressionOutput(program, wire.Schema, compiler.limits); err != nil {
+		schema := wire.Schema
+		if mapping.IsFrameBatch {
+			schema = &ValueSchema{Type: ArrayType, Items: schema}
+		}
+		if err := checkExpressionOutput(program, schema, compiler.limits); err != nil {
 			return compiledMapping{}, nil, fmt.Errorf("%s/program: %w", path, err)
 		}
 	}
@@ -301,8 +334,9 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		return compiledMapping{}, nil, fmt.Errorf("%s/program: expression has no compiled execution plan", path)
 	}
 	return compiledMapping{
-		outputPlan: plan, definitionHash: hashValue(identity),
+		outputPlan: plan, definitionHash: hashValue(identity), streamState: streamState, streamFinalizer: finalizer,
 		isEventBatch:      mapping.IsEventBatch,
+		frameBatch:        mapping.IsFrameBatch,
 		hasCoreOutputPlan: isPackageDecodeDirection(direction),
 		hasCoreInputPlan:  !isPackageDecodeDirection(direction),
 	}, effects, nil

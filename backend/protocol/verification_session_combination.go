@@ -83,6 +83,7 @@ func verifySessionCombination(ctx context.Context, ingress, upstream *Compiled, 
 
 func replaySessionCombination(ctx context.Context, target *Compiled, operation Operation, sample SessionSample, evidence sessionEvidence) error {
 	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	defer options.State.Release()
 	replay, err := NewSessionReplay(sessionLaneTarget(target, ClientEvent, options), sessionLaneTarget(target, UpstreamEvent, options), target.limits, SessionPolicy{Model: sample.Model, CanGenerateAutomatically: operation.Session.CanGenerateAutomatically})
 	if err != nil {
 		return err

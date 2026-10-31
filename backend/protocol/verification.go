@@ -182,6 +182,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 
 func executeVerificationSample(ctx context.Context, compiled *Compiled, sample Sample) (verificationResult, error) {
 	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	defer options.State.Release()
 	var result verificationResult
 	var err error
 	switch sample.Direction {
@@ -227,6 +228,7 @@ func executeVerificationSample(ctx context.Context, compiled *Compiled, sample S
 
 func executeEventFixture(ctx context.Context, compiled *Compiled, sample Sample) (verificationResult, error) {
 	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	defer options.State.Release()
 	return executeEventFixtureWithState(ctx, compiled, sample, options)
 }
 

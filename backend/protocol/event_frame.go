@@ -24,7 +24,12 @@ func (compiled *Compiled) DecodeFrame(ctx context.Context, frame Value, options 
 	return compiled.decodeFrame(ctx, DecodeEvent, frame, options)
 }
 
-func (compiled *Compiled) decodeFrame(ctx context.Context, direction Direction, frame Value, options EvaluationContext) (*EventFrame, error) {
+func (compiled *Compiled) decodeFrame(ctx context.Context, direction Direction, frame Value, options EvaluationContext) (result *EventFrame, err error) {
+	options, transaction, err := compiled.beginPackageTransaction(direction, options)
+	if err != nil {
+		return nil, compiled.runtimeError(direction, err)
+	}
+	defer func() { transaction.finish(err) }()
 	options.compoundFrame = true
 	isTransportControl := false
 	options.transportControl = &isTransportControl
@@ -32,7 +37,7 @@ func (compiled *Compiled) decodeFrame(ctx context.Context, direction Direction, 
 	if err != nil {
 		return nil, err
 	}
-	result := &EventFrame{Events: events, encoderHash: compiled.mappings[eventEncoder(direction)].definitionHash, decoderHash: compiled.mappings[direction].definitionHash}
+	result = &EventFrame{Events: events, encoderHash: compiled.mappings[eventEncoder(direction)].definitionHash, decoderHash: compiled.mappings[direction].definitionHash}
 	if compiled.native.Preserve && !isTransportControl {
 		result.native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: direction, Scope: options.Scope}, Value: frame}
 		digest, err := digestSemanticEvents(events)
@@ -50,7 +55,19 @@ func (compiled *Compiled) EncodeFrames(ctx context.Context, event Event, options
 	return compiled.encodeFrames(ctx, EncodeEvent, event, options)
 }
 
-func (compiled *Compiled) encodeFrames(ctx context.Context, direction Direction, event Event, options EvaluationContext) ([]Value, error) {
+func (compiled *Compiled) encodeFrames(ctx context.Context, direction Direction, event Event, options EvaluationContext) (frames []Value, err error) {
+	if compiled.packagePlan != nil && compiled.mappings[direction].frameBatch {
+		options, transaction, err := compiled.beginPackageTransaction(direction, options)
+		if err != nil {
+			return nil, compiled.runtimeError(direction, err)
+		}
+		defer func() { transaction.finish(err) }()
+		if err := IssuesError(CheckEvent(event, compiled.target(direction, options), compiled.limits)); err != nil {
+			return nil, compiled.runtimeError(direction, err)
+		}
+		frames, err = encodePlannedEventFrames(ctx, compiled, direction, &event, options)
+		return frames, compiled.runtimeError(direction, err)
+	}
 	if event.Native == nil && compiled.mappings[direction].frameBatch && compiled.hasTypedMapping(direction) {
 		if err := IssuesError(CheckEvent(event, compiled.target(direction, options), compiled.limits)); err != nil {
 			return nil, compiled.runtimeError(direction, err)
@@ -103,7 +120,12 @@ func (compiled *Compiled) EncodeConvertedFrame(ctx context.Context, frame *Event
 	return compiled.encodeCheckedFrame(ctx, EncodeEvent, &converted, options, true)
 }
 
-func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Direction, frame *EventFrame, options EvaluationContext, checked bool) ([]Value, error) {
+func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Direction, frame *EventFrame, options EvaluationContext, checked bool) (result []Value, err error) {
+	options, transaction, err := compiled.beginPackageTransaction(direction, options)
+	if err != nil {
+		return nil, compiled.runtimeError(direction, err)
+	}
+	defer func() { transaction.finish(err) }()
 	target := compiled.target(direction, options)
 	canReplay := compiled.native.Preserve && frame.native != nil && CanPreserveNative(frame.native.Source, target)
 	if canReplay {

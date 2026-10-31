@@ -17,6 +17,10 @@ type SessionAdapter struct {
 	mediaSequence                      map[EventOrigin]int64
 }
 
+// Release discards translation state after both session lanes have stopped.
+// Completed replay accounting remains available to the owner's final record.
+func (adapter *SessionAdapter) Release() { adapter.options.State.Release() }
+
 // NewSessionAdapter constructs the shared offline/live duplex translation path.
 // The caller supplies its already-authorized model group and upstream scope.
 func NewSessionAdapter(ingress, upstream *Compiled, clientOperation, upstreamOperation Operation, binding Binding, scope Scope, model Value) (*SessionAdapter, error) {

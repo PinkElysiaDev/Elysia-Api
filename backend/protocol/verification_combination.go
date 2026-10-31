@@ -302,6 +302,7 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 		return err
 	}
 	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	defer options.State.Release()
 	// This suite verifies transport usage independently of a particular client's
 	// presentation preference.
 	yes := true
@@ -466,6 +467,7 @@ func encodeCombinationEventFrames(ctx context.Context, compiled *Compiled, frame
 
 func verifyRequestCombination(ctx context.Context, ingress, upstream *Compiled, sample Sample) error {
 	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	defer options.State.Release()
 	request, err := ingress.DecodeRequest(ctx, sample.Input.Bytes(), options)
 	if err != nil {
 		return err
@@ -507,6 +509,7 @@ func verifyRequestCombination(ctx context.Context, ingress, upstream *Compiled, 
 
 func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled, sample Sample) error {
 	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	defer options.State.Release()
 	response, err := upstream.DecodeResponse(ctx, sample.Input.Bytes(), options)
 	if err != nil {
 		return err

@@ -227,6 +227,11 @@ func (compiled *Compiled) DecodeClientEvents(ctx context.Context, frame Value, o
 }
 
 func (compiled *Compiled) decodeEvents(ctx context.Context, direction Direction, frame Value, options EvaluationContext) (result []Event, err error) {
+	options, transaction, err := compiled.beginPackageTransaction(direction, options)
+	if err != nil {
+		return nil, compiled.runtimeError(direction, err)
+	}
+	defer func() { transaction.finish(err) }()
 	defer func() { err = compiled.runtimeError(direction, err) }()
 	if options.transportControl == nil {
 		options.transportControl = new(bool)
@@ -362,6 +367,11 @@ func (compiled *Compiled) EncodeUpstreamEvent(ctx context.Context, event Event, 
 }
 
 func (compiled *Compiled) encodeEvent(ctx context.Context, direction Direction, event Event, options EvaluationContext) (result Value, err error) {
+	options, transaction, err := compiled.beginPackageTransaction(direction, options)
+	if err != nil {
+		return Value{}, compiled.runtimeError(direction, err)
+	}
+	defer func() { transaction.finish(err) }()
 	defer func() { err = compiled.runtimeError(direction, err) }()
 	if err := IssuesError(CheckEvent(event, compiled.target(direction, options), compiled.limits)); err != nil {
 		return Value{}, err

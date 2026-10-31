@@ -141,6 +141,18 @@ func (compiled *Compiled) finishPackageExecution(ctx context.Context, direction 
 	if isPackageDecodeDirection(direction) {
 		return compiled.finishPackageCoreOutput(ctx, direction, JSONLeaf(output), requestValueReader(output))
 	}
+	if compiled.mappings[direction].frameBatch {
+		frames, err := readArray(output)
+		if err != nil {
+			return err
+		}
+		for _, frame := range frames {
+			if err := compiled.validateWireContract(ctx, direction, frame, nil, limits); err != nil {
+				return err
+			}
+		}
+		return ctx.Err()
+	}
 	if err := compiled.validateWireContract(ctx, direction, output, nil, limits); err != nil {
 		return err
 	}

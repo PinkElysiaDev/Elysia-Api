@@ -1,0 +1,104 @@
+package protocol
+
+import (
+	"strings"
+	"testing"
+)
+
+// Real wire layouts put the initial response ID in an envelope and omit it
+// from later blocks. Their content indexes are identities, not array offsets.
+func sparseIdentityStream(t *testing.T) *ProtocolStreamSpec {
+	t.Helper()
+	var spec ProtocolStreamSpec
+	raw := Value{raw: `{
+		"discriminator":"/type", "responseId":"/response_id", "itemId":"/index",
+		"inheritResponseId":true, "itemIdIsIndex":true,
+		"events":{
+			"message_start":[{"action":"response_start","responseId":"/message/id"}],
+			"content_block_start":[
+				{"action":"item_start","when":{"op":"equal","items":[{"op":"read","from":"input","path":"/content_block/type"},{"op":"literal","value":"text"}]}},
+				{"action":"tool_start","when":{"op":"equal","items":[{"op":"read","from":"input","path":"/content_block/type"},{"op":"literal","value":"tool_use"}]},"tool":{"name":"/content_block/name","callId":"/content_block/id"}}
+			],
+			"content_block_delta":[
+				{"action":"text_delta","text":"/delta/text","when":{"op":"equal","items":[{"op":"read","from":"input","path":"/delta/type"},{"op":"literal","value":"text_delta"}]}},
+				{"action":"tool_delta","arguments":"/delta/partial_json","when":{"op":"equal","items":[{"op":"read","from":"input","path":"/delta/type"},{"op":"literal","value":"input_json_delta"}]}}
+			],
+			"content_block_stop":[{"action":"item_finish"}],
+			"message_delta":[{"action":"usage","usage":{"output":"/usage/output_tokens"}}],
+			"message_stop":[{"action":"response_finish"}]
+		}
+	}`}
+	if err := raw.Decode(&spec); err != nil {
+		t.Fatal(err)
+	}
+	return &spec
+}
+
+func newSparseIdentityValidation(t *testing.T, spec *ProtocolStreamSpec) *packageStreamValidation {
+	t.Helper()
+	contract, err := compilePackageStreamContract(spec, "/stream", DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := newPackageStreamValidation(contract, Target{Direction: DecodeEvent, Capabilities: CapabilitySet{TextCapability: true, UsageCapability: true, FunctionToolsCapability: true}}, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return state
+}
+
+func TestPackageStreamSparseIdentities(t *testing.T) {
+	state := newSparseIdentityValidation(t, sparseIdentityStream(t))
+	frames := []string{
+		`{"type":"message_start","message":{"id":"message-1"}}`,
+		`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}`,
+		`{"type":"content_block_stop","index":0}`,
+		`{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call-1","name":"lookup","input":{}}}`,
+		`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"city\":\"Shanghai\"}"}}`,
+		`{"type":"content_block_stop","index":1}`,
+		`{"type":"message_delta","usage":{"output_tokens":9}}`,
+		`{"type":"message_stop"}`,
+	}
+	for _, raw := range frames {
+		if err := state.consume(t.Context(), Value{raw: raw}); err != nil {
+			t.Fatal(raw, err)
+		}
+	}
+	if err := state.finish(); err != nil {
+		t.Fatal(err)
+	}
+	if state.accepted.responseID != "message-1" || state.openItems != 0 || !state.accepted.isTerminal {
+		t.Fatal("sparse wire identities lost their lifecycle", state.accepted, state.openItems)
+	}
+}
+
+func TestPackageStreamSparseIdentityRejections(t *testing.T) {
+	for _, test := range []struct {
+		name, frame, path string
+	}{
+		{"explicit-null", `{"type":"message_stop","response_id":null}`, "/response_id"},
+		{"changed-id", `{"type":"message_stop","response_id":"other"}`, "/response_id"},
+		{"negative-index", `{"type":"content_block_start","index":-1,"content_block":{"type":"text"}}`, "/index"},
+		{"string-index", `{"type":"content_block_start","index":"0","content_block":{"type":"text"}}`, "/index"},
+		{"unknown-block", `{"type":"content_block_start","index":0,"content_block":{"type":"future"}}`, "/type"},
+		{"orphan-delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"x"}}`, "/index"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			state := newSparseIdentityValidation(t, sparseIdentityStream(t))
+			if err := state.consume(t.Context(), Value{raw: `{"type":"message_start","message":{"id":"r"}}`}); err != nil {
+				t.Fatal(err)
+			}
+			assertPackageRuntimeIssue(t, state.consume(t.Context(), Value{raw: test.frame}), UpstreamContractViolation, test.path)
+		})
+	}
+	state := newSparseIdentityValidation(t, sparseIdentityStream(t))
+	assertPackageRuntimeIssue(t, state.consume(t.Context(), Value{raw: `{"type":"message_start","message":{}}`}), UpstreamContractViolation, "/message/id")
+	for _, predicate := range []Expression{literalExpression("true"), readExpression("runtime", "/stream/started")} {
+		spec := sparseIdentityStream(t)
+		spec.Events["message_start"][0].When = &predicate
+		if _, err := compilePackageStreamContract(spec, "/stream", DefaultLimits()); err == nil || !strings.Contains(err.Error(), "/when") {
+			t.Fatal("wire conditions must be boolean and independent of mapping state", err)
+		}
+	}
+}

@@ -13,6 +13,7 @@ type evaluation struct {
 	itemOutput                 *JSONOutput
 	itemIndex                  int
 	bindings                   []JSONOutput
+	streamSlots                []Value
 	walkBody                   *compiledOutputPlan
 	walkDepth                  int
 	capture                    *nativeCaptureState

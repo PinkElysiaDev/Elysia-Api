@@ -45,6 +45,7 @@ type gatewayStream struct {
 func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext, record *usageRecord, plan *gatewayResponsePlan, candidate gatewayCandidate, response *http.Response) error {
 	limits := plan.ingress.ResourceLimits()
 	options := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}
+	defer options.State.Release()
 	options.ClientOutput = plan.clientOutput
 	defer func() { record.appendConversionIssues(options.Diagnostics.Issues()) }()
 	route := candidate.conversionContext(plan.ingress, true)
@@ -68,6 +69,7 @@ func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Trailer", gatewayStreamErrorTrailer)
 	wireValidation := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState()}
+	defer wireValidation.State.Release()
 	finalValidation, err := plan.ingress.NewWireStreamValidation(candidate.scope)
 	if err != nil {
 		return err

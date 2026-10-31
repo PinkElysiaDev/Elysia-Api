@@ -36,6 +36,9 @@ func (compiled *Compiled) finishEvents(ctx context.Context, direction Direction,
 	if options.State == nil {
 		return nil, nil
 	}
+	if compiled.packagePlan != nil {
+		return compiled.finishPackageEvents(ctx, direction, options)
+	}
 	instance := options.State.modules[moduleStateKey{compiled: compiled, direction: direction}]
 	if instance == nil || !instance.executed {
 		return nil, nil
@@ -61,8 +64,11 @@ type streamModuleState struct {
 // EvaluationState owns native codec state for one stream/session. It is not
 // shared across requests or goroutines and is inaccessible to expressions.
 type EvaluationState struct {
-	modules     map[moduleStateKey]*streamModuleState
-	initialized map[moduleStateKey]bool
+	modules           map[moduleStateKey]*streamModuleState
+	initialized       map[moduleStateKey]bool
+	packageStates     map[moduleStateKey]*packageStreamState
+	packageStateItems int
+	packageStateBytes int
 }
 
 // NewEvaluationState creates independent codec state. Declarative expressions

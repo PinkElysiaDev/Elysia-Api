@@ -64,6 +64,7 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 		s.estimateGatewayAttempt(record, request)
 	}
 	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}
+	defer options.State.Release()
 	defer func() {
 		if record != nil {
 			record.appendConversionIssues(options.Diagnostics.Issues())
