@@ -96,9 +96,13 @@ func (service *Service) SaveDraft(ctx context.Context, id string, raw []byte, ex
 	if err != nil {
 		return Draft{}, nil, draftInputError("/", err)
 	}
+	identity, identityPath, err := ProtocolIdentityFields(object)
+	if err != nil {
+		return Draft{}, nil, draftInputError(identityPath, err)
+	}
 	var documentID string
-	if err := object["id"].Decode(&documentID); err != nil || documentID != id {
-		return Draft{}, nil, draftInputError("/id", fmt.Errorf("definition ID must match draft ID"))
+	if err := identity["id"].Decode(&documentID); err != nil || documentID != id {
+		return Draft{}, nil, draftInputError(identityPath+"/id", fmt.Errorf("definition ID must match draft ID"))
 	}
 	canonical, err := EncodeValue(object)
 	if err != nil {

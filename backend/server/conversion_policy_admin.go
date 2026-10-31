@@ -117,7 +117,7 @@ func (s *Server) adminConversionVerify(ctx context.Context, c *app.RequestContex
 					respondFail(ctx, c, http.StatusBadRequest, "invalid_conversion_policy", e.Error())
 					return
 				}
-				record.Reports = append(record.Reports, protocol.VerifyBindingProfiles(ctx, ingress, upstream, upstream.Definition().Capabilities, policy)...)
+				record.Reports = append(record.Reports, protocol.VerifyBindingProfiles(ctx, ingress, upstream, upstream.DeclaredCapabilities(), policy)...)
 			}
 		}
 		record.CompilerVersion = protocol.CompilerVersion

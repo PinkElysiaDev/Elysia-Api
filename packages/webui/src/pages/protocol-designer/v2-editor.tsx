@@ -26,16 +26,17 @@ import { ApiError } from '@/lib/api'
 import { ProtocolDocument } from '@/lib/protocol-document'
 import {
   protocolAPI,
+  protocolIdentityPrefix,
   type ConversionIssue,
   type ProtocolDraft,
   type ProtocolRevision,
   type ProtocolSchema,
   type VerificationReport,
 } from '@/lib/protocol-v2'
-import { cn } from '@/lib/utils'
+import { cn, downloadJSONSource } from '@/lib/utils'
 import { ProtocolDirectionEditor, ProtocolOperationEditor } from './v2-operation-editor'
 
-const sectionNames = [
+const legacySectionNames = [
   ['directions', '方向与映射', '方向映射'],
   ['operations', '传输与操作', '传输操作'],
   ['samples', '请求、响应与事件样例', '消息样例'],
@@ -47,19 +48,32 @@ const sectionNames = [
   ['extensions', '扩展元数据', '扩展元数据'],
 ] as const
 
+const sourceSectionNames = [
+  ['spec', '外部协议 spec.json', '协议定义'],
+  ['mapping', '转换说明 mapping.json', '转换说明'],
+] as const
+
 const EMPTY_DEFINITION = JSON.stringify(
   {
-    schemaVersion: 2,
-    id: '',
-    name: '',
-    version: '1',
-    family: '',
-    wireVersion: '1',
-    capabilities: {},
-    directions: {},
-    operations: {},
-    native: { preserve: false },
-    samples: [],
+    schemaVersion: 3,
+    spec: {
+      id: '',
+      name: '',
+      version: '1',
+      family: '',
+      wireVersion: '1',
+      documents: {},
+      operations: {},
+    },
+    mapping: {
+      coreVersion: 2,
+      dslVersion: 1,
+      capabilities: {},
+      directions: {},
+      operations: {},
+      native: { preserve: false },
+      samples: [],
+    },
   },
   null,
   2,
@@ -69,7 +83,7 @@ const EMPTY_DEFINITION = JSON.stringify(
 const selectClass =
   'h-[34px] rounded-md border border-input bg-card px-2.5 text-sm text-foreground transition-[border-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:border-rose focus-visible:ring-[3px] focus-visible:ring-wash disabled:cursor-not-allowed disabled:opacity-50'
 
-/** Complete v2 editor. Raw JSON is the only editable source of truth. */
+/** Edit spec and mapping as one revision; raw JSON remains the source of truth. */
 export function ProtocolV2Editor({
   schema,
   draft,
@@ -115,6 +129,7 @@ export function ProtocolV2Editor({
     Record<string, { source: string; error: string }>
   >({})
   const jsonRef = useRef<HTMLTextAreaElement>(null)
+  const sectionRefs = useRef<Record<string, HTMLTextAreaElement | null>>({})
 
   const parsed = useMemo(() => {
     try {
@@ -125,13 +140,17 @@ export function ProtocolV2Editor({
   }, [source])
 
   const document = parsed.document
+  const identityPrefix = document ? protocolIdentityPrefix(document) : ''
+  const isPackage = identityPrefix === '/spec'
+  const mappingPrefix = isPackage ? '/mapping' : ''
+  const sectionNames = isPackage ? sourceSectionNames : legacySectionNames
   const scalar = (path: string): string => {
     const raw = document?.read(path)
     const value: unknown = raw ? JSON.parse(raw) : ''
     return typeof value === 'string' ? value : ''
   }
-  const id = scalar('/id')
-  const protocolName = scalar('/name')
+  const id = scalar(`${identityPrefix}/id`)
+  const protocolName = scalar(`${identityPrefix}/name`)
   const hasPendingSections = Object.keys(pendingSections).length > 0
   const isDirty = source !== savedSource || hasPendingSections
   const [confirmingClose, setConfirmingClose] = useState(false)
@@ -144,11 +163,13 @@ export function ProtocolV2Editor({
   const change = (path: string, value: string) => {
     if (document) {
       setSource(document.set(path, value))
+      setFocusPath('')
       setError('')
     }
   }
 
   const editSection = (key: string, value: string) => {
+    setFocusPath('')
     try {
       new ProtocolDocument(value)
       if (!document) throw new Error('请先修正完整 JSON')
@@ -165,6 +186,10 @@ export function ProtocolV2Editor({
       }))
     }
   }
+
+  const sectionSource = (key: string) =>
+    pendingSections[key]?.source ?? document?.read('/' + key) ??
+    (key.includes('Samples') || key === 'samples' ? '[]' : '{}')
 
   const run = async (work: () => Promise<void>) => {
     setBusy(true)
@@ -206,25 +231,28 @@ export function ProtocolV2Editor({
     let path = issue.path
     if (issue.evidence) {
       for (const section of ['samples', 'sessionSamples', 'taskSamples', 'modelSamples']) {
-        const entries = document?.locate(`/${section}`)?.children
+        const entries = document?.locate(`${mappingPrefix}/${section}`)?.children
         for (const [index] of entries ?? []) {
-          if (scalar(`/${section}/${index}/id`) === issue.evidence) {
-            path = `/${section}/${index}`
+          if (scalar(`${mappingPrefix}/${section}/${index}/id`) === issue.evidence) {
+            path = `${mappingPrefix}/${section}/${index}`
           }
         }
       }
     }
     setFocusPath(path)
-    setTab('json')
+    const sourceTab = isPackage && sourceSectionNames.find(([key]) => path === `/${key}` || path.startsWith(`/${key}/`))?.[0]
+    setTab(sourceTab || 'json')
   }
 
   useEffect(() => {
-    if (tab !== 'json' || !focusPath) return
+    if (!focusPath) return
     const currentDoc = parsed.document
     const location = currentDoc?.locate(focusPath)
-    if (location && jsonRef.current) {
-      jsonRef.current.focus()
-      jsonRef.current.setSelectionRange(location.start, location.end)
+    const editor = tab === 'json' ? jsonRef.current : sectionRefs.current[tab]
+    const offset = tab === 'json' ? 0 : currentDoc?.locate(`/${tab}`)?.start
+    if (location && editor && offset !== undefined) {
+      editor.focus()
+      editor.setSelectionRange(location.start - offset, location.end - offset)
     }
   }, [tab, focusPath, parsed.document])
 
@@ -244,11 +272,11 @@ export function ProtocolV2Editor({
     }
   }, [draft])
 
-  const capabilities = document?.locate('/capabilities')
-  const mappings = document?.locate('/directions')
+  const capabilities = document?.locate(`${mappingPrefix}/capabilities`)
+  const mappings = document?.locate(`${mappingPrefix}/directions`)
   const directionKeys = [...(mappings?.children.keys() ?? [])]
   const declaredCapabilities = schema.capabilities.filter(
-    (capability) => document?.read(`/capabilities/${capability}`) === 'true',
+    (capability) => document?.read(`${mappingPrefix}/capabilities/${capability}`) === 'true',
   )
 
   return (
@@ -413,9 +441,9 @@ export function ProtocolV2Editor({
                   <span>{label}</span>
                   <Input
                     className={cn(key !== 'name' && 'font-mono text-xs')}
-                    value={scalar('/' + key)}
+                    value={scalar(`${identityPrefix}/${key}`)}
                     disabled={!document || (key === 'id' && !!draftHash)}
-                    onChange={(event) => change('/' + key, JSON.stringify(event.target.value))}
+                    onChange={(event) => change(`${identityPrefix}/${key}`, JSON.stringify(event.target.value))}
                   />
                 </label>
               ))}
@@ -427,7 +455,7 @@ export function ProtocolV2Editor({
               </legend>
               <div className="flex flex-wrap gap-2">
                 {schema.capabilities.map((capability) => {
-                  const checked = document?.read(`/capabilities/${capability}`) === 'true'
+                  const checked = document?.read(`${mappingPrefix}/capabilities/${capability}`) === 'true'
                   return (
                     <label
                       key={capability}
@@ -444,7 +472,7 @@ export function ProtocolV2Editor({
                         disabled={!capabilities}
                         checked={checked}
                         onChange={(event) =>
-                          change(`/capabilities/${capability}`, String(event.target.checked))
+                          change(`${mappingPrefix}/capabilities/${capability}`, String(event.target.checked))
                         }
                       />
                       {capability}
@@ -463,17 +491,31 @@ export function ProtocolV2Editor({
           ([key, label]) =>
             tab === key && (
               <div key={key} className="space-y-2">
+                {isPackage && (
+                  <div className="flex flex-wrap items-end gap-3">
+                    <label className="space-y-1 text-xs font-medium text-foreground">
+                      <span className="block">导入 {key}.json</span>
+                      <Input type="file" accept=".json,application/json" aria-label={`导入 ${key}.json`}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0]
+                          event.target.value = ''
+                          if (file) void run(async () => editSection(key, await file.text()))
+                        }} />
+                    </label>
+                    <Button onClick={() => downloadJSONSource(`${key}.json`, sectionSource(key))}>
+                      导出 {key}.json
+                    </Button>
+                    <p className="text-xs text-muted-foreground">两份源一并保存、验证和启用。</p>
+                  </div>
+                )}
                 <label className="block space-y-1.5 text-xs font-medium text-foreground">
                   <span>{label} JSON</span>
                   <Textarea
+                    ref={(element) => { sectionRefs.current[key] = element }}
                     aria-label={`${label} JSON`}
                     rows={16}
                     className="font-mono text-xs leading-relaxed"
-                    value={
-                      pendingSections[key]?.source ??
-                      document?.read('/' + key) ??
-                      (key.includes('Samples') || key === 'samples' ? '[]' : '{}')
-                    }
+                    value={sectionSource(key)}
                     onChange={(event) => editSection(key, event.target.value)}
                   />
                 </label>
@@ -526,7 +568,10 @@ export function ProtocolV2Editor({
                 rows={22}
                 className="font-mono text-xs leading-relaxed"
                 value={source}
-                onChange={(event) => setSource(event.target.value)}
+                onChange={(event) => {
+                  setFocusPath('')
+                  setSource(event.target.value)
+                }}
               />
             </label>
             {focusPath && (
@@ -765,8 +810,8 @@ export function ProtocolV2Editor({
                       </TableCell>
                       {directionKeys.map((name) => (
                         <TableCell key={name} className="py-2.5 text-center text-muted-foreground">
-                          {document?.locate(`/directions/${name}/capabilities`)
-                            ? document.read(`/directions/${name}/capabilities/${capability}`) ===
+                          {document?.locate(`${mappingPrefix}/directions/${name}/capabilities`)
+                            ? document.read(`${mappingPrefix}/directions/${name}/capabilities/${capability}`) ===
                               'true'
                               ? '支持'
                               : '—'

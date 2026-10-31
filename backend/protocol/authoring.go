@@ -92,7 +92,7 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 		semantic = input.Input
 	case "session":
 		var sample *SessionSample
-		for _, entry := range compiled.Definition().SessionSamples {
+		for _, entry := range compiled.verificationSessionSamples() {
 			if entry.ID == input.Sample {
 				sample = &entry
 				break

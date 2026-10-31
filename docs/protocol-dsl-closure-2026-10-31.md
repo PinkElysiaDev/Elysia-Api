@@ -59,3 +59,20 @@ Mapping 现在从 hosted 工具渲染中排除已由 function 工具承担的字
 其 Sonic 临时对象、计划递归和 GC 热点只作为候选线索。本轮功能完整后重新采集匹配二进制的
 CPU、alloc_space/objects、inuse_space/objects，正式计时不启用 profiler 或主动 GC。
 已有旧生产 HTTP 收益不当作新 DSL 的验收结果。
+
+## 第三批：两源管理入口
+
+统一编译入口现在识别 v3 包；保存从 `/spec/id` 核对身份，仍以完整包作为草稿编辑令牌，
+验证生成包含编译器的不可变修订哈希。没有分开保存或激活两份源。会话预览、CLI、
+可用协议目录、绑定默认能力和历史恢复均读取包元信息，避免继续通过旧 Definition 得到空数据。
+管理 schema 同时提供 package/spec/mapping 契约；旧入口只是迁移期间保留，尚未执行最终退役。
+
+WebUI 在原编辑器内提供两源页、导入导出及源内诊断定位，复用整包保存／验证／激活流程。
+大整数和原文拼写不经 JavaScript 数字转换。编辑任一源即使原有证据不再适用于当前草稿。
+
+真实 SQLite 的整包修订、CAS、激活隔离、重载、历史元信息测试通过
+（`closure-package-lifecycle`）；Agent/CLI 管理与会话预览通过
+（`closure-json-and-management` 中对应包通过，首次 builtin 测试助手编译错误另行保留）。
+前端类型检查、定向 lint 通过。浏览器首次新增用例因重复按钮定位失败，修正定位后
+`closure-package-ui-confirm` 为 3 通过、2 个既有依赖真实后端环境的用例跳过。
+本批没有替换生产预置或自动更改旧绑定。

@@ -12,7 +12,7 @@ func TestSessionPackagesPreserveExistingTraces(t *testing.T) {
 	var packages []*Compiled
 	for _, name := range []string{"session-alpha", "session-beta"} {
 		t.Run(name, func(t *testing.T) {
-			_, document, compiled := loadTransportPackage(t, "sessions", name, featureWebSocketTransport)
+			compiler, document, compiled := loadTransportPackage(t, "sessions", name, featureWebSocketTransport)
 			legacyRaw, err := os.ReadFile(filepath.Join("testdata", name+".json"))
 			if err != nil {
 				t.Fatal(err)
@@ -29,6 +29,11 @@ func TestSessionPackagesPreserveExistingTraces(t *testing.T) {
 			}
 			if report := Verify(t.Context(), compiled); !report.Passed {
 				t.Fatal(report.Issues)
+			}
+			service := &Service{compiler: compiler}
+			preview := service.PreviewWorkflow(t.Context(), PreviewInput{Definition: fixtureValue(t, document), Mode: "session", Sample: document.Mapping.SessionSamples[0].ID})
+			if IssuesError(preview.Issues) != nil || preview.Output.IsZero() {
+				t.Fatal("management preview could not find the declared session trace", preview.Issues)
 			}
 			binding := Binding{ProtocolID: compiled.identity.DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.capabilities, Transports: []Transport{WebSocket}}
 			operation, _ := compiled.Operation("session")

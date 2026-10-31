@@ -30,7 +30,7 @@ func protocolCommands() []*cliCommand {
 		action, summary, usage string
 		flags                  []cliFlagSpec
 	}{
-		{"draft", "写入协议草稿并校验定义", "elysia protocol draft '<schemaVersion=2 JSON>'", nil},
+		{"draft", "写入协议草稿并校验定义", "elysia protocol draft '<schemaVersion=3 spec/mapping JSON>'", nil},
 		{"preview", "预览请求、响应、事件或工作流", "elysia protocol preview --sample '<JSON>' [--direction <direction>] [--sequence] [--mode mapping|session|task|models|agent]", []cliFlagSpec{{name: "sample"}, {name: "direction"}, {name: "sequence", boolean: true}, {name: "mode"}, {name: "sample-id"}, {name: "operation"}, {name: "kind"}, {name: "purpose"}}},
 		{"test", "验证真实上游契约（受权限策略控制）", "elysia protocol test --operation <id> --sample '<semantic request JSON>' [--base-url <URL>] [--api-key <key>]", []cliFlagSpec{{name: "operation"}, {name: "sample"}, {name: "base-url"}, {name: "api-key"}}},
 		{"models", "按声明操作验证真实上游模型目录（受权限策略控制）", "elysia protocol models [--base-url <URL>] [--api-key <key>]", []cliFlagSpec{{name: "base-url"}, {name: "api-key"}}},
@@ -45,14 +45,14 @@ func protocolCommands() []*cliCommand {
 			handler: func(s *Server) CLIHandler { return &protocolV2Tool{server: s, action: action} },
 		}
 		if action == "draft" {
-			command.positionals = []cliPositionalSpec{{"config", "完整 v2 定义 JSON"}}
+			command.positionals = []cliPositionalSpec{{"config", "完整 spec/mapping 协议包 JSON"}}
 		}
 		flags := append([]cliFlagSpec(nil), spec.flags...)
 		command.mapper = func(inv *cliInvocation) (map[string]any, error) {
 			params := map[string]any{}
 			if action == "draft" {
 				if len(inv.args) != 1 {
-					return nil, fmt.Errorf("protocol draft requires one complete v2 JSON definition")
+					return nil, fmt.Errorf("protocol draft requires one complete spec/mapping JSON package")
 				}
 				if err := inv.setJSONText(params, "config", inv.args[0]); err != nil {
 					return nil, err

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -19,6 +21,75 @@ import (
 type protocolAuthorContext struct {
 	draft              json.RawMessage
 	edit, baseURL, key string
+}
+
+func TestAgentProtocolPackageAuthoringAndCatalog(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	tctx := &protocolAuthorContext{}
+	document := protocol.ProtocolPackage{SchemaVersion: protocol.ProtocolPackageSchemaVersion}
+	for _, source := range []struct {
+		name   string
+		target any
+	}{{"spec", &document.Spec}, {"mapping", &document.Mapping}} {
+		raw, err := os.ReadFile(filepath.Join("..", "protocol", "testdata", "sessions", "session-alpha", source.name+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sonic.ConfigStd.Unmarshal(raw, source.target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	raw, err := protocol.EncodeValue(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(command string) CLIResult {
+		t.Helper()
+		result := s.runCLIWithOptions(t.Context(), tctx, command, true)
+		if !result.OK {
+			t.Fatalf("%s: %s %s", command, result.Summary, mustCLIData(t, result))
+		}
+		return result
+	}
+	run("elysia protocol schema --section package --type ProtocolPackage")
+	run("elysia protocol schema --section spec --type ProtocolSpec")
+	run("elysia protocol schema --section mapping --type ProtocolMapping")
+	run("elysia protocol draft '" + raw.JSONString() + "'")
+	run("elysia protocol preview --mode session --sample-id " + document.Mapping.SessionSamples[0].ID)
+	run("elysia protocol save")
+	service, err := s.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft, err := service.ReadDraft(t.Context(), document.Spec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, issues := service.Validate(draft.Definition.Bytes())
+	if protocol.IssuesError(issues) != nil {
+		t.Fatal(issues)
+	}
+	run("elysia protocol activate --id " + document.Spec.ID + " --hash " + compiled.Hash())
+	c, response := adminProtocolContext("GET", "/api/admin/protocols/enabled", "")
+	s.adminEnabledProtocols(contextForTest(c), c)
+	flushTestResponse(c)
+	var envelope struct {
+		Data struct {
+			Items []enabledProtocol `json:"items"`
+		} `json:"data"`
+	}
+	if err := sonic.ConfigStd.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range envelope.Data.Items {
+		if item.ID == document.Spec.ID {
+			if item.Name != document.Spec.Name || item.Revision != compiled.Hash() || !item.CanGenerate || !item.Capabilities[protocol.TextCapability] {
+				t.Fatal("enabled package lost its authored catalog metadata", item)
+			}
+			return
+		}
+	}
+	t.Fatal("enabled package missing from catalog")
 }
 
 func TestAgentProtocolV2SimulatedAuthorRepairAndEnable(t *testing.T) {

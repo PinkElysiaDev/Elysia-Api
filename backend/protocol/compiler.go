@@ -162,7 +162,7 @@ type Compiled struct {
 	packagePlan        *compiledPackagePlan
 }
 
-// Compile strictly parses one v2 definition and compiles every direction.
+// Compile strictly parses one authored document and compiles every direction.
 // Successful compilation alone does not authorize activation; verification is
 // a separate service that binds evidence to Hash and CompilerVersion.
 func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
@@ -175,6 +175,15 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 	}
 	if err := checkValueLimits(value, compiler.limits); err != nil {
 		return nil, definitionIssues(Identity{}, "/", err)
+	}
+	version, err := readValuePointer(value, []string{"schemaVersion"})
+	var schemaVersion int
+	if err == nil && version.Decode(&schemaVersion) == nil && schemaVersion == ProtocolPackageSchemaVersion {
+		var document ProtocolPackage
+		if err := decodeContract(raw, &document); err != nil {
+			return nil, definitionIssues(Identity{}, "/", err)
+		}
+		return compiler.compilePackage(document)
 	}
 	var definition Definition
 	if err := decodeContract(raw, &definition); err != nil {

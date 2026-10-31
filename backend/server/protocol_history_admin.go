@@ -98,9 +98,21 @@ func (s *Server) adminRestoreProtocolHistory(ctx context.Context, c *app.Request
 		respondProtocolError(ctx, c, err)
 		return
 	}
-	fields["id"] = protocol.StringValue(strings.TrimSpace(input.ID))
+	identity, identityPath, err := protocol.ProtocolIdentityFields(fields)
+	if err != nil {
+		respondProtocolError(ctx, c, err)
+		return
+	}
+	identity["id"] = protocol.StringValue(strings.TrimSpace(input.ID))
 	if strings.TrimSpace(input.Name) != "" {
-		fields["name"] = protocol.StringValue(strings.TrimSpace(input.Name))
+		identity["name"] = protocol.StringValue(strings.TrimSpace(input.Name))
+	}
+	if identityPath == "/spec" {
+		fields["spec"], err = protocol.EncodeValue(identity)
+		if err != nil {
+			respondProtocolError(ctx, c, err)
+			return
+		}
 	}
 	definition, err := protocol.EncodeValue(fields)
 	if err != nil {

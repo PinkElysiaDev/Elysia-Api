@@ -168,7 +168,12 @@ export function bucketedTimeISO(atMs: number, bucketMs: number): string {
 
 /** 把任意数据序列化为 JSON 文件并触发浏览器下载。 */
 export function downloadJSON(filename: string, data: unknown): void {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  downloadJSONSource(filename, JSON.stringify(data, null, 2))
+}
+
+/** Download authored JSON without changing large numbers or source spelling. */
+export function downloadJSONSource(filename: string, source: string): void {
+  const blob = new Blob([source], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

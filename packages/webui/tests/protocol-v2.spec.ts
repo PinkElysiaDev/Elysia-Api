@@ -73,6 +73,84 @@ test('raw protocol edits preserve presence, numeric spelling and ordered extensi
   for (const invalid of ['{"x":1,"x":2}', '{"x":}', '[1,]', '{"x":01}', '{}{}', '['.repeat(66) + ']'.repeat(66)]) expect(() => new ProtocolDocument(invalid)).toThrow()
 })
 
+test('package sources share one save and evidence, preserve exact JSON, and locate diagnostics', async ({ page }) => {
+  const id = 'package-browser'
+  const draftHash = 'd'.repeat(64)
+  const revisionHash = 'a'.repeat(64)
+  const compilerVersion = 'package-browser-compiler'
+  const spec = '{"id":"package-browser","name":"Package browser","version":"1","family":"synthetic","wireVersion":"1","documents":{},"operations":{}}'
+  const mapping = '{"coreVersion":2,"dslVersion":1,"native":{"preserve":true},"capabilities":{},"directions":{},"operations":{},"samples":[],"expressions":{"exact":{"op":"literal","value":900719925474099312345}}}'
+  let saved = ''
+  let saves = 0
+  let activeHash = ''
+  const draftJSON = () => `{"protocolId":"${id}","hash":"${draftHash}","definition":${saved},"updatedAt":"2026-10-31T00:00:00Z"}`
+  await page.addInitScript(() => localStorage.setItem('elysia-webui.panel-token', 'test-only'))
+  await page.route('**/api/admin/**', async (route) => {
+    const path = new URL(route.request().url()).pathname
+    let data: unknown = { items: [], seq: 1 }
+    if (path.endsWith('/protocols/schema')) data = {
+      compilerVersion, packageVersion: 3, directions: [], capabilities: [], mappingOperations: [],
+      modules: [], events: [], transports: [], engineFeatures: [],
+    }
+    if (path.endsWith('/protocols')) {
+      await route.fulfill({ contentType: 'application/json', body: `{"ok":true,"data":{"drafts":[${saved ? draftJSON() : ''}],"active":${JSON.stringify(activeHash ? [{ protocolId: id, revisionHash: activeHash }] : [])},"loaded":{},"presets":[]}}` })
+      return
+    }
+    if (path.endsWith(`/${id}/draft`) && route.request().method() === 'PUT') {
+      saves++
+      saved = route.request().postData()!
+      await route.fulfill({ contentType: 'application/json', body: `{"ok":true,"data":{"draft":${draftJSON()},"issues":[]}}` })
+      return
+    }
+    if (path.endsWith(`/${id}/verify`)) data = { report: { passed: true, definitionHash: revisionHash, compilerVersion, issues: [], checks: [], covered: [] } }
+    if (path.endsWith(`/${id}/activate`)) {
+      expect(route.request().postDataJSON()).toEqual({ revisionHash, expectedActive: '' })
+      activeHash = revisionHash
+      data = { protocolId: id, revisionHash }
+    }
+    if (path.endsWith('/protocols/validate')) data = {
+      valid: false, issues: [{ code: 'invalid_definition', severity: 'error', path: '/mapping/expressions/exact/value', reason: 'Synthetic editor diagnostic' }],
+    }
+    await route.fulfill({ json: { ok: true, data } })
+  })
+  await page.goto('/#/protocols')
+  await page.locator('section').getByRole('button', { name: '新建协议', exact: true }).click()
+  await page.getByRole('tab', { name: '外部协议 spec.json', exact: true }).click()
+  await page.getByLabel('导入 spec.json', { exact: true }).setInputFiles({ name: 'spec.json', mimeType: 'application/json', buffer: Buffer.from(spec) })
+  await expect(page.getByRole('textbox', { name: '外部协议 spec.json JSON', exact: true })).toHaveValue(spec)
+  await page.getByRole('tab', { name: '转换说明 mapping.json', exact: true }).click()
+  await page.getByLabel('导入 mapping.json', { exact: true }).setInputFiles({ name: 'mapping.json', mimeType: 'application/json', buffer: Buffer.from(mapping) })
+  const mappingEditor = page.getByRole('textbox', { name: '转换说明 mapping.json JSON', exact: true })
+  await expect(mappingEditor).toHaveValue(mapping)
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出 mapping.json', exact: true }).click()
+  const download = await downloadPromise
+  expect(readFileSync((await download.path())!, 'utf8')).toBe(mapping)
+  await mappingEditor.fill('{"unfinished":')
+  await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeDisabled()
+  await page.getByRole('tab', { name: '外部协议 spec.json', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: '外部协议 spec.json JSON', exact: true })).toHaveValue(spec)
+  await page.getByRole('tab', { name: '转换说明 mapping.json', exact: true }).click()
+  await expect(mappingEditor).toHaveValue('{"unfinished":')
+  await mappingEditor.fill(mapping)
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await expect(page.getByRole('button', { name: '离线验证', exact: true })).toBeEnabled()
+  expect(saves).toBe(1)
+  const document = new ProtocolDocument(saved)
+  expect(document.read('/spec')).toBe(spec)
+  expect(document.read('/mapping')).toBe(mapping)
+  await page.getByRole('button', { name: '离线验证', exact: true }).click()
+  await expect(page.getByRole('button', { name: '启用版本', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: '启用版本', exact: true }).click()
+  await expect(page.getByText(`启用版本 ${revisionHash.slice(0, 12)}`, { exact: true })).toBeVisible()
+  await mappingEditor.fill(mapping.replace('900719925474099312345', '900719925474099312346'))
+  await expect(page.getByRole('button', { name: '启用版本', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: '检查定义', exact: true }).click()
+  await page.getByLabel('协议诊断').getByRole('button').click()
+  await expect(page.getByRole('tab', { name: '转换说明 mapping.json', exact: true })).toHaveAttribute('aria-selected', 'true')
+  expect(await mappingEditor.evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd))).toBe('900719925474099312346')
+})
+
 test('browser creates, verifies, previews, activates and rolls back through the real protocol service', async ({ page, request }) => {
   test.skip(!process.env.PROTOCOL_E2E_URL, 'Requires an isolated local backend and ELYSIA_DEV_PROXY')
   const token = process.env.PROTOCOL_E2E_TOKEN ?? 'local-protocol-e2e'

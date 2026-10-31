@@ -17,7 +17,7 @@ func protocolIDForPlatform(platform string) (string, error) {
 }
 
 func makeProtocolBinding(key storage.BindingKey, compiled *protocol.Compiled) storage.ProtocolBinding {
-	capabilities := compiled.Definition().Capabilities
+	capabilities := compiled.DeclaredCapabilities()
 	transports := []protocol.Transport{}
 	hasTransport := map[protocol.Transport]bool{}
 	for _, operation := range compiled.Operations() {

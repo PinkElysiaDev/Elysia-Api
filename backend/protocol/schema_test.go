@@ -45,6 +45,7 @@ func TestSchemaCatalogRootsAndStrictDefinition(t *testing.T) {
 	catalog := DescribeSchema()
 	for name, schema := range map[string]map[string]any{
 		"definition": catalog.Definition, "binding": catalog.Binding,
+		"package": catalog.Package, "spec": catalog.Spec, "mapping": catalog.Mapping,
 		"conversion": catalog.Conversion["policy"].(map[string]any),
 	} {
 		t.Run(name, func(t *testing.T) { resolveCatalogSchema(t, schema) })
@@ -121,11 +122,17 @@ func TestSchemaCatalogFreshResults(t *testing.T) {
 	first.Definition["$defs"].(map[string]any)["Definition"].(map[string]any)["additionalProperties"] = true
 	first.Semantic["$defs"].(map[string]any)["Request"] = nil
 	first.Binding["$defs"].(map[string]any)["Binding"] = nil
+	first.Package["$defs"].(map[string]any)["ProtocolPackage"] = nil
+	first.Spec["$defs"].(map[string]any)["ProtocolSpec"] = nil
+	first.Mapping["$defs"].(map[string]any)["ProtocolMapping"] = nil
 	first.Conversion["policy"].(map[string]any)["$defs"].(map[string]any)["ConversionPolicy"] = nil
 	second := DescribeSchema()
 	if second.Definition["$defs"].(map[string]any)["Definition"].(map[string]any)["additionalProperties"] != false ||
 		second.Semantic["$defs"].(map[string]any)["Request"] == nil ||
 		second.Binding["$defs"].(map[string]any)["Binding"] == nil ||
+		second.Package["$defs"].(map[string]any)["ProtocolPackage"] == nil ||
+		second.Spec["$defs"].(map[string]any)["ProtocolSpec"] == nil ||
+		second.Mapping["$defs"].(map[string]any)["ProtocolMapping"] == nil ||
 		second.Conversion["policy"].(map[string]any)["$defs"].(map[string]any)["ConversionPolicy"] == nil {
 		t.Fatal("catalog mutation leaked into another request")
 	}
@@ -203,7 +210,7 @@ func describeUncachedSchema() SchemaCatalog {
 	}
 	conversionSchema := reflectUncachedSchema(reflect.TypeFor[ConversionPolicy]())
 	actionSchemas, actionNames := conversionActionSchemas()
-	return SchemaCatalog{Conversion: map[string]any{"actionSchemas": actionSchemas, "policy": conversionSchema, "phases": conversionPhases(), "actions": actionNames}, SchemaVersion: DefinitionSchemaVersion, CompilerVersion: CompilerVersion, Directions: DirectionCatalog(), Transports: TransportCatalog(), OperationKinds: OperationKindCatalog(), Capabilities: CapabilityCatalog(), Events: EventCatalog(), Diagnostics: DiagnosticCatalog(), Operations: ExpressionCatalog(), Definition: root, Semantic: semantic, Binding: binding, Limits: DefaultLimits()}
+	return SchemaCatalog{Conversion: map[string]any{"actionSchemas": actionSchemas, "policy": conversionSchema, "phases": conversionPhases(), "actions": actionNames}, SchemaVersion: DefinitionSchemaVersion, PackageVersion: ProtocolPackageSchemaVersion, CompilerVersion: CompilerVersion, Directions: DirectionCatalog(), Transports: TransportCatalog(), OperationKinds: OperationKindCatalog(), Capabilities: CapabilityCatalog(), Events: EventCatalog(), Diagnostics: DiagnosticCatalog(), Operations: ExpressionCatalog(), Definition: root, Package: reflectUncachedSchema(reflect.TypeFor[ProtocolPackage]()), Spec: reflectUncachedSchema(reflect.TypeFor[ProtocolSpec]()), Mapping: reflectUncachedSchema(reflect.TypeFor[ProtocolMapping]()), Semantic: semantic, Binding: binding, Limits: DefaultLimits()}
 }
 
 func reflectUncachedSchema(kind reflect.Type) map[string]any {

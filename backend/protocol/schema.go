@@ -13,6 +13,7 @@ import (
 type SchemaCatalog struct {
 	Conversion      map[string]any  `json:"conversion"`
 	SchemaVersion   int             `json:"schemaVersion"`
+	PackageVersion  int             `json:"packageVersion"`
 	CompilerVersion string          `json:"compilerVersion"`
 	Directions      []Direction     `json:"directions"`
 	Transports      []Transport     `json:"transports"`
@@ -24,6 +25,9 @@ type SchemaCatalog struct {
 	Modules         []ModuleSpec    `json:"modules"`
 	Operations      []OperationInfo `json:"mappingOperations"`
 	Definition      map[string]any  `json:"definitionSchema"`
+	Package         map[string]any  `json:"packageSchema"`
+	Spec            map[string]any  `json:"specSchema"`
+	Mapping         map[string]any  `json:"mappingSchema"`
 	Semantic        map[string]any  `json:"semanticSchema"`
 	Binding         map[string]any  `json:"bindingSchema"`
 	Limits          Limits          `json:"limits"`
@@ -36,10 +40,13 @@ type ModuleSpec struct {
 }
 
 type schemaTemplates struct {
-	definition []byte
-	binding    []byte
-	conversion []byte
-	semantic   map[string][]byte
+	definition      []byte
+	packageDocument []byte
+	spec            []byte
+	mapping         []byte
+	binding         []byte
+	conversion      []byte
+	semantic        map[string][]byte
 }
 
 // Only fixed Go contracts are shared. Every caller decodes its own mutable maps.
@@ -82,6 +89,7 @@ func DescribeSchema() SchemaCatalog {
 			"phases": conversionPhases(), "actions": actionNames,
 		},
 		SchemaVersion:   DefinitionSchemaVersion,
+		PackageVersion:  ProtocolPackageSchemaVersion,
 		CompilerVersion: CompilerVersion,
 		Directions:      DirectionCatalog(),
 		Transports:      TransportCatalog(),
@@ -91,6 +99,9 @@ func DescribeSchema() SchemaCatalog {
 		Diagnostics:     DiagnosticCatalog(),
 		Operations:      ExpressionCatalog(),
 		Definition:      root,
+		Package:         decodeSchemaTemplate(templates.packageDocument),
+		Spec:            decodeSchemaTemplate(templates.spec),
+		Mapping:         decodeSchemaTemplate(templates.mapping),
 		Semantic:        semantic,
 		Binding:         binding,
 		Limits:          DefaultLimits(),
@@ -99,9 +110,12 @@ func DescribeSchema() SchemaCatalog {
 
 func buildSchemaTemplates() schemaTemplates {
 	templates := schemaTemplates{
-		definition: encodeSchemaTemplate(reflect.TypeFor[Definition]()),
-		binding:    encodeSchemaTemplate(reflect.TypeFor[Binding]()),
-		semantic:   make(map[string][]byte),
+		definition:      encodeSchemaTemplate(reflect.TypeFor[Definition]()),
+		packageDocument: encodeSchemaTemplate(reflect.TypeFor[ProtocolPackage]()),
+		spec:            encodeSchemaTemplate(reflect.TypeFor[ProtocolSpec]()),
+		mapping:         encodeSchemaTemplate(reflect.TypeFor[ProtocolMapping]()),
+		binding:         encodeSchemaTemplate(reflect.TypeFor[Binding]()),
+		semantic:        make(map[string][]byte),
 	}
 	for name, kind := range map[string]reflect.Type{
 		"request": reflect.TypeFor[Request](), "response": reflect.TypeFor[Response](),

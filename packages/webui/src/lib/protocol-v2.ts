@@ -3,8 +3,13 @@ import type { ConversionRegistry, ConversionSelection } from './conversion-polic
 import { ProtocolDocument } from './protocol-document'
 
 export interface ConversionIssue { code: string; severity: string; direction?: string; stage?: string; path: string; capability?: string; reason: string; suggestion: string; evidence?: string; ruleId?: string; policyHash?: string; policyRevision?: string; fidelity?: string; protocol?: { definitionId: string; revision: string; family: string; wireVersion: string } }
-export interface ProtocolSchema { conversion: ConversionRegistry; compilerVersion: string; transports: string[]; operationKinds: string[]; directions: string[]; capabilities: string[]; engineFeatures: string[]; modules: { name: string; directions: string[] }[]; events: string[]; definitionSchema: unknown; semanticSchema: unknown; mappingOperations: { name: string; description: string }[] }
+export interface ProtocolSchema { packageVersion: number; packageSchema: unknown; specSchema: unknown; mappingSchema: unknown; conversion: ConversionRegistry; compilerVersion: string; transports: string[]; operationKinds: string[]; directions: string[]; capabilities: string[]; engineFeatures: string[]; modules: { name: string; directions: string[] }[]; events: string[]; definitionSchema: unknown; semanticSchema: unknown; mappingOperations: { name: string; description: string }[] }
 export interface ProtocolDraft { protocolId: string; hash: string; definition: string; updatedAt: string }
+
+/** Locate authored identity fields without converting or normalizing either source. */
+export function protocolIdentityPrefix(document: ProtocolDocument): string {
+  return document.read('/schemaVersion') === '3' ? '/spec' : ''
+}
 export interface ProtocolRevision { protocolId: string; hash: string; definition: string; createdAt: string }
 export interface Activation { protocolId: string; revisionHash: string }
 export interface ProtocolHistoryItem { id: string; protocolId: string; hash: string; name: string; version: string; reason: 'preset_replaced' | 'custom_deleted' | 'identity_recovered' | 'preset_repaired' | 'preset_draft_replaced'; isDraft: boolean; createdAt: string; archivedAt: string; definition?: string; rawDefinition?: string; readError?: string }

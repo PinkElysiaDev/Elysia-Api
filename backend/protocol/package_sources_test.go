@@ -16,6 +16,10 @@ func TestCompileSourcesSharesPackageIdentityAndEvidence(t *testing.T) {
 	if err := IssuesError(issues); err != nil {
 		t.Fatal(err)
 	}
+	managed, managedIssues := compiler.Compile(fixtureValue(t, document).Bytes())
+	if err := IssuesError(managedIssues); err != nil || managed.Hash() != whole.Hash() {
+		t.Fatal("management compiler changed the package identity", err)
+	}
 	sources, issues := compiler.CompileSources(fixtureValue(t, document.Spec).Bytes(), fixtureValue(t, document.Mapping).Bytes())
 	if err := IssuesError(issues); err != nil {
 		t.Fatal(err)
