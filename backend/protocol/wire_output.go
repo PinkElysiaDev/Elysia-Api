@@ -21,16 +21,19 @@ func (c *Compiled) ValidateWireOutput(direction Direction, value Value) error {
 // budget. Declarative contracts observe cancellation; installed module contracts
 // retain their existing validation behavior.
 func (c *Compiled) ValidateWireOutputContext(ctx context.Context, direction Direction, value Value) error {
-	return c.validateWireContract(ctx, direction, value, nil, c.wireLimits(ctx, direction))
+	return c.validateSelectedWireContract(ctx, direction, value, nil, c.wireLimits(ctx, direction), c.selectFinalWireContract(direction))
 }
 
 func (c *Compiled) validateWireOutput(direction Direction, value Value, fields Object) error {
 	ctx := context.Background()
-	return c.validateWireContract(ctx, direction, value, fields, c.wireLimits(ctx, direction))
+	return c.validateSelectedWireContract(ctx, direction, value, fields, c.wireLimits(ctx, direction), c.selectFinalWireContract(direction))
 }
 
 func (c *Compiled) validateWireContract(ctx context.Context, direction Direction, value Value, fields Object, effectiveLimits Limits) error {
-	contract := c.wireContracts[direction]
+	return c.validateSelectedWireContract(ctx, direction, value, fields, effectiveLimits, c.wireContracts[direction])
+}
+
+func (c *Compiled) validateSelectedWireContract(ctx context.Context, direction Direction, value Value, fields Object, effectiveLimits Limits, contract compiledWireContract) error {
 	if contract.contextValidator != nil {
 		return c.runtimeError(direction, contract.contextValidator.validate(ctx, direction, value, effectiveLimits))
 	}

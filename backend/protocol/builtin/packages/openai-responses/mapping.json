@@ -13509,118 +13509,168 @@
     }
   },
   "decode-failure": {
-    "op": "if",
-    "when": {
-      "op": "present",
-      "source": {
-        "op": "read",
-        "from": "input",
-        "path": "/error"
-      }
+  "op": "if",
+  "when": {
+    "op": "present",
+    "source": {
+      "op": "read",
+      "from": "input",
+      "path": "/error"
+    }
+  },
+  "then": {
+    "op": "let",
+    "name": "wire-failure",
+    "source": {
+      "op": "read",
+      "from": "input",
+      "path": "/error"
     },
-    "then": {
-      "op": "let",
-      "name": "wire-failure",
-      "source": {
-        "op": "read",
-        "from": "input",
-        "path": "/error"
-      },
-      "body": {
-        "op": "if",
-        "when": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "type",
-              "source": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "wire-failure"
-              }
-            },
-            {
-              "op": "literal",
-              "value": "object"
+    "body": {
+      "op": "if",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "type",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "wire-failure"
             }
-          ]
-        },
-        "then": {
-          "op": "let",
-          "name": "error-type",
-          "source": {
+          },
+          {
+            "op": "literal",
+            "value": "object"
+          }
+        ]
+      },
+      "then": {
+        "op": "let",
+        "name": "error-type",
+        "source": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "/type",
+              "name": "wire-failure"
+            }
+          },
+          "then": {
             "op": "if",
             "when": {
-              "op": "exists",
-              "source": {
-                "op": "read",
-                "from": "binding",
-                "path": "/type",
-                "name": "wire-failure"
-              }
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/type",
+                    "name": "wire-failure"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "string"
+                }
+              ]
             },
             "then": {
+              "op": "read",
+              "from": "binding",
+              "path": "/type",
+              "name": "wire-failure"
+            },
+            "otherwise": {
               "op": "if",
               "when": {
                 "op": "equal",
                 "items": [
                   {
-                    "op": "type",
-                    "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/type",
-                      "name": "wire-failure"
-                    }
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/type",
+                    "name": "wire-failure"
                   },
                   {
                     "op": "literal",
-                    "value": "string"
+                    "value": null
                   }
                 ]
               },
               "then": {
-                "op": "read",
-                "from": "binding",
-                "path": "/type",
-                "name": "wire-failure"
+                "op": "reject",
+                "path": "/",
+                "reason": "expected string, got null",
+                "diagnostic": {
+                  "code": "upstream_contract_violation",
+                  "stage": "runtime"
+                }
               },
               "otherwise": {
-                "op": "if",
-                "when": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/type",
-                      "name": "wire-failure"
-                    },
-                    {
-                      "op": "literal",
-                      "value": null
-                    }
-                  ]
-                },
-                "then": {
-                  "op": "reject",
-                  "path": "/",
-                  "reason": "expected string, got null",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime"
-                  }
-                },
-                "otherwise": {
-                  "op": "reject",
-                  "path": "/",
-                  "reason": "error field requires a string",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime"
-                  }
+                "op": "reject",
+                "path": "/",
+                "reason": "error field requires a string",
+                "diagnostic": {
+                  "code": "upstream_contract_violation",
+                  "stage": "runtime"
                 }
+              }
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": ""
+          }
+        },
+        "body": {
+          "op": "let",
+          "name": "type-category",
+          "source": {
+            "op": "choose",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "error-type"
+            },
+            "cases": {
+              "invalid_request_error": {
+                "op": "literal",
+                "value": "invalid_request"
+              },
+              "rate_limit_error": {
+                "op": "literal",
+                "value": "rate_limit"
+              },
+              "insufficient_quota": {
+                "op": "literal",
+                "value": "rate_limit"
+              },
+              "service_unavailable_error": {
+                "op": "literal",
+                "value": "overloaded"
+              },
+              "api_error": {
+                "op": "literal",
+                "value": "upstream"
+              },
+              "upstream_error": {
+                "op": "literal",
+                "value": "upstream"
+              },
+              "server_error": {
+                "op": "literal",
+                "value": "server"
+              },
+              "content_filter": {
+                "op": "literal",
+                "value": "invalid_request"
               }
             },
             "otherwise": {
@@ -13630,125 +13680,130 @@
           },
           "body": {
             "op": "let",
-            "name": "type-category",
+            "name": "canonical-type",
             "source": {
               "op": "choose",
               "source": {
                 "op": "read",
                 "from": "binding",
                 "path": "",
-                "name": "error-type"
+                "name": "type-category"
               },
               "cases": {
-                "invalid_request_error": {
+                "invalid_request": {
                   "op": "literal",
-                  "value": "invalid_request"
+                  "value": "invalid_request_error"
                 },
-                "rate_limit_error": {
+                "authentication": {
                   "op": "literal",
-                  "value": "rate_limit"
+                  "value": "invalid_request_error"
                 },
-                "insufficient_quota": {
+                "permission": {
                   "op": "literal",
-                  "value": "rate_limit"
+                  "value": "invalid_request_error"
                 },
-                "service_unavailable_error": {
+                "model_not_found": {
                   "op": "literal",
-                  "value": "overloaded"
+                  "value": "invalid_request_error"
                 },
-                "api_error": {
+                "rate_limit": {
                   "op": "literal",
-                  "value": "upstream"
+                  "value": "rate_limit_error"
                 },
-                "upstream_error": {
+                "overloaded": {
                   "op": "literal",
-                  "value": "upstream"
+                  "value": "service_unavailable_error"
                 },
-                "server_error": {
+                "upstream": {
                   "op": "literal",
-                  "value": "server"
+                  "value": "api_error"
                 },
-                "content_filter": {
-                  "op": "literal",
-                  "value": "invalid_request"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": ""
-              }
-            },
-            "body": {
-              "op": "let",
-              "name": "canonical-type",
-              "source": {
-                "op": "choose",
-                "source": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "",
-                  "name": "type-category"
-                },
-                "cases": {
-                  "invalid_request": {
-                    "op": "literal",
-                    "value": "invalid_request_error"
-                  },
-                  "authentication": {
-                    "op": "literal",
-                    "value": "invalid_request_error"
-                  },
-                  "permission": {
-                    "op": "literal",
-                    "value": "invalid_request_error"
-                  },
-                  "model_not_found": {
-                    "op": "literal",
-                    "value": "invalid_request_error"
-                  },
-                  "rate_limit": {
-                    "op": "literal",
-                    "value": "rate_limit_error"
-                  },
-                  "overloaded": {
-                    "op": "literal",
-                    "value": "service_unavailable_error"
-                  },
-                  "upstream": {
-                    "op": "literal",
-                    "value": "api_error"
-                  },
-                  "server": {
-                    "op": "literal",
-                    "value": "api_error"
-                  }
-                },
-                "otherwise": {
+                "server": {
                   "op": "literal",
                   "value": "api_error"
                 }
               },
+              "otherwise": {
+                "op": "literal",
+                "value": "api_error"
+              }
+            },
+            "body": {
+              "op": "let",
+              "name": "provider-wrapper",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "error-type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "new_api_error"
+                  }
+                ]
+              },
               "body": {
                 "op": "let",
-                "name": "provider-wrapper",
+                "name": "error-code",
                 "source": {
-                  "op": "equal",
-                  "items": [
-                    {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
                       "op": "read",
                       "from": "binding",
-                      "path": "",
-                      "name": "error-type"
-                    },
-                    {
-                      "op": "literal",
-                      "value": "new_api_error"
+                      "path": "/code",
+                      "name": "wire-failure"
                     }
-                  ]
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "type",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/code",
+                            "name": "wire-failure"
+                          }
+                        },
+                        {
+                          "op": "literal",
+                          "value": "string"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/code",
+                      "name": "wire-failure"
+                    },
+                    "otherwise": {
+                      "op": "reject",
+                      "path": "/error/code",
+                      "reason": "provider error code requires a string or null",
+                      "diagnostic": {
+                        "code": "upstream_contract_violation",
+                        "stage": "decode.error"
+                      }
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
                 },
                 "body": {
                   "op": "let",
-                  "name": "error-code",
+                  "name": "checked-param",
                   "source": {
                     "op": "if",
                     "when": {
@@ -13756,7 +13811,7 @@
                       "source": {
                         "op": "read",
                         "from": "binding",
-                        "path": "/code",
+                        "path": "/param",
                         "name": "wire-failure"
                       }
                     },
@@ -13770,7 +13825,7 @@
                             "source": {
                               "op": "read",
                               "from": "binding",
-                              "path": "/code",
+                              "path": "/param",
                               "name": "wire-failure"
                             }
                           },
@@ -13783,176 +13838,126 @@
                       "then": {
                         "op": "read",
                         "from": "binding",
-                        "path": "/code",
+                        "path": "/param",
                         "name": "wire-failure"
                       },
                       "otherwise": {
                         "op": "reject",
-                        "path": "/error/code",
-                        "reason": "provider error code requires a string or null",
+                        "path": "/error/param",
+                        "reason": "provider error param requires a string or null",
                         "diagnostic": {
-                          "code": "upstream_contract_violation",
-                          "stage": "decode.error"
+                          "code": "unsupported_capability",
+                          "stage": "wire",
+                          "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
                         }
                       }
                     },
                     "otherwise": {
-                      "op": "literal",
-                      "value": ""
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/param",
+                      "name": "wire-failure"
                     }
                   },
                   "body": {
                     "op": "let",
-                    "name": "checked-param",
+                    "name": "error-category",
                     "source": {
-                      "op": "if",
-                      "when": {
-                        "op": "present",
-                        "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/param",
-                          "name": "wire-failure"
-                        }
-                      },
-                      "then": {
-                        "op": "if",
-                        "when": {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "type",
-                              "source": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "/param",
-                                "name": "wire-failure"
-                              }
-                            },
-                            {
-                              "op": "literal",
-                              "value": "string"
-                            }
-                          ]
-                        },
-                        "then": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/param",
-                          "name": "wire-failure"
-                        },
-                        "otherwise": {
-                          "op": "reject",
-                          "path": "/error/param",
-                          "reason": "provider error param requires a string or null",
-                          "diagnostic": {
-                            "code": "unsupported_capability",
-                            "stage": "wire",
-                            "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
-                          }
-                        }
-                      },
-                      "otherwise": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/param",
-                        "name": "wire-failure"
-                      }
+                      "op": "ref",
+                      "ref": "decode-failure-category"
                     },
                     "body": {
-                      "op": "let",
-                      "name": "error-category",
-                      "source": {
-                        "op": "ref",
-                        "ref": "decode-failure-category"
-                      },
-                      "body": {
-                        "op": "ref",
-                        "ref": "decode-failure-fields"
-                      }
+                      "op": "ref",
+                      "ref": "decode-failure-fields"
                     }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "otherwise": {
-          "op": "object",
-          "fields": {
-            "message": {
-              "op": "if",
-              "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "type",
-                    "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "wire-failure"
-                    }
-                  },
-                  {
-                    "op": "literal",
-                    "value": "string"
-                  }
-                ]
-              },
-              "then": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "wire-failure"
-              },
-              "otherwise": {
-                "op": "if",
-                "when": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "wire-failure"
-                    },
-                    {
-                      "op": "literal",
-                      "value": null
-                    }
-                  ]
-                },
-                "then": {
-                  "op": "reject",
-                  "path": "/",
-                  "reason": "expected string, got null",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime"
-                  }
-                },
-                "otherwise": {
-                  "op": "reject",
-                  "path": "/",
-                  "reason": "error field requires a string",
-                  "diagnostic": {
-                    "code": "upstream_contract_violation",
-                    "stage": "runtime"
                   }
                 }
               }
             }
           }
         }
+      },
+      "otherwise": {
+        "op": "object",
+        "fields": {
+          "message": {
+            "op": "join",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "type",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "wire-failure"
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": "string"
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "wire-failure"
+                },
+                "otherwise": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "wire-failure"
+                      },
+                      {
+                        "op": "literal",
+                        "value": null
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "reject",
+                    "path": "/",
+                    "reason": "expected string, got null",
+                    "diagnostic": {
+                      "code": "upstream_contract_violation",
+                      "stage": "runtime"
+                    }
+                  },
+                  "otherwise": {
+                    "op": "reject",
+                    "path": "/",
+                    "reason": "error field requires a string",
+                    "diagnostic": {
+                      "code": "upstream_contract_violation",
+                      "stage": "runtime"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
       }
-    },
-    "otherwise": {
-      "op": "read",
-      "from": "input",
-      "path": "/error"
     }
   },
+  "otherwise": {
+    "op": "read",
+    "from": "input",
+    "path": "/error"
+  }
+},
   "decode-error-envelope": {
     "op": "let",
     "name": "model-usage",
@@ -15167,8 +15172,655 @@
       "op": "ref",
       "ref": "failure-http-status"
     }
+  },
+"model-control-effective-levels": {
+    "op": "if",
+    "when": {
+      "op": "all",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/mode"
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/mode"
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": ""
+              }
+            },
+            {
+              "op": "literal",
+              "value": "disabled"
+            }
+          ]
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/disabledLevels"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/capability/disabledLevels"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": []
+                }
+              },
+              {
+                "op": "literal",
+                "value": []
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "then": {
+      "op": "if",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "context",
+          "path": "/capability/disabledLevels"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "context",
+        "path": "/capability/disabledLevels"
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": []
+      }
+    },
+    "otherwise": {
+      "op": "if",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/mode"
+              }
+            },
+            "then": {
+              "op": "read",
+              "from": "input",
+              "path": "/reasoning/mode"
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": ""
+            }
+          },
+          {
+            "op": "literal",
+            "value": "between_tools"
+          }
+        ]
+      },
+      "then": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "context",
+            "path": "/capability/betweenToolsLevels"
+          }
+        },
+        "then": {
+          "op": "read",
+          "from": "context",
+          "path": "/capability/betweenToolsLevels"
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": []
+        }
+      },
+      "otherwise": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "context",
+            "path": "/capability/levels"
+          }
+        },
+        "then": {
+          "op": "read",
+          "from": "context",
+          "path": "/capability/levels"
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": []
+        }
+      }
+    }
+  },
+  "model-control-closest-effort": {
+    "op": "let",
+    "name": "preferences",
+    "source": {
+      "op": "choose",
+      "source": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/reasoning/effort"
+          }
+        },
+        "then": {
+          "op": "read",
+          "from": "input",
+          "path": "/reasoning/effort"
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": ""
+        }
+      },
+      "cases": {
+        "minimal": {
+          "op": "literal",
+          "value": [
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        "low": {
+          "op": "literal",
+          "value": [
+            "low",
+            "minimal",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        "medium": {
+          "op": "literal",
+          "value": [
+            "medium",
+            "low",
+            "minimal",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        "high": {
+          "op": "literal",
+          "value": [
+            "high",
+            "medium",
+            "low",
+            "minimal",
+            "xhigh",
+            "max"
+          ]
+        },
+        "xhigh": {
+          "op": "literal",
+          "value": [
+            "xhigh",
+            "high",
+            "medium",
+            "low",
+            "minimal",
+            "max"
+          ]
+        },
+        "max": {
+          "op": "literal",
+          "value": [
+            "max",
+            "xhigh",
+            "high",
+            "medium",
+            "low",
+            "minimal"
+          ]
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": [
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
+    },
+    "body": {
+      "op": "let",
+      "name": "supported",
+      "source": {
+        "op": "filter",
+        "source": {
+          "op": "read",
+          "from": "binding",
+          "path": "",
+          "name": "preferences"
+        },
+        "when": {
+          "op": "let",
+          "name": "sought",
+          "source": {
+            "op": "read",
+            "from": "item",
+            "path": ""
+          },
+          "body": {
+            "op": "let",
+            "name": "matches",
+            "source": {
+              "op": "filter",
+              "source": {
+                "op": "ref",
+                "ref": "model-control-effective-levels"
+              },
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "item",
+                    "path": ""
+                  },
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "sought"
+                  }
+                ]
+              }
+            },
+            "body": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "/0",
+                "name": "matches"
+              }
+            }
+          }
+        }
+      },
+      "body": {
+        "op": "if",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "path": "/0",
+            "name": "supported"
+          }
+        },
+        "then": {
+          "op": "read",
+          "from": "binding",
+          "path": "/0",
+          "name": "supported"
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": ""
+        }
+      }
+    }
+  },
+"model-normalize-canonical": {
+    "op": "if",
+    "when": {
+      "op": "present",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/reasoning"
+      }
+    },
+    "then": {
+      "op": "any",
+      "items": [
+        {
+          "op": "not",
+          "source": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/reasoning/historyRetention"
+            }
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/mode"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": ""
+                }
+              },
+              {
+                "op": "literal",
+                "value": ""
+              }
+            ]
+          }
+        },
+        {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/reasoning/effort"
+          }
+        },
+        {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/reasoning/budget"
+          }
+        },
+        {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/reasoning/summary"
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/effortScope"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/effortScope"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": ""
+                }
+              },
+              {
+                "op": "literal",
+                "value": ""
+              }
+            ]
+          }
+        },
+        {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/reasoning/interleaved"
+            }
+          },
+          "then": {
+            "op": "read",
+            "from": "input",
+            "path": "/reasoning/interleaved"
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      ]
+    },
+    "otherwise": {
+      "op": "literal",
+      "value": false
+    }
+  },
+  "model-normalize-generated": {
+    "op": "object",
+    "fields": {
+      "historyRetention": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/reasoning"
+          }
+        },
+        "then": {
+          "op": "read",
+          "from": "input",
+          "path": "/reasoning/historyRetention"
+        },
+        "otherwise": {
+          "op": "omit"
+        }
+      },
+      "effort": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/parameters/responses_reasoning"
+          }
+        },
+        "then": {
+          "op": "read",
+          "from": "input",
+          "path": "/parameters/responses_reasoning/effort"
+        },
+        "otherwise": {
+          "op": "omit"
+        }
+      },
+      "summary": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/parameters/responses_reasoning"
+          }
+        },
+        "then": {
+          "op": "read",
+          "from": "input",
+          "path": "/parameters/responses_reasoning/summary"
+        },
+        "otherwise": {
+          "op": "omit"
+        }
+      },
+      "effortScope": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/responses_reasoning"
+              }
+            },
+            "then": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/responses_reasoning/effort"
+            },
+            "otherwise": {
+              "op": "omit"
+            }
+          }
+        },
+        "then": {
+          "op": "literal",
+          "value": "reasoning"
+        },
+        "otherwise": {
+          "op": "omit"
+        }
+      },
+      "mode": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/responses_reasoning"
+              }
+            },
+            "then": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/responses_reasoning/effort"
+            },
+            "otherwise": {
+              "op": "omit"
+            }
+          }
+        },
+        "then": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/responses_reasoning"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/responses_reasoning/effort"
+                },
+                "otherwise": {
+                  "op": "omit"
+                }
+              },
+              {
+                "op": "literal",
+                "value": "none"
+              }
+            ]
+          },
+          "then": {
+            "op": "literal",
+            "value": "disabled"
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": "enabled"
+          }
+        },
+        "otherwise": {
+          "op": "omit"
+        }
+      }
+    }
   }
-},
+  },
   "directions": {
     "decode_request": {
       "document": "request",
@@ -20436,9 +21088,3155 @@
             ]
           }
         }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "read",
+                "from": "context",
+                "path": "/isSameWire"
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/reasoning_effort"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "null"
+                }
+              ]
+            }
+          ]
+        },
+        "set": {
+          "/parameters/reasoning_effort": {
+            "op": "omit"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "read",
+                "from": "context",
+                "path": "/isSameWire"
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/responses_reasoning"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "null"
+                }
+              ]
+            }
+          ]
+        },
+        "set": {
+          "/parameters/responses_reasoning": {
+            "op": "omit"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "read",
+                "from": "context",
+                "path": "/isSameWire"
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/anthropic_thinking"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "null"
+                }
+              ]
+            }
+          ]
+        },
+        "set": {
+          "/parameters/anthropic_thinking": {
+            "op": "omit"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "read",
+                "from": "context",
+                "path": "/isSameWire"
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/anthropic_output_config"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "null"
+                }
+              ]
+            }
+          ]
+        },
+        "set": {
+          "/parameters/anthropic_output_config": {
+            "op": "omit"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "read",
+                "from": "context",
+                "path": "/isSameWire"
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/gemini_thinking"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "null"
+                }
+              ]
+            }
+          ]
+        },
+        "set": {
+          "/parameters/gemini_thinking": {
+            "op": "omit"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "not",
+          "source": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/reasoning"
+            }
+          }
+        },
+        "stop": true
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "read",
+                "from": "context",
+                "path": "/isSameWire"
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/effort"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "null"
+                }
+              ]
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "effort"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "effort": {
+                    "op": "omit"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "read",
+                "from": "context",
+                "path": "/isSameWire"
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/budget"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "null"
+                }
+              ]
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "budget"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "budget": {
+                    "op": "omit"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "read",
+                "from": "context",
+                "path": "/isSameWire"
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/summary"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "null"
+                }
+              ]
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "summary"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "summary": {
+                    "op": "omit"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "read",
+              "from": "context",
+              "path": "/isSameWire"
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/kind"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/kind"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": "unknown"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "unknown"
+                }
+              ]
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "read",
+                "from": "context",
+                "path": "/isAgent"
+              }
+            }
+          ]
+        },
+        "stop": true
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/mode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "disabled"
+                }
+              ]
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/kind"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/kind"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": "unknown"
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "none"
+                  }
+                ]
+              }
+            },
+            {
+              "op": "any",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "context",
+                          "path": "/capability/kind"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/kind"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": "unknown"
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": "unknown"
+                    }
+                  ]
+                },
+                {
+                  "op": "not",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/disable"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/disable"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": false
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "reject",
+          "path": "/reasoning/mode",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "model "
+              },
+              {
+                "op": "quote_string",
+                "source": {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/model"
+                }
+              },
+              {
+                "op": "literal",
+                "value": " cannot disable thinking with the confirmed target capabilities"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/kind"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/kind"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": "unknown"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "none"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/mode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "disabled"
+                }
+              ]
+            },
+            {
+              "op": "any",
+              "items": [
+                {
+                  "op": "not",
+                  "source": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/effort"
+                    }
+                  }
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/reasoning/effort"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/reasoning/effort"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": ""
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": "none"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "mode",
+                  "effort",
+                  "effortScope",
+                  "budget",
+                  "summary"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "mode": {
+                    "op": "omit"
+                  },
+                  "effort": {
+                    "op": "omit"
+                  },
+                  "effortScope": {
+                    "op": "omit"
+                  },
+                  "budget": {
+                    "op": "omit"
+                  },
+                  "summary": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/reasoning/summary"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/reasoning/summary"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": ""
+                          }
+                        },
+                        {
+                          "op": "literal",
+                          "value": "omitted"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "omit"
+                    },
+                    "otherwise": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/summary"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "any",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "context",
+                          "path": "/capability/kind"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/kind"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": "unknown"
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": "unknown"
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "context",
+                          "path": "/capability/kind"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/kind"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": "unknown"
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": "none"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "any",
+              "items": [
+                {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "if",
+                        "when": {
+                          "op": "present",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/reasoning/mode"
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/reasoning/mode"
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": ""
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": ""
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/effort"
+                  }
+                },
+                {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/budget"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "mode",
+                  "effort",
+                  "effortScope",
+                  "budget",
+                  "interleaved"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "mode": {
+                    "op": "omit"
+                  },
+                  "effort": {
+                    "op": "omit"
+                  },
+                  "effortScope": {
+                    "op": "omit"
+                  },
+                  "budget": {
+                    "op": "omit"
+                  },
+                  "interleaved": {
+                    "op": "omit"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "diagnostic": {
+          "kind": "degrade",
+          "path": "/reasoning",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "model "
+              },
+              {
+                "op": "quote_string",
+                "source": {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/model"
+                }
+              },
+              {
+                "op": "literal",
+                "value": " has "
+              },
+              {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/kind"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/capability/kind"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": "unknown"
+                }
+              },
+              {
+                "op": "literal",
+                "value": " thinking capability; controls were omitted"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/effort"
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/reasoning/effortScope"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/effortScope"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "reasoning"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "effortScope"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "effortScope": {
+                    "op": "literal",
+                    "value": "reasoning"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "diagnostic": {
+          "kind": "degrade",
+          "path": "/reasoning/effort",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "effort scope changes from "
+              },
+              {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/effortScope"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/effortScope"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": ""
+                }
+              },
+              {
+                "op": "literal",
+                "value": " to reasoning"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/interleaved"
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/interleaved"
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "literal",
+                "value": false
+              }
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "interleaved"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "interleaved": {
+                    "op": "omit"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "diagnostic": {
+          "kind": "degrade",
+          "path": "/reasoning/interleaved",
+          "reason": {
+            "op": "literal",
+            "value": "target does not support the requested manual interleaved thinking"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/mode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "between_tools"
+                }
+              ]
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "literal",
+                "value": false
+              }
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "mode"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "mode": {
+                    "op": "literal",
+                    "value": "auto"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "diagnostic": {
+          "kind": "degrade",
+          "path": "/reasoning/mode",
+          "reason": {
+            "op": "literal",
+            "value": "target cannot limit thinking to between tool calls; using automatic thinking"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/budget"
+              }
+            },
+            {
+              "op": "integer",
+              "operation": "gt",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/budget"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/budget"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": 0
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/effort"
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "degrade",
+          "path": "/reasoning/effort",
+          "reason": {
+            "op": "literal",
+            "value": "target cannot preserve both effort and numeric budget; budget determines the effective effort"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/budget"
+              }
+            },
+            {
+              "op": "integer",
+              "operation": "gt",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/budget"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/budget"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": 0
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "effort"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "effort": {
+                    "op": "if",
+                    "when": {
+                      "op": "integer",
+                      "operation": "lte",
+                      "items": [
+                        {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/reasoning/budget"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/reasoning/budget"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": 0
+                          }
+                        },
+                        {
+                          "op": "literal",
+                          "value": 1024
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": "low"
+                    },
+                    "otherwise": {
+                      "op": "if",
+                      "when": {
+                        "op": "integer",
+                        "operation": "lte",
+                        "items": [
+                          {
+                            "op": "if",
+                            "when": {
+                              "op": "present",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/reasoning/budget"
+                              }
+                            },
+                            "then": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/reasoning/budget"
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": 0
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": 8192
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "literal",
+                        "value": "medium"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": "high"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "diagnostic": {
+          "kind": "degrade",
+          "path": "/reasoning/budget",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "budget "
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/budget"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/budget"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": 0
+                  }
+                }
+              },
+              {
+                "op": "literal",
+                "value": " approximated by effort "
+              },
+              {
+                "op": "if",
+                "when": {
+                  "op": "integer",
+                  "operation": "lte",
+                  "items": [
+                    {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/reasoning/budget"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/reasoning/budget"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": 1024
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "literal",
+                  "value": "low"
+                },
+                "otherwise": {
+                  "op": "if",
+                  "when": {
+                    "op": "integer",
+                    "operation": "lte",
+                    "items": [
+                      {
+                        "op": "if",
+                        "when": {
+                          "op": "present",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/reasoning/budget"
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/reasoning/budget"
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": 0
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": 8192
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": "medium"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": "high"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/budget"
+              }
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "budget"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "budget": {
+                    "op": "omit"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/mode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "disabled"
+                }
+              ]
+            },
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/effort"
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/reasoning/effort"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/effort"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "none"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "degrade",
+          "path": "/reasoning/effort",
+          "reason": {
+            "op": "literal",
+            "value": "target cannot preserve generation effort with disabled reasoning"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/mode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "disabled"
+                }
+              ]
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "effort"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "effort": {
+                    "op": "literal",
+                    "value": "none"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/mode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "auto"
+                }
+              ]
+            },
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/effort"
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "degrade",
+          "path": "/reasoning/mode",
+          "reason": {
+            "op": "literal",
+            "value": "target cannot separately preserve automatic thinking and generation effort; retaining effort"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/mode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "auto"
+                }
+              ]
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/effort"
+                }
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/defaultMode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/defaultMode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "disabled"
+                }
+              ]
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "effort"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "effort": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/defaultEffort"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/defaultEffort"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "diagnostic": {
+          "kind": "degrade",
+          "path": "/reasoning/mode",
+          "reason": {
+            "op": "literal",
+            "value": "target uses its default effort in place of automatic budget selection"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/effort"
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/reasoning/effort"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/effort"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "none"
+                  }
+                ]
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/reasoning/effort"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/effort"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  },
+                  {
+                    "op": "ref",
+                    "ref": "model-control-closest-effort"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "effort"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "effort": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "ref",
+                          "ref": "model-control-closest-effort"
+                        },
+                        {
+                          "op": "literal",
+                          "value": ""
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "omit"
+                    },
+                    "otherwise": {
+                      "op": "ref",
+                      "ref": "model-control-closest-effort"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "diagnostic": {
+          "kind": "degrade",
+          "path": "/reasoning/effort",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "effort "
+              },
+              {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/effort"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/effort"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": ""
+                }
+              },
+              {
+                "op": "literal",
+                "value": " adjusted to "
+              },
+              {
+                "op": "quote_string",
+                "source": {
+                  "op": "ref",
+                  "ref": "model-control-closest-effort"
+                }
+              },
+              {
+                "op": "literal",
+                "value": " for model "
+              },
+              {
+                "op": "read",
+                "from": "context",
+                "path": "/model"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/kind"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/kind"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": "unknown"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "level"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/mode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "enabled"
+                }
+              ]
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/effort"
+                }
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/defaultMode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/defaultMode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "disabled"
+                }
+              ]
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "effort"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "effort": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/defaultEffort"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/defaultEffort"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/kind"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/kind"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": "unknown"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "level"
+                }
+              ]
+            },
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/effort"
+              }
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "mode"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "mode": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/reasoning/effort"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/reasoning/effort"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": ""
+                          }
+                        },
+                        {
+                          "op": "literal",
+                          "value": "none"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": "disabled"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": "enabled"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/kind"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/kind"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": "unknown"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "level"
+                }
+              ]
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/effort"
+                }
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/mode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "auto"
+                }
+              ]
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "mode"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "mode": {
+                    "op": "omit"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "diagnostic": {
+          "kind": "degrade",
+          "path": "/reasoning/mode",
+          "reason": {
+            "op": "literal",
+            "value": "target uses its default effort in place of automatic budget selection"
+          }
+        }
+      },
+      {
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "effortScope"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "effortScope": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/reasoning/effort"
+                      }
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": "reasoning"
+                    },
+                    "otherwise": {
+                      "op": "omit"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "read",
+                "from": "context",
+                "path": "/isSameWire"
+              }
+            },
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/summary"
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/reasoning/summary"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/summary"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  },
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/reasoning/summary"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/reasoning/summary"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": ""
+                          }
+                        },
+                        {
+                          "op": "literal",
+                          "value": "omitted"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": ""
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": "auto"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "if",
+                        "when": {
+                          "op": "present",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/reasoning/summary"
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/reasoning/summary"
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": ""
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "auto"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "if",
+                        "when": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "if",
+                              "when": {
+                                "op": "present",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/reasoning/summary"
+                                }
+                              },
+                              "then": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/reasoning/summary"
+                              },
+                              "otherwise": {
+                                "op": "literal",
+                                "value": ""
+                              }
+                            },
+                            {
+                              "op": "literal",
+                              "value": "omitted"
+                            }
+                          ]
+                        },
+                        "then": {
+                          "op": "literal",
+                          "value": ""
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": "auto"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "summarized"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "degrade",
+          "path": "/reasoning/summary",
+          "reason": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "summary preference "
+              },
+              {
+                "op": "quote_string",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/summary"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/summary"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                }
+              },
+              {
+                "op": "literal",
+                "value": " mapped to "
+              },
+              {
+                "op": "quote_string",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "if",
+                        "when": {
+                          "op": "present",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/reasoning/summary"
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/reasoning/summary"
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": ""
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "omitted"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": ""
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": "auto"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "read",
+                "from": "context",
+                "path": "/isSameWire"
+              }
+            },
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/summary"
+              }
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning"
+                },
+                "keys": [
+                  "summary"
+                ],
+                "policy": "exclude"
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "summary": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "if",
+                          "when": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "if",
+                                "when": {
+                                  "op": "present",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/reasoning/summary"
+                                  }
+                                },
+                                "then": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/reasoning/summary"
+                                },
+                                "otherwise": {
+                                  "op": "literal",
+                                  "value": ""
+                                }
+                              },
+                              {
+                                "op": "literal",
+                                "value": "omitted"
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "literal",
+                            "value": ""
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": "auto"
+                          }
+                        },
+                        {
+                          "op": "literal",
+                          "value": ""
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "omit"
+                    },
+                    "otherwise": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "if",
+                            "when": {
+                              "op": "present",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/reasoning/summary"
+                              }
+                            },
+                            "then": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/reasoning/summary"
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": ""
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "omitted"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "literal",
+                        "value": ""
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": "auto"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/mode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/effort"
+                }
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/budget"
+                }
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/summary"
+                }
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/historyRetention"
+                }
+              }
+            }
+          ]
+        },
+        "set": {
+          "/reasoning": {
+            "op": "omit"
+          }
+        },
+        "stop": true
       }
     ],
     "checks": [
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/reasoning"
+            }
+          },
+          "then": {
+            "op": "all",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/interleaved"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/interleaved"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/interleavedThinking"
+                }
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/reasoning/interleaved",
+          "reason": {
+            "op": "literal",
+            "value": "target operation lacks the interleaved thinking beta"
+          },
+          "code": "invalid_input",
+          "stage": "stream",
+          "suggestion": "correct the upstream stream or declared /reasoning/interleaved rule",
+          "direction": "decode_event"
+        }
+      },
       {
         "when": {
           "op": "if",
@@ -20583,6 +24381,2204 @@
           "direction": "decode_event",
           "stage": "stream",
           "suggestion": "correct the upstream stream or declared /parameters/max_output_tokens rule"
+        }
+      },
+      {
+        "when": {
+          "op": "not",
+          "source": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/reasoning"
+            }
+          }
+        },
+        "stop": true
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/summary"
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "let",
+                "name": "sought",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/summary"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/summary"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                "body": {
+                  "op": "let",
+                  "name": "matches",
+                  "source": {
+                    "op": "filter",
+                    "source": {
+                      "op": "literal",
+                      "value": [
+                        "auto",
+                        "concise",
+                        "detailed"
+                      ]
+                    },
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "item",
+                          "path": ""
+                        },
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "sought"
+                        }
+                      ]
+                    }
+                  },
+                  "body": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/0",
+                      "name": "matches"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/reasoning/summary",
+          "reason": {
+            "op": "literal",
+            "value": "summary must be auto, concise or detailed"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /reasoning/summary rule"
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/kind"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/kind"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": "unknown"
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "unknown"
+                  }
+                ]
+              }
+            },
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/effort"
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/reasoning/effort"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/effort"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "none"
+                  }
+                ]
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "let",
+                "name": "sought",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/effort"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/effort"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                "body": {
+                  "op": "let",
+                  "name": "matches",
+                  "source": {
+                    "op": "filter",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "context",
+                          "path": "/capability/levels"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/levels"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": []
+                      }
+                    },
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "item",
+                          "path": ""
+                        },
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "sought"
+                        }
+                      ]
+                    }
+                  },
+                  "body": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/0",
+                      "name": "matches"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/reasoning/effort",
+          "reason": {
+            "op": "literal",
+            "value": "effort is invalid for the model"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /reasoning/effort rule"
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/kind"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/kind"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": "unknown"
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "unknown"
+                  }
+                ]
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/mode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "between_tools"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/betweenToolsLevels"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/betweenToolsLevels"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": []
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": []
+                }
+              ]
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/thinking/type",
+          "reason": {
+            "op": "literal",
+            "value": "model does not support between_tools thinking"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /thinking/type rule"
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/kind"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/kind"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": "unknown"
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "unknown"
+                  }
+                ]
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/mode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "disabled"
+                }
+              ]
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/disabledLevels"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/disabledLevels"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": []
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": []
+                  }
+                ]
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "let",
+                "name": "sought",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "if",
+                        "when": {
+                          "op": "present",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/reasoning/effort"
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/reasoning/effort"
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": ""
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": ""
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/defaultEffort"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/defaultEffort"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  },
+                  "otherwise": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/reasoning/effort"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/effort"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  }
+                },
+                "body": {
+                  "op": "let",
+                  "name": "matches",
+                  "source": {
+                    "op": "filter",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "context",
+                          "path": "/capability/disabledLevels"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/disabledLevels"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": []
+                      }
+                    },
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "item",
+                          "path": ""
+                        },
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "sought"
+                        }
+                      ]
+                    }
+                  },
+                  "body": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/0",
+                      "name": "matches"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/reasoning/effort",
+          "reason": {
+            "op": "literal",
+            "value": "model does not allow this effort with disabled thinking"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /reasoning/effort rule"
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/kind"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/kind"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": "unknown"
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "unknown"
+                  }
+                ]
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/mode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "between_tools"
+                }
+              ]
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "let",
+                "name": "sought",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "if",
+                        "when": {
+                          "op": "present",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/reasoning/effort"
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/reasoning/effort"
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": ""
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": ""
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/defaultEffort"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/defaultEffort"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  },
+                  "otherwise": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/reasoning/effort"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/effort"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  }
+                },
+                "body": {
+                  "op": "let",
+                  "name": "matches",
+                  "source": {
+                    "op": "filter",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "context",
+                          "path": "/capability/betweenToolsLevels"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/betweenToolsLevels"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": []
+                      }
+                    },
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "item",
+                          "path": ""
+                        },
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "sought"
+                        }
+                      ]
+                    }
+                  },
+                  "body": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/0",
+                      "name": "matches"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/reasoning/effort",
+          "reason": {
+            "op": "literal",
+            "value": "model does not allow this effort with between_tools thinking"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /reasoning/effort rule"
+        }
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "context",
+                        "path": "/capability/kind"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/capability/kind"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": "unknown"
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "unknown"
+                  }
+                ]
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning/mode"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "disabled"
+                }
+              ]
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "context",
+                    "path": "/capability/disable"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/capability/disable"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/reasoning/mode",
+          "reason": {
+            "op": "literal",
+            "value": "model does not support disabled thinking"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /reasoning/mode rule"
+        }
+      }
+    ],
+    "renderChecks": [
+      {
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/reasoning/historyRetention"
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/reasoning/historyRetention",
+          "reason": {
+            "op": "literal",
+            "value": "generation parameter rendering cannot consume unresolved history retention"
+          },
+          "code": "unsupported_capability",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /reasoning/historyRetention rule"
+        }
+      },
+      {
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/reasoning/budget"
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/reasoning/budget",
+          "reason": {
+            "op": "literal",
+            "value": "Responses cannot encode a numeric thinking budget"
+          },
+          "code": "unsupported_capability",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /reasoning/budget rule"
+        }
+      },
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/responses_reasoning"
+            }
+          },
+          "then": {
+            "op": "all",
+            "items": [
+              {
+                "op": "let",
+                "name": "selected",
+                "source": {
+                  "op": "literal",
+                  "value": "effort"
+                },
+                "body": {
+                  "op": "let",
+                  "name": "matched",
+                  "source": {
+                    "op": "filter",
+                    "source": {
+                      "op": "keys",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/parameters/responses_reasoning"
+                      }
+                    },
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "item",
+                          "path": ""
+                        },
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "selected"
+                        }
+                      ]
+                    }
+                  },
+                  "body": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/0",
+                      "name": "matched"
+                    }
+                  }
+                }
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/effort"
+                }
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/responses_reasoning/effort",
+          "reason": {
+            "op": "literal",
+            "value": "conflicting typed and legacy reasoning controls"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /parameters/responses_reasoning/effort rule"
+        }
+      },
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/responses_reasoning"
+            }
+          },
+          "then": {
+            "op": "all",
+            "items": [
+              {
+                "op": "let",
+                "name": "selected",
+                "source": {
+                  "op": "literal",
+                  "value": "summary"
+                },
+                "body": {
+                  "op": "let",
+                  "name": "matched",
+                  "source": {
+                    "op": "filter",
+                    "source": {
+                      "op": "keys",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/parameters/responses_reasoning"
+                      }
+                    },
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "item",
+                          "path": ""
+                        },
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "selected"
+                        }
+                      ]
+                    }
+                  },
+                  "body": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/0",
+                      "name": "matched"
+                    }
+                  }
+                }
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/summary"
+                }
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/responses_reasoning/summary",
+          "reason": {
+            "op": "literal",
+            "value": "conflicting typed and legacy reasoning controls"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /parameters/responses_reasoning/summary rule"
+        }
+      }
+    ],
+    "normalize": [
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "ref",
+              "ref": "model-normalize-canonical"
+            },
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/reasoning_effort"
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/reasoning_effort",
+          "reason": {
+            "op": "literal",
+            "value": "conflicting canonical and legacy reasoning controls"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /parameters/reasoning_effort rule"
+        }
+      },
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "ref",
+            "ref": "model-normalize-canonical"
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/responses_reasoning"
+              }
+            },
+            "then": {
+              "op": "let",
+              "name": "selected",
+              "source": {
+                "op": "literal",
+                "value": "effort"
+              },
+              "body": {
+                "op": "let",
+                "name": "matched",
+                "source": {
+                  "op": "filter",
+                  "source": {
+                    "op": "keys",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/responses_reasoning"
+                    }
+                  },
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      },
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "selected"
+                      }
+                    ]
+                  }
+                },
+                "body": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/0",
+                    "name": "matched"
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/responses_reasoning/effort",
+          "reason": {
+            "op": "literal",
+            "value": "conflicting canonical and legacy reasoning controls"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /parameters/responses_reasoning/effort rule"
+        }
+      },
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "ref",
+            "ref": "model-normalize-canonical"
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/responses_reasoning"
+              }
+            },
+            "then": {
+              "op": "let",
+              "name": "selected",
+              "source": {
+                "op": "literal",
+                "value": "summary"
+              },
+              "body": {
+                "op": "let",
+                "name": "matched",
+                "source": {
+                  "op": "filter",
+                  "source": {
+                    "op": "keys",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/responses_reasoning"
+                    }
+                  },
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      },
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "selected"
+                      }
+                    ]
+                  }
+                },
+                "body": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/0",
+                    "name": "matched"
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/responses_reasoning/summary",
+          "reason": {
+            "op": "literal",
+            "value": "conflicting canonical and legacy reasoning controls"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /parameters/responses_reasoning/summary rule"
+        }
+      },
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "ref",
+            "ref": "model-normalize-canonical"
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/anthropic_thinking"
+              }
+            },
+            "then": {
+              "op": "let",
+              "name": "selected",
+              "source": {
+                "op": "literal",
+                "value": "type"
+              },
+              "body": {
+                "op": "let",
+                "name": "matched",
+                "source": {
+                  "op": "filter",
+                  "source": {
+                    "op": "keys",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/anthropic_thinking"
+                    }
+                  },
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      },
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "selected"
+                      }
+                    ]
+                  }
+                },
+                "body": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/0",
+                    "name": "matched"
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/anthropic_thinking/type",
+          "reason": {
+            "op": "literal",
+            "value": "conflicting canonical and legacy reasoning controls"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /parameters/anthropic_thinking/type rule"
+        }
+      },
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "ref",
+            "ref": "model-normalize-canonical"
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/anthropic_thinking"
+              }
+            },
+            "then": {
+              "op": "let",
+              "name": "selected",
+              "source": {
+                "op": "literal",
+                "value": "budget_tokens"
+              },
+              "body": {
+                "op": "let",
+                "name": "matched",
+                "source": {
+                  "op": "filter",
+                  "source": {
+                    "op": "keys",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/anthropic_thinking"
+                    }
+                  },
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      },
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "selected"
+                      }
+                    ]
+                  }
+                },
+                "body": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/0",
+                    "name": "matched"
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/anthropic_thinking/budget_tokens",
+          "reason": {
+            "op": "literal",
+            "value": "conflicting canonical and legacy reasoning controls"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /parameters/anthropic_thinking/budget_tokens rule"
+        }
+      },
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "ref",
+            "ref": "model-normalize-canonical"
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/anthropic_thinking"
+              }
+            },
+            "then": {
+              "op": "let",
+              "name": "selected",
+              "source": {
+                "op": "literal",
+                "value": "display"
+              },
+              "body": {
+                "op": "let",
+                "name": "matched",
+                "source": {
+                  "op": "filter",
+                  "source": {
+                    "op": "keys",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/anthropic_thinking"
+                    }
+                  },
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      },
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "selected"
+                      }
+                    ]
+                  }
+                },
+                "body": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/0",
+                    "name": "matched"
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/anthropic_thinking/display",
+          "reason": {
+            "op": "literal",
+            "value": "conflicting canonical and legacy reasoning controls"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /parameters/anthropic_thinking/display rule"
+        }
+      },
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "ref",
+            "ref": "model-normalize-canonical"
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/anthropic_output_config"
+              }
+            },
+            "then": {
+              "op": "let",
+              "name": "selected",
+              "source": {
+                "op": "literal",
+                "value": "effort"
+              },
+              "body": {
+                "op": "let",
+                "name": "matched",
+                "source": {
+                  "op": "filter",
+                  "source": {
+                    "op": "keys",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/anthropic_output_config"
+                    }
+                  },
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      },
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "selected"
+                      }
+                    ]
+                  }
+                },
+                "body": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/0",
+                    "name": "matched"
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/anthropic_output_config/effort",
+          "reason": {
+            "op": "literal",
+            "value": "conflicting canonical and legacy reasoning controls"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /parameters/anthropic_output_config/effort rule"
+        }
+      },
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "ref",
+            "ref": "model-normalize-canonical"
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/gemini_thinking"
+              }
+            },
+            "then": {
+              "op": "let",
+              "name": "selected",
+              "source": {
+                "op": "literal",
+                "value": "thinkingLevel"
+              },
+              "body": {
+                "op": "let",
+                "name": "matched",
+                "source": {
+                  "op": "filter",
+                  "source": {
+                    "op": "keys",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/gemini_thinking"
+                    }
+                  },
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      },
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "selected"
+                      }
+                    ]
+                  }
+                },
+                "body": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/0",
+                    "name": "matched"
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/gemini_thinking/thinkingLevel",
+          "reason": {
+            "op": "literal",
+            "value": "conflicting canonical and legacy reasoning controls"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /parameters/gemini_thinking/thinkingLevel rule"
+        }
+      },
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "ref",
+            "ref": "model-normalize-canonical"
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/gemini_thinking"
+              }
+            },
+            "then": {
+              "op": "let",
+              "name": "selected",
+              "source": {
+                "op": "literal",
+                "value": "thinkingBudget"
+              },
+              "body": {
+                "op": "let",
+                "name": "matched",
+                "source": {
+                  "op": "filter",
+                  "source": {
+                    "op": "keys",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/gemini_thinking"
+                    }
+                  },
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      },
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "selected"
+                      }
+                    ]
+                  }
+                },
+                "body": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/0",
+                    "name": "matched"
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/gemini_thinking/thinkingBudget",
+          "reason": {
+            "op": "literal",
+            "value": "conflicting canonical and legacy reasoning controls"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /parameters/gemini_thinking/thinkingBudget rule"
+        }
+      },
+      {
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "ref",
+            "ref": "model-normalize-canonical"
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/gemini_thinking"
+              }
+            },
+            "then": {
+              "op": "let",
+              "name": "selected",
+              "source": {
+                "op": "literal",
+                "value": "includeThoughts"
+              },
+              "body": {
+                "op": "let",
+                "name": "matched",
+                "source": {
+                  "op": "filter",
+                  "source": {
+                    "op": "keys",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/gemini_thinking"
+                    }
+                  },
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      },
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "selected"
+                      }
+                    ]
+                  }
+                },
+                "body": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/0",
+                    "name": "matched"
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/gemini_thinking/includeThoughts",
+          "reason": {
+            "op": "literal",
+            "value": "conflicting canonical and legacy reasoning controls"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /parameters/gemini_thinking/includeThoughts rule"
+        }
+      },
+      {
+        "when": {
+          "op": "ref",
+          "ref": "model-normalize-canonical"
+        },
+        "stop": true
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/responses_reasoning"
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "type",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/responses_reasoning"
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "object"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/parameters/responses_reasoning",
+          "reason": {
+            "op": "literal",
+            "value": "thinking controls must be an object or null"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /parameters/responses_reasoning rule"
+        }
+      },
+      {
+        "when": {
+          "op": "not",
+          "source": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "keys",
+                "source": {
+                  "op": "ref",
+                  "ref": "model-normalize-generated"
+                }
+              },
+              {
+                "op": "literal",
+                "value": []
+              }
+            ]
+          }
+        },
+        "set": {
+          "/reasoning": {
+            "op": "ref",
+            "ref": "model-normalize-generated"
+          },
+          "/parameters/responses_reasoning": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/responses_reasoning"
+              }
+            },
+            "then": {
+              "op": "let",
+              "name": "remaining",
+              "source": {
+                "op": "project",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/responses_reasoning"
+                },
+                "keys": [
+                  "effort",
+                  "summary"
+                ],
+                "policy": "exclude"
+              },
+              "body": {
+                "op": "if",
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "keys",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "remaining"
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": []
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "omit"
+                },
+                "otherwise": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "remaining"
+                }
+              }
+            },
+            "otherwise": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/responses_reasoning"
+            }
+          }
+        }
+      }
+    ],
+    "normalizeChecks": [
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning/summary"
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "let",
+                "name": "selected",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning/summary"
+                },
+                "body": {
+                  "op": "let",
+                  "name": "matched",
+                  "source": {
+                    "op": "filter",
+                    "source": {
+                      "op": "literal",
+                      "value": [
+                        "auto",
+                        "concise",
+                        "detailed"
+                      ]
+                    },
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "item",
+                          "path": ""
+                        },
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "selected"
+                        }
+                      ]
+                    }
+                  },
+                  "body": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/0",
+                      "name": "matched"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "invalid",
+          "path": "/reasoning/summary",
+          "reason": {
+            "op": "literal",
+            "value": "summary must be auto, concise or detailed"
+          },
+          "code": "invalid_input",
+          "stage": "request.validation",
+          "suggestion": "correct the request controls or declared /reasoning/summary rule"
         }
       }
     ]

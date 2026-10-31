@@ -8,8 +8,10 @@ import (
 )
 
 type compiledPackageState struct {
-	slots   []compiledPackageStateSlot
-	initial []Value
+	slots        []compiledPackageStateSlot
+	initial      []Value
+	indexes      []compiledPackageIndex
+	initialBytes int
 }
 
 type compiledPackageStateSlot struct {
@@ -19,36 +21,54 @@ type compiledPackageStateSlot struct {
 }
 
 type packageStreamState struct {
-	scope       Scope
-	slots       []Value
-	bytes       int
-	hasRendered bool
-	hasTerminal bool
+	primitives             *packageStreamPrimitives
+	scope                  Scope
+	slots                  []Value
+	indexes                []map[string]Value
+	indexItems, indexBytes int
+	bytes                  int
+	slotBytes              int
+	hasRendered            bool
+	hasTerminal            bool
 }
 
 // Updates are staged separately from retained state. The outer event boundary
 // commits only after decoding, provenance and native reconciliation succeed.
 type packageStreamTransaction struct {
-	owner       *EvaluationState
-	key         moduleStateKey
-	plan        *compiledPackageState
-	scope       Scope
-	previous    *packageStreamState
-	next        []Value
-	bytes       int
-	hasRendered bool
-	hasTerminal bool
+	trackChannels                  map[string]uint8
+	trackItems                     int
+	toolUpdates                    map[streamTrackKey]*pendingStreamTool
+	toolCallUpdates                map[streamTrackKey]string
+	toolBufferDelta                int
+	textUpdates                    map[streamTrackKey]*pendingStreamText
+	primitiveBase                  *packageStreamPrimitives
+	aliasUpdates                   map[string]string
+	aliasBytes                     int
+	trackedBytes                   int
+	toolCallBytes                  int
+	owner                          *EvaluationState
+	key                            moduleStateKey
+	plan                           *compiledPackageState
+	scope                          Scope
+	previous                       *packageStreamState
+	next                           []Value
+	indexUpdates                   []map[string]Value
+	indexItemDelta, indexByteDelta int
+	bytes                          int
+	slotBytes                      int
+	hasRendered                    bool
+	hasTerminal                    bool
 }
 
-func compilePackageState(declarations map[string]ProtocolStateSlot, direction Direction, path string, compiler *expressionCompiler, scope *expressionScope) (*compiledPackageState, error) {
-	if len(declarations) == 0 {
+func compilePackageState(declarations map[string]ProtocolStateSlot, indexes []compiledPackageIndex, direction Direction, path string, compiler *expressionCompiler, scope *expressionScope) (*compiledPackageState, error) {
+	if len(declarations)+len(indexes) == 0 {
 		return nil, nil
 	}
-	if !isEventDirection(direction) || len(declarations) > compiler.limits.StateItems {
+	if !isEventDirection(direction) || len(declarations)+len(indexes) > compiler.limits.StateItems {
 		return nil, fmt.Errorf("%s: state requires an event direction and bounded slot count", path)
 	}
 	names := sortedKeys(declarations)
-	plan := &compiledPackageState{slots: make([]compiledPackageStateSlot, len(names)), initial: make([]Value, len(names))}
+	plan := &compiledPackageState{slots: make([]compiledPackageStateSlot, len(names)), initial: make([]Value, len(names)), indexes: indexes}
 	scope.stateSlots = make(map[string]expressionBinding, len(names))
 	for index, name := range names {
 		if !definitionIdentifier.MatchString(name) {
@@ -70,7 +90,9 @@ func compilePackageState(declarations map[string]ProtocolStateSlot, direction Di
 			plan.initial[index] = Value{raw: strings.Clone(declaration.Initial.raw)}
 		}
 	}
-	if _, err := measurePackageState(plan.initial, compiler.limits); err != nil {
+	var err error
+	plan.initialBytes, err = measurePackageState(plan.initial, compiler.limits)
+	if err != nil {
 		return nil, locateMappingError(path, err)
 	}
 	for index, name := range names {
@@ -85,6 +107,10 @@ func compilePackageState(declarations map[string]ProtocolStateSlot, direction Di
 }
 
 func (compiled *Compiled) beginPackageTransaction(direction Direction, options EvaluationContext) (EvaluationContext, *packageStreamTransaction, error) {
+	if compiled.packagePlan == nil {
+		options.packageTransaction = nil
+		return options, nil, nil
+	}
 	plan := compiled.mappings[direction].streamState
 	if plan == nil {
 		options.packageTransaction = nil
@@ -104,8 +130,8 @@ func (compiled *Compiled) beginPackageTransaction(direction Direction, options E
 	if previous != nil && previous.scope != options.Scope {
 		return options, nil, streamIssue(ResourceScopeMismatch, "/state", "event state belongs to another stream scope")
 	}
-	if previous == nil && options.State.packageStateItems+max(1, len(plan.slots)) > compiled.limits.StateItems {
-		return options, nil, resourceFailure("stream", "state_items", compiled.limits.StateItems, options.State.packageStateItems+max(1, len(plan.slots)))
+	if previous == nil && len(options.State.packageStates)+len(options.State.modules)+len(options.State.initialized) >= compiled.limits.StateItems {
+		return options, nil, resourceFailure("stream", "state_instances", compiled.limits.StateItems, len(options.State.packageStates)+len(options.State.modules)+len(options.State.initialized)+1)
 	}
 	transaction := &packageStreamTransaction{owner: options.State, key: key, plan: plan, scope: options.Scope, previous: previous}
 	if previous != nil {
@@ -161,12 +187,8 @@ func (transaction *packageStreamTransaction) stage(state evaluation, isRendered 
 	if err != nil {
 		return err
 	}
-	retained := transaction.owner.packageStateBytes + bytes
-	if transaction.previous != nil {
-		retained -= transaction.previous.bytes
-	}
-	if retained > state.budget.limits.BufferBytes {
-		return resourceFailure("stream", "state_bytes", state.budget.limits.BufferBytes, retained)
+	if err := transaction.checkRetainedBytes(bytes - transaction.currentSlotBytes()); err != nil {
+		return err
 	}
 	if err := state.ctx.Err(); err != nil {
 		return err
@@ -179,7 +201,43 @@ func (transaction *packageStreamTransaction) stage(state evaluation, isRendered 
 		transaction.hasRendered = transaction.hasRendered || isRendered
 		transaction.hasTerminal = transaction.hasTerminal || kind.value.IsString(string(ResponseFinished)) || kind.value.IsString(string(OperationFailed)) || kind.value.IsString(string(OperationCancelled))
 	}
-	transaction.next, transaction.bytes = next, bytes
+	transaction.next, transaction.slotBytes = next, bytes
+	transaction.bytes = transaction.retainedBytes()
+	return nil
+}
+
+func (transaction *packageStreamTransaction) currentSlotBytes() int {
+	if transaction.next != nil {
+		return transaction.slotBytes
+	}
+	if transaction.previous != nil {
+		return transaction.previous.slotBytes
+	}
+	return transaction.plan.initialBytes
+}
+
+// All retained payloads share one budget. Category deltas keep appending a
+// frame constant-time without granting each table a separate buffer allowance.
+func (transaction *packageStreamTransaction) retainedBytes() int {
+	bytes := transaction.currentSlotBytes() + transaction.indexByteDelta + transaction.aliasBytes + transaction.trackedBytes + transaction.toolCallBytes + transaction.toolBufferDelta
+	if transaction.previous != nil {
+		bytes += transaction.previous.indexBytes
+		if primitives := transaction.previous.primitives; primitives != nil {
+			bytes += primitives.aliasBytes + primitives.trackedBytes + primitives.toolCallBytes + primitives.toolBuffered
+		}
+	}
+	return bytes
+}
+
+func (transaction *packageStreamTransaction) checkRetainedBytes(additional int) error {
+	bytes := transaction.owner.packageStateBytes + transaction.retainedBytes() + additional
+	if transaction.previous != nil {
+		bytes -= transaction.previous.bytes
+	}
+	limit := transaction.key.compiled.limits.BufferBytes
+	if bytes > limit {
+		return resourceFailure("stream", "state_bytes", limit, bytes)
+	}
 	return nil
 }
 
@@ -217,19 +275,20 @@ func (transaction *packageStreamTransaction) finish(err error) {
 	if transaction.owner.packageStates == nil {
 		transaction.owner.packageStates = make(map[moduleStateKey]*packageStreamState)
 	}
-	if transaction.previous == nil {
-		transaction.owner.packageStateItems += max(1, len(transaction.plan.slots))
-	} else {
+	if transaction.previous != nil {
 		transaction.owner.packageStateBytes -= transaction.previous.bytes
 	}
-	transaction.owner.packageStates[transaction.key] = &packageStreamState{scope: transaction.scope, slots: transaction.next, bytes: transaction.bytes, hasRendered: transaction.hasRendered, hasTerminal: transaction.hasTerminal}
+	indexes, items, indexBytes := transaction.commitIndexes()
+	transaction.owner.packageStateItems += transaction.indexItemDelta
+	primitives := transaction.commitPrimitives()
+	transaction.owner.packageStates[transaction.key] = &packageStreamState{primitives: primitives, scope: transaction.scope, slots: transaction.next, slotBytes: transaction.slotBytes, indexes: indexes, indexItems: items, indexBytes: indexBytes, bytes: transaction.bytes, hasRendered: transaction.hasRendered, hasTerminal: transaction.hasTerminal}
 	transaction.owner.packageStateBytes += transaction.bytes
 	transaction.next = nil
 }
 
 func (state *EvaluationState) releasePackageState(key moduleStateKey) {
 	if previous := state.packageStates[key]; previous != nil {
-		state.packageStateItems -= max(1, len(previous.slots))
+		state.packageStateItems -= previous.indexItems
 		state.packageStateBytes -= previous.bytes
 		delete(state.packageStates, key)
 	}

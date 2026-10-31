@@ -6,21 +6,33 @@ import (
 	"slices"
 )
 
-// ProtocolModelPolicy resolves model-dependent semantic constraints. Its input
-// is the selected outgoing model name. Every result branch selects a literal
-// capability profile, validated once when the package is compiled.
+// ProtocolModelPolicy declares capability lookup and ordered request controls.
+// Reasoning reads the selected model name and selects a static, validated
+// capability profile. The other programs read the current core request.
 type ProtocolModelPolicy struct {
-	Reasoning Expression            `json:"reasoning"`
-	Steps     []ProtocolControlStep `json:"steps,omitempty"`
-	Checks    []ProtocolControlStep `json:"checks,omitempty"`
+	Reasoning Expression `json:"reasoning"`
+	// Steps applies the target's ordered dispositions and field updates.
+	Steps []ProtocolControlStep `json:"steps,omitempty"`
+	// Checks rechecks target constraints after later user conversion rules.
+	Checks []ProtocolControlStep `json:"checks,omitempty"`
+	// RenderChecks guards target representation after core validity is known.
+	RenderChecks []ProtocolControlStep `json:"renderChecks,omitempty"`
+	// Normalize consumes source aliases before target capability selection.
+	Normalize []ProtocolControlStep `json:"normalize,omitempty"`
+	// NormalizeChecks validates only intent produced by Normalize.
+	NormalizeChecks []ProtocolControlStep `json:"normalizeChecks,omitempty"`
 }
 
 type compiledModelPolicy struct {
-	reasoning  *compiledOutputPlan
-	profiles   map[Value]ReasoningCapabilities
-	steps      []compiledControlStep
-	checks     []compiledControlStep
-	conversion Value
+	reasoning     *compiledOutputPlan
+	profiles      map[Value]ReasoningCapabilities
+	steps         []compiledControlStep
+	checks        []compiledControlStep
+	renderChecks  []compiledControlStep
+	bindingSlots  int
+	conversion    Value
+	options       modelControlOptions
+	normalization *modelNormalizationOptions
 }
 
 func (compiled *Compiled) compileModelPolicy(policy *ProtocolModelPolicy, expressions *expressionCompiler) error {
@@ -36,10 +48,20 @@ func (compiled *Compiled) compileModelPolicy(policy *ProtocolModelPolicy, expres
 		return err
 	}
 	if len(policy.Steps) != 0 {
-		model.conversion, err = EncodeValue(modelControlOptions{CoreVersion: compiled.CoreVersion(), Target: compiled.identity, Policy: *policy, Expressions: references})
+		model.options = modelControlOptions{CoreVersion: compiled.CoreVersion(), Target: compiled.identity, Policy: *policy, Expressions: references}
+		model.options.Policy.Normalize, model.options.Policy.NormalizeChecks = nil, nil
+		model.conversion, err = EncodeValue(model.options)
 		if err != nil {
 			return err
 		}
+	}
+	if len(policy.Normalize) != 0 || len(policy.NormalizeChecks) != 0 {
+		source := &modelNormalizationOptions{Source: compiled.identity, Steps: policy.Normalize, Checks: policy.NormalizeChecks, Expressions: map[string]Expression{}}
+		expressions.mappingReferences = source.Expressions
+		if err := source.compile(expressions); err != nil {
+			return err
+		}
+		model.normalization = source
 	}
 	compiled.packagePlan.modelPolicy = model
 	return nil
@@ -59,6 +81,10 @@ func compileModelPolicy(policy *ProtocolModelPolicy, expressions *expressionComp
 	if err == nil {
 		model.checks, err = compileControlSteps(policy.Checks, expressions, "/mapping/modelPolicy/checks", true)
 	}
+	if err == nil {
+		model.renderChecks, err = compileControlSteps(policy.RenderChecks, expressions, "/mapping/modelPolicy/renderChecks", true)
+	}
+	model.bindingSlots = controlBindingSlots(model.steps, model.checks, model.renderChecks)
 	return model, err
 }
 

@@ -262,6 +262,47 @@ func TestPackageRuntimeNativePreservation(t *testing.T) {
 	assertPackageRuntimeIssue(t, err, ConversionRejected, "")
 }
 
+func TestPackageFinalResponseDocument(t *testing.T) {
+	document := textProtocolPackage(t)
+	document.Mapping.Native.Preserve = true
+	for _, name := range []string{"provider-response", "client-response"} {
+		contract := document.Spec.Documents[name]
+		schema := *contract.Schema
+		schema.AllowUnknown = true
+		contract.Schema = &schema
+		document.Spec.Documents[name] = contract
+	}
+	document.Spec.Documents["delivered-response"] = WireContractSpec{Schema: &ValueSchema{Type: ObjectType, Required: []string{"reply"}, Properties: map[string]ValueSchema{"reply": {Type: StringType}}}}
+	entry := document.Mapping.Directions[EncodeResponse]
+	entry.FinalDocument = "delivered-response"
+	document.Mapping.Directions[EncodeResponse] = entry
+	compiled := compilePackageForTest(t, document)
+	response, err := compiled.DecodeResponse(t.Context(), []byte(`{"reply":"answer","extension":9007199254740993}`), EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := compiled.EncodeResponse(t.Context(), response, EvaluationContext{})
+	if err != nil || !strings.Contains(string(wire), `"extension":9007199254740993`) {
+		t.Fatal("delivery contract changed the declared native construction boundary", string(wire), err)
+	}
+	value := parseTestValue(t, string(wire))
+	assertPackageRuntimeIssue(t, compiled.ValidateWireOutput(EncodeResponse, value), ConversionRejected, "")
+	input, err := EncodeValue(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = executeVerificationSample(t.Context(), compiled, Sample{Direction: EncodeResponse, Input: input})
+	assertPackageRuntimeIssue(t, err, ConversionRejected, "")
+	response.Native = nil
+	wire, err = compiled.EncodeResponse(t.Context(), response, EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := compiled.ValidateWireOutputContext(t.Context(), EncodeResponse, parseTestValue(t, string(wire))); err != nil {
+		t.Fatal("valid final response was rejected", err)
+	}
+}
+
 func TestPackageRuntimeCancellationAndResourceErrors(t *testing.T) {
 	compiled := compilePackageForTest(t, textProtocolPackage(t))
 	input := Value{raw: `{"model":"m","prompt":"hello"}`}

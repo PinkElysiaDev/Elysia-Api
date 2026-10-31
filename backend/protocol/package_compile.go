@@ -16,6 +16,7 @@ type compiledPackagePlan struct {
 	hasHistoryProjection bool
 	modelContracts       map[string]compiledWireContract
 	taskContracts        map[string]map[string]packageTaskContracts
+	finalContracts       map[Direction]compiledWireContract
 	modelPolicy          *compiledModelPolicy
 }
 
@@ -72,6 +73,10 @@ func (compiler *Compiler) compilePackage(document ProtocolPackage) (*Compiled, [
 	for _, direction := range sortedKeys(compiled.packagePlan.effects) {
 		if isEventDirection(direction) && compiled.wireContracts[direction].packageStream == nil && !compiled.hasPackageSession() {
 			return nil, definitionIssues(compiled.identity, "/mapping/directions/"+string(direction), fmt.Errorf("event programs require an independent wire stream contract"))
+		}
+		mapping := compiled.mappings[direction]
+		if document.Mapping.Native.Preserve && (direction == EncodeEvent || direction == EncodeUpstreamEvent) && mapping.outputPlan != nil && mapping.outputPlan.hasStreamWrites && mapping.streamObserver == nil {
+			return nil, definitionIssues(compiled.identity, "/mapping/directions/"+string(direction)+"/observe", fmt.Errorf("native replay of stateful event programs requires an explicit observer"))
 		}
 		if compiled.mappings[direction].outputPlan == nil {
 			return nil, definitionIssues(compiled.identity, "/mapping/directions/"+string(direction)+"/program", fmt.Errorf("program requires a compiled output plan"))
@@ -164,16 +169,20 @@ func (compiled *Compiled) bindPackageIdentity(document ProtocolPackage) error {
 	return nil
 }
 
-func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Direction, wire WireContractSpec, compiler *expressionCompiler, coreVersion, dslVersion int) (compiledMapping, []compiledSemanticEffect, error) {
+func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Direction, wire WireContractSpec, finalWire *WireContractSpec, compiler *expressionCompiler, coreVersion, dslVersion int) (compiledMapping, []compiledSemanticEffect, error) {
 	path := "/mapping/directions/" + string(direction)
 	isDecode := isPackageDecodeDirection(direction)
 	if mapping.IsEventBatch && !isEventDecoder(direction) {
 		return compiledMapping{}, nil, fmt.Errorf("%s/eventBatch: requires an event decoder", path)
 	}
+	if mapping.CanDeferEvents && (!mapping.IsEventBatch || len(mapping.State)+len(mapping.Indexes) == 0) {
+		return compiledMapping{}, nil, fmt.Errorf("%s/deferEvents: requires an event batch with declared state", path)
+	}
 	if mapping.IsFrameBatch && direction != EncodeEvent && direction != EncodeUpstreamEvent {
 		return compiledMapping{}, nil, fmt.Errorf("%s/frameBatch: requires an event encoder", path)
 	}
-	scope := expressionScope{canReadRuntime: true, canReadOutputStream: direction == EncodeEvent}
+	usesStreamPrimitive := false
+	scope := expressionScope{canReadRuntime: true, canReadOutputStream: direction == EncodeEvent, canUseStreamPrimitives: isEventDirection(direction), streamPrimitiveUsed: &usesStreamPrimitive, trackerChannels: map[string]bool{}}
 	if isDecode {
 		scope.input = wire.Schema
 	} else {
@@ -182,7 +191,11 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	references := map[string]Expression{}
 	compiler.mappingReferences = references
 	defer func() { compiler.mappingReferences = nil }()
-	streamState, err := compilePackageState(mapping.State, direction, path+"/state", compiler, &scope)
+	indexes, err := compilePackageIndexes(mapping.Indexes, direction, path+"/indexes", compiler.limits, &scope)
+	if err != nil {
+		return compiledMapping{}, nil, err
+	}
+	streamState, err := compilePackageState(mapping.State, indexes, direction, path+"/state", compiler, &scope)
 	if err != nil {
 		return compiledMapping{}, nil, err
 	}
@@ -191,7 +204,9 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		if !mapping.IsFrameBatch {
 			return compiledMapping{}, nil, fmt.Errorf("%s/finalize: requires a frame-batch event encoder", path)
 		}
-		finalizer, err = compiler.compilePlan(*mapping.Finalize, path+"/finalize", scope, 1)
+		finalizerScope := scope
+		finalizerScope.canWriteStreamIndexes = true
+		finalizer, err = compiler.compilePlan(*mapping.Finalize, path+"/finalize", finalizerScope, 1)
 		if err != nil {
 			return compiledMapping{}, nil, err
 		}
@@ -205,12 +220,28 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 			streamState = &compiledPackageState{initial: []Value{}}
 		}
 	}
+	var observer *compiledOutputPlan
+	if mapping.Observe != nil {
+		if direction != EncodeEvent && direction != EncodeUpstreamEvent {
+			return compiledMapping{}, nil, fmt.Errorf("%s/observe: requires an event encoder", path)
+		}
+		observerScope := scope
+		observerScope.canWriteStreamIndexes, observerScope.canReadNativeFrame, observerScope.canReadNative = true, true, true
+		observer, err = compiler.compilePlan(*mapping.Observe, path+"/observe", observerScope, 1)
+		if err != nil {
+			return compiledMapping{}, nil, err
+		}
+	}
 	programScope := scope
+	programScope.canWriteStreamIndexes = true
 	programScope.wireCapture = isDecode
 	programScope.canReadNative = !isDecode
 	program, err := compiler.compile(mapping.Program, path+"/program", programScope, 1)
 	if err != nil {
 		return compiledMapping{}, nil, err
+	}
+	if usesStreamPrimitive && streamState == nil {
+		streamState = &compiledPackageState{initial: []Value{}}
 	}
 	if mapping.IsEventBatch && !isAssignable(program.result, ArrayType) {
 		return compiledMapping{}, nil, fmt.Errorf("%s/program: eventBatch requires an array output", path)
@@ -227,7 +258,7 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 			return compiledMapping{}, nil, fmt.Errorf("%s/program: %w", path, err)
 		}
 	}
-	if len(mapping.Effects) == 0 || len(mapping.Effects) > compiler.limits.Mutations {
+	if len(mapping.Effects) == 0 && !isEventDirection(direction) || len(mapping.Effects) > compiler.limits.Mutations {
 		return compiledMapping{}, nil, fmt.Errorf("%s/effects: requires a nonempty bounded effect list", path)
 	}
 	seen := map[string]bool{}
@@ -324,9 +355,10 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		DSLVersion      int                      `json:"dslVersion"`
 		Direction       Direction                `json:"direction"`
 		Wire            WireContractSpec         `json:"wire"`
+		FinalWire       *WireContractSpec        `json:"finalWire,omitempty"`
 		Mapping         ProtocolDirectionMapping `json:"mapping"`
 		References      map[string]Expression    `json:"references"`
-	}{CompilerVersion, coreVersion, dslVersion, direction, wire, mapping, references})
+	}{CompilerVersion, coreVersion, dslVersion, direction, wire, finalWire, mapping, references})
 	if err != nil {
 		return compiledMapping{}, nil, err
 	}
@@ -335,8 +367,9 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		return compiledMapping{}, nil, fmt.Errorf("%s/program: expression has no compiled execution plan", path)
 	}
 	return compiledMapping{
-		outputPlan: plan, definitionHash: hashValue(identity), streamState: streamState, streamFinalizer: finalizer,
+		outputPlan: plan, definitionHash: hashValue(identity), streamState: streamState, streamFinalizer: finalizer, streamObserver: observer,
 		isEventBatch:      mapping.IsEventBatch,
+		canDeferEvents:    mapping.CanDeferEvents,
 		frameBatch:        mapping.IsFrameBatch,
 		hasCoreOutputPlan: isPackageDecodeDirection(direction),
 		hasCoreInputPlan:  !isPackageDecodeDirection(direction),

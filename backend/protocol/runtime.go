@@ -240,7 +240,7 @@ func (compiled *Compiled) decodeEvents(ctx context.Context, direction Direction,
 	if err != nil {
 		return nil, err
 	}
-	if len(events) == 0 && !options.compoundFrame && !*options.transportControl {
+	if len(events) == 0 && !options.compoundFrame && !*options.transportControl && !compiled.mappings[direction].canDeferEvents {
 		return nil, streamIssue(UpstreamContractViolation, "/events", "a wire event must produce at least one semantic event")
 	}
 	if compiled.native.Preserve && len(events) > 1 && !options.compoundFrame {
@@ -586,7 +586,7 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 		return Value{}, IssuesError([]ConversionIssue{{Code: InvalidMutation, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "preserve", Path: native.Source.Path, Reason: err.Error(), Suggestion: "Declare stable array identities or apply an explicit native replacement."}})
 	}
 	if compiled.packagePlan != nil {
-		if err := compiled.ValidateWireOutputContext(ctx, direction, result); err != nil {
+		if err := compiled.validateWireContract(ctx, direction, result, nil, compiled.wireLimits(ctx, direction)); err != nil {
 			return Value{}, err
 		}
 	}

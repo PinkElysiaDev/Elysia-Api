@@ -12,6 +12,7 @@ import (
 )
 
 type compiledExpression struct {
+	trackerName                         string
 	op                                  string
 	operation                           string
 	path                                string
@@ -21,6 +22,7 @@ type compiledExpression struct {
 	bindingSlot                         int
 	stateSlot                           int
 	indexSlot                           int
+	isStreamIndex                       bool
 	value                               Value
 	literalText                         string
 	fields                              map[string]*compiledExpression
@@ -56,22 +58,30 @@ type expressionCompiler struct {
 }
 
 type expressionScope struct {
-	input               *ValueSchema
-	root                *ValueSchema
-	item                *ValueSchema
-	coreInput           reflect.Type
-	coreItem            reflect.Type
-	isIteration         bool
-	isWalk              bool
-	wireCapture         bool
-	canReadRuntime      bool
-	canReadOutputStream bool
-	canReadNative       bool
-	bindings            map[string]expressionBinding
-	bindingDepth        int
-	stateSlots          map[string]expressionBinding
-	indexes             map[string]int
-	indexDepth          int
+	canReadNativeFrame     bool
+	trackerChannels        map[string]bool
+	walkCoreItem           reflect.Type
+	streamPrimitiveUsed    *bool
+	canUseStreamPrimitives bool
+	input                  *ValueSchema
+	root                   *ValueSchema
+	item                   *ValueSchema
+	coreInput              reflect.Type
+	coreItem               reflect.Type
+	isIteration            bool
+	isSingleVisit          bool
+	isWalk                 bool
+	wireCapture            bool
+	canReadRuntime         bool
+	canReadOutputStream    bool
+	canReadNative          bool
+	bindings               map[string]expressionBinding
+	stateSlots             map[string]expressionBinding
+	streamIndexes          map[string]int
+	canWriteStreamIndexes  bool
+	bindingDepth           int
+	indexes                map[string]int
+	indexDepth             int
 }
 
 type expressionBinding struct {
@@ -177,6 +187,8 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 				return nil, fmt.Errorf("%s/from: runtime metadata requires a package mapping program or effect", path)
 			}
 			switch {
+			case len(pointer) > 0 && pointer[0] == "nativeFrame" && scope.canReadNativeFrame:
+				compiled.result = AnyType
 			case len(pointer) == 1 && pointer[0] == "interleavedThinking":
 				compiled.result = BooleanType
 			case len(pointer) == 2 && pointer[0] == "scope" && pointer[1] == "model":
@@ -224,7 +236,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	if compiled.op == "literal" {
 		compiled.result = valueType(expression.Value)
 	}
-	if compiled.op == "index" && !scope.isIteration {
+	if compiled.op == "index" && (!scope.isIteration || scope.isSingleVisit) {
 		return nil, fmt.Errorf("%s: index requires an array iteration", path)
 	}
 	if compiled.op == "recur" && !scope.isWalk {
@@ -236,10 +248,41 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	if (compiled.op == "replay_native" || compiled.op == "native_matches") && !scope.canReadNative {
 		return nil, fmt.Errorf("%s: native target operations require a package encode program", path)
 	}
+	if compiled.op == "resolve_item" || compiled.op == "track_text" || compiled.op == "track_tool" {
+		if !scope.canUseStreamPrimitives || !scope.canWriteStreamIndexes {
+			return nil, fmt.Errorf("%s: stream primitives require an event program", path)
+		}
+		*scope.streamPrimitiveUsed = true
+		if compiled.op == "track_text" || compiled.op == "track_tool" {
+			if !definitionIdentifier.MatchString(expression.Name) {
+				return nil, fmt.Errorf("%s/name: expected a fixed tracker channel identifier", path)
+			}
+			channel := compiled.op + ":" + expression.Name
+			if !scope.trackerChannels[channel] && len(scope.trackerChannels) >= streamTrackersPerItem {
+				return nil, fmt.Errorf("%s/name: stream programs support at most %d fixed tracker channels", path, streamTrackersPerItem)
+			}
+			scope.trackerChannels[channel] = true
+			compiled.trackerName = expression.Name
+		}
+	}
+	if compiled.op == "index_values" {
+		slot, exists := scope.streamIndexes[expression.Name]
+		if !exists {
+			return nil, fmt.Errorf("%s/name: index_values requires a declared persistent index", path)
+		}
+		compiled.indexSlot, compiled.isStreamIndex = slot, true
+	}
 	if compiled.op == "remember" || compiled.op == "recall" {
 		slot, exists := scope.indexes[expression.Name]
 		if !exists {
-			return nil, fmt.Errorf("%s/name: index is not declared in this scope", path)
+			slot, exists = scope.streamIndexes[expression.Name]
+			if !exists {
+				return nil, fmt.Errorf("%s/name: index is not declared in this scope", path)
+			}
+			if compiled.op == "remember" && !scope.canWriteStreamIndexes {
+				return nil, fmt.Errorf("%s/name: persistent index writes require the event program", path)
+			}
+			compiled.isStreamIndex = true
 		}
 		compiled.indexSlot = slot
 	}
@@ -249,6 +292,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			return nil, err
 		}
 		compiled.source = child
+	}
+	if compiled.op == "recur" && scope.walkCoreItem != nil && coreArrayElement(compiled.source.coreType) != scope.walkCoreItem {
+		return nil, fmt.Errorf("%s/source: typed visit recursion requires an original array of the same core type", path)
 	}
 	childScope := scope
 	if compiled.op == "with_index" {
@@ -263,8 +309,14 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		}
 		childScope.indexes[expression.Name] = compiled.indexSlot
 	}
-	if compiled.op == "walk" {
+	if compiled.op == "walk" || compiled.op == "visit" {
 		childScope.isWalk = true
+		childScope.walkCoreItem = nil
+	}
+	if compiled.op == "visit" {
+		childScope.isIteration, childScope.item, childScope.coreItem = true, compiled.source.schema, compiled.source.coreType
+		childScope.walkCoreItem = compiled.source.coreType
+		childScope.isSingleVisit = true
 	}
 	if compiled.op == "let" {
 		if !definitionIdentifier.MatchString(expression.Name) {
@@ -283,6 +335,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			return nil, fmt.Errorf("%s/source must produce an array", path)
 		}
 		childScope.isIteration = true
+		childScope.isSingleVisit = false
 		childScope.item = nil
 		childScope.coreItem = nil
 		if compiled.op != "walk" {
@@ -378,6 +431,18 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		return fail("condition must produce a boolean")
 	}
 	switch expression.op {
+	case "track_tool":
+		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, ObjectType) {
+			return fail("track_tool requires a string key and an observation object")
+		}
+	case "track_text":
+		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, StringType) || !slices.Contains([]string{"delta", "snapshot"}, expression.policy) {
+			return fail("track_text requires a string key, text body and explicit delta or snapshot policy")
+		}
+	case "resolve_item":
+		if !isAssignable(expression.source.result, ObjectType) {
+			return fail("resolve_item requires an identity object")
+		}
 	case "reject":
 		if source.Diagnostic == nil || strings.TrimSpace(source.Reason) == "" {
 			return fail("reject requires a static diagnostic and reason")
@@ -424,7 +489,7 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		if expression.source.op != "read" || !slices.Contains([]string{"input", "root", "item", "binding"}, expression.source.from) {
 			return fail("native capture requires a read from the original wire")
 		}
-	case "let", "remember":
+	case "let", "remember", "visit":
 		expression.result, expression.schema = expression.body.result, expression.body.schema
 	case "with_index":
 		if source.KeyMode != "raw_json" || !slices.Contains([]string{"last", "first", "reject"}, expression.policy) {
@@ -451,9 +516,9 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 			return fail(expression.op + " requires a literal string and a string source")
 		}
 		expression.literalText = text
-	case "lower":
+	case "lower", "quote_string":
 		if !isAssignable(expression.source.result, StringType) {
-			return fail("lower source must produce a string")
+			return fail(expression.op + " source must produce a string")
 		}
 	case "split_data_uri":
 		if !isAssignable(expression.source.result, StringType) {
@@ -494,6 +559,15 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 			return fail("cast supports scalar types only")
 		}
 		expression.result = expression.to
+	case "merge_usage":
+		if len(expression.items) < 2 {
+			return fail("merge_usage requires at least two snapshots")
+		}
+		for _, item := range expression.items {
+			if !isAssignable(item.result, ObjectType) && item.result != NullType {
+				return fail("merge_usage snapshots must be core usage objects or null")
+			}
+		}
 	case "merge", "merge_deep":
 		if expression.op == "merge" && !slices.Contains([]string{"reject", "first", "last"}, expression.policy) {
 			return fail("merge requires reject, first or last policy")

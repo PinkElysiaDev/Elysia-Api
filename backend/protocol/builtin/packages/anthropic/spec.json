@@ -48,6 +48,36 @@
       "models": {
         "cursorParameter": "after_id"
       }
+    },
+    "stream": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/v1/messages",
+      "transport": "sse",
+      "request": "generation-request",
+      "response": "provider-event",
+      "auth": {
+        "location": "header",
+        "name": "x-api-key"
+      },
+      "headers": {
+        "anthropic-version": "2023-06-01"
+      },
+      "framing": {
+        "eventNamePath": "/type"
+      },
+      "input": {
+        "type": "object",
+        "required": [
+          "max_tokens"
+        ],
+        "properties": {
+          "max_tokens": {
+            "type": "integer"
+          }
+        },
+        "allowUnknown": true
+      }
     }
   },
   "documents": {
@@ -1691,6 +1721,771 @@
         "type": "object",
         "allowUnknown": true
       }
+    },
+    "provider-event": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          }
+        },
+        "allowUnknown": true
+      },
+      "assertions": [
+        {
+          "path": "/index",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/index"
+            }
+          },
+          "schema": {
+            "type": "integer"
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          },
+          "code": "upstream_contract_violation",
+          "reason": "stream index must be a nonnegative integer"
+        },
+        {
+          "path": "/message",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          },
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "stream envelope requires its declared object"
+        },
+        {
+          "path": "/content_block",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "content_block_start"
+              }
+            ]
+          },
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "stream envelope requires its declared object"
+        },
+        {
+          "path": "/delta",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "content_block_delta"
+              }
+            ]
+          },
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "stream envelope requires its declared object"
+        }
+      ],
+      "stream": {
+        "discriminator": "/type",
+        "responseId": "/response_id",
+        "itemId": "/index",
+        "inheritResponseId": true,
+        "itemIdIsIndex": true,
+        "events": {
+          "message_start": [
+            {
+              "action": "response_start",
+              "responseId": "/message/id"
+            },
+            {
+              "action": "usage",
+              "responseId": "/message/id",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/message/usage"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/message/usage"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "usage": {
+                "input": "/message/usage/input_tokens",
+                "output": "/message/usage/output_tokens"
+              }
+            }
+          ],
+          "content_block_start": [
+            {
+              "action": "item_start",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_block/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "text"
+                  }
+                ]
+              }
+            },
+            {
+              "action": "item_start",
+              "kind": "reasoning",
+              "when": {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content_block/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "thinking"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content_block/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "redacted_thinking"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "action": "tool_start",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_block/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "tool_use"
+                  }
+                ]
+              },
+              "tool": {
+                "name": "/content_block/name",
+                "callId": "/content_block/id"
+              }
+            }
+          ],
+          "content_block_delta": [
+            {
+              "action": "text_delta",
+              "text": "/delta/text",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "text_delta"
+                  }
+                ]
+              }
+            },
+            {
+              "action": "text_delta",
+              "kind": "reasoning",
+              "text": "/delta/thinking",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "thinking_delta"
+                  }
+                ]
+              }
+            },
+            {
+              "action": "tool_delta",
+              "arguments": "/delta/partial_json",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "input_json_delta"
+                  }
+                ]
+              }
+            }
+          ],
+          "content_block_stop": [
+            {
+              "action": "item_finish"
+            }
+          ],
+          "message_delta": [
+            {
+              "action": "observe"
+            },
+            {
+              "action": "usage",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/usage"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "usage": {
+                "input": "/usage/input_tokens",
+                "output": "/usage/output_tokens"
+              }
+            }
+          ],
+          "message_stop": [
+            {
+              "action": "response_finish"
+            }
+          ],
+          "ping": [
+            {
+              "action": "control"
+            }
+          ]
+        },
+        "itemIdValue": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/index"
+            }
+          },
+          "then": {
+            "op": "read",
+            "from": "input",
+            "path": "/index"
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": 0
+          }
+        },
+        "optionalResponseId": true
+      }
+    }
+  ,
+"client-event": {
+  "schema": {
+    "type": "object",
+    "required": [
+      "type"
+    ],
+    "properties": {
+      "type": {
+        "type": "string"
+      }
+    },
+    "allowUnknown": true
+  },
+  "assertions": [
+    {
+      "path": "/index",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/index"
+        }
+      },
+      "schema": {
+        "type": "integer"
+      },
+      "check": {
+        "op": "integer",
+        "operation": "gte",
+        "items": [
+          {
+            "op": "read",
+            "from": "input",
+            "path": ""
+          },
+          {
+            "op": "literal",
+            "value": 0
+          }
+        ]
+      },
+      "code": "upstream_contract_violation",
+      "reason": "stream index must be a nonnegative integer"
+    },
+    {
+      "path": "/message",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "read",
+            "from": "input",
+            "path": "/type"
+          },
+          {
+            "op": "literal",
+            "value": "message_start"
+          }
+        ]
+      },
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      },
+      "code": "upstream_contract_violation",
+      "reason": "stream envelope requires its declared object"
+    },
+    {
+      "path": "/content_block",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "read",
+            "from": "input",
+            "path": "/type"
+          },
+          {
+            "op": "literal",
+            "value": "content_block_start"
+          }
+        ]
+      },
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      },
+      "code": "upstream_contract_violation",
+      "reason": "stream envelope requires its declared object"
+    },
+    {
+      "path": "/delta",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "read",
+            "from": "input",
+            "path": "/type"
+          },
+          {
+            "op": "literal",
+            "value": "content_block_delta"
+          }
+        ]
+      },
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      },
+      "code": "upstream_contract_violation",
+      "reason": "stream envelope requires its declared object"
+    }
+  ],
+  "stream": {
+    "discriminator": "/type",
+    "responseId": "/response_id",
+    "itemId": "/index",
+    "inheritResponseId": true,
+    "itemIdIsIndex": true,
+    "events": {
+      "message_start": [
+        {
+          "action": "response_start",
+          "responseId": "/message/id"
+        },
+        {
+          "action": "usage",
+          "responseId": "/message/id",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/message/usage"
+                }
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/message/usage"
+                    },
+                    {
+                      "op": "literal",
+                      "value": {}
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "usage": {
+            "input": "/message/usage/input_tokens",
+            "output": "/message/usage/output_tokens"
+          }
+        }
+      ],
+      "content_block_start": [
+        {
+          "action": "item_start",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/content_block/type"
+              },
+              {
+                "op": "literal",
+                "value": "text"
+              }
+            ]
+          }
+        },
+        {
+          "action": "item_start",
+          "kind": "reasoning",
+          "when": {
+            "op": "any",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_block/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "thinking"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_block/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "redacted_thinking"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "action": "tool_start",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/content_block/type"
+              },
+              {
+                "op": "literal",
+                "value": "tool_use"
+              }
+            ]
+          },
+          "tool": {
+            "name": "/content_block/name",
+            "callId": "/content_block/id"
+          }
+        }
+      ],
+      "content_block_delta": [
+        {
+          "action": "text_delta",
+          "text": "/delta/text",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/delta/type"
+              },
+              {
+                "op": "literal",
+                "value": "text_delta"
+              }
+            ]
+          }
+        },
+        {
+          "action": "text_delta",
+          "kind": "reasoning",
+          "text": "/delta/thinking",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/delta/type"
+              },
+              {
+                "op": "literal",
+                "value": "thinking_delta"
+              }
+            ]
+          }
+        },
+        {
+          "action": "tool_delta",
+          "arguments": "/delta/partial_json",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/delta/type"
+              },
+              {
+                "op": "literal",
+                "value": "input_json_delta"
+              }
+            ]
+          }
+        },
+        {
+          "action": "observe",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/delta/type"
+              },
+              {
+                "op": "literal",
+                "value": "signature_delta"
+              }
+            ]
+          }
+        }
+      ],
+      "content_block_stop": [
+        {
+          "action": "item_finish"
+        }
+      ],
+      "message_delta": [
+        {
+          "action": "observe"
+        },
+        {
+          "action": "usage",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage"
+                }
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage"
+                    },
+                    {
+                      "op": "literal",
+                      "value": {}
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "usage": {
+            "input": "/usage/input_tokens",
+            "output": "/usage/output_tokens"
+          }
+        }
+      ],
+      "message_stop": [
+        {
+          "action": "response_finish"
+        }
+      ],
+      "ping": [
+        {
+          "action": "control"
+        }
+      ],
+      "error": [
+        {
+          "action": "failure",
+          "error": "/error"
+        }
+      ]
     }
   }
+}
+}
 }

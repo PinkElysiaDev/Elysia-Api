@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -40,6 +41,16 @@ func (plan *compiledOutputPlan) buildReadValue(state evaluation) (plannedOutput,
 	case "runtime":
 		if !state.runtime.isBound {
 			return plannedOutput{}, fmt.Errorf("runtime metadata is not bound")
+		}
+		if expression.pointer[0] == "nativeFrame" {
+			if state.runtime.observedNativeFrame.IsZero() {
+				return plannedOutput{}, fmt.Errorf("native observation frame is not bound")
+			}
+			value, err := readValuePointerWithObjectReader(state.runtime.observedNativeFrame, expression.pointer[1:], state.valueReader.forParent(state.runtime.observedNativeFrame), state.objectReader)
+			if err == nil && expression.isRequired && value.IsZero() {
+				return plannedOutput{}, fmt.Errorf("%s: required field is absent", expression.path)
+			}
+			return plannedLeaf(value), err
 		}
 		if expression.pointer[0] == "scope" {
 			return plannedLeaf(StringValue(state.runtime.scopeModel)), nil
@@ -105,7 +116,7 @@ func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, er
 			return plannedOutput{}, fmt.Errorf("%s/values: enum value is unmapped", expression.path)
 		}
 		return plannedLeaf(value), nil
-	case "strip_prefix", "trim_prefix", "lower", "has_prefix", "contains":
+	case "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains":
 		text, err := readPlannedString(source.output)
 		if err != nil {
 			return plannedOutput{}, err
@@ -113,6 +124,8 @@ func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, er
 		switch expression.op {
 		case "lower":
 			return plannedLeaf(StringValue(strings.ToLower(text))), nil
+		case "quote_string":
+			return plannedLeaf(StringValue(strconv.Quote(text))), nil
 		case "has_prefix":
 			return plannedLeaf(coreBoolean(strings.HasPrefix(text, expression.literalText))), nil
 		case "contains":

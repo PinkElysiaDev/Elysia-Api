@@ -14,6 +14,7 @@ type evaluation struct {
 	itemIndex                  int
 	bindings                   []JSONOutput
 	streamSlots                []Value
+	streamTransaction          *packageStreamTransaction
 	walkBody                   *compiledOutputPlan
 	walkDepth                  int
 	capture                    *nativeCaptureState
@@ -23,6 +24,7 @@ type evaluation struct {
 }
 
 type evaluationRuntime struct {
+	observedNativeFrame   Value
 	isBound               bool
 	isInterleavedThinking bool
 	scopeModel            string
@@ -30,7 +32,7 @@ type evaluationRuntime struct {
 }
 
 func bindEvaluationRuntime(compiled *Compiled, direction Direction, options EvaluationContext) evaluationRuntime {
-	runtime := evaluationRuntime{isBound: true, isInterleavedThinking: options.InterleavedThinking, scopeModel: options.Scope.Model}
+	runtime := evaluationRuntime{observedNativeFrame: options.observedNativeFrame, isBound: true, isInterleavedThinking: options.InterleavedThinking, scopeModel: options.Scope.Model}
 	stream := options.outputStream
 	if stream != nil && compiled.packagePlan != nil && direction == EncodeEvent && stream.direction == EncodeEvent && stream.packageStream != nil &&
 		compiled.hash == stream.compiled.hash && compiled.mappings[direction].definitionHash == stream.compiled.mappings[direction].definitionHash && options.Scope == stream.options.Scope {

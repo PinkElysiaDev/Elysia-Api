@@ -34,6 +34,16 @@ func (tracker *TextTracker) Append(delta string) {
 // Snapshot returns only a new suffix. An incompatible rewrite is an error;
 // an append-only downstream cannot retract a prefix it has already received.
 func (tracker *TextTracker) Snapshot(snapshot string) (string, error) {
+	delta, err := tracker.snapshotSuffix(snapshot)
+	if err == nil {
+		tracker.Append(delta)
+	}
+	return delta, err
+}
+
+// snapshotSuffix checks the existing digest without advancing it. A staged
+// mapping appends only when the complete event has succeeded.
+func (tracker *TextTracker) snapshotSuffix(snapshot string) (string, error) {
 	if len(snapshot) < tracker.length {
 		return "", streamIssue(UpstreamContractViolation, "snapshot", "cumulative content shortened an already forwarded prefix")
 	}
@@ -45,9 +55,7 @@ func (tracker *TextTracker) Snapshot(snapshot string) (string, error) {
 			return "", streamIssue(UpstreamContractViolation, "snapshot", "cumulative content rewrote an already forwarded prefix")
 		}
 	}
-	delta := snapshot[tracker.length:]
-	tracker.Append(delta)
-	return delta, nil
+	return snapshot[tracker.length:], nil
 }
 
 // Length reports the number of bytes already forwarded.

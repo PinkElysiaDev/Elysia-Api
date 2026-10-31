@@ -48,7 +48,7 @@ func evaluateCoreOutput(ctx context.Context, compiled *Compiled, direction Direc
 	if err != nil {
 		return fail(err)
 	}
-	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), valueReader: options.valueReader, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), streamTransaction: options.packageTransaction, valueReader: options.valueReader, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	if compiled.packagePlan != nil {
 		state.capture = compiled.newNativeCapture(direction, options)
 		state.objectReader = mapping.outputPlan.newRootObjectReader(input)

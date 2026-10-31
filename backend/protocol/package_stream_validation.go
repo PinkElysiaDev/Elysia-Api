@@ -41,7 +41,16 @@ func newPackageStreamValidation(contract *compiledPackageStreamContract, target 
 func (state *packageStreamValidation) consume(ctx context.Context, frame Value) error {
 	reader := newNativeComparisonReader(frame)
 	objects := &planObjectReader{root: spanIdentity(frame.raw)}
+	conditions := evaluation{ctx: ctx, input: frame, root: frame, valueReader: reader, objectReader: objects,
+		budget: &evaluationBudget{limits: state.replay.limits, stepLimit: state.replay.limits.Nodes}}
 	read := func(field streamField) (Value, error) {
+		if field.value != nil {
+			value, err := field.value.evaluate(conditions)
+			if err != nil {
+				return Value{}, state.issue(field.path, "stream identity expression failed", err)
+			}
+			return value, nil
+		}
 		value, err := readValuePointerWithObjectReader(frame, field.pointer, reader, objects)
 		if err != nil {
 			return Value{}, state.issue(field.path, "stream selector cannot read its declared field", err)
@@ -56,11 +65,10 @@ func (state *packageStreamValidation) consume(ctx context.Context, frame Value) 
 	if !exists {
 		return state.issue(state.contract.discriminator.path, "undeclared stream event tag", nil)
 	}
-	conditions := evaluation{ctx: ctx, input: frame, root: frame, valueReader: reader, objectReader: objects,
-		budget: &evaluationBudget{limits: state.replay.limits, stepLimit: state.replay.limits.Nodes}}
 	sequence := state.accepted.sequence
 	hasAction := false
 	var responseID, responsePath string
+	hasResponseIdentity := false
 	for _, action := range actions {
 		if action.when != nil {
 			condition, err := action.when.evaluate(conditions)
@@ -78,12 +86,23 @@ func (state *packageStreamValidation) consume(ctx context.Context, frame Value) 
 		if err := state.checkActionPosition(action); err != nil {
 			return err
 		}
-		if !hasAction || action.responseID.path != responsePath {
+		if action.isControl {
+			value, err := read(action.responseID)
+			if err != nil {
+				return err
+			}
+			if !value.IsZero() {
+				if _, err := state.readResponseIdentity(action.responseID, read); err != nil {
+					return err
+				}
+			}
+		} else if !hasResponseIdentity || action.responseID.path != responsePath {
 			responseID, err = state.readResponseIdentity(action.responseID, read)
 			if err != nil {
 				return err
 			}
 			responsePath = action.responseID.path
+			hasResponseIdentity = true
 		}
 		if !hasAction && state.contract.sequence.path != "" {
 			value, err := read(state.contract.sequence)
@@ -112,6 +131,9 @@ func (state *packageStreamValidation) consume(ctx context.Context, frame Value) 
 }
 
 func (state *packageStreamValidation) checkActionPosition(action compiledPackageStreamEvent) error {
+	if action.isControl {
+		return nil
+	}
 	if state.replay.isTerminal && action.action != UsageUpdated {
 		return state.issue(state.contract.discriminator.path, "event arrived after terminal; only usage tails are permitted", nil)
 	}
@@ -125,9 +147,12 @@ func (state *packageStreamValidation) checkActionPosition(action compiledPackage
 }
 
 func (state *packageStreamValidation) consumeAction(ctx context.Context, definition compiledPackageStreamEvent, responseID string, read func(streamField) (Value, error)) error {
+	if definition.isControl {
+		return ctx.Err()
+	}
 	event := Event{SchemaVersion: state.target.coreSchemaVersion(), Source: state.target.Protocol, Type: definition.action}
 	identityBytes := state.identityBytes
-	if !state.accepted.hasStarted {
+	if state.accepted.responseID == "" {
 		identityBytes += len(responseID)
 	}
 	itemBytes, err := state.readPayload(&event, &definition, read)
@@ -146,10 +171,10 @@ func (state *packageStreamValidation) consumeAction(ctx context.Context, definit
 	if _, err := state.replay.Consume(event); err != nil {
 		return state.replayError(err, definition)
 	}
-	if !state.accepted.hasStarted {
+	if state.accepted.responseID == "" {
 		state.accepted.responseID = responseID
-		state.accepted.hasStarted = true
 	}
+	state.accepted.hasStarted = true
 	state.identityBytes = identityBytes
 	switch definition.action {
 	case ItemStarted:
@@ -178,9 +203,9 @@ func (state *packageStreamValidation) readPayload(event *Event, definition *comp
 		event.ItemID = StringValue(itemID)
 		// Generic finishes close the established item, as on transports whose
 		// end marker carries no kind. Tool finishes still promise a tool item.
-		if state.contract.hasTools && (event.Type == ItemDelta || event.Type == ItemFinished && definition.isTool) {
+		if (state.contract.hasTools || state.contract.hasTypedItems) && (event.Type == ItemDelta || event.Type == ItemFinished && definition.isTool) {
 			key := state.replay.identities.aliases["item:"+itemID]
-			if item := state.replay.items[key]; item != nil && (item.kind == ToolCallNode) != definition.isTool {
+			if item := state.replay.items[key]; item != nil && ((item.kind == ToolCallNode) != definition.isTool || event.Type == ItemDelta && !definition.isTool && item.kind != definition.kind) {
 				return 0, state.issue(definition.itemID.path, "stream action does not match the established item kind", nil)
 			}
 		}
@@ -197,7 +222,7 @@ func (state *packageStreamValidation) readPayload(event *Event, definition *comp
 				event.Item = &Node{Kind: ToolCallNode, Name: StringValue(name), CallID: StringValue(callID), Input: &ToolInput{Kind: JSONInput}}
 				return len(itemID) + len(name) + len(callID), nil
 			}
-			event.Item = &Node{Kind: TextNode}
+			event.Item = &Node{Kind: definition.kind}
 			return len(itemID), nil
 		}
 		if event.Type == ItemDelta {
@@ -270,11 +295,14 @@ func (state *packageStreamValidation) readResponseIdentity(field streamField, re
 	if value.IsZero() && state.contract.canInheritResponseID && state.accepted.hasStarted {
 		return state.accepted.responseID, nil
 	}
+	if state.contract.isResponseIDOptional && (value.IsZero() || value.IsNull() || value.IsString("")) {
+		return state.accepted.responseID, nil
+	}
 	identity, err := state.readIdentityValue(value, field.path)
 	if err != nil {
 		return "", err
 	}
-	if state.accepted.hasStarted && identity != state.accepted.responseID {
+	if state.accepted.hasStarted && state.accepted.responseID != "" && identity != state.accepted.responseID {
 		return "", state.issue(field.path, "response identity changed", nil)
 	}
 	return identity, nil

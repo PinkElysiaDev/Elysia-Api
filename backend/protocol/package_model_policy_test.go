@@ -3,6 +3,8 @@ package protocol
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -37,6 +39,116 @@ func TestPackageModelCapabilityBindingAndIsolation(t *testing.T) {
 	cancel()
 	if _, err := compiled.ResolveModelReasoning(ctx, "model", nil); !errors.Is(err, context.Canceled) {
 		t.Fatal("capability lookup ignored cancellation", err)
+	}
+}
+
+func TestPackageSourceReasoningNormalization(t *testing.T) {
+	for _, source := range []struct {
+		name, codec, parameters string
+	}{
+		{"openai-chat", "openai-chat", `{"reasoning_effort":"high"}`},
+		{"openai-responses", "responses", `{"responses_reasoning":{"effort":"high","summary":"auto","future":9007199254740993}}`},
+		{"anthropic", "anthropic", `{"anthropic_thinking":{"type":"enabled","budget_tokens":2048,"display":"summarized","future":9007199254740993},"anthropic_output_config":{"effort":"high","future":null}}`},
+		{"google-generate-content", "gemini", `{"gemini_thinking":{"thinkingBudget":4096,"includeThoughts":true,"future":9007199254740993}}`},
+	} {
+		raw, err := os.ReadFile(filepath.Join("builtin", "packages", source.name, "mapping.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var mapping ProtocolMapping
+		if err := decodeContract(raw, &mapping); err != nil {
+			t.Fatal(err)
+		}
+		compiler := &expressionCompiler{limits: DefaultLimits(), references: mapping.Expressions, resolving: map[string]bool{}, used: map[string]bool{}}
+		normalization := modelNormalizationOptions{Steps: mapping.ModelPolicy.Normalize, Checks: mapping.ModelPolicy.NormalizeChecks}
+		if err := normalization.compile(compiler); err != nil {
+			t.Fatal(err)
+		}
+		var parameters Object
+		if err := numericTestInput(t, source.parameters).Decode(&parameters); err != nil {
+			t.Fatal(err)
+		}
+		type normalizationFixture struct {
+			name   string
+			change func(*Request)
+		}
+		fixtures := []normalizationFixture{
+			{"legacy", func(*Request) {}},
+			{"history-and-legacy", func(request *Request) { request.Reasoning = &ReasoningIntent{HistoryRetention: StringValue("all")} }},
+			{"empty-canonical-conflict", func(request *Request) {
+				request.Reasoning = &ReasoningIntent{}
+				delete(request.Parameters, "anthropic_output_config")
+			}},
+			{"empty", func(request *Request) { request.Parameters = nil }},
+			{"empty-buckets", func(request *Request) {
+				for name := range request.Parameters {
+					request.Parameters[name] = numericTestInput(t, `{}`)
+				}
+				if source.codec == "openai-chat" {
+					request.Parameters["reasoning_effort"] = Value{}
+					delete(request.Parameters, "reasoning_effort")
+				}
+			}},
+			{"null-buckets", func(request *Request) {
+				for name := range request.Parameters {
+					request.Parameters[name] = numericTestInput(t, `null`)
+				}
+			}},
+			{"canonical-conflict", func(request *Request) {
+				request.Reasoning = &ReasoningIntent{Mode: "enabled", Effort: StringValue("high"), EffortScope: "reasoning"}
+				delete(request.Parameters, "anthropic_output_config")
+			}},
+			{"invalid-bucket", func(request *Request) {
+				for name := range request.Parameters {
+					request.Parameters[name] = numericTestInput(t, `false`)
+				}
+			}},
+		}
+		if source.codec == "anthropic" {
+			fixtures = append(fixtures, normalizationFixture{"thinking-before-output-config", func(request *Request) {
+				request.Parameters["anthropic_thinking"] = numericTestInput(t, `{"type":"unknown"}`)
+				request.Parameters["anthropic_output_config"] = numericTestInput(t, `false`)
+			}})
+		}
+		for _, fixture := range fixtures {
+			t.Run(source.name+"/"+fixture.name, func(t *testing.T) {
+				request := &Request{SchemaVersion: ProtocolCoreVersion, Parameters: parameters}
+				request = request.Clone()
+				fixture.change(request)
+				want, got := request.Clone(), request.Clone()
+				wantErr := NormalizeReasoningParameters(want, source.codec, false)
+				execution := &modelControlExecution{limits: DefaultLimits(), bindings: make([]JSONOutput, normalization.bindingSlots)}
+				gotErr := execution.apply(t.Context(), &CompiledConversion{}, got, ConversionContext{}, nil, normalization.steps, false)
+				if gotErr == nil {
+					gotErr = ValidateReasoningIntent(got.Reasoning)
+				}
+				if gotErr == nil && execution.changedReasoning {
+					gotErr = execution.apply(t.Context(), &CompiledConversion{}, got, ConversionContext{}, nil, normalization.checks, false)
+				}
+				if (wantErr == nil) != (gotErr == nil) {
+					t.Fatal("source normalization acceptance changed", wantErr, gotErr)
+				}
+				if wantErr == nil {
+					before, _ := EncodeValue(want)
+					after, _ := EncodeValue(got)
+					if before != after {
+						t.Fatal("source normalization changed semantic fields", before.JSONString(), after.JSONString())
+					}
+					return
+				}
+				var wantFailure, gotFailure *ConversionError
+				if errors.As(wantErr, &wantFailure) != errors.As(gotErr, &gotFailure) {
+					t.Fatal("source normalization changed error classification", wantErr, gotErr)
+				}
+				if wantFailure != nil {
+					if !reflect.DeepEqual(wantFailure.Issues, gotFailure.Issues) || wantFailure.CandidateOnly != gotFailure.CandidateOnly {
+						t.Fatal("source normalization diagnostic changed", wantFailure, gotFailure)
+					}
+				} else if wantErr.Error() != gotErr.Error() {
+					t.Fatal("source normalization error changed", wantErr, gotErr)
+				}
+			})
+		}
 	}
 }
 

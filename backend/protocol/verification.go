@@ -212,6 +212,9 @@ func executeVerificationSample(ctx context.Context, compiled *Compiled, sample S
 		if err == nil {
 			result.output, err = ParseValue(body)
 		}
+		if err == nil && compiled.packagePlan != nil && len(compiled.packagePlan.finalContracts) != 0 {
+			err = compiled.ValidateWireOutputContext(ctx, EncodeResponse, result.output)
+		}
 	case DecodeEvent, EncodeEvent, DecodeClientEvent, EncodeUpstreamEvent:
 		return executeEventFixture(ctx, compiled, sample)
 	default:

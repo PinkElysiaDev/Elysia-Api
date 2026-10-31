@@ -4,6 +4,32 @@
 
 表达式在配置编译时解析成计划。运行时执行选中的计划，不重新解释 JSON 声明，不在错误后换另一种转换算法。以下构件不包含供应商字段或跨协议取舍政策。
 
+## JSON 响应构造与最终交付
+
+`encode_response` 可用 `finalDocument` 引用另一份 Spec 命名文档。原 `document` 仍约束
+编码结果及 Native 协调后的结果；未声明 `finalDocument` 时，最终交付继续使用同一文档。
+用户原有的严格 schema 不会因为保留 Native 而被绕过。
+
+例如方向中的两个绑定可以是：
+
+```json
+{"document":"response-candidate","finalDocument":"client-response"}
+```
+
+两份文档分别描述允许构造／恢复的响应和实际可交付的响应。当前实际消费者为 Chat：
+旧 typed 编码允许原样恢复来源中的裸 `error` 字符串，但最终 wire 检查要求错误对象。
+将两者绑定到同一 schema 会提前改变组件接受边界；把最终 schema 放宽又会漏掉发送检查。
+现在这个差异由明确的配置表达，不依赖失败后的回退或供应商 Go 分支。
+
+`ValidateWireOutput`、`ValidateWireOutputContext` 和相应对象读取入口选择最终文档；
+EncodeResponse 样例证据及组合发送验证也检查它。两个实际文档内容都进入方向指纹，
+改变最终合同会使相关验证证据失效。编译期只接受 JSON `encode_response` 和非流式文档，
+尚未扩展到事件、请求、任务或会话。
+
+`closure-dev93-protocol` 已通过本边界定向、四协议错误映射、119 份迁入 JSON 样例及
+原自定义严格 Native 保护。该记录不表示四预置完整迁移或性能验收完成；原 invalid
+HTTP context 的底层解码文字与静态诊断仍有明确记录的差异。
+
 ## 递归对象并集
 
 `merge_deep` 按顺序求值全部 `items`，再合并对象。只有双方都是 object 的重叠成员才递归；其它重叠值一律报错，即使值相等。数组作为完整值处理，不拼接。缺失、null 和非对象操作数不会自动替换为 `{}`。原有 `merge` 的浅合并行为保持不变。

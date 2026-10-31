@@ -165,7 +165,7 @@ func (compiled *Compiled) finishPackageCoreOutput(ctx context.Context, direction
 		if err != nil {
 			return err
 		}
-		if len(items) == 0 {
+		if len(items) == 0 && !compiled.mappings[direction].canDeferEvents {
 			return compiled.packageCoreShapeError(direction, "package event batch must contain at least one core event")
 		}
 		for index, item := range items {

@@ -164,3 +164,74 @@ owner 合并与 details 的检查顺序；不使用虚假字段或永不生效�
 逐提交复核还发现分块暂存遗漏了编译器分支边界，已在 `19948419`、`77715520` 修正。
 `closure-committed-protocol-fixed` 对独立的实际提交源码执行协议全量通过；此前只测工作区
 不能作为这些提交自身通过的证据。后续最终整理将同时核验提交边界。
+
+## 模型策略全量复核
+
+`closure-stream-atoms-errors-model` 中的模型能力、源 alias 规范化、四向 thinking 投影、
+后置用户规则及预算边界差分通过。声明保留默认 `reasoning-controls` 的顺序 175，
+包括严格模式、绑定硬上限、未知 Agent 模型和渲染拒绝；性能尚未验收。
+
+随后 `closure-integrated-stage` 暴露了两种不同问题：
+
+- 旧草案的 `TestPackageDraftHistoryTargets` 用整份默认策略测试历史处置，却未提供
+  目标模型。新接通模型规则后，unknown 模型会按旧生产策略省略 thinking 或严格拒绝；
+  禁用历史处置后，未消费的 historyRetention 也会触发既有渲染拒绝。因此将该用例限定
+  到实际声明的 `request-projection`，保留原有结果、禁用与诊断断言。完整默认策略的
+  模型部分继续由独立的新旧差分检查，不能用这项隔离宣称默认组合全量通过。
+- Agent 离线回译只对旧 Codec 运行默认策略，漏过 v3 声明的模型投影；Chat 草案的
+  reasoning 解码又仅保存 effort，漏掉 mode 和 effortScope。前者改为统一使用真实
+  默认转换入口，后者补齐声明。既有 Agent 差分增加回译后的 parameters/reasoning
+  比较；没有放宽样例期望。缺少真实流声明的 Agent stream 样例仍是待迁移项。
+
+以上修正已通过 `closure-model-full-paths`，包括真实默认策略入口、Agent 回译、历史投影、
+Chat JSON、四包 119 个样例和用户自定义 Native schema 回归。原始失败日志保留。
+
+## 第九批：Anthropic 实际流帧与通用增量状态（dev.93）
+
+Anthropic 两份源增加 `stream` 传输、`provider-event` / `client-event` 文档和双向事件程序。
+文本、工具参数、thinking、签名与加密块的五组现有目标样例比较完整帧字节；另外对照
+晚到工具名称/调用 ID、文本快照只追加后缀、终态自动关闭工具以及无显式原因的工具终态。
+这批对照通过 `closure-anthropic-continuations-ready`。原始编码样例没有初始 usage，
+因此组件字节对照和使用原目标 usage 准备规则后的最终 wire 对照分开，未更改旧样例。
+
+原有 JSON 与流 usage 渲染共用 `encode-bound-usage`，合并核心计数的 `merge_usage`
+复用已有 `MergeUsage`。`resolve_item`、`track_text`、`track_tool`、`index_values`
+只处理身份、增量和有界集合；供应商字段与帧顺序由 Mapping 声明。文本保留摘要和长度，
+工具参数仅保留未完成 JSON 或尚未发送的内容；成功提交事件后才推进持久状态。
+
+源端缺失/null index 的归零，以及缺失/null/空 response ID 的旧接受边界由显式 Spec
+表达；目标文档不继承源端宽松身份选项。原 `visit` 不伪造数组 `/0` 路径，也不赋予
+普通 JSON 来源权限。Native-only 保留整帧一次，不通过重建每个语义事件重复发送。
+
+仍待闭合的项目如下；当前生产预置继续使用旧链，不把本阶段的样例成功当作完整迁移：
+
+| 范围 | 已验证 | 尚缺 |
+|---|---|---|
+| Anthropic 源流 | 文本、工具、thinking、加密块的现有轨迹 | 分片签名的可信节点保存、未知字段多容器的真实来源表示、完整 metadata |
+| Anthropic 目标流 | 五组既有轨迹及四类续传边界 | metadata 投影及首错顺序的完整覆盖、初始 usage 等最终发送约束独立绑定 |
+| Chat / Responses / Gemini 流 | 通用状态与动作基础 | 真实数组帧、隐式开始、晚到身份及对应目标渲染尚未完整接通 |
+| Native 到修改后流 | 已复现旧 `target item has no start` | 是否独立改变接受边界仍待确认；本阶段保留旧拒绝 |
+| 管理及策略 | 整包管理、模型能力与 thinking 投影 | 四预置完整组合证据、流 Agent/续传/任务调用链 |
+| 性能与默认切换 | 基线归档已完成 | 功能完整版本正式测量、火焰图、优化及退役均未开始 |
+
+当前通用 Native observer 只供已声明的观察程序使用。Anthropic 预置观察程序不补建
+旧实现未维护的混合流状态；不能将通用机制测试通过当成已批准修复该旧行为。
+
+本阶段还补齐保留预算：槽位、索引、工具正文、身份别名及 tracker/call ID 键共同计入
+现有 BufferBytes。新增反例发现原草稿错用了临时表达式工作预算（原值的八倍），因此
+修正为编译修订的原始保留上限；没有调高测试限额。组合超限不提交事务，工具完成释放
+正文，最终 Release 归零。每次增量只调整分类计数，不遍历已有表重新计算。
+
+阶段验证记录：
+
+- `closure-dev93-protocol-confirm`：协议全量通过，包含 finalDocument、自定义 Native
+  约束、模型策略、四协议错误包络、JSON 证据、流状态和保留预算。
+- `closure-dev93-go-all`：Go 工程全量仅 `TestCLIReferenceUpToDate` 失败，原因是之前
+  管理端改为 v3 后未重新生成 CLI 文档；其余测试通过。使用现有生成器补齐文档后，
+  `closure-dev93-cli-reference-confirm` 不带更新开关验证通过。
+- `closure-dev93-vet`、`closure-dev93-race`：全量 vet 与相关流/模型/最终文档 race 通过。
+- `closure-dev93-staticcheck`：v0.8.2 仍以既有 45 条诊断退出 1；按诊断内容和数量比较，
+  新增 0、移除 0，明细保存在同名 `-diff.json`。
+
+本阶段没有新的正式性能结果。最终审计、页面验收及六目标新版本产物仍随完整迁移验收，
+不能用开始时的基线六目标产物替代。

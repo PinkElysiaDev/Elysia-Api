@@ -62,6 +62,38 @@ func TestPackageDocumentIdentityFollowsReferences(t *testing.T) {
 	}
 }
 
+func TestPackageFinalDocumentIdentityAndBinding(t *testing.T) {
+	document := textProtocolPackage(t)
+	document.Spec.Documents["delivered-response"] = WireContractSpec{Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true}}
+	entry := document.Mapping.Directions[EncodeResponse]
+	entry.FinalDocument = "delivered-response"
+	document.Mapping.Directions[EncodeResponse] = entry
+	before := compilePackageForTest(t, document)
+	contract := document.Spec.Documents["delivered-response"]
+	contract.Assertions = []WireAssertion{{Path: "/reply", Schema: ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "reply must be a string"}}
+	document.Spec.Documents["delivered-response"] = contract
+	after := compilePackageForTest(t, document)
+	if before.Hash() == after.Hash() || before.mappings[EncodeResponse].definitionHash == after.mappings[EncodeResponse].definitionHash {
+		t.Fatal("final contract was omitted from protocol or mapping identity")
+	}
+	if before.mappings[DecodeResponse].definitionHash != after.mappings[DecodeResponse].definitionHash {
+		t.Fatal("final-only document changed source decoding identity")
+	}
+	for _, fixture := range []struct {
+		direction Direction
+		name      string
+	}{{EncodeRequest, "delivered-response"}, {DecodeResponse, "delivered-response"}, {EncodeResponse, "missing"}} {
+		candidate := textProtocolPackage(t)
+		candidate.Spec.Documents["delivered-response"] = contract
+		entry := candidate.Mapping.Directions[fixture.direction]
+		entry.FinalDocument = fixture.name
+		candidate.Mapping.Directions[fixture.direction] = entry
+		if err := candidate.Validate(DefaultLimits()); err == nil || !strings.Contains(err.Error(), "/finalDocument") {
+			t.Fatal("unsupported final binding was accepted", fixture, err)
+		}
+	}
+}
+
 func TestPackageOperationBindings(t *testing.T) {
 	for _, fixture := range []struct {
 		name string

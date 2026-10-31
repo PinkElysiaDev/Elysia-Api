@@ -75,7 +75,7 @@ func convertThinking(t *testing.T, source, target, raw, model, mode string, capa
 	return request, wire, sink.Issues(), err
 }
 
-func TestThinkingFourByFour(t *testing.T) {
+func thinkingMatrixFixtures() (map[string]string, map[string]string) {
 	sources := map[string]string{
 		Chat:      `{"model":"alias","store":false,"max_completion_tokens":8192,"reasoning_effort":"high","messages":[{"role":"user","content":"hi"}]}`,
 		Responses: `{"model":"alias","store":false,"max_output_tokens":8192,"reasoning":{"effort":"high"},"input":"hi"}`,
@@ -83,6 +83,11 @@ func TestThinkingFourByFour(t *testing.T) {
 		Gemini:    `{"generationConfig":{"maxOutputTokens":8192,"thinkingConfig":{"thinkingLevel":"high"}},"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`,
 	}
 	models := map[string]string{Chat: "gpt-5.4", Responses: "gpt-5.4", Anthropic: "claude-opus-4-6", Gemini: "gemini-3.5-flash-lite"}
+	return sources, models
+}
+
+func TestThinkingFourByFour(t *testing.T) {
+	sources, models := thinkingMatrixFixtures()
 	for source, raw := range sources {
 		for target, model := range models {
 			t.Run(source+"/"+target, func(t *testing.T) {

@@ -26,14 +26,19 @@ type ProtocolPackage struct {
 // its mapping. Both event directions use these selectors and wire tag meanings.
 // Sequence, when declared, selects strictly increasing nonnegative int64 JSON
 // integer literals; decimal and exponent spellings are not sequence integers.
+// ItemIDValue optionally normalizes the selected identity with a pure wire
+// expression. OptionalResponseID allows missing, null or empty identities until
+// the first nonempty identity, without allowing a later identity change.
 type ProtocolStreamSpec struct {
-	Discriminator     string                             `json:"discriminator"`
-	ResponseID        string                             `json:"responseId"`
-	ItemID            string                             `json:"itemId"`
-	InheritResponseID bool                               `json:"inheritResponseId,omitempty"`
-	IsItemIDIndex     bool                               `json:"itemIdIsIndex,omitempty"`
-	Sequence          string                             `json:"sequence,omitempty"`
-	Events            map[string]ProtocolStreamEventSpec `json:"events"`
+	Discriminator      string                             `json:"discriminator"`
+	ResponseID         string                             `json:"responseId"`
+	ItemID             string                             `json:"itemId"`
+	ItemIDValue        *Expression                        `json:"itemIdValue,omitempty"`
+	InheritResponseID  bool                               `json:"inheritResponseId,omitempty"`
+	OptionalResponseID bool                               `json:"optionalResponseId,omitempty"`
+	IsItemIDIndex      bool                               `json:"itemIdIsIndex,omitempty"`
+	Sequence           string                             `json:"sequence,omitempty"`
+	Events             map[string]ProtocolStreamEventSpec `json:"events"`
 }
 
 // ProtocolStreamEventSpec lists the ordered actions carried by one wire frame.
@@ -47,6 +52,7 @@ type ProtocolStreamEventSpec []ProtocolStreamActionSpec
 // item_finish closes the established kind; tool_finish requires a tool item.
 type ProtocolStreamActionSpec struct {
 	Action     string                   `json:"action"`
+	Kind       NodeKind                 `json:"kind,omitempty"`
 	When       *Expression              `json:"when,omitempty"`
 	ResponseID string                   `json:"responseId,omitempty"`
 	ItemID     string                   `json:"itemId,omitempty"`
@@ -95,14 +101,20 @@ type ProtocolMapping struct {
 
 // ProtocolDirectionMapping transforms one wire/core boundary without a codec module.
 type ProtocolDirectionMapping struct {
-	Document     string                       `json:"document"`
-	IsEventBatch bool                         `json:"eventBatch,omitempty"`
-	IsFrameBatch bool                         `json:"frameBatch,omitempty"`
-	State        map[string]ProtocolStateSlot `json:"state,omitempty"`
-	Finalize     *Expression                  `json:"finalize,omitempty"`
-	Program      Expression                   `json:"program"`
-	Effects      []ProtocolSemanticEffect     `json:"effects"`
-	Capabilities CapabilitySet                `json:"capabilities,omitzero"`
+	Document string `json:"document"`
+	// FinalDocument optionally narrows the completed JSON response for delivery.
+	// Document continues to constrain construction and native reconciliation.
+	FinalDocument  string                        `json:"finalDocument,omitempty"`
+	IsEventBatch   bool                          `json:"eventBatch,omitempty"`
+	CanDeferEvents bool                          `json:"deferEvents,omitempty"`
+	IsFrameBatch   bool                          `json:"frameBatch,omitempty"`
+	State          map[string]ProtocolStateSlot  `json:"state,omitempty"`
+	Indexes        map[string]ProtocolStateIndex `json:"indexes,omitempty"`
+	Finalize       *Expression                   `json:"finalize,omitempty"`
+	Observe        *Expression                   `json:"observe,omitempty"`
+	Program        Expression                    `json:"program"`
+	Effects        []ProtocolSemanticEffect      `json:"effects"`
+	Capabilities   CapabilitySet                 `json:"capabilities,omitzero"`
 }
 
 // ProtocolStateSlot retains one bounded value between events. All updates read
@@ -112,6 +124,15 @@ type ProtocolStateSlot struct {
 	Schema  ValueSchema `json:"schema"`
 	Initial Value       `json:"initial,omitzero"`
 	Update  Expression  `json:"update"`
+}
+
+// ProtocolStateIndex declares one request-owned identity table. Keys use their
+// explicit equality mode; retained values are ordinary JSON, never authority
+// for Native or provenance reconstruction.
+type ProtocolStateIndex struct {
+	KeyMode string      `json:"keyMode"`
+	Policy  string      `json:"policy"`
+	Schema  ValueSchema `json:"schema"`
 }
 
 // ProtocolSemanticEffect declares how a program handles a core semantic location.
@@ -134,8 +155,8 @@ type ProtocolSemanticEffect struct {
 }
 
 // RejectDiagnostic classifies a declared rejection. Mapping effects supply their
-// own direction and business path; only wire assertions accept overrides for
-// those fields, where a selected wire value represents a different core owner.
+// own direction and business path. Wire assertions may override both fields;
+// reject expressions may override direction but use their own explicit path.
 type RejectDiagnostic struct {
 	Code       IssueCode `json:"code"`
 	Stage      string    `json:"stage"`
@@ -235,12 +256,16 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 			return nil, fmt.Errorf("/mapping/directions/%s/document: stream documents require an event direction", direction)
 		}
 		compiled.wireContracts[direction] = contract
+		finalWire, err := compiled.bindFinalDocument(direction, entry, spec, wireSpec.documents)
+		if err != nil {
+			return nil, err
+		}
 		for _, capability := range sortedKeys(entry.Capabilities) {
 			if !mapping.Capabilities[capability] {
 				return nil, fmt.Errorf("/mapping/directions/%s/capabilities: undeclared capability %q", direction, capability)
 			}
 		}
-		program, effects, err := compileProtocolProgram(entry, direction, wire, expressions, mapping.CoreVersion, mapping.DSLVersion)
+		program, effects, err := compileProtocolProgram(entry, direction, wire, finalWire, expressions, mapping.CoreVersion, mapping.DSLVersion)
 		if err != nil {
 			return nil, err
 		}

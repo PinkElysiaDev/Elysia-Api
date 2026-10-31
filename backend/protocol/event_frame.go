@@ -161,6 +161,9 @@ func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Dire
 		event.Native = frame.native
 		return compiled.encodeFrames(ctx, direction, event, options)
 	}
+	if canReplay {
+		options.observedNativeFrame = frame.native.Value
+	}
 	var frames []Value
 	for _, event := range frame.Events {
 		if err := IssuesError(CheckEvent(event, target, compiled.limits)); err != nil {

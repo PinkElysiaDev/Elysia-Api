@@ -17,6 +17,7 @@ var definitionIdentifier = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}
 // EvaluationContext contains gateway-owned metadata. Scope is supplied by the
 // selected model/account binding and cannot be changed by a mapping expression.
 type EvaluationContext struct {
+	observedNativeFrame Value
 	InterleavedThinking bool
 	ClientOutput        *ClientOutput
 	Scope               Scope
@@ -123,6 +124,7 @@ func NewCompiler(limits Limits, modules []Module, features []string) (*Compiler,
 }
 
 type compiledMapping struct {
+	streamObserver    *compiledOutputPlan
 	capabilities      CapabilitySet
 	module            Module
 	outputPlan        *compiledOutputPlan
@@ -136,6 +138,7 @@ type compiledMapping struct {
 	rules             []compiledEventRule
 	frameBatch        bool
 	isEventBatch      bool
+	canDeferEvents    bool
 	definitionHash    string
 }
 
@@ -827,7 +830,7 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	if err != nil {
 		return fail(err)
 	}
-	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), streamTransaction: options.packageTransaction, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	var packageState *packageExecution
 	if compiled.packagePlan != nil {
 		if isPackageDecodeDirection(direction) {

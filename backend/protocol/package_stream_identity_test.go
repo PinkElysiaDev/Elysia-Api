@@ -102,3 +102,33 @@ func TestPackageStreamSparseIdentityRejections(t *testing.T) {
 		}
 	}
 }
+
+func TestPackageStreamDeclaredIdentityDefaults(t *testing.T) {
+	spec := sparseIdentityStream(t)
+	spec.OptionalResponseID = true
+	spec.ItemIDValue = &Expression{Op: "if", When: &Expression{Op: "present", Source: expressionPointer(readExpression("input", "/index"))}, Then: expressionPointer(readExpression("input", "/index")), Otherwise: expressionPointer(literalExpression(0))}
+	state := newSparseIdentityValidation(t, spec)
+	for _, raw := range []string{
+		`{"type":"message_start","message":{}}`,
+		`{"type":"content_block_start","content_block":{"type":"text"}}`,
+		`{"type":"content_block_delta","index":null,"response_id":"late-id","delta":{"type":"text_delta","text":"hello"}}`,
+		`{"type":"content_block_stop"}`,
+		`{"type":"message_stop"}`,
+	} {
+		if err := state.consume(t.Context(), Value{raw: raw}); err != nil {
+			t.Fatal(raw, err)
+		}
+	}
+	if state.accepted.responseID != "late-id" || state.finish() != nil {
+		t.Fatal("declared missing identity and default index lost the stream", state.accepted)
+	}
+	state = newSparseIdentityValidation(t, spec)
+	if err := state.consume(t.Context(), Value{raw: `{"type":"message_start","message":{"id":null}}`}); err != nil {
+		t.Fatal(err)
+	}
+	assertPackageRuntimeIssue(t, state.consume(t.Context(), Value{raw: `{"type":"content_block_start","index":"0","content_block":{"type":"text"}}`}), UpstreamContractViolation, "/index")
+	spec.ItemIDValue = expressionPointer(readExpression("state", "/index"))
+	if _, err := compilePackageStreamContract(spec, "/stream", DefaultLimits()); err == nil {
+		t.Fatal("wire identity normalization read mapping state")
+	}
+}

@@ -40,6 +40,12 @@ func (plan *compiledOutputPlan) rememberValue(state evaluation) (plannedOutput, 
 	if err != nil {
 		return plannedOutput{}, err
 	}
+	if plan.expression.isStreamIndex {
+		if err := state.streamTransaction.rememberIndex(state, plan.expression.indexSlot, keyOutput.output, value.output); err != nil {
+			return plannedOutput{}, err
+		}
+		return value, nil
+	}
 	key, err := rawIndexKey(keyOutput.output)
 	if err != nil {
 		return plannedOutput{}, err
@@ -76,6 +82,16 @@ func (plan *compiledOutputPlan) recallValue(state evaluation) (plannedOutput, er
 	keyOutput, err := plan.source.build(state)
 	if err != nil {
 		return plannedOutput{}, err
+	}
+	if plan.expression.isStreamIndex {
+		value, exists, err := state.streamTransaction.recallIndex(plan.expression.indexSlot, keyOutput.output)
+		if err != nil {
+			return plannedOutput{}, err
+		}
+		if !exists && plan.expression.policy == "reject" {
+			return plannedOutput{}, fmt.Errorf("index lookup has no recorded key")
+		}
+		return plannedLeaf(value), nil
 	}
 	key, err := rawIndexKey(keyOutput.output)
 	if err != nil {

@@ -3,13 +3,23 @@ package builtin
 import (
 	"bytes"
 	"errors"
+	"strings"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
 )
 
 func TestResponsesPackageFailureEnvelopes(t *testing.T) {
-	legacy, draft := shippedProjectionProtocol(t, Responses), compileBuiltinPackage(t, "openai-responses")
+	checkOpenAIPackageFailureEnvelopes(t, Responses, "openai-responses")
+}
+
+func TestChatPackageFailureEnvelopes(t *testing.T) {
+	checkOpenAIPackageFailureEnvelopes(t, Chat, "openai-chat")
+}
+
+func checkOpenAIPackageFailureEnvelopes(t *testing.T, codec, packageName string) {
+	t.Helper()
+	legacy, draft := shippedProjectionProtocol(t, codec), compileBuiltinPackage(t, packageName)
 	for _, fixture := range []struct{ name, wire, status string }{
 		{"rate-limit", `{"error":{"type":"rate_limit_error","message":"quota","code":null,"param":null}}`, "429"},
 		{"authentication", `{"error":{"type":"invalid_request_error","code":"invalid_api_key","message":"credentials"}}`, "401"},
@@ -20,6 +30,7 @@ func TestResponsesPackageFailureEnvelopes(t *testing.T) {
 		{"wrapper", `{"error":{"type":"new_api_error","code":"vendor_limit","message":"limited"}}`, "403"},
 		{"redundant-code", `{"error":{"type":"rate_limit_error","code":"rate_limit_error","message":"quota"}}`, "429"},
 		{"string", `{"error":"failed"}`, "500"},
+		{"escaped-string", `{"error":"f\u0061iled<&\/next"}`, "500"},
 		{"unknown-fields", `{"error":{"message":"limited","type":"vendor_budget","code":"vendor_code","trace":{"n":9007199254740993,"enabled":false,"detail":null}},"vendor":[]}`, "403"},
 		{"content-and-error", `{"id":"r","model":"m","status":"failed","output":[],"error":{"type":"api_error","message":"failed"},"usage":{"input_tokens":2,"output_tokens":0}}`, "500"},
 		{"without-status", `{"error":{"type":"server_error","message":"failed"}}`, ""},
@@ -28,41 +39,65 @@ func TestResponsesPackageFailureEnvelopes(t *testing.T) {
 		{"unclassified-null-status", `{"error":{"message":"failed"}}`, "null"},
 		{"envelope-extensions", `{"error":{"type":"rate_limit_error","message":"quota"},"store":"provider-state","tool_usage":42}`, "429"},
 	} {
+		if codec == Chat && fixture.name == "content-and-error" {
+			fixture.wire = `{"id":"r","model":"m","status":"failed","choices":[],"error":{"type":"api_error","message":"failed"},"usage":{"prompt_tokens":2,"completion_tokens":0}}`
+		}
 		t.Run(fixture.name, func(t *testing.T) {
-			options := p.EvaluationContext{}
-			if fixture.status != "" {
-				options.Values = p.Object{"httpStatus": testValue(t, fixture.status)}
-			}
-			oldResponse, oldErr := legacy.DecodeResponse(t.Context(), []byte(fixture.wire), options)
-			newResponse, newErr := draft.DecodeResponse(t.Context(), []byte(fixture.wire), options)
-			if oldErr != nil || newErr != nil {
-				t.Fatal("declared provider failure stopped decoding", oldErr, newErr)
-			}
-			oldResponse.SchemaVersion = draft.CoreVersion()
-			want, _ := p.EncodeValue(oldResponse)
-			got, _ := p.EncodeValue(newResponse)
-			checkPackageMigration(t, want.Bytes(), got.Bytes(), nil, nil, packageMigrationGap{})
-			if p.CheckGenerationOutcome(newResponse) == nil {
-				t.Fatal("provider error became a successful response")
-			}
-			oldResponse.SchemaVersion = legacy.CoreVersion()
-			oldNativeWire, oldErr := legacy.EncodeResponse(t.Context(), oldResponse, options)
-			newNativeWire, newErr := draft.EncodeResponse(t.Context(), newResponse, options)
-			if oldErr != nil || newErr != nil || !bytes.Equal(oldNativeWire, newNativeWire) {
-				t.Fatalf("native failure replay changed: old=%s new=%s errors=%v / %v", oldNativeWire, newNativeWire, oldErr, newErr)
-			}
-			oldResponse.Native, newResponse.Native = nil, nil
-			oldWire, oldErr := legacy.EncodeResponse(t.Context(), oldResponse, options)
-			newWire, newErr := draft.EncodeResponse(t.Context(), newResponse, options)
-			if oldErr != nil || newErr != nil || !bytes.Equal(oldWire, newWire) {
-				t.Fatalf("failure reconstruction changed: old=%s new=%s errors=%v / %v", oldWire, newWire, oldErr, newErr)
-			}
+			checkPackageFailureEnvelope(t, legacy, draft, fixture.wire, fixture.status)
 		})
 	}
 }
 
+func checkPackageFailureEnvelope(t *testing.T, legacy, draft *p.Compiled, wire, status string) {
+	t.Helper()
+	options := p.EvaluationContext{}
+	if status != "" {
+		options.Values = p.Object{"httpStatus": testValue(t, status)}
+	}
+	oldResponse, oldErr := legacy.DecodeResponse(t.Context(), []byte(wire), options)
+	newResponse, newErr := draft.DecodeResponse(t.Context(), []byte(wire), options)
+	if oldErr != nil || newErr != nil {
+		t.Fatal("declared provider failure stopped decoding", oldErr, newErr)
+	}
+	oldResponse.SchemaVersion = draft.CoreVersion()
+	want, _ := p.EncodeValue(oldResponse)
+	got, _ := p.EncodeValue(newResponse)
+	checkPackageMigration(t, want.Bytes(), got.Bytes(), nil, nil, packageMigrationGap{})
+	if p.CheckGenerationOutcome(newResponse) == nil {
+		t.Fatal("provider error became a successful response")
+	}
+	oldResponse.SchemaVersion = legacy.CoreVersion()
+	oldNativeWire, oldErr := legacy.EncodeResponse(t.Context(), oldResponse, options)
+	newNativeWire, newErr := draft.EncodeResponse(t.Context(), newResponse, options)
+	if oldErr != nil || newErr != nil || !bytes.Equal(oldNativeWire, newNativeWire) {
+		t.Fatalf("native failure replay changed: old=%s new=%s errors=%v / %v", oldNativeWire, newNativeWire, oldErr, newErr)
+	}
+	if draft.Identity().Family == "openai_chat" {
+		oldFinalErr := legacy.ValidateWireOutput(p.EncodeResponse, testValue(t, string(oldNativeWire)))
+		newFinalErr := draft.ValidateWireOutput(p.EncodeResponse, testValue(t, string(newNativeWire)))
+		if oldFinalErr != nil || newFinalErr != nil {
+			checkPackageFailureRejection(t, oldFinalErr, newFinalErr)
+		}
+	}
+	oldResponse.Native, newResponse.Native = nil, nil
+	oldWire, oldErr := legacy.EncodeResponse(t.Context(), oldResponse, options)
+	newWire, newErr := draft.EncodeResponse(t.Context(), newResponse, options)
+	if oldErr != nil || newErr != nil || !bytes.Equal(oldWire, newWire) {
+		t.Fatalf("failure reconstruction changed: old=%s new=%s errors=%v / %v", oldWire, newWire, oldErr, newErr)
+	}
+}
+
 func TestResponsesPackageFailureContextBoundary(t *testing.T) {
-	legacy, draft := shippedProjectionProtocol(t, Responses), compileBuiltinPackage(t, "openai-responses")
+	checkOpenAIPackageFailureContext(t, Responses, "openai-responses")
+}
+
+func TestChatPackageFailureContextBoundary(t *testing.T) {
+	checkOpenAIPackageFailureContext(t, Chat, "openai-chat")
+}
+
+func checkOpenAIPackageFailureContext(t *testing.T, codec, packageName string) {
+	t.Helper()
+	legacy, draft := shippedProjectionProtocol(t, codec), compileBuiltinPackage(t, packageName)
 	options := p.EvaluationContext{Values: p.Object{"httpStatus": p.StringValue("invalid")}}
 	for _, wire := range []string{`{"error":{"message":"failure"}}`, `{"error":{"type":"rate_limit_error","message":"failure"}}`} {
 		oldResponse, oldErr := legacy.DecodeResponse(t.Context(), []byte(wire), options)
@@ -90,18 +125,35 @@ func TestResponsesPackageFailureContextBoundary(t *testing.T) {
 }
 
 func TestResponsesPackageFailureRejections(t *testing.T) {
-	legacy, draft := shippedProjectionProtocol(t, Responses), compileBuiltinPackage(t, "openai-responses")
-	check := func(t *testing.T, oldErr, newErr error) {
-		t.Helper()
+	checkOpenAIPackageFailureRejections(t, Responses, "openai-responses")
+}
+
+func TestChatPackageFailureRejections(t *testing.T) {
+	checkOpenAIPackageFailureRejections(t, Chat, "openai-chat")
+}
+
+func TestChatPackageFailureValidationOrder(t *testing.T) {
+	legacy, draft := shippedProjectionProtocol(t, Chat), compileBuiltinPackage(t, "openai-chat")
+	for _, fixture := range []struct{ wire, path string }{
+		{`{"error":{"type":"api_error","param":false},"choices":[],"usage":{"prompt_tokens":null}}`, "/error/param"},
+		{`{"error":{"type":"api_error","param":false},"usage":{"prompt_tokens":null}}`, "/"},
+	} {
+		_, oldErr := legacy.DecodeResponse(t.Context(), []byte(fixture.wire), p.EvaluationContext{})
+		_, newErr := draft.DecodeResponse(t.Context(), []byte(fixture.wire), p.EvaluationContext{})
 		var before, after *p.ConversionError
 		if !errors.As(oldErr, &before) || !errors.As(newErr, &after) || len(before.Issues) != 1 || len(after.Issues) != 1 {
-			t.Fatal("failure rejection was lost", oldErr, newErr)
+			t.Fatal("multi-fault response was accepted", oldErr, newErr)
 		}
 		oldIssue, newIssue := before.Issues[0], after.Issues[0]
-		if oldIssue.Code != newIssue.Code || oldIssue.Direction != newIssue.Direction || oldIssue.Stage != newIssue.Stage || oldIssue.Path != newIssue.Path || oldIssue.Reason != newIssue.Reason {
-			t.Fatal("failure classification or first error changed", oldIssue, newIssue)
+		if oldIssue.Path != fixture.path || oldIssue.Code != newIssue.Code || oldIssue.Direction != newIssue.Direction || oldIssue.Stage != newIssue.Stage || oldIssue.Path != newIssue.Path || oldIssue.Reason != newIssue.Reason {
+			t.Fatal("error and usage checks changed order", oldIssue, newIssue)
 		}
 	}
+}
+
+func checkOpenAIPackageFailureRejections(t *testing.T, codec, packageName string) {
+	t.Helper()
+	legacy, draft := shippedProjectionProtocol(t, codec), compileBuiltinPackage(t, packageName)
 	for _, failure := range []string{
 		`{"type":"api_error","code":42}`, `{"type":"api_error","param":false}`,
 		`{"type":null,"code":42}`, `{"type":"api_error","code":42,"param":false}`,
@@ -110,7 +162,7 @@ func TestResponsesPackageFailureRejections(t *testing.T) {
 			raw := []byte(`{"error":` + failure + `}`)
 			_, oldErr := legacy.DecodeResponse(t.Context(), raw, p.EvaluationContext{})
 			_, newErr := draft.DecodeResponse(t.Context(), raw, p.EvaluationContext{})
-			check(t, oldErr, newErr)
+			checkPackageFailureRejection(t, oldErr, newErr)
 		})
 	}
 	for _, failure := range []string{
@@ -122,12 +174,25 @@ func TestResponsesPackageFailureRejections(t *testing.T) {
 		`{"message":"failure","details":{"key":true}}`,
 		`{"message":"failure","wire:openai_responses":null}`, `{"message":"failure","wire:openai_responses":[]}`,
 	} {
+		failure = strings.ReplaceAll(failure, "wire:openai_responses", "wire:"+legacy.Identity().Family)
 		t.Run("encode/"+failure, func(t *testing.T) {
 			response := &p.Response{SchemaVersion: legacy.CoreVersion(), Content: []p.Node{}, Error: testValue(t, failure)}
 			_, oldErr := legacy.EncodeResponse(t.Context(), response, p.EvaluationContext{})
 			response.SchemaVersion = draft.CoreVersion()
 			_, newErr := draft.EncodeResponse(t.Context(), response, p.EvaluationContext{})
-			check(t, oldErr, newErr)
+			checkPackageFailureRejection(t, oldErr, newErr)
 		})
+	}
+}
+
+func checkPackageFailureRejection(t *testing.T, oldErr, newErr error) {
+	t.Helper()
+	var before, after *p.ConversionError
+	if !errors.As(oldErr, &before) || !errors.As(newErr, &after) || len(before.Issues) != 1 || len(after.Issues) != 1 {
+		t.Fatal("failure rejection was lost", oldErr, newErr)
+	}
+	oldIssue, newIssue := before.Issues[0], after.Issues[0]
+	if oldIssue.Code != newIssue.Code || oldIssue.Direction != newIssue.Direction || oldIssue.Stage != newIssue.Stage || oldIssue.Path != newIssue.Path || oldIssue.Reason != newIssue.Reason {
+		t.Fatal("failure classification or first error changed", oldIssue, newIssue)
 	}
 }

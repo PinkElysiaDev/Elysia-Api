@@ -36,8 +36,9 @@ type compiledControlStep struct {
 }
 
 type compiledControlUpdate struct {
-	program *compiledOutputPlan
-	set     func(*Request, JSONOutput, *valueReader) error
+	program          *compiledOutputPlan
+	set              func(*Request, JSONOutput, *valueReader) error
+	changesReasoning bool
 }
 
 type compiledControlDiagnostic struct {
@@ -46,18 +47,85 @@ type compiledControlDiagnostic struct {
 }
 
 type modelControlOptions struct {
-	CoreVersion int                   `json:"coreVersion"`
-	Target      Identity              `json:"target"`
-	Policy      ProtocolModelPolicy   `json:"policy"`
-	Expressions map[string]Expression `json:"expressions,omitempty"`
+	CoreVersion int                        `json:"coreVersion"`
+	Target      Identity                   `json:"target"`
+	Policy      ProtocolModelPolicy        `json:"policy"`
+	Expressions map[string]Expression      `json:"expressions,omitempty"`
+	Source      *modelNormalizationOptions `json:"source,omitempty"`
 	plan        *compiledModelPolicy
 }
 
+type modelNormalizationOptions struct {
+	Source       Identity              `json:"source"`
+	Steps        []ProtocolControlStep `json:"steps"`
+	Checks       []ProtocolControlStep `json:"checks,omitempty"`
+	Expressions  map[string]Expression `json:"expressions,omitempty"`
+	steps        []compiledControlStep
+	checks       []compiledControlStep
+	bindingSlots int
+}
+
+func (source *modelNormalizationOptions) compile(compiler *expressionCompiler) error {
+	var err error
+	source.steps, err = compileControlSteps(source.Steps, compiler, "/mapping/modelPolicy/normalize", false)
+	if err != nil {
+		return err
+	}
+	source.checks, err = compileControlSteps(source.Checks, compiler, "/mapping/modelPolicy/normalizeChecks", true)
+	source.bindingSlots = controlBindingSlots(source.steps, source.checks)
+	return err
+}
+
+func controlBindingSlots(sequences ...[]compiledControlStep) int {
+	count := 0
+	for _, sequence := range sequences {
+		for _, step := range sequence {
+			if step.when != nil {
+				count = max(count, step.when.bindingSlots)
+			}
+			if step.diagnostic != nil {
+				count = max(count, step.diagnostic.reason.bindingSlots)
+			}
+			for _, update := range step.updates {
+				count = max(count, update.program.bindingSlots)
+			}
+		}
+	}
+	return count
+}
+
 type modelControlExecution struct {
-	plan    *compiledModelPolicy
-	context Value
-	rule    ConversionRule
-	limits  Limits
+	plan               *compiledModelPolicy
+	context            Value
+	contextReader      *planObjectReader
+	bindings           []JSONOutput
+	rule               ConversionRule
+	limits             Limits
+	changedReasoning   bool
+	stoppedProjection  bool
+	validatedReasoning reasoningValidationStamp
+}
+
+// Only core validity is reused here. Model, binding and operation constraints
+// still run after authored rules, against this execution's fixed context.
+type reasoningValidationStamp struct {
+	fields        [6]immutableSpan
+	hasReasoning  bool
+	isInterleaved bool
+}
+
+func stampReasoningValidation(reasoning *ReasoningIntent) reasoningValidationStamp {
+	if reasoning == nil {
+		return reasoningValidationStamp{}
+	}
+	scope := ""
+	if controlPresent(reasoning.Effort) {
+		scope = reasoning.EffortScope
+	}
+	return reasoningValidationStamp{hasReasoning: true, isInterleaved: reasoning.Interleaved, fields: [6]immutableSpan{
+		spanIdentity(reasoning.Mode), spanIdentity(reasoning.Effort.raw), spanIdentity(scope),
+		spanIdentity(reasoning.Budget.raw), spanIdentity(reasoning.Summary.raw), spanIdentity(reasoning.HistoryRetention.raw),
+	}}
 }
 
 func compileControlSteps(steps []ProtocolControlStep, compiler *expressionCompiler, path string, isCheck bool) ([]compiledControlStep, error) {
@@ -91,10 +159,10 @@ func compileControlSteps(steps []ProtocolControlStep, compiler *expressionCompil
 			if err != nil {
 				return nil, err
 			}
-			if !isAssignable(program.expression.result, kind) && program.expression.result != NullType {
+			if !isAssignable(program.expression.result, kind) && !(kind == ObjectType && program.expression.result == NullType) {
 				return nil, fmt.Errorf("%s/set/%s: update has the wrong core field type", at, escapePointer(key))
 			}
-			step.updates = append(step.updates, compiledControlUpdate{program: program, set: setter})
+			step.updates = append(step.updates, compiledControlUpdate{program: program, set: setter, changesReasoning: key == "/reasoning"})
 		}
 		if diagnostic := declaration.Diagnostic; diagnostic != nil {
 			if !slices.Contains([]string{"normalize", "degrade", "reject", "invalid"}, diagnostic.Kind) {
@@ -149,7 +217,11 @@ func compileControlSetter(path string) (func(*Request, JSONOutput, *valueReader)
 	}
 	if path == "/outputLimitDefault" {
 		return func(request *Request, output JSONOutput, reader *valueReader) error {
-			return writeCoreBool(output, &request.OutputLimitDefault, reader)
+			value, err := readPlannedBoolean(output)
+			if err == nil {
+				request.OutputLimitDefault = value
+			}
+			return err
 		}, BooleanType, nil
 	}
 	if path == "/reasoning" {
@@ -178,6 +250,15 @@ func compileModelControlOptions(raw Value, limits Limits) (conversionOption, err
 		return conversionOption{}, err
 	}
 	options.plan = plan
+	if options.Source != nil {
+		if options.Source.Source.DefinitionID == "" {
+			return conversionOption{}, fmt.Errorf("model normalization requires its source identity")
+		}
+		sourceCompiler := &expressionCompiler{limits: limits, references: options.Source.Expressions, resolving: map[string]bool{}, used: map[string]bool{}}
+		if err := options.Source.compile(sourceCompiler); err != nil {
+			return conversionOption{}, err
+		}
+	}
 	return conversionOption{raw: raw, value: options}, nil
 }
 
@@ -189,32 +270,82 @@ func (conversion *CompiledConversion) applyModelControls(ctx context.Context, re
 	if options.Target != route.Target || request.SchemaVersion != options.CoreVersion {
 		return nil, candidateFailure(streamIssue(InvalidInput, "/modelPolicy", "model controls do not match the selected target"))
 	}
+	bindings := options.plan.bindingSlots
+	if options.Source != nil {
+		bindings = max(bindings, options.Source.bindingSlots)
+	}
+	execution := &modelControlExecution{plan: options.plan, bindings: make([]JSONOutput, bindings), rule: rule, limits: conversion.phaseLimits(ctx, ConversionRequest)}
+	if options.Source != nil {
+		if options.Source.Source != route.Source {
+			return nil, streamIssue(InvalidInput, "/modelPolicy/source", "model normalization does not match the selected source")
+		}
+		if err := execution.bindContext(request, route, nil); err != nil {
+			return nil, err
+		}
+		if err := execution.apply(ctx, conversion, request, route, sink, options.Source.steps, false); err != nil {
+			return nil, err
+		}
+	}
+	if err := ValidateReasoningIntent(request.Reasoning); err != nil {
+		return nil, err
+	}
+	if options.Source != nil && execution.changedReasoning {
+		if err := execution.apply(ctx, conversion, request, route, sink, options.Source.checks, false); err != nil {
+			return nil, err
+		}
+	}
 	capability, err := options.plan.resolveReasoning(ctx, route.Model, route.Reasoning, conversion.limits)
 	if err != nil {
 		return nil, err
 	}
-	contextValue, err := EncodeValue(struct {
-		Model               string                `json:"model"`
-		Capability          ReasoningCapabilities `json:"capability"`
-		IsSameWire          bool                  `json:"isSameWire"`
-		IsAgent             bool                  `json:"isAgent"`
-		HasTools            bool                  `json:"hasTools"`
-		InterleavedThinking bool                  `json:"interleavedThinking"`
-	}{route.Model, capability, route.Source.Family == route.Target.Family && route.Source.WireVersion == route.Target.WireVersion, request.Source == AgentIdentity(), len(request.Tools) != 0, route.InterleavedThinking})
-	if err != nil {
+	if err := execution.bindContext(request, route, &capability); err != nil {
 		return nil, err
 	}
-	execution := &modelControlExecution{plan: options.plan, context: contextValue, rule: rule, limits: conversion.phaseLimits(ctx, ConversionRequest)}
-	if err := execution.apply(ctx, conversion, request, route, sink, options.plan.steps); err != nil {
+	execution.changedReasoning = false
+	if err := execution.apply(ctx, conversion, request, route, sink, options.plan.steps, true); err != nil {
 		return nil, err
 	}
+	if execution.changedReasoning {
+		if err := ValidateReasoningIntent(request.Reasoning); err != nil {
+			return nil, candidateFailure(err)
+		}
+	}
+	if !execution.stoppedProjection && request.Reasoning != nil {
+		if err := execution.apply(ctx, conversion, request, route, sink, options.plan.renderChecks, false); err != nil {
+			return nil, candidateFailure(err)
+		}
+	}
+	execution.validatedReasoning = stampReasoningValidation(request.Reasoning)
 	return execution, nil
 }
 
-func (execution *modelControlExecution) apply(ctx context.Context, conversion *CompiledConversion, request *Request, route ConversionContext, sink *DiagnosticSink, steps []compiledControlStep) error {
+func (execution *modelControlExecution) bindContext(request *Request, route ConversionContext, capability *ReasoningCapabilities) error {
+	contextValue, err := EncodeValue(struct {
+		Model               string                 `json:"model"`
+		Capability          *ReasoningCapabilities `json:"capability,omitempty"`
+		IsSameWire          bool                   `json:"isSameWire"`
+		IsAgent             bool                   `json:"isAgent"`
+		HasTools            bool                   `json:"hasTools"`
+		InterleavedThinking bool                   `json:"interleavedThinking"`
+	}{route.Model, capability, route.Source.Family == route.Target.Family && route.Source.WireVersion == route.Target.WireVersion, request.Source == AgentIdentity(), len(request.Tools) != 0, route.InterleavedThinking})
+	if err != nil {
+		return err
+	}
+	execution.context, execution.contextReader = contextValue, &planObjectReader{root: spanIdentity(contextValue.raw)}
+	return nil
+}
+
+func (execution *modelControlExecution) validateFinalCore(request *Request) error {
+	if stampReasoningValidation(request.Reasoning) == execution.validatedReasoning {
+		return nil
+	}
+	return ValidateReasoningIntent(request.Reasoning)
+}
+
+func (execution *modelControlExecution) apply(ctx context.Context, conversion *CompiledConversion, request *Request, route ConversionContext, sink *DiagnosticSink, steps []compiledControlStep, isProjection bool) error {
 	read := func(pointer []string) (JSONOutput, error) { return readCoreRequest(*request, pointer) }
 	reader := &valueReader{}
-	state := evaluation{ctx: ctx, coreRequest: request, inputReader: read, rootReader: read, context: execution.context, valueReader: reader, budget: &evaluationBudget{limits: execution.limits, stepLimit: execution.limits.Nodes}}
+	state := evaluation{ctx: ctx, coreRequest: request, inputReader: read, rootReader: read, context: execution.context, valueReader: reader, objectReader: execution.contextReader, bindings: execution.bindings, budget: &evaluationBudget{limits: execution.limits, stepLimit: execution.limits.Nodes}}
 	for _, step := range steps {
 		if step.when != nil {
 			condition, err := step.when.evaluate(state)
@@ -259,6 +390,7 @@ func (execution *modelControlExecution) apply(ctx context.Context, conversion *C
 			if err != nil {
 				return err
 			}
+			execution.changedReasoning = execution.changedReasoning || update.changesReasoning
 			values[index] = value.output
 		}
 		for index, update := range step.updates {
@@ -267,6 +399,9 @@ func (execution *modelControlExecution) apply(ctx context.Context, conversion *C
 			}
 		}
 		if step.shouldStop {
+			if isProjection {
+				execution.stoppedProjection = true
+			}
 			return nil
 		}
 	}

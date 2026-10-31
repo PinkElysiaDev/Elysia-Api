@@ -47,7 +47,7 @@ func preparePlannedCoreEncoding(ctx context.Context, compiled *Compiled, directi
 		}
 	}
 	reader := valueReader{minimumSharedBytes: minimumSharedValueBytes(size.maxRawBytes), canGrowThreshold: true}
-	state := evaluation{ctx: ctx, context: contextValue, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), inputReader: read, rootReader: read, valueReader: &reader, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	state := evaluation{ctx: ctx, context: contextValue, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), streamTransaction: options.packageTransaction, inputReader: read, rootReader: read, valueReader: &reader, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	state.coreRequest, _ = input.(*Request)
 	if compiled.packagePlan != nil {
 		if err := compiled.preparePackageState(direction, state, inputLimits, options); err != nil {
@@ -113,10 +113,22 @@ func (compiled *Compiled) checkNativeEventEffects(ctx context.Context, direction
 		return fail(err)
 	}
 	read := func(pointer []string) (JSONOutput, error) { return readCoreEventOutput(&event, pointer) }
-	state := evaluation{ctx: ctx, context: contextValue, inputReader: read, rootReader: read, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(),
+	state := evaluation{ctx: ctx, context: contextValue, inputReader: read, rootReader: read, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), streamTransaction: options.packageTransaction,
 		budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	if err := compiled.checkPackageEffects(direction, state, inputLimits); err != nil {
 		return fail(err)
+	}
+	if observer := compiled.mappings[direction].streamObserver; observer != nil {
+		if observer.hasNativeTarget {
+			state.native = &nativeEvaluation{target: compiled.target(direction, options), limits: compiled.nativeLimits(ctx, direction)}
+		}
+		output, err := observer.build(state)
+		if err != nil {
+			return fail(err)
+		}
+		if err := checkPlannedOutputLimits(output, inputLimits, "mapping_observe"); err != nil {
+			return fail(err)
+		}
 	}
 	return options.packageTransaction.stage(state, false)
 }

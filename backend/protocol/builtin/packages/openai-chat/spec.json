@@ -78,46 +78,145 @@
       }
     },
     "provider-response": {
-      "schema": {
-        "type": "object",
-        "required": [
-          "choices"
-        ],
-        "properties": {
-          "choices": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "allowUnknown": true
-            }
+  "schema": {
+    "type": "object",
+    "allowUnknown": true
+  },
+  "assertions": [
+    {
+      "path": "/choices",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "read",
+            "from": "input",
+            "path": "/choices"
+          },
+          {
+            "op": "literal",
+            "value": null
           }
-        },
-        "allowUnknown": true
+        ]
+      },
+      "schema": {
+        "type": "array"
+      },
+      "code": "upstream_contract_violation",
+      "reason": "expected array, got null",
+      "diagnostic": {
+        "code": "upstream_contract_violation",
+        "stage": "runtime",
+        "path": "/"
       }
     },
+    {
+      "path": "/choices",
+      "when": {
+        "op": "exists",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/choices"
+        }
+      },
+      "schema": {
+        "type": "array"
+      },
+      "code": "upstream_contract_violation",
+      "reason": "choices must be an array",
+      "diagnostic": {
+        "code": "upstream_contract_violation",
+        "stage": "runtime",
+        "path": "/"
+      },
+      "each": [
+        {
+          "path": "",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "expected JSON object",
+          "diagnostic": {
+            "code": "upstream_contract_violation",
+            "stage": "runtime",
+            "path": "/"
+          }
+        }
+      ]
+    }
+  ]
+},
     "client-response": {
+  "schema": {
+    "type": "object",
+    "allowUnknown": true
+  },
+  "assertions": [
+    {
+      "path": "/error",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/error"
+        }
+      },
       "schema": {
         "type": "object",
-        "required": [
-          "choices"
-        ],
-        "properties": {
-          "choices": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "allowUnknown": true
-            }
-          }
-        },
         "allowUnknown": true
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires an object",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
       }
     },
+    {
+      "path": "/choices",
+      "when": {
+        "op": "not",
+        "source": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/error"
+          }
+        }
+      },
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "allowUnknown": true
+        }
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires an array",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      }
+    }
+  ]
+},
     "model-page": {
       "schema": {
         "type": "object",
         "allowUnknown": true
       }
     }
+  ,
+"response-candidate": {
+  "schema": {
+    "type": "object",
+    "allowUnknown": true
   }
+}
+}
 }

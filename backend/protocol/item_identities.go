@@ -30,7 +30,33 @@ func (index *ItemIdentities) Parent(value Value) (string, error) {
 
 // Resolve returns a stable key and records only unambiguous new aliases.
 func (index *ItemIdentities) Resolve(event Event) (string, error) {
-	var identities []string
+	key, aliases, err := resolveItemIdentity(index.aliases, nil, event, index.limit)
+	if err != nil {
+		return "", err
+	}
+	for _, alias := range aliases.values[:aliases.count] {
+		index.aliases[alias] = key
+	}
+	return key, nil
+}
+
+func readItemAlias(aliases, pending map[string]string, id string) string {
+	if pending != nil {
+		if key := pending[id]; key != "" {
+			return key
+		}
+	}
+	return aliases[id]
+}
+
+type itemAliasList struct {
+	values [itemIdentityKinds]string
+	count  int
+}
+
+func resolveItemIdentity(aliases, pending map[string]string, event Event, limit int) (string, itemAliasList, error) {
+	var storage [itemIdentityKinds]string
+	identities := storage[:0]
 	for _, entry := range []struct {
 		prefix string
 		value  Value
@@ -38,7 +64,7 @@ func (index *ItemIdentities) Resolve(event Event) (string, error) {
 		if !entry.value.IsZero() {
 			id, err := readString(entry.value)
 			if err != nil || id == "" {
-				return "", streamIssue(InvalidAssociation, "/itemId", "item/call identity must be a nonempty string")
+				return "", itemAliasList{}, streamIssue(InvalidAssociation, "/itemId", "item/call identity must be a nonempty string")
 			}
 			identities = append(identities, entry.prefix+id)
 		}
@@ -47,13 +73,13 @@ func (index *ItemIdentities) Resolve(event Event) (string, error) {
 		identities = append(identities, "index:"+strconv.Itoa(*event.Index))
 	}
 	if len(identities) == 0 {
-		return "", streamIssue(InvalidAssociation, "/itemId", "item has no identity")
+		return "", itemAliasList{}, streamIssue(InvalidAssociation, "/itemId", "item has no identity")
 	}
 	key := ""
 	for _, id := range identities {
-		if previous := index.aliases[id]; previous != "" {
+		if previous := readItemAlias(aliases, pending, id); previous != "" {
 			if key != "" && key != previous {
-				return "", streamIssue(InvalidAssociation, "/itemId", "event links two distinct items")
+				return "", itemAliasList{}, streamIssue(InvalidAssociation, "/itemId", "event links two distinct items")
 			}
 			key = previous
 		}
@@ -63,15 +89,19 @@ func (index *ItemIdentities) Resolve(event Event) (string, error) {
 	}
 	newAliases := 0
 	for _, id := range identities {
-		if index.aliases[id] == "" {
+		if readItemAlias(aliases, pending, id) == "" {
 			newAliases++
 		}
 	}
-	if len(index.aliases)+newAliases > index.limit {
-		return "", streamIssue(LimitExceeded, "/itemId", "too many item aliases")
+	if len(aliases)+len(pending)+newAliases > limit {
+		return "", itemAliasList{}, streamIssue(LimitExceeded, "/itemId", "too many item aliases")
 	}
+	var additions itemAliasList
 	for _, id := range identities {
-		index.aliases[id] = key
+		if readItemAlias(aliases, pending, id) == "" {
+			additions.values[additions.count] = id
+			additions.count++
+		}
 	}
-	return key, nil
+	return key, additions, nil
 }

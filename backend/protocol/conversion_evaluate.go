@@ -147,8 +147,16 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 		if err := state.load(ConversionRequest, false); err != nil {
 			return Value{}, err
 		}
-		if err := modelControls.apply(ctx, c, state.document.(*Request), route, sink, modelControls.plan.checks); err != nil {
+		if err := modelControls.apply(ctx, c, state.document.(*Request), route, sink, modelControls.plan.checks, false); err != nil {
 			return Value{}, candidateFailure(err)
+		}
+		if err := modelControls.validateFinalCore(state.document.(*Request)); err != nil {
+			return Value{}, candidateFailure(err)
+		}
+		if request := state.document.(*Request); request.Reasoning != nil {
+			if err := modelControls.apply(ctx, c, request, route, sink, modelControls.plan.renderChecks, false); err != nil {
+				return Value{}, candidateFailure(err)
+			}
 		}
 	}
 	if reasoningTarget != "" {

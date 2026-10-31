@@ -1,21 +1,28 @@
 package protocol
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 type streamField struct {
 	path    string
 	pointer []string
+	value   *compiledOutputPlan
 }
 
 type compiledPackageStreamContract struct {
 	discriminator, responseID, itemID, sequence streamField
 	events                                      map[string][]compiledPackageStreamEvent
 	hasTools                                    bool
+	hasTypedItems                               bool
 	canInheritResponseID                        bool
+	isResponseIDOptional                        bool
 	isItemIDIndex                               bool
 }
 
 type compiledPackageStreamEvent struct {
+	kind               NodeKind
 	action             EventType
 	when               *compiledOutputPlan
 	responseID, itemID streamField
@@ -23,6 +30,7 @@ type compiledPackageStreamEvent struct {
 	usage              [3]streamField
 	tool               *compiledStreamTool
 	isTool             bool
+	isControl          bool
 }
 
 type compiledStreamTool struct {
@@ -33,7 +41,7 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 	if spec == nil {
 		return nil, nil
 	}
-	contract := &compiledPackageStreamContract{events: make(map[string][]compiledPackageStreamEvent, len(spec.Events)), canInheritResponseID: spec.InheritResponseID, isItemIDIndex: spec.IsItemIDIndex}
+	contract := &compiledPackageStreamContract{events: make(map[string][]compiledPackageStreamEvent, len(spec.Events)), canInheritResponseID: spec.InheritResponseID, isResponseIDOptional: spec.OptionalResponseID, isItemIDIndex: spec.IsItemIDIndex}
 	for _, selector := range []struct {
 		name, path string
 		field      *streamField
@@ -54,6 +62,13 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 	toolActions := map[EventType]bool{}
 	actionCount := 0
 	expressions := &expressionCompiler{limits: limits}
+	if spec.ItemIDValue != nil {
+		var err error
+		contract.itemID.value, err = expressions.compilePlan(*spec.ItemIDValue, path+"/itemIdValue", expressionScope{}, 1)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for _, tag := range sortedKeys(spec.Events) {
 		eventPath := path + "/events/" + escapePointer(tag)
 		if tag == "" {
@@ -88,6 +103,7 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 				return nil, err
 			}
 			contract.events[tag] = append(contract.events[tag], event)
+			contract.hasTypedItems = contract.hasTypedItems || entry.Kind != ""
 			if event.isTool {
 				contract.hasTools, toolActions[event.action] = true, true
 			} else {
@@ -146,8 +162,19 @@ func compileStreamEvent(spec ProtocolStreamActionSpec, path string, limits Limit
 		event.action = OperationFailed
 	case "cancel":
 		event.action = OperationCancelled
+	case "observe":
+		event.action = MetadataUpdated
+	case "control":
+		event.action, event.isControl = MetadataUpdated, true
 	default:
 		return event, fmt.Errorf("%s/action: unsupported lifecycle action", path)
+	}
+	if spec.Kind != "" && ((spec.Action != "item_start" && spec.Action != "text_delta") || !slices.Contains([]NodeKind{TextNode, ReasoningNode, RefusalNode}, spec.Kind)) {
+		return event, fmt.Errorf("%s/kind: kind requires a text-like item start or delta", path)
+	}
+	event.kind = spec.Kind
+	if event.kind == "" {
+		event.kind = TextNode
 	}
 	if (spec.Action == "text_delta") != (spec.Text != "") || (event.action == OperationFailed) != (spec.Error != "") || (event.action == UsageUpdated) != (spec.Usage != nil) {
 		return event, fmt.Errorf("%s: text, error and usage selectors belong only to their respective actions and are required there", path)

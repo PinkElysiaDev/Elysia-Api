@@ -71,7 +71,7 @@ func coreArrayElement(value reflect.Type) reflect.Type {
 
 func (expression *compiledExpression) inheritCoreType() {
 	switch expression.op {
-	case "let", "remember", "with_index":
+	case "let", "remember", "with_index", "visit":
 		expression.coreType = expression.body.coreType
 	case "filter", "sort":
 		if coreArrayElement(expression.source.coreType) != nil {

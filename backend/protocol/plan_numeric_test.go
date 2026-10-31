@@ -193,6 +193,7 @@ func TestPlanStringSelectors(t *testing.T) {
 	}{
 		{"lower", `"MODELS/ÄBC-Σ"`, "", `"models/äbc-σ"`},
 		{"lower", `""`, "", `""`},
+		{"quote_string", `"<model>\n\u2028"`, "", `"\"\u003cmodel\u003e\\n\\u2028\""`},
 		{"has_prefix", `"models/name"`, "models/", "true"},
 		{"has_prefix", `"Models/name"`, "models/", "false"},
 		{"contains", `"model-audio-preview"`, "audio", "true"},
@@ -201,7 +202,7 @@ func TestPlanStringSelectors(t *testing.T) {
 		{"has_prefix", `"value"`, "", "true"},
 	} {
 		expression := Expression{Op: fixture.operation, Source: &read}
-		if fixture.operation != "lower" {
+		if fixture.operation != "lower" && fixture.operation != "quote_string" {
 			expression.Value = StringValue(fixture.pattern)
 		}
 		plan := numericTestPlan(t, expression)

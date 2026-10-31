@@ -172,8 +172,8 @@ func (state *StreamState) ValidateComplete() error {
 }
 
 func (state *StreamState) finishTool(key string, tool *streamTool) error {
-	if tool.kind == JSONInput && !jsonutil.Valid([]byte(tool.input.String())) {
-		return streamIssue(UpstreamContractViolation, key, "completed function arguments are missing or invalid JSON")
+	if err := validateCompletedToolInput(key, tool.kind, tool.input.String()); err != nil {
+		return err
 	}
 	state.buffered -= tool.input.Len()
 	tool.input.Reset()
@@ -184,6 +184,13 @@ func (state *StreamState) finishTool(key string, tool *streamTool) error {
 func (state *StreamState) checkItemLimit() error {
 	if len(state.tools)+len(state.texts) >= state.limits.StateItems {
 		return streamIssue(LimitExceeded, "items", "response exceeds the stream item limit")
+	}
+	return nil
+}
+
+func validateCompletedToolInput(key string, kind InputKind, input string) error {
+	if kind == JSONInput && !jsonutil.Valid([]byte(input)) {
+		return streamIssue(UpstreamContractViolation, key, "completed function arguments are missing or invalid JSON")
 	}
 	return nil
 }

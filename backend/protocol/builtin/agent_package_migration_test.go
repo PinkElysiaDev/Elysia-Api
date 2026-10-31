@@ -38,6 +38,23 @@ func TestPackageAgentAndModelDiscoveryMigration(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// Migrate the model rule independently of the remaining default
+			// actions; the candidate no longer borrows the legacy reasoning rule.
+			modelPolicy := p.DefaultConversionPolicy(legacy, legacy)
+			for _, declaredRule := range p.DefaultConversionPolicy(draft, draft).Rules {
+				if declaredRule.ID != "reasoning-controls" {
+					continue
+				}
+				for index, rule := range modelPolicy.Rules {
+					if rule.ID == declaredRule.ID {
+						modelPolicy.Rules[index] = declaredRule
+					}
+				}
+			}
+			declaredProjection, err := p.ResolveConversion(modelPolicy)
+			if err != nil {
+				t.Fatal(err)
+			}
 			document, _ := draft.Package()
 			if !draft.HasAgentPolicy() || !equalAgentMigrationValues(t, document.Mapping.Agent.Samples, definition.Agent.Samples) || !equalAgentMigrationValues(t, document.Mapping.ModelSamples, definition.ModelSamples) {
 				t.Fatal("declared Agent or discovery evidence changed")
@@ -53,12 +70,17 @@ func TestPackageAgentAndModelDiscoveryMigration(t *testing.T) {
 			}
 			for _, sample := range definition.Agent.Samples {
 				t.Run(sample.ID, func(t *testing.T) {
-					// These packages do not declare their real stream operations yet.
 					if sample.Preferences.Stream {
-						if _, err := draft.BuildAgentParameters(t.Context(), sample.Preferences); err == nil {
-							t.Fatal("undeclared streaming transport was accepted")
+						hasStream := false
+						for _, operation := range draft.Operations() {
+							hasStream = hasStream || operation.Kind == "generate" && (operation.Transport == p.SSE || operation.Transport == p.NDJSON)
 						}
-						return
+						if !hasStream {
+							if _, err := draft.BuildAgentParameters(t.Context(), sample.Preferences); err == nil {
+								t.Fatal("undeclared streaming transport was accepted")
+							}
+							return
+						}
 					}
 					want, wantErr := legacy.BuildAgentParameters(t.Context(), sample.Preferences)
 					got, gotErr := draft.BuildAgentParameters(t.Context(), sample.Preferences)
@@ -82,11 +104,11 @@ func TestPackageAgentAndModelDiscoveryMigration(t *testing.T) {
 					if !equalAgentMigrationValues(t, oldRequest, newRequest) {
 						t.Fatalf("Agent preparation changed: old=%+v new=%+v", oldRequest, newRequest)
 					}
-					// The legacy model policy supplies this renderer comparison's
-					// input. Its declaration migration is a separate pending boundary.
 					route := p.ConversionContext{Source: legacy.Identity(), Target: legacy.Identity(), Model: sample.Model}
 					oldRequest, wantErr = projection.Request(t.Context(), oldRequest, route, nil)
-					newRequest, gotErr = projection.Request(t.Context(), newRequest, route, nil)
+					newRequest.SchemaVersion = draft.CoreVersion()
+					route.Source, route.Target = draft.Identity(), draft.Identity()
+					newRequest, gotErr = declaredProjection.Request(t.Context(), newRequest, route, nil)
 					if wantErr != nil || gotErr != nil {
 						t.Fatal("model projection fixture failed", wantErr, gotErr)
 					}
@@ -96,6 +118,14 @@ func TestPackageAgentAndModelDiscoveryMigration(t *testing.T) {
 					newWire, gotErr := draft.EncodeRequest(t.Context(), newRequest, options)
 					if wantErr != nil || gotErr != nil || !bytes.Equal(oldWire, newWire) {
 						t.Fatalf("Agent request changed: old=%s new=%s errors=%v / %v", oldWire, newWire, wantErr, gotErr)
+					}
+					oldDecoded, wantErr := legacy.DecodeRequest(t.Context(), oldWire, options)
+					newDecoded, gotErr := draft.DecodeRequest(t.Context(), newWire, options)
+					if wantErr != nil || gotErr != nil {
+						t.Fatal("Agent wire cannot be decoded", wantErr, gotErr)
+					}
+					if !equalAgentMigrationValues(t, oldDecoded.Reasoning, newDecoded.Reasoning) || !equalAgentMigrationValues(t, oldDecoded.Parameters, newDecoded.Parameters) {
+						t.Fatal("Agent controls changed through the declared wire", oldDecoded.Reasoning, newDecoded.Reasoning, oldDecoded.Parameters, newDecoded.Parameters)
 					}
 				})
 			}

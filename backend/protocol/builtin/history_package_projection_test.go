@@ -32,6 +32,17 @@ func TestPackageDraftHistoryTargets(t *testing.T) {
 		for _, mode := range []string{"compatible", "strict"} {
 			t.Run(fixture.name+"/"+mode, func(t *testing.T) {
 				policy := p.DefaultConversionPolicy(source, target)
+				// Exercise the authored history disposition independently of the
+				// selected model. Model controls have their own migration matrix.
+				for _, rule := range policy.Rules {
+					if rule.ID == "request-projection" {
+						policy.Rules = []p.ConversionRule{rule}
+						break
+					}
+				}
+				if len(policy.Rules) != 1 || policy.Rules[0].ID != "request-projection" {
+					t.Fatal("declared history disposition missing")
+				}
 				policy.Mode = mode
 				conversion, err := p.ResolveConversion(policy)
 				if err != nil {

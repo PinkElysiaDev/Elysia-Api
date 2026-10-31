@@ -8,6 +8,7 @@ import (
 // compiledOutputPlan keeps construction nodes unencoded until the mapping
 // returns. Eligibility is decided before execution; a failed plan is never rerun.
 type compiledOutputPlan struct {
+	hasStreamWrites        bool
 	expression             *compiledExpression
 	fields                 []outputPlanField
 	items                  []*compiledOutputPlan
@@ -51,16 +52,16 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	}
 	plan := &compiledOutputPlan{expression: expression}
 	switch expression.op {
-	case "omit", "reject", "literal", "read", "let", "with_index", "remember", "recall", "index", "capture_native", "capture_source", "replay_native", "native_matches", "object", "check_fields", "project", "keys", "array", "map", "walk", "recur", "flatmap", "filter", "if", "choose",
-		"merge", "merge_deep", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
-		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "lower", "has_prefix", "contains", "equal", "equal_text", "all", "any", "entries", "from_entries", "group_runs":
+	case "omit", "reject", "literal", "read", "let", "with_index", "remember", "recall", "index", "capture_native", "capture_source", "replay_native", "native_matches", "object", "check_fields", "project", "keys", "array", "map", "walk", "visit", "recur", "flatmap", "filter", "if", "choose",
+		"merge", "merge_deep", "merge_usage", "resolve_item", "track_text", "track_tool", "index_values", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
+		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains", "equal", "equal_text", "all", "any", "entries", "from_entries", "group_runs":
 	default:
 		return nil, false
 	}
 	if expression.op == "let" || expression.op == "read" && expression.from == "binding" {
 		plan.bindingSlots = expression.bindingSlot + 1
 	}
-	if expression.op == "with_index" || expression.op == "remember" || expression.op == "recall" {
+	if !expression.isStreamIndex && (expression.op == "with_index" || expression.op == "remember" || expression.op == "recall") {
 		plan.indexSlots = expression.indexSlot + 1
 	}
 	if expression.op == "read" && len(expression.pointer) != 0 {
@@ -71,6 +72,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			plan.itemObjectReads = 1
 		}
 	}
+	plan.hasStreamWrites = expression.op == "resolve_item" || expression.op == "track_text" || expression.op == "track_tool" || expression.op == "remember" && expression.isStreamIndex
 	plan.hasCapture = expression.op == "capture_native"
 	plan.hasSourceCapture = expression.op == "capture_source"
 	plan.hasNativeTarget = expression.op == "replay_native" || expression.op == "native_matches"
@@ -86,7 +88,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 		hasSameItem bool
 	}{
 		{expression.source, &plan.source, true},
-		{expression.body, &plan.body, expression.op != "map" && expression.op != "flatmap" && expression.op != "walk"},
+		{expression.body, &plan.body, expression.op != "map" && expression.op != "flatmap" && expression.op != "walk" && expression.op != "visit"},
 		{expression.when, &plan.when, expression.op != "filter" && expression.op != "group_runs"},
 		{expression.then, &plan.then, true},
 		{expression.otherwise, &plan.otherwise, true},
@@ -140,6 +142,7 @@ func (plan *compiledOutputPlan) mergeRequirements(child *compiledOutputPlan, has
 	if hasSameItem {
 		plan.itemObjectReads = min(objectReuseReads, plan.itemObjectReads+child.itemObjectReads)
 	}
+	plan.hasStreamWrites = plan.hasStreamWrites || child.hasStreamWrites
 	plan.hasCapture = plan.hasCapture || child.hasCapture
 	plan.hasSourceCapture = plan.hasSourceCapture || child.hasSourceCapture
 	plan.hasNativeTarget = plan.hasNativeTarget || child.hasNativeTarget
@@ -194,6 +197,14 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.buildReadValue(state)
 	case "let":
 		return plan.buildBinding(state)
+	case "resolve_item":
+		return plan.resolveStreamItem(state)
+	case "track_text":
+		return plan.trackStreamText(state)
+	case "track_tool":
+		return plan.trackStreamTool(state)
+	case "index_values":
+		return plan.readStreamIndexValues(state)
 	case "with_index":
 		return plan.buildIndexScope(state)
 	case "remember":
@@ -208,12 +219,12 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.captureSource(state)
 	case "replay_native", "native_matches":
 		return plan.buildNativeTarget(state)
+	case "object":
+		return plan.buildObject(state)
 	case "reject":
 		return plannedOutput{}, expression.rejection
 	case "check_fields":
 		return plan.checkObjectFields(state)
-	case "object":
-		return plan.buildObject(state)
 	case "project":
 		return plan.buildProjection(state)
 	case "keys":
@@ -228,13 +239,15 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.buildOperands(state)
 	case "merge_deep":
 		return plan.buildDeepMerge(state)
+	case "merge_usage":
+		return plan.mergeUsage(state)
 	case "join":
 		return plan.buildJoin(state)
 	case "sort", "associate":
 		return plan.buildKeyedArray(state)
 	case "parse_json", "stringify_json":
 		return plan.buildJSONScalar(state)
-	case "exists", "present", "not", "enum", "cast", "strip_prefix", "trim_prefix", "split_data_uri", "lower", "has_prefix", "contains":
+	case "exists", "present", "not", "enum", "cast", "strip_prefix", "trim_prefix", "split_data_uri", "lower", "quote_string", "has_prefix", "contains":
 		return plan.buildScalar(state)
 	case "type", "is_integer":
 		return plan.buildTypeQuery(state)
@@ -248,6 +261,8 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.buildIteration(state)
 	case "walk", "recur":
 		return plan.buildWalk(state)
+	case "visit":
+		return plan.buildVisit(state)
 	case "filter":
 		return plan.buildFilter(state)
 	case "group_runs":

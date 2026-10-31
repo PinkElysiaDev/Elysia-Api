@@ -62,7 +62,8 @@ func (compiled *Compiled) finishPackageEvents(ctx context.Context, direction Dir
 	}
 	_, limits, work := compiled.mappingLimits(ctx, direction)
 	state := evaluation{ctx: ctx, context: contextValue, runtime: runtime, streamSlots: retained.slots,
-		budget: &evaluationBudget{limits: work, stepLimit: compiled.limits.Nodes}}
+		streamTransaction: &packageStreamTransaction{owner: options.State, key: key, scope: options.Scope, previous: retained, plan: compiled.mappings[direction].streamState},
+		budget:            &evaluationBudget{limits: work, stepLimit: compiled.limits.Nodes}}
 	output, err := finalizer.build(state)
 	if err != nil {
 		return nil, compiled.mappingError(direction, err)

@@ -246,15 +246,13 @@ func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, parameter
 		if err := compiled.normalizeAgentReasoning(request); err != nil {
 			return err
 		}
-		if knownConversionCodec(compiled.Codec(EncodeRequest)) {
-			conversion, err := ResolveConversion(DefaultConversionPolicy(compiled, compiled))
-			if err != nil {
-				return err
-			}
-			request, err = conversion.Request(ctx, request, ConversionContext{Model: model, Source: compiled.Identity(), Target: compiled.Identity()}, nil)
-			if err != nil {
-				return err
-			}
+		conversion, err := ResolveConversion(DefaultConversionPolicy(compiled, compiled))
+		if err != nil {
+			return err
+		}
+		request, err = conversion.Request(ctx, request, ConversionContext{Model: model, Source: compiled.Identity(), Target: compiled.Identity()}, nil)
+		if err != nil {
+			return err
 		}
 		encoded, err := compiled.EncodeRequest(ctx, request, options)
 		if err != nil {
