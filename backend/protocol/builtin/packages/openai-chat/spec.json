@@ -4999,5 +4999,213 @@
     }
   ]
 }
+,
+"upstream-request": {
+  "schema": {
+    "type": "any"
+  },
+  "assertions": [
+    {
+      "path": "",
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires an object",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      }
+    },
+    {
+      "path": "/model",
+      "schema": {
+        "type": "string"
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires a nonempty string",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "check": {
+        "op": "not",
+        "source": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            {
+              "op": "literal",
+              "value": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "/messages",
+      "schema": {
+        "type": "array"
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires an array",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "each": [
+        {
+          "path": "",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "invalid_input",
+          "reason": "expected JSON object",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "runtime",
+            "path": "/",
+            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+          }
+        }
+      ]
+    },
+    {
+      "path": "/messages",
+      "schema": {
+        "type": "array"
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires an array",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "each": [
+        {
+          "path": "/role",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "system",
+              "developer",
+              "user",
+              "assistant",
+              "tool",
+              "function"
+            ]
+          },
+          "code": "conversion_rejected",
+          "reason": "invalid message role",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          }
+        },
+        {
+          "path": "/content",
+          "schema": {
+            "type": "any"
+          },
+          "code": "conversion_rejected",
+          "reason": "Chat thinking history needs associated assistant content or tool calls; enable chat_history",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/role"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "assistant"
+                  }
+                ]
+              },
+              {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/reasoning_content"
+                }
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content"
+                  }
+                }
+              },
+              {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/tool_calls"
+                      }
+                    }
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/tool_calls"
+                      },
+                      {
+                        "op": "literal",
+                        "value": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/refusal"
+                  }
+                }
+              }
+            ]
+          },
+          "check": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      ]
+    }
+  ]
+}
 }
 }

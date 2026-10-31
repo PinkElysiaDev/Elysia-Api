@@ -2,17 +2,17 @@ package protocol
 
 import (
 	"strconv"
-	"strings"
 )
 
 // One frame shares immutable read caches across its ordered actions. Nested
 // array members acquire only an active child reader, never a retained frame tree.
 type streamActionFrame struct {
-	state       *packageStreamValidation
-	root        evaluation
-	sequence    int64
-	hasSequence bool
-	hasAction   bool
+	state              *packageStreamValidation
+	root               evaluation
+	sequence           int64
+	hasSequence        bool
+	hasCheckedSequence bool
+	hasAction          bool
 }
 
 func (state *packageStreamValidation) fieldReader(input evaluation) func(streamField) (Value, error) {
@@ -134,21 +134,29 @@ func (frame *streamActionFrame) responseIdentity(action compiledPackageStreamEve
 
 func (frame *streamActionFrame) checkSequence() error {
 	field := frame.state.contract.sequence
-	if frame.hasSequence || field.path == "" {
+	if frame.hasCheckedSequence || field.path == "" {
 		return nil
 	}
 	value, err := frame.state.fieldReader(frame.root)(field)
 	if err != nil {
 		return err
 	}
+	if value.IsZero() && frame.state.contract.isSequenceOptional {
+		frame.hasCheckedSequence = true
+		return nil
+	}
 	sequence, err := frame.state.readCount(value, field.path)
 	if err != nil {
-		return err
+		if frame.state.contract.sequenceDiagnostic == nil {
+			return err
+		}
+		return frame.state.boundaryIssue(frame.state.contract.sequenceDiagnostic, field.path, "stream sequence must be a nonnegative integer", err)
 	}
 	if frame.state.accepted.hasSequence && sequence <= frame.state.accepted.sequence {
-		return frame.state.issue(field.path, "stream sequence must increase strictly", nil)
+		return frame.state.boundaryIssue(frame.state.contract.sequenceDiagnostic, field.path, "stream sequence must increase strictly", nil)
 	}
 	frame.sequence, frame.hasSequence = sequence, true
+	frame.hasCheckedSequence = true
 	return nil
 }
 
@@ -171,49 +179,4 @@ func qualifyStreamAction(action compiledPackageStreamEvent, path string) compile
 		action.tool = &tool
 	}
 	return action
-}
-
-func (state *packageStreamValidation) bindIdentities(input evaluation) error {
-	read := state.fieldReader(input)
-	for index, identity := range state.contract.identities {
-		isApplicable, err := state.matches(identity.when, input, identity.field.path)
-		if err != nil {
-			return err
-		}
-		if !isApplicable {
-			continue
-		}
-		value, err := read(identity.field)
-		if err != nil {
-			return err
-		}
-		if value.IsZero() {
-			continue
-		}
-		var normalized string
-		if identity.kind == IntegerType {
-			count, err := state.readCount(value, identity.field.path)
-			if err != nil {
-				return err
-			}
-			normalized = strconv.FormatInt(count, 10)
-		} else {
-			normalized, err = state.readIdentityValue(value, identity.field.path)
-			if err != nil {
-				return err
-			}
-		}
-		if previous := state.identities[index]; previous != "" {
-			if previous != normalized {
-				return state.issue(identity.field.path, "stream identity changed after it was established", nil)
-			}
-			continue
-		}
-		if err := state.checkRetainedBytes(state.identityBytes+len(normalized), identity.field.path); err != nil {
-			return err
-		}
-		state.identities[index] = strings.Clone(normalized)
-		state.identityBytes += len(normalized)
-	}
-	return nil
 }

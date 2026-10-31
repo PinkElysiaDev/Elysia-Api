@@ -10,6 +10,7 @@ import (
 type compiledPackageIndex struct {
 	keyMode, policy, path string
 	schema                *wireSchemaPlan
+	canRetainSource       bool
 }
 
 func compilePackageIndexes(declarations map[string]ProtocolStateIndex, direction Direction, path string, limits Limits, scope *expressionScope) ([]compiledPackageIndex, error) {
@@ -24,6 +25,9 @@ func compilePackageIndexes(declarations map[string]ProtocolStateIndex, direction
 	for _, name := range sortedKeys(declarations) {
 		declaration := declarations[name]
 		at := path + "/" + escapePointer(name)
+		if declaration.CanRetainSource && !isEventDecoder(direction) {
+			return nil, fmt.Errorf("%s/retainSource: source retention requires an event decoder", at)
+		}
 		if !definitionIdentifier.MatchString(name) || !slices.Contains([]string{"string", "integer", "raw_json"}, declaration.KeyMode) || !slices.Contains([]string{"first", "last", "reject"}, declaration.Policy) {
 			return nil, fmt.Errorf("%s: requires an identifier, explicit keyMode and duplicate policy", at)
 		}
@@ -32,7 +36,7 @@ func compilePackageIndexes(declarations map[string]ProtocolStateIndex, direction
 			return nil, locateMappingError(at+"/schema", err)
 		}
 		scope.streamIndexes[name] = len(indexes)
-		indexes = append(indexes, compiledPackageIndex{keyMode: declaration.KeyMode, policy: declaration.Policy, path: at, schema: schema})
+		indexes = append(indexes, compiledPackageIndex{keyMode: declaration.KeyMode, policy: declaration.Policy, path: at, schema: schema, canRetainSource: declaration.CanRetainSource})
 	}
 	return indexes, nil
 }
@@ -69,13 +73,13 @@ func (transaction *packageStreamTransaction) lookupIndex(slot int, key string) (
 	return Value{}, false
 }
 
-func (transaction *packageStreamTransaction) recallIndex(slot int, output JSONOutput) (Value, bool, error) {
+func (transaction *packageStreamTransaction) recallIndex(slot int, output JSONOutput) (JSONOutput, bool, error) {
 	key, err := transaction.plan.indexes[slot].key(output)
 	if err != nil {
-		return Value{}, false, err
+		return JSONOutput{}, false, err
 	}
 	value, exists := transaction.lookupIndex(slot, key)
-	return value, exists, nil
+	return transaction.indexOutput(slot, key, value), exists, nil
 }
 
 func (transaction *packageStreamTransaction) rememberIndex(state evaluation, slot int, keyOutput, output JSONOutput) error {
@@ -121,10 +125,24 @@ func (transaction *packageStreamTransaction) rememberIndex(state evaluation, slo
 	if transaction.indexUpdates[slot] == nil {
 		transaction.indexUpdates[slot] = make(map[string]Value)
 	}
-	// Retained entries are plain owned JSON. Captured Native/Source tags cannot
-	// cross frames through an ordinary identity table.
+	// All leaves point into independently owned JSON. Only an explicitly
+	// declared source table retains genuine capture tags; Native stays plain.
 	value.raw = strings.Clone(value.raw)
-	transaction.indexUpdates[slot][strings.Clone(key)] = value
+	ownedKey := strings.Clone(key)
+	if index.canRetainSource {
+		source, err := retainIndexSources(state.ctx, output, value)
+		if err != nil {
+			return err
+		}
+		if transaction.indexSourceUpdates == nil {
+			transaction.indexSourceUpdates = make([]map[string]JSONOutput, len(transaction.plan.indexes))
+		}
+		if transaction.indexSourceUpdates[slot] == nil {
+			transaction.indexSourceUpdates[slot] = make(map[string]JSONOutput)
+		}
+		transaction.indexSourceUpdates[slot][ownedKey] = source
+	}
+	transaction.indexUpdates[slot][ownedKey] = value
 	transaction.indexItemDelta, transaction.indexByteDelta = items, bytes
 	return nil
 }
@@ -181,7 +199,7 @@ func (plan *compiledOutputPlan) readStreamIndexValues(state evaluation) (planned
 		if value.IsZero() {
 			continue
 		}
-		bytes += appendPlannedItem(node, plannedLeaf(value))
+		bytes += appendPlannedItem(node, plannedOutput{output: transaction.indexOutput(slot, key, value), bytes: value.Len()})
 		if bytes > state.budget.limits.BufferBytes {
 			return plannedOutput{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, bytes)
 		}

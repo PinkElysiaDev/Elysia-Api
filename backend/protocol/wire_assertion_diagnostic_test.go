@@ -8,7 +8,7 @@ import (
 )
 
 func TestWireAssertionDiagnosticPreservesBoundary(t *testing.T) {
-	for _, stage := range []string{"wire", "", "runtime", "stream"} {
+	for _, stage := range []string{"wire", "", "runtime", "stream", "request.validation"} {
 		t.Run("stage="+stage, func(t *testing.T) {
 			assertion := WireAssertion{Path: "/value", Schema: ValueSchema{Type: StringType}, Code: InvalidInput, Reason: "expected a string"}
 			if stage != "wire" {

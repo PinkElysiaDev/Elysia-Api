@@ -142,6 +142,51 @@ func TestAnthropicPackageSparseStreamIdentities(t *testing.T) {
 	}
 }
 
+func TestAnthropicPackageSignatureSource(t *testing.T) {
+	legacy := shippedProjectionProtocol(t, Anthropic)
+	candidate := compileBuiltinPackage(t, "anthropic")
+	scope := p.Scope{Provider: "provider", Account: "account", Model: "m"}
+	before := p.EvaluationContext{State: p.NewEvaluationState(), Scope: scope}
+	after := p.EvaluationContext{State: p.NewEvaluationState(), Scope: scope}
+	defer before.State.Release()
+	defer after.State.Release()
+	validation, err := candidate.NewWireInputStreamValidation(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var oldEvents, newEvents []p.Event
+	for _, raw := range anthropicSignatureFrames() {
+		frame := testValue(t, raw)
+		oldFrame, err := legacy.DecodeFrame(t.Context(), frame, before)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := validation.Consume(t.Context(), frame); err != nil {
+			t.Fatal(err)
+		}
+		newFrame, err := candidate.DecodeFrame(t.Context(), frame, after)
+		if err != nil || len(oldFrame.Events) != len(newFrame.Events) {
+			t.Fatal("signature event boundary changed", newFrame, err)
+		}
+		oldEvents = append(oldEvents, oldFrame.Events...)
+		newEvents = append(newEvents, newFrame.Events...)
+	}
+	if err := validation.Finish(); err != nil {
+		t.Fatal(err)
+	}
+	want, _ := p.EncodeValue(streamEventsAtVersion(oldEvents, candidate.CoreVersion()))
+	got, err := p.EncodeValue(newEvents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkPackageMigration(t, want.Bytes(), got.Bytes(), nil, nil, packageMigrationGap{})
+	wantFrames := encodeMigratedStream(t, Anthropic, oldEvents, scope)
+	gotFrames := encodeMigratedStream(t, Anthropic, streamEventsAtVersion(newEvents, legacy.CoreVersion()), scope)
+	if !bytes.Equal(wantFrames.Bytes(), gotFrames.Bytes()) {
+		t.Fatal("source retention changed emitted signature deltas", wantFrames.JSONString(), gotFrames.JSONString())
+	}
+}
+
 // Version is the reviewed core contract difference; payload and provenance
 // remain in the comparison. Nested responses are copied before adjustment.
 func streamEventsAtVersion(events []p.Event, version int) []p.Event {

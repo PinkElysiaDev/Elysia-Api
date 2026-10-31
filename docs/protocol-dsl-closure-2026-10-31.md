@@ -290,3 +290,41 @@ Verify 在输出匹配、往返和最终文档检查全部通过后才计入方�
 代码审查另发现 wire assertions、Mapping 和生命周期仍存在重复读取/计量，以及旧
 Chat logprobs 保留预算的检查时点差异。它们分别是待测性能线索与待差分的行为边界，
 不是已经证实的收益，也不能据此提前删除校验或放宽预算。
+
+## 第十一批：来源保留、工具输入切片与请求最终结构（dev.95）
+
+`with_input` 复用已声明的 JSON 解码程序处理原帧子包络，input/root 的位置和核心类型
+分别绑定，不物化中间正文。Responses JSON 工具流用该能力承接六帧源生命周期，
+有序号和缺失序号的核心事件及 Chat 输出对照通过；原始 item ID 拼写、唯一性、冲突及
+错误分类保持。终态 Node.Source 改为真实 `/response/output/i`，每份 Native 原片段
+逐项核验，容器规范化差异单列；尚无 Responses 目标编码器，未宣称顶层原帧重放通过。
+
+仅有工具的流要显式声明 `itemKinds`，并与动作及方向能力一致。原默认文本生命周期
+保护保留；Responses 当前只标明工具输入切片，原全局 text 能力没有删除。
+新增 `tool_snapshot` 复用既有参数快照规则，缺参数仍拒绝；原“动作尚不支持”的静态
+测试改成缺参测试，供应商请求接受边界未因此放宽。
+
+`retainSource` 表只保留真实捕获的 Source 凭据，普通 JSON 覆盖会清掉旧权限，Native
+包络权限不保留。它复用独立拥有的索引 JSON，不再借用初始大帧。普通表、伪造值、
+覆盖、scope/修订和释放边界经测试及独立代码审查；逻辑字节计量不重复计入共享 raw，
+额外 Go 视图容器不能被称为零物理占用。Anthropic 用它保持初始块来源并解出分片签名，
+完整核心事件及增量签名输出与原实现一致。
+
+Chat 目标补齐 annotations 原始 JSON 字节去重及 native_finish_reason 的即时辅助帧/
+最终附载顺序。完整交付样例先发实际文本，原裸组件 `1/0/1/0` 去重基线原样保留。
+logprobs 仍未接入：已实证旧 BufferBytes=512 时，纯增量到完成可接受 1235 字节累计
+metadata，随后若出现 Item 快照却会在 `/items` 拒绝。后续计量必须保留这两个检查时点，
+不能新增提前拒绝，也不能靠保存整个前缀回避分析。
+
+四协议新增请求最终结构文档，保留原构造与独立 operation 约束；Anthropic 最终文档
+只附加必要的局部 thinking/output_config 断言，不二次验证整份构造文档。
+工具邻接、全树关联、隐式 ID 与旧深层解码约束尚未闭合，见
+[请求最终合同说明](../backend/protocol/builtin/packages/json-final-request-contracts.md)。
+对应未迁移的旧拒绝明确列账，不能据此默认切换预置。
+
+`closure-dev95-protocol-confirm`、`closure-dev95-vet`、`closure-dev95-race` 通过；
+staticcheck v0.8.2 仍为原 45 条诊断，新增/移除均为零。工程全量最近完整通过记录为
+dev.94；dev.95 尚未重复工程全量、最终构建或正式性能测量。
+
+用户已批准把 Anthropic 原生前缀后修改文本增量的旧失败作为独立修复，允许该类旧失败
+变为成功。本阶段尚未启用该变化，后续单独提交并记录；旧失败基线仍保留。

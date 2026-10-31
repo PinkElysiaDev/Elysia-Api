@@ -20,14 +20,22 @@ type compiledPackageStreamContract struct {
 	canInheritResponseID                        bool
 	isResponseIDOptional                        bool
 	isItemIDIndex                               bool
+	isSequenceOptional                          bool
+	sequenceDiagnostic                          *RejectDiagnostic
 	closeItemsOnFinish                          bool
 	identities                                  []compiledStreamIdentity
+	itemKinds                                   []NodeKind
 }
 
 type compiledStreamIdentity struct {
-	field streamField
-	kind  JSONType
-	when  *compiledOutputPlan
+	field      streamField
+	kind       JSONType
+	when       *compiledOutputPlan
+	key        *compiledOutputPlan
+	keyPath    string
+	isRaw      bool
+	isUnique   bool
+	diagnostic *RejectDiagnostic
 }
 
 type compiledPackageStreamEvent struct {
@@ -56,7 +64,20 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 	if spec == nil {
 		return nil, nil
 	}
-	contract := &compiledPackageStreamContract{events: make(map[string][]compiledPackageStreamEvent, len(spec.Events)), canInheritResponseID: spec.InheritResponseID, isResponseIDOptional: spec.OptionalResponseID, isItemIDIndex: spec.IsItemIDIndex, closeItemsOnFinish: spec.CloseItemsOnFinish}
+	contract := &compiledPackageStreamContract{events: make(map[string][]compiledPackageStreamEvent, len(spec.Events)), canInheritResponseID: spec.InheritResponseID, isResponseIDOptional: spec.OptionalResponseID, isItemIDIndex: spec.IsItemIDIndex, isSequenceOptional: spec.OptionalSequence, closeItemsOnFinish: spec.CloseItemsOnFinish}
+	if spec.OptionalSequence && spec.Sequence == "" {
+		return nil, fmt.Errorf("%s/optionalSequence: requires a sequence selector", path)
+	}
+	if spec.SequenceDiagnostic != nil {
+		if spec.Sequence == "" {
+			return nil, fmt.Errorf("%s/sequenceDiagnostic: requires a sequence selector", path)
+		}
+		if err := validateBoundaryDiagnostic(*spec.SequenceDiagnostic, path+"/sequenceDiagnostic"); err != nil {
+			return nil, err
+		}
+		copy := *spec.SequenceDiagnostic
+		contract.sequenceDiagnostic = &copy
+	}
 	for _, selector := range []struct {
 		name, path string
 		field      *streamField
@@ -75,6 +96,18 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 	}
 	compiler := packageStreamCompiler{contract: contract, expressions: &expressionCompiler{limits: limits}, limits: limits,
 		actions: map[EventType]bool{}, toolActions: map[EventType]bool{}}
+	if spec.ItemKinds != nil {
+		if len(spec.ItemKinds) == 0 {
+			return nil, fmt.Errorf("%s/itemKinds: explicit item kinds must not be empty", path)
+		}
+		for _, kind := range spec.ItemKinds {
+			if !slices.Contains([]NodeKind{TextNode, ReasoningNode, RefusalNode, ToolCallNode}, kind) || slices.Contains(contract.itemKinds, kind) {
+				return nil, fmt.Errorf("%s/itemKinds: requires distinct supported item kinds", path)
+			}
+			contract.itemKinds = append(contract.itemKinds, kind)
+		}
+		compiler.itemActions = make(map[NodeKind]map[EventType]bool, len(spec.ItemKinds))
+	}
 	contract.responseID.fromRoot = true
 	for _, field := range []struct {
 		name   string
@@ -99,17 +132,8 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 			return nil, err
 		}
 	}
-	for _, action := range []EventType{ResponseStarted, ItemStarted, ItemDelta, ItemFinished, UsageUpdated, ResponseFinished} {
-		if !compiler.actions[action] && !(action == ItemFinished && contract.closeItemsOnFinish) {
-			return nil, fmt.Errorf("%s/events: missing lifecycle action for %s", path, action)
-		}
-	}
-	if contract.hasTools {
-		for _, action := range []EventType{ItemStarted, ItemDelta} {
-			if !compiler.toolActions[action] {
-				return nil, fmt.Errorf("%s/events: missing tool lifecycle action for %s", path, action)
-			}
-		}
+	if err := compiler.checkLifecycle(path); err != nil {
+		return nil, err
 	}
 	return contract, nil
 }
@@ -119,6 +143,7 @@ type packageStreamCompiler struct {
 	expressions          *expressionCompiler
 	limits               Limits
 	actions, toolActions map[EventType]bool
+	itemActions          map[NodeKind]map[EventType]bool
 	actionCount          int
 }
 
@@ -152,8 +177,44 @@ func (compiler *packageStreamCompiler) compileIdentities(identities []ProtocolSt
 			return err
 		}
 		field.fromRoot = true
-		compiler.contract.identities = append(compiler.contract.identities, compiledStreamIdentity{field: field, kind: identity.Type, when: condition})
+		entry := compiledStreamIdentity{field: field, kind: identity.Type, when: condition, isUnique: identity.Unique}
+		if err := compiler.compileIdentitySelection(identity, at, &entry); err != nil {
+			return err
+		}
+		compiler.contract.identities = append(compiler.contract.identities, entry)
 		seen[identity.Path] = true
+	}
+	return nil
+}
+
+func (compiler *packageStreamCompiler) compileIdentitySelection(spec ProtocolStreamIdentitySpec, path string, identity *compiledStreamIdentity) error {
+	if spec.Comparison != "" && spec.Comparison != "raw_json" {
+		return fmt.Errorf("%s/comparison: requires raw_json or the default typed equality", path)
+	}
+	identity.isRaw = spec.Comparison == "raw_json"
+	if err := compiler.compileValue(spec.Value, path+"/value", &identity.field); err != nil {
+		return err
+	}
+	if spec.Key == nil && (spec.Unique || spec.KeyPath != "") {
+		return fmt.Errorf("%s: unique and keyPath require a key expression", path)
+	}
+	if spec.Key != nil {
+		if _, err := compileStreamField(spec.KeyPath, path+"/keyPath", compiler.limits); err != nil {
+			return err
+		}
+		var err error
+		identity.key, err = compiler.expressions.compilePlan(*spec.Key, path+"/key", expressionScope{}, 1)
+		if err != nil {
+			return err
+		}
+		identity.keyPath = spec.KeyPath
+	}
+	if spec.Diagnostic != nil {
+		if err := validateBoundaryDiagnostic(*spec.Diagnostic, path+"/diagnostic"); err != nil {
+			return err
+		}
+		copy := *spec.Diagnostic
+		identity.diagnostic = &copy
 	}
 	return nil
 }
@@ -223,6 +284,9 @@ func (compiler *packageStreamCompiler) compileAction(entry ProtocolStreamActionS
 		return event, err
 	}
 	compiler.contract.hasTypedItems = compiler.contract.hasTypedItems || entry.Kind != ""
+	if err := compiler.recordItemAction(event, path); err != nil {
+		return event, err
+	}
 	if event.isTool {
 		compiler.contract.hasTools, compiler.toolActions[event.action] = true, true
 	} else {
@@ -257,6 +321,8 @@ func compileStreamEvent(spec ProtocolStreamActionSpec, path string, limits Limit
 		event.action, event.isTool = ItemStarted, true
 	case "tool_delta":
 		event.action, event.isTool = ItemDelta, true
+	case "tool_snapshot":
+		event.action, event.isTool = ItemSnapshot, true
 	case "tool_finish":
 		event.action, event.isTool = ItemFinished, true
 	case "usage":
@@ -284,8 +350,11 @@ func compileStreamEvent(spec ProtocolStreamActionSpec, path string, limits Limit
 	if (spec.Action == "text_delta") != (spec.Text != "") || (event.action == OperationFailed) != (spec.Error != "") || (event.action == UsageUpdated) != (spec.Usage != nil) {
 		return event, fmt.Errorf("%s: text, error and usage selectors belong only to their respective actions and are required there", path)
 	}
-	if (spec.Action == "tool_delta") != (spec.Arguments != "") || (spec.Action == "tool_start") != (spec.Tool != nil) {
-		return event, fmt.Errorf("%s: tool identity belongs to tool_start and arguments to tool_delta; both are required there", path)
+	if spec.Action == "tool_snapshot" && spec.Arguments == "" {
+		return event, fmt.Errorf("%s/arguments: tool_snapshot requires a JSON snapshot selector", path)
+	}
+	if (spec.Action == "tool_delta" || spec.Action == "tool_snapshot") != (spec.Arguments != "") || (spec.Action == "tool_start") != (spec.Tool != nil) {
+		return event, fmt.Errorf("%s: tool identity belongs to tool_start and arguments to tool_delta/tool_snapshot; both are required there", path)
 	}
 	var err error
 	if spec.Text != "" {

@@ -7,8 +7,8 @@ func (compiled *Compiled) bindFinalDocument(direction Direction, mapping Protoco
 		return nil, nil
 	}
 	path := "/mapping/directions/" + string(direction) + "/finalDocument"
-	if direction != EncodeResponse && direction != EncodeEvent {
-		return nil, fmt.Errorf("%s: requires response or event encoding", path)
+	if direction != EncodeRequest && direction != EncodeResponse && direction != EncodeEvent {
+		return nil, fmt.Errorf("%s: requires request, response or event encoding", path)
 	}
 	contract, exists := documents[mapping.FinalDocument]
 	if !exists {

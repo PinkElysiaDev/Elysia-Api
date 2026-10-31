@@ -78,11 +78,11 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 			report.Checks = append(report.Checks, check)
 			continue
 		}
-		if sample.Direction == EncodeResponse && compiled.packagePlan != nil {
+		if (sample.Direction == EncodeRequest || sample.Direction == EncodeResponse) && compiled.packagePlan != nil {
 			// A component can encode a partial envelope. Activation evidence must
 			// also satisfy the explicitly declared final delivery contract.
-			if _, hasFinalDocument := compiled.packagePlan.finalContracts[EncodeResponse]; hasFinalDocument {
-				if err := compiled.ValidateWireOutputContext(ctx, EncodeResponse, result.output); err != nil {
+			if _, hasFinalDocument := compiled.packagePlan.finalContracts[sample.Direction]; hasFinalDocument {
+				if err := compiled.ValidateWireOutputContext(ctx, sample.Direction, result.output); err != nil {
 					report.Issues = append(report.Issues, sampleIssues(compiled, sample, path, err)...)
 					report.Checks = append(report.Checks, check)
 					continue

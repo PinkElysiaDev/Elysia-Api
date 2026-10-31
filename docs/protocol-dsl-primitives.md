@@ -4,11 +4,14 @@
 
 表达式在配置编译时解析成计划。运行时执行选中的计划，不重新解释 JSON 声明，不在错误后换另一种转换算法。以下构件不包含供应商字段或跨协议取舍政策。
 
-## 响应构造与最终交付
+## 构造与最终交付
 
-`encode_response`、`encode_event` 可用 `finalDocument` 引用另一份 Spec 命名文档。原 `document` 仍约束
+`encode_request`、`encode_response`、`encode_event` 可用 `finalDocument` 引用另一份 Spec 命名文档。原 `document` 仍约束
 编码结果及 Native 协调后的结果；未声明 `finalDocument` 时，最终交付继续使用同一文档。
 用户原有的严格 schema 不会因为保留 Native 而被绕过。
+
+请求的 `upstream-request` 与 `generation-request` 分别记录最终 wire 和构造约束。
+当前请求结构切片及未闭合的工具／深层校验见[请求最终约束记录](../backend/protocol/builtin/packages/json-final-request-contracts.md)。
 
 例如方向中的两个绑定可以是：
 
@@ -23,9 +26,9 @@
 
 `ValidateWireOutput`、`ValidateWireOutputContext` 和相应对象读取入口选择最终文档；
 `NewWireStreamValidation` 同样选取最终事件文档。两个实际文档内容都进入方向指纹，
-改变最终合同会使相关验证证据失效。JSON 响应必须绑定非流文档，事件必须绑定流文档；
-尚未扩展到请求、任务或上游会话编码。组件样例执行器只执行编解码；`Verify` 在匹配、
-往返之后检查已声明的最终响应文档，通过后才计入能力证据。组合发送验证仍独立检查最终字节。
+改变最终合同会使相关验证证据失效。JSON 请求/响应必须绑定非流文档，事件必须绑定流文档；
+尚未扩展到任务或上游会话编码。组件样例执行器只执行编解码；`Verify` 在匹配、往返之后
+检查已声明的最终 JSON 请求/响应文档，通过后才计入能力证据。组合发送验证仍独立检查最终字节。
 
 Anthropic 使用事件构造文档保留旧裸编码样例的边界，最终文档要求初始 message 的
 完整身份、角色、content 和 usage，以及 message_delta 的 stop_reason 与输出计数。
@@ -34,6 +37,19 @@ Thinking 的初始空块不需要完成签名，不能直接套用完整 JSON �
 `closure-dev93-protocol` 已通过本边界定向、四协议错误映射、119 份迁入 JSON 样例及
 原自定义严格 Native 保护。该记录不表示四预置完整迁移或性能验收完成；原 invalid
 HTTP context 的底层解码文字与静态诊断仍有明确记录的差异。
+
+## 输入子文档作用域
+
+`with_input` 对 `source` 求值一次，在 `body` 中把它绑定为 input；root 始终保持调用时的
+完整输入。它直接传递不可变 JSONOutput，不编码中间正文，适合复用 JSON 响应程序处理
+真实 SSE 的 `/response` 包络。
+
+```json
+{"op":"with_input","source":{"op":"read","path":"/response"},"body":{"op":"ref","ref":"decode-response-document"}}
+```
+
+原文来源位置跟随实际子值，原始 root 的位置不随 input 切换。构造出来的对象不因此
+获得原文身份；编译器分别保留 input/root 的核心类型，不能把子对象类型授予整个 root。
 
 ## 递归对象并集
 

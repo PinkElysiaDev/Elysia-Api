@@ -52,7 +52,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	}
 	plan := &compiledOutputPlan{expression: expression}
 	switch expression.op {
-	case "omit", "reject", "literal", "read", "let", "with_index", "remember", "recall", "index", "capture_native", "capture_source", "replay_native", "native_matches", "object", "check_fields", "project", "keys", "array", "map", "walk", "visit", "recur", "flatmap", "filter", "if", "choose",
+	case "omit", "reject", "literal", "read", "let", "with_input", "with_index", "remember", "recall", "index", "capture_native", "capture_source", "replay_native", "native_matches", "object", "check_fields", "project", "keys", "array", "map", "walk", "visit", "recur", "flatmap", "filter", "if", "choose",
 		"merge", "merge_deep", "merge_usage", "resolve_item", "track_text", "track_tool", "index_values", "length", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
 		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains", "equal", "equal_text", "all", "any", "entries", "from_entries", "group_runs":
 	default:
@@ -197,6 +197,8 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.buildReadValue(state)
 	case "let":
 		return plan.buildBinding(state)
+	case "with_input":
+		return plan.buildInputScope(state)
 	case "resolve_item":
 		return plan.resolveStreamItem(state)
 	case "track_text":

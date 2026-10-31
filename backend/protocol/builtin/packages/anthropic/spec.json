@@ -2653,62 +2653,79 @@
             }
           ],
           "content_block_delta": [
-            {
-              "action": "text_delta",
-              "text": "/delta/text",
-              "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/delta/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "text_delta"
-                  }
-                ]
-              }
-            },
-            {
-              "action": "text_delta",
-              "kind": "reasoning",
-              "text": "/delta/thinking",
-              "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/delta/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "thinking_delta"
-                  }
-                ]
-              }
-            },
-            {
-              "action": "tool_delta",
-              "arguments": "/delta/partial_json",
-              "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/delta/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "input_json_delta"
-                  }
-                ]
-              }
-            }
-          ],
+  {
+    "action": "text_delta",
+    "text": "/delta/text",
+    "when": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/delta/type"
+        },
+        {
+          "op": "literal",
+          "value": "text_delta"
+        }
+      ]
+    }
+  },
+  {
+    "action": "text_delta",
+    "kind": "reasoning",
+    "text": "/delta/thinking",
+    "when": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/delta/type"
+        },
+        {
+          "op": "literal",
+          "value": "thinking_delta"
+        }
+      ]
+    }
+  },
+  {
+    "action": "tool_delta",
+    "arguments": "/delta/partial_json",
+    "when": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/delta/type"
+        },
+        {
+          "op": "literal",
+          "value": "input_json_delta"
+        }
+      ]
+    }
+  },
+  {
+    "action": "observe",
+    "when": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/delta/type"
+        },
+        {
+          "op": "literal",
+          "value": "signature_delta"
+        }
+      ]
+    }
+  }
+],
           "content_block_stop": [
             {
               "action": "item_finish"
@@ -4990,6 +5007,505 @@
       }
     }
   }
+}
+,
+"upstream-request": {
+  "schema": {
+    "type": "any"
+  },
+  "assertions": [
+    {
+      "path": "",
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires an object",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      }
+    },
+    {
+      "path": "/model",
+      "schema": {
+        "type": "string"
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires a nonempty string",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "check": {
+        "op": "not",
+        "source": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            {
+              "op": "literal",
+              "value": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "/messages",
+      "schema": {
+        "type": "array"
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires an array",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "each": [
+        {
+          "path": "",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an object",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          }
+        },
+        {
+          "path": "/role",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant",
+              "system"
+            ]
+          },
+          "code": "conversion_rejected",
+          "reason": "Anthropic messages require a user, assistant or system role",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          }
+        }
+      ]
+    },
+    {
+      "path": "/thinking",
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      },
+      "code": "invalid_input",
+      "reason": "thinking controls must be an object or null",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/thinking"
+        }
+      },
+      "diagnostic": {
+        "code": "invalid_input",
+        "stage": "request.validation",
+        "path": "/parameters/anthropic_thinking",
+        "suggestion": "correct the request controls or declared /parameters/anthropic_thinking rule"
+      }
+    },
+    {
+      "path": "/thinking/type",
+      "schema": {
+        "type": "string",
+        "enum": [
+          "enabled",
+          "disabled",
+          "adaptive",
+          "between_tools"
+        ]
+      },
+      "code": "invalid_input",
+      "reason": "unknown thinking type",
+      "when": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/thinking"
+          }
+        },
+        "then": {
+          "op": "not",
+          "source": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/thinking"
+              },
+              {
+                "op": "object",
+                "fields": {}
+              }
+            ]
+          }
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "diagnostic": {
+        "code": "invalid_input",
+        "stage": "request.validation",
+        "path": "/thinking/type",
+        "suggestion": "correct the request controls or declared /thinking/type rule"
+      }
+    },
+    {
+      "path": "/thinking/budget_tokens",
+      "schema": {
+        "type": "any"
+      },
+      "code": "invalid_input",
+      "reason": "manual thinking requires an integer budget of at least 1024",
+      "when": {
+        "op": "if",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/thinking"
+            }
+          },
+          "then": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking"
+                },
+                {
+                  "op": "object",
+                  "fields": {}
+                }
+              ]
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "then": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/thinking/type"
+            },
+            {
+              "op": "literal",
+              "value": "enabled"
+            }
+          ]
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "check": {
+        "op": "if",
+        "when": {
+          "op": "is_integer",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": ""
+          }
+        },
+        "then": {
+          "op": "integer",
+          "operation": "gte",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            {
+              "op": "literal",
+              "value": 1024
+            }
+          ]
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "diagnostic": {
+        "code": "invalid_input",
+        "stage": "request.validation",
+        "path": "/thinking/budget_tokens",
+        "suggestion": "correct the request controls or declared /thinking/budget_tokens rule"
+      }
+    },
+    {
+      "path": "/thinking/budget_tokens",
+      "schema": {
+        "type": "any"
+      },
+      "code": "invalid_input",
+      "reason": "this thinking mode does not accept a budget",
+      "when": {
+        "op": "if",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/thinking"
+              }
+            },
+            "then": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/thinking"
+                  },
+                  {
+                    "op": "object",
+                    "fields": {}
+                  }
+                ]
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "then": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "enabled"
+                }
+              ]
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "then": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/thinking/budget_tokens"
+          }
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "check": {
+        "op": "literal",
+        "value": false
+      },
+      "diagnostic": {
+        "code": "invalid_input",
+        "stage": "request.validation",
+        "path": "/thinking/budget_tokens",
+        "suggestion": "correct the request controls or declared /thinking/budget_tokens rule"
+      }
+    },
+    {
+      "path": "/thinking/display",
+      "schema": {
+        "type": "string",
+        "nullable": true,
+        "enum": [
+          "summarized",
+          "omitted",
+          "updates"
+        ]
+      },
+      "code": "invalid_input",
+      "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+      "when": {
+        "op": "if",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/thinking"
+            }
+          },
+          "then": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking"
+                },
+                {
+                  "op": "object",
+                  "fields": {}
+                }
+              ]
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "then": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/thinking/display"
+          }
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "diagnostic": {
+        "code": "invalid_input",
+        "stage": "request.validation",
+        "path": "/thinking/display",
+        "suggestion": "correct the request thinking.display or its declared mapping"
+      }
+    },
+    {
+      "path": "/output_config",
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      },
+      "code": "invalid_input",
+      "reason": "thinking controls must be an object or null",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/output_config"
+        }
+      },
+      "diagnostic": {
+        "code": "invalid_input",
+        "stage": "request.validation",
+        "path": "/parameters/anthropic_output_config",
+        "suggestion": "correct the request controls or declared /parameters/anthropic_output_config rule"
+      }
+    },
+    {
+      "path": "/output_config/effort",
+      "schema": {
+        "type": "any"
+      },
+      "code": "invalid_input",
+      "reason": "effort cannot disable thinking; use thinking.type",
+      "when": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/output_config"
+          }
+        },
+        "then": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/output_config/effort"
+          }
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "check": {
+        "op": "not",
+        "source": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            {
+              "op": "literal",
+              "value": "none"
+            }
+          ]
+        }
+      },
+      "diagnostic": {
+        "code": "invalid_input",
+        "stage": "request.validation",
+        "path": "/output_config/effort",
+        "suggestion": "correct the request controls or declared /output_config/effort rule"
+      }
+    }
+  ]
 }
 }
 }

@@ -16,6 +16,8 @@ type nativeLocation struct {
 type nativeCaptureState struct {
 	source           Provenance
 	item             nativeLocation
+	input            nativeLocation
+	hasInputScope    bool
 	bindings         []nativeLocation
 	isNativeDisabled bool
 }
@@ -34,7 +36,11 @@ func nativeReadLocation(expression *compiledExpression, capture *nativeCaptureSt
 	}
 	location := nativeLocation{isWire: true}
 	switch expression.from {
-	case "input", "root":
+	case "input":
+		if capture.hasInputScope {
+			location = capture.input
+		}
+	case "root":
 	case "item":
 		location = capture.item
 	case "binding":

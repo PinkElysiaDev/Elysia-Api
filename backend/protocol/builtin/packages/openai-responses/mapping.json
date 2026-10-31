@@ -29,6 +29,10 @@
           }
         }
       }
+    },
+    "stream": {
+      "request": "encode_request",
+      "response": "decode_event"
     }
   },
   "coreVersion": 2,
@@ -15819,7 +15823,38 @@
         }
       }
     }
-  }
+  },
+    "decode-response-document": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "has-error-envelope"
+      },
+      "then": {
+        "op": "ref",
+        "ref": "decode-error-envelope"
+      },
+      "otherwise": {
+        "op": "let",
+        "name": "decoded-failure",
+        "source": {
+          "op": "ref",
+          "ref": "decode-failure"
+        },
+        "body": {
+          "op": "let",
+          "name": "tool-usage",
+          "source": {
+            "op": "ref",
+            "ref": "decode-tool-usage-remainder"
+          },
+          "body": {
+            "op": "ref",
+            "ref": "decode-response-fields"
+          }
+        }
+      }
+    }
   },
   "directions": {
     "decode_request": {
@@ -16165,40 +16200,15 @@
         "reasoning": true,
         "reasoning.encrypted": true
       }
-    },
+    ,
+"finalDocument": "upstream-request"
+},
     "decode_response": {
       "document": "provider-response",
       "program": {
-  "op": "if",
-  "when": {
-    "op": "ref",
-    "ref": "has-error-envelope"
-  },
-  "then": {
-    "op": "ref",
-    "ref": "decode-error-envelope"
-  },
-  "otherwise": {
-    "op": "let",
-    "name": "decoded-failure",
-    "source": {
-      "op": "ref",
-      "ref": "decode-failure"
-    },
-    "body": {
-      "op": "let",
-      "name": "tool-usage",
-      "source": {
         "op": "ref",
-        "ref": "decode-tool-usage-remainder"
+        "ref": "decode-response-document"
       },
-      "body": {
-        "op": "ref",
-        "ref": "decode-response-fields"
-      }
-    }
-  }
-},
       "effects": [
         {
           "id": "model",
@@ -16430,7 +16440,1073 @@
       }
     ,
 "finalDocument": "client-response"
-}
+},
+    "decode_event": {
+      "document": "provider-event",
+      "eventBatch": true,
+      "capabilities": {
+        "tools.function": true,
+        "native_extensions": true,
+        "usage": true
+      },
+      "state": {
+        "response": {
+          "schema": {
+            "type": "any"
+          },
+          "update": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/response/id"
+              }
+            },
+            "then": {
+              "op": "read",
+              "from": "input",
+              "path": "/response/id"
+            },
+            "otherwise": {
+              "op": "read",
+              "from": "state",
+              "path": "/response"
+            }
+          }
+        },
+        "nextItem": {
+          "schema": {
+            "type": "integer"
+          },
+          "initial": 0,
+          "update": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "response.output_item.added"
+                }
+              ]
+            },
+            "then": {
+              "op": "integer",
+              "operation": "add",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "state",
+                  "path": "/nextItem"
+                },
+                {
+                  "op": "literal",
+                  "value": 1
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "read",
+              "from": "state",
+              "path": "/nextItem"
+            }
+          }
+        }
+      },
+      "indexes": {
+        "items": {
+          "keyMode": "integer",
+          "policy": "reject",
+          "schema": {
+            "type": "object",
+            "required": [
+              "position",
+              "node"
+            ],
+            "properties": {
+              "position": {
+                "type": "integer"
+              },
+              "node": {
+                "type": "object",
+                "allowUnknown": true
+              }
+            }
+          }
+        }
+      },
+      "program": {
+        "op": "let",
+        "name": "registered",
+        "source": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "response.output_item.added"
+              }
+            ]
+          },
+          "then": {
+            "op": "remember",
+            "name": "items",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/output_index"
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "input",
+                "path": "/output_index"
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": 0
+              }
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "position": {
+                  "op": "read",
+                  "from": "state",
+                  "path": "/nextItem"
+                },
+                "node": {
+                  "op": "object",
+                  "fields": {
+                    "kind": {
+                      "op": "literal",
+                      "value": "tool_call"
+                    },
+                    "id": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item/id"
+                    },
+                    "callId": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item/call_id"
+                    },
+                    "name": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item/name"
+                    },
+                    "status": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item/status"
+                    },
+                    "input": {
+                      "op": "object",
+                      "fields": {
+                        "kind": {
+                          "op": "literal",
+                          "value": "json"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "body": {
+          "op": "let",
+          "name": "events",
+          "source": {
+            "op": "choose",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/type"
+            },
+            "cases": {
+              "response.created": {
+                "op": "let",
+                "name": "decoded-response",
+                "source": {
+                  "op": "with_input",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/response"
+                  },
+                  "body": {
+                    "op": "ref",
+                    "ref": "decode-response-document"
+                  }
+                },
+                "body": {
+                  "op": "array",
+                  "items": [
+                    {
+                      "op": "object",
+                      "fields": {
+                        "schemaVersion": {
+                          "op": "literal",
+                          "value": 2
+                        },
+                        "type": {
+                          "op": "literal",
+                          "value": "response.started"
+                        },
+                        "responseId": {
+                          "op": "if",
+                          "when": {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/response/id"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/response/id"
+                          },
+                          "otherwise": {
+                            "op": "read",
+                            "from": "state",
+                            "path": "/response"
+                          }
+                        },
+                        "response": {
+                          "op": "object",
+                          "fields": {
+                            "schemaVersion": {
+                              "op": "literal",
+                              "value": 2
+                            },
+                            "id": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/id",
+                              "name": "decoded-response"
+                            },
+                            "model": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/model",
+                              "name": "decoded-response"
+                            },
+                            "status": {
+                              "op": "literal",
+                              "value": "in_progress"
+                            },
+                            "content": {
+                              "op": "array",
+                              "items": []
+                            },
+                            "attributes": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/attributes",
+                              "name": "decoded-response"
+                            },
+                            "metadata": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/metadata",
+                              "name": "decoded-response"
+                            },
+                            "usage": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/usage",
+                              "name": "decoded-response"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "response.output_item.added": {
+                "op": "array",
+                "items": [
+                  {
+                    "op": "object",
+                    "fields": {
+                      "schemaVersion": {
+                        "op": "literal",
+                        "value": 2
+                      },
+                      "type": {
+                        "op": "literal",
+                        "value": "item.started"
+                      },
+                      "responseId": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/response/id"
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/response/id"
+                        },
+                        "otherwise": {
+                          "op": "read",
+                          "from": "state",
+                          "path": "/response"
+                        }
+                      },
+                      "itemId": {
+                        "op": "join",
+                        "items": [
+                          {
+                            "op": "literal",
+                            "value": "output:"
+                          },
+                          {
+                            "op": "cast",
+                            "source": {
+                              "op": "if",
+                              "when": {
+                                "op": "present",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/output_index"
+                                }
+                              },
+                              "then": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/output_index"
+                              },
+                              "otherwise": {
+                                "op": "literal",
+                                "value": 0
+                              }
+                            },
+                            "to": "string"
+                          }
+                        ]
+                      },
+                      "index": {
+                        "op": "let",
+                        "name": "registered-item",
+                        "source": {
+                          "op": "recall",
+                          "name": "items",
+                          "source": {
+                            "op": "if",
+                            "when": {
+                              "op": "present",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/output_index"
+                              }
+                            },
+                            "then": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/output_index"
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": 0
+                            }
+                          },
+                          "policy": "reject"
+                        },
+                        "body": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/position",
+                          "name": "registered-item"
+                        }
+                      },
+                      "item": {
+                        "op": "object",
+                        "fields": {
+                          "kind": {
+                            "op": "literal",
+                            "value": "tool_call"
+                          },
+                          "id": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/item/id"
+                          },
+                          "callId": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/item/call_id"
+                          },
+                          "name": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/item/name"
+                          },
+                          "status": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/item/status"
+                          },
+                          "input": {
+                            "op": "object",
+                            "fields": {
+                              "kind": {
+                                "op": "literal",
+                                "value": "json"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              "response.function_call_arguments.delta": {
+                "op": "array",
+                "items": [
+                  {
+                    "op": "object",
+                    "fields": {
+                      "schemaVersion": {
+                        "op": "literal",
+                        "value": 2
+                      },
+                      "type": {
+                        "op": "literal",
+                        "value": "item.delta"
+                      },
+                      "responseId": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/response/id"
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/response/id"
+                        },
+                        "otherwise": {
+                          "op": "read",
+                          "from": "state",
+                          "path": "/response"
+                        }
+                      },
+                      "itemId": {
+                        "op": "join",
+                        "items": [
+                          {
+                            "op": "literal",
+                            "value": "output:"
+                          },
+                          {
+                            "op": "cast",
+                            "source": {
+                              "op": "if",
+                              "when": {
+                                "op": "present",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/output_index"
+                                }
+                              },
+                              "then": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/output_index"
+                              },
+                              "otherwise": {
+                                "op": "literal",
+                                "value": 0
+                              }
+                            },
+                            "to": "string"
+                          }
+                        ]
+                      },
+                      "index": {
+                        "op": "let",
+                        "name": "registered-item",
+                        "source": {
+                          "op": "recall",
+                          "name": "items",
+                          "source": {
+                            "op": "if",
+                            "when": {
+                              "op": "present",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/output_index"
+                              }
+                            },
+                            "then": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/output_index"
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": 0
+                            }
+                          },
+                          "policy": "reject"
+                        },
+                        "body": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/position",
+                          "name": "registered-item"
+                        }
+                      },
+                      "delta": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/delta"
+                      }
+                    }
+                  }
+                ]
+              },
+              "response.function_call_arguments.done": {
+                "op": "array",
+                "items": [
+                  {
+                    "op": "let",
+                    "name": "registered-item",
+                    "source": {
+                      "op": "recall",
+                      "name": "items",
+                      "source": {
+                        "op": "if",
+                        "when": {
+                          "op": "present",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/output_index"
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/output_index"
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": 0
+                        }
+                      },
+                      "policy": "reject"
+                    },
+                    "body": {
+                      "op": "object",
+                      "fields": {
+                        "schemaVersion": {
+                          "op": "literal",
+                          "value": 2
+                        },
+                        "type": {
+                          "op": "literal",
+                          "value": "item.snapshot"
+                        },
+                        "responseId": {
+                          "op": "if",
+                          "when": {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/response/id"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/response/id"
+                          },
+                          "otherwise": {
+                            "op": "read",
+                            "from": "state",
+                            "path": "/response"
+                          }
+                        },
+                        "itemId": {
+                          "op": "join",
+                          "items": [
+                            {
+                              "op": "literal",
+                              "value": "output:"
+                            },
+                            {
+                              "op": "cast",
+                              "source": {
+                                "op": "if",
+                                "when": {
+                                  "op": "present",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/output_index"
+                                  }
+                                },
+                                "then": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/output_index"
+                                },
+                                "otherwise": {
+                                  "op": "literal",
+                                  "value": 0
+                                }
+                              },
+                              "to": "string"
+                            }
+                          ]
+                        },
+                        "index": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/position",
+                          "name": "registered-item"
+                        },
+                        "item": {
+                          "op": "merge",
+                          "policy": "reject",
+                          "items": [
+                            {
+                              "op": "project",
+                              "source": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/node",
+                                "name": "registered-item"
+                              },
+                              "keys": [
+                                "input"
+                              ],
+                              "policy": "exclude"
+                            },
+                            {
+                              "op": "object",
+                              "fields": {
+                                "input": {
+                                  "op": "object",
+                                  "fields": {
+                                    "kind": {
+                                      "op": "literal",
+                                      "value": "json"
+                                    },
+                                    "value": {
+                                      "op": "parse_json",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "input",
+                                        "path": "/arguments"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              "response.output_item.done": {
+                "op": "array",
+                "items": [
+                  {
+                    "op": "object",
+                    "fields": {
+                      "schemaVersion": {
+                        "op": "literal",
+                        "value": 2
+                      },
+                      "type": {
+                        "op": "literal",
+                        "value": "item.finished"
+                      },
+                      "responseId": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/response/id"
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/response/id"
+                        },
+                        "otherwise": {
+                          "op": "read",
+                          "from": "state",
+                          "path": "/response"
+                        }
+                      },
+                      "itemId": {
+                        "op": "join",
+                        "items": [
+                          {
+                            "op": "literal",
+                            "value": "output:"
+                          },
+                          {
+                            "op": "cast",
+                            "source": {
+                              "op": "if",
+                              "when": {
+                                "op": "present",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/output_index"
+                                }
+                              },
+                              "then": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/output_index"
+                              },
+                              "otherwise": {
+                                "op": "literal",
+                                "value": 0
+                              }
+                            },
+                            "to": "string"
+                          }
+                        ]
+                      },
+                      "index": {
+                        "op": "let",
+                        "name": "registered-item",
+                        "source": {
+                          "op": "recall",
+                          "name": "items",
+                          "source": {
+                            "op": "if",
+                            "when": {
+                              "op": "present",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/output_index"
+                              }
+                            },
+                            "then": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/output_index"
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": 0
+                            }
+                          },
+                          "policy": "reject"
+                        },
+                        "body": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/position",
+                          "name": "registered-item"
+                        }
+                      },
+                      "item": {
+                        "op": "with_index",
+                        "name": "calls",
+                        "keyMode": "raw_json",
+                        "policy": "last",
+                        "body": {
+                          "op": "visit",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/item"
+                          },
+                          "body": {
+                            "op": "ref",
+                            "ref": "decode-response-item"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              "response.completed": {
+                "op": "let",
+                "name": "decoded-response",
+                "source": {
+                  "op": "with_input",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/response"
+                  },
+                  "body": {
+                    "op": "ref",
+                    "ref": "decode-response-document"
+                  }
+                },
+                "body": {
+                  "op": "array",
+                  "items": [
+                    {
+                      "op": "object",
+                      "fields": {
+                        "schemaVersion": {
+                          "op": "literal",
+                          "value": 2
+                        },
+                        "type": {
+                          "op": "literal",
+                          "value": "response.finished"
+                        },
+                        "responseId": {
+                          "op": "if",
+                          "when": {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/response/id"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/response/id"
+                          },
+                          "otherwise": {
+                            "op": "read",
+                            "from": "state",
+                            "path": "/response"
+                          }
+                        },
+                        "response": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "decoded-response"
+                        },
+                        "usage": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/usage",
+                          "name": "decoded-response"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "project",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      "keys": [
+                        "type",
+                        "sequence_number",
+                        "response_id",
+                        "output_index",
+                        "content_index",
+                        "summary_index",
+                        "item_id",
+                        "delta",
+                        "text",
+                        "refusal",
+                        "arguments",
+                        "input",
+                        "item",
+                        "part",
+                        "response",
+                        "error",
+                        "logprobs",
+                        "annotation",
+                        "annotation_index"
+                      ],
+                      "policy": "exclude"
+                    },
+                    {
+                      "op": "literal",
+                      "value": {}
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "if",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/item"
+                        }
+                      },
+                      "then": {
+                        "op": "project",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/item"
+                        },
+                        "keys": [
+                          "type",
+                          "id",
+                          "call_id",
+                          "name",
+                          "arguments",
+                          "status"
+                        ],
+                        "policy": "exclude"
+                      },
+                      "otherwise": {
+                        "op": "object",
+                        "fields": {}
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": {}
+                    }
+                  ]
+                }
+              ]
+            },
+            "then": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "events"
+            },
+            "otherwise": {
+              "op": "let",
+              "name": "unmapped",
+              "source": {
+                "op": "capture_native",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                }
+              },
+              "body": {
+                "op": "map",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "events"
+                },
+                "body": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "index"
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "merge",
+                    "policy": "reject",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      },
+                      {
+                        "op": "object",
+                        "fields": {
+                          "unmapped": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "unmapped"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "otherwise": {
+                    "op": "read",
+                    "from": "item",
+                    "path": ""
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "effects": []
+    }
   },
   "samples": [
     {

@@ -25,6 +25,7 @@ type packageStreamState struct {
 	scope                  Scope
 	slots                  []Value
 	indexes                []map[string]Value
+	indexSources           []map[string]JSONOutput
 	indexItems, indexBytes int
 	bytes                  int
 	slotBytes              int
@@ -53,6 +54,7 @@ type packageStreamTransaction struct {
 	previous                       *packageStreamState
 	next                           []Value
 	indexUpdates                   []map[string]Value
+	indexSourceUpdates             []map[string]JSONOutput
 	indexItemDelta, indexByteDelta int
 	bytes                          int
 	slotBytes                      int
@@ -279,9 +281,15 @@ func (transaction *packageStreamTransaction) finish(err error) {
 		transaction.owner.packageStateBytes -= transaction.previous.bytes
 	}
 	indexes, items, indexBytes := transaction.commitIndexes()
+	indexSources := transaction.commitIndexSources()
 	transaction.owner.packageStateItems += transaction.indexItemDelta
 	primitives := transaction.commitPrimitives()
-	transaction.owner.packageStates[transaction.key] = &packageStreamState{primitives: primitives, scope: transaction.scope, slots: transaction.next, slotBytes: transaction.slotBytes, indexes: indexes, indexItems: items, indexBytes: indexBytes, bytes: transaction.bytes, hasRendered: transaction.hasRendered, hasTerminal: transaction.hasTerminal}
+	transaction.owner.packageStates[transaction.key] = &packageStreamState{
+		primitives: primitives, scope: transaction.scope,
+		slots: transaction.next, slotBytes: transaction.slotBytes,
+		indexes: indexes, indexSources: indexSources, indexItems: items, indexBytes: indexBytes,
+		bytes: transaction.bytes, hasRendered: transaction.hasRendered, hasTerminal: transaction.hasTerminal,
+	}
 	transaction.owner.packageStateBytes += transaction.bytes
 	transaction.next = nil
 }

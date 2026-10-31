@@ -68,6 +68,12 @@ Wire 观察器的身份、必要诊断路径及未完成工具参数共同消耗
 
 普通表保存独立 JSON，不携带私有 Native/Source 来源凭据；给普通对象添加 `native` 字段不能获得重放权限。动态条目限额不扣除固定槽位和表的声明数量。
 
+事件解码表可显式设置 `retainSource:true`，只保留 `capture_source` 或
+`capture_native.source` 已产生的真实来源凭据。存储先独立拥有编码后的 JSON，再在其
+视图上恢复已存在的 Source 标记；不保存初始整帧，不恢复 Native 包络权限。
+同名普通 JSON 覆盖会清掉旧凭据，不能借历史有效项伪造来源。scope、编译修订和释放
+仍由原流事务约束。额外 Go 视图容器属于物理占用，不将逻辑字节计量写成精确堆占用。
+
 `index_values` 按键确定性枚举；需要注册顺序时显式按条目中的数值 index 排序。`sort` 比较实际数字，不把 10 排在 2 前面。
 
 | 原语 | 用途 |
@@ -106,3 +112,15 @@ Chat source 四份样例及 metadata/logprobs、晚到 usage/工具身份已验�
 这不代表四协议 SSE 完成。Chat target 的 choice/message metadata、Anthropic source
 签名片段与完整 metadata、未知字段精确路径，以及 Responses/Gemini 生命周期仍须闭合。
 原生前缀后修改语义增量的旧失败边界单独记录，未获批准前不作为预置新增接受行为。
+
+## Responses JSON 工具输入切片
+
+本切片仅接入既有 `stream-tool-decode` 的六帧生命周期：响应开始、JSON 工具开始、参数增量、参数快照、工具完成和响应完成。配置复用 JSON 解码表达式，`with_input` 只切换所选 `/response` 输入，`root` 仍为原帧。尚未接入 Responses 事件编码器，不据此宣布同协议原帧重放通过。
+
+该文档显式声明 `itemKinds:["tool_call"]`，只缩小 `decode_event` 方向的能力，协议全局及 JSON 方向的 text 能力保留。省略 `itemKinds` 时仍要求原有文本生命周期，工具动作不能代替文本动作；显式类型必须与实际动作及方向能力一致。后续接入文本流时必须同时补动作和恢复该方向的 text 能力。
+
+来源差异采用明确边界核对：旧终态工具节点的 `Source.Path`、`Native.Source.Path` 是相对包络的 `/output/0`，新值为原帧位置 `/response/output/0`。旧节点的 Native 值保留片段缩进，新节点沿用 `capture_native` 的 ConfigStd 容器规范化；测试对原片段使用相同规范化后比较全部字节，不解码为 `any`，不忽略数字、字段或路径。顶层 `Response.Native` 在旧、新两边均缺失；整帧由 EventFrame 独立保存。
+
+Spec 的 `optionalSequence` 只允许缺失序号，不允许 null 或倒退，缺失帧不会重置已建立的水位。`tool_snapshot` 复用既有 JSON 参数前缀规则。带 `key` 的身份声明把输出索引和 wire ID 关联起来；`comparison:raw_json` 保留旧的原始字符串拼写比较，`unique:true` 拒绝相同原始 ID 被另一个索引复用，关联项与现有 wire 状态共用保留预算。
+
+文本父子项、reasoning、自由文本工具、辅助 metadata、turn-state、心跳特殊处置和 Responses 目标累计缓冲仍在此切片范围之外；它们不能由本组六帧对照代替验收。

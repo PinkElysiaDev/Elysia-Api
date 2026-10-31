@@ -63,26 +63,33 @@ func TestPackageDocumentIdentityFollowsReferences(t *testing.T) {
 }
 
 func TestPackageFinalDocumentIdentityAndBinding(t *testing.T) {
-	document := textProtocolPackage(t)
-	document.Spec.Documents["delivered-response"] = WireContractSpec{Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true}}
-	entry := document.Mapping.Directions[EncodeResponse]
-	entry.FinalDocument = "delivered-response"
-	document.Mapping.Directions[EncodeResponse] = entry
-	before := compilePackageForTest(t, document)
-	contract := document.Spec.Documents["delivered-response"]
-	contract.Assertions = []WireAssertion{{Path: "/reply", Schema: ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "reply must be a string"}}
-	document.Spec.Documents["delivered-response"] = contract
-	after := compilePackageForTest(t, document)
-	if before.Hash() == after.Hash() || before.mappings[EncodeResponse].definitionHash == after.mappings[EncodeResponse].definitionHash {
-		t.Fatal("final contract was omitted from protocol or mapping identity")
-	}
-	if before.mappings[DecodeResponse].definitionHash != after.mappings[DecodeResponse].definitionHash {
-		t.Fatal("final-only document changed source decoding identity")
+	contract := WireContractSpec{Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true}}
+	for _, direction := range []Direction{EncodeRequest, EncodeResponse} {
+		t.Run(string(direction), func(t *testing.T) {
+			document := textProtocolPackage(t)
+			document.Spec.Documents["delivered-output"] = contract
+			entry := document.Mapping.Directions[direction]
+			entry.FinalDocument = "delivered-output"
+			document.Mapping.Directions[direction] = entry
+			before := compilePackageForTest(t, document)
+			changed := contract
+			changed.Assertions = []WireAssertion{{Path: "/required", Schema: ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "required field must be a string"}}
+			document.Spec.Documents["delivered-output"] = changed
+			after := compilePackageForTest(t, document)
+			if before.Hash() == after.Hash() || before.mappings[direction].definitionHash == after.mappings[direction].definitionHash {
+				t.Fatal("final contract was omitted from protocol or mapping identity")
+			}
+			for _, inputDirection := range []Direction{DecodeRequest, DecodeResponse} {
+				if before.mappings[inputDirection].definitionHash != after.mappings[inputDirection].definitionHash {
+					t.Fatal("final-only document changed source decoding identity", inputDirection)
+				}
+			}
+		})
 	}
 	for _, fixture := range []struct {
 		direction Direction
 		name      string
-	}{{EncodeRequest, "delivered-response"}, {DecodeResponse, "delivered-response"}, {EncodeResponse, "missing"}} {
+	}{{DecodeRequest, "delivered-response"}, {DecodeResponse, "delivered-response"}, {EncodeResponse, "missing"}} {
 		candidate := textProtocolPackage(t)
 		candidate.Spec.Documents["delivered-response"] = contract
 		entry := candidate.Mapping.Directions[fixture.direction]

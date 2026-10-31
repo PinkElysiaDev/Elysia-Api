@@ -13,6 +13,7 @@ type OperationInfo struct {
 var expressionOperations = []OperationInfo{
 	{"read", []string{"from", "name", "path", "required"}, nil, AnyType, "Read an RFC 6901 pointer from input, item, root, context or a named binding; preserve missing and null."},
 	{"let", []string{"name", "source", "body"}, []string{"name", "source", "body"}, AnyType, "Evaluate source once and bind its immutable value by name within body; nested bindings may shadow outer names."},
+	{"with_input", []string{"source", "body"}, []string{"source", "body"}, AnyType, "Evaluate body with the selected immutable input without encoding it; root remains the original document, and only original reads retain wire provenance."},
 	{"track_tool", []string{"name", "source", "body"}, []string{"name", "source", "body"}, StringType, "Stage bounded JSON/text tool arguments with explicit snapshot, done and emit flags; emit returns every previously withheld byte once."},
 	{"track_text", []string{"name", "source", "body", "policy"}, []string{"name", "source", "body", "policy"}, StringType, "Stage a text delta or append-only snapshot for a stable item key and fixed channel, returning only its new suffix."},
 	{"resolve_item", []string{"source"}, []string{"source"}, ObjectType, "Resolve item/call/index aliases and an existing parent within the current stream transaction."},

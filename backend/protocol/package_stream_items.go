@@ -8,7 +8,7 @@ func (state *packageStreamValidation) readItemPayload(event *Event, definition *
 	event.ItemID = StringValue(itemID)
 	// Generic finishes close the established item, as on transports whose
 	// end marker carries no kind. Tool finishes still promise a tool item.
-	if (state.contract.hasTools || state.contract.hasTypedItems) && (event.Type == ItemDelta || event.Type == ItemFinished && definition.isTool) {
+	if (state.contract.hasTools || state.contract.hasTypedItems) && (event.Type == ItemDelta || (event.Type == ItemSnapshot || event.Type == ItemFinished) && definition.isTool) {
 		key := state.replay.identities.aliases["item:"+itemID]
 		if item := state.replay.items[key]; item != nil && ((item.kind == ToolCallNode) != definition.isTool || event.Type == ItemDelta && !definition.isTool && item.kind != definition.kind) {
 			return 0, state.issue(definition.itemID.path, "stream action does not match the established item kind", nil)
@@ -16,6 +16,21 @@ func (state *packageStreamValidation) readItemPayload(event *Event, definition *
 	}
 	if event.Type == ItemStarted {
 		return state.readStartedItem(event, definition, itemID, read)
+	}
+	if event.Type == ItemSnapshot {
+		value, err := read(definition.delta)
+		if err != nil {
+			return 0, err
+		}
+		text, err := readString(value)
+		if err != nil {
+			return 0, state.issue(definition.delta.path, "tool argument snapshot must be a JSON string", err)
+		}
+		arguments, err := ParseValue([]byte(text))
+		if err != nil {
+			return 0, state.issue(definition.delta.path, "tool argument snapshot contains invalid JSON", err)
+		}
+		event.Item = &Node{Kind: ToolCallNode, Input: &ToolInput{Kind: JSONInput, Value: arguments}}
 	}
 	if event.Type == ItemDelta {
 		event.Delta, err = read(definition.delta)

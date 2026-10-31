@@ -115,24 +115,27 @@ func TestPackageVerificationRejectsMissingOrIncorrectEvidence(t *testing.T) {
 	}
 }
 
-func TestPackageVerificationRejectsInvalidFinalResponse(t *testing.T) {
-	document := verifiedTextPackage(t, "invalid-final-response")
-	document.Spec.Documents["delivered-response"] = WireContractSpec{Schema: &ValueSchema{
-		Type: ObjectType, Required: []string{"reply"},
-		Properties: map[string]ValueSchema{"reply": {Type: StringType, Enum: []Value{StringValue("deliverable")}}},
-	}}
-	entry := document.Mapping.Directions[EncodeResponse]
-	entry.FinalDocument = "delivered-response"
-	document.Mapping.Directions[EncodeResponse] = entry
-	compiled := compilePackageForTest(t, document)
-	report := Verify(t.Context(), compiled)
-	if report.Passed || !containsVerificationCode(report, ConversionRejected) || IssuesError(CanActivate(compiled, report)) == nil {
-		t.Fatal("component-only response authorized activation", report)
-	}
-	for _, check := range report.Checks {
-		if check.Direction == EncodeResponse && (check.Passed || len(check.Capabilities) != 0) {
-			t.Fatal("invalid final response supplied positive direction or capability evidence", check)
-		}
+func TestPackageVerificationRejectsInvalidFinalOutput(t *testing.T) {
+	for _, direction := range []Direction{EncodeRequest, EncodeResponse} {
+		t.Run(string(direction), func(t *testing.T) {
+			document := verifiedTextPackage(t, "invalid-final-output")
+			document.Spec.Documents["delivered-output"] = WireContractSpec{Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true},
+				Assertions: []WireAssertion{{Path: "/required", Schema: ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "final output requires this field"}},
+			}
+			entry := document.Mapping.Directions[direction]
+			entry.FinalDocument = "delivered-output"
+			document.Mapping.Directions[direction] = entry
+			compiled := compilePackageForTest(t, document)
+			report := Verify(t.Context(), compiled)
+			if report.Passed || !containsVerificationCode(report, ConversionRejected) || IssuesError(CanActivate(compiled, report)) == nil {
+				t.Fatal("component-only output authorized activation", report)
+			}
+			for _, check := range report.Checks {
+				if check.Direction == direction && (check.Passed || len(check.Capabilities) != 0) {
+					t.Fatal("invalid final output supplied positive direction or capability evidence", check)
+				}
+			}
+		})
 	}
 }
 

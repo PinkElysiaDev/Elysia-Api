@@ -30,6 +30,22 @@
       },
       "response": "model-page",
       "models": {}
+    },
+    "stream": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/responses",
+      "transport": "sse",
+      "request": "generation-request",
+      "response": "provider-event",
+      "auth": {
+        "location": "header",
+        "name": "Authorization",
+        "prefix": "Bearer "
+      },
+      "framing": {
+        "eventNamePath": "/type"
+      }
     }
   },
   "documents": {
@@ -5732,5 +5748,828 @@
     "allowUnknown": true
   }
 }
-}
+,
+"upstream-request": {
+  "schema": {
+    "type": "any"
+  },
+  "assertions": [
+    {
+      "path": "",
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires an object",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      }
+    },
+    {
+      "path": "/model",
+      "schema": {
+        "type": "string"
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires a nonempty string",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "check": {
+        "op": "not",
+        "source": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            {
+              "op": "literal",
+              "value": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "/input",
+      "schema": {
+        "type": "array"
+      },
+      "code": "conversion_rejected",
+      "reason": "wire contract requires an array",
+      "diagnostic": {
+        "code": "conversion_rejected",
+        "stage": "wire.output"
+      },
+      "when": {
+        "op": "not",
+        "source": {
+          "op": "any",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/input"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "string"
+                }
+              ]
+            },
+            {
+              "op": "all",
+              "items": [
+                {
+                  "op": "not",
+                  "source": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/input"
+                    }
+                  }
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/previous_response_id"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "each": [
+        {
+          "path": "",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an object",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          }
+        },
+        {
+          "path": "/role",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "system",
+              "developer",
+              "user",
+              "assistant"
+            ]
+          },
+          "code": "conversion_rejected",
+          "reason": "invalid message role",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "any",
+            "items": [
+              {
+                "op": "not",
+                "source": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  }
+                }
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "path": "/content",
+          "schema": {
+            "type": "array"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an array",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/type"
+                      }
+                    }
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "message"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/role"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "assistant"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "type",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/content"
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "array"
+                  }
+                ]
+              }
+            ]
+          },
+          "each": [
+            {
+              "path": "",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "expected content block",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              }
+            },
+            {
+              "path": "/type",
+              "schema": {
+                "type": "any"
+              },
+              "code": "conversion_rejected",
+              "reason": "assistant history requires output_text, not input_text",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "input_text"
+                  }
+                ]
+              },
+              "check": {
+                "op": "literal",
+                "value": false
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+},
+    "provider-event": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          }
+        },
+        "allowUnknown": true
+      },
+      "assertions": [
+        {
+          "path": "/output_index",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/output_index"
+            }
+          },
+          "schema": {
+            "type": "integer"
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid stream index",
+          "diagnostic": {
+            "code": "upstream_contract_violation",
+            "stage": "runtime",
+            "path": "/",
+            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+          }
+        },
+        {
+          "path": "/content_index",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/content_index"
+            }
+          },
+          "schema": {
+            "type": "integer"
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid stream index",
+          "diagnostic": {
+            "code": "upstream_contract_violation",
+            "stage": "runtime",
+            "path": "/",
+            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+          }
+        },
+        {
+          "path": "/item_id",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/item_id"
+                }
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/item/id"
+                }
+              }
+            ]
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "stringify_json",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                }
+              },
+              {
+                "op": "stringify_json",
+                "source": {
+                  "op": "read",
+                  "from": "root",
+                  "path": "/item/id"
+                }
+              }
+            ]
+          },
+          "code": "unsupported_capability",
+          "reason": "frame and item IDs disagree",
+          "diagnostic": {
+            "code": "unsupported_capability",
+            "stage": "wire",
+            "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+          }
+        },
+        {
+          "path": "/item",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "response.output_item.added"
+              }
+            ]
+          },
+          "schema": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "function_call"
+                ]
+              }
+            },
+            "allowUnknown": true
+          },
+          "code": "unsupported_capability",
+          "reason": "this migration slice supports JSON function-call items"
+        },
+        {
+          "path": "/item",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "response.output_item.done"
+              }
+            ]
+          },
+          "schema": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "function_call"
+                ]
+              }
+            },
+            "allowUnknown": true
+          },
+          "code": "unsupported_capability",
+          "reason": "this migration slice supports JSON function-call items"
+        },
+        {
+          "path": "/response",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "response.created"
+              }
+            ]
+          },
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "response event requires its response object"
+        },
+        {
+          "path": "/response",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "response.completed"
+              }
+            ]
+          },
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "response event requires its response object"
+        },
+        {
+          "path": "/response/output",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "response.completed"
+                  }
+                ]
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/response/output"
+                }
+              }
+            ]
+          },
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "function_call"
+                  ]
+                }
+              },
+              "allowUnknown": true
+            }
+          },
+          "code": "unsupported_capability",
+          "reason": "this migration slice supports JSON function-call terminal items"
+        }
+      ],
+      "stream": {
+        "discriminator": "/type",
+        "responseId": "/response/id",
+        "itemKinds": [
+          "tool_call"
+        ],
+        "responseIdValue": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/response/id"
+            }
+          },
+          "then": {
+            "op": "read",
+            "from": "input",
+            "path": "/response/id"
+          },
+          "otherwise": {
+            "op": "omit"
+          }
+        },
+        "inheritResponseId": true,
+        "optionalResponseId": true,
+        "itemId": "/output_index",
+        "itemIdValue": {
+          "op": "join",
+          "items": [
+            {
+              "op": "literal",
+              "value": "output:"
+            },
+            {
+              "op": "cast",
+              "source": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/output_index"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/output_index"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": 0
+                }
+              },
+              "to": "string"
+            }
+          ]
+        },
+        "sequence": "/sequence_number",
+        "optionalSequence": true,
+        "sequenceDiagnostic": {
+          "code": "unsupported_capability",
+          "stage": "wire",
+          "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+        },
+        "identities": [
+          {
+            "path": "/response/id",
+            "type": "string"
+          },
+          {
+            "path": "/response/model",
+            "type": "string"
+          },
+          {
+            "path": "/response/created_at",
+            "type": "integer"
+          },
+          {
+            "path": "/item_id",
+            "type": "string",
+            "value": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/item_id"
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "input",
+                "path": "/item_id"
+              },
+              "otherwise": {
+                "op": "read",
+                "from": "input",
+                "path": "/item/id"
+              }
+            },
+            "key": {
+              "op": "cast",
+              "source": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/output_index"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/output_index"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": 0
+                }
+              },
+              "to": "string"
+            },
+            "keyPath": "/output_index",
+            "comparison": "raw_json",
+            "unique": true,
+            "diagnostic": {
+              "code": "unsupported_capability",
+              "stage": "wire",
+              "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+            }
+          }
+        ],
+        "events": {
+          "response.created": [
+            {
+              "action": "response_start"
+            },
+            {
+              "action": "usage",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/response/usage"
+                }
+              },
+              "usage": {
+                "input": "/response/usage/input_tokens",
+                "output": "/response/usage/output_tokens",
+                "total": "/response/usage/total_tokens",
+                "allowEmpty": true
+              }
+            }
+          ],
+          "response.output_item.added": [
+            {
+              "action": "tool_start",
+              "sparseIdentity": true,
+              "tool": {
+                "name": "/item/name",
+                "callId": "/item/call_id"
+              }
+            }
+          ],
+          "response.function_call_arguments.delta": [
+            {
+              "action": "tool_delta",
+              "arguments": "/delta"
+            }
+          ],
+          "response.function_call_arguments.done": [
+            {
+              "action": "tool_snapshot",
+              "arguments": "/arguments"
+            }
+          ],
+          "response.output_item.done": [
+            {
+              "action": "tool_snapshot",
+              "arguments": "/item/arguments"
+            },
+            {
+              "action": "tool_finish"
+            }
+          ],
+          "response.completed": [
+            {
+              "action": "usage",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/response/usage"
+                }
+              },
+              "usage": {
+                "input": "/response/usage/input_tokens",
+                "output": "/response/usage/output_tokens",
+                "total": "/response/usage/total_tokens",
+                "allowEmpty": true
+              }
+            },
+            {
+              "action": "response_finish"
+            }
+          ]
+        }
+      }
+    }
+  }
 }

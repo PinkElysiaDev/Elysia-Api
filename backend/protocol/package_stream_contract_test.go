@@ -272,9 +272,9 @@ func TestPackageStreamToolContractCompilation(t *testing.T) {
 			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolFinished)] = ProtocolStreamEventSpec{{Action: "tool_finish", Tool: &ProtocolStreamToolSpec{Name: "/name", CallID: "/call_id"}}}
 		}, "/spec/documents/client-event/stream/events/tool.finished"},
 		{"tools-cannot-replace-text", func(p *ProtocolPackage) { delete(p.Spec.Documents["provider-event"].Stream.Events, string(ItemDelta)) }, "/spec/documents/client-event/stream/events"},
-		{"snapshot-not-supported", func(p *ProtocolPackage) {
+		{"snapshot-missing-arguments", func(p *ProtocolPackage) {
 			p.Spec.Documents["provider-event"].Stream.Events["tool.snapshot"] = ProtocolStreamEventSpec{{Action: "tool_snapshot"}}
-		}, "/spec/documents/client-event/stream/events/tool.snapshot/0/action"},
+		}, "/spec/documents/client-event/stream/events/tool.snapshot/0/arguments"},
 		{"missing-capability", func(p *ProtocolPackage) {
 			entry := p.Mapping.Directions[EncodeEvent]
 			entry.Capabilities = CapabilitySet{TextCapability: true, UsageCapability: true}

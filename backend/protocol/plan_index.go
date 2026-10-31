@@ -91,7 +91,7 @@ func (plan *compiledOutputPlan) recallValue(state evaluation) (plannedOutput, er
 		if !exists && plan.expression.policy == "reject" {
 			return plannedOutput{}, fmt.Errorf("index lookup has no recorded key")
 		}
-		return plannedLeaf(value), nil
+		return plannedOutput{output: value, bytes: normalizedOutputBytes(value)}, nil
 	}
 	key, err := rawIndexKey(keyOutput.output)
 	if err != nil {

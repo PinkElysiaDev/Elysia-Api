@@ -18,6 +18,8 @@ type packageStreamValidation struct {
 	openItems          int
 	identityBytes      int
 	identities         []string
+	identityBindings   []streamIdentityBindings
+	identityItems      int
 	toolPaths          map[string]streamToolPaths
 	accepted           streamPosition
 	delivered          streamPosition
@@ -64,7 +66,7 @@ func (state *packageStreamValidation) consume(ctx context.Context, frame Value) 
 	if !current.hasAction {
 		return state.issue(state.contract.discriminator.path, "stream event does not match a declared action", nil)
 	}
-	state.accepted.sequence, state.accepted.hasSequence = current.sequence, state.contract.sequence.path != ""
+	state.accepted.sequence, state.accepted.hasSequence = current.sequence, state.accepted.hasSequence || current.hasSequence
 	state.hasPendingDelivery = state.direction == EncodeEvent
 	return nil
 }
@@ -175,7 +177,7 @@ func (state *packageStreamValidation) checkRetainedBytes(identityBytes int, path
 
 func (state *packageStreamValidation) readPayload(event *Event, definition *compiledPackageStreamEvent, read func(streamField) (Value, error)) (int, error) {
 	switch event.Type {
-	case ItemStarted, ItemDelta, ItemFinished:
+	case ItemStarted, ItemDelta, ItemSnapshot, ItemFinished:
 		return state.readItemPayload(event, definition, read)
 	case UsageUpdated:
 		var err error
@@ -331,8 +333,12 @@ func (state *packageStreamValidation) replayError(err error, event compiledPacka
 			issue.Path = state.contract.discriminator.path
 		case "/item", "/itemId", "/item/kind":
 			issue.Path = event.itemID.path
-		case "/delta":
+		case "/delta", "/item/input/value":
 			issue.Path = event.delta.path
+		case "snapshot":
+			if event.action == ItemSnapshot {
+				issue.Path = event.delta.path
+			}
 		case "/item/name":
 			issue.Path = event.itemID.path
 			if event.tool != nil {
@@ -353,7 +359,7 @@ func (state *packageStreamValidation) replayError(err error, event compiledPacka
 			switch event.action {
 			case ItemStarted:
 				issue.Path = event.tool.callID.path
-			case ItemDelta:
+			case ItemDelta, ItemSnapshot:
 				issue.Path = event.delta.path
 			case ItemFinished:
 				issue.Path = event.itemID.path

@@ -15,8 +15,9 @@ import (
 
 const coreDirectDecodeBytes = 4 << 10
 
-// Origin tags survive immutable reads but not JSON serialization or object
-// reconstruction. Wire capture operations alone authorize semantic provenance.
+// Wire capture alone establishes provenance. Explicit source indexes retain
+// that receipt with owned JSON; ordinary serialization or reconstruction cannot
+// create it. Immutable reads preserve existing tags.
 type coreOriginTag uint8
 
 const (

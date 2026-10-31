@@ -9068,7 +9068,9 @@
         "reasoning": true,
         "reasoning.signatures": true
       }
-    },
+    ,
+"finalDocument": "upstream-request"
+},
     "decode_response": {
   "document": "provider-response",
   "program": {

@@ -67,6 +67,8 @@ type expressionScope struct {
 	root                   *ValueSchema
 	item                   *ValueSchema
 	coreInput              reflect.Type
+	coreRoot               reflect.Type
+	hasInputScope          bool
 	coreItem               reflect.Type
 	isIteration            bool
 	isSingleVisit          bool
@@ -165,7 +167,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		schema, coreType := scope.input, scope.coreInput
 		switch compiled.from {
 		case "root":
-			if scope.root != nil {
+			if scope.hasInputScope {
+				schema, coreType = scope.root, scope.coreRoot
+			} else if scope.root != nil {
 				schema = scope.root
 			}
 		case "item":
@@ -299,6 +303,16 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		return nil, fmt.Errorf("%s/source: typed visit recursion requires an original array of the same core type", path)
 	}
 	childScope := scope
+	if compiled.op == "with_input" {
+		if !scope.hasInputScope {
+			childScope.coreRoot = scope.coreInput
+			if childScope.root == nil {
+				childScope.root = scope.input
+			}
+			childScope.hasInputScope = true
+		}
+		childScope.input, childScope.coreInput = compiled.source.schema, compiled.source.coreType
+	}
 	if compiled.op == "with_index" {
 		if !definitionIdentifier.MatchString(expression.Name) {
 			return nil, fmt.Errorf("%s/name: expected an index identifier", path)
@@ -498,7 +512,7 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		if expression.source.op != "read" || !slices.Contains([]string{"input", "root", "item", "binding"}, expression.source.from) {
 			return fail("native capture requires a read from the original wire")
 		}
-	case "let", "remember", "visit":
+	case "let", "remember", "visit", "with_input":
 		expression.result, expression.schema = expression.body.result, expression.body.schema
 	case "with_index":
 		if source.KeyMode != "raw_json" || !slices.Contains([]string{"last", "first", "reject"}, expression.policy) {

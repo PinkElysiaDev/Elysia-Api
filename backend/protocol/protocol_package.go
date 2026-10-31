@@ -30,6 +30,8 @@ type ProtocolPackage struct {
 // ResponseIDValue always observes the original frame. OptionalResponseID allows
 // missing, null or empty identities until the first nonempty identity, without
 // allowing a later identity change.
+// ItemKinds explicitly declares a restricted stream lifecycle; omission keeps
+// the existing text lifecycle requirement independently of any tool actions.
 type ProtocolStreamSpec struct {
 	Discriminator      string                             `json:"discriminator"`
 	DiscriminatorValue *Expression                        `json:"discriminatorValue,omitempty"`
@@ -37,10 +39,13 @@ type ProtocolStreamSpec struct {
 	ResponseIDValue    *Expression                        `json:"responseIdValue,omitempty"`
 	ItemID             string                             `json:"itemId"`
 	ItemIDValue        *Expression                        `json:"itemIdValue,omitempty"`
+	ItemKinds          []NodeKind                         `json:"itemKinds,omitempty"`
 	InheritResponseID  bool                               `json:"inheritResponseId,omitempty"`
 	OptionalResponseID bool                               `json:"optionalResponseId,omitempty"`
 	IsItemIDIndex      bool                               `json:"itemIdIsIndex,omitempty"`
 	Sequence           string                             `json:"sequence,omitempty"`
+	OptionalSequence   bool                               `json:"optionalSequence,omitempty"`
+	SequenceDiagnostic *RejectDiagnostic                  `json:"sequenceDiagnostic,omitempty"`
 	CloseItemsOnFinish bool                               `json:"closeItemsOnFinish,omitempty"`
 	Identities         []ProtocolStreamIdentitySpec       `json:"identities,omitempty"`
 	Events             map[string]ProtocolStreamEventSpec `json:"events"`
@@ -49,9 +54,15 @@ type ProtocolStreamSpec struct {
 // ProtocolStreamIdentitySpec binds a present frame field for the response's
 // lifetime. When gates observation of that field, including its type check.
 type ProtocolStreamIdentitySpec struct {
-	Path string      `json:"path"`
-	Type JSONType    `json:"type"`
-	When *Expression `json:"when,omitempty"`
+	Path       string            `json:"path"`
+	Type       JSONType          `json:"type"`
+	When       *Expression       `json:"when,omitempty"`
+	Value      *Expression       `json:"value,omitempty"`
+	Key        *Expression       `json:"key,omitempty"`
+	KeyPath    string            `json:"keyPath,omitempty"`
+	Comparison string            `json:"comparison,omitempty"`
+	Unique     bool              `json:"unique,omitempty"`
+	Diagnostic *RejectDiagnostic `json:"diagnostic,omitempty"`
 }
 
 // ProtocolStreamEventSpec lists the ordered actions carried by one wire frame.
@@ -127,8 +138,8 @@ type ProtocolMapping struct {
 // ProtocolDirectionMapping transforms one wire/core boundary without a codec module.
 type ProtocolDirectionMapping struct {
 	Document string `json:"document"`
-	// FinalDocument optionally selects a separate delivery contract for response
-	// or event output; the rendering document still validates constructed bytes.
+	// FinalDocument optionally selects a separate delivery contract for request,
+	// response or event output. The rendering document still validates its output.
 	// Document continues to constrain construction and native reconciliation.
 	FinalDocument  string                        `json:"finalDocument,omitempty"`
 	IsEventBatch   bool                          `json:"eventBatch,omitempty"`
@@ -152,13 +163,14 @@ type ProtocolStateSlot struct {
 	Update  Expression  `json:"update"`
 }
 
-// ProtocolStateIndex declares one request-owned identity table. Keys use their
-// explicit equality mode; retained values are ordinary JSON, never authority
-// for Native or provenance reconstruction.
+// ProtocolStateIndex declares one request-owned identity table with an explicit
+// key equality mode. Values are ordinary JSON unless CanRetainSource preserves
+// an existing captured provenance receipt. Native envelopes remain untrusted.
 type ProtocolStateIndex struct {
-	KeyMode string      `json:"keyMode"`
-	Policy  string      `json:"policy"`
-	Schema  ValueSchema `json:"schema"`
+	KeyMode         string      `json:"keyMode"`
+	Policy          string      `json:"policy"`
+	Schema          ValueSchema `json:"schema"`
+	CanRetainSource bool        `json:"retainSource,omitempty"`
 }
 
 // ProtocolSemanticEffect declares how a program handles a core semantic location.
@@ -300,11 +312,14 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 			program.capabilities = entry.Capabilities
 		}
 		if contract.packageStream != nil {
-			if !program.capabilities[TextCapability] || !program.capabilities[UsageCapability] {
-				return nil, fmt.Errorf("/mapping/directions/%s/capabilities: stream contract requires text and usage", direction)
+			path := "/mapping/directions/" + string(direction) + "/capabilities"
+			if err := contract.packageStream.checkCapabilities(program.capabilities, path); err != nil {
+				return nil, err
 			}
-			if contract.packageStream.hasTools && !program.capabilities[FunctionToolsCapability] {
-				return nil, fmt.Errorf("/mapping/directions/%s/capabilities: stream tool actions require tools.function", direction)
+			if final := compiled.selectFinalWireContract(direction).packageStream; final != nil && final != contract.packageStream {
+				if err := final.checkCapabilities(program.capabilities, path); err != nil {
+					return nil, err
+				}
 			}
 		}
 		compiled.mappings[direction], compiled.packagePlan.effects[direction] = program, effects
