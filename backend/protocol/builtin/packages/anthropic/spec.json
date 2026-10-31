@@ -620,7 +620,21 @@
             }
           }
         }
-      ]
+      ,
+{
+  "path": "",
+  "code": "invalid_association",
+  "reason": "tool history links are inconsistent",
+  "diagnostic": {
+    "code": "invalid_association",
+    "stage": "wire"
+  },
+  "check": {
+    "op": "ref",
+    "ref": "request-tool-links"
+  }
+}
+]
     },
     "generation-request": {
       "schema": {
@@ -1711,322 +1725,10 @@
       ]
     },
     "client-response": {
-  "schema": {
-    "type": "any"
-  },
-  "assertions": [
-    {
-      "path": "",
       "schema": {
-        "type": "object",
-        "allowUnknown": true
+        "type": "any"
       },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires an object",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      }
-    },
-    {
-      "path": "/error",
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires an object",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "any",
-        "items": [
-          {
-            "op": "present",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/error"
-            }
-          },
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "error"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "path": "/id",
-      "schema": {
-        "type": "string"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonempty string",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": ""
-            }
-          ]
-        }
-      },
-      "when": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/type"
-            },
-            {
-              "op": "literal",
-              "value": "error"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "path": "/model",
-      "schema": {
-        "type": "string"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonempty string",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": ""
-            }
-          ]
-        }
-      },
-      "when": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/type"
-            },
-            {
-              "op": "literal",
-              "value": "error"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "path": "/type",
-      "schema": {
-        "type": "string"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonempty string",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": ""
-            }
-          ]
-        }
-      },
-      "when": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/type"
-            },
-            {
-              "op": "literal",
-              "value": "error"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "path": "/role",
-      "schema": {
-        "type": "string"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonempty string",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": ""
-            }
-          ]
-        }
-      },
-      "when": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/type"
-            },
-            {
-              "op": "literal",
-              "value": "error"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "path": "",
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "conversion_rejected",
-      "reason": "expected an assistant message",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "all",
-        "items": [
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "message"
-              }
-            ]
-          },
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/role"
-              },
-              {
-                "op": "literal",
-                "value": "assistant"
-              }
-            ]
-          }
-        ]
-      },
-      "when": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/type"
-            },
-            {
-              "op": "literal",
-              "value": "error"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "path": "/content",
-      "schema": {
-        "type": "array"
-      },
-      "code": "conversion_rejected",
-      "reason": "content must be an array",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "each": [
+      "assertions": [
         {
           "path": "",
           "schema": {
@@ -2041,370 +1743,682 @@
           }
         },
         {
-          "path": "/thinking",
+          "path": "/error",
           "schema": {
-            "type": "string"
+            "type": "object",
+            "allowUnknown": true
           },
           "code": "conversion_rejected",
-          "reason": "completed thinking block requires a string",
+          "reason": "wire contract requires an object",
           "diagnostic": {
             "code": "conversion_rejected",
             "stage": "wire.output"
           },
           "when": {
-            "op": "equal",
+            "op": "any",
             "items": [
               {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/error"
+                }
               },
               {
-                "op": "literal",
-                "value": "thinking"
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "error"
+                  }
+                ]
               }
             ]
           }
         },
         {
-          "path": "/signature",
+          "path": "/id",
           "schema": {
             "type": "string"
           },
           "code": "conversion_rejected",
-          "reason": "completed thinking block requires a string",
+          "reason": "wire contract requires a nonempty string",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "error"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/model",
+          "schema": {
+            "type": "string"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonempty string",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "error"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/type",
+          "schema": {
+            "type": "string"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonempty string",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "error"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/role",
+          "schema": {
+            "type": "string"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonempty string",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "error"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "expected an assistant message",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "all",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/role"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "assistant"
+                  }
+                ]
+              }
+            ]
+          },
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "error"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/content",
+          "schema": {
+            "type": "array"
+          },
+          "code": "conversion_rejected",
+          "reason": "content must be an array",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "each": [
+            {
+              "path": "",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              }
+            },
+            {
+              "path": "/thinking",
+              "schema": {
+                "type": "string"
+              },
+              "code": "conversion_rejected",
+              "reason": "completed thinking block requires a string",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "thinking"
+                  }
+                ]
+              }
+            },
+            {
+              "path": "/signature",
+              "schema": {
+                "type": "string"
+              },
+              "code": "conversion_rejected",
+              "reason": "completed thinking block requires a string",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "thinking"
+                  }
+                ]
+              }
+            }
+          ],
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "error"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/usage",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an object",
           "diagnostic": {
             "code": "conversion_rejected",
             "stage": "wire.output"
           },
           "when": {
-            "op": "equal",
-            "items": [
-              {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "error"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/usage/output_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonnegative integer",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
                 "op": "read",
                 "from": "input",
-                "path": "/type"
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "error"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/usage/input_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonnegative integer",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "error"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/usage/cache_read_input_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonnegative integer",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "error"
+                    }
+                  ]
+                }
               },
               {
-                "op": "literal",
-                "value": "thinking"
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_read_input_tokens"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usage/cache_creation_input_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonnegative integer",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "error"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_creation_input_tokens"
+                }
               }
             ]
           }
         }
-      ],
-      "when": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/type"
-            },
-            {
-              "op": "literal",
-              "value": "error"
-            }
-          ]
-        }
-      }
+      ]
     },
-    {
-      "path": "/usage",
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires an object",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/type"
-            },
-            {
-              "op": "literal",
-              "value": "error"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "path": "/usage/output_tokens",
-      "schema": {
-        "type": "any"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonnegative integer",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "if",
-        "when": {
-          "op": "is_integer",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
-          }
-        },
-        "then": {
-          "op": "integer",
-          "operation": "gte",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": 0
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      },
-      "when": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/type"
-            },
-            {
-              "op": "literal",
-              "value": "error"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "path": "/usage/input_tokens",
-      "schema": {
-        "type": "any"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonnegative integer",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "if",
-        "when": {
-          "op": "is_integer",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
-          }
-        },
-        "then": {
-          "op": "integer",
-          "operation": "gte",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": 0
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      },
-      "when": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/type"
-            },
-            {
-              "op": "literal",
-              "value": "error"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "path": "/usage/cache_read_input_tokens",
-      "schema": {
-        "type": "any"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonnegative integer",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "if",
-        "when": {
-          "op": "is_integer",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
-          }
-        },
-        "then": {
-          "op": "integer",
-          "operation": "gte",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": 0
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      },
-      "when": {
-        "op": "all",
-        "items": [
-          {
-            "op": "not",
-            "source": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/type"
-                },
-                {
-                  "op": "literal",
-                  "value": "error"
-                }
-              ]
-            }
-          },
-          {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/usage/cache_read_input_tokens"
-            }
-          }
-        ]
-      }
-    },
-    {
-      "path": "/usage/cache_creation_input_tokens",
-      "schema": {
-        "type": "any"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonnegative integer",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "if",
-        "when": {
-          "op": "is_integer",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
-          }
-        },
-        "then": {
-          "op": "integer",
-          "operation": "gte",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": 0
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      },
-      "when": {
-        "op": "all",
-        "items": [
-          {
-            "op": "not",
-            "source": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/type"
-                },
-                {
-                  "op": "literal",
-                  "value": "error"
-                }
-              ]
-            }
-          },
-          {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/usage/cache_creation_input_tokens"
-            }
-          }
-        ]
-      }
-    }
-  ]
-},
     "model-page": {
       "schema": {
         "type": "object",
@@ -2653,79 +2667,79 @@
             }
           ],
           "content_block_delta": [
-  {
-    "action": "text_delta",
-    "text": "/delta/text",
-    "when": {
-      "op": "equal",
-      "items": [
-        {
-          "op": "read",
-          "from": "input",
-          "path": "/delta/type"
-        },
-        {
-          "op": "literal",
-          "value": "text_delta"
-        }
-      ]
-    }
-  },
-  {
-    "action": "text_delta",
-    "kind": "reasoning",
-    "text": "/delta/thinking",
-    "when": {
-      "op": "equal",
-      "items": [
-        {
-          "op": "read",
-          "from": "input",
-          "path": "/delta/type"
-        },
-        {
-          "op": "literal",
-          "value": "thinking_delta"
-        }
-      ]
-    }
-  },
-  {
-    "action": "tool_delta",
-    "arguments": "/delta/partial_json",
-    "when": {
-      "op": "equal",
-      "items": [
-        {
-          "op": "read",
-          "from": "input",
-          "path": "/delta/type"
-        },
-        {
-          "op": "literal",
-          "value": "input_json_delta"
-        }
-      ]
-    }
-  },
-  {
-    "action": "observe",
-    "when": {
-      "op": "equal",
-      "items": [
-        {
-          "op": "read",
-          "from": "input",
-          "path": "/delta/type"
-        },
-        {
-          "op": "literal",
-          "value": "signature_delta"
-        }
-      ]
-    }
-  }
-],
+            {
+              "action": "text_delta",
+              "text": "/delta/text",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "text_delta"
+                  }
+                ]
+              }
+            },
+            {
+              "action": "text_delta",
+              "kind": "reasoning",
+              "text": "/delta/thinking",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "thinking_delta"
+                  }
+                ]
+              }
+            },
+            {
+              "action": "tool_delta",
+              "arguments": "/delta/partial_json",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "input_json_delta"
+                  }
+                ]
+              }
+            },
+            {
+              "action": "observe",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "signature_delta"
+                  }
+                ]
+              }
+            }
+          ],
           "content_block_stop": [
             {
               "action": "item_finish"
@@ -2831,528 +2845,12 @@
           }
         }
       }
-    }
-  ,
-"client-event": {
-  "schema": {
-    "type": "any"
-  },
-  "assertions": [
-    {
-      "path": "",
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires an object",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      }
     },
-    {
-      "path": "/error",
+    "client-event": {
       "schema": {
-        "type": "object",
-        "allowUnknown": true
+        "type": "any"
       },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires an object",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "any",
-        "items": [
-          {
-            "op": "present",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/error"
-            }
-          },
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "error"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "path": "/type",
-      "schema": {
-        "type": "string"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonempty string",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/type"
-            },
-            {
-              "op": "literal",
-              "value": "error"
-            }
-          ]
-        }
-      },
-      "check": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": ""
-            }
-          ]
-        }
-      }
-    },
-    {
-      "path": "/type",
-      "schema": {
-        "type": "string"
-      },
-      "code": "conversion_rejected",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "any",
-        "items": [
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              },
-              {
-                "op": "literal",
-                "value": "error"
-              }
-            ]
-          },
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              },
-              {
-                "op": "literal",
-                "value": "message_start"
-              }
-            ]
-          },
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              },
-              {
-                "op": "literal",
-                "value": "message_delta"
-              }
-            ]
-          },
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              },
-              {
-                "op": "literal",
-                "value": "content_block_start"
-              }
-            ]
-          },
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              },
-              {
-                "op": "literal",
-                "value": "content_block_delta"
-              }
-            ]
-          },
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              },
-              {
-                "op": "literal",
-                "value": "content_block_stop"
-              }
-            ]
-          },
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              },
-              {
-                "op": "literal",
-                "value": "message_stop"
-              }
-            ]
-          },
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              },
-              {
-                "op": "literal",
-                "value": "ping"
-              }
-            ]
-          }
-        ]
-      },
-      "reasonExpression": {
-        "op": "join",
-        "items": [
-          {
-            "op": "literal",
-            "value": "unsupported Anthropic output event "
-          },
-          {
-            "op": "quote_string",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/type"
-            }
-          }
-        ]
-      }
-    },
-    {
-      "path": "/message",
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires an object",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_start"
-          }
-        ]
-      }
-    },
-    {
-      "path": "/message/id",
-      "schema": {
-        "type": "string"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonempty string",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": ""
-            }
-          ]
-        }
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_start"
-          }
-        ]
-      }
-    },
-    {
-      "path": "/message/model",
-      "schema": {
-        "type": "string"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonempty string",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": ""
-            }
-          ]
-        }
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_start"
-          }
-        ]
-      }
-    },
-    {
-      "path": "/message/type",
-      "schema": {
-        "type": "string"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonempty string",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": ""
-            }
-          ]
-        }
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_start"
-          }
-        ]
-      }
-    },
-    {
-      "path": "/message/role",
-      "schema": {
-        "type": "string"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonempty string",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": ""
-            }
-          ]
-        }
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_start"
-          }
-        ]
-      }
-    },
-    {
-      "path": "/message",
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "conversion_rejected",
-      "reason": "expected an assistant message",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "all",
-        "items": [
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "message"
-              }
-            ]
-          },
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/role"
-              },
-              {
-                "op": "literal",
-                "value": "assistant"
-              }
-            ]
-          }
-        ]
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_start"
-          }
-        ]
-      }
-    },
-    {
-      "path": "/message/content",
-      "schema": {
-        "type": "array"
-      },
-      "code": "conversion_rejected",
-      "reason": "content must be an array",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "each": [
+      "assertions": [
         {
           "path": "",
           "schema": {
@@ -3367,1466 +2865,1236 @@
           }
         },
         {
-          "path": "/thinking",
+          "path": "/error",
           "schema": {
-            "type": "string"
+            "type": "object",
+            "allowUnknown": true
           },
           "code": "conversion_rejected",
-          "reason": "completed thinking block requires a string",
+          "reason": "wire contract requires an object",
           "diagnostic": {
             "code": "conversion_rejected",
             "stage": "wire.output"
           },
           "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "thinking"
-              }
-            ]
-          }
-        },
-        {
-          "path": "/signature",
-          "schema": {
-            "type": "string"
-          },
-          "code": "conversion_rejected",
-          "reason": "completed thinking block requires a string",
-          "diagnostic": {
-            "code": "conversion_rejected",
-            "stage": "wire.output"
-          },
-          "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "thinking"
-              }
-            ]
-          }
-        }
-      ],
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_start"
-          }
-        ]
-      }
-    },
-    {
-      "path": "/message/usage",
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires an object",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_start"
-          }
-        ]
-      }
-    },
-    {
-      "path": "/message/usage/output_tokens",
-      "schema": {
-        "type": "any"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonnegative integer",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "if",
-        "when": {
-          "op": "is_integer",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
-          }
-        },
-        "then": {
-          "op": "integer",
-          "operation": "gte",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": 0
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_start"
-          }
-        ]
-      }
-    },
-    {
-      "path": "/message/usage/input_tokens",
-      "schema": {
-        "type": "any"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonnegative integer",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "if",
-        "when": {
-          "op": "is_integer",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
-          }
-        },
-        "then": {
-          "op": "integer",
-          "operation": "gte",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": 0
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_start"
-          }
-        ]
-      }
-    },
-    {
-      "path": "/message/usage/cache_read_input_tokens",
-      "schema": {
-        "type": "any"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonnegative integer",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "if",
-        "when": {
-          "op": "is_integer",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
-          }
-        },
-        "then": {
-          "op": "integer",
-          "operation": "gte",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": 0
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      },
-      "when": {
-        "op": "all",
-        "items": [
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "message_start"
-              }
-            ]
-          },
-          {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/message/usage/cache_read_input_tokens"
-            }
-          }
-        ]
-      }
-    },
-    {
-      "path": "/message/usage/cache_creation_input_tokens",
-      "schema": {
-        "type": "any"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonnegative integer",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "if",
-        "when": {
-          "op": "is_integer",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
-          }
-        },
-        "then": {
-          "op": "integer",
-          "operation": "gte",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": 0
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      },
-      "when": {
-        "op": "all",
-        "items": [
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "message_start"
-              }
-            ]
-          },
-          {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/message/usage/cache_creation_input_tokens"
-            }
-          }
-        ]
-      }
-    },
-    {
-      "path": "/delta",
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires an object",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_delta"
-          }
-        ]
-      }
-    },
-    {
-      "path": "/delta/stop_reason",
-      "schema": {
-        "type": "string"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonempty string",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_delta"
-          }
-        ]
-      },
-      "check": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": ""
-            }
-          ]
-        }
-      }
-    },
-    {
-      "path": "/usage",
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires an object",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_delta"
-          }
-        ]
-      }
-    },
-    {
-      "path": "/usage/output_tokens",
-      "schema": {
-        "type": "any"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonnegative integer",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_delta"
-          }
-        ]
-      },
-      "check": {
-        "op": "if",
-        "when": {
-          "op": "is_integer",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
-          }
-        },
-        "then": {
-          "op": "integer",
-          "operation": "gte",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": 0
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      }
-    },
-    {
-      "path": "/usage/input_tokens",
-      "schema": {
-        "type": "any"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonnegative integer",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "all",
-        "items": [
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "message_delta"
-              }
-            ]
-          },
-          {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/usage/input_tokens"
-            }
-          }
-        ]
-      },
-      "check": {
-        "op": "if",
-        "when": {
-          "op": "is_integer",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
-          }
-        },
-        "then": {
-          "op": "integer",
-          "operation": "gte",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": 0
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      }
-    },
-    {
-      "path": "/usage/cache_read_input_tokens",
-      "schema": {
-        "type": "any"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonnegative integer",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "all",
-        "items": [
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "message_delta"
-              }
-            ]
-          },
-          {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/usage/cache_read_input_tokens"
-            }
-          }
-        ]
-      },
-      "check": {
-        "op": "if",
-        "when": {
-          "op": "is_integer",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
-          }
-        },
-        "then": {
-          "op": "integer",
-          "operation": "gte",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": 0
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      }
-    },
-    {
-      "path": "/usage/cache_creation_input_tokens",
-      "schema": {
-        "type": "any"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonnegative integer",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "all",
-        "items": [
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "message_delta"
-              }
-            ]
-          },
-          {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/usage/cache_creation_input_tokens"
-            }
-          }
-        ]
-      },
-      "check": {
-        "op": "if",
-        "when": {
-          "op": "is_integer",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
-          }
-        },
-        "then": {
-          "op": "integer",
-          "operation": "gte",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": 0
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      }
-    },
-    {
-      "path": "/index",
-      "schema": {
-        "type": "any"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonnegative integer",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "any",
-        "items": [
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "content_block_start"
-              }
-            ]
-          },
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "content_block_delta"
-              }
-            ]
-          },
-          {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "content_block_stop"
-              }
-            ]
-          }
-        ]
-      },
-      "check": {
-        "op": "if",
-        "when": {
-          "op": "is_integer",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
-          }
-        },
-        "then": {
-          "op": "integer",
-          "operation": "gte",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": 0
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      }
-    },
-    {
-      "path": "/content_block",
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires an object",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "content_block_start"
-          }
-        ]
-      }
-    },
-    {
-      "path": "/content_block/type",
-      "schema": {
-        "type": "string"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonempty string",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "content_block_start"
-          }
-        ]
-      },
-      "check": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": ""
-            }
-          ]
-        }
-      }
-    },
-    {
-      "path": "/delta",
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires an object",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "content_block_delta"
-          }
-        ]
-      }
-    },
-    {
-      "path": "/delta/type",
-      "schema": {
-        "type": "string"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonempty string",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "content_block_delta"
-          }
-        ]
-      },
-      "check": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": ""
-            }
-          ]
-        }
-      }
-    }
-  ],
-  "stream": {
-    "discriminator": "/type",
-    "responseId": "/message/id",
-    "itemId": "/index",
-    "inheritResponseId": true,
-    "itemIdIsIndex": true,
-    "events": {
-      "message_start": [
-        {
-          "action": "response_start"
-        },
-        {
-          "action": "usage",
-          "when": {
-            "op": "all",
+            "op": "any",
             "items": [
               {
                 "op": "present",
                 "source": {
                   "op": "read",
                   "from": "input",
-                  "path": "/message/usage"
+                  "path": "/error"
                 }
               },
               {
-                "op": "not",
-                "source": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/message/usage"
-                    },
-                    {
-                      "op": "literal",
-                      "value": {}
-                    }
-                  ]
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "error"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "path": "/type",
+          "schema": {
+            "type": "string"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonempty string",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "error"
                 }
+              ]
+            }
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/type",
+          "schema": {
+            "type": "string"
+          },
+          "code": "conversion_rejected",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "any",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "error"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message_start"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message_delta"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "content_block_start"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "content_block_delta"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "content_block_stop"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message_stop"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": "ping"
+                  }
+                ]
               }
             ]
           },
-          "usage": {
-            "input": "/message/usage/input_tokens",
-            "output": "/message/usage/output_tokens"
+          "reasonExpression": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "unsupported Anthropic output event "
+              },
+              {
+                "op": "quote_string",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                }
+              }
+            ]
           }
-        }
-      ],
-      "content_block_start": [
-  {
-    "action": "item_start",
-    "when": {
-      "op": "equal",
-      "items": [
-        {
-          "op": "read",
-          "from": "input",
-          "path": "/content_block/type"
         },
         {
-          "op": "literal",
-          "value": "text"
-        }
-      ]
-    }
-  },
-  {
-    "action": "item_start",
-    "kind": "reasoning",
-    "when": {
-      "op": "any",
-      "items": [
+          "path": "/message",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an object",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          }
+        },
         {
-          "op": "equal",
-          "items": [
+          "path": "/message/id",
+          "schema": {
+            "type": "string"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonempty string",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/message/model",
+          "schema": {
+            "type": "string"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonempty string",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/message/type",
+          "schema": {
+            "type": "string"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonempty string",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/message/role",
+          "schema": {
+            "type": "string"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonempty string",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/message",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "expected an assistant message",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "all",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/role"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "assistant"
+                  }
+                ]
+              }
+            ]
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/message/content",
+          "schema": {
+            "type": "array"
+          },
+          "code": "conversion_rejected",
+          "reason": "content must be an array",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "each": [
             {
-              "op": "read",
-              "from": "input",
-              "path": "/content_block/type"
+              "path": "",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              }
             },
             {
-              "op": "literal",
-              "value": "thinking"
-            }
-          ]
-        },
-        {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/content_block/type"
+              "path": "/thinking",
+              "schema": {
+                "type": "string"
+              },
+              "code": "conversion_rejected",
+              "reason": "completed thinking block requires a string",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "thinking"
+                  }
+                ]
+              }
             },
             {
-              "op": "literal",
-              "value": "redacted_thinking"
+              "path": "/signature",
+              "schema": {
+                "type": "string"
+              },
+              "code": "conversion_rejected",
+              "reason": "completed thinking block requires a string",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "thinking"
+                  }
+                ]
+              }
             }
-          ]
-        }
-      ]
-    }
-  },
-  {
-    "action": "tool_start",
-    "when": {
-      "op": "equal",
-      "items": [
-        {
-          "op": "read",
-          "from": "input",
-          "path": "/content_block/type"
+          ],
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          }
         },
         {
-          "op": "literal",
-          "value": "tool_use"
-        }
-      ]
-    },
-    "tool": {
-      "name": "/content_block/name",
-      "callId": "/content_block/id"
-    }
-  },
-  {
-    "action": "text_snapshot",
-    "text": "/content_block/text",
-    "when": {
-      "op": "all",
-      "items": [
-        {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/content_block/type"
-            },
-            {
-              "op": "literal",
-              "value": "text"
-            }
-          ]
+          "path": "/message/usage",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an object",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          }
         },
         {
-          "op": "equal",
-          "items": [
-            {
-              "op": "type",
+          "path": "/message/usage/output_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonnegative integer",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
               "source": {
                 "op": "read",
                 "from": "input",
-                "path": "/content_block/text"
+                "path": ""
               }
             },
-            {
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
               "op": "literal",
-              "value": "string"
+              "value": false
             }
-          ]
-        }
-      ]
-    }
-  }
-],
-      "content_block_delta": [
-        {
-          "action": "text_delta",
-          "text": "/delta/text",
+          },
           "when": {
             "op": "equal",
             "items": [
               {
                 "op": "read",
                 "from": "input",
-                "path": "/delta/type"
+                "path": "/type"
               },
               {
                 "op": "literal",
-                "value": "text_delta"
+                "value": "message_start"
               }
             ]
           }
         },
         {
-          "action": "text_delta",
-          "kind": "reasoning",
-          "text": "/delta/thinking",
+          "path": "/message/usage/input_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonnegative integer",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
           "when": {
             "op": "equal",
             "items": [
               {
                 "op": "read",
                 "from": "input",
-                "path": "/delta/type"
+                "path": "/type"
               },
               {
                 "op": "literal",
-                "value": "thinking_delta"
+                "value": "message_start"
               }
             ]
           }
         },
         {
-          "action": "tool_delta",
-          "arguments": "/delta/partial_json",
-          "when": {
-            "op": "equal",
-            "items": [
-              {
+          "path": "/message/usage/cache_read_input_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonnegative integer",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
                 "op": "read",
                 "from": "input",
-                "path": "/delta/type"
-              },
-              {
-                "op": "literal",
-                "value": "input_json_delta"
+                "path": ""
               }
-            ]
-          }
-        },
-        {
-          "action": "observe",
-          "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/delta/type"
-              },
-              {
-                "op": "literal",
-                "value": "signature_delta"
-              }
-            ]
-          }
-        }
-      ],
-      "content_block_stop": [
-        {
-          "action": "item_finish"
-        }
-      ],
-      "message_delta": [
-        {
-          "action": "observe"
-        },
-        {
-          "action": "usage",
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
           "when": {
             "op": "all",
             "items": [
               {
-                "op": "present",
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message_start"
+                  }
+                ]
+              },
+              {
+                "op": "exists",
                 "source": {
                   "op": "read",
                   "from": "input",
-                  "path": "/usage"
-                }
-              },
-              {
-                "op": "not",
-                "source": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage"
-                    },
-                    {
-                      "op": "literal",
-                      "value": {}
-                    }
-                  ]
+                  "path": "/message/usage/cache_read_input_tokens"
                 }
               }
             ]
-          },
-          "usage": {
-            "input": "/usage/input_tokens",
-            "output": "/usage/output_tokens"
           }
-        }
-      ],
-      "message_stop": [
-        {
-          "action": "response_finish"
-        }
-      ],
-      "ping": [
-        {
-          "action": "control"
-        }
-      ],
-      "error": [
-        {
-          "action": "failure",
-          "error": "/error",
-          "allowBeforeStart": true
-        }
-      ]
-    },
-    "responseIdValue": {
-      "op": "if",
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_start"
-          }
-        ]
-      },
-      "then": {
-        "op": "read",
-        "from": "input",
-        "path": "/message/id"
-      },
-      "otherwise": {
-        "op": "omit"
-      }
-    },
-    "optionalResponseId": true
-  }
-}
-,
-"response-candidate": {
-  "schema": {
-    "type": "object",
-    "allowUnknown": true
-  }
-}
-,
-"event-candidate": {
-  "schema": {
-    "type": "object",
-    "required": [
-      "type"
-    ],
-    "properties": {
-      "type": {
-        "type": "string"
-      }
-    },
-    "allowUnknown": true
-  },
-  "assertions": [
-    {
-      "path": "/index",
-      "when": {
-        "op": "present",
-        "source": {
-          "op": "read",
-          "from": "input",
-          "path": "/index"
-        }
-      },
-      "schema": {
-        "type": "integer"
-      },
-      "check": {
-        "op": "integer",
-        "operation": "gte",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": ""
-          },
-          {
-            "op": "literal",
-            "value": 0
-          }
-        ]
-      },
-      "code": "upstream_contract_violation",
-      "reason": "stream index must be a nonnegative integer"
-    },
-    {
-      "path": "/message",
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "message_start"
-          }
-        ]
-      },
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "upstream_contract_violation",
-      "reason": "stream envelope requires its declared object"
-    },
-    {
-      "path": "/content_block",
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "content_block_start"
-          }
-        ]
-      },
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "upstream_contract_violation",
-      "reason": "stream envelope requires its declared object"
-    },
-    {
-      "path": "/delta",
-      "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
-          },
-          {
-            "op": "literal",
-            "value": "content_block_delta"
-          }
-        ]
-      },
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "upstream_contract_violation",
-      "reason": "stream envelope requires its declared object"
-    }
-  ],
-  "stream": {
-    "discriminator": "/type",
-    "responseId": "/message/id",
-    "itemId": "/index",
-    "inheritResponseId": true,
-    "itemIdIsIndex": true,
-    "events": {
-      "message_start": [
-        {
-          "action": "response_start"
         },
         {
-          "action": "usage",
+          "path": "/message/usage/cache_creation_input_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonnegative integer",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
           "when": {
             "op": "all",
             "items": [
               {
-                "op": "present",
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message_start"
+                  }
+                ]
+              },
+              {
+                "op": "exists",
                 "source": {
                   "op": "read",
                   "from": "input",
-                  "path": "/message/usage"
-                }
-              },
-              {
-                "op": "not",
-                "source": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/message/usage"
-                    },
-                    {
-                      "op": "literal",
-                      "value": {}
-                    }
-                  ]
+                  "path": "/message/usage/cache_creation_input_tokens"
                 }
               }
             ]
-          },
-          "usage": {
-            "input": "/message/usage/input_tokens",
-            "output": "/message/usage/output_tokens"
           }
-        }
-      ],
-      "content_block_start": [
+        },
         {
-          "action": "item_start",
+          "path": "/delta",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an object",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
           "when": {
             "op": "equal",
             "items": [
               {
                 "op": "read",
                 "from": "input",
-                "path": "/content_block/type"
+                "path": "/type"
               },
               {
                 "op": "literal",
-                "value": "text"
+                "value": "message_delta"
               }
             ]
           }
         },
         {
-          "action": "item_start",
-          "kind": "reasoning",
+          "path": "/delta/stop_reason",
+          "schema": {
+            "type": "string"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonempty string",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_delta"
+              }
+            ]
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/usage",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an object",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_delta"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usage/output_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonnegative integer",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_delta"
+              }
+            ]
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/usage/input_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonnegative integer",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message_delta"
+                  }
+                ]
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/input_tokens"
+                }
+              }
+            ]
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/usage/cache_read_input_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonnegative integer",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message_delta"
+                  }
+                ]
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_read_input_tokens"
+                }
+              }
+            ]
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/usage/cache_creation_input_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonnegative integer",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "message_delta"
+                  }
+                ]
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usage/cache_creation_input_tokens"
+                }
+              }
+            ]
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/index",
+          "schema": {
+            "type": "any"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonnegative integer",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
           "when": {
             "op": "any",
             "items": [
@@ -4836,11 +4104,11 @@
                   {
                     "op": "read",
                     "from": "input",
-                    "path": "/content_block/type"
+                    "path": "/type"
                   },
                   {
                     "op": "literal",
-                    "value": "thinking"
+                    "value": "content_block_start"
                   }
                 ]
               },
@@ -4850,264 +4118,952 @@
                   {
                     "op": "read",
                     "from": "input",
-                    "path": "/content_block/type"
+                    "path": "/type"
                   },
                   {
                     "op": "literal",
-                    "value": "redacted_thinking"
+                    "value": "content_block_delta"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "content_block_stop"
                   }
                 ]
               }
             ]
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
           }
         },
         {
-          "action": "tool_start",
+          "path": "/content_block",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an object",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
           "when": {
             "op": "equal",
             "items": [
               {
                 "op": "read",
                 "from": "input",
-                "path": "/content_block/type"
+                "path": "/type"
               },
               {
                 "op": "literal",
-                "value": "tool_use"
+                "value": "content_block_start"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/content_block/type",
+          "schema": {
+            "type": "string"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonempty string",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "content_block_start"
               }
             ]
           },
-          "tool": {
-            "name": "/content_block/name",
-            "callId": "/content_block/id"
-          }
-        }
-      ],
-      "content_block_delta": [
-        {
-          "action": "text_delta",
-          "text": "/delta/text",
-          "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/delta/type"
-              },
-              {
-                "op": "literal",
-                "value": "text_delta"
-              }
-            ]
-          }
-        },
-        {
-          "action": "text_delta",
-          "kind": "reasoning",
-          "text": "/delta/thinking",
-          "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/delta/type"
-              },
-              {
-                "op": "literal",
-                "value": "thinking_delta"
-              }
-            ]
-          }
-        },
-        {
-          "action": "tool_delta",
-          "arguments": "/delta/partial_json",
-          "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/delta/type"
-              },
-              {
-                "op": "literal",
-                "value": "input_json_delta"
-              }
-            ]
-          }
-        },
-        {
-          "action": "observe",
-          "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/delta/type"
-              },
-              {
-                "op": "literal",
-                "value": "signature_delta"
-              }
-            ]
-          }
-        }
-      ],
-      "content_block_stop": [
-        {
-          "action": "item_finish"
-        }
-      ],
-      "message_delta": [
-        {
-          "action": "observe"
-        },
-        {
-          "action": "usage",
-          "when": {
-            "op": "all",
-            "items": [
-              {
-                "op": "present",
-                "source": {
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
                   "op": "read",
                   "from": "input",
-                  "path": "/usage"
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": ""
                 }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/delta",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an object",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
               },
               {
-                "op": "not",
-                "source": {
-                  "op": "equal",
-                  "items": [
-                    {
+                "op": "literal",
+                "value": "content_block_delta"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/delta/type",
+          "schema": {
+            "type": "string"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires a nonempty string",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "content_block_delta"
+              }
+            ]
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "stream": {
+        "discriminator": "/type",
+        "responseId": "/message/id",
+        "itemId": "/index",
+        "inheritResponseId": true,
+        "itemIdIsIndex": true,
+        "events": {
+          "message_start": [
+            {
+              "action": "response_start"
+            },
+            {
+              "action": "usage",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/message/usage"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/message/usage"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "usage": {
+                "input": "/message/usage/input_tokens",
+                "output": "/message/usage/output_tokens"
+              }
+            }
+          ],
+          "content_block_start": [
+            {
+              "action": "item_start",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_block/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "text"
+                  }
+                ]
+              }
+            },
+            {
+              "action": "item_start",
+              "kind": "reasoning",
+              "when": {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content_block/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "thinking"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content_block/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "redacted_thinking"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "action": "tool_start",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_block/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "tool_use"
+                  }
+                ]
+              },
+              "tool": {
+                "name": "/content_block/name",
+                "callId": "/content_block/id"
+              }
+            },
+            {
+              "action": "text_snapshot",
+              "text": "/content_block/text",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content_block/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "text"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/content_block/text"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "string"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "content_block_delta": [
+            {
+              "action": "text_delta",
+              "text": "/delta/text",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "text_delta"
+                  }
+                ]
+              }
+            },
+            {
+              "action": "text_delta",
+              "kind": "reasoning",
+              "text": "/delta/thinking",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "thinking_delta"
+                  }
+                ]
+              }
+            },
+            {
+              "action": "tool_delta",
+              "arguments": "/delta/partial_json",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "input_json_delta"
+                  }
+                ]
+              }
+            },
+            {
+              "action": "observe",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "signature_delta"
+                  }
+                ]
+              }
+            }
+          ],
+          "content_block_stop": [
+            {
+              "action": "item_finish"
+            }
+          ],
+          "message_delta": [
+            {
+              "action": "observe"
+            },
+            {
+              "action": "usage",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
                       "op": "read",
                       "from": "input",
                       "path": "/usage"
-                    },
-                    {
-                      "op": "literal",
-                      "value": {}
                     }
-                  ]
-                }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/usage"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "usage": {
+                "input": "/usage/input_tokens",
+                "output": "/usage/output_tokens"
+              }
+            }
+          ],
+          "message_stop": [
+            {
+              "action": "response_finish"
+            }
+          ],
+          "ping": [
+            {
+              "action": "control"
+            }
+          ],
+          "error": [
+            {
+              "action": "failure",
+              "error": "/error",
+              "allowBeforeStart": true
+            }
+          ]
+        },
+        "responseIdValue": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
               }
             ]
           },
-          "usage": {
-            "input": "/usage/input_tokens",
-            "output": "/usage/output_tokens"
-          }
-        }
-      ],
-      "message_stop": [
-        {
-          "action": "response_finish"
-        }
-      ],
-      "ping": [
-        {
-          "action": "control"
-        }
-      ],
-      "error": [
-        {
-          "action": "failure",
-          "error": "/error"
-        }
-      ]
-    },
-    "responseIdValue": {
-      "op": "if",
-      "when": {
-        "op": "equal",
-        "items": [
-          {
+          "then": {
             "op": "read",
             "from": "input",
-            "path": "/type"
+            "path": "/message/id"
           },
-          {
-            "op": "literal",
-            "value": "message_start"
+          "otherwise": {
+            "op": "omit"
           }
-        ]
-      },
-      "then": {
-        "op": "read",
-        "from": "input",
-        "path": "/message/id"
-      },
-      "otherwise": {
-        "op": "omit"
+        },
+        "optionalResponseId": true
       }
-    }
-  }
-}
-,
-"upstream-request": {
-  "schema": {
-    "type": "any"
-  },
-  "assertions": [
-    {
-      "path": "",
+    },
+    "response-candidate": {
       "schema": {
         "type": "object",
         "allowUnknown": true
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires an object",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
       }
     },
-    {
-      "path": "/model",
+    "event-candidate": {
       "schema": {
-        "type": "string"
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          }
+        },
+        "allowUnknown": true
       },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires a nonempty string",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "check": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
+      "assertions": [
+        {
+          "path": "/index",
+          "when": {
+            "op": "present",
+            "source": {
               "op": "read",
               "from": "input",
-              "path": ""
+              "path": "/index"
+            }
+          },
+          "schema": {
+            "type": "integer"
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          },
+          "code": "upstream_contract_violation",
+          "reason": "stream index must be a nonnegative integer"
+        },
+        {
+          "path": "/message",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          },
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "stream envelope requires its declared object"
+        },
+        {
+          "path": "/content_block",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "content_block_start"
+              }
+            ]
+          },
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "stream envelope requires its declared object"
+        },
+        {
+          "path": "/delta",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "content_block_delta"
+              }
+            ]
+          },
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "stream envelope requires its declared object"
+        }
+      ],
+      "stream": {
+        "discriminator": "/type",
+        "responseId": "/message/id",
+        "itemId": "/index",
+        "inheritResponseId": true,
+        "itemIdIsIndex": true,
+        "events": {
+          "message_start": [
+            {
+              "action": "response_start"
             },
             {
-              "op": "literal",
-              "value": ""
+              "action": "usage",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/message/usage"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/message/usage"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "usage": {
+                "input": "/message/usage/input_tokens",
+                "output": "/message/usage/output_tokens"
+              }
+            }
+          ],
+          "content_block_start": [
+            {
+              "action": "item_start",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_block/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "text"
+                  }
+                ]
+              }
+            },
+            {
+              "action": "item_start",
+              "kind": "reasoning",
+              "when": {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content_block/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "thinking"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content_block/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "redacted_thinking"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "action": "tool_start",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_block/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "tool_use"
+                  }
+                ]
+              },
+              "tool": {
+                "name": "/content_block/name",
+                "callId": "/content_block/id"
+              }
+            }
+          ],
+          "content_block_delta": [
+            {
+              "action": "text_delta",
+              "text": "/delta/text",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "text_delta"
+                  }
+                ]
+              }
+            },
+            {
+              "action": "text_delta",
+              "kind": "reasoning",
+              "text": "/delta/thinking",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "thinking_delta"
+                  }
+                ]
+              }
+            },
+            {
+              "action": "tool_delta",
+              "arguments": "/delta/partial_json",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "input_json_delta"
+                  }
+                ]
+              }
+            },
+            {
+              "action": "observe",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "signature_delta"
+                  }
+                ]
+              }
+            }
+          ],
+          "content_block_stop": [
+            {
+              "action": "item_finish"
+            }
+          ],
+          "message_delta": [
+            {
+              "action": "observe"
+            },
+            {
+              "action": "usage",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/usage"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "usage": {
+                "input": "/usage/input_tokens",
+                "output": "/usage/output_tokens"
+              }
+            }
+          ],
+          "message_stop": [
+            {
+              "action": "response_finish"
+            }
+          ],
+          "ping": [
+            {
+              "action": "control"
+            }
+          ],
+          "error": [
+            {
+              "action": "failure",
+              "error": "/error"
             }
           ]
+        },
+        "responseIdValue": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          },
+          "then": {
+            "op": "read",
+            "from": "input",
+            "path": "/message/id"
+          },
+          "otherwise": {
+            "op": "omit"
+          }
         }
       }
     },
-    {
-      "path": "/messages",
+    "upstream-request": {
       "schema": {
-        "type": "array"
+        "type": "any"
       },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires an array",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "each": [
+      "assertions": [
         {
           "path": "",
           "schema": {
@@ -5122,110 +5078,86 @@
           }
         },
         {
-          "path": "/role",
+          "path": "/model",
           "schema": {
-            "type": "string",
-            "enum": [
-              "user",
-              "assistant",
-              "system"
-            ]
+            "type": "string"
           },
           "code": "conversion_rejected",
-          "reason": "Anthropic messages require a user, assistant or system role",
+          "reason": "wire contract requires a nonempty string",
           "diagnostic": {
             "code": "conversion_rejected",
             "stage": "wire.output"
-          }
-        }
-      ]
-    },
-    {
-      "path": "/thinking",
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "invalid_input",
-      "reason": "thinking controls must be an object or null",
-      "when": {
-        "op": "present",
-        "source": {
-          "op": "read",
-          "from": "input",
-          "path": "/thinking"
-        }
-      },
-      "diagnostic": {
-        "code": "invalid_input",
-        "stage": "request.validation",
-        "path": "/parameters/anthropic_thinking",
-        "suggestion": "correct the request controls or declared /parameters/anthropic_thinking rule"
-      }
-    },
-    {
-      "path": "/thinking/type",
-      "schema": {
-        "type": "string",
-        "enum": [
-          "enabled",
-          "disabled",
-          "adaptive",
-          "between_tools"
-        ]
-      },
-      "code": "invalid_input",
-      "reason": "unknown thinking type",
-      "when": {
-        "op": "if",
-        "when": {
-          "op": "present",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": "/thinking"
+          },
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            }
           }
         },
-        "then": {
-          "op": "not",
-          "source": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/thinking"
+        {
+          "path": "/messages",
+          "schema": {
+            "type": "array"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an array",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "each": [
+            {
+              "path": "",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
               },
-              {
-                "op": "object",
-                "fields": {}
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
               }
-            ]
-          }
+            },
+            {
+              "path": "/role",
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "assistant",
+                  "system"
+                ]
+              },
+              "code": "conversion_rejected",
+              "reason": "Anthropic messages require a user, assistant or system role",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              }
+            }
+          ]
         },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      },
-      "diagnostic": {
-        "code": "invalid_input",
-        "stage": "request.validation",
-        "path": "/thinking/type",
-        "suggestion": "correct the request controls or declared /thinking/type rule"
-      }
-    },
-    {
-      "path": "/thinking/budget_tokens",
-      "schema": {
-        "type": "any"
-      },
-      "code": "invalid_input",
-      "reason": "manual thinking requires an integer budget of at least 1024",
-      "when": {
-        "op": "if",
-        "when": {
-          "op": "if",
+        {
+          "path": "/thinking",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "invalid_input",
+          "reason": "thinking controls must be an object or null",
           "when": {
             "op": "present",
             "source": {
@@ -5234,95 +5166,26 @@
               "path": "/thinking"
             }
           },
-          "then": {
-            "op": "not",
-            "source": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/thinking"
-                },
-                {
-                  "op": "object",
-                  "fields": {}
-                }
-              ]
-            }
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "request.validation",
+            "path": "/parameters/anthropic_thinking",
+            "suggestion": "correct the request controls or declared /parameters/anthropic_thinking rule"
+          }
+        },
+        {
+          "path": "/thinking/type",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "enabled",
+              "disabled",
+              "adaptive",
+              "between_tools"
+            ]
           },
-          "otherwise": {
-            "op": "literal",
-            "value": false
-          }
-        },
-        "then": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/thinking/type"
-            },
-            {
-              "op": "literal",
-              "value": "enabled"
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      },
-      "check": {
-        "op": "if",
-        "when": {
-          "op": "is_integer",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
-          }
-        },
-        "then": {
-          "op": "integer",
-          "operation": "gte",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": 1024
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      },
-      "diagnostic": {
-        "code": "invalid_input",
-        "stage": "request.validation",
-        "path": "/thinking/budget_tokens",
-        "suggestion": "correct the request controls or declared /thinking/budget_tokens rule"
-      }
-    },
-    {
-      "path": "/thinking/budget_tokens",
-      "schema": {
-        "type": "any"
-      },
-      "code": "invalid_input",
-      "reason": "this thinking mode does not accept a budget",
-      "when": {
-        "op": "if",
-        "when": {
-          "op": "if",
+          "code": "invalid_input",
+          "reason": "unknown thinking type",
           "when": {
             "op": "if",
             "when": {
@@ -5355,9 +5218,55 @@
               "value": false
             }
           },
-          "then": {
-            "op": "not",
-            "source": {
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "request.validation",
+            "path": "/thinking/type",
+            "suggestion": "correct the request controls or declared /thinking/type rule"
+          }
+        },
+        {
+          "path": "/thinking/budget_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "invalid_input",
+          "reason": "manual thinking requires an integer budget of at least 1024",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking"
+                }
+              },
+              "then": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thinking"
+                    },
+                    {
+                      "op": "object",
+                      "fields": {}
+                    }
+                  ]
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "then": {
               "op": "equal",
               "items": [
                 {
@@ -5370,63 +5279,259 @@
                   "value": "enabled"
                 }
               ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
             }
           },
-          "otherwise": {
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 1024
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "request.validation",
+            "path": "/thinking/budget_tokens",
+            "suggestion": "correct the request controls or declared /thinking/budget_tokens rule"
+          }
+        },
+        {
+          "path": "/thinking/budget_tokens",
+          "schema": {
+            "type": "any"
+          },
+          "code": "invalid_input",
+          "reason": "this thinking mode does not accept a budget",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/thinking"
+                  }
+                },
+                "then": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/thinking"
+                      },
+                      {
+                        "op": "object",
+                        "fields": {}
+                      }
+                    ]
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "then": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thinking/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "enabled"
+                    }
+                  ]
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/thinking/budget_tokens"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
             "op": "literal",
             "value": false
+          },
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "request.validation",
+            "path": "/thinking/budget_tokens",
+            "suggestion": "correct the request controls or declared /thinking/budget_tokens rule"
           }
         },
-        "then": {
-          "op": "exists",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": "/thinking/budget_tokens"
+        {
+          "path": "/thinking/display",
+          "schema": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "summarized",
+              "omitted",
+              "updates"
+            ]
+          },
+          "code": "invalid_input",
+          "reason": "display requires a thinking mode and must be summarized, omitted or updates",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/thinking"
+                }
+              },
+              "then": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thinking"
+                    },
+                    {
+                      "op": "object",
+                      "fields": {}
+                    }
+                  ]
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/thinking/display"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "request.validation",
+            "path": "/thinking/display",
+            "suggestion": "correct the request thinking.display or its declared mapping"
           }
         },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      },
-      "check": {
-        "op": "literal",
-        "value": false
-      },
-      "diagnostic": {
-        "code": "invalid_input",
-        "stage": "request.validation",
-        "path": "/thinking/budget_tokens",
-        "suggestion": "correct the request controls or declared /thinking/budget_tokens rule"
-      }
-    },
-    {
-      "path": "/thinking/display",
-      "schema": {
-        "type": "string",
-        "nullable": true,
-        "enum": [
-          "summarized",
-          "omitted",
-          "updates"
-        ]
-      },
-      "code": "invalid_input",
-      "reason": "display requires a thinking mode and must be summarized, omitted or updates",
-      "when": {
-        "op": "if",
-        "when": {
-          "op": "if",
+        {
+          "path": "/output_config",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "invalid_input",
+          "reason": "thinking controls must be an object or null",
           "when": {
             "op": "present",
             "source": {
               "op": "read",
               "from": "input",
-              "path": "/thinking"
+              "path": "/output_config"
             }
           },
-          "then": {
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "request.validation",
+            "path": "/parameters/anthropic_output_config",
+            "suggestion": "correct the request controls or declared /parameters/anthropic_output_config rule"
+          }
+        },
+        {
+          "path": "/output_config/effort",
+          "schema": {
+            "type": "any"
+          },
+          "code": "invalid_input",
+          "reason": "effort cannot disable thinking; use thinking.type",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/output_config"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/output_config/effort"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
             "op": "not",
             "source": {
               "op": "equal",
@@ -5434,118 +5539,243 @@
                 {
                   "op": "read",
                   "from": "input",
-                  "path": "/thinking"
+                  "path": ""
                 },
                 {
-                  "op": "object",
-                  "fields": {}
+                  "op": "literal",
+                  "value": "none"
                 }
               ]
             }
           },
-          "otherwise": {
-            "op": "literal",
-            "value": false
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "request.validation",
+            "path": "/output_config/effort",
+            "suggestion": "correct the request controls or declared /output_config/effort rule"
           }
         },
-        "then": {
-          "op": "exists",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": "/thinking/display"
-          }
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
+        {"path":"","code":"conversion_rejected","reason":"tool history links are inconsistent","diagnostic":{
+            "code": "conversion_rejected",
+            "stage": "wire"
+          },"check":{
+            "op": "ref",
+            "ref": "request-tool-links"
+          }}
+      ]
+    }
+  },
+  "expressions": {
+    "request-tool-records": {
+      "op": "flatmap",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/messages"
       },
-      "diagnostic": {
-        "code": "invalid_input",
-        "stage": "request.validation",
-        "path": "/thinking/display",
-        "suggestion": "correct the request thinking.display or its declared mapping"
-      }
-    },
-    {
-      "path": "/output_config",
-      "schema": {
-        "type": "object",
-        "allowUnknown": true
-      },
-      "code": "invalid_input",
-      "reason": "thinking controls must be an object or null",
-      "when": {
-        "op": "present",
+      "body": {
+        "op": "let",
+        "name": "message",
         "source": {
           "op": "read",
-          "from": "input",
-          "path": "/output_config"
+          "from": "item",
+          "path": ""
+        },
+        "body": {
+          "op": "let",
+          "name": "message-path",
+          "source": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "/messages/"
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "index"
+                }
+              }
+            ]
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/content",
+                    "name": "message"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "array"
+                }
+              ]
+            },
+            "then": {
+              "op": "flatmap",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "/content",
+                "name": "message"
+              },
+              "body": {
+                "op": "let",
+                "name": "part-path",
+                "source": {
+                  "op": "join",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "message-path"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "/content/"
+                    },
+                    {
+                      "op": "cast",
+                      "to": "string",
+                      "source": {
+                        "op": "index"
+                      }
+                    }
+                  ]
+                },
+                "body": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "tool_use"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "array",
+                    "items": [
+                      {
+                        "op": "object",
+                        "fields": {
+                          "kind": {
+                            "op": "literal",
+                            "value": "define"
+                          },
+                          "key": {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/id"
+                          },
+                          "path": {
+                            "op": "join",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "",
+                                "name": "part-path"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "/id"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "otherwise": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/type"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "tool_result"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "array",
+                      "items": [
+                        {
+                          "op": "object",
+                          "fields": {
+                            "kind": {
+                              "op": "literal",
+                              "value": "resolve"
+                            },
+                            "key": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/tool_use_id"
+                            },
+                            "path": {
+                              "op": "join",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "",
+                                  "name": "part-path"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "/tool_use_id"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "otherwise": {
+                      "op": "array",
+                      "items": []
+                    }
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "array",
+              "items": []
+            }
+          }
         }
-      },
-      "diagnostic": {
-        "code": "invalid_input",
-        "stage": "request.validation",
-        "path": "/parameters/anthropic_output_config",
-        "suggestion": "correct the request controls or declared /parameters/anthropic_output_config rule"
       }
     },
-    {
-      "path": "/output_config/effort",
-      "schema": {
-        "type": "any"
+    "request-tool-links": {
+      "op": "check_links",
+      "source": {
+        "op": "ref",
+        "ref": "request-tool-records"
       },
-      "code": "invalid_input",
-      "reason": "effort cannot disable thinking; use thinking.type",
-      "when": {
-        "op": "if",
-        "when": {
-          "op": "present",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": "/output_config"
-          }
-        },
-        "then": {
-          "op": "exists",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": "/output_config/effort"
-          }
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      },
-      "check": {
-        "op": "not",
-        "source": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": "none"
-            }
-          ]
-        }
-      },
-      "diagnostic": {
-        "code": "invalid_input",
-        "stage": "request.validation",
-        "path": "/output_config/effort",
-        "suggestion": "correct the request controls or declared /output_config/effort rule"
-      }
+      "policy": "key"
     }
-  ]
-}
-}
+  }
 }

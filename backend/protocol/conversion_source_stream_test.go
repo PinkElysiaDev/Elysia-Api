@@ -21,7 +21,7 @@ func startupValue(t *testing.T, raw string) Value {
 
 func startupState(t *testing.T, mode string, enabled bool) *SourceEventState {
 	t.Helper()
-	c, err := ResolveConversion(ConversionPolicy{SchemaVersion: 1, ID: "test-source", Mode: mode, Rules: []ConversionRule{{ID: "chat-stream-identity", Enabled: enabled, Phase: ConversionSourceEvent, Action: "chat_stream_identity"}}})
+	c, err := ResolveConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "test-source", Mode: mode, Rules: []ConversionRule{{ID: "chat-stream-identity", Enabled: enabled, Phase: ConversionSourceEvent, Action: "chat_stream_identity"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestChatStartupIdentityPolicyAndCleanup(t *testing.T) {
 
 func TestSourceEventPhaseIsRestricted(t *testing.T) {
 	for _, action := range []string{"set", "remove", "transform", "warn", "reject"} {
-		_, err := CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "invalid", Rules: []ConversionRule{{ID: "rule", Phase: ConversionSourceEvent, Action: action}}})
+		_, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "invalid", Rules: []ConversionRule{{ID: "rule", Phase: ConversionSourceEvent, Action: action}}})
 		if err == nil {
 			t.Fatalf("allowed generic action %s before decoding", action)
 		}

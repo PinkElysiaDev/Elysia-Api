@@ -66,6 +66,7 @@ type compiledPackageStreamEvent struct {
 	requiredItems                              []NodeKind
 	diagnostic                                 *RejectDiagnostic
 	assertions                                 []compiledWireAssertion
+	updates                                    []compiledWireStateUpdate
 	isAssertion, isStateUpdate                 bool
 }
 
@@ -73,10 +74,11 @@ type compiledStreamTool struct {
 	name, callID streamField
 }
 
-func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits Limits) (*compiledPackageStreamContract, error) {
+func (expressions *expressionCompiler) compilePackageStreamContract(spec *ProtocolStreamSpec, path string) (*compiledPackageStreamContract, error) {
 	if spec == nil {
 		return nil, nil
 	}
+	limits := expressions.limits
 	contract := &compiledPackageStreamContract{events: make(map[string][]compiledPackageStreamEvent, len(spec.Events)), canInheritResponseID: spec.InheritResponseID, isResponseIDOptional: spec.OptionalResponseID, isItemIDIndex: spec.IsItemIDIndex, isSequenceOptional: spec.OptionalSequence, closeItemsOnFinish: spec.CloseItemsOnFinish}
 	if spec.OptionalSequence && spec.Sequence == "" {
 		return nil, fmt.Errorf("%s/optionalSequence: requires a sequence selector", path)
@@ -99,7 +101,7 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 		name, path string
 		field      *streamField
 	}{{"discriminator", spec.Discriminator, &contract.discriminator}, {"responseId", spec.ResponseID, &contract.responseID}, {"itemId", spec.ItemID, &contract.itemID}, {"sequence", spec.Sequence, &contract.sequence}} {
-		if selector.name == "sequence" && selector.path == "" {
+		if (selector.name == "sequence" || selector.name == "itemId") && selector.path == "" {
 			continue
 		}
 		field, err := compileStreamField(selector.path, path+"/"+selector.name, limits)
@@ -111,17 +113,12 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 	if len(spec.Events) == 0 || len(spec.Events) > limits.StateItems {
 		return nil, fmt.Errorf("%s/events: requires a nonempty bounded event table", path)
 	}
-	compiler := packageStreamCompiler{contract: contract, expressions: &expressionCompiler{limits: limits}, limits: limits,
+	compiler := packageStreamCompiler{contract: contract, expressions: expressions, limits: limits,
 		actions: map[EventType]bool{}, toolActions: map[EventType]bool{}}
 	var err error
-	contract.state, err = compilePackageState(spec.State, nil, DecodeEvent, path+"/state", compiler.expressions, &compiler.scope)
+	contract.state, err = compilePackageStateSlots(spec.State, nil, DecodeEvent, path+"/state", compiler.expressions, &compiler.scope)
 	if err != nil {
 		return nil, err
-	}
-	if contract.state != nil {
-		for _, slot := range contract.state.slots {
-			contract.bindingSlots = max(contract.bindingSlots, slot.update.bindingSlots)
-		}
 	}
 	if spec.ItemKinds != nil {
 		if len(spec.ItemKinds) == 0 {
@@ -260,7 +257,7 @@ func (compiler *packageStreamCompiler) compileActions(entries []ProtocolStreamAc
 		var event compiledPackageStreamEvent
 		var err error
 		if entry.ForEach != "" {
-			if entry.Action != "" || entry.Kind != "" || entry.ResponseID != "" || entry.ItemID != "" || entry.ItemIDValue != nil || entry.Text != "" || entry.Arguments != "" || entry.Tool != nil || entry.Error != "" || entry.Usage != nil || entry.Implicit || entry.SparseIdentity || entry.AllowBeforeStart || len(entry.Assertions) != 0 || hasStreamItemSelectors(entry) {
+			if entry.Action != "" || entry.Kind != "" || entry.ResponseID != "" || entry.ItemID != "" || entry.ItemIDValue != nil || entry.Text != "" || entry.Arguments != "" || entry.ArgumentsValue != nil || entry.Tool != nil || entry.Error != "" || entry.Usage != nil || entry.Implicit || entry.SparseIdentity || entry.AllowBeforeStart || len(entry.Assertions) != 0 || entry.Updates != nil || hasStreamItemSelectors(entry) {
 				return nil, fmt.Errorf("%s: foreach declares only its selector, condition and nested actions", at)
 			}
 			event.foreach, err = compileStreamField(entry.ForEach, at+"/foreach", compiler.limits)
@@ -277,10 +274,13 @@ func (compiler *packageStreamCompiler) compileActions(entries []ProtocolStreamAc
 				return nil, fmt.Errorf("%s/actions: nested actions require foreach", at)
 			}
 			if entry.Action == "assert" || entry.Action == "state_update" {
-				event, err = compiler.compileCheckAction(entry, at, depth)
+				event, err = compiler.compileCheckAction(entry, at)
 			} else {
 				if len(entry.Assertions) != 0 {
 					return nil, fmt.Errorf("%s/assertions: assertions require an assert action", at)
+				}
+				if entry.Updates != nil {
+					return nil, fmt.Errorf("%s/updates: updates require a state_update action", at)
 				}
 				event, err = compiler.compileAction(entry, at)
 			}
@@ -324,6 +324,14 @@ func (compiler *packageStreamCompiler) compileAction(entry ProtocolStreamActionS
 	}
 	if err := compiler.compileValue(entry.ItemIDValue, path+"/itemIdValue", &event.itemID); err != nil {
 		return event, err
+	}
+	if err := compiler.compileValue(entry.ArgumentsValue, path+"/argumentsValue", &event.delta); err != nil {
+		return event, err
+	}
+	if entry.Tool != nil {
+		if err := compiler.compileValue(entry.Tool.CallIDValue, path+"/tool/callIdValue", &event.tool.callID); err != nil {
+			return event, err
+		}
 	}
 	if err := compiler.compileItemSelectors(entry, &event, path); err != nil {
 		return event, err
@@ -402,6 +410,9 @@ func compileStreamEvent(spec ProtocolStreamActionSpec, path string, limits Limit
 	}
 	if spec.Action == "tool_snapshot" && spec.Arguments == "" {
 		return event, fmt.Errorf("%s/arguments: tool_snapshot requires a JSON snapshot selector", path)
+	}
+	if spec.ArgumentsValue != nil && spec.Arguments == "" {
+		return event, fmt.Errorf("%s/argumentsValue: requires an arguments diagnostic pointer", path)
 	}
 	if (spec.Action == "tool_delta" || spec.Action == "tool_snapshot") != (spec.Arguments != "") || (spec.Action == "tool_start") != (spec.Tool != nil) {
 		return event, fmt.Errorf("%s: tool identity belongs to tool_start and arguments to tool_delta/tool_snapshot; both are required there", path)

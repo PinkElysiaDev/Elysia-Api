@@ -55,7 +55,7 @@ const sourceSectionNames = [
 
 const EMPTY_DEFINITION = JSON.stringify(
   {
-    schemaVersion: 3,
+    schemaVersion: 4,
     spec: {
       id: '',
       name: '',
@@ -67,7 +67,7 @@ const EMPTY_DEFINITION = JSON.stringify(
     },
     mapping: {
       coreVersion: 2,
-      dslVersion: 1,
+      dslVersion: 2,
       capabilities: {},
       directions: {},
       operations: {},
@@ -856,7 +856,9 @@ export function ProtocolV2Editor({
                   {
                     engineFeatures: schema.engineFeatures,
                     events: schema.events,
-                    definition: schema.definitionSchema,
+                    ...(isPackage
+                      ? { package: schema.packageSchema, spec: schema.specSchema, mapping: schema.mappingSchema }
+                      : { definition: schema.definitionSchema }),
                     semantic: schema.semanticSchema,
                   },
                   null,

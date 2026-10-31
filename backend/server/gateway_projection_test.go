@@ -168,7 +168,7 @@ func TestGatewayIncludeCarrierDeliveryModes(t *testing.T) {
 					mode = "strict"
 				}
 				bindings, _ := s.store.ListProtocolBindings(t.Context())
-				bindings[0].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "delivery-mode", Mode: mode, Rules: []protocol.ConversionRule{}, Continuation: settings}}
+				bindings[0].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "delivery-mode", Mode: mode, Rules: []protocol.ConversionRule{}, Continuation: settings}}
 				bindings, err = s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
 				if err != nil {
 					t.Fatal(err)

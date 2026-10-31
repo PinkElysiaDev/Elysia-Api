@@ -5,6 +5,14 @@ import (
 	"testing"
 )
 
+func compileWireContractSpec(spec WireContractSpec, path string, limits Limits) (compiledWireContract, error) {
+	return newExpressionCompiler(limits, nil).compileWireContractSpec(spec, path)
+}
+
+func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits Limits) (*compiledPackageStreamContract, error) {
+	return newExpressionCompiler(limits, nil).compilePackageStreamContract(spec, path)
+}
+
 func textProtocolPackage(t *testing.T) ProtocolPackage {
 	t.Helper()
 	message := func(role, path string) Expression {
@@ -46,7 +54,7 @@ func TestProtocolPackageDecodeContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	if parsed.Spec.Identity() != document.Spec.Identity() || parsed.Mapping.CoreVersion != ProtocolCoreVersion {
-		t.Fatal("v3 package masquerades as the legacy core", parsed.Spec.Identity())
+		t.Fatal("package identity or core contract changed", parsed.Spec.Identity())
 	}
 }
 

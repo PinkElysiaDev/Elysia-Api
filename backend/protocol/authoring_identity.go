@@ -5,7 +5,7 @@ package protocol
 // Legacy identities remain readable while their execution path is retired.
 func ProtocolIdentityFields(document Object) (Object, string, error) {
 	var version int
-	if document["schemaVersion"].Decode(&version) == nil && version == ProtocolPackageSchemaVersion {
+	if document["schemaVersion"].Decode(&version) == nil && (version == 3 || version == ProtocolPackageSchemaVersion) {
 		fields, err := document["spec"].ReadObject()
 		return fields, "/spec", err
 	}

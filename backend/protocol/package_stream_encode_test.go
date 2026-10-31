@@ -56,7 +56,7 @@ func TestPackageFinalEventDocument(t *testing.T) {
 	document := eventProtocolPackage(t)
 	entry := document.Mapping.Directions[EncodeEvent]
 	final := document.Spec.Documents[entry.Document]
-	final.Assertions = append(final.Assertions, WireAssertion{Path: "/delivery_tag", Schema: ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "delivery marker is required"})
+	final.Assertions = append(final.Assertions, WireAssertion{Path: "/delivery_tag", Schema: &ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "delivery marker is required"})
 	document.Spec.Documents["delivered-event"] = final
 	entry.FinalDocument = "delivered-event"
 	document.Mapping.Directions[EncodeEvent] = entry

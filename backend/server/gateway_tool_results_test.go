@@ -50,7 +50,7 @@ func TestGatewayMediaToolResultCandidateIsolation(t *testing.T) {
 				s := newTestServer(t, groups)
 				service, _ := s.protocolService()
 				ingress, _ := service.Pin(protocol.PresetAnthropicID)
-				policy := protocol.ConversionPolicy{SchemaVersion: 1, ID: "media-policy", Mode: mode, Rules: []protocol.ConversionRule{}}
+				policy := protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "media-policy", Mode: mode, Rules: []protocol.ConversionRule{}}
 				if order == "reject" {
 					present := true
 					policy.Rules = append(policy.Rules, protocol.ConversionRule{ID: "operator-reject", Order: 1, Enabled: true, Phase: protocol.ConversionRequest, Action: "reject", Match: protocol.ConversionMatch{Path: "/parameters/anthropic_metadata/user_id", Present: &present}, Reason: "operator policy"})

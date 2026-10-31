@@ -11,21 +11,24 @@ func wireSlotPackage(t *testing.T) ProtocolPackage {
 	document := eventProtocolPackage(t)
 	stream := document.Spec.Documents["provider-event"].Stream
 	stream.Identities = []ProtocolStreamIdentitySpec{{Path: "/response_id", Type: StringType, Diagnostic: &RejectDiagnostic{Code: InvalidAssociation, Stage: "wire"}}}
-	stream.State = map[string]ProtocolStateSlot{
-		"previous": {Schema: ValueSchema{Type: IntegerType}, Initial: coreInteger(0), Update: readExpression("state", "/total")},
-		"total": {Schema: ValueSchema{Type: IntegerType}, Initial: coreInteger(0), Update: Expression{Op: "integer", Operation: "add", Items: []Expression{
-			readExpression("state", "/total"), readExpression("input", "/usage/input"),
-		}}},
+	stream.State = map[string]ProtocolWireStateSlot{
+		"previous": {Schema: ValueSchema{Type: IntegerType}, Initial: coreInteger(0)},
+		"total":    {Schema: ValueSchema{Type: IntegerType}, Initial: coreInteger(0)},
 	}
-	current := WireAssertion{Path: "/usage/input", Schema: ValueSchema{Type: IntegerType}, Code: InvalidInput, Reason: "input count must be nonnegative",
+	current := WireAssertion{Path: "/usage/input", Schema: &ValueSchema{Type: IntegerType}, Code: InvalidInput, Reason: "input count must be nonnegative",
 		Check:      &Expression{Op: "integer", Operation: "gte", Items: []Expression{readExpression("input", ""), literalExpression(0)}},
 		Diagnostic: &RejectDiagnostic{Code: InvalidInput, Stage: "stream"}}
-	accumulated := WireAssertion{Path: "/usage", Schema: ValueSchema{Type: ObjectType, AllowUnknown: true}, Code: InvalidInput, Reason: "retained total exceeds this observation",
+	accumulated := WireAssertion{Path: "/usage", Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true}, Code: InvalidInput, Reason: "retained total exceeds this observation",
 		Check:      &Expression{Op: "integer", Operation: "lte", Items: []Expression{readExpression("state", "/total"), readExpression("root", "/maximum")}},
 		Diagnostic: &RejectDiagnostic{Code: InvalidInput, Stage: "stream"}}
 	stream.Events[string(UsageUpdated)] = ProtocolStreamEventSpec{
 		{Action: "assert", Assertions: []WireAssertion{current}},
-		{Action: "state_update"},
+		{Action: "state_update", Updates: map[string]Expression{
+			"previous": readExpression("state", "/total"),
+			"total": {Op: "integer", Operation: "add", Items: []Expression{
+				readExpression("state", "/total"), readExpression("input", "/usage/input"),
+			}},
+		}},
 		{Action: "assert", Assertions: []WireAssertion{accumulated}},
 		{Action: "usage", Usage: &ProtocolStreamUsageSpec{Input: "/usage/input"}},
 	}
@@ -100,22 +103,56 @@ func TestPackageStreamOrderedAssertions(t *testing.T) {
 	}
 	document := wireSlotPackage(t)
 	actions := document.Spec.Documents["provider-event"].Stream.Events[string(UsageUpdated)]
-	document.Spec.Documents["provider-event"].Stream.Events[string(UsageUpdated)] = append(actions[:2:2], append(ProtocolStreamEventSpec{{Action: "state_update"}}, actions[2:]...)...)
+	document.Spec.Documents["provider-event"].Stream.Events[string(UsageUpdated)] = append(actions[:2:2], append(ProtocolStreamEventSpec{actions[1]}, actions[2:]...)...)
 	compiled = compilePackageForTest(t, document)
 	validation, _ := compiled.NewWireInputStreamValidation(Scope{})
 	if err := validation.Consume(t.Context(), packageStreamFrame(ResponseStarted, 0, "")); err != nil {
 		t.Fatal(err)
 	}
-	if err := validation.Consume(t.Context(), packageStreamFrame(UsageUpdated, 1, `,"usage":{"input":2},"maximum":10`)); err == nil || validation.packageStream.slots[1].raw != "0" {
-		t.Fatal("a frame committed its slots more than once", err)
+	if err := validation.Consume(t.Context(), packageStreamFrame(UsageUpdated, 1, `,"usage":{"input":2},"maximum":10`)); err != nil || validation.packageStream.slots[0].raw != "2" || validation.packageStream.slots[1].raw != "4" {
+		t.Fatal("later state actions did not observe the preceding update", err, validation.packageStream.slots)
+	}
+}
+
+func TestPackageStreamWireSlotIterations(t *testing.T) {
+	document := wireSlotPackage(t)
+	stream := document.Spec.Documents["provider-event"].Stream
+	actions := stream.Events[string(UsageUpdated)]
+	stream.Events["batch"] = ProtocolStreamEventSpec{
+		{ForEach: "/parts", Actions: []ProtocolStreamActionSpec{actions[0], actions[1], actions[2]}},
+	}
+	stream.Events["clear"] = ProtocolStreamEventSpec{{Action: "state_update", Updates: map[string]Expression{"previous": {Op: "omit"}}}}
+	compiled := compilePackageForTest(t, document)
+	validation, err := compiled.NewWireInputStreamValidation(Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, frame := range []Value{
+		packageStreamFrame(ResponseStarted, 0, ""),
+		packageStreamFrame("batch", 1, `,"parts":[{"usage":{"input":2}},{"usage":{"input":3}}],"maximum":10`),
+	} {
+		if err := validation.Consume(t.Context(), frame); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state := validation.packageStream
+	if state.slots[0].raw != "2" || state.slots[1].raw != "5" {
+		t.Fatal("array members did not observe prior action state", state.slots)
+	}
+	if err := validation.Consume(t.Context(), packageStreamFrame("batch", 2, `,"parts":[{"usage":{"input":4}},{"usage":{"input":8}}],"maximum":10`)); err == nil || state.slots[0].raw != "2" || state.slots[1].raw != "5" || state.accepted.sequence != 1 {
+		t.Fatal("failed later member committed an earlier update", err, state.slots)
+	}
+	if err := validation.Consume(t.Context(), packageStreamFrame("clear", 2, "")); err != nil || !state.slots[0].IsZero() || state.slots[1].raw != "5" || state.slotBytes != 1 {
+		t.Fatal("omission did not clear just the selected slot and release its bytes", err, state.slots, state.slotBytes)
 	}
 }
 
 func TestPackageStreamWireSlotBudget(t *testing.T) {
 	document := toolStreamPackage(t)
 	stream := document.Spec.Documents["provider-event"].Stream
-	stream.State = map[string]ProtocolStateSlot{"payload": {Schema: ValueSchema{Type: StringType}, Initial: StringValue(""), Update: readExpression("input", "/stash")}}
-	stream.Events["reserve"] = ProtocolStreamEventSpec{{Action: "state_update"}}
+	stream.State = map[string]ProtocolWireStateSlot{"payload": {Schema: ValueSchema{Type: StringType}, Initial: StringValue("")}}
+	update := ProtocolStreamActionSpec{Action: "state_update", Updates: map[string]Expression{"payload": readExpression("input", "/stash")}}
+	stream.Events["reserve"] = ProtocolStreamEventSpec{update, update}
 	compiled := compilePackageForTest(t, document)
 	limits := DefaultLimits()
 	limits.BufferBytes = 256
@@ -148,14 +185,29 @@ func TestPackageStreamCheckCompilation(t *testing.T) {
 	}{
 		{"update-without-slots", func(stream *ProtocolStreamSpec) { stream.State = nil }},
 		{"sequence-reason-without-diagnostic", func(stream *ProtocolStreamSpec) { stream.SequenceReason = "sequence is invalid" }},
-		{"nested-update", func(stream *ProtocolStreamSpec) {
-			stream.Events["nested"] = ProtocolStreamEventSpec{{ForEach: "/items", Actions: []ProtocolStreamActionSpec{{Action: "state_update"}}}}
+		{"empty-update", func(stream *ProtocolStreamSpec) {
+			stream.Events[string(UsageUpdated)][1].Updates = nil
 		}},
 		{"assertion-on-lifecycle", func(stream *ProtocolStreamSpec) {
 			stream.Events[string(ResponseStarted)][0].Assertions = stream.Events[string(UsageUpdated)][0].Assertions
 		}},
-		{"undeclared-slot", func(stream *ProtocolStreamSpec) {
-			stream.State["total"] = ProtocolStateSlot{Schema: ValueSchema{Type: IntegerType}, Update: readExpression("state", "/absent")}
+		{"undeclared-read", func(stream *ProtocolStreamSpec) {
+			stream.Events[string(UsageUpdated)][1].Updates["total"] = readExpression("state", "/absent")
+		}},
+		{"undeclared-update", func(stream *ProtocolStreamSpec) {
+			stream.Events[string(UsageUpdated)][1].Updates["absent"] = literalExpression(1)
+		}},
+		{"update-type", func(stream *ProtocolStreamSpec) {
+			stream.Events[string(UsageUpdated)][1].Updates["total"] = literalExpression("wrong")
+		}},
+		{"update-on-assertion", func(stream *ProtocolStreamSpec) {
+			stream.Events[string(UsageUpdated)][0].Updates = map[string]Expression{"total": literalExpression(1)}
+		}},
+		{"update-on-lifecycle", func(stream *ProtocolStreamSpec) {
+			stream.Events[string(ResponseStarted)][0].Updates = map[string]Expression{"total": literalExpression(1)}
+		}},
+		{"update-on-foreach", func(stream *ProtocolStreamSpec) {
+			stream.Events["nested"] = ProtocolStreamEventSpec{{ForEach: "/items", Updates: map[string]Expression{"total": literalExpression(1)}, Actions: stream.Events[string(UsageUpdated)]}}
 		}},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
@@ -166,6 +218,97 @@ func TestPackageStreamCheckCompilation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPackageStreamToolValueSelectors(t *testing.T) {
+	document := toolStreamPackage(t)
+	stream := document.Spec.Documents["provider-event"].Stream
+	stream.Events[string(packageToolStarted)][0].Tool.CallIDValue = expressionPointer(readExpression("input", "/external_id"))
+	stream.Events[string(packageToolDelta)][0].ArgumentsValue = expressionPointer(readExpression("input", "/fragment"))
+	stream.Events["tool.snapshot"] = ProtocolStreamEventSpec{{Action: "tool_snapshot", Arguments: "/arguments",
+		ArgumentsValue: &Expression{Op: "stringify_json", Source: expressionPointer(readExpression("input", "/args"))},
+	}}
+	compiled := compilePackageForTest(t, document)
+	validation, err := compiled.NewWireInputStreamValidation(Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, frame := range []Value{
+		packageStreamFrame(ResponseStarted, 0, ""),
+		packageStreamFrame(packageToolStarted, 1, `,"item_id":"t","name":"f","external_id":"c"`),
+		packageStreamFrame(packageToolDelta, 2, `,"item_id":"t","fragment":"{\"n\":"`),
+		packageStreamFrame("tool.snapshot", 3, `,"item_id":"t","args":{"n":9007199254740993}`),
+	} {
+		if err := validation.Consume(t.Context(), frame); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state := validation.packageStream.replay
+	tool := state.state.tools[state.identities.aliases["item:t"]]
+	if tool == nil || tool.callID != "c" || tool.input.String() != `{"n":9007199254740993}` {
+		t.Fatal("declared selectors lost tool identity or exact arguments", tool)
+	}
+	for _, fixture := range []struct{ name, raw, path string }{
+		{"call-id", `,"item_id":"other","name":"f","external_id":42`, "/call_id"},
+		{"arguments", `,"item_id":"t","fragment":42`, "/arguments"},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			kind := packageToolStarted
+			if fixture.name == "arguments" {
+				kind = packageToolDelta
+			}
+			err := validation.Consume(t.Context(), packageStreamFrame(kind, 4, fixture.raw))
+			var failure *ConversionError
+			if !errors.As(err, &failure) || failure.Issues[0].Path != fixture.path {
+				t.Fatal("computed selector lost its declared diagnostic path", err)
+			}
+		})
+	}
+	for _, edit := range []func(*ProtocolStreamSpec){
+		func(spec *ProtocolStreamSpec) {
+			spec.Events[string(packageToolDelta)][0].Arguments = ""
+			spec.Events[string(packageToolDelta)][0].ArgumentsValue = expressionPointer(literalExpression("{}"))
+		},
+		func(spec *ProtocolStreamSpec) {
+			spec.Events[string(packageToolStarted)][0].Tool.CallID = ""
+			spec.Events[string(packageToolStarted)][0].Tool.CallIDValue = expressionPointer(literalExpression("c"))
+		},
+		func(spec *ProtocolStreamSpec) {
+			spec.Events[string(ResponseStarted)][0].ArgumentsValue = expressionPointer(literalExpression("{}"))
+		},
+		func(spec *ProtocolStreamSpec) {
+			spec.Events[string(UsageUpdated)][0].Tool = &ProtocolStreamToolSpec{Name: "/name", CallID: "/call_id", CallIDValue: expressionPointer(literalExpression("c"))}
+		},
+	} {
+		invalid := toolStreamPackage(t)
+		edit(invalid.Spec.Documents["provider-event"].Stream)
+		if err := invalid.Validate(DefaultLimits()); err == nil {
+			t.Fatal("misplaced selector or missing diagnostic pointer compiled")
+		}
+	}
+	t.Run("snapshot-only", func(t *testing.T) {
+		delete(stream.Events, string(packageToolDelta))
+		stream.ItemKinds = []NodeKind{TextNode, ToolCallNode}
+		compiled := compilePackageForTest(t, document)
+		validation, err := compiled.NewWireInputStreamValidation(Scope{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, frame := range []Value{
+			packageStreamFrame(ResponseStarted, 0, ""),
+			packageStreamFrame(packageToolStarted, 1, `,"item_id":"t","name":"f","external_id":"c"`),
+			packageStreamFrame("tool.snapshot", 2, `,"item_id":"t","args":{"n":9007199254740993}`),
+			packageStreamFrame(packageToolFinished, 3, `,"item_id":"t"`),
+			packageStreamFrame(ResponseFinished, 4, ""),
+		} {
+			if err := validation.Consume(t.Context(), frame); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := validation.Finish(); err != nil {
+			t.Fatal(err)
+		}
+	})
 }
 
 func TestPackageStreamExplicitCheckDiagnostics(t *testing.T) {
@@ -187,7 +330,7 @@ func TestPackageStreamExplicitCheckDiagnostics(t *testing.T) {
 		t.Run(fixture.name, func(t *testing.T) {
 			document := eventProtocolPackage(t)
 			document.Spec.Documents["provider-event"].Stream.Events["checked"] = ProtocolStreamEventSpec{{Action: "assert", Assertions: []WireAssertion{{
-				Path: "", Schema: ValueSchema{Type: AnyType}, Code: ConversionRejected, Reason: "fallback boundary", Check: &fixture.check,
+				Path: "", Schema: &ValueSchema{Type: AnyType}, Code: ConversionRejected, Reason: "fallback boundary", Check: &fixture.check,
 				Diagnostic: &RejectDiagnostic{Code: ConversionRejected, Stage: "wire", Path: "/fallback"},
 			}}}}
 			compiled := compilePackageForTest(t, document)

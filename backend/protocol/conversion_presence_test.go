@@ -45,7 +45,7 @@ func TestConversionPresenceKeepsRawWireAndErrorOrder(t *testing.T) {
 		if got := state.matches(match, ConversionContext{}); got != present {
 			t.Fatal("validation-only decoding hid an unknown field", got)
 		}
-		conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "wire-presence", Rules: []ConversionRule{{ID: "stream", Enabled: true, Phase: ConversionRequest, Action: "stream_options", Value: StringValue("anthropic"), Match: match}}})
+		conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "wire-presence", Rules: []ConversionRule{{ID: "stream", Enabled: true, Phase: ConversionRequest, Action: "stream_options", Value: StringValue("anthropic"), Match: match}}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,7 +70,7 @@ func TestOwnedPresenceConversionBoundaries(t *testing.T) {
 	} {
 		rule.ID, rule.Phase, rule.Enabled, rule.Value = "presence", ConversionRequest, true, StringValue("anthropic")
 		for _, mode := range []string{"compatible", "strict"} {
-			conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "presence-boundary", Mode: mode, Rules: []ConversionRule{rule}})
+			conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "presence-boundary", Mode: mode, Rules: []ConversionRule{rule}})
 			if err != nil || !conversion.canOwnRequest() {
 				t.Fatal("typed presence lost its owned entrypoint", err)
 			}
@@ -102,7 +102,7 @@ func TestOwnedPresenceConversionBoundaries(t *testing.T) {
 
 func BenchmarkConversionPresenceBoundary(b *testing.B) {
 	request := &Request{SchemaVersion: 1, Parameters: Object{"stream": Value{raw: "false"}}, Content: []Node{{Kind: ImageNode, Payload: StringValue(strings.Repeat("A", 2<<20))}}}
-	conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "presence-benchmark", Rules: []ConversionRule{{ID: "stream", Enabled: true, Phase: ConversionRequest, Action: "stream_options", Value: StringValue("anthropic"), Match: ConversionMatch{Path: "/parameters/stream", Present: boolPtr(true)}}}})
+	conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "presence-benchmark", Rules: []ConversionRule{{ID: "stream", Enabled: true, Phase: ConversionRequest, Action: "stream_options", Value: StringValue("anthropic"), Match: ConversionMatch{Path: "/parameters/stream", Present: boolPtr(true)}}}})
 	if err != nil {
 		b.Fatal(err)
 	}

@@ -41,7 +41,8 @@ export function DraftView({
     draft && typeof draft === "object" && !Array.isArray(draft)
       ? (draft as Record<string, unknown>)
       : null;
-  const identityValue = draftObject?.schemaVersion === 3 ? draftObject.spec : draftObject;
+  const isPackage = draftObject?.schemaVersion === 3 || draftObject?.schemaVersion === 4;
+  const identityValue = isPackage ? draftObject.spec : draftObject;
   const identity = identityValue && typeof identityValue === "object" && !Array.isArray(identityValue)
     ? identityValue as Record<string, unknown>
     : null;
@@ -108,7 +109,7 @@ export function DraftView({
           onClick={() =>
             navigate("/protocols", {
               state: {
-                ...((draftObject?.schemaVersion === 2 || draftObject?.schemaVersion === 3) ? { definitionJSON: draftText } : { draft }),
+                ...((draftObject?.schemaVersion === 2 || isPackage) ? { definitionJSON: draftText } : { draft }),
               },
             })
           }

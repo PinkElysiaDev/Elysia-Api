@@ -8,7 +8,7 @@ import (
 
 func reasoningTestConversion(t *testing.T, source, target, mode string) *CompiledConversion {
 	t.Helper()
-	c, err := CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "reasoning-test", Mode: mode, Rules: []ConversionRule{{ID: "thinking", Enabled: true, Phase: ConversionRequest, Action: "reasoning_controls", Value: controlValue(reasoningOptions{SourceCodec: source, TargetCodec: target})}}})
+	c, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "reasoning-test", Mode: mode, Rules: []ConversionRule{{ID: "thinking", Enabled: true, Phase: ConversionRequest, Action: "reasoning_controls", Value: controlValue(reasoningOptions{SourceCodec: source, TargetCodec: target})}}})
 	if err != nil {
 		t.Fatal(err)
 	}

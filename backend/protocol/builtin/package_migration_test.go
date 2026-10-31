@@ -205,13 +205,25 @@ func checkPackageMediaURIs(t *testing.T, legacy, draft *p.Compiled, definition p
 			options := p.EvaluationContext{Scope: sample.Scope, Values: sample.Context}
 			want, wantErr := executePackageMigrationSample(t, legacy, current, options, false)
 			got, gotErr := executePackageMigrationSample(t, draft, current, options, true)
-			gap := packageMigrationGap{}
 			if fixture.name == "null" {
-				gap = packageMigrationGap{reason: "null media URL is rejected, but codec and DSL diagnostics differ", rejection: true}
+				issue := requirePackageIssue(t, gotErr, p.InvalidInput)
+				if issue.Direction != p.DecodeRequest || issue.Path != "/mapping/expressions/decode-media-url/then/source" {
+					t.Fatal("invalid media URL lost its mapping location", issue)
+				}
+				return
 			}
-			checkPackageMigration(t, want, got, wantErr, gotErr, gap)
+			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
 		})
 	}
+}
+
+func requirePackageIssue(t *testing.T, err error, code p.IssueCode) p.ConversionIssue {
+	t.Helper()
+	var failure *p.ConversionError
+	if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Code != code {
+		t.Fatalf("expected one %s diagnostic, got %v", code, err)
+	}
+	return failure.Issues[0]
 }
 
 func checkPackageMigration(t *testing.T, want, got []byte, wantErr, gotErr error, gap packageMigrationGap) {

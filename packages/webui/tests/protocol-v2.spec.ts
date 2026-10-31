@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { ProtocolDocument } from '../src/lib/protocol-document'
+import { protocolIdentityPrefix } from '../src/lib/protocol-v2'
 
 test('designer renders the published listing contract without migration metadata', async ({ page }) => {
   const errors: string[] = []
@@ -71,6 +72,10 @@ test('raw protocol edits preserve presence, numeric spelling and ordered extensi
   expect(document.read('/nested/a~1b/~0x')).toBe('null')
   expect(new ProtocolDocument(document.set('/nested/new', 'false')).read('/nested/new')).toBe('false')
   for (const invalid of ['{"x":1,"x":2}', '{"x":}', '[1,]', '{"x":01}', '{}{}', '['.repeat(66) + ']'.repeat(66)]) expect(() => new ProtocolDocument(invalid)).toThrow()
+  for (const version of [3, 4]) {
+    const packageSource = `{"schemaVersion":${version},"spec":{"id":"historical"},"mapping":{}}`
+    expect(protocolIdentityPrefix(new ProtocolDocument(packageSource))).toBe('/spec')
+  }
 })
 
 test('package sources share one save and evidence, preserve exact JSON, and locate diagnostics', async ({ page }) => {
@@ -79,7 +84,7 @@ test('package sources share one save and evidence, preserve exact JSON, and loca
   const revisionHash = 'a'.repeat(64)
   const compilerVersion = 'package-browser-compiler'
   const spec = '{"id":"package-browser","name":"Package browser","version":"1","family":"synthetic","wireVersion":"1","documents":{},"operations":{}}'
-  const mapping = '{"coreVersion":2,"dslVersion":1,"native":{"preserve":true},"capabilities":{},"directions":{},"operations":{},"samples":[],"expressions":{"exact":{"op":"literal","value":900719925474099312345}}}'
+  const mapping = '{"coreVersion":2,"dslVersion":2,"native":{"preserve":true},"capabilities":{},"directions":{},"operations":{},"samples":[],"expressions":{"exact":{"op":"literal","value":900719925474099312345}}}'
   let saved = ''
   let saves = 0
   let activeHash = ''
@@ -89,7 +94,7 @@ test('package sources share one save and evidence, preserve exact JSON, and loca
     const path = new URL(route.request().url()).pathname
     let data: unknown = { items: [], seq: 1 }
     if (path.endsWith('/protocols/schema')) data = {
-      compilerVersion, packageVersion: 3, directions: [], capabilities: [], mappingOperations: [],
+      compilerVersion, packageVersion: 4, directions: [], capabilities: [], mappingOperations: [],
       modules: [], events: [], transports: [], engineFeatures: [],
     }
     if (path.endsWith('/protocols')) {
@@ -137,6 +142,7 @@ test('package sources share one save and evidence, preserve exact JSON, and loca
   await expect(page.getByRole('button', { name: '离线验证', exact: true })).toBeEnabled()
   expect(saves).toBe(1)
   const document = new ProtocolDocument(saved)
+  expect(document.read('/schemaVersion')).toBe('4')
   expect(document.read('/spec')).toBe(spec)
   expect(document.read('/mapping')).toBe(mapping)
   await page.getByRole('button', { name: '离线验证', exact: true }).click()

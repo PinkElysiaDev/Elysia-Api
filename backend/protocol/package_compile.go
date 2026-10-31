@@ -50,7 +50,7 @@ func (document ProtocolPackage) Validate(limits Limits) error {
 	return err
 }
 
-// CompilePackage compiles the v3 format independently of legacy codec modules.
+// CompilePackage compiles a spec/mapping package without installed codec modules.
 // Unsupported semantic effects are rejected instead of silently ignored.
 func (compiler *Compiler) CompilePackage(raw []byte) (*Compiled, []ConversionIssue) {
 	document, err := decodeProtocolPackage(raw, compiler.limits)
@@ -129,7 +129,7 @@ func (compiler *Compiler) compilePackage(document ProtocolPackage) (*Compiled, [
 	return compiled, nil
 }
 
-// Package returns an independent v3 document. Legacy definitions return false.
+// Package returns an independent spec/mapping document. Legacy definitions return false.
 func (compiled *Compiled) Package() (ProtocolPackage, bool) {
 	var document ProtocolPackage
 	if compiled.packagePlan == nil {
@@ -169,7 +169,7 @@ func (compiled *Compiled) bindPackageIdentity(document ProtocolPackage) error {
 	return nil
 }
 
-func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Direction, wire WireContractSpec, finalWire *WireContractSpec, compiler *expressionCompiler, coreVersion, dslVersion int) (compiledMapping, []compiledSemanticEffect, error) {
+func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Direction, wire WireContractSpec, documentHashes map[string]string, compiler *expressionCompiler, coreVersion, dslVersion int) (compiledMapping, []compiledSemanticEffect, error) {
 	path := "/mapping/directions/" + string(direction)
 	isDecode := isPackageDecodeDirection(direction)
 	if mapping.IsEventBatch && !isEventDecoder(direction) {
@@ -354,11 +354,11 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		CoreVersion     int                      `json:"coreVersion"`
 		DSLVersion      int                      `json:"dslVersion"`
 		Direction       Direction                `json:"direction"`
-		Wire            WireContractSpec         `json:"wire"`
-		FinalWire       *WireContractSpec        `json:"finalWire,omitempty"`
+		WireHash        string                   `json:"wireHash"`
+		FinalWireHash   string                   `json:"finalWireHash,omitempty"`
 		Mapping         ProtocolDirectionMapping `json:"mapping"`
 		References      map[string]Expression    `json:"references"`
-	}{CompilerVersion, coreVersion, dslVersion, direction, wire, finalWire, mapping, references})
+	}{CompilerVersion, coreVersion, dslVersion, direction, documentHashes[mapping.Document], documentHashes[mapping.FinalDocument], mapping, references})
 	if err != nil {
 		return compiledMapping{}, nil, err
 	}

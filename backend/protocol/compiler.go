@@ -31,6 +31,7 @@ type EvaluationContext struct {
 	transportControl   *bool
 	wireLimits         Limits
 	valueReader        *valueReader
+	inputView          *inputView
 	requestReplay      *requestReplay
 	outputStream       *WireStreamValidation
 	packageTransaction *packageStreamTransaction
@@ -222,7 +223,7 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 	for capability, supported := range definition.Capabilities {
 		compiled.capabilities[capability] = supported
 	}
-	expressions := &expressionCompiler{limits: limits, references: definition.Expressions, resolving: make(map[string]bool), used: make(map[string]bool)}
+	expressions := newExpressionCompiler(limits, definition.Expressions)
 	for _, direction := range DirectionCatalog() {
 		mapping, exists := definition.Directions[direction]
 		if !exists {
@@ -820,7 +821,10 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	if !exists {
 		return fail(fmt.Errorf("direction is not implemented"))
 	}
-	if err := checkResourceValue(input, inputLimits, "mapping_input"); err != nil {
+	if compiled.packagePlan != nil && isPackageDecodeDirection(direction) {
+		options = options.withInputView(input)
+	}
+	if err := options.inputView.checkResources(ctx, input, inputLimits, "mapping_input"); err != nil {
 		return fail(err)
 	}
 	if err := mapping.input.validate(input, "/input", inputLimits); err != nil {
@@ -830,11 +834,11 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	if err != nil {
 		return fail(err)
 	}
-	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), streamTransaction: options.packageTransaction, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, inputView: options.inputView, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), streamTransaction: options.packageTransaction, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	var packageState *packageExecution
 	if compiled.packagePlan != nil {
 		if isPackageDecodeDirection(direction) {
-			state.objectReader = mapping.outputPlan.newRootObjectReader(input)
+			state.objectReader = state.inputView.objectReader()
 		}
 		packageState, err = compiled.preparePackageExecution(direction, state, inputLimits, options)
 		if err != nil {

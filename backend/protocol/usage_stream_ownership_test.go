@@ -6,7 +6,7 @@ import (
 )
 
 func TestPrivateStreamUsageMatchesSnapshotMerging(t *testing.T) {
-	conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "usage-ownership", Rules: []ConversionRule{{ID: "envelope", Enabled: true, Phase: ConversionEvent, Action: "anthropic_usage_envelope"}}})
+	conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "usage-ownership", Rules: []ConversionRule{{ID: "envelope", Enabled: true, Phase: ConversionEvent, Action: "anthropic_usage_envelope"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

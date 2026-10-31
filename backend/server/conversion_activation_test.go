@@ -18,7 +18,7 @@ func TestConversionActivationKeepsPinnedRevision(t *testing.T) {
 	var previous string
 	var revisions []storage.ConversionPolicyRecord
 	for _, name := range []string{"first", "second"} {
-		p := protocol.ConversionPolicy{SchemaVersion: 1, ID: "review-pinned", Name: name, Rules: []protocol.ConversionRule{}}
+		p := protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "review-pinned", Name: name, Rules: []protocol.ConversionRule{}}
 		r, err := s.store.SaveConversionDraft(t.Context(), p, previous)
 		if err != nil {
 			t.Fatal(err)
@@ -65,5 +65,59 @@ func TestConversionActivationKeepsPinnedRevision(t *testing.T) {
 				t.Fatal("activation changed the explicit pin or lost its evidence")
 			}
 		}
+	}
+}
+
+func TestConversionManagementValidatesWithoutActiveProtocols(t *testing.T) {
+	for _, fixture := range []struct {
+		name    string
+		version int
+		rules   []protocol.ConversionRule
+		status  int
+	}{
+		{"current", protocol.ConversionPolicySchemaVersion, nil, http.StatusOK},
+		{"legacy", 1, nil, http.StatusBadRequest},
+		{"invalid-rule", protocol.ConversionPolicySchemaVersion, []protocol.ConversionRule{{ID: "invalid", Enabled: true, Phase: protocol.ConversionRequest, Action: "unknown"}}, http.StatusBadRequest},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			s, _ := newProtocolAdminTestServer(t)
+			s.setupProtocolRevisionRoutes(s.engine.Group("/api/admin"))
+			policy := protocol.ConversionPolicy{SchemaVersion: fixture.version, ID: "empty-registry", Rules: fixture.rules}
+			record, err := s.store.SaveConversionDraft(t.Context(), policy, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, err := sonic.ConfigStd.Marshal(map[string]string{"hash": record.Hash})
+			if err != nil {
+				t.Fatal(err)
+			}
+			base := "/api/admin/protocols/conversion-policies/" + policy.ID
+			response := revisionAdminRequest(t, s.engine, http.MethodPost, base+"/verify", body, "")
+			if response.Code != fixture.status {
+				t.Fatalf("verify=%d %s", response.Code, response.Body)
+			}
+			revisions, err := s.store.ConversionRevisions(t.Context(), policy.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fixture.status != http.StatusOK {
+				if len(revisions) != 0 {
+					t.Fatal("failed verification created a revision")
+				}
+				// A stored revision cannot bypass the executable policy contract,
+				// even if its evidence claims the current compiler.
+				if err := s.store.SaveConversionRevision(t.Context(), record); err != nil {
+					t.Fatal(err)
+				}
+			}
+			response = revisionAdminRequest(t, s.engine, http.MethodPost, base+"/activate", body, "")
+			if response.Code != fixture.status {
+				t.Fatalf("activate=%d %s", response.Code, response.Body)
+			}
+			drafts, err := s.store.ListConversionPolicies(t.Context(), false)
+			if err != nil || len(drafts) != 1 || drafts[0].Hash != record.Hash || drafts[0].Policy.SchemaVersion != fixture.version {
+				t.Fatal("management changed the saved policy", drafts, err)
+			}
+		})
 	}
 }

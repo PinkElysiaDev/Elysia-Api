@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-func (compiled *Compiled) compilePackageModelMappings(spec ProtocolSpec, mapping ProtocolMapping, documents map[string]compiledWireContract, expressions *expressionCompiler) error {
+func (compiled *Compiled) compilePackageModelMappings(spec ProtocolSpec, mapping ProtocolMapping, wireSpec compiledProtocolSpec, expressions *expressionCompiler) error {
 	for _, name := range sortedKeys(spec.Operations) {
 		operation := spec.Operations[name]
 		if operation.Kind != "models" {
@@ -27,10 +27,10 @@ func (compiled *Compiled) compilePackageModelMappings(spec ProtocolSpec, mapping
 		identity, err := EncodeValue(struct {
 			CompilerVersion string                `json:"compilerVersion"`
 			Document        string                `json:"document"`
-			Wire            WireContractSpec      `json:"wire"`
+			WireHash        string                `json:"wireHash"`
 			Program         Expression            `json:"program"`
 			References      map[string]Expression `json:"references"`
-		}{CompilerVersion, operation.Response, wire, program, references})
+		}{CompilerVersion, operation.Response, wireSpec.documentHashes[operation.Response], program, references})
 		if err != nil {
 			return err
 		}
@@ -39,7 +39,7 @@ func (compiled *Compiled) compilePackageModelMappings(spec ProtocolSpec, mapping
 			compiled.packagePlan.modelContracts = map[string]compiledWireContract{}
 		}
 		compiled.modelMappings[name] = compiledMapping{outputPlan: plan, definitionHash: hashValue(identity)}
-		compiled.packagePlan.modelContracts[name] = documents[operation.Response]
+		compiled.packagePlan.modelContracts[name] = wireSpec.documents[operation.Response]
 	}
 	if err := compiled.prepareModelEvidence(mapping.ModelSamples); err != nil {
 		return fmt.Errorf("/mapping/modelSamples: %w", err)

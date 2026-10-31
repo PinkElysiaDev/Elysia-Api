@@ -11,6 +11,9 @@ import (
 
 type ConversionPhase string
 
+// ConversionPolicySchemaVersion identifies executable conversion policies.
+const ConversionPolicySchemaVersion = 2
+
 const (
 	ConversionIngress     ConversionPhase = "ingress"
 	ConversionRequest     ConversionPhase = "request"
@@ -126,13 +129,13 @@ func (c *CompiledConversion) ForExecution() *CompiledConversion {
 // ResolveConversion applies complete rule replacement by stable ID; no implicit
 // concatenation or duplicate execution. Equal order in a phase is ambiguous.
 func ResolveConversion(layers ...ConversionPolicy) (*CompiledConversion, error) {
-	effective := ConversionPolicy{SchemaVersion: 1, ID: "resolved", Name: "Resolved", Mode: "compatible", Rules: []ConversionRule{}}
+	effective := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "resolved", Name: "Resolved", Mode: "compatible", Rules: []ConversionRule{}}
 	rules := map[string]ConversionRule{}
 	origins := map[string]string{}
 	revisions := map[string]string{}
 	for _, layer := range layers {
-		if layer.SchemaVersion != 1 {
-			return nil, fmt.Errorf("conversion schemaVersion must be 1")
+		if layer.SchemaVersion != ConversionPolicySchemaVersion {
+			return nil, fmt.Errorf("conversion schemaVersion must be %d", ConversionPolicySchemaVersion)
 		}
 		if layer.Mode != "" {
 			effective.Mode = layer.Mode
@@ -180,7 +183,7 @@ func ResolveConversion(layers ...ConversionPolicy) (*CompiledConversion, error) 
 }
 
 func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
-	if p.SchemaVersion != 1 || !definitionIdentifier.MatchString(p.ID) {
+	if p.SchemaVersion != ConversionPolicySchemaVersion || !definitionIdentifier.MatchString(p.ID) {
 		return nil, fmt.Errorf("invalid conversion policy schema or id")
 	}
 	if p.Mode == "" {

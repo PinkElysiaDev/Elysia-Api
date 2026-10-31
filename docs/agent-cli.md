@@ -722,11 +722,11 @@ Flags:
 ````text
 写入协议草稿并校验定义
 
-elysia protocol draft '<schemaVersion=3 spec/mapping JSON>'
+elysia protocol draft '<schemaVersion=4 spec/mapping JSON>'
 <config>: 完整 spec/mapping 协议包 JSON
 
 详细说明：接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
-编写 schemaVersion=3 的完整协议包：spec 描述外部文档与传输，mapping 描述双向映射、能力及样例；两份源必须一并保存和验证。elysia protocol draft '<JSON>' 保留草稿并检查定义。
+编写 schemaVersion=4 的完整协议包，mapping 使用 dslVersion=2、coreVersion=2：spec 描述外部文档与传输，mapping 描述双向映射、能力及样例；两份源必须一并保存和验证。elysia protocol draft '<JSON>' 保留草稿并检查定义。
 模型目录通过 models 操作与 modelSamples 声明。作为 Agent 模型时，配置 agent 工具结果输入类型、参数映射和各思考模式的样例；使用 preview --mode agent 检查实际渲染。
 真实测试受服务端权限与业务策略控制。示例：elysia protocol test --operation generate --sample '<完整语义请求 JSON>' --base-url <URL> --api-key <key>。操作名称必须来自定义，流式由操作的传输声明决定。
 运行 validate、preview、verify；按结构化诊断修订。不能靠删工具、删字段、降低能力声明或缩减必要测试掩盖用户需要的能力。无法表达的新机制必须报告不支持。
@@ -749,7 +749,7 @@ Flags:
 elysia protocol models [--base-url <URL>] [--api-key <key>]
 
 详细说明：接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
-编写 schemaVersion=3 的完整协议包：spec 描述外部文档与传输，mapping 描述双向映射、能力及样例；两份源必须一并保存和验证。elysia protocol draft '<JSON>' 保留草稿并检查定义。
+编写 schemaVersion=4 的完整协议包，mapping 使用 dslVersion=2、coreVersion=2：spec 描述外部文档与传输，mapping 描述双向映射、能力及样例；两份源必须一并保存和验证。elysia protocol draft '<JSON>' 保留草稿并检查定义。
 模型目录通过 models 操作与 modelSamples 声明。作为 Agent 模型时，配置 agent 工具结果输入类型、参数映射和各思考模式的样例；使用 preview --mode agent 检查实际渲染。
 真实测试受服务端权限与业务策略控制。示例：elysia protocol test --operation generate --sample '<完整语义请求 JSON>' --base-url <URL> --api-key <key>。操作名称必须来自定义，流式由操作的传输声明决定。
 运行 validate、preview、verify；按结构化诊断修订。不能靠删工具、删字段、降低能力声明或缩减必要测试掩盖用户需要的能力。无法表达的新机制必须报告不支持。
@@ -774,7 +774,7 @@ Flags:
 elysia protocol preview --sample '<JSON>' [--direction <direction>] [--sequence] [--mode mapping|session|task|models|agent]
 
 详细说明：接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
-编写 schemaVersion=3 的完整协议包：spec 描述外部文档与传输，mapping 描述双向映射、能力及样例；两份源必须一并保存和验证。elysia protocol draft '<JSON>' 保留草稿并检查定义。
+编写 schemaVersion=4 的完整协议包，mapping 使用 dslVersion=2、coreVersion=2：spec 描述外部文档与传输，mapping 描述双向映射、能力及样例；两份源必须一并保存和验证。elysia protocol draft '<JSON>' 保留草稿并检查定义。
 模型目录通过 models 操作与 modelSamples 声明。作为 Agent 模型时，配置 agent 工具结果输入类型、参数映射和各思考模式的样例；使用 preview --mode agent 检查实际渲染。
 真实测试受服务端权限与业务策略控制。示例：elysia protocol test --operation generate --sample '<完整语义请求 JSON>' --base-url <URL> --api-key <key>。操作名称必须来自定义，流式由操作的传输声明决定。
 运行 validate、preview、verify；按结构化诊断修订。不能靠删工具、删字段、降低能力声明或缩减必要测试掩盖用户需要的能力。无法表达的新机制必须报告不支持。
@@ -805,7 +805,7 @@ Flags:
 elysia protocol read --id <id> [--hash <revision-hash>]
 
 详细说明：接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
-编写 schemaVersion=3 的完整协议包：spec 描述外部文档与传输，mapping 描述双向映射、能力及样例；两份源必须一并保存和验证。elysia protocol draft '<JSON>' 保留草稿并检查定义。
+编写 schemaVersion=4 的完整协议包，mapping 使用 dslVersion=2、coreVersion=2：spec 描述外部文档与传输，mapping 描述双向映射、能力及样例；两份源必须一并保存和验证。elysia protocol draft '<JSON>' 保留草稿并检查定义。
 模型目录通过 models 操作与 modelSamples 声明。作为 Agent 模型时，配置 agent 工具结果输入类型、参数映射和各思考模式的样例；使用 preview --mode agent 检查实际渲染。
 真实测试受服务端权限与业务策略控制。示例：elysia protocol test --operation generate --sample '<完整语义请求 JSON>' --base-url <URL> --api-key <key>。操作名称必须来自定义，流式由操作的传输声明决定。
 运行 validate、preview、verify；按结构化诊断修订。不能靠删工具、删字段、降低能力声明或缩减必要测试掩盖用户需要的能力。无法表达的新机制必须报告不支持。
@@ -853,7 +853,7 @@ Flags:
 elysia protocol save [--expected <draft-hash>]
 
 详细说明：接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
-编写 schemaVersion=3 的完整协议包：spec 描述外部文档与传输，mapping 描述双向映射、能力及样例；两份源必须一并保存和验证。elysia protocol draft '<JSON>' 保留草稿并检查定义。
+编写 schemaVersion=4 的完整协议包，mapping 使用 dslVersion=2、coreVersion=2：spec 描述外部文档与传输，mapping 描述双向映射、能力及样例；两份源必须一并保存和验证。elysia protocol draft '<JSON>' 保留草稿并检查定义。
 模型目录通过 models 操作与 modelSamples 声明。作为 Agent 模型时，配置 agent 工具结果输入类型、参数映射和各思考模式的样例；使用 preview --mode agent 检查实际渲染。
 真实测试受服务端权限与业务策略控制。示例：elysia protocol test --operation generate --sample '<完整语义请求 JSON>' --base-url <URL> --api-key <key>。操作名称必须来自定义，流式由操作的传输声明决定。
 运行 validate、preview、verify；按结构化诊断修订。不能靠删工具、删字段、降低能力声明或缩减必要测试掩盖用户需要的能力。无法表达的新机制必须报告不支持。
@@ -900,7 +900,7 @@ Flags:
 elysia protocol test --operation <id> --sample '<semantic request JSON>' [--base-url <URL>] [--api-key <key>]
 
 详细说明：接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
-编写 schemaVersion=3 的完整协议包：spec 描述外部文档与传输，mapping 描述双向映射、能力及样例；两份源必须一并保存和验证。elysia protocol draft '<JSON>' 保留草稿并检查定义。
+编写 schemaVersion=4 的完整协议包，mapping 使用 dslVersion=2、coreVersion=2：spec 描述外部文档与传输，mapping 描述双向映射、能力及样例；两份源必须一并保存和验证。elysia protocol draft '<JSON>' 保留草稿并检查定义。
 模型目录通过 models 操作与 modelSamples 声明。作为 Agent 模型时，配置 agent 工具结果输入类型、参数映射和各思考模式的样例；使用 preview --mode agent 检查实际渲染。
 真实测试受服务端权限与业务策略控制。示例：elysia protocol test --operation generate --sample '<完整语义请求 JSON>' --base-url <URL> --api-key <key>。操作名称必须来自定义，流式由操作的传输声明决定。
 运行 validate、preview、verify；按结构化诊断修订。不能靠删工具、删字段、降低能力声明或缩减必要测试掩盖用户需要的能力。无法表达的新机制必须报告不支持。

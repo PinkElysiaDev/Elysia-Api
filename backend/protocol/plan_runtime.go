@@ -38,7 +38,10 @@ func evaluateCoreOutput(ctx context.Context, compiled *Compiled, direction Direc
 	}
 	inputLimits, outputLimits, workLimits := compiled.mappingLimits(ctx, direction)
 	mapping := compiled.mappings[direction]
-	if err := checkResourceValue(input, inputLimits, "mapping_input"); err != nil {
+	if compiled.packagePlan != nil {
+		options = options.withInputView(input)
+	}
+	if err := options.inputView.checkResources(ctx, input, inputLimits, "mapping_input"); err != nil {
 		return fail(err)
 	}
 	if err := mapping.input.validate(input, "/input", inputLimits); err != nil {
@@ -48,13 +51,11 @@ func evaluateCoreOutput(ctx context.Context, compiled *Compiled, direction Direc
 	if err != nil {
 		return fail(err)
 	}
-	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), streamTransaction: options.packageTransaction, valueReader: options.valueReader, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, inputView: options.inputView, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), streamTransaction: options.packageTransaction, valueReader: options.valueReader, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	if compiled.packagePlan != nil {
 		state.capture = compiled.newNativeCapture(direction, options)
-		state.objectReader = mapping.outputPlan.newRootObjectReader(input)
-		if state.valueReader == nil {
-			state.valueReader = requestValueReader(input)
-		}
+		state.objectReader = state.inputView.objectReader()
+		state.valueReader = &state.inputView.owned
 		if err := compiled.preparePackageState(direction, state, inputLimits, options); err != nil {
 			return fail(err)
 		}

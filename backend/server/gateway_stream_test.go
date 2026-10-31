@@ -208,7 +208,7 @@ func TestGatewayOutputPositionCommitsAfterFlush(t *testing.T) {
 			}
 			options := (protocol.EvaluationContext{}).WithOutputStream(validation)
 			present := true
-			conversion, err := protocol.CompileConversion(protocol.ConversionPolicy{SchemaVersion: 1, ID: "final-sequence", Rules: []protocol.ConversionRule{{
+			conversion, err := protocol.CompileConversion(protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "final-sequence", Rules: []protocol.ConversionRule{{
 				ID: "sequence", Enabled: true, Phase: protocol.ConversionWire, Match: protocol.ConversionMatch{Path: "/initial", Present: &present},
 				Action: "set", Path: "/sequence", Value: mustProtocolValue(t, "41"),
 			}}})

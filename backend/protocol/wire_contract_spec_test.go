@@ -3,7 +3,6 @@ package protocol
 import (
 	"context"
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -12,17 +11,15 @@ func TestWireContractSpecOrderedAssertions(t *testing.T) {
 	spec := WireContractSpec{
 		Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true},
 		Assertions: []WireAssertion{
-			{Path: "/payload/text", When: expressionPointer(Expression{Op: "equal", Items: []Expression{readExpression("input", "/kind"), literalExpression("text")}}), Schema: ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "text payload must be a string"},
-			{Path: "/usage", Schema: ValueSchema{Type: IntegerType}, Code: InvalidInput, Reason: "usage must be an integer"},
-			{Path: "", Schema: ValueSchema{Type: ObjectType, AllowUnknown: true, Properties: map[string]ValueSchema{"id": {Type: StringType}}, Required: []string{"id"}}, Code: UnsupportedCapability, Reason: "response id is required"},
+			{Path: "/payload/text", When: expressionPointer(Expression{Op: "equal", Items: []Expression{readExpression("input", "/kind"), literalExpression("text")}}), Schema: &ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "text payload must be a string"},
+			{Path: "/usage", Schema: &ValueSchema{Type: IntegerType}, Code: InvalidInput, Reason: "usage must be an integer"},
+			{Path: "", Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true, Properties: map[string]ValueSchema{"id": {Type: StringType}}, Required: []string{"id"}}, Code: UnsupportedCapability, Reason: "response id is required"},
 		},
 	}
 	contract, err := compileWireContractSpec(spec, "/spec/documents/client-response", DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := *contract.validator.(*specWireValidator)
-	original.rootObjectReads = 0
 	for _, tc := range []struct {
 		name, raw, path, reason string
 		code                    IssueCode
@@ -42,9 +39,6 @@ func TestWireContractSpecOrderedAssertions(t *testing.T) {
 				t.Fatal(err)
 			}
 			err = contract.validator.ValidateWireOutput(EncodeResponse, value)
-			if want := original.ValidateWireOutput(EncodeResponse, value); !reflect.DeepEqual(err, want) {
-				t.Fatalf("root reuse changed the assertion error: got %v, want %v", err, want)
-			}
 			if tc.code == "" {
 				if err != nil {
 					t.Fatal(err)
@@ -67,7 +61,7 @@ func TestWireContractSpecRejectsPostMappingChanges(t *testing.T) {
 	compiled := compileTestDefinition(t, testDefinition("declared-contract", "model", "history", "tools", "answer"))
 	contract, err := compileWireContractSpec(WireContractSpec{
 		Schema:     &ValueSchema{Type: ObjectType, AllowUnknown: true},
-		Assertions: []WireAssertion{{Path: "/request", Schema: ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "request identity must be a string"}},
+		Assertions: []WireAssertion{{Path: "/request", Schema: &ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "request identity must be a string"}},
 	}, "/spec/documents/client-response", DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
@@ -104,11 +98,11 @@ func TestWireContractSpecRejectsInvalidDeclarations(t *testing.T) {
 		"missing-reason":       func(spec *WireContractSpec) { spec.Assertions[0].Reason = "" },
 		"nonboolean-condition": func(spec *WireContractSpec) { spec.Assertions[0].When = expressionPointer(literalExpression("true")) },
 		"invalid-schema": func(spec *WireContractSpec) {
-			spec.Assertions[0].Schema = ValueSchema{Type: StringType, AllowUnknown: true}
+			spec.Assertions[0].Schema = &ValueSchema{Type: StringType, AllowUnknown: true}
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			spec := WireContractSpec{Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true}, Assertions: []WireAssertion{{Path: "/id", Schema: ValueSchema{Type: StringType}, Code: InvalidInput, Reason: "id must be a string"}}}
+			spec := WireContractSpec{Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true}, Assertions: []WireAssertion{{Path: "/id", Schema: &ValueSchema{Type: StringType}, Code: InvalidInput, Reason: "id must be a string"}}}
 			change(&spec)
 			if _, err := compileWireContractSpec(spec, "/spec/documents/request", DefaultLimits()); err == nil {
 				t.Fatal("invalid wire declaration was accepted")
@@ -158,15 +152,15 @@ func TestWireContractSpecChecksSourceArrayLocations(t *testing.T) {
 		"id": {Type: StringType}, "messages": {Type: ArrayType},
 	}, Required: []string{"id", "messages"}}
 	contentCheck := WireAssertion{
-		Path: "/content", Schema: ValueSchema{Type: ArrayType}, Code: InvalidInput, Reason: "content must be an array",
+		Path: "/content", Schema: &ValueSchema{Type: ArrayType}, Code: InvalidInput, Reason: "content must be an array",
 		Each: []WireAssertion{
-			{Path: "/response_id", Schema: ValueSchema{Type: StringType}, Code: InvalidAssociation, Reason: "content belongs to another response",
+			{Path: "/response_id", Schema: &ValueSchema{Type: StringType}, Code: InvalidAssociation, Reason: "content belongs to another response",
 				Check: expressionPointer(Expression{Op: "equal", Items: []Expression{readExpression("input", ""), readExpression("root", "/id")}})},
-			{Path: "/text", Schema: ValueSchema{Type: StringType}, Code: InvalidInput, Reason: "text must be a string"},
+			{Path: "/text", Schema: &ValueSchema{Type: StringType}, Code: InvalidInput, Reason: "text must be a string"},
 		},
 	}
 	spec := WireContractSpec{Schema: rootSchema, Assertions: []WireAssertion{
-		{Path: "/messages", Schema: ValueSchema{Type: ArrayType}, Code: InvalidInput, Reason: "messages must be an array", Each: []WireAssertion{contentCheck}},
+		{Path: "/messages", Schema: &ValueSchema{Type: ArrayType}, Code: InvalidInput, Reason: "messages must be an array", Each: []WireAssertion{contentCheck}},
 	}}
 	contract, err := compileWireContractSpec(spec, "/spec/documents/provider-response", DefaultLimits())
 	if err != nil {
@@ -204,11 +198,15 @@ func TestWireContractSpecChecksSourceArrayLocations(t *testing.T) {
 }
 
 func TestWireContractSpecRejectsUnboundedOrUntypedChecks(t *testing.T) {
-	base := WireAssertion{Path: "", Schema: ValueSchema{Type: ArrayType}, Code: InvalidInput, Reason: "expected an array"}
+	base := WireAssertion{Path: "", Schema: &ValueSchema{Type: ArrayType}, Code: InvalidInput, Reason: "expected an array"}
 	for _, test := range []struct {
 		name   string
 		change func(*WireAssertion)
 	}{
+		{"missing-schema-and-check", func(check *WireAssertion) { check.Schema = nil }},
+		{"check-only-each", func(check *WireAssertion) {
+			check.Schema, check.Check, check.Each = nil, expressionPointer(literalExpression(true)), []WireAssertion{base}
+		}},
 		{"nonboolean-check", func(check *WireAssertion) { check.Check = expressionPointer(literalExpression("yes")) }},
 		{"nullable-each", func(check *WireAssertion) { check.Schema.Nullable = true; check.Each = []WireAssertion{base} }},
 		{"nonarray-each", func(check *WireAssertion) { check.Schema.Type = ObjectType; check.Each = []WireAssertion{base} }},
@@ -221,6 +219,8 @@ func TestWireContractSpecRejectsUnboundedOrUntypedChecks(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			check := base
+			schema := *base.Schema
+			check.Schema = &schema
 			test.change(&check)
 			_, err := compileWireContractSpec(WireContractSpec{Schema: &ValueSchema{Type: ArrayType}, Assertions: []WireAssertion{check}}, "/wire", DefaultLimits())
 			if err == nil {
@@ -230,13 +230,28 @@ func TestWireContractSpecRejectsUnboundedOrUntypedChecks(t *testing.T) {
 	}
 }
 
+func TestWireContractSpecCheckOnly(t *testing.T) {
+	contract, err := compileWireContractSpec(WireContractSpec{
+		Schema: &ValueSchema{Type: ObjectType, Properties: map[string]ValueSchema{"allowed": {Type: BooleanType}}},
+		Assertions: []WireAssertion{{Path: "/allowed", Check: expressionPointer(readExpression("input", "")),
+			Code: InvalidInput, Reason: "operation must be allowed"}},
+	}, "/wire", DefaultLimits())
+	if err != nil {
+		t.Fatal("check-only assertion did not infer its selected schema", err)
+	}
+	if err := contract.validator.ValidateWireOutput(DecodeRequest, Value{raw: `{"allowed":true}`}); err != nil {
+		t.Fatal(err)
+	}
+	assertPackageRuntimeIssue(t, contract.validator.ValidateWireOutput(DecodeRequest, Value{raw: `{"allowed":false}`}), InvalidInput, "/allowed")
+}
+
 func TestWireContractSpecBoundsRepeatedItemWork(t *testing.T) {
 	limits := DefaultLimits()
 	limits.Nodes = 32
-	check := WireAssertion{Path: "", Schema: ValueSchema{Type: IntegerType}, Code: InvalidInput, Reason: "integer required", Check: expressionPointer(literalExpression(true))}
+	check := WireAssertion{Path: "", Schema: &ValueSchema{Type: IntegerType}, Code: InvalidInput, Reason: "integer required", Check: expressionPointer(literalExpression(true))}
 	contract, err := compileWireContractSpec(WireContractSpec{
 		Schema:     &ValueSchema{Type: ArrayType},
-		Assertions: []WireAssertion{{Path: "", Schema: ValueSchema{Type: ArrayType}, Code: InvalidInput, Reason: "array required", Each: []WireAssertion{check, check}}},
+		Assertions: []WireAssertion{{Path: "", Schema: &ValueSchema{Type: ArrayType}, Code: InvalidInput, Reason: "array required", Each: []WireAssertion{check, check}}},
 	}, "/wire", limits)
 	if err != nil {
 		t.Fatal(err)

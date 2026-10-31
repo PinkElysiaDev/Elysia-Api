@@ -35,7 +35,7 @@ func TestDeliveryFrameUsageIsolation(t *testing.T) {
 }
 
 func TestEnvelopeStreamIdentityUsageAndCancellation(t *testing.T) {
-	c, err := CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "envelope-test", Rules: []ConversionRule{{ID: "envelope", Order: 1, Enabled: true, Phase: ConversionEvent, Action: "anthropic_usage_envelope"}}})
+	c, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "envelope-test", Rules: []ConversionRule{{ID: "envelope", Order: 1, Enabled: true, Phase: ConversionEvent, Action: "anthropic_usage_envelope"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestEventProjectionResponseVersion(t *testing.T) {
 		if action != "anthropic_usage_envelope" {
 			rule.Value = StringValue("responses")
 		}
-		conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "version-test", Rules: []ConversionRule{rule}})
+		conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "version-test", Rules: []ConversionRule{rule}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -128,7 +128,7 @@ func TestEventProjectionResponseVersion(t *testing.T) {
 
 func TestDeliveryStartKeepsEventVersion(t *testing.T) {
 	rule := ConversionRule{ID: "delivery", Enabled: true, Phase: ConversionEvent, Action: "response_envelope", Value: StringValue("responses")}
-	conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "start-version", Rules: []ConversionRule{rule}})
+	conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "start-version", Rules: []ConversionRule{rule}})
 	if err != nil {
 		t.Fatal(err)
 	}

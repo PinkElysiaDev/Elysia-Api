@@ -58,6 +58,9 @@ func (compiler *packageStreamCompiler) compileItemSelectors(spec ProtocolStreamA
 		return fmt.Errorf("%s: property and child-count expressions require their diagnostic pointers", path)
 	}
 	isItem := slices.Contains([]EventType{ItemStarted, ItemDelta, ItemSnapshot, ItemFinished}, event.action)
+	if isItem && event.itemID.path == "" {
+		return fmt.Errorf("%s/itemId: item actions require an identity selector", path)
+	}
 	if !isItem && (spec.ParentID != "" || spec.ParentIDValue != nil || spec.Ordinal != "" || spec.OrdinalValue != nil || spec.WireID != "" || spec.Role != "" || spec.Status != "" || spec.Properties != nil || spec.ChildrenCount != nil) {
 		return fmt.Errorf("%s: item selectors require an item lifecycle action", path)
 	}

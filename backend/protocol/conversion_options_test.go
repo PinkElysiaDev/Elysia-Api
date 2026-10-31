@@ -4,7 +4,7 @@ import "testing"
 
 func TestCompiledOptionsKeepOverridesAndErrorTiming(t *testing.T) {
 	rule := ConversionRule{ID: "option", Order: 1, Enabled: true, Phase: ConversionRequest, Action: "stream_options", Value: StringValue("anthropic")}
-	c, err := CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "options", Rules: []ConversionRule{rule}})
+	c, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "options", Rules: []ConversionRule{rule}})
 	if err != nil {
 		t.Fatal(err)
 	}

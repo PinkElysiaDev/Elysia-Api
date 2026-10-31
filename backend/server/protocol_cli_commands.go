@@ -30,7 +30,7 @@ func protocolCommands() []*cliCommand {
 		action, summary, usage string
 		flags                  []cliFlagSpec
 	}{
-		{"draft", "写入协议草稿并校验定义", "elysia protocol draft '<schemaVersion=3 spec/mapping JSON>'", nil},
+		{"draft", "写入协议草稿并校验定义", "elysia protocol draft '<schemaVersion=4 spec/mapping JSON>'", nil},
 		{"preview", "预览请求、响应、事件或工作流", "elysia protocol preview --sample '<JSON>' [--direction <direction>] [--sequence] [--mode mapping|session|task|models|agent]", []cliFlagSpec{{name: "sample"}, {name: "direction"}, {name: "sequence", boolean: true}, {name: "mode"}, {name: "sample-id"}, {name: "operation"}, {name: "kind"}, {name: "purpose"}}},
 		{"test", "验证真实上游契约（受权限策略控制）", "elysia protocol test --operation <id> --sample '<semantic request JSON>' [--base-url <URL>] [--api-key <key>]", []cliFlagSpec{{name: "operation"}, {name: "sample"}, {name: "base-url"}, {name: "api-key"}}},
 		{"models", "按声明操作验证真实上游模型目录（受权限策略控制）", "elysia protocol models [--base-url <URL>] [--api-key <key>]", []cliFlagSpec{{name: "base-url"}, {name: "api-key"}}},

@@ -62,6 +62,33 @@ func TestPackageDocumentIdentityFollowsReferences(t *testing.T) {
 	}
 }
 
+func TestPackageDirectionIdentityIncludesSpecReferences(t *testing.T) {
+	document := textProtocolPackage(t)
+	document.Spec.Expressions = map[string]Expression{
+		"outer": {Op: "ref", Ref: "inner"},
+		"inner": literalExpression(true),
+	}
+	contract := WireContractSpec{Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true}, Assertions: []WireAssertion{{
+		Path: "/guarded", Schema: &ValueSchema{Type: StringType}, Code: InvalidInput, Reason: "declared check",
+		When: &Expression{Op: "ref", Ref: "outer"},
+	}}}
+	document.Spec.Documents["provider-response"] = contract
+	document.Spec.Documents["checked-final"] = contract
+	entry := document.Mapping.Directions[EncodeResponse]
+	entry.FinalDocument = "checked-final"
+	document.Mapping.Directions[EncodeResponse] = entry
+	before := compilePackageForTest(t, document)
+	document.Spec.Expressions["inner"] = literalExpression(false)
+	after := compilePackageForTest(t, document)
+	for _, direction := range []Direction{DecodeRequest, EncodeRequest, DecodeResponse, EncodeResponse} {
+		isChanged := before.mappings[direction].definitionHash != after.mappings[direction].definitionHash
+		usesReference := direction == DecodeResponse || direction == EncodeResponse
+		if isChanged != usesReference {
+			t.Fatal("direction identity lost its own spec dependency or included an unrelated document", direction, isChanged)
+		}
+	}
+}
+
 func TestPackageFinalDocumentIdentityAndBinding(t *testing.T) {
 	contract := WireContractSpec{Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true}}
 	for _, direction := range []Direction{EncodeRequest, EncodeResponse} {
@@ -73,7 +100,7 @@ func TestPackageFinalDocumentIdentityAndBinding(t *testing.T) {
 			document.Mapping.Directions[direction] = entry
 			before := compilePackageForTest(t, document)
 			changed := contract
-			changed.Assertions = []WireAssertion{{Path: "/required", Schema: ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "required field must be a string"}}
+			changed.Assertions = []WireAssertion{{Path: "/required", Schema: &ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "required field must be a string"}}
 			document.Spec.Documents["delivered-output"] = changed
 			after := compilePackageForTest(t, document)
 			if before.Hash() == after.Hash() || before.mappings[direction].definitionHash == after.mappings[direction].definitionHash {

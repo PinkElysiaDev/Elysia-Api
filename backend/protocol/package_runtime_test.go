@@ -126,7 +126,7 @@ func TestPackageRuntimeRetainsWireAndEffectChecks(t *testing.T) {
 			path = "/reply"
 		}
 		contract := document.Spec.Documents[document.Mapping.Directions[direction].Document]
-		contract.Assertions = []WireAssertion{{Path: path, Schema: ValueSchema{Type: StringType, Enum: []Value{StringValue("allowed")}}, Code: ConversionRejected, Reason: "synthetic wire rule"}}
+		contract.Assertions = []WireAssertion{{Path: path, Schema: &ValueSchema{Type: StringType, Enum: []Value{StringValue("allowed")}}, Code: ConversionRejected, Reason: "synthetic wire rule"}}
 		document.Spec.Documents[document.Mapping.Directions[direction].Document] = contract
 	}
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {

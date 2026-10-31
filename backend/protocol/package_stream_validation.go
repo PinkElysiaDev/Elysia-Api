@@ -58,13 +58,16 @@ func newPackageStreamValidation(contract *compiledPackageStreamContract, target 
 }
 
 func (state *packageStreamValidation) consume(ctx context.Context, frame Value) error {
+	return state.consumeInputView(ctx, newInputView(frame))
+}
+
+func (state *packageStreamValidation) consumeInputView(ctx context.Context, view *inputView) error {
 	defer func() {
 		state.pendingSlotBytes, state.hasPendingSlots = 0, false
 	}()
 	state.frameNumber++
-	reader := newNativeComparisonReader(frame)
-	objects := &planObjectReader{root: spanIdentity(frame.raw)}
-	conditions := evaluation{ctx: ctx, input: frame, root: frame, valueReader: reader, objectReader: objects, streamSlots: state.slots,
+	frame := view.value
+	conditions := evaluation{ctx: ctx, input: frame, root: frame, inputView: view, valueReader: &view.borrowed, objectReader: view.objectReader(), streamSlots: state.slots,
 		budget: &evaluationBudget{limits: state.replay.limits, stepLimit: state.replay.limits.Nodes}}
 	if state.contract.bindingSlots != 0 {
 		conditions.bindings = make([]JSONOutput, state.contract.bindingSlots)

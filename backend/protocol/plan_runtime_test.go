@@ -142,8 +142,12 @@ func TestPlannedCoreDecodingSchemaAndPackageBoundaries(t *testing.T) {
 		t.Fatal("semantic output schema bypassed its JSON boundary")
 	}
 
-	compiled.packagePlan = &compiledPackagePlan{coreVersion: 2}
-	comparePlannedCoreDecode[Request](t, t.Context(), compiled, DecodeRequest, Value{raw: `{"model":"m","schemaVersion":1}`}, EvaluationContext{})
+	document := textProtocolPackage(t)
+	direction := document.Mapping.Directions[DecodeRequest]
+	direction.Program.Fields["schemaVersion"] = literalExpression(1)
+	document.Mapping.Directions[DecodeRequest] = direction
+	compiled = compilePackageForTest(t, document)
+	comparePlannedCoreDecode[Request](t, t.Context(), compiled, DecodeRequest, Value{raw: `{"model":"m","prompt":"hello"}`}, EvaluationContext{})
 }
 
 func TestPlannedCoreDecodingOwnsMutableContainers(t *testing.T) {

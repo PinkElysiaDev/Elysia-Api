@@ -48,7 +48,7 @@ func TestCollectorAppliesStartupConversion(t *testing.T) {
 		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 	defer provider.Close()
-	conversion, err := p.ResolveConversion(p.ConversionPolicy{SchemaVersion: 1, ID: "review", Rules: []p.ConversionRule{{ID: "chat-stream-identity", Enabled: true, Phase: p.ConversionSourceEvent, Action: "chat_stream_identity"}}})
+	conversion, err := p.ResolveConversion(p.ConversionPolicy{SchemaVersion: p.ConversionPolicySchemaVersion, ID: "review", Rules: []p.ConversionRule{{ID: "chat-stream-identity", Enabled: true, Phase: p.ConversionSourceEvent, Action: "chat_stream_identity"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,8 +86,8 @@ func TestCollectorAppliesStartupConversion(t *testing.T) {
 	}
 	candidate.conversion = conversion
 	for _, policy := range []p.ConversionPolicy{
-		{SchemaVersion: 1, ID: "strict", Mode: "strict", Rules: conversion.Policy.Rules},
-		{SchemaVersion: 1, ID: "disabled", Rules: []p.ConversionRule{{ID: "chat-stream-identity", Enabled: false, Phase: p.ConversionSourceEvent, Action: "chat_stream_identity"}}},
+		{SchemaVersion: p.ConversionPolicySchemaVersion, ID: "strict", Mode: "strict", Rules: conversion.Policy.Rules},
+		{SchemaVersion: p.ConversionPolicySchemaVersion, ID: "disabled", Rules: []p.ConversionRule{{ID: "chat-stream-identity", Enabled: false, Phase: p.ConversionSourceEvent, Action: "chat_stream_identity"}}},
 	} {
 		candidate.conversion, err = p.ResolveConversion(policy)
 		if err != nil {

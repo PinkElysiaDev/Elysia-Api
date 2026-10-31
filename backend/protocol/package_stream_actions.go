@@ -16,6 +16,7 @@ type streamActionFrame struct {
 	slots              []Value
 	slotBytes          int
 	hasStagedSlots     bool
+	slotUpdates        []Value
 }
 
 func (state *packageStreamValidation) fieldReader(input evaluation) func(streamField) (Value, error) {
@@ -27,7 +28,7 @@ func (state *packageStreamValidation) fieldReader(input evaluation) func(streamF
 		if field.value != nil {
 			value, err := field.value.evaluate(selected)
 			if err != nil {
-				return Value{}, state.issue(field.path, "stream identity expression failed", err)
+				return Value{}, state.issue(field.path, "stream field expression failed", err)
 			}
 			return value, nil
 		}
@@ -79,7 +80,7 @@ func (frame *streamActionFrame) consume(actions []compiledPackageStreamEvent, in
 			if action.isAssertion {
 				err = validateWireAssertions(action.assertions, input, path)
 			} else {
-				err = frame.stageSlots(input)
+				err = frame.stageSlots(action.updates, input)
 			}
 			if err != nil {
 				return err

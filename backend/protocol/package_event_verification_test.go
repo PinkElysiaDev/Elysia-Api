@@ -89,7 +89,7 @@ func TestPackageEventCombinationUsesFinalDeliveredPosition(t *testing.T) {
 				objectExpression(map[string]Expression{"seq": literalExpression(41)}),
 			}}
 			program := Expression{Op: "if", When: &condition, Then: &replacement, Otherwise: expressionPointer(readExpression("input", ""))}
-			conversion, err := ResolveConversion(ConversionPolicy{SchemaVersion: 1, ID: "final-position", Mode: "compatible", Rules: []ConversionRule{{
+			conversion, err := ResolveConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "final-position", Mode: "compatible", Rules: []ConversionRule{{
 				ID: "edit-sequence", Order: 1, Enabled: true, Phase: ConversionWire, Action: "transform", Expression: &program,
 			}}})
 			if err != nil {

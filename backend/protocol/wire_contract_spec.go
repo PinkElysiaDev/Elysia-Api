@@ -18,15 +18,16 @@ type WireContractSpec struct {
 }
 
 // WireAssertion checks one wire location when its optional condition is true.
-// An empty path selects the document; a missing selection fails validation.
+// An empty path selects the document; a declared schema rejects missing values.
 // When observes the containing document, Check observes the selected value,
 // and root always observes the original document. Each checks array members in
 // source order, keeping diagnostic paths tied to the wire rather than output
-// positions. Optional fields use an explicit exists condition.
+// positions. Optional fields use an explicit exists condition. Schema may be
+// omitted for a check-only assertion; each always requires an array schema.
 type WireAssertion struct {
 	Path   string          `json:"path"`
 	When   *Expression     `json:"when,omitempty"`
-	Schema ValueSchema     `json:"schema"`
+	Schema *ValueSchema    `json:"schema,omitempty"`
 	Code   IssueCode       `json:"code"`
 	Reason string          `json:"reason,omitempty"`
 	Check  *Expression     `json:"check,omitempty"`
@@ -41,26 +42,26 @@ type WireAssertion struct {
 }
 
 type compiledWireAssertion struct {
-	path       string
-	pointer    []string
-	when       *compiledOutputPlan
-	schema     *wireSchemaPlan
-	code       IssueCode
-	reason     string
-	reasonPlan *compiledOutputPlan
-	check      *compiledOutputPlan
-	each       []compiledWireAssertion
-	diagnostic *RejectDiagnostic
+	path           string
+	pointer        []string
+	when           *compiledOutputPlan
+	validateSchema func(context.Context, Value, string, Limits, *inputView) error
+	code           IssueCode
+	reason         string
+	reasonPlan     *compiledOutputPlan
+	check          *compiledOutputPlan
+	each           []compiledWireAssertion
+	diagnostic     *RejectDiagnostic
 }
 
 type specWireValidator struct {
-	schema          *wireSchemaPlan
-	assertions      []compiledWireAssertion
-	limits          Limits
-	rootObjectReads int
+	schema     *wireSchemaPlan
+	assertions []compiledWireAssertion
+	limits     Limits
 }
 
-func compileWireContractSpec(spec WireContractSpec, path string, limits Limits) (compiledWireContract, error) {
+func (expressions *expressionCompiler) compileWireContractSpec(spec WireContractSpec, path string) (compiledWireContract, error) {
+	limits := expressions.limits
 	if spec.Schema == nil {
 		return compiledWireContract{}, fmt.Errorf("%s/schema: wire schema is required", path)
 	}
@@ -69,36 +70,15 @@ func compileWireContractSpec(spec WireContractSpec, path string, limits Limits) 
 		return compiledWireContract{}, locateMappingError(path+"/schema", err)
 	}
 	validator := &specWireValidator{schema: schema, limits: limits}
-	expressions := &expressionCompiler{limits: limits}
 	validator.assertions, err = compileWireAssertions(spec.Assertions, path+"/assertions", spec.Schema, spec.Schema, expressions, 1)
 	if err != nil {
 		return compiledWireContract{}, err
 	}
-	validator.rootObjectReads = countAssertionRootReads(validator.assertions)
-	stream, err := compilePackageStreamContract(spec.Stream, path+"/stream", limits)
+	stream, err := expressions.compilePackageStreamContract(spec.Stream, path+"/stream")
 	if err != nil {
 		return compiledWireContract{}, err
 	}
 	return compiledWireContract{validator: validator, contextValidator: validator, packageStream: stream}, nil
-}
-
-func countAssertionRootReads(assertions []compiledWireAssertion) int {
-	reads := 0
-	for _, assertion := range assertions {
-		if len(assertion.pointer) != 0 {
-			reads++
-		}
-		for _, predicate := range []*compiledOutputPlan{assertion.when, assertion.check} {
-			if predicate != nil {
-				reads += int(predicate.rootObjectReads)
-			}
-		}
-		reads += countAssertionRootReads(assertion.each)
-		if reads >= objectReuseReads {
-			return objectReuseReads
-		}
-	}
-	return reads
 }
 
 func compileWireAssertions(assertions []WireAssertion, path string, input, root *ValueSchema, expressions *expressionCompiler, depth int) ([]compiledWireAssertion, error) {
@@ -139,27 +119,47 @@ func compileWireAssertionsInScope(assertions []WireAssertion, path string, scope
 		if err != nil {
 			return nil, err
 		}
-		check.schema, err = compileWireSchemaPlan(&assertion.Schema, expressions.limits)
-		if err != nil {
-			return nil, locateMappingError(at+"/schema", err)
-		}
 		selected := scope
-		selected.input = &assertion.Schema
+		if assertion.Schema == nil {
+			if assertion.Check == nil || len(assertion.Each) != 0 {
+				return nil, fmt.Errorf("%s: an assertion without schema requires check and cannot use each", at)
+			}
+			selected.input, err = schemaAtPointer(scope.input, pointer)
+			if err != nil {
+				return nil, locateMappingError(at+"/path", err)
+			}
+			check.validateSchema = acceptWireCheckSelection
+		} else {
+			schema, schemaErr := compileWireSchemaPlan(assertion.Schema, expressions.limits)
+			if schemaErr != nil {
+				return nil, locateMappingError(at+"/schema", schemaErr)
+			}
+			check.validateSchema = schema.validateWithin
+			selected.input = assertion.Schema
+		}
 		check.check, err = compileWirePredicateInScope(assertion.Check, at+"/check", selected, expressions, depth)
 		if err != nil {
 			return nil, err
 		}
-		if len(assertion.Each) != 0 && (assertion.Schema.Type != ArrayType || assertion.Schema.Nullable) {
-			return nil, fmt.Errorf("%s/each: requires a non-nullable array schema", at)
-		}
-		selected.input = assertion.Schema.Items
-		check.each, err = compileWireAssertionsInScope(assertion.Each, at+"/each", selected, expressions, depth+1)
-		if err != nil {
-			return nil, err
+		if len(assertion.Each) != 0 {
+			if assertion.Schema.Type != ArrayType || assertion.Schema.Nullable {
+				return nil, fmt.Errorf("%s/each: requires a non-nullable array schema", at)
+			}
+			selected.input = assertion.Schema.Items
+			check.each, err = compileWireAssertionsInScope(assertion.Each, at+"/each", selected, expressions, depth+1)
+			if err != nil {
+				return nil, err
+			}
 		}
 		checks = append(checks, check)
 	}
 	return checks, nil
+}
+
+// A check-only assertion observes the selected value without adding a second
+// shape traversal. Its predicate determines how to handle an absent selection.
+func acceptWireCheckSelection(context.Context, Value, string, Limits, *inputView) error {
+	return nil
 }
 
 func compileWirePredicateInScope(expression *Expression, path string, scope expressionScope, compiler *expressionCompiler, depth int) (*compiledOutputPlan, error) {
@@ -202,10 +202,18 @@ func (validator *specWireValidator) ValidateWireOutput(direction Direction, valu
 }
 
 func (validator *specWireValidator) validate(ctx context.Context, direction Direction, value Value, effectiveLimits Limits) error {
+	return validator.validateInputView(ctx, direction, newInputView(value), effectiveLimits)
+}
+
+func (validator *specWireValidator) validateInputView(ctx context.Context, direction Direction, view *inputView, effectiveLimits Limits) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := validator.schema.validate(ctx, value, "", effectiveLimits); err != nil {
+	if view.validator == validator && view.direction == direction && view.specLimits == effectiveLimits {
+		return nil
+	}
+	value := view.value
+	if err := validator.schema.validateWithin(ctx, value, "", effectiveLimits, view); err != nil {
 		code := InvalidInput
 		if direction == DecodeResponse || direction == DecodeEvent {
 			code = UpstreamContractViolation
@@ -214,9 +222,12 @@ func (validator *specWireValidator) validate(ctx context.Context, direction Dire
 		}
 		return wireAssertionError(code, mappingErrorPath("", err), "wire document does not match its declared schema", err)
 	}
-	reader := newNativeComparisonReader(value)
-	state := evaluation{ctx: ctx, input: value, root: value, valueReader: reader, objectReader: newPlanObjectReader(value, validator.rootObjectReads), budget: &evaluationBudget{limits: effectiveLimits, stepLimit: effectiveLimits.Nodes}}
-	return validateWireAssertions(validator.assertions, state, "")
+	state := evaluation{ctx: ctx, input: value, root: value, inputView: view, valueReader: &view.borrowed, objectReader: view.objectReader(), budget: &evaluationBudget{limits: effectiveLimits, stepLimit: effectiveLimits.Nodes}}
+	if err := validateWireAssertions(validator.assertions, state, ""); err != nil {
+		return err
+	}
+	view.validator, view.direction, view.specLimits = validator, direction, effectiveLimits
+	return nil
 }
 
 func validateWireAssertions(assertions []compiledWireAssertion, state evaluation, parentPath string) error {
@@ -241,7 +252,7 @@ func validateWireAssertions(assertions []compiledWireAssertion, state evaluation
 		}
 		selected, err := readValuePointerWithObjectReader(state.input, assertion.pointer, state.valueReader, state.objectReader)
 		if err == nil {
-			err = assertion.schema.validate(ctx, selected, path, state.budget.limits)
+			err = assertion.validateSchema(ctx, selected, path, state.budget.limits, state.inputView)
 		}
 		if err != nil {
 			return assertion.failure(state, path, err)

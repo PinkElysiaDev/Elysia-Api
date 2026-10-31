@@ -512,10 +512,12 @@ Details: Update a key under server permissions and business policies: rename (ne
 
 ## protocol
 
-All commands use the running v2 engine. Read the vendor documentation and complete
-examples, then `elysia protocol schema`. Declare independent directions,
-transports, capabilities, mappings and expected fixtures in a complete
-`schemaVersion: 2` definition. Legacy shape templates are import-only.
+All commands use the installed compiler. Read the vendor documentation and complete
+examples, then `elysia protocol schema`. Author one `schemaVersion: 4` package:
+`spec` describes external documents and transports; `mapping` declares bidirectional
+conversion, capabilities and samples, with `dslVersion: 2` and `coreVersion: 2`.
+Save and verify the two sources together. Changing a version number does not
+translate an older document into the new format.
 
 The workflow is draft ? validate/preview/verify ? repair ? save ? activate.
 Unsupported mechanisms must be reported; do not delete required fields/tools,
@@ -533,12 +535,14 @@ elysia protocol schema [--section <section>] [--type <type>]
 
 Without a section, return the installed compiler/schema version, features,
 directions, transports, operation kinds and capabilities. Sections are
-`definition`, `semantic`, `binding`, `directions`, `capabilities`, `operations`,
+`package`, `spec`, `mapping`, `definition`, `semantic`, `binding`, `directions`, `capabilities`, `operations`,
 `events`, `diagnostics`, `modules`. `--type` selects a named type from a section
 containing `$defs`; it is not valid for a list catalog.
 
 ```text
-elysia protocol schema --section definition --type Definition
+elysia protocol schema --section package --type ProtocolPackage
+elysia protocol schema --section spec --type ProtocolSpec
+elysia protocol schema --section mapping --type ProtocolMapping
 elysia protocol schema --section semantic --type Request
 elysia protocol schema --section operations
 ```
@@ -546,20 +550,24 @@ elysia protocol schema --section operations
 ### protocol draft
 
 ```text
-elysia protocol draft '<complete schemaVersion=2 JSON>'
+elysia protocol draft '<schemaVersion=4 spec/mapping JSON>'
 ```
 
-The sole positional argument is the complete definition, not a patch. Retain the
+The sole positional argument is the complete spec/mapping package, not a patch. Retain the
 working draft in this tool context and compile it. A malformed definition is
 retained for repair but reports failure; it is not persisted or activated. Edit
 mode must retain the selected protocol ID. REST/A2A use session context; stateless
 MCP callers keep dependent draft operations in one command batch. `read` returns
 stored content; pass edited content through `draft` to set the working draft.
 
-Complete standalone examples: [text-alpha](../backend/protocol/testdata/text-alpha.json),
-[text-beta](../backend/protocol/testdata/text-beta.json), and
-[cached-text](examples/cached-text-v2.json). See the
-[definition reference](protocol-definition-reference.en.md) for the contract.
+A standalone source-pair fixture is available as
+[session-alpha Spec](../backend/protocol/testdata/sessions/session-alpha/spec.json) and
+[session-alpha Mapping](../backend/protocol/testdata/sessions/session-alpha/mapping.json).
+Supply both as `{"schemaVersion":4,"spec":<spec JSON>,"mapping":<mapping JSON>}`.
+Use the installed package, spec and mapping schema sections for the complete contract.
+The shipped-provider candidates under `backend/protocol/builtin/packages/` still
+require their own functionality and activation evidence; the existence of source
+files does not make them active presets.
 
 ### protocol validate
 

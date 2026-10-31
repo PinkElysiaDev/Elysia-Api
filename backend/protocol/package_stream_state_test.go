@@ -121,3 +121,30 @@ func TestPackageStreamStateCompilation(t *testing.T) {
 		t.Fatal("unbound stateful event mapping executed")
 	}
 }
+
+func TestPackageStateMetersMaterializedSlots(t *testing.T) {
+	limits := DefaultLimits()
+	limits.StateItems = 1
+	declarations := map[string]ProtocolStateSlot{}
+	for _, name := range []string{"first", "second"} {
+		declarations[name] = ProtocolStateSlot{
+			Schema: ValueSchema{Type: ArrayType, Items: &ValueSchema{Type: IntegerType}},
+			Update: literalExpression([]int{1, 2, 3}),
+		}
+	}
+	plan, err := compilePackageState(declarations, nil, DecodeEvent, "/state", newExpressionCompiler(limits, nil), &expressionScope{})
+	if err != nil {
+		t.Fatal("fixed slots consumed the dynamic association limit", err)
+	}
+	limits.Nodes = 5 // Array delimiters and three scalar tokens.
+	state := evaluation{ctx: t.Context(), budget: &evaluationBudget{limits: limits, stepLimit: DefaultLimits().Nodes}}
+	slots, bytes, err := evaluatePackageStateSlots(plan, plan.initial, state)
+	if err != nil || bytes != len(`[1,2,3]`)*2 || len(slots) != 2 {
+		t.Fatal("independent materialized values shared a node budget", slots, bytes, err)
+	}
+	limits.Nodes = 4
+	state.budget.limits = limits
+	if _, _, err := evaluatePackageStateSlots(plan, plan.initial, state); err == nil {
+		t.Fatal("a materialized slot exceeded its own node budget")
+	}
+}

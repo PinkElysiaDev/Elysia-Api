@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "spec": {
     "id": "history-prototype-anthropic",
     "name": "History control prototype: anthropic",
@@ -124,7 +124,7 @@
   },
   "mapping": {
     "coreVersion": 2,
-    "dslVersion": 1,
+    "dslVersion": 2,
     "capabilities": {
       "text": true,
       "reasoning.history_retention": true

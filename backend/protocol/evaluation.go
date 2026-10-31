@@ -9,6 +9,7 @@ type evaluation struct {
 	budget                     *evaluationBudget
 	valueReader                *valueReader
 	objectReader               *planObjectReader
+	inputView                  *inputView
 	inputReader, rootReader    func([]string) (JSONOutput, error)
 	itemOutput                 *JSONOutput
 	itemIndex                  int

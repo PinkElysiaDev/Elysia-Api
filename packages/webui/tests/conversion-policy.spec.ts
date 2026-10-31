@@ -18,7 +18,7 @@ test('real backend include and usage projections share preview and strict bounda
   expect(result.effective.origins['responses-include']).toBe('engine-default')
   expect(result.persistentWrites).toBe(false)
   expect(result.issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'conversion_normalized', severity: 'info', fidelity: 'preserved', path: '/include', ruleId: 'responses-include', stage: 'conversion.request' })]))
-  const policy = { schemaVersion: 1, id: 'strict-preview', mode: 'strict', rules: [] }
+  const policy = { schemaVersion: 2, id: 'strict-preview', mode: 'strict', rules: [] }
   const context = { source: { definitionId: 'google-generate-content' }, target: { definitionId: 'anthropic-messages' } }
   const input = { schemaVersion: 1, source: {}, content: [], usage: { input: { count: 4, origin: 'observed' }, output: { count: 5, origin: 'observed' }, details: { 'output.reasoning_tokens': { count: 3, origin: 'observed' } } } }
   const preserved = await request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: { policy, context, input, phase: 'response' } })
@@ -55,7 +55,7 @@ test('real backend context preview preserves null intent, rejects unsupported hi
   const list = async () => (await (await request.get(`${base}/api/admin/protocols/conversion-policies`, { headers })).json()).data
   const before = await list()
   const preview = (parameters: object, target = 'google-generate-content', disabled = false) => request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: {
-    policy: { schemaVersion: 1, id: 'context-preview', mode: 'strict', rules: disabled ? [{ id: 'responses-context', order: 185, enabled: false, phase: 'request', match: {}, action: 'responses_context', value: 'gemini' }] : [] },
+    policy: { schemaVersion: 2, id: 'context-preview', mode: 'strict', rules: disabled ? [{ id: 'responses-context', order: 185, enabled: false, phase: 'request', match: {}, action: 'responses_context', value: 'gemini' }] : [] },
     phase: 'request', context: { source: { definitionId: 'openai-responses' }, target: { definitionId: target } },
     input: { schemaVersion: 1, source: {}, content: [], parameters: { store: false, ...parameters } },
   } })
@@ -88,7 +88,7 @@ test('real backend storage and required usage policies expose explicit client pr
   const base = process.env.PROTOCOL_E2E_URL!
   const headers = { Authorization: `Bearer ${process.env.PROTOCOL_E2E_TOKEN}` }
   const preview = (mode: string, phase: string, input: unknown) => request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: {
-    policy: { schemaVersion: 1, id: 'envelope-preview', mode, rules: [] }, phase, input,
+    policy: { schemaVersion: 2, id: 'envelope-preview', mode, rules: [] }, phase, input,
     context: phase === 'request' ? { source: { definitionId: 'openai-responses' }, target: { definitionId: 'google-generate-content' } } : { source: { definitionId: 'google-generate-content' }, target: { definitionId: 'anthropic-messages' }, model: 'chosen-model' },
   } })
   for (const store of [undefined, null, true, false, 42]) {
@@ -167,7 +167,7 @@ test('dev25 metadata and conversation projections are configurable in the existi
   if (action.startsWith('response_')) {await page.getByLabel('规则 1 目标编码器').selectOption('openai-chat')}
  }
  const input={schemaVersion:1,source:{},id:'r',model:'m',content:[],metadata:[{name:'system_fingerprint',location:'response',codec:'openai-chat',sourceCodec:'openai-chat',path:'/system_fingerprint',value:'fp_observed'}]}
- const preview=(mode:string)=>request.post(`${base}/api/admin/protocols/conversion-policies/preview`,{headers,data:{policy:{schemaVersion:1,id:'audit-preview',mode,rules:[]},phase:'response',context:{source:{definitionId:'openai-chat-completions'},target:{definitionId:'anthropic-messages'}},input}})
+ const preview=(mode:string)=>request.post(`${base}/api/admin/protocols/conversion-policies/preview`,{headers,data:{policy:{schemaVersion:2,id:'audit-preview',mode,rules:[]},phase:'response',context:{source:{definitionId:'openai-chat-completions'},target:{definitionId:'anthropic-messages'}},input}})
  const result=await preview('compatible')
  expect(result.ok()).toBeTruthy()
  const data=(await result.json()).data
@@ -190,7 +190,7 @@ test('request hint projection exposes info losses and strict rejection in the sh
   await page.getByLabel('规则 1 目标编码器').selectOption('gemini')
   const input = { schemaVersion: 1, source: {}, content: [], cache: [{ kind: 'key', location: 'request', value: 'anonymous-session' }], parameters: { store: false, metadata: { trace: 'opaque' }, user: 'anonymous' } }
   const preview = (mode: string) => request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: {
-    policy: { schemaVersion: 1, id: 'request-hints', mode, rules: [] }, phase: 'request', input,
+    policy: { schemaVersion: 2, id: 'request-hints', mode, rules: [] }, phase: 'request', input,
     context: { source: { definitionId: 'openai-responses' }, target: { definitionId: 'google-generate-content' } },
   } })
   const compatible = await preview('compatible')

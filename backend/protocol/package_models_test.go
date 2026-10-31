@@ -106,7 +106,7 @@ func TestPackageModelsValidateWireBeforeProgram(t *testing.T) {
 	delete(document.Mapping.Expressions, "catalog-page")
 	document.Mapping.Operations["models"] = ProtocolOperationMapping{DecodeModels: expressionPointer(literalExpression(ModelPage{Models: []DiscoveredModel{}}))}
 	wire := document.Spec.Documents["catalog-page"]
-	wire.Assertions = []WireAssertion{{Path: "/valid", Schema: ValueSchema{Type: BooleanType, Enum: []Value{Value{raw: "true"}}}, Code: UpstreamContractViolation, Reason: "invalid catalog wire"}}
+	wire.Assertions = []WireAssertion{{Path: "/valid", Schema: &ValueSchema{Type: BooleanType, Enum: []Value{Value{raw: "true"}}}, Code: UpstreamContractViolation, Reason: "invalid catalog wire"}}
 	document.Spec.Documents["catalog-page"] = wire
 	compiled := compilePackageForTest(t, document)
 	_, err := compiled.DecodeModelPage(t.Context(), "models", parseTestValue(t, `{"valid":false}`))

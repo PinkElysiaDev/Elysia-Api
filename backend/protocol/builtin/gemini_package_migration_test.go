@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"os"
-	"strings"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
@@ -88,6 +87,14 @@ func TestGeminiPackageDraftMigration(t *testing.T) {
 	} {
 		t.Run("boundary/"+fixture.name, func(t *testing.T) {
 			options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
+			if fixture.name == "idless-ambiguous" {
+				_, err := draft.DecodeRequest(t.Context(), []byte(fixture.wire), options)
+				issue := requirePackageIssue(t, err, p.InvalidAssociation)
+				if issue.Direction != p.DecodeRequest || issue.Path != "/contents/1/parts/0/functionResponse/name" {
+					t.Fatal("ambiguous result lost its original wire location", issue)
+				}
+				return
+			}
 			sample := p.Sample{Direction: fixture.direction, Input: testValue(t, fixture.wire)}
 			compareGeminiMigration(t, legacy, draft, sample, options)
 		})
@@ -261,13 +268,10 @@ func checkGeminiOwnerBucket(t *testing.T, legacy, draft *p.Compiled, options p.E
 				checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
 				return
 			}
-			var oldFailure, newFailure *p.ConversionError
-			if !errors.As(wantErr, &oldFailure) || len(oldFailure.Issues) != 1 || oldFailure.Issues[0].Code != p.InvalidInput || oldFailure.Issues[0].Stage != "runtime" || !strings.Contains(wantErr.Error(), "expected JSON object") ||
-				!errors.As(gotErr, &newFailure) || len(newFailure.Issues) != 1 || newFailure.Issues[0].Code != p.InvalidInput || newFailure.Issues[0].Stage != "evaluate" ||
-				!strings.HasSuffix(newFailure.Issues[0].Path, "/@encode-system-envelope/body/source") || !strings.Contains(gotErr.Error(), "JSON pointer traverses a scalar") || errors.Unwrap(gotErr) == nil {
-				t.Fatal("null owner acceptance or existing rejection point changed", wantErr, gotErr)
+			issue := requirePackageIssue(t, gotErr, p.InvalidInput)
+			if issue.Direction != p.EncodeRequest || issue.Path != "/mapping/expressions/encode-system-envelope/body/source" || errors.Unwrap(gotErr) == nil {
+				t.Fatal("invalid owner lost its mapping location or cause", gotErr)
 			}
-			t.Log("NOT CLOSED: existing null owner rejection differs; draft rejects the system-extension child read before the root guard", wantErr, gotErr)
 		})
 	}
 }
@@ -349,6 +353,15 @@ func checkGeminiReasoningMigration(t *testing.T, legacy, draft *p.Compiled) {
 	} {
 		t.Run("thinking/reject-"+fixture.name, func(t *testing.T) {
 			request := p.Request{SchemaVersion: p.SemanticSchemaVersion, Model: p.StringValue("m"), Content: []p.Node{}, Reasoning: fixture.reasoning, Parameters: fixture.parameters}
+			if fixture.name == "canonical-conflict" {
+				request.SchemaVersion = p.ProtocolCoreVersion
+				_, err := draft.EncodeRequest(t.Context(), &request, options)
+				issue := requirePackageIssue(t, err, p.InvalidInput)
+				if issue.Direction != p.EncodeRequest || issue.Path != "/mapping/expressions/encode-thinking/then/source" {
+					t.Fatal("conflicting reasoning controls lost their mapping location", issue)
+				}
+				return
+			}
 			input, err := p.EncodeValue(request)
 			if err != nil {
 				t.Fatal(err)
@@ -521,10 +534,6 @@ var geminiMigrationGaps = map[string]packageMigrationGap{
 			"/content/5/children/0/source/path",
 		},
 	},
-	"TestGeminiPackageDraftMigration/boundary/idless-ambiguous": {
-		reason:    "ambiguous idless result remains rejected, but mapping diagnostics differ",
-		rejection: true,
-	},
 	"TestGeminiPackageDraftMigration/boundary/system-wrapper": {
 		reason:                   "legacy system parts use the synthetic /system path; capture_native preserves /systemInstruction/parts",
 		isApprovedRepresentation: true,
@@ -568,10 +577,6 @@ var geminiMigrationGaps = map[string]packageMigrationGap{
 		rejection: true,
 	},
 	"TestGeminiPackageDraftMigration/thinking/reject-negative-budget": {
-		reason:    "Gemini reasoning rejection retains acceptance but has different wire/mapping diagnostics",
-		rejection: true,
-	},
-	"TestGeminiPackageDraftMigration/thinking/reject-canonical-conflict": {
 		reason:    "Gemini reasoning rejection retains acceptance but has different wire/mapping diagnostics",
 		rejection: true,
 	},

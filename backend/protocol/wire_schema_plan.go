@@ -48,6 +48,10 @@ func buildWireSchemaPlan(schema *ValueSchema) *wireSchemaPlan {
 }
 
 func (plan *wireSchemaPlan) validate(ctx context.Context, value Value, path string, limits Limits) error {
+	return plan.validateWithin(ctx, value, path, limits, nil)
+}
+
+func (plan *wireSchemaPlan) validateWithin(ctx context.Context, value Value, path string, limits Limits, view *inputView) error {
 	if plan == nil {
 		return nil
 	}
@@ -57,12 +61,21 @@ func (plan *wireSchemaPlan) validate(ctx context.Context, value Value, path stri
 	if value.IsZero() {
 		return fmt.Errorf("%s is missing", path)
 	}
-	if err := checkValueLimits(value, limits); err != nil {
+	if err := view.checkResources(ctx, value, limits, "wire"); err != nil {
 		return err
 	}
 	// No selected value escapes validation. Borrow small fragments as well as
 	// large payloads, retaining the existing structural index for nested values.
-	reader := newNativeComparisonReader(value)
+	var reader *valueReader
+	if view != nil {
+		reader = &view.borrowed
+	} else {
+		reader = newNativeComparisonReader(value)
+	}
+	return plan.validateShape(ctx, value, path, limits, reader)
+}
+
+func (plan *wireSchemaPlan) validateShape(ctx context.Context, value Value, path string, limits Limits, reader *valueReader) error {
 	isValid, err := plan.accepts(ctx, value, reader)
 	if err != nil {
 		return err

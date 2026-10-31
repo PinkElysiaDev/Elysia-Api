@@ -7,7 +7,7 @@ import (
 )
 
 func TestConversionOrderOverridesAndProvenance(t *testing.T) {
-	base := ConversionPolicy{SchemaVersion: 1, ID: "base", Mode: "compatible", Rules: []ConversionRule{
+	base := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "base", Mode: "compatible", Rules: []ConversionRule{
 		{ID: "first", Order: 100, Enabled: true, Phase: ConversionRequest, Action: "set", Path: "/parameters/temperature", Value: StringValue("mapped")},
 		{ID: "second", Order: 200, Enabled: true, Phase: ConversionRequest, Action: "reject", Match: ConversionMatch{Path: "/parameters/temperature", Present: boolPtr(true)}, Reason: "order observed"},
 	}}
@@ -19,7 +19,7 @@ func TestConversionOrderOverridesAndProvenance(t *testing.T) {
 	if _, err = c.Request(t.Context(), request, ConversionContext{}, nil); err == nil || !strings.Contains(err.Error(), "order observed") {
 		t.Fatal(err)
 	}
-	override := ConversionPolicy{SchemaVersion: 1, ID: "model", Rules: []ConversionRule{{ID: "second", Order: 200, Enabled: false, Phase: ConversionRequest, Action: "reject"}}}
+	override := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "model", Rules: []ConversionRule{{ID: "second", Order: 200, Enabled: false, Phase: ConversionRequest, Action: "reject"}}}
 	c, err = ResolveConversion(base, override)
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestConversionValueChangeUsesWireBytes(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			before := parseTestValue(t, test.before)
 			after := parseTestValue(t, strings.Clone(test.after))
-			policy := ConversionPolicy{SchemaVersion: 1, ID: "wire-change", Mode: "compatible", Rules: []ConversionRule{{
+			policy := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "wire-change", Mode: "compatible", Rules: []ConversionRule{{
 				ID: "replace", Order: 1, Enabled: true, Phase: ConversionWire, Action: "transform",
 				Expression: &Expression{Op: "literal", Value: after},
 			}}}
@@ -116,7 +116,7 @@ func TestConversionProvenanceComparesOriginalFragments(t *testing.T) {
 }
 
 func TestConversionNodeRulesAndLimits(t *testing.T) {
-	policy := ConversionPolicy{SchemaVersion: 1, ID: "node-policy", Rules: []ConversionRule{{ID: "text", Order: 1, Enabled: true, Phase: ConversionResponse, Match: ConversionMatch{NodeKind: TextNode}, Action: "set", Path: "/payload", Value: StringValue("changed")}}}
+	policy := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "node-policy", Rules: []ConversionRule{{ID: "text", Order: 1, Enabled: true, Phase: ConversionResponse, Match: ConversionMatch{NodeKind: TextNode}, Action: "set", Path: "/payload", Value: StringValue("changed")}}}
 	c, err := CompileConversion(policy)
 	if err != nil {
 		t.Fatal(err)

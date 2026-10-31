@@ -14,6 +14,7 @@ type ProtocolSpec struct {
 	Family      string                           `json:"family"`
 	WireVersion string                           `json:"wireVersion"`
 	Documents   map[string]WireContractSpec      `json:"documents"`
+	Expressions map[string]Expression            `json:"expressions,omitempty"`
 	Operations  map[string]ProtocolOperationSpec `json:"operations"`
 }
 
@@ -66,6 +67,7 @@ type ProtocolTaskMapping struct {
 
 type compiledProtocolSpec struct {
 	documents        map[string]compiledWireContract
+	documentHashes   map[string]string
 	operations       map[string]Operation
 	operationSchemas map[string]*runtimeValueSchema
 }
@@ -84,9 +86,11 @@ func (spec ProtocolSpec) compile(limits Limits) (compiledProtocolSpec, error) {
 	}
 	compiled := compiledProtocolSpec{
 		documents:        make(map[string]compiledWireContract, len(spec.Documents)),
+		documentHashes:   make(map[string]string, len(spec.Documents)),
 		operations:       make(map[string]Operation, len(spec.Operations)),
 		operationSchemas: make(map[string]*runtimeValueSchema, len(spec.Operations)),
 	}
+	expressions := newExpressionCompiler(limits, spec.Expressions)
 	// Compile every declaration once, including documents not selected by this
 	// mapping. A second mapping can use the same standalone spec differently.
 	for _, name := range sortedKeys(spec.Documents) {
@@ -94,11 +98,27 @@ func (spec ProtocolSpec) compile(limits Limits) (compiledProtocolSpec, error) {
 		if !definitionIdentifier.MatchString(name) {
 			return compiledProtocolSpec{}, fmt.Errorf("%s: invalid document name", path)
 		}
-		contract, err := compileWireContractSpec(spec.Documents[name], path, limits)
+		references := map[string]Expression{}
+		expressions.mappingReferences = references
+		contract, err := expressions.compileWireContractSpec(spec.Documents[name], path)
+		expressions.mappingReferences = nil
+		if err != nil {
+			return compiledProtocolSpec{}, err
+		}
+		identity, err := EncodeValue(struct {
+			Document   WireContractSpec      `json:"document"`
+			References map[string]Expression `json:"references"`
+		}{spec.Documents[name], references})
 		if err != nil {
 			return compiledProtocolSpec{}, err
 		}
 		compiled.documents[name] = contract
+		compiled.documentHashes[name] = hashValue(identity)
+	}
+	for _, name := range sortedKeys(spec.Expressions) {
+		if !expressions.used[name] {
+			return compiledProtocolSpec{}, fmt.Errorf("/spec/expressions/%s: unreachable expression", escapePointer(name))
+		}
 	}
 	for _, name := range sortedKeys(spec.Operations) {
 		wire := spec.Operations[name]

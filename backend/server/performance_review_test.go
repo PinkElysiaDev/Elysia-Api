@@ -68,7 +68,7 @@ func configureReviewMapping(t *testing.T, server *Server) {
 			if bindings[i].Binding.ProtocolID != "anthropic-messages" {
 				continue
 			}
-			bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "review-json-boundary", Rules: []protocol.ConversionRule{rule}}}
+			bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "review-json-boundary", Rules: []protocol.ConversionRule{rule}}}
 			changed++
 		}
 	}

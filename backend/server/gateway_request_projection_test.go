@@ -45,7 +45,7 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 			if err := s.store.UpsertGroup(t.Context(), storage.ModelGroup{ID: "gateway-group", Name: "group", Enabled: true, ToolsCapable: true, Models: []string{"gateway-source:upstream-model"}, Strategy: "sequential"}); err != nil {
 				t.Fatal(err)
 			}
-			policy := protocol.ConversionPolicy{SchemaVersion: 1, ID: "hint-mode", Mode: mode, Rules: []protocol.ConversionRule{}}
+			policy := protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "hint-mode", Mode: mode, Rules: []protocol.ConversionRule{}}
 			bindings, err := s.store.ListProtocolBindings(t.Context())
 			if err != nil {
 				t.Fatal(err)

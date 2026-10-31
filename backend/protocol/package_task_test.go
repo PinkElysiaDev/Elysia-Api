@@ -103,7 +103,7 @@ func TestTaskPackageRequiresFlowAndEvidence(t *testing.T) {
 func TestTaskPackageChecksActualWireAndCancellation(t *testing.T) {
 	compiler, document, _ := loadTaskPackage(t, "job-alpha")
 	contract := document.Spec.Documents["task-status"]
-	contract.Assertions = []WireAssertion{{Path: "/valid", Schema: ValueSchema{Type: BooleanType, Enum: []Value{Value{raw: "true"}}}, Code: UpstreamContractViolation, Reason: "invalid task reply"}}
+	contract.Assertions = []WireAssertion{{Path: "/valid", Schema: &ValueSchema{Type: BooleanType, Enum: []Value{Value{raw: "true"}}}, Code: UpstreamContractViolation, Reason: "invalid task reply"}}
 	document.Spec.Documents["task-status"] = contract
 	compiled, issues := compiler.CompilePackage(fixtureValue(t, document).Bytes())
 	if err := IssuesError(issues); err != nil {

@@ -3,15 +3,16 @@ import { ProtocolDocument } from './protocol-document'
 import type { ConversionIssue } from './protocol-v2'
 
 export type ConversionPhase = 'ingress' | 'request' | 'response' | 'event' | 'source_event' | 'wire'
+export const CONVERSION_POLICY_VERSION = 2
 export interface ConversionMatch { sourceId?: string; targetId?: string; sourceFamily?: string; targetFamily?: string; sourceWire?: string; targetWire?: string; model?: string; operation?: string; transport?: string; nodeKind?: string; path?: string; present?: boolean }
 export interface ConversionRule { id: string; order: number; enabled: boolean; phase: ConversionPhase; match: ConversionMatch; action: string; path?: string; value?: unknown; expression?: unknown; reason?: string }
-export interface ConversionPolicy { schemaVersion: 1; id: string; name: string; mode?: 'compatible' | 'strict'; rules: ConversionRule[]; continuation?: { clientCarrier: boolean; persist: boolean; retentionSeconds: number; turnsPerSession: number; maxBytes: number; recordBytes: number }; usage?: { defaultIncludeUsage: boolean; collectUpstreamUsage: boolean } }
+export interface ConversionPolicy { schemaVersion: number; id: string; name: string; mode?: 'compatible' | 'strict'; rules: ConversionRule[]; continuation?: { clientCarrier: boolean; persist: boolean; retentionSeconds: number; turnsPerSession: number; maxBytes: number; recordBytes: number }; usage?: { defaultIncludeUsage: boolean; collectUpstreamUsage: boolean } }
 export interface ConversionSelection { policyId?: string; revisionHash?: string; overrides?: ConversionPolicy; overridesJSON?: string }
 export interface ConversionRecord { id: string; hash: string; activeHash: string; policy: ConversionPolicy; policyJSON: string; selector: ConversionMatch; compilerVersion?: string; reports?: { passed: boolean; sourceHash: string; targetHash: string; issues: ConversionIssue[] }[] }
 export interface ConversionRegistry { phases: ConversionPhase[]; actions: string[]; actionSchemas?: Record<string, { description: string; phases: ConversionPhase[]; value?: { type: string; enum?: string[]; default?: unknown } }>; policy: unknown }
 const base = '/protocols/conversion-policies'
 const id = encodeURIComponent
-export const newConversionPolicy = (): ConversionPolicy => ({ schemaVersion: 1, id: 'my-conversion', name: '转换行为', mode: 'compatible', rules: [], continuation: { clientCarrier: true, persist: true, retentionSeconds: 604800, turnsPerSession: 64, maxBytes: 536870912, recordBytes: 8388608 }, usage: { defaultIncludeUsage: false, collectUpstreamUsage: true } })
+export const newConversionPolicy = (): ConversionPolicy => ({ schemaVersion: CONVERSION_POLICY_VERSION, id: 'my-conversion', name: '转换行为', mode: 'compatible', rules: [], continuation: { clientCarrier: true, persist: true, retentionSeconds: 604800, turnsPerSession: 64, maxBytes: 536870912, recordBytes: 8388608 }, usage: { defaultIncludeUsage: false, collectUpstreamUsage: true } })
 function readRecord(document: ProtocolDocument, pointer: string): ConversionRecord {
   const record = JSON.parse(document.read(pointer)!) as ConversionRecord
   return { ...record, policyJSON: document.read(`${pointer}/policy`)! }

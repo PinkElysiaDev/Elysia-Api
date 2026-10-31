@@ -62,7 +62,7 @@ func TestSemanticBudgetPreflightAndExpansion(t *testing.T) {
 	if err := checkSemanticValue(request, limits); !errors.As(err, &failure) || failure.Domain != "semantic" {
 		t.Fatal(err)
 	}
-	policy := ConversionPolicy{SchemaVersion: 1, ID: "small", Limits: &limits, Rules: []ConversionRule{{ID: "expand", Enabled: true, Phase: ConversionRequest, Action: "set", Path: "/parameters", Value: parseTestValue(t, `{"x":"`+strings.Repeat("x", 801)+`"}`)}}}
+	policy := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "small", Limits: &limits, Rules: []ConversionRule{{ID: "expand", Enabled: true, Phase: ConversionRequest, Action: "set", Path: "/parameters", Value: parseTestValue(t, `{"x":"`+strings.Repeat("x", 801)+`"}`)}}}
 	c, err := ResolveConversion(policy)
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +122,7 @@ func TestRequestBudgetDoesNotExpandResponsesOrExecution(t *testing.T) {
 	if compiled.wireLimits(ctx, DecodeRequest).BufferBytes != 64<<20 {
 		t.Fatal("request boundary not expanded")
 	}
-	policy, err := ResolveConversion(ConversionPolicy{SchemaVersion: 1, ID: "test"})
+	policy, err := ResolveConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestRequestBudgetDoesNotExpandResponsesOrExecution(t *testing.T) {
 }
 
 func TestConversionRequestHonorsCancellation(t *testing.T) {
-	conversion, err := ResolveConversion(ConversionPolicy{SchemaVersion: 1, ID: "cancel"})
+	conversion, err := ResolveConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "cancel"})
 	if err != nil {
 		t.Fatal(err)
 	}

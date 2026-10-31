@@ -8,13 +8,13 @@ func TestRequestProjectionCodecOptions(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "projection", Mode: "compatible", Rules: []ConversionRule{{ID: "request-projection", Enabled: true, Phase: ConversionRequest, Action: "request_projection", Value: value}}})
+		_, err = CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "projection", Mode: "compatible", Rules: []ConversionRule{{ID: "request-projection", Enabled: true, Phase: ConversionRequest, Action: "request_projection", Value: value}}})
 		if err == nil {
 			t.Fatalf("accepted %s", raw)
 		}
 	}
 	value, _ := EncodeValue(requestProjectionOptions{TargetCodec: "responses"})
-	c, err := CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "projection", Mode: "strict", Rules: []ConversionRule{{ID: "request-projection", Enabled: true, Phase: ConversionRequest, Action: "request_projection", Value: value}}})
+	c, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "projection", Mode: "strict", Rules: []ConversionRule{{ID: "request-projection", Enabled: true, Phase: ConversionRequest, Action: "request_projection", Value: value}}})
 	if err != nil {
 		t.Fatal(err)
 	}

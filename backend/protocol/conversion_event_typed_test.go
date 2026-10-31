@@ -12,7 +12,7 @@ func TestTypedEventConversionBoundaries(t *testing.T) {
 	event := Event{SchemaVersion: 1, Source: Identity{Family: "invalid\xff"}, Type: ItemStarted, Item: &Node{Kind: TextNode, Payload: value, Children: []Node{}, Native: &Native{Value: value}}}
 	for _, mode := range []string{"normalize", "authored", "limit", "cancel"} {
 		t.Run(mode, func(t *testing.T) {
-			policy := ConversionPolicy{SchemaVersion: 1, ID: "test"}
+			policy := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "test"}
 			ctx := t.Context()
 			switch mode {
 			case "authored":

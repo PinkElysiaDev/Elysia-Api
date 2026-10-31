@@ -10,7 +10,7 @@ import (
 func TestWireAssertionDiagnosticPreservesBoundary(t *testing.T) {
 	for _, stage := range []string{"wire", "", "runtime", "stream", "request.validation"} {
 		t.Run("stage="+stage, func(t *testing.T) {
-			assertion := WireAssertion{Path: "/value", Schema: ValueSchema{Type: StringType}, Code: InvalidInput, Reason: "expected a string"}
+			assertion := WireAssertion{Path: "/value", Schema: &ValueSchema{Type: StringType}, Code: InvalidInput, Reason: "expected a string"}
 			if stage != "wire" {
 				assertion.Diagnostic = &RejectDiagnostic{Code: InvalidInput, Stage: stage}
 			}
@@ -38,7 +38,7 @@ func TestWireAssertionDiagnosticPreservesBoundary(t *testing.T) {
 		})
 	}
 	for _, diagnostic := range []RejectDiagnostic{{Code: InvalidInput, Stage: "routing"}, {Code: ExecutionCancelled}, {Code: InvalidInput, Direction: "invented"}, {Code: InvalidInput, Path: "value"}} {
-		_, err := compileWireContractSpec(WireContractSpec{Schema: &ValueSchema{Type: ObjectType}, Assertions: []WireAssertion{{Path: "/value", Schema: ValueSchema{Type: StringType}, Code: InvalidInput, Reason: "expected a string", Diagnostic: &diagnostic}}}, "/document", DefaultLimits())
+		_, err := compileWireContractSpec(WireContractSpec{Schema: &ValueSchema{Type: ObjectType}, Assertions: []WireAssertion{{Path: "/value", Schema: &ValueSchema{Type: StringType}, Code: InvalidInput, Reason: "expected a string", Diagnostic: &diagnostic}}}, "/document", DefaultLimits())
 		if err == nil {
 			t.Fatal("unrelated classification was accepted", diagnostic)
 		}
@@ -50,11 +50,11 @@ func TestWireAssertionReasonUsesFailedContainer(t *testing.T) {
 		readExpression("root", "/label"), literalExpression(" output event "),
 		{Op: "quote_string", Source: expressionPointer(readExpression("input", "/type"))},
 	}}
-	assertion := WireAssertion{Path: "/value", Schema: ValueSchema{Type: StringType}, Code: ConversionRejected,
+	assertion := WireAssertion{Path: "/value", Schema: &ValueSchema{Type: StringType}, Code: ConversionRejected,
 		ReasonExpression: &reason, Diagnostic: &RejectDiagnostic{Code: ConversionRejected, Stage: "wire.output"}}
 	contract, err := compileWireContractSpec(WireContractSpec{
 		Schema:     &ValueSchema{Type: ObjectType, AllowUnknown: true},
-		Assertions: []WireAssertion{{Path: "/items", Schema: ValueSchema{Type: ArrayType}, Code: ConversionRejected, Reason: "items must be an array", Each: []WireAssertion{assertion}}},
+		Assertions: []WireAssertion{{Path: "/items", Schema: &ValueSchema{Type: ArrayType}, Code: ConversionRejected, Reason: "items must be an array", Each: []WireAssertion{assertion}}},
 	}, "/document", DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +102,7 @@ func TestWireAssertionRejectsInvalidReasonExpressions(t *testing.T) {
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
 			spec := WireContractSpec{Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true}, Assertions: []WireAssertion{{
-				Path: "/value", Schema: ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: fixture.reason, ReasonExpression: &fixture.expression,
+				Path: "/value", Schema: &ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: fixture.reason, ReasonExpression: &fixture.expression,
 			}}}
 			if _, err := compileWireContractSpec(spec, "/document", DefaultLimits()); err == nil {
 				t.Fatal("invalid or nonlocal diagnostic expression compiled")
@@ -117,7 +117,7 @@ func TestWireAssertionCheckKeepsExplicitRejection(t *testing.T) {
 	check := Expression{Op: "if", When: expressionPointer(readExpression("input", "/reject")), Then: &rejection, Otherwise: expressionPointer(readExpression("input", "/valid"))}
 	contract, err := compileWireContractSpec(WireContractSpec{
 		Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true},
-		Assertions: []WireAssertion{{Path: "", Schema: ValueSchema{Type: ObjectType, AllowUnknown: true},
+		Assertions: []WireAssertion{{Path: "", Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true},
 			Code: ConversionRejected, Reason: "invalid document", Check: &check}},
 	}, "/document", DefaultLimits())
 	if err != nil {

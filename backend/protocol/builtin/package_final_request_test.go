@@ -9,16 +9,15 @@ import (
 
 func TestPackageFinalRequestStructure(t *testing.T) {
 	for _, protocol := range []struct {
-		codec, name string
-		cases       []finalWireCase
+		name  string
+		cases []finalWireCase
 	}{
-		{Chat, "openai-chat", chatFinalRequestCases()},
-		{Responses, "openai-responses", responsesFinalRequestCases()},
-		{Anthropic, "anthropic", anthropicFinalRequestCases()},
-		{Gemini, "google-generate-content", geminiFinalRequestCases()},
+		{"openai-chat", chatFinalRequestCases()},
+		{"openai-responses", responsesFinalRequestCases()},
+		{"anthropic", anthropicFinalRequestCases()},
+		{"google-generate-content", geminiFinalRequestCases()},
 	} {
 		t.Run(protocol.name, func(t *testing.T) {
-			legacy := shippedProjectionProtocol(t, protocol.codec)
 			draft := compileBuiltinPackage(t, protocol.name)
 			cases := append([]finalWireCase{
 				{"null-root", `null`, ""},
@@ -26,11 +25,27 @@ func TestPackageFinalRequestStructure(t *testing.T) {
 			}, protocol.cases...)
 			for _, fixture := range cases {
 				t.Run(fixture.name, func(t *testing.T) {
-					checkFinalWireCase(t, legacy, draft, p.EncodeRequest, fixture)
+					checkFinalRequestCase(t, draft, fixture)
 				})
 			}
 		})
 	}
+}
+
+func checkFinalRequestCase(t *testing.T, compiled *p.Compiled, fixture finalWireCase) p.ConversionIssue {
+	t.Helper()
+	err := compiled.ValidateWireOutput(p.EncodeRequest, testValue(t, fixture.wire))
+	if fixture.path == acceptedFinalWire {
+		if err != nil {
+			t.Fatal("valid final request rejected", err)
+		}
+		return p.ConversionIssue{}
+	}
+	var failure *p.ConversionError
+	if !errors.As(err, &failure) || len(failure.Issues) == 0 || failure.Issues[0].Path != fixture.path {
+		t.Fatal("final request did not reject the invalid wire location", fixture.path, err)
+	}
+	return failure.Issues[0]
 }
 
 func chatFinalRequestCases() []finalWireCase {
@@ -43,8 +58,7 @@ func chatFinalRequestCases() []finalWireCase {
 		{"empty-model", `{"model":"","messages":[]}`, "/model"},
 		{"missing-history", `{"model":"m"}`, "/messages"},
 		{"null-history", `{"model":"m","messages":null}`, "/messages"},
-		{"null-message", `{"model":"m","messages":[null]}`, "/"},
-		{"object-prepass-before-role", `{"model":"m","messages":[{"role":"future"},null]}`, "/"},
+		{"null-message", `{"model":"m","messages":[null]}`, "/messages/0"},
 		{"invalid-role", `{"model":"m","messages":[{"role":"future","content":"hi"}]}`, "/messages/0/role"},
 		{"role-before-thinking", `{"model":"m","messages":[{"role":null,"reasoning_content":"think"}]}`, "/messages/0/role"},
 		{"thinking-without-content", `{"model":"m","messages":[{"role":"assistant","reasoning_content":"think","content":null,"tool_calls":null}]}`, "/messages/0/content"},
@@ -69,11 +83,11 @@ func chatToolSequenceCases() []finalWireCase {
 	return []finalWireCase{
 		fixture("completed-tools", call(`"c"`)+`,`+result(`"c"`), acceptedFinalWire),
 		fixture("parallel-results-reordered", parallel+`,`+result(`"second"`)+`,`+result(`"first"`), acceptedFinalWire),
-		fixture("raw-escaped-id-matches", call(`"\u0063"`)+`,`+result(`"\u0063"`), acceptedFinalWire),
-		fixture("raw-escaped-id-differs", call(`"c"`)+`,`+result(`"\u0063"`), "/messages/1/tool_call_id"),
+		fixture("escaped-id-matches", call(`"\u0063"`)+`,`+result(`"\u0063"`), acceptedFinalWire),
+		fixture("equivalent-id-spelling", call(`"c"`)+`,`+result(`"\u0063"`), acceptedFinalWire),
 		fixture("whitespace-call-id", call(`" "`)+`,`+result(`" "`), acceptedFinalWire),
-		fixture("unfinished-calls", call(`"c"`), "/messages/0/tool_calls"),
-		fixture("parallel-result-missing", parallel+`,`+result(`"first"`), "/messages/0/tool_calls"),
+		fixture("unfinished-calls", call(`"c"`), "/messages/0/tool_calls/0/id"),
+		fixture("parallel-result-missing", parallel+`,`+result(`"first"`), "/messages/0/tool_calls/1/id"),
 		fixture("interrupted-calls", call(`"c"`)+`,{"role":"user","content":"interruption"},`+result(`"c"`), "/messages/1/role"),
 		fixture("unmatched-result", call(`"c"`)+`,`+result(`"other"`), "/messages/1/tool_call_id"),
 		fixture("orphan-result", result(`"c"`), "/messages/0/tool_call_id"),
@@ -83,17 +97,14 @@ func chatToolSequenceCases() []finalWireCase {
 		fixture("empty-call-id", call(`""`), "/messages/0/tool_calls/0/id"),
 		fixture("null-tool-list", `{"role":"user","content":"hi","tool_calls":null}`, acceptedFinalWire),
 		fixture("empty-tool-list", `{"role":"user","content":"hi","tool_calls":[]}`, acceptedFinalWire),
-		fixture("tool-list-before-role", `{"role":"future","tool_calls":false}`, "/"),
-		fixture("tool-owner-before-role", `{"role":"future","tool_calls":[{}]}`, "/messages/0/tool_calls"),
-		fixture("tool-call-object", `{"role":"assistant","tool_calls":[null]}`, "/"),
-		fixture("message-object-before-pending", call(`"c"`)+`,null`, "/"),
-		fixture("pending-before-tool-list", call(`"c"`)+`,{"role":"user","tool_calls":false}`, "/messages/1/role"),
-		fixture("result-before-tool-list", call(`"c"`)+`,{"role":"tool","tool_call_id":"other","tool_calls":false}`, "/messages/1/tool_call_id"),
+		fixture("invalid-tool-list", `{"role":"assistant","tool_calls":false}`, "/messages/0/tool_calls"),
+		fixture("invalid-tool-owner", `{"role":"user","tool_calls":[{}]}`, "/messages/0/tool_calls"),
+		fixture("tool-call-object", `{"role":"assistant","tool_calls":[null]}`, "/messages/0/tool_calls/0"),
 	}
 }
 
 func TestChatPackageFinalRequestControls(t *testing.T) {
-	legacy, draft := shippedProjectionProtocol(t, Chat), compileBuiltinPackage(t, "openai-chat")
+	draft := compileBuiltinPackage(t, "openai-chat")
 	for _, fixture := range []finalWireCase{
 		{"null-options", `{"model":"m","messages":[],"stream_options":null}`, acceptedFinalWire},
 		{"empty-options", `{"model":"m","messages":[],"stream_options":{}}`, acceptedFinalWire},
@@ -108,11 +119,10 @@ func TestChatPackageFinalRequestControls(t *testing.T) {
 		{"options-before-limit-conflict", `{"model":"m","messages":[],"stream_options":{"include_usage":null},"max_tokens":1,"max_completion_tokens":1}`, "/stream_options/include_usage"},
 		{"valid-options-limit-conflict", `{"model":"m","messages":[],"stream_options":{"include_usage":true},"max_tokens":1,"max_completion_tokens":1}`, "/"},
 		{"role-before-options", `{"model":"m","messages":[{"role":"future"}],"stream_options":false}`, "/messages/0/role"},
-		{"pending-before-options", `{"model":"m","messages":[{"role":"assistant","tool_calls":[{"id":"c","type":"function","function":{"name":"lookup","arguments":"{}"}}]}],"stream_options":false}`, "/messages/0/tool_calls"},
 		{"options-before-content-decode", `{"model":"m","messages":[{"role":"user","content":false}],"stream_options":false}`, "/stream_options"},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
-			checkFinalWireCase(t, legacy, draft, p.EncodeRequest, fixture)
+			checkFinalRequestCase(t, draft, fixture)
 		})
 	}
 }
@@ -205,31 +215,55 @@ func geminiFinalRequestCases() []finalWireCase {
 		{"role-before-next-object", `{"contents":[{"role":"future"},null]}`, "/contents/0/role"},
 		{"system-role", `{"contents":[{"role":"system","parts":[]}]}`, "/contents/0/role"},
 		{"null-role", `{"contents":[{"role":null,"parts":[]}]}`, "/contents/0/role"},
+		{"mixed-function-part", `{"contents":[{"role":"model","parts":[{"text":"visible","functionCall":{"id":"c","name":"lookup","args":{}}}]}]}`, "/contents/0/parts/0"},
 	}
 }
 
-func TestPackageFinalRequestRemainingConstraints(t *testing.T) {
-	for _, fixture := range []struct {
-		codec, name, wire, path, stage string
-		code                          p.IssueCode
+func TestPackageFinalRequestToolAssociations(t *testing.T) {
+	for _, protocol := range []struct {
+		name  string
+		cases []finalWireCase
 	}{
-		{Chat, "openai-chat", `{"model":"m","messages":[{"role":"assistant","tool_calls":[{"id":"c","type":"function","function":{"name":"lookup","arguments":"{}"}}]},{"role":"tool","tool_call_id":"c","content":"done"},{"role":"assistant","tool_calls":[{"id":"\u0063","type":"function","function":{"name":"lookup","arguments":"{}"}}]},{"role":"tool","tool_call_id":"\u0063","content":"done"}]}`, "/content/2/children/0/callId", "wire.output", p.InvalidAssociation},
-		{Responses, "openai-responses", `{"model":"m","input":[{"type":"function_call_output","call_id":"missing","output":"done"}]}`, "/content/0/callId", "wire.output", p.InvalidAssociation},
-		{Anthropic, "anthropic", `{"model":"m","max_tokens":32,"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"missing","content":"done"}]}]}`, "/content/0/children/0/callId", "wire.output", p.InvalidAssociation},
-		{Gemini, "google-generate-content", `{"contents":[{"role":"user","parts":[{"functionResponse":{"name":"lookup","response":{}}}]}]}`, "/functionResponse", "wire", p.UnsupportedCapability},
+		{"openai-chat", []finalWireCase{
+			{"duplicate-id-in-later-turn", `{"model":"m","messages":[{"role":"assistant","tool_calls":[{"id":"c","type":"function","function":{"name":"lookup","arguments":"{}"}}]},{"role":"tool","tool_call_id":"c","content":"done"},{"role":"assistant","tool_calls":[{"id":"\u0063","type":"function","function":{"name":"lookup","arguments":"{}"}}]},{"role":"tool","tool_call_id":"\u0063","content":"done"}]}`, "/messages/2/tool_calls/0/id"},
+		}},
+		{"openai-responses", []finalWireCase{
+			{"orphan-output", `{"model":"m","input":[{"type":"function_call_output","call_id":"missing","output":"done"}]}`, "/input/0/call_id"},
+			{"function-and-custom-rounds", `{"model":"m","input":[{"type":"function_call","id":"item_1","call_id":"c","name":"lookup","arguments":"{}"},{"type":"function_call_output","call_id":"\u0063","output":"done"},{"type":"custom_tool_call","id":"item_2","call_id":"d","name":"patch","input":"patch text"},{"type":"custom_tool_call_output","call_id":"d","output":"applied"}]}`, acceptedFinalWire},
+		}},
+		{"anthropic", []finalWireCase{
+			{"orphan-result", `{"model":"m","max_tokens":32,"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"missing","content":"done"}]}]}`, "/messages/0/content/0/tool_use_id"},
+			{"tool-rounds", `{"model":"m","max_tokens":32,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"\u0063","content":"done"}]},{"role":"assistant","content":[{"type":"tool_use","id":"d","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"d","content":"done"}]}]}`, acceptedFinalWire},
+		}},
+		{"google-generate-content", []finalWireCase{
+			{"orphan-result", `{"contents":[{"role":"user","parts":[{"functionResponse":{"name":"lookup","response":{}}}]}]}`, "/contents/0/parts/0/functionResponse/name"},
+			{"explicit-result-leaves-unique-pending-call", `{"contents":[{"role":"model","parts":[{"functionCall":{"id":"a","name":"lookup","args":{}}},{"functionCall":{"id":"b","name":"lookup","args":{}}}]},{"role":"user","parts":[{"functionResponse":{"id":"a","name":"lookup","response":{}}},{"functionResponse":{"name":"lookup","response":{}}}]}]}`, acceptedFinalWire},
+			{"anonymous-rounds", `{"contents":[{"role":"model","parts":[{"functionCall":{"name":"lookup","args":{}}}]},{"role":"user","parts":[{"functionResponse":{"name":"lookup","response":{}}}]},{"role":"model","parts":[{"functionCall":{"name":"lookup","args":{}}}]},{"role":"user","parts":[{"functionResponse":{"name":"lookup","response":{}}}]}]}`, acceptedFinalWire},
+			{"ambiguous-result", `{"contents":[{"role":"model","parts":[{"functionCall":{"name":"lookup","args":{}}},{"functionCall":{"name":"lookup","args":{}}}]},{"role":"user","parts":[{"functionResponse":{"name":"lookup","response":{}}}]}]}`, "/contents/1/parts/0/functionResponse/name"},
+			{"null-id-is-not-implicit", `{"contents":[{"role":"model","parts":[{"functionCall":{"id":null,"name":"lookup","args":{}}}]}]}`, "/contents/0/parts/0/functionCall/id"},
+		}},
 	} {
-		t.Run(fixture.name, func(t *testing.T) {
-			legacy, draft := shippedProjectionProtocol(t, fixture.codec), compileBuiltinPackage(t, fixture.name)
-			wire := testValue(t, fixture.wire)
-			oldErr := legacy.ValidateWireOutput(p.EncodeRequest, wire)
-			var failure *p.ConversionError
-			if !errors.As(oldErr, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Code != fixture.code || failure.Issues[0].Stage != fixture.stage || failure.Issues[0].Path != fixture.path {
-				t.Fatal("legacy remaining-constraint fixture changed", oldErr)
+		t.Run(protocol.name, func(t *testing.T) {
+			compiled := compileBuiltinPackage(t, protocol.name)
+			for _, fixture := range protocol.cases {
+				t.Run(fixture.name, func(t *testing.T) {
+					issue := checkFinalRequestCase(t, compiled, fixture)
+					if fixture.path != acceptedFinalWire && issue.Code != p.InvalidAssociation {
+						t.Fatal("tool relation failure lost its classification", issue)
+					}
+					_, err := compiled.DecodeRequest(t.Context(), []byte(fixture.wire), p.EvaluationContext{})
+					if fixture.path == acceptedFinalWire {
+						if err != nil {
+							t.Fatal("valid source tool history rejected", err)
+						}
+					} else {
+						var failure *p.ConversionError
+						if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Code != p.InvalidAssociation || failure.Issues[0].Path != fixture.path {
+							t.Fatal("source association lost its actual wire location", fixture.path, err)
+						}
+					}
+				})
 			}
-			if err := draft.ValidateWireOutput(p.EncodeRequest, wire); err != nil {
-				t.Fatal("recorded request-final gap changed; review and close this ledger entry", err)
-			}
-			t.Log("NOT CLOSED: request-final structure and Chat adjacency are declared; full-tree association and decoder validation remain incomplete", oldErr)
 		})
 	}
 }

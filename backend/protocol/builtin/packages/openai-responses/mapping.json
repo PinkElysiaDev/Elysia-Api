@@ -36,7 +36,7 @@
     }
   },
   "coreVersion": 2,
-  "dslVersion": 1,
+  "dslVersion": 2,
   "native": {
     "preserve": true
   },

@@ -101,7 +101,7 @@ func TestHistoryPrototypePolicyBoundary(t *testing.T) {
 			if _, err := target.EncodeRequest(t.Context(), retained, EvaluationContext{}); err == nil {
 				t.Fatal("encoder repeated disabled default")
 			}
-			override := ConversionPolicy{SchemaVersion: 1, ID: "operator", Rules: []ConversionRule{{ID: "request-projection", Order: 130, Enabled: true, Phase: ConversionRequest, Action: "remove", Path: historyRetentionPath}}}
+			override := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "operator", Rules: []ConversionRule{{ID: "request-projection", Order: 130, Enabled: true, Phase: ConversionRequest, Action: "remove", Path: historyRetentionPath}}}
 			replaced, err := ResolveConversion(policy, override)
 			if err != nil {
 				t.Fatal(err)

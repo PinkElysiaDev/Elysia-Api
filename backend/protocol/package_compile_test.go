@@ -48,7 +48,7 @@ func TestCompilePackageExecutesIndependentContracts(t *testing.T) {
 	document := textProtocolPackage(t)
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
 		contract := document.Spec.Documents[document.Mapping.Directions[direction].Document]
-		contract.Assertions = []WireAssertion{{Path: "/prompt", Schema: ValueSchema{Type: StringType, Enum: []Value{StringValue("hello <world>")}}, Code: ConversionRejected, Reason: "synthetic prompt contract"}}
+		contract.Assertions = []WireAssertion{{Path: "/prompt", Schema: &ValueSchema{Type: StringType, Enum: []Value{StringValue("hello <world>")}}, Code: ConversionRejected, Reason: "synthetic prompt contract"}}
 		document.Spec.Documents[document.Mapping.Directions[direction].Document] = contract
 	}
 	compiled := compilePackageForTest(t, document)
@@ -192,7 +192,7 @@ func TestPackageIdentityIncludesReferencesAndDocuments(t *testing.T) {
 		t.Fatal("referenced program changes did not invalidate identity")
 	}
 	contract := document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document]
-	contract.Assertions = []WireAssertion{{Path: "/model", Schema: ValueSchema{Type: StringType}, Code: InvalidInput, Reason: "synthetic wire assertion"}}
+	contract.Assertions = []WireAssertion{{Path: "/model", Schema: &ValueSchema{Type: StringType}, Code: InvalidInput, Reason: "synthetic wire assertion"}}
 	document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document] = contract
 	withAssertion := compilePackageForTest(t, document)
 	if after.Hash() == withAssertion.Hash() || after.mappings[EncodeRequest].definitionHash == withAssertion.mappings[EncodeRequest].definitionHash {

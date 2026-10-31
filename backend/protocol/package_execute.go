@@ -13,7 +13,12 @@ type packageExecution struct {
 }
 
 func (compiled *Compiled) preparePackageExecution(direction Direction, state evaluation, limits Limits, options EvaluationContext) (*packageExecution, error) {
-	execution := &packageExecution{reader: requestValueReader(state.input)}
+	execution := &packageExecution{}
+	if state.inputView != nil {
+		execution.reader = &state.inputView.owned
+	} else {
+		execution.reader = requestValueReader(state.input)
+	}
 	state.valueReader = execution.reader
 	if err := compiled.preparePackageState(direction, state, limits, options); err != nil {
 		return nil, err
@@ -24,7 +29,7 @@ func (compiled *Compiled) preparePackageExecution(direction Direction, state eva
 func (compiled *Compiled) preparePackageState(direction Direction, state evaluation, limits Limits, options EvaluationContext) error {
 	isDecode := isPackageDecodeDirection(direction)
 	if isDecode {
-		if err := compiled.validateWireContract(state.ctx, direction, state.input, nil, limits); err != nil {
+		if err := compiled.validateWireInputView(state.ctx, direction, state.inputView, limits, compiled.wireContracts[direction]); err != nil {
 			return err
 		}
 	} else {

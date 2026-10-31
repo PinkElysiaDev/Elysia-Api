@@ -12,6 +12,7 @@ import (
 )
 
 type compiledExpression struct {
+	outputPlan                          *compiledOutputPlan
 	trackerName                         string
 	op                                  string
 	operation                           string
@@ -49,12 +50,18 @@ func (expression *compiledExpression) isInputIdentity() bool {
 }
 
 type expressionCompiler struct {
+	maximumDepth      int
+	instances         map[referenceContext][]compiledReference
 	limits            Limits
 	nodes             int
 	references        map[string]Expression
 	resolving         map[string]bool
 	used              map[string]bool
 	mappingReferences map[string]Expression
+}
+
+func newExpressionCompiler(limits Limits, references map[string]Expression) *expressionCompiler {
+	return &expressionCompiler{limits: limits, references: references, resolving: make(map[string]bool), used: make(map[string]bool)}
 }
 
 type expressionScope struct {
@@ -108,6 +115,7 @@ func (compiler *expressionCompiler) compilePlan(expression Expression, path stri
 func (compiler *expressionCompiler) compile(expression Expression, path string, scope expressionScope, depth int) (result *compiledExpression, err error) {
 	defer func() { err = locateMappingError(path, err) }()
 	compiler.nodes++
+	compiler.maximumDepth = max(compiler.maximumDepth, depth)
 	if depth > compiler.limits.Depth || compiler.nodes > compiler.limits.Nodes {
 		return nil, fmt.Errorf("%s exceeds expression depth or node limit", path)
 	}
@@ -125,21 +133,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		return nil, err
 	}
 	if expression.Op == "ref" {
-		definition, exists := compiler.references[expression.Ref]
-		if !exists {
-			return nil, fmt.Errorf("%s/ref: unknown expression %q", path, expression.Ref)
-		}
-		if compiler.resolving[expression.Ref] {
-			return nil, fmt.Errorf("%s/ref: recursive expression %q", path, expression.Ref)
-		}
-		compiler.used[expression.Ref] = true
-		if compiler.mappingReferences != nil {
-			compiler.mappingReferences[expression.Ref] = definition
-		}
-		compiler.resolving[expression.Ref] = true
-		compiled, err := compiler.compile(definition, path+"/@"+expression.Ref, scope, depth+1)
-		delete(compiler.resolving, expression.Ref)
-		return compiled, err
+		return compiler.compileReference(expression.Ref, path, scope, depth)
 	}
 	compiled := &compiledExpression{op: expression.Op, operation: expression.Operation, path: path, from: expression.From, value: expression.Value, to: expression.To, policy: expression.Policy, isRequired: expression.Required, result: operation.Result}
 	if _, hasDiagnostic := expression.present["onConflict"]; hasDiagnostic || expression.OnConflict != nil {
@@ -460,6 +454,10 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		return fail("condition must produce a boolean")
 	}
 	switch expression.op {
+	case "check_links":
+		if !isAssignable(expression.source.result, ArrayType) || !slices.Contains([]string{"key", "unique_group"}, expression.policy) {
+			return fail("check_links requires an ordered record array and key or unique_group policy")
+		}
 	case "check_usage":
 		if !isAssignable(expression.source.result, ObjectType) && expression.source.result != NullType {
 			return fail("check_usage requires a core usage object or null")

@@ -9,7 +9,13 @@ type packageTaskContracts struct {
 	request, response compiledWireContract
 }
 
-func (compiled *Compiled) compilePackageTaskMappings(spec ProtocolSpec, mapping ProtocolMapping, documents map[string]compiledWireContract, expressions *expressionCompiler) error {
+type packageTaskOperationIdentity struct {
+	Operation    ProtocolOperationSpec `json:"operation"`
+	RequestHash  string                `json:"requestHash,omitempty"`
+	ResponseHash string                `json:"responseHash"`
+}
+
+func (compiled *Compiled) compilePackageTaskMappings(spec ProtocolSpec, mapping ProtocolMapping, wireSpec compiledProtocolSpec, expressions *expressionCompiler) error {
 	hasAdapters := compiled.Supports(DecodeRequest) && compiled.Supports(EncodeRequest) && compiled.Supports(DecodeResponse) && compiled.Supports(EncodeResponse)
 	linked := map[string]bool{}
 	for _, name := range sortedKeys(spec.Operations) {
@@ -25,6 +31,7 @@ func (compiled *Compiled) compilePackageTaskMappings(spec ProtocolSpec, mapping 
 			compiled.packagePlan.taskContracts = map[string]map[string]packageTaskContracts{}
 		}
 		contracts := map[string]packageTaskContracts{}
+		operations := map[string]packageTaskOperationIdentity{}
 		for _, reference := range []struct{ purpose, operation string }{{"submit", name}, {"status", operation.Task.Status}, {"result", operation.Task.Result}, {"cancel", operation.Task.Cancel}} {
 			if reference.operation == "" {
 				continue
@@ -33,7 +40,8 @@ func (compiled *Compiled) compilePackageTaskMappings(spec ProtocolSpec, mapping 
 			if wire.Response == "" {
 				return fmt.Errorf("/spec/operations/%s/response: task operations require a response document", reference.operation)
 			}
-			contracts[reference.purpose] = packageTaskContracts{request: documents[wire.Request], response: documents[wire.Response]}
+			contracts[reference.purpose] = packageTaskContracts{request: wireSpec.documents[wire.Request], response: wireSpec.documents[wire.Response]}
+			operations[reference.purpose] = packageTaskOperationIdentity{Operation: wire, RequestHash: wireSpec.documentHashes[wire.Request], ResponseHash: wireSpec.documentHashes[wire.Response]}
 			linked[reference.operation] = true
 		}
 		compiled.packagePlan.taskContracts[name] = contracts
@@ -44,11 +52,26 @@ func (compiled *Compiled) compilePackageTaskMappings(spec ProtocolSpec, mapping 
 			program Expression
 		}{{"decode", programs.Decode}, {"encode", programs.Encode}, {"control", programs.Control}} {
 			path := "/mapping/operations/" + name + "/task/" + item.kind
+			references := map[string]Expression{}
+			expressions.mappingReferences = references
 			plan, err := expressions.compilePlan(item.program, path, expressionScope{}, 1)
+			expressions.mappingReferences = nil
 			if err != nil {
 				return err
 			}
-			compiled.taskMappings[name][item.kind] = compiledMapping{outputPlan: plan}
+			identity, err := EncodeValue(struct {
+				CompilerVersion string                                  `json:"compilerVersion"`
+				CoreVersion     int                                     `json:"coreVersion"`
+				DSLVersion      int                                     `json:"dslVersion"`
+				Kind            string                                  `json:"kind"`
+				Operations      map[string]packageTaskOperationIdentity `json:"operations"`
+				Program         Expression                              `json:"program"`
+				References      map[string]Expression                   `json:"references"`
+			}{CompilerVersion, mapping.CoreVersion, mapping.DSLVersion, item.kind, operations, item.program, references})
+			if err != nil {
+				return err
+			}
+			compiled.taskMappings[name][item.kind] = compiledMapping{outputPlan: plan, definitionHash: hashValue(identity)}
 		}
 	}
 	for name, operation := range compiled.operations {

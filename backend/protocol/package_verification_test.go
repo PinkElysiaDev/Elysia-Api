@@ -120,7 +120,7 @@ func TestPackageVerificationRejectsInvalidFinalOutput(t *testing.T) {
 		t.Run(string(direction), func(t *testing.T) {
 			document := verifiedTextPackage(t, "invalid-final-output")
 			document.Spec.Documents["delivered-output"] = WireContractSpec{Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true},
-				Assertions: []WireAssertion{{Path: "/required", Schema: ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "final output requires this field"}},
+				Assertions: []WireAssertion{{Path: "/required", Schema: &ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "final output requires this field"}},
 			}
 			entry := document.Mapping.Directions[direction]
 			entry.FinalDocument = "delivered-output"
@@ -153,7 +153,7 @@ func TestPackageVerificationCombinationUsesPinnedFixtures(t *testing.T) {
 		}
 	}
 	contract := document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document]
-	contract.Assertions = []WireAssertion{{Path: "/prompt", Schema: ValueSchema{Type: StringType, Enum: []Value{StringValue("different")}}, Code: ConversionRejected, Reason: "synthetic final wire rejection"}}
+	contract.Assertions = []WireAssertion{{Path: "/prompt", Schema: &ValueSchema{Type: StringType, Enum: []Value{StringValue("different")}}, Code: ConversionRejected, Reason: "synthetic final wire rejection"}}
 	document.Spec.Documents[document.Mapping.Directions[EncodeRequest].Document] = contract
 	restricted := compilePackageForTest(t, document)
 	report := VerifyCombination(t.Context(), first, restricted)

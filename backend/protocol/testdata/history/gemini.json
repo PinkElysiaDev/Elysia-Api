@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "spec": {
     "id": "history-prototype-gemini",
     "name": "History control prototype: gemini",
@@ -56,7 +56,7 @@
   },
   "mapping": {
     "coreVersion": 2,
-    "dslVersion": 1,
+    "dslVersion": 2,
     "capabilities": {
       "text": true
     },

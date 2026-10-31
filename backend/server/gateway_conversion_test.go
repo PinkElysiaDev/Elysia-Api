@@ -277,7 +277,7 @@ func TestGatewayStrictLateGeminiSignature(t *testing.T) {
 	defer provider.Close()
 	setupGatewayModel(t, s, upstream, provider.URL)
 	bindings, _ := s.store.ListProtocolBindings(t.Context())
-	bindings[0].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "strict", Name: "strict", Mode: "strict", Rules: []protocol.ConversionRule{}}}
+	bindings[0].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "strict", Name: "strict", Mode: "strict", Rules: []protocol.ConversionRule{}}}
 	verified, err := s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
 	if err != nil {
 		t.Fatal(err)
@@ -326,7 +326,7 @@ func TestProviderSignatureProbeRequiresAcceptedScopedEvidence(t *testing.T) {
 	if _, err := s.store.UpdateModel(t.Context(), "upstream-model", "gateway-source", storage.ModelPatch{ToolsCapable: &yes}); err != nil {
 		t.Fatal(err)
 	}
-	policy := protocol.ConversionPolicy{SchemaVersion: 1, ID: "probe-policy", Name: "probe", Mode: "compatible", Rules: []protocol.ConversionRule{{ID: "configured-fallback", Order: 900, Enabled: true, Phase: protocol.ConversionRequest, Match: protocol.ConversionMatch{TargetFamily: "gemini", NodeKind: protocol.ToolCallNode}, Action: "provider_signature", Value: protocol.StringValue("probe-only-value")}}}
+	policy := protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "probe-policy", Name: "probe", Mode: "compatible", Rules: []protocol.ConversionRule{{ID: "configured-fallback", Order: 900, Enabled: true, Phase: protocol.ConversionRequest, Match: protocol.ConversionMatch{TargetFamily: "gemini", NodeKind: protocol.ToolCallNode}, Action: "provider_signature", Value: protocol.StringValue("probe-only-value")}}}
 	draft, err := s.store.SaveConversionDraft(t.Context(), policy, "")
 	if err != nil {
 		t.Fatal(err)

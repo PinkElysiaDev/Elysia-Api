@@ -16,7 +16,7 @@ func TestConversionRevisionCASAndSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	policy := protocol.ConversionPolicy{SchemaVersion: 1, ID: "policy", Name: "policy", Rules: []protocol.ConversionRule{}}
+	policy := protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "policy", Name: "policy", Rules: []protocol.ConversionRule{}}
 	draft, err := s.SaveConversionDraft(t.Context(), policy, "")
 	if err != nil {
 		t.Fatal(err)

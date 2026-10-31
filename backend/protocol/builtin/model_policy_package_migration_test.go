@@ -294,7 +294,7 @@ func TestPackageModelOutputControlsMatchExistingPolicy(t *testing.T) {
 				execute := func(protocol *p.Compiled) (*p.Request, []p.ConversionIssue, error) {
 					t.Helper()
 					policy := modelMigrationPolicy(t, protocol, protocol, "compatible")
-					overrides := p.ConversionPolicy{SchemaVersion: 1, ID: "user-model-controls", Mode: "compatible"}
+					overrides := p.ConversionPolicy{SchemaVersion: p.ConversionPolicySchemaVersion, ID: "user-model-controls", Mode: "compatible"}
 					if sample.isDisabled {
 						modelRule := policy.Rules[0]
 						modelRule.Enabled = false

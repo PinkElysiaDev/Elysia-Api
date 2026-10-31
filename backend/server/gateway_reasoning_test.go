@@ -249,7 +249,7 @@ func TestGatewayThinkingCandidateIsolation(t *testing.T) {
 					}
 				}
 				for i := range bindings {
-					bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "thinking-policy", Mode: mode, Rules: []protocol.ConversionRule{}}}
+					bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "thinking-policy", Mode: mode, Rules: []protocol.ConversionRule{}}}
 				}
 				verified, err := s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
 				if err != nil {
@@ -323,7 +323,7 @@ func TestGatewayThinkingBudgetStrictNeverCallsUpstream(t *testing.T) {
 	service, _ := s.protocolService()
 	bindings, _ := s.store.ListProtocolBindings(t.Context())
 	for i := range bindings {
-		bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "strict-thinking", Mode: "strict", Rules: []protocol.ConversionRule{}}}
+		bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "strict-thinking", Mode: "strict", Rules: []protocol.ConversionRule{}}}
 	}
 	verified, err := s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
 	if err != nil {
@@ -369,7 +369,7 @@ func TestGatewayDynamicBudgetStrictCandidateFallback(t *testing.T) {
 				t.Fatal(err)
 			}
 			for i := range bindings {
-				bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "strict-dynamic-budget", Mode: "strict", Rules: []protocol.ConversionRule{}}}
+				bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "strict-dynamic-budget", Mode: "strict", Rules: []protocol.ConversionRule{}}}
 			}
 			bindings, err = s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
 			if err != nil {
@@ -411,7 +411,7 @@ func TestGatewayLateOutputLimitNeverCallsUpstream(t *testing.T) {
 	}
 	present := true
 	for i := range bindings {
-		bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "late-limit", Rules: []protocol.ConversionRule{{ID: "late-limit", Order: 999, Enabled: true, Phase: protocol.ConversionRequest, Action: "set", Path: "/parameters/max_output_tokens", Value: mustProtocolValue(t, "128001"), Match: protocol.ConversionMatch{Path: "/parameters/metadata/late_limit", Present: &present}}}}}
+		bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "late-limit", Rules: []protocol.ConversionRule{{ID: "late-limit", Order: 999, Enabled: true, Phase: protocol.ConversionRequest, Action: "set", Path: "/parameters/max_output_tokens", Value: mustProtocolValue(t, "128001"), Match: protocol.ConversionMatch{Path: "/parameters/metadata/late_limit", Present: &present}}}}}
 	}
 	service, _ := s.protocolService()
 	bindings, err = s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)

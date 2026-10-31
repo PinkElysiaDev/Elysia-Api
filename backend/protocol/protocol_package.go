@@ -7,11 +7,11 @@ import (
 
 const (
 	// ProtocolPackageSchemaVersion identifies the independent spec/mapping format.
-	ProtocolPackageSchemaVersion = 3
-	// ProtocolCoreVersion identifies the core contract targeted by v3 mappings.
+	ProtocolPackageSchemaVersion = 4
+	// ProtocolCoreVersion identifies the core contract targeted by package mappings.
 	ProtocolCoreVersion = 2
 	// ProtocolDSLVersion identifies the declarative expression and effect language.
-	ProtocolDSLVersion = 1
+	ProtocolDSLVersion = 2
 )
 
 // ProtocolPackage binds a wire contract to an explicitly authored core mapping.
@@ -49,7 +49,7 @@ type ProtocolStreamSpec struct {
 	SequenceReason     string                             `json:"sequenceReason,omitempty"`
 	CloseItemsOnFinish bool                               `json:"closeItemsOnFinish,omitempty"`
 	Identities         []ProtocolStreamIdentitySpec       `json:"identities,omitempty"`
-	State              map[string]ProtocolStateSlot       `json:"state,omitempty"`
+	State              map[string]ProtocolWireStateSlot   `json:"state,omitempty"`
 	Events             map[string]ProtocolStreamEventSpec `json:"events"`
 }
 
@@ -79,6 +79,9 @@ type ProtocolStreamEventSpec []ProtocolStreamActionSpec
 // item_finish closes the established kind; tool_finish requires a tool item.
 // AllowBeforeStart permits failure, cancel, usage and observe before a response
 // starts. Identity checks still belong to the stream's Identities declarations.
+// Updates belongs to state_update: its expressions share the preceding action's
+// snapshot, and later actions observe their results. A failed frame commits none.
+// ArgumentsValue computes tool arguments while Arguments retains their diagnostic path.
 type ProtocolStreamActionSpec struct {
 	Action           string                     `json:"action,omitempty"`
 	ForEach          string                     `json:"foreach,omitempty"`
@@ -86,6 +89,7 @@ type ProtocolStreamActionSpec struct {
 	IndexAs          string                     `json:"indexAs,omitempty"`
 	Actions          []ProtocolStreamActionSpec `json:"actions,omitempty"`
 	Assertions       []WireAssertion            `json:"assertions,omitempty"`
+	Updates          map[string]Expression      `json:"updates,omitempty"`
 	Kind             NodeKind                   `json:"kind,omitempty"`
 	When             *Expression                `json:"when,omitempty"`
 	ResponseID       string                     `json:"responseId,omitempty"`
@@ -111,6 +115,7 @@ type ProtocolStreamActionSpec struct {
 	AllowBeforeStart bool                       `json:"allowBeforeStart,omitempty"`
 	Text             string                     `json:"text,omitempty"`
 	Arguments        string                     `json:"arguments,omitempty"`
+	ArgumentsValue   *Expression                `json:"argumentsValue,omitempty"`
 	Tool             *ProtocolStreamToolSpec    `json:"tool,omitempty"`
 	Error            string                     `json:"error,omitempty"`
 	Usage            *ProtocolStreamUsageSpec   `json:"usage,omitempty"`
@@ -119,9 +124,11 @@ type ProtocolStreamActionSpec struct {
 // ProtocolStreamToolSpec selects a JSON tool's identity at tool_start. By default
 // both fields are nonempty strings. SparseIdentity permits absent or empty
 // strings until later updates supply them; null and other types remain invalid.
+// CallIDValue can compute the identity; CallID still locates its diagnostics.
 type ProtocolStreamToolSpec struct {
-	Name   string `json:"name"`
-	CallID string `json:"callId"`
+	Name        string      `json:"name"`
+	CallID      string      `json:"callId"`
+	CallIDValue *Expression `json:"callIdValue,omitempty"`
 }
 
 // ProtocolStreamUsageSpec selects observed cumulative token counts. Missing
@@ -181,6 +188,15 @@ type ProtocolStateSlot struct {
 	Schema  ValueSchema `json:"schema"`
 	Initial Value       `json:"initial,omitzero"`
 	Update  Expression  `json:"update"`
+}
+
+// ProtocolWireStateSlot declares retained wire-validation state. state_update
+// actions supply its updates; unlisted slots retain their preceding values.
+// Retention is bounded by total bytes and declared slot count. Each updated
+// value separately satisfies its schema and node/depth limits.
+type ProtocolWireStateSlot struct {
+	Schema  ValueSchema `json:"schema"`
+	Initial Value       `json:"initial,omitzero"`
 }
 
 // ProtocolStateIndex declares one request-owned identity table with an explicit
@@ -299,7 +315,7 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 		return nil, err
 	}
 	compiled := &Compiled{identity: spec.Identity(), limits: limits, explicitLimits: mapping.Limits != nil || limits.BufferBytes != DefaultLimits().BufferBytes, native: mapping.Native, capabilities: mapping.Capabilities, operations: wireSpec.operations, operationSchemas: wireSpec.operationSchemas, mappings: map[Direction]compiledMapping{}, wireContracts: map[Direction]compiledWireContract{}, packagePlan: &compiledPackagePlan{coreVersion: mapping.CoreVersion, dslVersion: mapping.DSLVersion, effects: map[Direction][]compiledSemanticEffect{}}}
-	expressions := &expressionCompiler{limits: limits, references: mapping.Expressions, resolving: map[string]bool{}, used: map[string]bool{}}
+	expressions := newExpressionCompiler(limits, mapping.Expressions)
 	for _, direction := range sortedKeys(mapping.Directions) {
 		if !slices.Contains(DirectionCatalog(), direction) {
 			return nil, fmt.Errorf("/mapping/directions/%s: unsupported package direction", direction)
@@ -314,8 +330,7 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 			return nil, fmt.Errorf("/mapping/directions/%s/document: stream documents require an event direction", direction)
 		}
 		compiled.wireContracts[direction] = contract
-		finalWire, err := compiled.bindFinalDocument(direction, entry, spec, wireSpec.documents)
-		if err != nil {
+		if err := compiled.bindFinalDocument(direction, entry, wireSpec.documents); err != nil {
 			return nil, err
 		}
 		for _, capability := range sortedKeys(entry.Capabilities) {
@@ -323,7 +338,7 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 				return nil, fmt.Errorf("/mapping/directions/%s/capabilities: undeclared capability %q", direction, capability)
 			}
 		}
-		program, effects, err := compileProtocolProgram(entry, direction, wire, finalWire, expressions, mapping.CoreVersion, mapping.DSLVersion)
+		program, effects, err := compileProtocolProgram(entry, direction, wire, wireSpec.documentHashes, expressions, mapping.CoreVersion, mapping.DSLVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -347,10 +362,10 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 	if err := compiled.bindPackageOperations(spec, mapping); err != nil {
 		return nil, err
 	}
-	if err := compiled.compilePackageModelMappings(spec, mapping, wireSpec.documents, expressions); err != nil {
+	if err := compiled.compilePackageModelMappings(spec, mapping, wireSpec, expressions); err != nil {
 		return nil, err
 	}
-	if err := compiled.compilePackageTaskMappings(spec, mapping, wireSpec.documents, expressions); err != nil {
+	if err := compiled.compilePackageTaskMappings(spec, mapping, wireSpec, expressions); err != nil {
 		return nil, err
 	}
 	if err := compiled.compilePackageAgent(mapping.Agent, expressions); err != nil {

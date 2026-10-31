@@ -71,7 +71,7 @@ func TestGatewayResponsesNullReasoningHistory(t *testing.T) {
 					t.Fatal(err)
 				}
 				for i := range bindings {
-					bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "null-history", Mode: mode, Rules: []protocol.ConversionRule{}}}
+					bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "null-history", Mode: mode, Rules: []protocol.ConversionRule{}}}
 				}
 				bindings, err = s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
 				if err != nil {

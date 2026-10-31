@@ -63,11 +63,30 @@ type packageStreamTransaction struct {
 }
 
 func compilePackageState(declarations map[string]ProtocolStateSlot, indexes []compiledPackageIndex, direction Direction, path string, compiler *expressionCompiler, scope *expressionScope) (*compiledPackageState, error) {
+	slots := make(map[string]ProtocolWireStateSlot, len(declarations))
+	for name, declaration := range declarations {
+		slots[name] = ProtocolWireStateSlot{Schema: declaration.Schema, Initial: declaration.Initial}
+	}
+	plan, err := compilePackageStateSlots(slots, indexes, direction, path, compiler, scope)
+	if err != nil || plan == nil {
+		return plan, err
+	}
+	for index, name := range sortedKeys(declarations) {
+		update, err := compiler.compilePlan(declarations[name].Update, plan.slots[index].path+"/update", *scope, 1)
+		if err != nil {
+			return nil, err
+		}
+		plan.slots[index].update = update
+	}
+	return plan, nil
+}
+
+func compilePackageStateSlots(declarations map[string]ProtocolWireStateSlot, indexes []compiledPackageIndex, direction Direction, path string, compiler *expressionCompiler, scope *expressionScope) (*compiledPackageState, error) {
 	if len(declarations)+len(indexes) == 0 {
 		return nil, nil
 	}
-	if !isEventDirection(direction) || len(declarations)+len(indexes) > compiler.limits.StateItems {
-		return nil, fmt.Errorf("%s: state requires an event direction and bounded slot count", path)
+	if !isEventDirection(direction) {
+		return nil, fmt.Errorf("%s: state requires an event direction", path)
 	}
 	names := sortedKeys(declarations)
 	plan := &compiledPackageState{slots: make([]compiledPackageStateSlot, len(names)), initial: make([]Value, len(names)), indexes: indexes}
@@ -91,19 +110,10 @@ func compilePackageState(declarations map[string]ProtocolStateSlot, indexes []co
 			}
 			plan.initial[index] = Value{raw: strings.Clone(declaration.Initial.raw)}
 		}
-	}
-	var err error
-	plan.initialBytes, err = measurePackageState(plan.initial, compiler.limits)
-	if err != nil {
-		return nil, locateMappingError(path, err)
-	}
-	for index, name := range names {
-		declaration := declarations[name]
-		update, err := compiler.compilePlan(declaration.Update, plan.slots[index].path+"/update", *scope, 1)
-		if err != nil {
-			return nil, err
+		plan.initialBytes += len(plan.initial[index].raw)
+		if plan.initialBytes > compiler.limits.BufferBytes {
+			return nil, locateMappingError(path, resourceFailure("stream", "state_bytes", compiler.limits.BufferBytes, plan.initialBytes))
 		}
-		plan.slots[index].update = update
 	}
 	return plan, nil
 }
@@ -189,33 +199,36 @@ func (transaction *packageStreamTransaction) stage(state evaluation, isRendered 
 func evaluatePackageStateSlots(plan *compiledPackageState, previous []Value, state evaluation) ([]Value, int, error) {
 	state.streamSlots = previous
 	next := make([]Value, len(plan.slots))
+	bytes := 0
 	for index, slot := range plan.slots {
-		output, err := slot.update.build(state)
+		value, err := evaluatePackageStateSlot(slot, slot.update, previous[index], state)
 		if err != nil {
 			return nil, 0, err
-		}
-		if output.output.IsZero() {
-			continue
-		}
-		value, err := output.output.Encode(state.ctx)
-		if err != nil {
-			return nil, 0, err
-		}
-		if err := slot.schema.validate(state.ctx, value, slot.path, state.budget.limits); err != nil {
-			return nil, 0, err
-		}
-		// Even a tiny selected string can alias the entire original frame.
-		// Already-owned slots can be retained by storage identity without a scan.
-		if spanIdentity(value.raw) != spanIdentity(previous[index].raw) {
-			value.raw = strings.Clone(value.raw)
 		}
 		next[index] = value
-	}
-	bytes, err := measurePackageState(next, state.budget.limits)
-	if err != nil {
-		return nil, 0, err
+		bytes += len(value.raw)
 	}
 	return next, bytes, nil
+}
+
+func evaluatePackageStateSlot(slot compiledPackageStateSlot, update *compiledOutputPlan, previous Value, state evaluation) (Value, error) {
+	output, err := update.build(state)
+	if err != nil || output.output.IsZero() {
+		return Value{}, err
+	}
+	value, err := output.output.Encode(state.ctx)
+	if err != nil {
+		return Value{}, err
+	}
+	if spanIdentity(value.raw) == spanIdentity(previous.raw) {
+		return value, nil
+	}
+	if err := slot.schema.validate(state.ctx, value, slot.path, state.budget.limits); err != nil {
+		return Value{}, err
+	}
+	// Selected fragments must not retain an entire frame.
+	value.raw = strings.Clone(value.raw)
+	return value, nil
 }
 
 func (transaction *packageStreamTransaction) currentSlotBytes() int {
@@ -251,23 +264,6 @@ func (transaction *packageStreamTransaction) checkRetainedBytes(additional int) 
 		return resourceFailure("stream", "state_bytes", limit, bytes)
 	}
 	return nil
-}
-
-func measurePackageState(slots []Value, limits Limits) (int, error) {
-	bytes := 0
-	meter := valueTokenMeter{limits: limits, domain: "stream_state"}
-	for _, value := range slots {
-		bytes += len(value.raw)
-		if bytes > limits.BufferBytes {
-			return 0, resourceFailure("stream", "state_bytes", limits.BufferBytes, bytes)
-		}
-		if !value.IsZero() {
-			if err := meter.scan(value.raw); err != nil {
-				return 0, err
-			}
-		}
-	}
-	return bytes, nil
 }
 
 func (transaction *packageStreamTransaction) finish(err error) {

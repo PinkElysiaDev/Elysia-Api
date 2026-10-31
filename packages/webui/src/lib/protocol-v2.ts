@@ -8,7 +8,8 @@ export interface ProtocolDraft { protocolId: string; hash: string; definition: s
 
 /** Locate authored identity fields without converting or normalizing either source. */
 export function protocolIdentityPrefix(document: ProtocolDocument): string {
-  return document.read('/schemaVersion') === '3' ? '/spec' : ''
+  const version = document.read('/schemaVersion')
+  return version === '3' || version === '4' ? '/spec' : ''
 }
 export interface ProtocolRevision { protocolId: string; hash: string; definition: string; createdAt: string }
 export interface Activation { protocolId: string; revisionHash: string }

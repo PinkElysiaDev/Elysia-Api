@@ -40,7 +40,7 @@ func (compiler *packageStreamCompiler) checkLifecycle(path string) error {
 	}
 	for _, kind := range compiler.contract.itemKinds {
 		for _, action := range []EventType{ItemStarted, ItemDelta, ItemFinished} {
-			if kind == MessageNode && action == ItemDelta {
+			if action == ItemDelta && (kind == MessageNode || kind == ToolCallNode && compiler.itemActions[kind][ItemSnapshot]) {
 				continue
 			}
 			if compiler.itemActions[kind][action] || action == ItemFinished && (compiler.contract.closeItemsOnFinish || compiler.actions[ItemFinished]) {
@@ -51,7 +51,7 @@ func (compiler *packageStreamCompiler) checkLifecycle(path string) error {
 	}
 	if compiler.contract.hasTools {
 		for _, action := range []EventType{ItemStarted, ItemDelta} {
-			if !compiler.toolActions[action] {
+			if !compiler.toolActions[action] && !(action == ItemDelta && compiler.toolActions[ItemSnapshot]) {
 				return fmt.Errorf("%s/events: missing tool lifecycle action for %s", path, action)
 			}
 		}

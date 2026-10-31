@@ -59,13 +59,14 @@ func (source *protocolSourceStream) Push(value protocol.Value, metadata protocol
 }
 
 func (source *protocolSourceStream) decode(frame protocol.SourceFrame) error {
-	if source.wireValidation != nil {
-		if err := source.wireValidation.Consume(source.ctx, frame.Value); err != nil {
-			return err
-		}
-	}
 	source.options.Values = frame.Metadata
-	decoded, err := source.candidate.compiled.DecodeFrame(source.ctx, frame.Value, source.options)
+	var decoded *protocol.EventFrame
+	var err error
+	if source.wireValidation != nil {
+		decoded, err = source.wireValidation.DecodeFrame(source.ctx, frame.Value, source.options)
+	} else {
+		decoded, err = source.candidate.compiled.DecodeFrame(source.ctx, frame.Value, source.options)
+	}
 	if err != nil {
 		return err
 	}

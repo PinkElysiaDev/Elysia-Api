@@ -49,7 +49,7 @@ func TestGatewayConversionPlanGenerationAndIsolation(t *testing.T) {
 	if len(before.plans) != 1 || first.VerifiedProviderRules != nil || first.VerificationContext != nil {
 		t.Fatal("shared request state")
 	}
-	binding := storage.ProtocolBinding{Kind: "source", SourceID: model.SourceID, Conversion: &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "override", Mode: "strict"}}}
+	binding := storage.ProtocolBinding{Kind: "source", SourceID: model.SourceID, Conversion: &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "override", Mode: "strict"}}}
 	if err := s.store.SaveProtocolBinding(t.Context(), binding); err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestGatewayConversionPlanGenerationAndIsolation(t *testing.T) {
 			if i%2 == 0 {
 				mode = "strict"
 			}
-			next.Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "override", Mode: mode}}
+			next.Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "override", Mode: mode}}
 			if err := s.store.SaveProtocolBinding(t.Context(), next); err != nil {
 				t.Error(err)
 				return

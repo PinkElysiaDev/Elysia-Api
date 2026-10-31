@@ -72,6 +72,31 @@ func (c *Compiled) newWireStreamValidation(direction Direction, scope Scope) (*W
 }
 
 func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
+	var view *inputView
+	if v.packageStream != nil {
+		view = newInputView(frame)
+	}
+	return v.consume(ctx, frame, view)
+}
+
+// DecodeFrame validates and decodes one source frame using shared immutable
+// reads. Wire lifecycle and mapping state remain independent of each other.
+func (v *WireStreamValidation) DecodeFrame(ctx context.Context, frame Value, options EvaluationContext) (*EventFrame, error) {
+	if v.direction != DecodeEvent || v.packageStream == nil {
+		return nil, fmt.Errorf("frame decoding requires source wire stream validation")
+	}
+	if options.Scope != v.options.Scope {
+		return nil, v.compiled.runtimeError(DecodeEvent, streamIssue(ResourceScopeMismatch, "/state", "frame scope does not match source wire stream validation"))
+	}
+	view := newInputView(frame)
+	if err := v.consume(ctx, frame, view); err != nil {
+		return nil, err
+	}
+	options.inputView = view
+	return v.compiled.DecodeFrame(ctx, frame, options)
+}
+
+func (v *WireStreamValidation) consume(ctx context.Context, frame Value, view *inputView) error {
 	if v.packageStream != nil {
 		v.packageStream.hasPendingDelivery = false
 	}
@@ -84,11 +109,17 @@ func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 			return v.rejectPackageFrame(err)
 		}
 	}
-	if err := v.compiled.validateSelectedWireContract(ctx, v.direction, frame, fields, v.compiled.wireLimits(ctx, v.direction), contract); err != nil {
+	var err error
+	if view != nil {
+		err = v.compiled.validateWireInputView(ctx, v.direction, view, v.compiled.wireLimits(ctx, v.direction), contract)
+	} else {
+		err = v.compiled.validateSelectedWireContract(ctx, v.direction, frame, fields, v.compiled.wireLimits(ctx, v.direction), contract)
+	}
+	if err != nil {
 		return v.rejectPackageFrame(err)
 	}
 	if v.packageStream != nil {
-		err := v.packageStream.consume(ctx, frame)
+		err := v.packageStream.consumeInputView(ctx, view)
 		if err != nil {
 			return v.annotatePackageFailure(v.rejectPackageFrame(err))
 		}

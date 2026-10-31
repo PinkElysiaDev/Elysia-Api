@@ -59,7 +59,7 @@ func TestPackageStreamContractCompilation(t *testing.T) {
 		path string
 	}{
 		{"pointer", func(p *ProtocolPackage) { p.Spec.Documents["provider-event"].Stream.ResponseID = "response_id" }, "/spec/documents/client-event/stream/responseId"},
-		{"root-pointer", func(p *ProtocolPackage) { p.Spec.Documents["provider-event"].Stream.ItemID = "" }, "/spec/documents/client-event/stream/itemId"},
+		{"missing-item-selector", func(p *ProtocolPackage) { p.Spec.Documents["provider-event"].Stream.ItemID = "" }, "/spec/documents/client-event/stream/events/item.delta/0/itemId"},
 		{"missing-action", func(p *ProtocolPackage) { delete(p.Spec.Documents["provider-event"].Stream.Events, "item.delta") }, "/spec/documents/client-event/stream/events"},
 		{"unknown-action", func(p *ProtocolPackage) {
 			p.Spec.Documents["provider-event"].Stream.Events["future"] = ProtocolStreamEventSpec{{Action: "infer"}}

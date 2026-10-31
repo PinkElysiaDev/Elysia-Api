@@ -179,7 +179,7 @@ func TestRuntimeMetadataRejectsInvalidScopesAndFields(t *testing.T) {
 				document := textProtocolPackage(t)
 				if scope == "spec" {
 					contract := document.Spec.Documents[document.Mapping.Directions[DecodeRequest].Document]
-					contract.Assertions = []WireAssertion{{Path: "/prompt", Schema: ValueSchema{Type: StringType}, Check: &read, Code: InvalidInput, Reason: "synthetic assertion"}}
+					contract.Assertions = []WireAssertion{{Path: "/prompt", Schema: &ValueSchema{Type: StringType}, Check: &read, Code: InvalidInput, Reason: "synthetic assertion"}}
 					document.Spec.Documents[document.Mapping.Directions[DecodeRequest].Document] = contract
 				} else {
 					document = noCachePackage(t)

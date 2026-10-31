@@ -76,7 +76,7 @@ func TestPackageCacheProjectionPolicyOrderAndDiagnostics(t *testing.T) {
 		if enabled {
 			rule.Action, rule.Value, rule.Reason = "warn", Value{}, "operator replaced projection"
 		}
-		overridden, err := ResolveConversion(policy, ConversionPolicy{SchemaVersion: 1, ID: "operator", Rules: []ConversionRule{rule}})
+		overridden, err := ResolveConversion(policy, ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "operator", Rules: []ConversionRule{rule}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -206,7 +206,7 @@ func TestPackageCacheProjectionRejectsResourceAndNativeRecovery(t *testing.T) {
 	assertPackageRuntimeIssue(t, err, InvalidInput, "/cache/0/kind")
 	// The disposition's resource restriction does not change the existing,
 	// separately authored remove operation.
-	remove := ConversionPolicy{SchemaVersion: 1, ID: "operator", Rules: []ConversionRule{{ID: "request-projection", Order: 130, Enabled: true, Phase: ConversionRequest, Action: "remove", Path: "/cache"}}}
+	remove := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "operator", Rules: []ConversionRule{{ID: "request-projection", Order: 130, Enabled: true, Phase: ConversionRequest, Action: "remove", Path: "/cache"}}}
 	explicit, err := ResolveConversion(DefaultConversionPolicy(source, target), remove)
 	if err != nil {
 		t.Fatal(err)

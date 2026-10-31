@@ -15,7 +15,7 @@ type Props = {
 export function ConversionPreview({ policyJSON, isValid, busy, registry, action }: Props) {
   const [phase, setPhase] = useState<ConversionPhase>('request')
   const [input, setInput] = useState(
-    '{"schemaVersion":1,"source":{},"model":"example","content":[],"parameters":{"stream":false}}',
+    '{"schemaVersion":2,"source":{},"model":"example","content":[],"parameters":{"stream":false}}',
   )
   const [context, setContext] = useState(
     '{"source":{"definitionId":"openai-chat-completions","family":"openai_chat","wireVersion":"v2"},"target":{"definitionId":"google-generate-content","family":"gemini","wireVersion":"v2"},"model":"example","operation":"generate","transport":"http_json"}',
