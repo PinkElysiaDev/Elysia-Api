@@ -41,6 +41,18 @@
 用户已批准 Chat/Gemini 来源改为真实原文位置及原文片段。这是表示变化，必须保留精确
 旧／新对照并验证最终行为，不能把其他诊断差异归入此例外。现有静态错误／值账本继续保留。
 
+## 第二批：来源变化的反向编码与 Gemini 工具分区
+
+Chat/Gemini 已批准的来源差异在原迁移测试中单独标记为 `APPROVED REPRESENTATION`。
+每项仍检查原先精确的差异路径和静态旧／新值，没有删除快照或扩大允许差异；其余拒绝诊断
+继续标为 `NOT CLOSED`。复用这些输入增加原生重放、删除根 Native、修改模型后的反向编码。
+
+对照实际发现 Gemini 混合工具桶的功能缺陷：函数声明已经解码为独立 function 工具，
+而 hosted 工具的新完整 Native 又包含同一 `functionDeclarations`，删除根 Native 后重复输出。
+Mapping 现在从 hosted 工具渲染中排除已由 function 工具承担的字段，保留原始快照和其他未知成员。
+修复前记录 `closure-json-reencoding`，修复后全部 Chat/Gemini 迁移与新增反向对照通过，
+见 `closure-source-reencoding`。不改变 Go 编码器，也不以来源表示批准覆盖这一实际功能差异。
+
 ## 性能证据边界
 
 此前 12 秒 CPU／分配定位样本属于有界对象读取优化之前，且未保存匹配可执行文件。

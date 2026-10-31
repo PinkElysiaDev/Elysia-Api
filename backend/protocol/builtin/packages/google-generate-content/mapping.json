@@ -3009,7 +3009,8 @@
                       "name": "original"
                     },
                     "keys": [
-                      "name"
+                      "name",
+                      "functionDeclarations"
                     ],
                     "policy": "exclude"
                   },
@@ -3050,7 +3051,8 @@
                       "name": "original"
                     },
                     "keys": [
-                      "name"
+                      "name",
+                      "functionDeclarations"
                     ],
                     "policy": "exclude"
                   },

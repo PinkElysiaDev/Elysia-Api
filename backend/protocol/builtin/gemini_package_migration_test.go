@@ -360,14 +360,16 @@ func checkGeminiReasoningMigration(t *testing.T, legacy, draft *p.Compiled) {
 
 var geminiMigrationGaps = map[string]packageMigrationGap{
 	"TestGeminiPackageDraftMigration/text-decode": {
-		reason: "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		reason:                   "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
 		},
 	},
 	"TestGeminiPackageDraftMigration/history-decode": {
-		reason: "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		reason:                   "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
@@ -378,7 +380,8 @@ var geminiMigrationGaps = map[string]packageMigrationGap{
 		},
 	},
 	"TestGeminiPackageDraftMigration/text-decode-response": {
-		reason: "legacy response content is wrapped and re-encoded; capture_native preserves the original location and value",
+		reason:                   "legacy response content is wrapped and re-encoded; capture_native preserves the original location and value",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
@@ -388,7 +391,8 @@ var geminiMigrationGaps = map[string]packageMigrationGap{
 		},
 	},
 	"TestGeminiPackageDraftMigration/tool-decode-response": {
-		reason: "legacy response content is wrapped and re-encoded; capture_native preserves the original location and value",
+		reason:                   "legacy response content is wrapped and re-encoded; capture_native preserves the original location and value",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
@@ -398,49 +402,56 @@ var geminiMigrationGaps = map[string]packageMigrationGap{
 		},
 	},
 	"TestGeminiPackageDraftMigration/cache-policy-decode": {
-		reason: "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		reason:                   "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
 		},
 	},
 	"TestGeminiPackageDraftMigration/image-decode": {
-		reason: "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		reason:                   "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
 		},
 	},
 	"TestGeminiPackageDraftMigration/audio-decode": {
-		reason: "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		reason:                   "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
 		},
 	},
 	"TestGeminiPackageDraftMigration/video-decode": {
-		reason: "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		reason:                   "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
 		},
 	},
 	"TestGeminiPackageDraftMigration/document-decode": {
-		reason: "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		reason:                   "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
 		},
 	},
 	"TestGeminiPackageDraftMigration/hosted-tool-decode": {
-		reason: "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		reason:                   "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
 		},
 	},
 	"TestGeminiPackageDraftMigration/reasoning-history-decode": {
-		reason: "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		reason:                   "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
@@ -453,7 +464,8 @@ var geminiMigrationGaps = map[string]packageMigrationGap{
 		},
 	},
 	"TestGeminiPackageDraftMigration/reasoning-response-decode": {
-		reason: "legacy response content is wrapped and re-encoded; capture_native preserves the original location and value",
+		reason:                   "legacy response content is wrapped and re-encoded; capture_native preserves the original location and value",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
@@ -465,7 +477,8 @@ var geminiMigrationGaps = map[string]packageMigrationGap{
 		},
 	},
 	"TestGeminiPackageDraftMigration/signature-reasoning-history-decode": {
-		reason: "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		reason:                   "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
@@ -478,7 +491,8 @@ var geminiMigrationGaps = map[string]packageMigrationGap{
 		},
 	},
 	"TestGeminiPackageDraftMigration/signature-reasoning-response-decode": {
-		reason: "legacy response content is wrapped and re-encoded; capture_native preserves the original location and value",
+		reason:                   "legacy response content is wrapped and re-encoded; capture_native preserves the original location and value",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
@@ -490,7 +504,8 @@ var geminiMigrationGaps = map[string]packageMigrationGap{
 		},
 	},
 	"TestGeminiPackageDraftMigration/boundary/idless-reuse": {
-		reason: "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		reason:                   "legacy Gemini part provenance uses /content; capture_native preserves the original /parts location",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
@@ -511,14 +526,16 @@ var geminiMigrationGaps = map[string]packageMigrationGap{
 		rejection: true,
 	},
 	"TestGeminiPackageDraftMigration/boundary/system-wrapper": {
-		reason: "legacy system parts use the synthetic /system path; capture_native preserves /systemInstruction/parts",
+		reason:                   "legacy system parts use the synthetic /system path; capture_native preserves /systemInstruction/parts",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
 		},
 	},
 	"TestGeminiPackageDraftMigration/boundary/response-omitted-role": {
-		reason: "legacy response content is wrapped and re-encoded; capture_native preserves the original location and value",
+		reason:                   "legacy response content is wrapped and re-encoded; capture_native preserves the original location and value",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/content/0/children/0/native/source/path",
 			"/content/0/children/0/source/path",
@@ -528,7 +545,8 @@ var geminiMigrationGaps = map[string]packageMigrationGap{
 		},
 	},
 	"TestGeminiPackageDraftMigration/boundary/mixed-tool-envelope": {
-		reason: "legacy hosted snapshot removes functionDeclarations; capture_native preserves the original object",
+		reason:                   "legacy hosted snapshot removes functionDeclarations; capture_native preserves the original object",
+		isApprovedRepresentation: true,
 		paths: []string{
 			"/tools/1/native/value/functionDeclarations",
 		},
@@ -568,4 +586,7 @@ func compareGeminiMigration(t *testing.T, legacy, draft *p.Compiled, sample p.Sa
 	want, wantErr := executePackageMigrationSample(t, legacy, sample, options, false)
 	got, gotErr := executePackageMigrationSample(t, draft, sample, options, true)
 	checkPackageMigration(t, want, got, wantErr, gotErr, geminiMigrationGaps[t.Name()])
+	if geminiMigrationGaps[t.Name()].isApprovedRepresentation {
+		checkMigrationReencoding(t, legacy, draft, sample, options)
+	}
 }

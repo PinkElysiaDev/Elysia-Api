@@ -17,9 +17,10 @@ import (
 )
 
 type packageMigrationGap struct {
-	reason    string
-	paths     []string
-	rejection bool
+	reason                   string
+	paths                    []string
+	rejection                bool
+	isApprovedRepresentation bool
 }
 
 func compileBuiltinPackage(t *testing.T, name string) *p.Compiled {
@@ -233,6 +234,13 @@ func checkPackageMigration(t *testing.T, want, got []byte, wantErr, gotErr error
 	}
 	state := migrationGapState{LegacyError: describeMigrationError(wantErr), DraftError: describeMigrationError(gotErr), Values: describeMigrationValues(t, want, got, gap.paths)}
 	checkMigrationGapState(t, state)
+	if gap.isApprovedRepresentation {
+		if gap.rejection || gap.paths == nil {
+			t.Fatal("approved representation requires exact successful value differences")
+		}
+		t.Logf("APPROVED REPRESENTATION: %s; exact old/new values remain checked", gap.reason)
+		return
+	}
 	t.Logf("NOT CLOSED: %s; old error=%v; draft error=%v; differences=%v", gap.reason, wantErr, gotErr, migrationDifference(want, got))
 }
 
@@ -256,6 +264,43 @@ func checkMigrationGapState(t *testing.T, actual migrationGapState) {
 		got, _ := json.Marshal(actual)
 		want, _ := json.Marshal(expected)
 		t.Fatalf("unregistered migration error/value change:\nactual: %s\nrecorded: %s", got, want)
+	}
+}
+
+// Approved source representations may differ internally, but must not change
+// the encoded response or let an old snapshot undo a current model edit.
+func checkMigrationReencoding(t *testing.T, legacy, draft *p.Compiled, sample p.Sample, options p.EvaluationContext) {
+	t.Helper()
+	for _, edit := range []string{"native", "without-root-native", "model"} {
+		encode := func(compiled *p.Compiled) ([]byte, error) {
+			if sample.Direction == p.DecodeRequest {
+				request, err := compiled.DecodeRequestValue(t.Context(), sample.Input, options)
+				if err != nil {
+					return nil, err
+				}
+				if edit == "without-root-native" {
+					request.Native = nil
+				} else if edit == "model" {
+					request.Model = p.StringValue("edited-model")
+				}
+				return compiled.EncodeRequest(t.Context(), request, options)
+			}
+			response, err := compiled.DecodeResponse(t.Context(), sample.Input.Bytes(), options)
+			if err != nil {
+				return nil, err
+			}
+			if edit == "without-root-native" {
+				response.Native = nil
+			} else if edit == "model" {
+				response.Model = p.StringValue("edited-model")
+			}
+			return compiled.EncodeResponse(t.Context(), response, options)
+		}
+		t.Run("source-reencoding/"+edit, func(t *testing.T) {
+			want, wantErr := encode(legacy)
+			got, gotErr := encode(draft)
+			checkPackageMigration(t, want, got, wantErr, gotErr, packageMigrationGap{})
+		})
 	}
 }
 

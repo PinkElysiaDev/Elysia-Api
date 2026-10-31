@@ -35,15 +35,16 @@ func TestChatPackageDraftMigration(t *testing.T) {
 	}
 	draft := compileBuiltinPackage(t, "openai-chat")
 	responsePathGap := packageMigrationGap{
-		reason: "legacy response message provenance inserts a synthetic /0; capture_native preserves the actual wire location",
-		paths:  []string{"/content/0/native/source/path", "/content/0/source/path"},
+		isApprovedRepresentation: true,
+		reason:                   "legacy response message provenance inserts a synthetic /0; capture_native preserves the actual wire location",
+		paths:                    []string{"/content/0/native/source/path", "/content/0/source/path"},
 	}
 	gaps := map[string]packageMigrationGap{
 		"text-decode-response":                   responsePathGap,
 		"reasoning-response-decode":              responsePathGap,
 		"cache-creation-decode-response":         responsePathGap,
 		"cache-creation-missing-decode-response": responsePathGap,
-		"tool-decode-response": {reason: responsePathGap.reason, paths: []string{
+		"tool-decode-response": {isApprovedRepresentation: true, reason: responsePathGap.reason, paths: []string{
 			"/content/0/children/0/native/source/path", "/content/0/children/0/source/path",
 			"/content/0/native/source/path", "/content/0/source/path",
 		}},
@@ -57,6 +58,9 @@ func TestChatPackageDraftMigration(t *testing.T) {
 			want, wantErr := executePackageMigrationSample(t, legacy, sample, options, false)
 			got, gotErr := executePackageMigrationSample(t, draft, sample, options, true)
 			checkPackageMigration(t, want, got, wantErr, gotErr, gaps[sample.ID])
+			if gaps[sample.ID].isApprovedRepresentation {
+				checkMigrationReencoding(t, legacy, draft, sample, options)
+			}
 		})
 		if sample.Direction == p.EncodeRequest || sample.Direction == p.EncodeResponse {
 			t.Run("without-root-native/"+sample.ID, func(t *testing.T) {
@@ -92,6 +96,9 @@ func TestChatPackageDraftMigration(t *testing.T) {
 			want, wantErr := executePackageMigrationSample(t, legacy, sample, options, false)
 			got, gotErr := executePackageMigrationSample(t, draft, sample, options, true)
 			checkPackageMigration(t, want, got, wantErr, gotErr, fixture.gap)
+			if fixture.gap.isApprovedRepresentation {
+				checkMigrationReencoding(t, legacy, draft, sample, options)
+			}
 		})
 	}
 	checkChatRequestOwners(t, legacy, draft)
