@@ -215,7 +215,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	if compiled.op == "recur" && !scope.isWalk {
 		return nil, fmt.Errorf("%s: recur requires an enclosing walk body", path)
 	}
-	if compiled.op == "capture_native" && !scope.wireCapture {
+	if (compiled.op == "capture_native" || compiled.op == "capture_source") && !scope.wireCapture {
 		return nil, fmt.Errorf("%s: native capture requires a package wire decoder", path)
 	}
 	if (compiled.op == "replay_native" || compiled.op == "native_matches") && !scope.canReadNative {
@@ -383,7 +383,7 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 			}
 			expression.pathPrefix = source.Path + "/"
 		}
-	case "capture_native":
+	case "capture_native", "capture_source":
 		if expression.source.op != "read" || !slices.Contains([]string{"input", "root", "item", "binding"}, expression.source.from) {
 			return fail("native capture requires a read from the original wire")
 		}

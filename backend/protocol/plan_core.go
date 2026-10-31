@@ -16,7 +16,7 @@ import (
 const coreDirectDecodeBytes = 4 << 10
 
 // Origin tags survive immutable reads but not JSON serialization or object
-// reconstruction. Only capture_native can authorize stamped semantic provenance.
+// reconstruction. Wire capture operations alone authorize semantic provenance.
 type coreOriginTag uint8
 
 const (
@@ -27,6 +27,9 @@ const (
 type untrustedCoreOriginError struct{ kind string }
 
 func (err *untrustedCoreOriginError) Error() string {
+	if err.kind == "Provenance" {
+		return "Provenance in a package decoder must come from capture_native or capture_source"
+	}
 	return err.kind + " in a package decoder must come from capture_native"
 }
 

@@ -22,6 +22,7 @@ type compiledOutputPlan struct {
 	rootObjectReads        uint8
 	itemObjectReads        uint8
 	hasCapture             bool
+	hasSourceCapture       bool
 	hasNativeTarget        bool
 	hasOutputStreamRead    bool
 	hasRequestObjectSource bool
@@ -50,7 +51,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	}
 	plan := &compiledOutputPlan{expression: expression}
 	switch expression.op {
-	case "omit", "literal", "read", "let", "with_index", "remember", "recall", "index", "capture_native", "replay_native", "native_matches", "object", "project", "keys", "array", "map", "walk", "recur", "flatmap", "filter", "if", "choose",
+	case "omit", "literal", "read", "let", "with_index", "remember", "recall", "index", "capture_native", "capture_source", "replay_native", "native_matches", "object", "project", "keys", "array", "map", "walk", "recur", "flatmap", "filter", "if", "choose",
 		"merge", "merge_deep", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
 		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "equal", "equal_text", "all", "any", "entries", "from_entries", "group_runs":
 	default:
@@ -71,6 +72,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 		}
 	}
 	plan.hasCapture = expression.op == "capture_native"
+	plan.hasSourceCapture = expression.op == "capture_source"
 	plan.hasNativeTarget = expression.op == "replay_native" || expression.op == "native_matches"
 	plan.hasOutputStreamRead = expression.op == "read" && expression.from == "runtime" && len(expression.pointer) == 2 && expression.pointer[0] == "stream"
 	if (expression.op == "keys" || expression.op == "type") && expression.source != nil && expression.source.op == "read" && (expression.source.from == "input" || expression.source.from == "root") {
@@ -139,6 +141,7 @@ func (plan *compiledOutputPlan) mergeRequirements(child *compiledOutputPlan, has
 		plan.itemObjectReads = min(objectReuseReads, plan.itemObjectReads+child.itemObjectReads)
 	}
 	plan.hasCapture = plan.hasCapture || child.hasCapture
+	plan.hasSourceCapture = plan.hasSourceCapture || child.hasSourceCapture
 	plan.hasNativeTarget = plan.hasNativeTarget || child.hasNativeTarget
 	plan.hasOutputStreamRead = plan.hasOutputStreamRead || child.hasOutputStreamRead
 }
@@ -201,6 +204,8 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plannedLeaf(coreInteger(int64(state.itemIndex))), nil
 	case "capture_native":
 		return plan.captureNative(state)
+	case "capture_source":
+		return plan.captureSource(state)
 	case "replay_native", "native_matches":
 		return plan.buildNativeTarget(state)
 	case "object":

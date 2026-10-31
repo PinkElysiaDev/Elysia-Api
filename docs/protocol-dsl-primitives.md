@@ -85,6 +85,17 @@
 {"op":"capture_native","source":{"op":"read","from":"item","path":""}}
 ```
 
+需要来源位置但不需要原生快照时，使用 `capture_source`，source 具有相同的原文读取限制。
+它只产生可信 Provenance，不持有选择的正文；关闭 `native.preserve` 后仍工作。
+例如 metadata 的来源和节点分类不应依赖用户是否保存 Native：
+
+```json
+{"op":"capture_source","source":{"op":"read","from":"item","path":""}}
+```
+
+`capture_source` 不授予 Native 重放权限。它与 `capture_native` 共用位置证明、运行时身份、
+预算和最终 scope 绑定；选择不存在或经过重排构造的值仍拒绝。
+
 运行时记录原始数组的来源锚点，并让 let、walk/recur 沿实际读取保持锚点。协议身份、方向和初始 scope 由运行时提供；typed 请求的授权和最终 scope stamping 继续走原流程。产生的 Native 不允许声明自行填写这些身份。
 
 新包的正式 typed 解码在写入 Native／Provenance 结构时检查私有捕获标记。普通 object、literal 或 wire read 即使构造出相同的身份、scope、路径和值，也不能成为可信来源。原样读取及 let 绑定保留标记；merge、project 等对象重建和 JSON 物化不保留标记。工具参数、schema 和普通 Value 载荷中的同名 `native`／`source` 键仍是用户数据，不受结构来源检查。

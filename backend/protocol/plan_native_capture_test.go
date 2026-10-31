@@ -73,6 +73,34 @@ func TestPackageNativeCaptureUsesRuntimeProvenance(t *testing.T) {
 	}
 }
 
+func TestPackageSourceCaptureDoesNotRequireNative(t *testing.T) {
+	document := textProtocolPackage(t)
+	child := document.Mapping.Directions[DecodeRequest].Program.Fields["content"].Items[0].Fields["children"].Items[0]
+	prompt := expressionPointer(readExpression("input", "/prompt"))
+	child.Fields["native"] = Expression{Op: "capture_native", Source: prompt}
+	child.Fields["source"] = Expression{Op: "capture_source", Source: prompt}
+	initial := Scope{Provider: "synthetic", Account: "account"}
+	resolved := initial
+	resolved.Model = "selected"
+	for _, preserve := range []bool{false, true} {
+		document.Mapping.Native.Preserve = preserve
+		compiled := compilePackageForTest(t, document)
+		calls := 0
+		request, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","prompt":"hello"}`), EvaluationContext{
+			Scope:               initial,
+			ResolveRequestScope: func(*Request) (Scope, error) { calls++; return resolved, nil },
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		node := request.Content[0].Children[0]
+		want := Provenance{Protocol: compiled.Identity(), Direction: DecodeRequest, Scope: resolved, Path: "/prompt"}
+		if node.Source == nil || *node.Source != want || calls != 1 || (node.Native != nil) != preserve || (request.Native != nil) != preserve {
+			t.Fatal("source capture changed preservation or authorization", preserve, node, calls)
+		}
+	}
+}
+
 func TestNativeCaptureTracksRecursiveSourceLocations(t *testing.T) {
 	item := readExpression("item", "")
 	bound := bindingTestRead("node", "")
@@ -119,8 +147,15 @@ func TestNativeCaptureTracksRecursiveSourceLocations(t *testing.T) {
 }
 
 func TestNativeCaptureRejectsInventedOrigins(t *testing.T) {
+	for _, operation := range []string{"capture_native", "capture_source"} {
+		t.Run(operation, func(t *testing.T) { checkCaptureRejectsInventedOrigins(t, operation) })
+	}
+}
+
+func checkCaptureRejectsInventedOrigins(t *testing.T, operation string) {
+	t.Helper()
 	read := readExpression("item", "")
-	capture := Expression{Op: "capture_native", Source: &read}
+	capture := Expression{Op: operation, Source: &read}
 	for _, source := range []Expression{
 		{Op: "filter", Source: expressionPointer(readExpression("input", "/content")), When: expressionPointer(literalExpression(true))},
 		{Op: "array", Items: []Expression{literalExpression(map[string]any{"label": "same"})}},
