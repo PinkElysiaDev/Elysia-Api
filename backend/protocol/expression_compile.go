@@ -199,6 +199,8 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 				compiled.result = BooleanType
 			case len(pointer) == 2 && pointer[0] == "scope" && pointer[1] == "model":
 				compiled.result = StringType
+			case len(pointer) == 2 && pointer[0] == "delivered" && pointer[1] == "maxItemIndex" && scope.canReadOutputStream:
+				compiled.result = IntegerType
 			case len(pointer) == 2 && pointer[0] == "stream" && scope.canReadOutputStream:
 				switch pointer[1] {
 				case "responseId":
@@ -254,16 +256,24 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	if (compiled.op == "replay_native" || compiled.op == "native_matches") && !scope.canReadNative {
 		return nil, fmt.Errorf("%s: native target operations require a package encode program", path)
 	}
-	if compiled.op == "resolve_item" || compiled.op == "track_text" || compiled.op == "track_tool" {
+	if compiled.op == "read_delivered_item" || compiled.op == "resume_text" {
+		if !scope.canReadOutputStream || scope.canReadNativeFrame {
+			return nil, fmt.Errorf("%s: delivered item access requires an event encoder, outside native observation", path)
+		}
+	}
+	if compiled.op == "resolve_item" || compiled.op == "track_text" || compiled.op == "track_tool" || compiled.op == "resume_text" {
 		if !scope.canUseStreamPrimitives || !scope.canWriteStreamIndexes {
 			return nil, fmt.Errorf("%s: stream primitives require an event program", path)
 		}
 		*scope.streamPrimitiveUsed = true
-		if compiled.op == "track_text" || compiled.op == "track_tool" {
+		if compiled.op == "track_text" || compiled.op == "track_tool" || compiled.op == "resume_text" {
 			if !definitionIdentifier.MatchString(expression.Name) {
 				return nil, fmt.Errorf("%s/name: expected a fixed tracker channel identifier", path)
 			}
 			channel := compiled.op + ":" + expression.Name
+			if compiled.op == "resume_text" {
+				channel = "track_text:" + expression.Name
+			}
 			if !scope.trackerChannels[channel] && len(scope.trackerChannels) >= streamTrackersPerItem {
 				return nil, fmt.Errorf("%s/name: stream programs support at most %d fixed tracker channels", path, streamTrackersPerItem)
 			}
@@ -281,7 +291,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	if compiled.op == "remember" || compiled.op == "recall" || compiled.op == "forget" || compiled.op == "index_size" {
 		slot, exists := scope.indexes[expression.Name]
 		if !exists {
-			if compiled.op == "forget" || compiled.op == "index_size" {
+			if compiled.op == "forget" {
 				return nil, fmt.Errorf("%s/name: %s requires a lexical index", path, compiled.op)
 			}
 			slot, exists = scope.streamIndexes[expression.Name]
@@ -450,6 +460,14 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		return fail("condition must produce a boolean")
 	}
 	switch expression.op {
+	case "read_delivered_item":
+		if !isAssignable(expression.source.result, StringType) {
+			return fail("read_delivered_item requires a string wire identity")
+		}
+	case "resume_text":
+		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, StringType) {
+			return fail("resume_text requires string tracker and wire identities")
+		}
 	case "track_tool":
 		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, ObjectType) {
 			return fail("track_tool requires a string key and an observation object")

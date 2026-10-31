@@ -3,9 +3,9 @@ package protocol
 import "fmt"
 
 // WithOutputStream binds the actual target wire validator for read-only runtime
-// stream metadata. Unbound or mismatched identity, direction and scope are
-// rejected when metadata is read, including reads of started or terminal.
-// Carrying this context through another mapping does not grant access.
+// facts. Identity, direction and scope must match this mapping. Required position
+// reads reject an absent binding; optional item lookups remain missing. Carrying
+// this context through another mapping does not grant access.
 func (options EvaluationContext) WithOutputStream(validation *WireStreamValidation) EvaluationContext {
 	options.outputStream = validation
 	return options
@@ -24,6 +24,7 @@ func (validation *WireStreamValidation) CommitDelivery() error {
 		return fmt.Errorf("delivery commit requires a successfully accepted output frame")
 	}
 	state.delivered = state.accepted
+	state.deliveredFrameNumber = state.frameNumber
 	state.hasPendingDelivery = false
 	return nil
 }

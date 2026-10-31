@@ -80,14 +80,18 @@ func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 		var err error
 		fields, err = (EvaluationContext{}).WithValueReader(frame).ReadObject(frame)
 		if err != nil {
-			return err
+			return v.rejectPackageFrame(err)
 		}
 	}
 	if err := v.compiled.validateSelectedWireContract(ctx, v.direction, frame, fields, v.compiled.wireLimits(ctx, v.direction), contract); err != nil {
-		return err
+		return v.rejectPackageFrame(err)
 	}
 	if v.packageStream != nil {
-		return v.packageStream.consume(ctx, frame)
+		err := v.packageStream.consume(ctx, frame)
+		if err != nil {
+			return v.rejectPackageFrame(err)
+		}
+		return nil
 	}
 	if v.decoder == nil {
 		return nil
@@ -146,6 +150,13 @@ func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 		}
 	}
 	return nil
+}
+
+func (v *WireStreamValidation) rejectPackageFrame(err error) error {
+	if v.packageStream != nil {
+		v.packageStream.hasRejectedFrame = true
+	}
+	return err
 }
 
 func (v *WireStreamValidation) Finish() error {

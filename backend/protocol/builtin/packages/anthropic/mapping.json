@@ -10821,431 +10821,324 @@
 ,
 "encode-stream-item": {
   "op": "let",
-  "name": "identity",
+  "name": "prepared-item",
   "source": {
-    "op": "resolve_item",
+    "op": "let",
+    "name": "item-identity",
     "source": {
-      "op": "object",
-      "fields": {
-        "itemId": {
-          "op": "read",
-          "from": "input",
-          "path": "/itemId"
+      "op": "ref",
+      "ref": "resolve-stream-item"
+    },
+    "body": {
+      "op": "let",
+      "name": "previous-item",
+      "source": {
+        "op": "let",
+        "name": "previous-item",
+        "source": {
+          "op": "recall",
+          "name": "items",
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "path": "/key",
+            "name": "item-identity"
+          },
+          "policy": "omit"
         },
-        "callId": {
-          "op": "read",
-          "from": "input",
-          "path": "/callId"
+        "body": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "previous-item"
+            }
+          },
+          "then": {
+            "op": "read",
+            "from": "binding",
+            "path": "",
+            "name": "previous-item"
+          },
+          "otherwise": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "item.started"
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/itemId"
+                    }
+                  },
+                  {
+                    "op": "has_prefix",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/itemId"
+                    },
+                    "value": "item:"
+                  }
+                ]
+              },
+              "then": {
+                "op": "let",
+                "name": "wire-item-id",
+                "source": {
+                  "op": "trim_prefix",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/itemId"
+                  },
+                  "value": "item:"
+                },
+                "body": {
+                  "op": "let",
+                  "name": "delivered-item",
+                  "source": {
+                    "op": "read_delivered_item",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "wire-item-id"
+                    }
+                  },
+                  "body": {
+                    "op": "if",
+                    "when": {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "delivered-item"
+                          }
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/kind",
+                              "name": "delivered-item"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "text"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/isFinished",
+                              "name": "delivered-item"
+                            },
+                            {
+                              "op": "literal",
+                              "value": false
+                            }
+                          ]
+                        },
+                        {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/index",
+                            "name": "delivered-item"
+                          }
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "let",
+                      "name": "text-resumed",
+                      "source": {
+                        "op": "resume_text",
+                        "name": "body",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/key",
+                          "name": "item-identity"
+                        },
+                        "body": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "wire-item-id"
+                        }
+                      },
+                      "body": {
+                        "op": "object",
+                        "fields": {
+                          "key": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/key",
+                            "name": "item-identity"
+                          },
+                          "index": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/index",
+                            "name": "delivered-item"
+                          },
+                          "kind": {
+                            "op": "literal",
+                            "value": "text"
+                          },
+                          "hasStarted": {
+                            "op": "literal",
+                            "value": true
+                          },
+                          "isFinished": {
+                            "op": "literal",
+                            "value": false
+                          },
+                          "isResumed": {
+                            "op": "literal",
+                            "value": true
+                          }
+                        }
+                      }
+                    },
+                    "otherwise": {
+                      "op": "omit"
+                    }
+                  }
+                }
+              },
+              "otherwise": {
+                "op": "omit"
+              }
+            },
+            "otherwise": {
+              "op": "omit"
+            }
+          }
+        }
+      },
+      "body": {
+        "op": "let",
+        "name": "item-position",
+        "source": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "item.started"
+              }
+            ]
+          },
+          "then": {
+            "op": "read",
+            "from": "state",
+            "path": "/nextIndex"
+          },
+          "otherwise": {
+            "op": "omit"
+          }
         },
-        "index": {
-          "op": "read",
-          "from": "input",
-          "path": "/index"
-        },
-        "parentId": {
-          "op": "read",
-          "from": "input",
-          "path": "/parentId"
+        "body": {
+          "op": "ref",
+          "ref": "prepare-stream-item"
         }
       }
     }
   },
   "body": {
-    "op": "if",
-    "when": {
-      "op": "exists",
+    "op": "let",
+    "name": "identity",
+    "source": {
+      "op": "read",
+      "from": "binding",
+      "path": "/identity",
+      "name": "prepared-item"
+    },
+    "body": {
+      "op": "let",
+      "name": "node",
       "source": {
         "op": "read",
         "from": "binding",
-        "path": "/parent",
-        "name": "identity"
-      }
-    },
-    "then": {
-      "op": "reject",
-      "path": "/parentId",
-      "reason": "target requires an open Responses message or an explicit message projection",
-      "diagnostic": {
-        "code": "unsupported_capability",
-        "stage": "wire",
-        "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
-      }
-    },
-    "otherwise": {
-      "op": "let",
-      "name": "previous",
-      "source": {
-        "op": "recall",
-        "name": "items",
+        "path": "/node",
+        "name": "prepared-item"
+      },
+      "body": {
+        "op": "let",
+        "name": "suffix",
         "source": {
           "op": "read",
           "from": "binding",
-          "path": "/key",
-          "name": "identity"
+          "path": "/suffix",
+          "name": "prepared-item"
         },
-        "policy": "omit"
-      },
-      "body": {
-        "op": "if",
-        "when": {
-          "op": "all",
-          "items": [
-            {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/type"
-                },
-                {
-                  "op": "literal",
-                  "value": "item.started"
-                }
-              ]
-            },
-            {
-              "op": "exists",
-              "source": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "previous"
-              }
-            }
-          ]
-        },
-        "then": {
-          "op": "reject",
-          "path": "/directions/encode_event",
-          "reason": "duplicate target item",
-          "diagnostic": {
-            "code": "invalid_input",
-            "stage": "evaluate",
-            "suggestion": "Correct the input or declared mapping and verify the revision again."
-          }
-        },
-        "otherwise": {
-          "op": "if",
-          "when": {
-            "op": "all",
-            "items": [
-              {
-                "op": "not",
-                "source": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/type"
-                    },
-                    {
-                      "op": "literal",
-                      "value": "item.started"
-                    }
-                  ]
-                }
-              },
-              {
-                "op": "not",
-                "source": {
-                  "op": "exists",
-                  "source": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "previous"
-                  }
-                }
-              }
-            ]
-          },
-          "then": {
-            "op": "reject",
-            "path": "/directions/encode_event",
-            "reason": "target item has no start",
-            "diagnostic": {
-              "code": "invalid_input",
-              "stage": "evaluate",
-              "suggestion": "Correct the input or declared mapping and verify the revision again."
-            }
-          },
-          "otherwise": {
+        "body": {
+          "op": "let",
+          "name": "start-frames",
+          "source": {
             "op": "if",
             "when": {
               "op": "all",
               "items": [
                 {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/type"
-                    },
-                    {
-                      "op": "literal",
-                      "value": "item.started"
-                    }
-                  ]
-                },
-                {
                   "op": "not",
                   "source": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/item"
-                    }
-                  }
-                }
-              ]
-            },
-            "then": {
-              "op": "reject",
-              "path": "/item",
-              "reason": "item start requires a node",
-              "diagnostic": {
-                "code": "unsupported_capability",
-                "stage": "wire",
-                "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
-              }
-            },
-            "otherwise": {
-              "op": "let",
-              "name": "node",
-              "source": {
-                "op": "merge",
-                "items": [
-                  {
-                    "op": "if",
-                    "when": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/type"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "item.started"
-                        }
-                      ]
-                    },
-                    "then": {
-                      "op": "object",
-                      "fields": {
-                        "key": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/key",
-                          "name": "identity"
-                        },
-                        "index": {
-                          "op": "read",
-                          "from": "state",
-                          "path": "/nextIndex"
-                        },
-                        "kind": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/item/kind"
-                        },
-                        "hasStarted": {
-                          "op": "literal",
-                          "value": false
-                        },
-                        "isFinished": {
-                          "op": "literal",
-                          "value": false
-                        }
-                      }
-                    },
-                    "otherwise": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "previous"
-                    }
-                  },
-                  {
-                    "op": "object",
-                    "fields": {
-                      "name": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/item/name"
-                      },
-                      "callId": {
-                        "op": "if",
-                        "when": {
-                          "op": "exists",
-                          "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/callId"
-                          }
-                        },
-                        "then": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/callId"
-                        },
-                        "otherwise": {
-                          "op": "if",
-                          "when": {
-                            "op": "exists",
-                            "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/item/callId"
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/item/callId"
-                          },
-                          "otherwise": {
-                            "op": "omit"
-                          }
-                        }
-                      },
-                      "inputKind": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/item/input/kind"
-                      },
-                      "resources": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/item/resources"
-                      }
-                    }
-                  }
-                ],
-                "policy": "last"
-              },
-              "body": {
-                "op": "if",
-                "when": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/isFinished",
-                  "name": "node"
-                },
-                "then": {
-                  "op": "reject",
-                  "path": "/directions/encode_event",
-                  "reason": "target item completed twice",
-                  "diagnostic": {
-                    "code": "invalid_input",
-                    "stage": "evaluate",
-                    "suggestion": "Correct the input or declared mapping and verify the revision again."
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/hasStarted",
+                    "name": "node"
                   }
                 },
-                "otherwise": {
-                  "op": "let",
-                  "name": "payload",
-                  "source": {
-                    "op": "if",
-                    "when": {
-                      "op": "any",
-                      "items": [
-                        {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/type"
-                            },
-                            {
-                              "op": "literal",
-                              "value": "item.started"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/type"
-                            },
-                            {
-                              "op": "literal",
-                              "value": "item.snapshot"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/type"
-                            },
-                            {
-                              "op": "literal",
-                              "value": "item.finished"
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    "then": {
-                      "op": "if",
-                      "when": {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/item/input/value"
-                        }
-                      },
-                      "then": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/item/input/value"
-                      },
-                      "otherwise": {
-                        "op": "if",
-                        "when": {
-                          "op": "exists",
-                          "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/item/payload"
-                          }
-                        },
-                        "then": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/item/payload"
-                        },
-                        "otherwise": {
-                          "op": "omit"
-                        }
-                      }
-                    },
-                    "otherwise": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/delta"
-                    }
-                  },
-                  "body": {
-                    "op": "let",
-                    "name": "suffix",
-                    "source": {
-                      "op": "if",
-                      "when": {
+                {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "not",
+                      "source": {
                         "op": "equal",
                         "items": [
                           {
@@ -11259,10 +11152,404 @@
                             "value": "tool_call"
                           }
                         ]
+                      }
+                    },
+                    {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/name",
+                            "name": "node"
+                          }
+                        },
+                        {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/callId",
+                            "name": "node"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            "then": {
+              "op": "array",
+              "items": [
+                {
+                  "op": "object",
+                  "fields": {
+                    "type": {
+                      "op": "literal",
+                      "value": "content_block_start"
+                    },
+                    "index": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/index",
+                      "name": "node"
+                    },
+                    "content_block": {
+                      "op": "choose",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/kind",
+                        "name": "node"
                       },
-                      "then": {
-                        "op": "track_tool",
-                        "name": "arguments",
+                      "cases": {
+                        "text": {
+                          "op": "object",
+                          "fields": {
+                            "type": {
+                              "op": "literal",
+                              "value": "text"
+                            },
+                            "text": {
+                              "op": "literal",
+                              "value": ""
+                            }
+                          }
+                        },
+                        "reasoning": {
+                          "op": "let",
+                          "name": "encrypted",
+                          "source": {
+                            "op": "let",
+                            "name": "encrypted",
+                            "source": {
+                              "op": "filter",
+                              "source": {
+                                "op": "if",
+                                "when": {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "binding",
+                                    "path": "/resources",
+                                    "name": "node"
+                                  }
+                                },
+                                "then": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "/resources",
+                                  "name": "node"
+                                },
+                                "otherwise": {
+                                  "op": "if",
+                                  "when": {
+                                    "op": "exists",
+                                    "source": {
+                                      "op": "array",
+                                      "items": []
+                                    }
+                                  },
+                                  "then": {
+                                    "op": "array",
+                                    "items": []
+                                  },
+                                  "otherwise": {
+                                    "op": "omit"
+                                  }
+                                }
+                              },
+                              "when": {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "item",
+                                    "path": "/kind"
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": "encrypted_content"
+                                  }
+                                ]
+                              }
+                            },
+                            "body": {
+                              "op": "if",
+                              "when": {
+                                "op": "not",
+                                "source": {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "",
+                                      "name": "encrypted"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": []
+                                    }
+                                  ]
+                                }
+                              },
+                              "then": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/0/id",
+                                "name": "encrypted"
+                              },
+                              "otherwise": {
+                                "op": "omit"
+                              }
+                            }
+                          },
+                          "body": {
+                            "op": "if",
+                            "when": {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "",
+                                "name": "encrypted"
+                              }
+                            },
+                            "then": {
+                              "op": "object",
+                              "fields": {
+                                "type": {
+                                  "op": "literal",
+                                  "value": "redacted_thinking"
+                                },
+                                "data": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "",
+                                  "name": "encrypted"
+                                }
+                              }
+                            },
+                            "otherwise": {
+                              "op": "object",
+                              "fields": {
+                                "type": {
+                                  "op": "literal",
+                                  "value": "thinking"
+                                },
+                                "thinking": {
+                                  "op": "literal",
+                                  "value": ""
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "tool_call": {
+                          "op": "if",
+                          "when": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/inputKind",
+                                "name": "node"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "json"
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "object",
+                            "fields": {
+                              "type": {
+                                "op": "literal",
+                                "value": "tool_use"
+                              },
+                              "id": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/callId",
+                                "name": "node"
+                              },
+                              "name": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/name",
+                                "name": "node"
+                              },
+                              "input": {
+                                "op": "object",
+                                "fields": {}
+                              }
+                            }
+                          },
+                          "otherwise": {
+                            "op": "reject",
+                            "path": "/input",
+                            "reason": "Anthropic streaming requires JSON function input",
+                            "diagnostic": {
+                              "code": "unsupported_capability",
+                              "stage": "wire",
+                              "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                            }
+                          }
+                        },
+                        "refusal": {
+                          "op": "reject",
+                          "path": "/item",
+                          "reason": "Anthropic cannot express refusal blocks",
+                          "diagnostic": {
+                            "code": "unsupported_capability",
+                            "stage": "wire",
+                            "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                          }
+                        }
+                      },
+                      "otherwise": {
+                        "op": "reject",
+                        "path": "/item",
+                        "reason": "stream target cannot express this item kind",
+                        "diagnostic": {
+                          "code": "unsupported_capability",
+                          "stage": "wire",
+                          "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "array",
+              "items": []
+            }
+          },
+          "body": {
+            "op": "let",
+            "name": "signature-frames",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "item.snapshot"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/item/resources"
+                        }
+                      },
+                      {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item/resources"
+                            },
+                            {
+                              "op": "literal",
+                              "value": {}
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/item/resources"
+                            },
+                            {
+                              "op": "literal",
+                              "value": []
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/kind",
+                      "name": "node"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "reasoning"
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "flatmap",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/resources"
+                  },
+                  "body": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/kind"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "signature"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "let",
+                      "name": "signature",
+                      "source": {
+                        "op": "track_text",
+                        "name": "signature",
                         "source": {
                           "op": "read",
                           "from": "binding",
@@ -11270,395 +11557,31 @@
                           "name": "identity"
                         },
                         "body": {
-                          "op": "object",
-                          "fields": {
-                            "kind": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/inputKind",
-                              "name": "node"
-                            },
-                            "callId": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/callId",
-                              "name": "node"
-                            },
-                            "text": {
-                              "op": "if",
-                              "when": {
-                                "op": "exists",
-                                "source": {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "payload"
-                                }
-                              },
-                              "then": {
-                                "op": "if",
-                                "when": {
-                                  "op": "all",
-                                  "items": [
-                                    {
-                                      "op": "any",
-                                      "items": [
-                                        {
-                                          "op": "equal",
-                                          "items": [
-                                            {
-                                              "op": "read",
-                                              "from": "input",
-                                              "path": "/type"
-                                            },
-                                            {
-                                              "op": "literal",
-                                              "value": "item.started"
-                                            }
-                                          ]
-                                        },
-                                        {
-                                          "op": "equal",
-                                          "items": [
-                                            {
-                                              "op": "read",
-                                              "from": "input",
-                                              "path": "/type"
-                                            },
-                                            {
-                                              "op": "literal",
-                                              "value": "item.snapshot"
-                                            }
-                                          ]
-                                        },
-                                        {
-                                          "op": "equal",
-                                          "items": [
-                                            {
-                                              "op": "read",
-                                              "from": "input",
-                                              "path": "/type"
-                                            },
-                                            {
-                                              "op": "literal",
-                                              "value": "item.finished"
-                                            }
-                                          ]
-                                        }
-                                      ]
-                                    },
-                                    {
-                                      "op": "equal",
-                                      "items": [
-                                        {
-                                          "op": "read",
-                                          "from": "binding",
-                                          "path": "/inputKind",
-                                          "name": "node"
-                                        },
-                                        {
-                                          "op": "literal",
-                                          "value": "json"
-                                        }
-                                      ]
-                                    }
-                                  ]
-                                },
-                                "then": {
-                                  "op": "stringify_json",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "payload"
-                                  }
-                                },
-                                "otherwise": {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "payload"
-                                }
-                              },
-                              "otherwise": {
-                                "op": "omit"
-                              }
-                            },
-                            "snapshot": {
-                              "op": "any",
-                              "items": [
-                                {
-                                  "op": "equal",
-                                  "items": [
-                                    {
-                                      "op": "read",
-                                      "from": "input",
-                                      "path": "/type"
-                                    },
-                                    {
-                                      "op": "literal",
-                                      "value": "item.started"
-                                    }
-                                  ]
-                                },
-                                {
-                                  "op": "equal",
-                                  "items": [
-                                    {
-                                      "op": "read",
-                                      "from": "input",
-                                      "path": "/type"
-                                    },
-                                    {
-                                      "op": "literal",
-                                      "value": "item.snapshot"
-                                    }
-                                  ]
-                                },
-                                {
-                                  "op": "equal",
-                                  "items": [
-                                    {
-                                      "op": "read",
-                                      "from": "input",
-                                      "path": "/type"
-                                    },
-                                    {
-                                      "op": "literal",
-                                      "value": "item.finished"
-                                    }
-                                  ]
-                                }
-                              ]
-                            },
-                            "done": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "read",
-                                  "from": "input",
-                                  "path": "/type"
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": "item.finished"
-                                }
-                              ]
-                            },
-                            "emit": {
-                              "op": "any",
-                              "items": [
-                                {
-                                  "op": "not",
-                                  "source": {
-                                    "op": "equal",
-                                    "items": [
-                                      {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "/kind",
-                                        "name": "node"
-                                      },
-                                      {
-                                        "op": "literal",
-                                        "value": "tool_call"
-                                      }
-                                    ]
-                                  }
-                                },
-                                {
-                                  "op": "all",
-                                  "items": [
-                                    {
-                                      "op": "exists",
-                                      "source": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "/name",
-                                        "name": "node"
-                                      }
-                                    },
-                                    {
-                                      "op": "exists",
-                                      "source": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "/callId",
-                                        "name": "node"
-                                      }
-                                    }
-                                  ]
-                                }
-                              ]
-                            }
-                          }
-                        }
+                          "op": "read",
+                          "from": "item",
+                          "path": "/id"
+                        },
+                        "policy": "snapshot"
                       },
-                      "otherwise": {
+                      "body": {
                         "op": "if",
                         "when": {
-                          "op": "exists",
+                          "op": "not",
                           "source": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "payload"
-                          }
-                        },
-                        "then": {
-                          "op": "if",
-                          "when": {
-                            "op": "any",
+                            "op": "equal",
                             "items": [
                               {
-                                "op": "equal",
-                                "items": [
-                                  {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/type"
-                                  },
-                                  {
-                                    "op": "literal",
-                                    "value": "item.started"
-                                  }
-                                ]
-                              },
-                              {
-                                "op": "equal",
-                                "items": [
-                                  {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/type"
-                                  },
-                                  {
-                                    "op": "literal",
-                                    "value": "item.snapshot"
-                                  }
-                                ]
-                              },
-                              {
-                                "op": "equal",
-                                "items": [
-                                  {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/type"
-                                  },
-                                  {
-                                    "op": "literal",
-                                    "value": "item.finished"
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          "then": {
-                            "op": "track_text",
-                            "name": "body",
-                            "source": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/key",
-                              "name": "identity"
-                            },
-                            "body": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "",
-                              "name": "payload"
-                            },
-                            "policy": "snapshot"
-                          },
-                          "otherwise": {
-                            "op": "track_text",
-                            "name": "body",
-                            "source": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/key",
-                              "name": "identity"
-                            },
-                            "body": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "",
-                              "name": "payload"
-                            },
-                            "policy": "delta"
-                          }
-                        },
-                        "otherwise": {
-                          "op": "literal",
-                          "value": ""
-                        }
-                      }
-                    },
-                    "body": {
-                      "op": "let",
-                      "name": "start-frames",
-                      "source": {
-                        "op": "if",
-                        "when": {
-                          "op": "all",
-                          "items": [
-                            {
-                              "op": "not",
-                              "source": {
                                 "op": "read",
                                 "from": "binding",
-                                "path": "/hasStarted",
-                                "name": "node"
+                                "path": "",
+                                "name": "signature"
+                              },
+                              {
+                                "op": "literal",
+                                "value": ""
                               }
-                            },
-                            {
-                              "op": "any",
-                              "items": [
-                                {
-                                  "op": "not",
-                                  "source": {
-                                    "op": "equal",
-                                    "items": [
-                                      {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "/kind",
-                                        "name": "node"
-                                      },
-                                      {
-                                        "op": "literal",
-                                        "value": "tool_call"
-                                      }
-                                    ]
-                                  }
-                                },
-                                {
-                                  "op": "all",
-                                  "items": [
-                                    {
-                                      "op": "exists",
-                                      "source": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "/name",
-                                        "name": "node"
-                                      }
-                                    },
-                                    {
-                                      "op": "exists",
-                                      "source": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "/callId",
-                                        "name": "node"
-                                      }
-                                    }
-                                  ]
-                                }
-                              ]
-                            }
-                          ]
+                            ]
+                          }
                         },
                         "then": {
                           "op": "array",
@@ -11668,7 +11591,7 @@
                               "fields": {
                                 "type": {
                                   "op": "literal",
-                                  "value": "content_block_start"
+                                  "value": "content_block_delta"
                                 },
                                 "index": {
                                   "op": "read",
@@ -11676,230 +11599,18 @@
                                   "path": "/index",
                                   "name": "node"
                                 },
-                                "content_block": {
-                                  "op": "choose",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "/kind",
-                                    "name": "node"
-                                  },
-                                  "cases": {
-                                    "text": {
-                                      "op": "object",
-                                      "fields": {
-                                        "type": {
-                                          "op": "literal",
-                                          "value": "text"
-                                        },
-                                        "text": {
-                                          "op": "literal",
-                                          "value": ""
-                                        }
-                                      }
+                                "delta": {
+                                  "op": "object",
+                                  "fields": {
+                                    "type": {
+                                      "op": "literal",
+                                      "value": "signature_delta"
                                     },
-                                    "reasoning": {
-                                      "op": "let",
-                                      "name": "encrypted",
-                                      "source": {
-                                        "op": "let",
-                                        "name": "encrypted",
-                                        "source": {
-                                          "op": "filter",
-                                          "source": {
-                                            "op": "if",
-                                            "when": {
-                                              "op": "exists",
-                                              "source": {
-                                                "op": "read",
-                                                "from": "binding",
-                                                "path": "/resources",
-                                                "name": "node"
-                                              }
-                                            },
-                                            "then": {
-                                              "op": "read",
-                                              "from": "binding",
-                                              "path": "/resources",
-                                              "name": "node"
-                                            },
-                                            "otherwise": {
-                                              "op": "if",
-                                              "when": {
-                                                "op": "exists",
-                                                "source": {
-                                                  "op": "array",
-                                                  "items": []
-                                                }
-                                              },
-                                              "then": {
-                                                "op": "array",
-                                                "items": []
-                                              },
-                                              "otherwise": {
-                                                "op": "omit"
-                                              }
-                                            }
-                                          },
-                                          "when": {
-                                            "op": "equal",
-                                            "items": [
-                                              {
-                                                "op": "read",
-                                                "from": "item",
-                                                "path": "/kind"
-                                              },
-                                              {
-                                                "op": "literal",
-                                                "value": "encrypted_content"
-                                              }
-                                            ]
-                                          }
-                                        },
-                                        "body": {
-                                          "op": "if",
-                                          "when": {
-                                            "op": "not",
-                                            "source": {
-                                              "op": "equal",
-                                              "items": [
-                                                {
-                                                  "op": "read",
-                                                  "from": "binding",
-                                                  "path": "",
-                                                  "name": "encrypted"
-                                                },
-                                                {
-                                                  "op": "literal",
-                                                  "value": []
-                                                }
-                                              ]
-                                            }
-                                          },
-                                          "then": {
-                                            "op": "read",
-                                            "from": "binding",
-                                            "path": "/0/id",
-                                            "name": "encrypted"
-                                          },
-                                          "otherwise": {
-                                            "op": "omit"
-                                          }
-                                        }
-                                      },
-                                      "body": {
-                                        "op": "if",
-                                        "when": {
-                                          "op": "exists",
-                                          "source": {
-                                            "op": "read",
-                                            "from": "binding",
-                                            "path": "",
-                                            "name": "encrypted"
-                                          }
-                                        },
-                                        "then": {
-                                          "op": "object",
-                                          "fields": {
-                                            "type": {
-                                              "op": "literal",
-                                              "value": "redacted_thinking"
-                                            },
-                                            "data": {
-                                              "op": "read",
-                                              "from": "binding",
-                                              "path": "",
-                                              "name": "encrypted"
-                                            }
-                                          }
-                                        },
-                                        "otherwise": {
-                                          "op": "object",
-                                          "fields": {
-                                            "type": {
-                                              "op": "literal",
-                                              "value": "thinking"
-                                            },
-                                            "thinking": {
-                                              "op": "literal",
-                                              "value": ""
-                                            }
-                                          }
-                                        }
-                                      }
-                                    },
-                                    "tool_call": {
-                                      "op": "if",
-                                      "when": {
-                                        "op": "equal",
-                                        "items": [
-                                          {
-                                            "op": "read",
-                                            "from": "binding",
-                                            "path": "/inputKind",
-                                            "name": "node"
-                                          },
-                                          {
-                                            "op": "literal",
-                                            "value": "json"
-                                          }
-                                        ]
-                                      },
-                                      "then": {
-                                        "op": "object",
-                                        "fields": {
-                                          "type": {
-                                            "op": "literal",
-                                            "value": "tool_use"
-                                          },
-                                          "id": {
-                                            "op": "read",
-                                            "from": "binding",
-                                            "path": "/callId",
-                                            "name": "node"
-                                          },
-                                          "name": {
-                                            "op": "read",
-                                            "from": "binding",
-                                            "path": "/name",
-                                            "name": "node"
-                                          },
-                                          "input": {
-                                            "op": "object",
-                                            "fields": {}
-                                          }
-                                        }
-                                      },
-                                      "otherwise": {
-                                        "op": "reject",
-                                        "path": "/input",
-                                        "reason": "Anthropic streaming requires JSON function input",
-                                        "diagnostic": {
-                                          "code": "unsupported_capability",
-                                          "stage": "wire",
-                                          "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
-                                        }
-                                      }
-                                    },
-                                    "refusal": {
-                                      "op": "reject",
-                                      "path": "/item",
-                                      "reason": "Anthropic cannot express refusal blocks",
-                                      "diagnostic": {
-                                        "code": "unsupported_capability",
-                                        "stage": "wire",
-                                        "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
-                                      }
-                                    }
-                                  },
-                                  "otherwise": {
-                                    "op": "reject",
-                                    "path": "/item",
-                                    "reason": "stream target cannot express this item kind",
-                                    "diagnostic": {
-                                      "code": "unsupported_capability",
-                                      "stage": "wire",
-                                      "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                                    "signature": {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "",
+                                      "name": "signature"
                                     }
                                   }
                                 }
@@ -11911,202 +11622,310 @@
                           "op": "array",
                           "items": []
                         }
+                      }
+                    },
+                    "otherwise": {
+                      "op": "reject",
+                      "path": "/resources",
+                      "reason": "unsupported stream resource",
+                      "diagnostic": {
+                        "code": "unsupported_capability",
+                        "stage": "wire",
+                        "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                      }
+                    }
+                  }
+                },
+                "otherwise": {
+                  "op": "reject",
+                  "path": "/resources",
+                  "reason": "target cannot express this reasoning signature update",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire",
+                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                  }
+                }
+              },
+              "otherwise": {
+                "op": "array",
+                "items": []
+              }
+            },
+            "body": {
+              "op": "if",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/type"
                       },
-                      "body": {
-                        "op": "let",
-                        "name": "signature-frames",
-                        "source": {
-                          "op": "if",
-                          "when": {
-                            "op": "all",
+                      {
+                        "op": "literal",
+                        "value": "item.finished"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "not",
+                          "source": {
+                            "op": "equal",
                             "items": [
                               {
-                                "op": "equal",
-                                "items": [
-                                  {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/type"
-                                  },
-                                  {
-                                    "op": "literal",
-                                    "value": "item.snapshot"
-                                  }
-                                ]
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/kind",
+                                "name": "node"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "tool_call"
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "op": "all",
+                          "items": [
+                            {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/name",
+                                "name": "node"
+                              }
+                            },
+                            {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/callId",
+                                "name": "node"
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "then": {
+                "op": "reject",
+                "path": "/item",
+                "reason": "tool completed without a name and call identity",
+                "diagnostic": {
+                  "code": "unsupported_capability",
+                  "stage": "wire",
+                  "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                }
+              },
+              "otherwise": {
+                "op": "let",
+                "name": "stored",
+                "source": {
+                  "op": "remember",
+                  "name": "items",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/key",
+                    "name": "identity"
+                  },
+                  "body": {
+                    "op": "merge",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "node"
+                      },
+                      {
+                        "op": "object",
+                        "fields": {
+                          "hasStarted": {
+                            "op": "any",
+                            "items": [
+                              {
+                                "op": "not",
+                                "source": {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "/kind",
+                                      "name": "node"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "tool_call"
+                                    }
+                                  ]
+                                }
                               },
                               {
                                 "op": "all",
                                 "items": [
                                   {
-                                    "op": "present",
+                                    "op": "exists",
                                     "source": {
                                       "op": "read",
-                                      "from": "input",
-                                      "path": "/item/resources"
+                                      "from": "binding",
+                                      "path": "/name",
+                                      "name": "node"
                                     }
                                   },
                                   {
-                                    "op": "not",
+                                    "op": "exists",
                                     "source": {
-                                      "op": "equal",
-                                      "items": [
-                                        {
-                                          "op": "read",
-                                          "from": "input",
-                                          "path": "/item/resources"
-                                        },
-                                        {
-                                          "op": "literal",
-                                          "value": {}
-                                        }
-                                      ]
-                                    }
-                                  },
-                                  {
-                                    "op": "not",
-                                    "source": {
-                                      "op": "equal",
-                                      "items": [
-                                        {
-                                          "op": "read",
-                                          "from": "input",
-                                          "path": "/item/resources"
-                                        },
-                                        {
-                                          "op": "literal",
-                                          "value": []
-                                        }
-                                      ]
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "/callId",
+                                      "name": "node"
                                     }
                                   }
                                 ]
                               }
                             ]
                           },
-                          "then": {
-                            "op": "if",
-                            "when": {
-                              "op": "equal",
-                              "items": [
-                                {
+                          "isFinished": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/type"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "item.finished"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "policy": "last"
+                  }
+                },
+                "body": {
+                  "op": "concat",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "start-frames"
+                    },
+                    {
+                      "op": "if",
+                      "when": {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "suffix"
+                            },
+                            {
+                              "op": "literal",
+                              "value": ""
+                            }
+                          ]
+                        }
+                      },
+                      "then": {
+                        "op": "array",
+                        "items": [
+                          {
+                            "op": "object",
+                            "fields": {
+                              "type": {
+                                "op": "literal",
+                                "value": "content_block_delta"
+                              },
+                              "index": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/index",
+                                "name": "node"
+                              },
+                              "delta": {
+                                "op": "choose",
+                                "source": {
                                   "op": "read",
                                   "from": "binding",
                                   "path": "/kind",
                                   "name": "node"
                                 },
-                                {
-                                  "op": "literal",
-                                  "value": "reasoning"
-                                }
-                              ]
-                            },
-                            "then": {
-                              "op": "flatmap",
-                              "source": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/item/resources"
-                              },
-                              "body": {
-                                "op": "if",
-                                "when": {
-                                  "op": "equal",
-                                  "items": [
-                                    {
-                                      "op": "read",
-                                      "from": "item",
-                                      "path": "/kind"
-                                    },
-                                    {
-                                      "op": "literal",
-                                      "value": "signature"
-                                    }
-                                  ]
-                                },
-                                "then": {
-                                  "op": "let",
-                                  "name": "signature",
-                                  "source": {
-                                    "op": "track_text",
-                                    "name": "signature",
-                                    "source": {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "/key",
-                                      "name": "identity"
-                                    },
-                                    "body": {
-                                      "op": "read",
-                                      "from": "item",
-                                      "path": "/id"
-                                    },
-                                    "policy": "snapshot"
-                                  },
-                                  "body": {
-                                    "op": "if",
-                                    "when": {
-                                      "op": "not",
-                                      "source": {
-                                        "op": "equal",
-                                        "items": [
-                                          {
-                                            "op": "read",
-                                            "from": "binding",
-                                            "path": "",
-                                            "name": "signature"
-                                          },
-                                          {
-                                            "op": "literal",
-                                            "value": ""
-                                          }
-                                        ]
+                                "cases": {
+                                  "text": {
+                                    "op": "object",
+                                    "fields": {
+                                      "type": {
+                                        "op": "literal",
+                                        "value": "text_delta"
+                                      },
+                                      "text": {
+                                        "op": "read",
+                                        "from": "binding",
+                                        "path": "",
+                                        "name": "suffix"
                                       }
-                                    },
-                                    "then": {
-                                      "op": "array",
-                                      "items": [
-                                        {
-                                          "op": "object",
-                                          "fields": {
-                                            "type": {
-                                              "op": "literal",
-                                              "value": "content_block_delta"
-                                            },
-                                            "index": {
-                                              "op": "read",
-                                              "from": "binding",
-                                              "path": "/index",
-                                              "name": "node"
-                                            },
-                                            "delta": {
-                                              "op": "object",
-                                              "fields": {
-                                                "type": {
-                                                  "op": "literal",
-                                                  "value": "signature_delta"
-                                                },
-                                                "signature": {
-                                                  "op": "read",
-                                                  "from": "binding",
-                                                  "path": "",
-                                                  "name": "signature"
-                                                }
-                                              }
-                                            }
-                                          }
-                                        }
-                                      ]
-                                    },
-                                    "otherwise": {
-                                      "op": "array",
-                                      "items": []
+                                    }
+                                  },
+                                  "reasoning": {
+                                    "op": "object",
+                                    "fields": {
+                                      "type": {
+                                        "op": "literal",
+                                        "value": "thinking_delta"
+                                      },
+                                      "thinking": {
+                                        "op": "read",
+                                        "from": "binding",
+                                        "path": "",
+                                        "name": "suffix"
+                                      }
+                                    }
+                                  },
+                                  "tool_call": {
+                                    "op": "object",
+                                    "fields": {
+                                      "type": {
+                                        "op": "literal",
+                                        "value": "input_json_delta"
+                                      },
+                                      "partial_json": {
+                                        "op": "read",
+                                        "from": "binding",
+                                        "path": "",
+                                        "name": "suffix"
+                                      }
                                     }
                                   }
                                 },
                                 "otherwise": {
                                   "op": "reject",
-                                  "path": "/resources",
-                                  "reason": "unsupported stream resource",
+                                  "path": "/item",
+                                  "reason": "stream target cannot express this item kind",
                                   "diagnostic": {
                                     "code": "unsupported_capability",
                                     "stage": "wire",
@@ -12114,367 +11933,63 @@
                                   }
                                 }
                               }
-                            },
-                            "otherwise": {
-                              "op": "reject",
-                              "path": "/resources",
-                              "reason": "target cannot express this reasoning signature update",
-                              "diagnostic": {
-                                "code": "unsupported_capability",
-                                "stage": "wire",
-                                "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
-                              }
                             }
-                          },
-                          "otherwise": {
-                            "op": "array",
-                            "items": []
                           }
-                        },
-                        "body": {
-                          "op": "if",
-                          "when": {
-                            "op": "all",
-                            "items": [
-                              {
-                                "op": "equal",
-                                "items": [
-                                  {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/type"
-                                  },
-                                  {
-                                    "op": "literal",
-                                    "value": "item.finished"
-                                  }
-                                ]
+                        ]
+                      },
+                      "otherwise": {
+                        "op": "array",
+                        "items": []
+                      }
+                    },
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "signature-frames"
+                    },
+                    {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/type"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "item.finished"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "array",
+                        "items": [
+                          {
+                            "op": "object",
+                            "fields": {
+                              "type": {
+                                "op": "literal",
+                                "value": "content_block_stop"
                               },
-                              {
-                                "op": "not",
-                                "source": {
-                                  "op": "any",
-                                  "items": [
-                                    {
-                                      "op": "not",
-                                      "source": {
-                                        "op": "equal",
-                                        "items": [
-                                          {
-                                            "op": "read",
-                                            "from": "binding",
-                                            "path": "/kind",
-                                            "name": "node"
-                                          },
-                                          {
-                                            "op": "literal",
-                                            "value": "tool_call"
-                                          }
-                                        ]
-                                      }
-                                    },
-                                    {
-                                      "op": "all",
-                                      "items": [
-                                        {
-                                          "op": "exists",
-                                          "source": {
-                                            "op": "read",
-                                            "from": "binding",
-                                            "path": "/name",
-                                            "name": "node"
-                                          }
-                                        },
-                                        {
-                                          "op": "exists",
-                                          "source": {
-                                            "op": "read",
-                                            "from": "binding",
-                                            "path": "/callId",
-                                            "name": "node"
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  ]
-                                }
-                              }
-                            ]
-                          },
-                          "then": {
-                            "op": "reject",
-                            "path": "/item",
-                            "reason": "tool completed without a name and call identity",
-                            "diagnostic": {
-                              "code": "unsupported_capability",
-                              "stage": "wire",
-                              "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
-                            }
-                          },
-                          "otherwise": {
-                            "op": "let",
-                            "name": "stored",
-                            "source": {
-                              "op": "remember",
-                              "name": "items",
-                              "source": {
+                              "index": {
                                 "op": "read",
                                 "from": "binding",
-                                "path": "/key",
-                                "name": "identity"
-                              },
-                              "body": {
-                                "op": "merge",
-                                "items": [
-                                  {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "node"
-                                  },
-                                  {
-                                    "op": "object",
-                                    "fields": {
-                                      "hasStarted": {
-                                        "op": "any",
-                                        "items": [
-                                          {
-                                            "op": "not",
-                                            "source": {
-                                              "op": "equal",
-                                              "items": [
-                                                {
-                                                  "op": "read",
-                                                  "from": "binding",
-                                                  "path": "/kind",
-                                                  "name": "node"
-                                                },
-                                                {
-                                                  "op": "literal",
-                                                  "value": "tool_call"
-                                                }
-                                              ]
-                                            }
-                                          },
-                                          {
-                                            "op": "all",
-                                            "items": [
-                                              {
-                                                "op": "exists",
-                                                "source": {
-                                                  "op": "read",
-                                                  "from": "binding",
-                                                  "path": "/name",
-                                                  "name": "node"
-                                                }
-                                              },
-                                              {
-                                                "op": "exists",
-                                                "source": {
-                                                  "op": "read",
-                                                  "from": "binding",
-                                                  "path": "/callId",
-                                                  "name": "node"
-                                                }
-                                              }
-                                            ]
-                                          }
-                                        ]
-                                      },
-                                      "isFinished": {
-                                        "op": "equal",
-                                        "items": [
-                                          {
-                                            "op": "read",
-                                            "from": "input",
-                                            "path": "/type"
-                                          },
-                                          {
-                                            "op": "literal",
-                                            "value": "item.finished"
-                                          }
-                                        ]
-                                      }
-                                    }
-                                  }
-                                ],
-                                "policy": "last"
+                                "path": "/index",
+                                "name": "node"
                               }
-                            },
-                            "body": {
-                              "op": "concat",
-                              "items": [
-                                {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "start-frames"
-                                },
-                                {
-                                  "op": "if",
-                                  "when": {
-                                    "op": "not",
-                                    "source": {
-                                      "op": "equal",
-                                      "items": [
-                                        {
-                                          "op": "read",
-                                          "from": "binding",
-                                          "path": "",
-                                          "name": "suffix"
-                                        },
-                                        {
-                                          "op": "literal",
-                                          "value": ""
-                                        }
-                                      ]
-                                    }
-                                  },
-                                  "then": {
-                                    "op": "array",
-                                    "items": [
-                                      {
-                                        "op": "object",
-                                        "fields": {
-                                          "type": {
-                                            "op": "literal",
-                                            "value": "content_block_delta"
-                                          },
-                                          "index": {
-                                            "op": "read",
-                                            "from": "binding",
-                                            "path": "/index",
-                                            "name": "node"
-                                          },
-                                          "delta": {
-                                            "op": "choose",
-                                            "source": {
-                                              "op": "read",
-                                              "from": "binding",
-                                              "path": "/kind",
-                                              "name": "node"
-                                            },
-                                            "cases": {
-                                              "text": {
-                                                "op": "object",
-                                                "fields": {
-                                                  "type": {
-                                                    "op": "literal",
-                                                    "value": "text_delta"
-                                                  },
-                                                  "text": {
-                                                    "op": "read",
-                                                    "from": "binding",
-                                                    "path": "",
-                                                    "name": "suffix"
-                                                  }
-                                                }
-                                              },
-                                              "reasoning": {
-                                                "op": "object",
-                                                "fields": {
-                                                  "type": {
-                                                    "op": "literal",
-                                                    "value": "thinking_delta"
-                                                  },
-                                                  "thinking": {
-                                                    "op": "read",
-                                                    "from": "binding",
-                                                    "path": "",
-                                                    "name": "suffix"
-                                                  }
-                                                }
-                                              },
-                                              "tool_call": {
-                                                "op": "object",
-                                                "fields": {
-                                                  "type": {
-                                                    "op": "literal",
-                                                    "value": "input_json_delta"
-                                                  },
-                                                  "partial_json": {
-                                                    "op": "read",
-                                                    "from": "binding",
-                                                    "path": "",
-                                                    "name": "suffix"
-                                                  }
-                                                }
-                                              }
-                                            },
-                                            "otherwise": {
-                                              "op": "reject",
-                                              "path": "/item",
-                                              "reason": "stream target cannot express this item kind",
-                                              "diagnostic": {
-                                                "code": "unsupported_capability",
-                                                "stage": "wire",
-                                                "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
-                                              }
-                                            }
-                                          }
-                                        }
-                                      }
-                                    ]
-                                  },
-                                  "otherwise": {
-                                    "op": "array",
-                                    "items": []
-                                  }
-                                },
-                                {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "signature-frames"
-                                },
-                                {
-                                  "op": "if",
-                                  "when": {
-                                    "op": "equal",
-                                    "items": [
-                                      {
-                                        "op": "read",
-                                        "from": "input",
-                                        "path": "/type"
-                                      },
-                                      {
-                                        "op": "literal",
-                                        "value": "item.finished"
-                                      }
-                                    ]
-                                  },
-                                  "then": {
-                                    "op": "array",
-                                    "items": [
-                                      {
-                                        "op": "object",
-                                        "fields": {
-                                          "type": {
-                                            "op": "literal",
-                                            "value": "content_block_stop"
-                                          },
-                                          "index": {
-                                            "op": "read",
-                                            "from": "binding",
-                                            "path": "/index",
-                                            "name": "node"
-                                          }
-                                        }
-                                      }
-                                    ]
-                                  },
-                                  "otherwise": {
-                                    "op": "array",
-                                    "items": []
-                                  }
-                                }
-                              ]
                             }
                           }
-                        }
+                        ]
+                      },
+                      "otherwise": {
+                        "op": "array",
+                        "items": []
                       }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -12920,6 +12435,913 @@
         "policy": "last"
       }
     }
+  }
+}
+,
+"resolve-stream-item": {
+  "op": "let",
+  "name": "identity",
+  "source": {
+    "op": "resolve_item",
+    "source": {
+      "op": "object",
+      "fields": {
+        "itemId": {
+          "op": "read",
+          "from": "input",
+          "path": "/itemId"
+        },
+        "callId": {
+          "op": "read",
+          "from": "input",
+          "path": "/callId"
+        },
+        "index": {
+          "op": "read",
+          "from": "input",
+          "path": "/index"
+        },
+        "parentId": {
+          "op": "read",
+          "from": "input",
+          "path": "/parentId"
+        }
+      }
+    }
+  },
+  "body": {
+    "op": "if",
+    "when": {
+      "op": "exists",
+      "source": {
+        "op": "read",
+        "from": "binding",
+        "path": "/parent",
+        "name": "identity"
+      }
+    },
+    "then": {
+      "op": "reject",
+      "path": "/parentId",
+      "reason": "target requires an open Responses message or an explicit message projection",
+      "diagnostic": {
+        "code": "unsupported_capability",
+        "stage": "wire",
+        "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+      }
+    },
+    "otherwise": {
+      "op": "read",
+      "from": "binding",
+      "path": "",
+      "name": "identity"
+    }
+  }
+}
+,
+"prepare-stream-item": {
+  "op": "let",
+  "name": "identity",
+  "source": {
+    "op": "read",
+    "from": "binding",
+    "path": "",
+    "name": "item-identity"
+  },
+  "body": {
+    "op": "let",
+    "name": "previous",
+    "source": {
+      "op": "read",
+      "from": "binding",
+      "path": "",
+      "name": "previous-item"
+    },
+    "body": {
+      "op": "if",
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "item.started"
+              }
+            ]
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "previous"
+            }
+          }
+        ]
+      },
+      "then": {
+        "op": "reject",
+        "path": "/directions/encode_event",
+        "reason": "duplicate target item",
+        "diagnostic": {
+          "code": "invalid_input",
+          "stage": "evaluate",
+          "suggestion": "Correct the input or declared mapping and verify the revision again."
+        }
+      },
+      "otherwise": {
+        "op": "if",
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "item.started"
+                  }
+                ]
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "previous"
+                }
+              }
+            }
+          ]
+        },
+        "then": {
+          "op": "reject",
+          "path": "/directions/encode_event",
+          "reason": "target item has no start",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "evaluate",
+            "suggestion": "Correct the input or declared mapping and verify the revision again."
+          }
+        },
+        "otherwise": {
+          "op": "if",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "item.started"
+                  }
+                ]
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item"
+                  }
+                }
+              }
+            ]
+          },
+          "then": {
+            "op": "reject",
+            "path": "/item",
+            "reason": "item start requires a node",
+            "diagnostic": {
+              "code": "unsupported_capability",
+              "stage": "wire",
+              "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+            }
+          },
+          "otherwise": {
+            "op": "let",
+            "name": "node",
+            "source": {
+              "op": "merge",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "item.started"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "object",
+                    "fields": {
+                      "key": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/key",
+                        "name": "identity"
+                      },
+                      "index": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "item-position"
+                      },
+                      "kind": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/item/kind"
+                      },
+                      "hasStarted": {
+                        "op": "literal",
+                        "value": false
+                      },
+                      "isFinished": {
+                        "op": "literal",
+                        "value": false
+                      }
+                    }
+                  },
+                  "otherwise": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "previous"
+                  }
+                },
+                {
+                  "op": "object",
+                  "fields": {
+                    "name": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item/name"
+                    },
+                    "callId": {
+                      "op": "if",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/callId"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/callId"
+                      },
+                      "otherwise": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/item/callId"
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/item/callId"
+                        },
+                        "otherwise": {
+                          "op": "omit"
+                        }
+                      }
+                    },
+                    "inputKind": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item/input/kind"
+                    },
+                    "resources": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item/resources"
+                    }
+                  }
+                }
+              ],
+              "policy": "last"
+            },
+            "body": {
+              "op": "if",
+              "when": {
+                "op": "read",
+                "from": "binding",
+                "path": "/isFinished",
+                "name": "node"
+              },
+              "then": {
+                "op": "reject",
+                "path": "/directions/encode_event",
+                "reason": "target item completed twice",
+                "diagnostic": {
+                  "code": "invalid_input",
+                  "stage": "evaluate",
+                  "suggestion": "Correct the input or declared mapping and verify the revision again."
+                }
+              },
+              "otherwise": {
+                "op": "let",
+                "name": "payload",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/type"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "item.started"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/type"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "item.snapshot"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/type"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "item.finished"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/item/input/value"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item/input/value"
+                    },
+                    "otherwise": {
+                      "op": "if",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/item/payload"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/item/payload"
+                      },
+                      "otherwise": {
+                        "op": "omit"
+                      }
+                    }
+                  },
+                  "otherwise": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/delta"
+                  }
+                },
+                "body": {
+                  "op": "let",
+                  "name": "suffix",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/kind",
+                          "name": "node"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "tool_call"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "track_tool",
+                      "name": "arguments",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/key",
+                        "name": "identity"
+                      },
+                      "body": {
+                        "op": "object",
+                        "fields": {
+                          "kind": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/inputKind",
+                            "name": "node"
+                          },
+                          "callId": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/callId",
+                            "name": "node"
+                          },
+                          "text": {
+                            "op": "if",
+                            "when": {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "",
+                                "name": "payload"
+                              }
+                            },
+                            "then": {
+                              "op": "if",
+                              "when": {
+                                "op": "all",
+                                "items": [
+                                  {
+                                    "op": "any",
+                                    "items": [
+                                      {
+                                        "op": "equal",
+                                        "items": [
+                                          {
+                                            "op": "read",
+                                            "from": "input",
+                                            "path": "/type"
+                                          },
+                                          {
+                                            "op": "literal",
+                                            "value": "item.started"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "op": "equal",
+                                        "items": [
+                                          {
+                                            "op": "read",
+                                            "from": "input",
+                                            "path": "/type"
+                                          },
+                                          {
+                                            "op": "literal",
+                                            "value": "item.snapshot"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "op": "equal",
+                                        "items": [
+                                          {
+                                            "op": "read",
+                                            "from": "input",
+                                            "path": "/type"
+                                          },
+                                          {
+                                            "op": "literal",
+                                            "value": "item.finished"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "op": "equal",
+                                    "items": [
+                                      {
+                                        "op": "read",
+                                        "from": "binding",
+                                        "path": "/inputKind",
+                                        "name": "node"
+                                      },
+                                      {
+                                        "op": "literal",
+                                        "value": "json"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              "then": {
+                                "op": "stringify_json",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "",
+                                  "name": "payload"
+                                }
+                              },
+                              "otherwise": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "",
+                                "name": "payload"
+                              }
+                            },
+                            "otherwise": {
+                              "op": "omit"
+                            }
+                          },
+                          "snapshot": {
+                            "op": "any",
+                            "items": [
+                              {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/type"
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": "item.started"
+                                  }
+                                ]
+                              },
+                              {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/type"
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": "item.snapshot"
+                                  }
+                                ]
+                              },
+                              {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/type"
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": "item.finished"
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "done": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/type"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "item.finished"
+                              }
+                            ]
+                          },
+                          "emit": {
+                            "op": "any",
+                            "items": [
+                              {
+                                "op": "not",
+                                "source": {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "/kind",
+                                      "name": "node"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "tool_call"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "op": "all",
+                                "items": [
+                                  {
+                                    "op": "exists",
+                                    "source": {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "/name",
+                                      "name": "node"
+                                    }
+                                  },
+                                  {
+                                    "op": "exists",
+                                    "source": {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "/callId",
+                                      "name": "node"
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "otherwise": {
+                      "op": "if",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "payload"
+                        }
+                      },
+                      "then": {
+                        "op": "if",
+                        "when": {
+                          "op": "any",
+                          "items": [
+                            {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/type"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "item.started"
+                                }
+                              ]
+                            },
+                            {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/type"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "item.snapshot"
+                                }
+                              ]
+                            },
+                            {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/type"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "item.finished"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "then": {
+                          "op": "track_text",
+                          "name": "body",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/key",
+                            "name": "identity"
+                          },
+                          "body": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "payload"
+                          },
+                          "policy": "snapshot"
+                        },
+                        "otherwise": {
+                          "op": "track_text",
+                          "name": "body",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/key",
+                            "name": "identity"
+                          },
+                          "body": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "payload"
+                          },
+                          "policy": "delta"
+                        }
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": ""
+                      }
+                    }
+                  },
+                  "body": {
+                    "op": "object",
+                    "fields": {
+                      "identity": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "identity"
+                      },
+                      "node": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "node"
+                      },
+                      "suffix": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "suffix"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+,
+"read-resumed-stream-item": {
+  "op": "if",
+  "when": {
+    "op": "all",
+    "items": [
+      {
+        "op": "integer",
+        "operation": "gt",
+        "items": [
+          {
+            "op": "index_size",
+            "name": "items"
+          },
+          {
+            "op": "literal",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "op": "exists",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/itemId"
+        }
+      }
+    ]
+  },
+  "then": {
+    "op": "let",
+    "name": "resumed-item",
+    "source": {
+      "op": "recall",
+      "name": "items",
+      "source": {
+        "op": "join",
+        "items": [
+          {
+            "op": "literal",
+            "value": "item:"
+          },
+          {
+            "op": "read",
+            "from": "input",
+            "path": "/itemId"
+          }
+        ]
+      },
+      "policy": "omit"
+    },
+    "body": {
+      "op": "if",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "read",
+            "from": "binding",
+            "path": "/isResumed",
+            "name": "resumed-item"
+          },
+          {
+            "op": "literal",
+            "value": true
+          }
+        ]
+      },
+      "then": {
+        "op": "read",
+        "from": "binding",
+        "path": "",
+        "name": "resumed-item"
+      },
+      "otherwise": {
+        "op": "omit"
+      }
+    }
+  },
+  "otherwise": {
+    "op": "omit"
   }
 }
 },
@@ -15702,9 +16124,96 @@
           ]
         },
         "otherwise": {
-          "op": "read",
-          "from": "state",
-          "path": "/nextIndex"
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "ref",
+              "ref": "read-resumed-stream-item"
+            }
+          },
+          "then": {
+            "op": "let",
+            "name": "delivered-maximum",
+            "source": {
+              "op": "read",
+              "from": "runtime",
+              "path": "/delivered/maxItemIndex"
+            },
+            "body": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "delivered-maximum"
+                }
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "integer",
+                  "operation": "gt",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "state",
+                      "path": "/nextIndex"
+                    },
+                    {
+                      "op": "integer",
+                      "operation": "add",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "delivered-maximum"
+                        },
+                        {
+                          "op": "literal",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "read",
+                  "from": "state",
+                  "path": "/nextIndex"
+                },
+                "otherwise": {
+                  "op": "integer",
+                  "operation": "add",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "delivered-maximum"
+                    },
+                    {
+                      "op": "literal",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              "otherwise": {
+                "op": "read",
+                "from": "state",
+                "path": "/nextIndex"
+              }
+            }
+          },
+          "otherwise": {
+            "op": "read",
+            "from": "state",
+            "path": "/nextIndex"
+          }
         }
       }
     },
@@ -19865,11 +20374,167 @@
     }
   },
   "observe": {
-    "op": "omit"
+    "op": "let",
+    "name": "resumed-item",
+    "source": {
+      "op": "ref",
+      "ref": "read-resumed-stream-item"
+    },
+    "body": {
+      "op": "if",
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "resumed-item"
+            }
+          },
+          {
+            "op": "any",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "item.delta"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "item.snapshot"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "item.finished"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "then": {
+        "op": "let",
+        "name": "prepared-item",
+        "source": {
+          "op": "let",
+          "name": "item-identity",
+          "source": {
+            "op": "ref",
+            "ref": "resolve-stream-item"
+          },
+          "body": {
+            "op": "let",
+            "name": "previous-item",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "resumed-item"
+            },
+            "body": {
+              "op": "let",
+              "name": "item-position",
+              "source": {
+                "op": "omit"
+              },
+              "body": {
+                "op": "ref",
+                "ref": "prepare-stream-item"
+              }
+            }
+          }
+        },
+        "body": {
+          "op": "let",
+          "name": "item-stored",
+          "source": {
+            "op": "remember",
+            "name": "items",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "/identity/key",
+              "name": "prepared-item"
+            },
+            "body": {
+              "op": "merge",
+              "policy": "last",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "/node",
+                  "name": "prepared-item"
+                },
+                {
+                  "op": "object",
+                  "fields": {
+                    "hasStarted": {
+                      "op": "literal",
+                      "value": true
+                    },
+                    "isFinished": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/type"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "item.finished"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "body": {
+            "op": "omit"
+          }
+        }
+      },
+      "otherwise": {
+        "op": "omit"
+      }
+    }
   },
-  "effects": []
-,
-"finalDocument": "client-event"
+  "effects": [],
+  "finalDocument": "client-event"
 }
 },
   "samples": [

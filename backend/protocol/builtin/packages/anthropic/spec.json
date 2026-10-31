@@ -4351,82 +4351,122 @@
         }
       ],
       "content_block_start": [
+  {
+    "action": "item_start",
+    "when": {
+      "op": "equal",
+      "items": [
         {
-          "action": "item_start",
-          "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/content_block/type"
-              },
-              {
-                "op": "literal",
-                "value": "text"
-              }
-            ]
-          }
+          "op": "read",
+          "from": "input",
+          "path": "/content_block/type"
         },
         {
-          "action": "item_start",
-          "kind": "reasoning",
-          "when": {
-            "op": "any",
-            "items": [
-              {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/content_block/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "thinking"
-                  }
-                ]
-              },
-              {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/content_block/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "redacted_thinking"
-                  }
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "action": "tool_start",
-          "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/content_block/type"
-              },
-              {
-                "op": "literal",
-                "value": "tool_use"
-              }
-            ]
-          },
-          "tool": {
-            "name": "/content_block/name",
-            "callId": "/content_block/id"
-          }
+          "op": "literal",
+          "value": "text"
         }
-      ],
+      ]
+    }
+  },
+  {
+    "action": "item_start",
+    "kind": "reasoning",
+    "when": {
+      "op": "any",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/content_block/type"
+            },
+            {
+              "op": "literal",
+              "value": "thinking"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/content_block/type"
+            },
+            {
+              "op": "literal",
+              "value": "redacted_thinking"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "action": "tool_start",
+    "when": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/content_block/type"
+        },
+        {
+          "op": "literal",
+          "value": "tool_use"
+        }
+      ]
+    },
+    "tool": {
+      "name": "/content_block/name",
+      "callId": "/content_block/id"
+    }
+  },
+  {
+    "action": "text_snapshot",
+    "text": "/content_block/text",
+    "when": {
+      "op": "all",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/content_block/type"
+            },
+            {
+              "op": "literal",
+              "value": "text"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/content_block/text"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "string"
+            }
+          ]
+        }
+      ]
+    }
+  }
+],
       "content_block_delta": [
         {
           "action": "text_delta",

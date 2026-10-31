@@ -7,19 +7,23 @@ import (
 	"hash"
 )
 
+const textTrackerScratchBytes = 256
+
+type textTrackerScratch [textTrackerScratchBytes]byte
+
 // TextTracker verifies cumulative snapshots against the prefix already sent.
 // It retains a digest and byte count, not the entire forwarded text.
 type TextTracker struct {
 	digest  hash.Hash
 	length  int
-	scratch *[256]byte
+	scratch *textTrackerScratch
 }
 
 // Append records a delta without retaining its payload.
 func (tracker *TextTracker) Append(delta string) {
 	if tracker.digest == nil {
 		tracker.digest = sha256.New()
-		tracker.scratch = new([256]byte)
+		tracker.scratch = new(textTrackerScratch)
 	}
 	for offset := 0; offset < len(delta); {
 		n := copy(tracker.scratch[:], delta[offset:])

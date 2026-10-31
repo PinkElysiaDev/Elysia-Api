@@ -11,30 +11,34 @@ import (
 // Identities and digests survive each item. JSON tool arguments are retained
 // only until tool completion or an unsuccessful response terminal.
 type packageStreamValidation struct {
-	contract           *compiledPackageStreamContract
-	replay             *EventReplay
-	target             Target
-	direction          Direction
-	openItems          int
-	identityBytes      int
-	snapshotBytes      int
-	identities         []string
-	identityBindings   []streamIdentityBindings
-	identityItems      int
-	toolPaths          map[string]streamToolPaths
-	accepted           streamPosition
-	delivered          streamPosition
-	hasPendingDelivery bool
-	itemSnapshots      map[string]*streamItemSnapshot
-	frameNumber        uint64
+	contract             *compiledPackageStreamContract
+	replay               *EventReplay
+	target               Target
+	direction            Direction
+	openItems            int
+	identityBytes        int
+	snapshotBytes        int
+	identities           []string
+	identityBindings     []streamIdentityBindings
+	identityItems        int
+	toolPaths            map[string]streamToolPaths
+	accepted             streamPosition
+	delivered            streamPosition
+	hasPendingDelivery   bool
+	itemSnapshots        map[string]*streamItemSnapshot
+	frameNumber          uint64
+	deliveredFrameNumber uint64
+	hasRejectedFrame     bool
 }
 
 type streamPosition struct {
-	responseID  string
-	sequence    int64
-	hasSequence bool
-	hasStarted  bool
-	isTerminal  bool
+	responseID   string
+	sequence     int64
+	hasSequence  bool
+	hasStarted   bool
+	isTerminal   bool
+	maxItemIndex int64
+	hasItemIndex bool
 }
 
 func newPackageStreamValidation(contract *compiledPackageStreamContract, target Target, limits Limits) (*packageStreamValidation, error) {
@@ -157,6 +161,12 @@ func (state *packageStreamValidation) consumeAction(ctx context.Context, definit
 	case ItemStarted:
 		if !isRepeatedStart {
 			state.openItems++
+			if state.contract.isItemIDIndex {
+				id, _ := readString(event.ItemID)
+				index, _ := strconv.ParseInt(id, 10, 64)
+				state.accepted.maxItemIndex = max(state.accepted.maxItemIndex, index)
+				state.accepted.hasItemIndex = true
+			}
 		}
 	case ItemFinished:
 		if !skipReplay {

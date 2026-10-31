@@ -471,6 +471,8 @@
     "backend/protocol/plan_core_test.go",
     "backend/protocol/plan_data_uri.go",
     "backend/protocol/plan_data_uri_test.go",
+    "backend/protocol/plan_delivered_item.go",
+    "backend/protocol/plan_delivered_item_test.go",
     "backend/protocol/plan_encode.go",
     "backend/protocol/plan_encode_test.go",
     "backend/protocol/plan_events.go",

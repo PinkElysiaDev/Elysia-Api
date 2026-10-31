@@ -92,3 +92,36 @@ func TestPackageStreamIndexKeyModes(t *testing.T) {
 		}
 	}
 }
+
+func TestPackageStreamIndexSizeIncludesOnlySuccessfulWrites(t *testing.T) {
+	document := indexedEventPackage(t)
+	mapping := document.Mapping.Directions[DecodeEvent]
+	index := mapping.Indexes["items"]
+	index.Policy = "last"
+	mapping.Indexes["items"] = index
+	mapping.Program.Body.Fields["index"] = Expression{Op: "index_size", Name: "items"}
+	document.Mapping.Directions[DecodeEvent] = mapping
+	compiled := compilePackageForTest(t, document)
+	options := EvaluationContext{State: NewEvaluationState()}
+	defer options.State.Release()
+	for _, fixture := range []struct {
+		wire  string
+		count int
+	}{
+		{`{"kind":"item.started","response_id":"r","item_id":"a","seq":1}`, 1},
+		{`{"kind":"item.started","response_id":"r","item_id":"a","seq":2}`, 1},
+		{`{"kind":"item.started","response_id":false,"item_id":"b","seq":3}`, -1},
+		{`{"kind":"item.started","response_id":"r","item_id":"c","seq":4}`, 2},
+	} {
+		events, err := compiled.DecodeEvents(t.Context(), parseTestValue(t, fixture.wire), options)
+		if fixture.count < 0 {
+			if err == nil {
+				t.Fatal("invalid core event unexpectedly committed")
+			}
+			continue
+		}
+		if err != nil || len(events) != 1 || events[0].Index == nil || *events[0].Index != fixture.count {
+			t.Fatal("count lost staged entries, counted an overwrite or retained a failed write", events, err)
+		}
+	}
+}

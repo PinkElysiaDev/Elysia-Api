@@ -78,6 +78,22 @@ func (plan *compiledOutputPlan) buildReadValue(state evaluation) (plannedOutput,
 		if expression.pointer[0] == "scope" {
 			return plannedLeaf(StringValue(state.runtime.scopeModel)), nil
 		}
+		if expression.pointer[0] == "delivered" {
+			output, err := state.runtime.deliveredItems()
+			if err != nil {
+				return plannedOutput{}, err
+			}
+			if output != nil {
+				state.budget.hasReadOutputStream = true
+			}
+			if output == nil || !output.delivered.hasItemIndex {
+				if expression.isRequired {
+					return plannedOutput{}, fmt.Errorf("%s: required field is absent", expression.path)
+				}
+				return plannedOutput{}, nil
+			}
+			return plannedLeaf(coreInteger(output.delivered.maxItemIndex)), nil
+		}
 		if expression.pointer[0] == "stream" {
 			value, err := state.runtime.readOutputStream(expression.pointer[1])
 			if err == nil {

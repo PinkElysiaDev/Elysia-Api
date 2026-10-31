@@ -53,7 +53,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	plan := &compiledOutputPlan{expression: expression}
 	switch expression.op {
 	case "omit", "reject", "literal", "read", "let", "with_input", "with_index", "remember", "recall", "forget", "index_size", "index", "capture_native", "capture_source", "replay_native", "native_matches", "object", "check_fields", "project", "keys", "array", "map", "walk", "visit", "recur", "flatmap", "filter", "if", "choose",
-		"merge", "merge_deep", "merge_usage", "resolve_item", "track_text", "track_tool", "index_values", "length", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
+		"merge", "merge_deep", "merge_usage", "resolve_item", "track_text", "track_tool", "read_delivered_item", "resume_text", "index_values", "length", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
 		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains", "equal", "equal_text", "all", "any", "entries", "from_entries", "group_runs":
 	default:
 		return nil, false
@@ -72,7 +72,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			plan.itemObjectReads = 1
 		}
 	}
-	plan.hasStreamWrites = expression.op == "resolve_item" || expression.op == "track_text" || expression.op == "track_tool" || expression.op == "remember" && expression.isStreamIndex
+	plan.hasStreamWrites = expression.op == "resolve_item" || expression.op == "track_text" || expression.op == "track_tool" || expression.op == "resume_text" || expression.op == "remember" && expression.isStreamIndex
 	plan.hasCapture = expression.op == "capture_native"
 	plan.hasSourceCapture = expression.op == "capture_source"
 	plan.hasNativeTarget = expression.op == "replay_native" || expression.op == "native_matches"
@@ -205,6 +205,10 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.trackStreamText(state)
 	case "track_tool":
 		return plan.trackStreamTool(state)
+	case "read_delivered_item":
+		return plan.readDeliveredItem(state)
+	case "resume_text":
+		return plan.resumeDeliveredText(state)
 	case "index_values":
 		return plan.readStreamIndexValues(state)
 	case "with_index":
@@ -216,6 +220,9 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 	case "forget":
 		return plan.forgetValue(state)
 	case "index_size":
+		if expression.isStreamIndex {
+			return plannedLeaf(coreInteger(int64(state.streamTransaction.indexSize(expression.indexSlot)))), nil
+		}
 		return plannedLeaf(coreInteger(int64(len(state.indexes.frames[expression.indexSlot].values)))), nil
 	case "index":
 		return plannedLeaf(coreInteger(int64(state.itemIndex))), nil

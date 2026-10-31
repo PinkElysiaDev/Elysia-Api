@@ -13,6 +13,22 @@ type compiledPackageIndex struct {
 	canRetainSource       bool
 }
 
+type packageIndexUpdate struct {
+	values    map[string]Value
+	additions int
+}
+
+func (transaction *packageStreamTransaction) indexSize(slot int) int {
+	count := 0
+	if transaction.previous != nil {
+		count = len(transaction.previous.indexes[slot])
+	}
+	if transaction.indexUpdates != nil {
+		count += transaction.indexUpdates[slot].additions
+	}
+	return count
+}
+
 func compilePackageIndexes(declarations map[string]ProtocolStateIndex, direction Direction, path string, limits Limits, scope *expressionScope) ([]compiledPackageIndex, error) {
 	if len(declarations) == 0 {
 		return nil, nil
@@ -62,7 +78,7 @@ func (index compiledPackageIndex) key(output JSONOutput) (string, error) {
 
 func (transaction *packageStreamTransaction) lookupIndex(slot int, key string) (Value, bool) {
 	if transaction.indexUpdates != nil {
-		if value, exists := transaction.indexUpdates[slot][key]; exists {
+		if value, exists := transaction.indexUpdates[slot].values[key]; exists {
 			return value, true
 		}
 	}
@@ -120,10 +136,10 @@ func (transaction *packageStreamTransaction) rememberIndex(state evaluation, slo
 		return err
 	}
 	if transaction.indexUpdates == nil {
-		transaction.indexUpdates = make([]map[string]Value, len(transaction.plan.indexes))
+		transaction.indexUpdates = make([]packageIndexUpdate, len(transaction.plan.indexes))
 	}
-	if transaction.indexUpdates[slot] == nil {
-		transaction.indexUpdates[slot] = make(map[string]Value)
+	if transaction.indexUpdates[slot].values == nil {
+		transaction.indexUpdates[slot].values = make(map[string]Value)
 	}
 	// All leaves point into independently owned JSON. Only an explicitly
 	// declared source table retains genuine capture tags; Native stays plain.
@@ -142,7 +158,10 @@ func (transaction *packageStreamTransaction) rememberIndex(state evaluation, slo
 		}
 		transaction.indexSourceUpdates[slot][ownedKey] = source
 	}
-	transaction.indexUpdates[slot][ownedKey] = value
+	transaction.indexUpdates[slot].values[ownedKey] = value
+	if !exists {
+		transaction.indexUpdates[slot].additions++
+	}
 	transaction.indexItemDelta, transaction.indexByteDelta = items, bytes
 	return nil
 }
@@ -157,7 +176,8 @@ func (transaction *packageStreamTransaction) commitIndexes() ([]map[string]Value
 	} else if len(transaction.plan.indexes) != 0 {
 		indexes = make([]map[string]Value, len(transaction.plan.indexes))
 	}
-	for slot, updates := range transaction.indexUpdates {
+	for slot, update := range transaction.indexUpdates {
+		updates := update.values
 		if len(updates) == 0 {
 			continue
 		}
@@ -182,7 +202,7 @@ func (plan *compiledOutputPlan) readStreamIndexValues(state evaluation) (planned
 		keys = append(keys, key)
 	}
 	if transaction.indexUpdates != nil {
-		for key := range transaction.indexUpdates[slot] {
+		for key := range transaction.indexUpdates[slot].values {
 			if _, exists := previous[key]; !exists {
 				keys = append(keys, key)
 			}

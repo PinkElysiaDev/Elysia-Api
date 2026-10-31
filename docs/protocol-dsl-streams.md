@@ -145,3 +145,13 @@ Mapping 复用 JSON 消息解码、已命名的消息完成表达式和有界索
 `TestResponsesPackageTextSourceStream` 复用三消息、双内容片段、空消息的既有 phase 夹具，比较 phase 在 start、done、terminal 到达以及 refusal 对应序列的逐帧核心结果。表示差异明确限定为 core v2、真实 `/item`／`/response/output/...` 来源与既有 ConfigStd Native 片段编码；正文、消息顺序、usage、身份及其余字段继续完整比较。通用合同测试覆盖封口、重复完成、子顺序、终态遗漏／改写和共享保留预算。
 
 这仍不是 Responses SSE 全部闭合：annotation.added、reasoning、完整 logprobs 累积、in_progress／晚到 usage、辅助 metadata／turn-state、心跳和目标编码器尚未接通。未知扩展当前保留原始帧证据，其与旧虚拟扩展路径的完整差分、混合错误首错顺序、异常 part 类型接受边界仍需独立核对；不能用当前正常序列的成功替代这些验收。未接入事件编码器，因此仍不宣称 Responses 同协议原帧重放已经通过。
+
+## 从已交付文本按需接续
+
+`read_delivered_item` 的 `source` 是 Mapping 明确选出的 wire item ID 字符串，返回 `kind`、`isFinished`；仅在 Spec 的 `itemIdIsIndex` 为 true 时附带 `index`。未绑定匹配的输出校验器或未找到该项时返回 missing；有尚未交付的校验结果或失败帧时拒绝读取。协议身份、映射指纹和 scope 继续由绑定入口限定。
+
+`resume_text` 用 `name` 指定固定文本通道，`source` 为目标 tracker key，`body` 为已交付 wire item ID。它仅在实际事件编码程序中可用，不能在原生观察或 finalizer 中登记。成功时只复制摘要及长度，后续追加不会修改校验器；事务失败不保留副本。它不消费或代替最终 wire 校验，也不能恢复工具参数或供应商私有状态。
+
+`runtime /delivered/maxItemIndex` 返回已交付数字身份的最大值；未绑定或尚无数字身份时为 missing。它与 item lookup 属于已有交付事实，不触发读取动态响应序号时的逐帧重渲染。索引加一仍由 Mapping 在实际需要生成新块时决定。
+
+Anthropic 将 `item:` 身份与 wire index 的关系写在 Mapping 中，只在首次修改已转发文本、目标尚无对应渲染项时接续；纯原生流不再另建逐项渲染状态。不绑定输出校验器的独立编码调用保留原拒绝，不能凭未经确认发送的帧假装已有文本。工具和 thinking 的混合接续尚未启用。

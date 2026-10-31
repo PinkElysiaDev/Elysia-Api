@@ -53,7 +53,7 @@ type packageStreamTransaction struct {
 	scope                          Scope
 	previous                       *packageStreamState
 	next                           []Value
-	indexUpdates                   []map[string]Value
+	indexUpdates                   []packageIndexUpdate
 	indexSourceUpdates             []map[string]JSONOutput
 	indexItemDelta, indexByteDelta int
 	bytes                          int
