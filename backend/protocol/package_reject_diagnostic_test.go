@@ -100,6 +100,8 @@ func TestRejectDiagnosticCompilation(t *testing.T) {
 		{"projection-scope", func(effect *ProtocolSemanticEffect) { effect.Scope = requestFieldScope }},
 		{"resource-code", func(effect *ProtocolSemanticEffect) { effect.Diagnostic.Code = LimitExceeded }},
 		{"unrelated-stage", func(effect *ProtocolSemanticEffect) { effect.Diagnostic.Stage = "routing" }},
+		{"direction-override", func(effect *ProtocolSemanticEffect) { effect.Diagnostic.Direction = DecodeEvent }},
+		{"path-override", func(effect *ProtocolSemanticEffect) { effect.Diagnostic.Path = "/other" }},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
 			document := rejectDiagnosticPackage(t, &RejectDiagnostic{Code: UnsupportedCapability, Stage: "wire"})

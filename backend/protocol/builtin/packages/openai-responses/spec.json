@@ -52,6 +52,2772 @@
       },
       "assertions": [
         {
+          "path": "/tool_usage",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/tool_usage"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "object",
+            "allowUnknown": true,
+            "nullable": true
+          },
+          "code": "invalid_input",
+          "reason": "tool usage must be an object",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": ""
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "invalid_input",
+          "reason": "tool usage must be an object",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": ""
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen/input_tokens",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen/input_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "code": "invalid_input",
+          "reason": "tool usage counter must be a nonnegative int64",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": ""
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen/input_tokens_details",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen/input_tokens_details"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "invalid_input",
+          "reason": "tool usage must be an object",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": ""
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen/input_tokens_details/image_tokens",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen/input_tokens_details/image_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "code": "invalid_input",
+          "reason": "tool usage counter must be a nonnegative int64",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": ""
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen/input_tokens_details/text_tokens",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen/input_tokens_details/text_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "code": "invalid_input",
+          "reason": "tool usage counter must be a nonnegative int64",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": ""
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen/output_tokens",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen/output_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "code": "invalid_input",
+          "reason": "tool usage counter must be a nonnegative int64",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": ""
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen/output_tokens_details",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen/output_tokens_details"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "invalid_input",
+          "reason": "tool usage must be an object",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": ""
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen/output_tokens_details/image_tokens",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen/output_tokens_details/image_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "code": "invalid_input",
+          "reason": "tool usage counter must be a nonnegative int64",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": ""
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen/output_tokens_details/text_tokens",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen/output_tokens_details/text_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "code": "invalid_input",
+          "reason": "tool usage counter must be a nonnegative int64",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": ""
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen/total_tokens",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen/total_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "code": "invalid_input",
+          "reason": "tool usage counter must be a nonnegative int64",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": ""
+          }
+        },
+        {
+          "path": "/tool_usage/web_search",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/web_search"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "invalid_input",
+          "reason": "tool usage must be an object",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": ""
+          }
+        },
+        {
+          "path": "/tool_usage/web_search/num_requests",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/web_search/num_requests"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "code": "invalid_input",
+          "reason": "tool usage counter must be a nonnegative int64",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": ""
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen/input_tokens",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen/input_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "root",
+                "path": "/tool_usage/image_gen/input_tokens_details/image_tokens"
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "integer",
+                "operation": "lte",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "root",
+                    "path": "/tool_usage/image_gen/input_tokens_details/image_tokens"
+                  },
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  }
+                ]
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "root",
+                    "path": "/tool_usage/image_gen/input_tokens_details/text_tokens"
+                  }
+                },
+                "then": {
+                  "op": "if",
+                  "when": {
+                    "op": "integer",
+                    "operation": "lte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "root",
+                        "path": "/tool_usage/image_gen/input_tokens_details/text_tokens"
+                      },
+                      {
+                        "op": "integer",
+                        "operation": "subtract",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": ""
+                          },
+                          {
+                            "op": "read",
+                            "from": "root",
+                            "path": "/tool_usage/image_gen/input_tokens_details/image_tokens"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": true
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": true
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "root",
+                  "path": "/tool_usage/image_gen/input_tokens_details/text_tokens"
+                }
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "integer",
+                  "operation": "lte",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "root",
+                      "path": "/tool_usage/image_gen/input_tokens_details/text_tokens"
+                    },
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": ""
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "literal",
+                  "value": true
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": true
+              }
+            }
+          },
+          "code": "invalid_input",
+          "reason": "hosted image token components exceed subtotal",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "stream",
+            "direction": "decode_event",
+            "path": "/usage/details/tools.image_generation.input_tokens",
+            "suggestion": "correct the upstream stream or declared /usage/details/tools.image_generation.input_tokens rule"
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen/input_tokens",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen/input_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "root",
+                    "path": "/tool_usage/image_gen/input_tokens_details/image_tokens"
+                  }
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "root",
+                    "path": "/tool_usage/image_gen/input_tokens_details/text_tokens"
+                  }
+                }
+              ]
+            },
+            "then": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "integer",
+                  "operation": "subtract",
+                  "items": [
+                    {
+                      "op": "integer",
+                      "operation": "subtract",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": ""
+                        },
+                        {
+                          "op": "read",
+                          "from": "root",
+                          "path": "/tool_usage/image_gen/input_tokens_details/image_tokens"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "read",
+                      "from": "root",
+                      "path": "/tool_usage/image_gen/input_tokens_details/text_tokens"
+                    }
+                  ]
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": true
+            }
+          },
+          "code": "invalid_input",
+          "reason": "hosted image token components disagree with subtotal",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "stream",
+            "direction": "decode_event",
+            "path": "/usage/details/tools.image_generation.input_tokens",
+            "suggestion": "correct the upstream stream or declared /usage/details/tools.image_generation.input_tokens rule"
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen/output_tokens",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen/output_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "root",
+                "path": "/tool_usage/image_gen/output_tokens_details/image_tokens"
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "integer",
+                "operation": "lte",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "root",
+                    "path": "/tool_usage/image_gen/output_tokens_details/image_tokens"
+                  },
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  }
+                ]
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "root",
+                    "path": "/tool_usage/image_gen/output_tokens_details/text_tokens"
+                  }
+                },
+                "then": {
+                  "op": "if",
+                  "when": {
+                    "op": "integer",
+                    "operation": "lte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "root",
+                        "path": "/tool_usage/image_gen/output_tokens_details/text_tokens"
+                      },
+                      {
+                        "op": "integer",
+                        "operation": "subtract",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": ""
+                          },
+                          {
+                            "op": "read",
+                            "from": "root",
+                            "path": "/tool_usage/image_gen/output_tokens_details/image_tokens"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": true
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": true
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "root",
+                  "path": "/tool_usage/image_gen/output_tokens_details/text_tokens"
+                }
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "integer",
+                  "operation": "lte",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "root",
+                      "path": "/tool_usage/image_gen/output_tokens_details/text_tokens"
+                    },
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": ""
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "literal",
+                  "value": true
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": true
+              }
+            }
+          },
+          "code": "invalid_input",
+          "reason": "hosted image token components exceed subtotal",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "stream",
+            "direction": "decode_event",
+            "path": "/usage/details/tools.image_generation.output_tokens",
+            "suggestion": "correct the upstream stream or declared /usage/details/tools.image_generation.output_tokens rule"
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen/output_tokens",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen/output_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "root",
+                    "path": "/tool_usage/image_gen/output_tokens_details/image_tokens"
+                  }
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "root",
+                    "path": "/tool_usage/image_gen/output_tokens_details/text_tokens"
+                  }
+                }
+              ]
+            },
+            "then": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "integer",
+                  "operation": "subtract",
+                  "items": [
+                    {
+                      "op": "integer",
+                      "operation": "subtract",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": ""
+                        },
+                        {
+                          "op": "read",
+                          "from": "root",
+                          "path": "/tool_usage/image_gen/output_tokens_details/image_tokens"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "read",
+                      "from": "root",
+                      "path": "/tool_usage/image_gen/output_tokens_details/text_tokens"
+                    }
+                  ]
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": true
+            }
+          },
+          "code": "invalid_input",
+          "reason": "hosted image token components disagree with subtotal",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "stream",
+            "direction": "decode_event",
+            "path": "/usage/details/tools.image_generation.output_tokens",
+            "suggestion": "correct the upstream stream or declared /usage/details/tools.image_generation.output_tokens rule"
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen/total_tokens",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen/total_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "root",
+                "path": "/tool_usage/image_gen/input_tokens"
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "integer",
+                "operation": "lte",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "root",
+                    "path": "/tool_usage/image_gen/input_tokens"
+                  },
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  }
+                ]
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "root",
+                    "path": "/tool_usage/image_gen/output_tokens"
+                  }
+                },
+                "then": {
+                  "op": "if",
+                  "when": {
+                    "op": "integer",
+                    "operation": "lte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "root",
+                        "path": "/tool_usage/image_gen/output_tokens"
+                      },
+                      {
+                        "op": "integer",
+                        "operation": "subtract",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": ""
+                          },
+                          {
+                            "op": "read",
+                            "from": "root",
+                            "path": "/tool_usage/image_gen/input_tokens"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": true
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": true
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "root",
+                  "path": "/tool_usage/image_gen/output_tokens"
+                }
+              },
+              "then": {
+                "op": "if",
+                "when": {
+                  "op": "integer",
+                  "operation": "lte",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "root",
+                      "path": "/tool_usage/image_gen/output_tokens"
+                    },
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": ""
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "literal",
+                  "value": true
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": true
+              }
+            }
+          },
+          "code": "invalid_input",
+          "reason": "hosted image token components exceed subtotal",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "stream",
+            "direction": "decode_event",
+            "path": "/usage/details/tools.image_generation.total_tokens",
+            "suggestion": "correct the upstream stream or declared /usage/details/tools.image_generation.total_tokens rule"
+          }
+        },
+        {
+          "path": "/tool_usage/image_gen/total_tokens",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/choices"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/output"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/content"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage"
+                }
+              },
+              "then": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/tool_usage/image_gen/total_tokens"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "any"
+          },
+          "check": {
+            "op": "if",
+            "when": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "root",
+                    "path": "/tool_usage/image_gen/input_tokens"
+                  }
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "root",
+                    "path": "/tool_usage/image_gen/output_tokens"
+                  }
+                }
+              ]
+            },
+            "then": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "integer",
+                  "operation": "subtract",
+                  "items": [
+                    {
+                      "op": "integer",
+                      "operation": "subtract",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": ""
+                        },
+                        {
+                          "op": "read",
+                          "from": "root",
+                          "path": "/tool_usage/image_gen/input_tokens"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "read",
+                      "from": "root",
+                      "path": "/tool_usage/image_gen/output_tokens"
+                    }
+                  ]
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": true
+            }
+          },
+          "code": "invalid_input",
+          "reason": "hosted image token components disagree with subtotal",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "stream",
+            "direction": "decode_event",
+            "path": "/usage/details/tools.image_generation.total_tokens",
+            "suggestion": "correct the upstream stream or declared /usage/details/tools.image_generation.total_tokens rule"
+          }
+        },
+        {
           "path": "/background",
           "when": {
             "op": "exists",

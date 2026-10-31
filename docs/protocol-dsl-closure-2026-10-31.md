@@ -76,3 +76,20 @@ WebUI 在原编辑器内提供两源页、导入导出及源内诊断定位，�
 前端类型检查、定向 lint 通过。浏览器首次新增用例因重复按钮定位失败，修正定位后
 `closure-package-ui-confirm` 为 3 通过、2 个既有依赖真实后端环境的用例跳过。
 本批没有替换生产预置或自动更改旧绑定。
+
+## 第四批：Responses 工具用量与独立 metadata 来源
+
+Mapping 现在双向映射原有八类 hosted-tool 计数，保留未知余项以及 empty/null 区别。
+Spec 按原顺序检查工具桶类型、非负 int64 和分项小计；错误包络沿用旧入口处理边界。
+新增通用 WireAssertion 诊断声明，使 wire 选择位置和公开核心错误位置可以分别声明，
+仅对实际失败的断言生效；非法声明在编译时拒绝，原始 cause 保留。
+这里刻意保留旧小计错误的 `decode_event / stream` 归因，没有扩大已批准的诊断修正范围。
+
+原本读取 `Native.source` 的 Responses 内容 metadata 现在有独立可信来源：Native 开启时
+复用既有来源，关闭时使用 `capture_source`。不保存第二份原文，annotations/logprobs 路径和
+scope 不再因关闭快照而丢失。
+
+修改前草案放行了旧入口拒绝的九类非法工具用量，记录 `closure-tool-usage-before`。
+修复后完整核心及无根 Native 编码、未知余项、类型/小计诊断、Native 开关及 metadata
+重建通过，见 `closure-responses-tool-source`。中途编译证明和诊断包装失败均保留原日志。
+本批没有迁完完整错误包络或所有 usage 扩展，也尚未测量这一切片的性能。

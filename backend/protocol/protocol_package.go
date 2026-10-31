@@ -113,12 +113,15 @@ type ProtocolSemanticEffect struct {
 	Diagnostic   *RejectDiagnostic        `json:"diagnostic,omitempty"`
 }
 
-// RejectDiagnostic classifies an explicit mapping rejection. The effect still
-// supplies its business path, explanation and rule identity.
+// RejectDiagnostic classifies a declared rejection. Mapping effects supply their
+// own direction and business path; only wire assertions accept overrides for
+// those fields, where a selected wire value represents a different core owner.
 type RejectDiagnostic struct {
 	Code       IssueCode `json:"code"`
 	Stage      string    `json:"stage"`
 	Suggestion string    `json:"suggestion,omitempty"`
+	Direction  Direction `json:"direction,omitempty"`
+	Path       string    `json:"path,omitempty"`
 }
 
 // ProtocolAggregateLayout partitions one wire object into a core owner.

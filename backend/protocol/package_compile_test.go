@@ -22,6 +22,28 @@ func compilePackageForTest(t *testing.T, document ProtocolPackage) *Compiled {
 	return compiled
 }
 
+func TestPackageEmitProofThroughLocalBinding(t *testing.T) {
+	document := textProtocolPackage(t)
+	entry := document.Mapping.Directions[DecodeRequest]
+	body := entry.Program
+	entry.Program = Expression{Op: "let", Name: "other", Source: expressionPointer(literalExpression("different")), Body: &body}
+	document.Mapping.Directions[DecodeRequest] = entry
+	compilePackageForTest(t, document)
+	body.Fields["model"] = Expression{Op: "read", From: "binding", Name: "other"}
+	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := EncodeValue(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, issues := compiler.CompilePackage(raw.Bytes())
+	if compiled != nil || IssuesError(issues) == nil || !strings.Contains(IssuesError(issues).Error(), "provable read") {
+		t.Fatal("local replacement was accepted as an input copy", issues)
+	}
+}
+
 func TestCompilePackageExecutesIndependentContracts(t *testing.T) {
 	document := textProtocolPackage(t)
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {

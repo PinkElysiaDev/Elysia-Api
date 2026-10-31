@@ -31,17 +31,21 @@ type WireAssertion struct {
 	Reason string          `json:"reason"`
 	Check  *Expression     `json:"check,omitempty"`
 	Each   []WireAssertion `json:"each,omitempty"`
+	// Diagnostic preserves the declared boundary's classification. A non-nil
+	// diagnostic may explicitly retain an unspecified stage from that boundary.
+	Diagnostic *RejectDiagnostic `json:"diagnostic,omitempty"`
 }
 
 type compiledWireAssertion struct {
-	path    string
-	pointer []string
-	when    *compiledOutputPlan
-	schema  *wireSchemaPlan
-	code    IssueCode
-	reason  string
-	check   *compiledOutputPlan
-	each    []compiledWireAssertion
+	path       string
+	pointer    []string
+	when       *compiledOutputPlan
+	schema     *wireSchemaPlan
+	code       IssueCode
+	reason     string
+	check      *compiledOutputPlan
+	each       []compiledWireAssertion
+	diagnostic *RejectDiagnostic
 }
 
 type specWireValidator struct {
@@ -114,6 +118,23 @@ func compileWireAssertions(assertions []WireAssertion, path string, input, root 
 			return nil, fmt.Errorf("%s/reason: static diagnostic text is required", at)
 		}
 		check := compiledWireAssertion{path: assertion.Path, pointer: pointer, code: assertion.Code, reason: assertion.Reason}
+		if assertion.Diagnostic != nil {
+			stage := assertion.Diagnostic.Stage
+			if stage == "" || stage == "stream" {
+				stage = "wire"
+			}
+			if err := validateDiagnosticClassification(assertion.Diagnostic.Code, stage, at+"/diagnostic"); err != nil {
+				return nil, err
+			}
+			if direction := assertion.Diagnostic.Direction; direction != "" && !slices.Contains(DirectionCatalog(), direction) {
+				return nil, fmt.Errorf("%s/diagnostic/direction: unsupported direction", at)
+			}
+			if _, err := parsePointer(assertion.Diagnostic.Path); err != nil {
+				return nil, locateMappingError(at+"/diagnostic/path", err)
+			}
+			classification := *assertion.Diagnostic
+			check.diagnostic = &classification
+		}
 		check.when, err = compileWirePredicate(assertion.When, at+"/when", input, root, expressions, depth)
 		if err != nil {
 			return nil, err
@@ -199,7 +220,7 @@ func validateWireAssertions(assertions []compiledWireAssertion, state evaluation
 			err = assertion.schema.validate(ctx, selected, path, state.budget.limits)
 		}
 		if err != nil {
-			return wireAssertionError(assertion.code, path, assertion.reason, err)
+			return assertion.failure(path, err)
 		}
 		if assertion.check != nil {
 			selection := state
@@ -210,7 +231,7 @@ func validateWireAssertions(assertions []compiledWireAssertion, state evaluation
 				isValid, err = readBoolean(value)
 			}
 			if err != nil || !isValid {
-				return wireAssertionError(assertion.code, path, assertion.reason, err)
+				return assertion.failure(path, err)
 			}
 		}
 		if len(assertion.each) != 0 {
@@ -231,8 +252,22 @@ func validateWireAssertions(assertions []compiledWireAssertion, state evaluation
 }
 
 func wireAssertionError(code IssueCode, path, reason string, cause error) error {
+	return classifiedWireAssertionError(code, "", "wire", path, reason, "", cause)
+}
+
+func (assertion compiledWireAssertion) failure(path string, cause error) error {
+	if diagnostic := assertion.diagnostic; diagnostic != nil {
+		if diagnostic.Path != "" {
+			path = diagnostic.Path
+		}
+		return classifiedWireAssertionError(diagnostic.Code, diagnostic.Direction, diagnostic.Stage, path, assertion.reason, diagnostic.Suggestion, cause)
+	}
+	return wireAssertionError(assertion.code, path, assertion.reason, cause)
+}
+
+func classifiedWireAssertionError(code IssueCode, direction Direction, stage, path, reason, suggestion string, cause error) error {
 	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
 		return cause
 	}
-	return &ConversionError{cause: cause, Issues: []ConversionIssue{{Code: code, Severity: SeverityError, Stage: "wire", Path: path, Reason: reason}}}
+	return &ConversionError{cause: cause, Issues: []ConversionIssue{{Code: code, Direction: direction, Severity: SeverityError, Stage: stage, Path: path, Reason: reason, Suggestion: suggestion}}}
 }

@@ -221,6 +221,9 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		}
 		entry := compiledSemanticEffect{id: effect.ID, kind: effect.Kind, path: effect.Path, target: effect.Target, reason: effect.Reason, scope: effect.Scope, severity: effect.Severity}
 		if effect.Diagnostic != nil {
+			if effect.Diagnostic.Direction != "" || effect.Diagnostic.Path != "" {
+				return compiledMapping{}, nil, fmt.Errorf("%s/diagnostic: direction and path overrides belong to wire assertions", at)
+			}
 			if err := validateDiagnosticClassification(effect.Diagnostic.Code, effect.Diagnostic.Stage, at+"/diagnostic"); err != nil {
 				return compiledMapping{}, nil, err
 			}
@@ -316,6 +319,10 @@ func provesPackageEmission(program *compiledExpression, output, input []string) 
 		return false
 	}
 	switch program.op {
+	case "let":
+		// Binding a local value does not replace the input observed by body
+		// reads. The proof still refuses reads from the binding itself.
+		return provesPackageEmission(program.body, output, input)
 	case "read":
 		return program.from == "input" && len(input) == len(program.pointer)+len(output) &&
 			slices.Equal(input[:len(program.pointer)], program.pointer) && slices.Equal(input[len(program.pointer):], output)

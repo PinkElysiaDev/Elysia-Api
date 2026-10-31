@@ -3,12 +3,68 @@ package builtin
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
 )
+
+func TestResponsesPackageMetadataWithoutNative(t *testing.T) {
+	declaration := compileBuiltinPackage(t, "openai-responses")
+	compiler, err := p.NewCompiler(p.DefaultLimits(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{"id":"r","model":"m","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"answer","annotations":[],"logprobs":[]}]}]}`)
+	options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}
+	legacy := shippedProjectionProtocol(t, Responses)
+	oldResponse, err := legacy.DecodeResponse(t.Context(), raw, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldResponse.Native = nil
+	wantWire, err := legacy.EncodeResponse(t.Context(), oldResponse, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, shouldPreserve := range []bool{true, false} {
+		t.Run(fmt.Sprintf("native=%t", shouldPreserve), func(t *testing.T) {
+			document, ok := declaration.Package()
+			if !ok {
+				t.Fatal("missing source package")
+			}
+			document.Mapping.Native.Preserve = shouldPreserve
+			source, err := p.EncodeValue(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+			compiled, issues := compiler.CompilePackage(source.Bytes())
+			if err := p.IssuesError(issues); err != nil {
+				t.Fatal(err)
+			}
+			response, err := compiled.DecodeResponse(t.Context(), raw, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			node := response.Content[0].Children[0]
+			if node.Source.Path != "/output/0/content/0" || node.Source.Scope != options.Scope || (node.Native != nil) != shouldPreserve || len(node.Metadata) != 2 {
+				t.Fatal("metadata provenance depends on native preservation", node)
+			}
+			for _, metadata := range node.Metadata {
+				if metadata.Path != "/output/0/content/0/"+metadata.Name {
+					t.Fatal("metadata lost its original location", metadata)
+				}
+			}
+			response.Native = nil
+			gotWire, err := compiled.EncodeResponse(t.Context(), response, options)
+			if err != nil || !bytes.Equal(gotWire, wantWire) {
+				t.Fatalf("metadata reconstruction changed: old=%s new=%s error=%v", wantWire, gotWire, err)
+			}
+		})
+	}
+}
 
 // The four JSON directions are a standalone declaration candidate. The package
 // compiler has no codec modules, and its samples are not activation evidence.
