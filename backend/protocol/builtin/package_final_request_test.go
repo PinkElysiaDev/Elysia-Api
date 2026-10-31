@@ -92,6 +92,31 @@ func chatToolSequenceCases() []finalWireCase {
 	}
 }
 
+func TestChatPackageFinalRequestControls(t *testing.T) {
+	legacy, draft := shippedProjectionProtocol(t, Chat), compileBuiltinPackage(t, "openai-chat")
+	for _, fixture := range []finalWireCase{
+		{"null-options", `{"model":"m","messages":[],"stream_options":null}`, acceptedFinalWire},
+		{"empty-options", `{"model":"m","messages":[],"stream_options":{}}`, acceptedFinalWire},
+		{"include-usage-and-unknown", `{"model":"m","messages":[],"stream_options":{"include_usage":true,"future":{"number":9007199254740993,"value":null}}}`, acceptedFinalWire},
+		{"usage-disabled", `{"model":"m","messages":[],"stream_options":{"include_usage":false}}`, acceptedFinalWire},
+		{"null-single-limit", `{"model":"m","messages":[],"max_tokens":null}`, acceptedFinalWire},
+		{"single-completion-limit", `{"model":"m","messages":[],"max_completion_tokens":0}`, acceptedFinalWire},
+		{"nonobject-options", `{"model":"m","messages":[],"stream_options":false}`, "/stream_options"},
+		{"null-include-usage", `{"model":"m","messages":[],"stream_options":{"include_usage":null}}`, "/stream_options/include_usage"},
+		{"nonboolean-include-usage", `{"model":"m","messages":[],"stream_options":{"include_usage":"true"}}`, "/stream_options/include_usage"},
+		{"both-null-limits", `{"model":"m","messages":[],"max_tokens":null,"max_completion_tokens":null}`, "/"},
+		{"options-before-limit-conflict", `{"model":"m","messages":[],"stream_options":{"include_usage":null},"max_tokens":1,"max_completion_tokens":1}`, "/stream_options/include_usage"},
+		{"valid-options-limit-conflict", `{"model":"m","messages":[],"stream_options":{"include_usage":true},"max_tokens":1,"max_completion_tokens":1}`, "/"},
+		{"role-before-options", `{"model":"m","messages":[{"role":"future"}],"stream_options":false}`, "/messages/0/role"},
+		{"pending-before-options", `{"model":"m","messages":[{"role":"assistant","tool_calls":[{"id":"c","type":"function","function":{"name":"lookup","arguments":"{}"}}]}],"stream_options":false}`, "/messages/0/tool_calls"},
+		{"options-before-content-decode", `{"model":"m","messages":[{"role":"user","content":false}],"stream_options":false}`, "/stream_options"},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			checkFinalWireCase(t, legacy, draft, p.EncodeRequest, fixture)
+		})
+	}
+}
+
 func responsesFinalRequestCases() []finalWireCase {
 	return []finalWireCase{
 		{"text-input", `{"model":"m","input":"hello"}`, acceptedFinalWire},

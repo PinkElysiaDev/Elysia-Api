@@ -5793,7 +5793,106 @@
         }
       ]
     }
-  ]
+  ,
+{
+  "path": "/stream_options",
+  "when": {
+    "op": "exists",
+    "source": {
+      "op": "read",
+      "from": "input",
+      "path": "/stream_options"
+    }
+  },
+  "schema": {
+    "type": "object",
+    "nullable": true,
+    "allowUnknown": true
+  },
+  "code": "invalid_input",
+  "reason": "stream options must be an object or null; include_usage must be a boolean",
+  "diagnostic": {
+    "code": "invalid_input",
+    "direction": "decode_request",
+    "stage": "decode"
+  }
+},
+{
+  "path": "/stream_options/include_usage",
+  "when": {
+    "op": "if",
+    "when": {
+      "op": "present",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/stream_options"
+      }
+    },
+    "then": {
+      "op": "exists",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/stream_options/include_usage"
+      }
+    },
+    "otherwise": {
+      "op": "literal",
+      "value": false
+    }
+  },
+  "schema": {
+    "type": "boolean"
+  },
+  "code": "invalid_input",
+  "reason": "stream options must be an object or null; include_usage must be a boolean",
+  "diagnostic": {
+    "code": "invalid_input",
+    "direction": "decode_request",
+    "stage": "decode"
+  }
+},
+{
+  "path": "/max_tokens",
+  "when": {
+    "op": "all",
+    "items": [
+      {
+        "op": "exists",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/max_tokens"
+        }
+      },
+      {
+        "op": "exists",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/max_completion_tokens"
+        }
+      }
+    ]
+  },
+  "schema": {
+    "type": "any"
+  },
+  "code": "invalid_input",
+  "reason": "max_tokens and max_completion_tokens cannot both be present",
+  "check": {
+    "op": "literal",
+    "value": false
+  },
+  "diagnostic": {
+    "code": "invalid_input",
+    "stage": "runtime",
+    "path": "/",
+    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+  }
+}
+]
 }
 }
 }

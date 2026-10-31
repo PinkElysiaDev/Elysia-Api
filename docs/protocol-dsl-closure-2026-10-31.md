@@ -401,3 +401,17 @@ turn-state、心跳或 Responses 目标编码。异常字段、多故障首错�
 `closure-dev97-stream-final-race` 相关 race 通过，包含合并后的 48 消息容量对照。
 合并状态时一次声明把诊断 path 放到了错误层级，编译器明确拒绝；已修正声明并保留
 `closure-dev97-stream-review-confirm` 原失败日志，没有放宽编译检查或测试期望。
+
+## 第十四批：Chat 根控制字段最终校验（dev.98）
+
+Chat 最终文档新增 stream_options 及 include_usage 的已有类型边界，并保留两个
+max-token 字段不能同时存在的规则（包括两者都为 null）。顺序仍为消息邻接/角色、
+stream_options、include_usage、max 字段冲突，之后才进入尚待迁移的内容解码检查。
+未知 options 成员、单独的 null 限额等原接受边界没有收紧。
+
+options 诊断保留原 DecodeRequest / decode 归因；冲突保留 EncodeRequest / runtime。
+这不是新一轮诊断重构，仅让声明能够表达已有 decode 阶段。复用最终请求差分入口，
+`closure-chat-final-controls` 通过，包含坏 options 与限额、消息历史之间的首错对照。
+这一批不构造额外请求树，也不扩大为完整工具关联已闭合的声明。
+
+本提交独立源码的协议全量 `closure-dev98-isolated-protocol` 通过。
