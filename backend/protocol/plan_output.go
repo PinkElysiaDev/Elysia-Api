@@ -52,7 +52,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	}
 	plan := &compiledOutputPlan{expression: expression}
 	switch expression.op {
-	case "omit", "reject", "literal", "read", "let", "with_input", "with_index", "remember", "recall", "index", "capture_native", "capture_source", "replay_native", "native_matches", "object", "check_fields", "project", "keys", "array", "map", "walk", "visit", "recur", "flatmap", "filter", "if", "choose",
+	case "omit", "reject", "literal", "read", "let", "with_input", "with_index", "remember", "recall", "forget", "index_size", "index", "capture_native", "capture_source", "replay_native", "native_matches", "object", "check_fields", "project", "keys", "array", "map", "walk", "visit", "recur", "flatmap", "filter", "if", "choose",
 		"merge", "merge_deep", "merge_usage", "resolve_item", "track_text", "track_tool", "index_values", "length", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
 		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains", "equal", "equal_text", "all", "any", "entries", "from_entries", "group_runs":
 	default:
@@ -61,7 +61,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	if expression.op == "let" || expression.op == "read" && expression.from == "binding" {
 		plan.bindingSlots = expression.bindingSlot + 1
 	}
-	if !expression.isStreamIndex && (expression.op == "with_index" || expression.op == "remember" || expression.op == "recall") {
+	if !expression.isStreamIndex && (expression.op == "with_index" || expression.op == "remember" || expression.op == "recall" || expression.op == "forget" || expression.op == "index_size") {
 		plan.indexSlots = expression.indexSlot + 1
 	}
 	if expression.op == "read" && len(expression.pointer) != 0 {
@@ -213,6 +213,10 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.rememberValue(state)
 	case "recall":
 		return plan.recallValue(state)
+	case "forget":
+		return plan.forgetValue(state)
+	case "index_size":
+		return plannedLeaf(coreInteger(int64(len(state.indexes.frames[expression.indexSlot].values)))), nil
 	case "index":
 		return plannedLeaf(coreInteger(int64(state.itemIndex))), nil
 	case "capture_native":

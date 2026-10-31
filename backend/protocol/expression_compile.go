@@ -278,9 +278,12 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		}
 		compiled.indexSlot, compiled.isStreamIndex = slot, true
 	}
-	if compiled.op == "remember" || compiled.op == "recall" {
+	if compiled.op == "remember" || compiled.op == "recall" || compiled.op == "forget" || compiled.op == "index_size" {
 		slot, exists := scope.indexes[expression.Name]
 		if !exists {
+			if compiled.op == "forget" || compiled.op == "index_size" {
+				return nil, fmt.Errorf("%s/name: %s requires a lexical index", path, compiled.op)
+			}
 			slot, exists = scope.streamIndexes[expression.Name]
 			if !exists {
 				return nil, fmt.Errorf("%s/name: index is not declared in this scope", path)

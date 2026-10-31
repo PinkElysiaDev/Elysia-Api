@@ -34,7 +34,8 @@ type WireAssertion struct {
 	// ReasonExpression replaces Reason and reads the same current container and
 	// root as When. It runs only after this assertion fails, under its budget.
 	ReasonExpression *Expression `json:"reasonExpression,omitempty"`
-	// Diagnostic preserves the declared boundary's classification. A non-nil
+	// Diagnostic preserves the declared boundary's classification. A Check
+	// branch using reject supplies its own diagnostic instead. A non-nil
 	// diagnostic may explicitly retain an unspecified stage from that boundary.
 	Diagnostic *RejectDiagnostic `json:"diagnostic,omitempty"`
 }
@@ -247,6 +248,10 @@ func validateWireAssertions(assertions []compiledWireAssertion, state evaluation
 				isValid, err = readBoolean(value)
 			}
 			if err != nil || !isValid {
+				var rejection *declaredRejectionError
+				if errors.As(err, &rejection) {
+					return &ConversionError{cause: err, Issues: []ConversionIssue{rejection.issue(Identity{}, "")}}
+				}
 				return assertion.failure(state, path, err)
 			}
 		}

@@ -144,6 +144,7 @@ func TestPlanIndexScopeAndErrors(t *testing.T) {
 	}
 	for _, expression := range []Expression{
 		indexTestRecall(key, "omit"), indexTestRemember(key, literalExpression(1)),
+		{Op: "forget", Name: "records", Source: &key}, {Op: "index_size", Name: "records"},
 		{Op: "with_index", Name: "records", KeyMode: "decoded", Policy: "last", Body: expressionPointer(literalExpression(1))},
 		indexTestScope("implicit", literalExpression(1)), indexTestScope("last", indexTestRecall(key, "implicit")),
 	} {
@@ -151,6 +152,36 @@ func TestPlanIndexScopeAndErrors(t *testing.T) {
 		if _, err := compiler.compilePlan(expression, "/index", expressionScope{}, 1); err == nil {
 			t.Fatal("invalid index scope or policy compiled", expression)
 		}
+	}
+}
+
+func TestPlanIndexRemovalReleasesBudget(t *testing.T) {
+	size := Expression{Op: "index_size", Name: "records"}
+	remove := Expression{Op: "forget", Name: "records", Source: expressionPointer(literalExpression("a"))}
+	escaped := remove
+	escaped.Source = &Expression{Op: "literal", Value: Value{raw: `"\u0061"`}}
+	body := indexTestSequence(indexTestRemember(literalExpression("a"), literalExpression("abcdefghijkl")), Expression{Op: "array", Items: []Expression{
+		size, escaped, remove, size,
+		indexTestSequence(indexTestRemember(literalExpression("b"), literalExpression("abcdefghijkl")), size),
+	}})
+	plan := numericTestPlan(t, indexTestScope("last", body))
+	state := numericTestState(t, Value{})
+	state.budget.limits.BufferBytes = 20
+	state.indexes = &indexEvaluationState{frames: make([]*outputIndex, plan.indexSlots)}
+	value, err := plan.evaluate(state)
+	if err != nil || value.raw != `[1,false,true,0,1]` {
+		t.Fatal("removal changed raw keys, live counts or budget reuse", value, err)
+	}
+	if state.indexes.entries != 0 || state.indexes.bytes != 0 || state.indexes.frames[0] != nil {
+		t.Fatal("scope cleanup counted a removed entry twice", state.indexes)
+	}
+	missing := readExpression("input", "/absent")
+	body = indexTestSequence(indexTestRemember(missing, missing), Expression{Op: "array", Items: []Expression{
+		{Op: "forget", Name: "records", Source: &missing}, size,
+	}})
+	value, err = numericTestPlan(t, indexTestScope("last", body)).evaluate(numericTestState(t, Value{}))
+	if err != nil || value.raw != `[true,0]` {
+		t.Fatal("missing stored output was confused with an absent key", value, err)
 	}
 }
 

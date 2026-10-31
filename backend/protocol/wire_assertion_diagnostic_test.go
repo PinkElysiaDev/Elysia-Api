@@ -110,3 +110,45 @@ func TestWireAssertionRejectsInvalidReasonExpressions(t *testing.T) {
 		})
 	}
 }
+
+func TestWireAssertionCheckKeepsExplicitRejection(t *testing.T) {
+	rejection := Expression{Op: "reject", Source: expressionPointer(readExpression("input", "/location")),
+		Reason: "association is incomplete", Diagnostic: &RejectDiagnostic{Code: InvalidAssociation, Stage: "wire.output"}}
+	check := Expression{Op: "if", When: expressionPointer(readExpression("input", "/reject")), Then: &rejection, Otherwise: expressionPointer(readExpression("input", "/valid"))}
+	contract, err := compileWireContractSpec(WireContractSpec{
+		Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true},
+		Assertions: []WireAssertion{{Path: "", Schema: ValueSchema{Type: ObjectType, AllowUnknown: true},
+			Code: ConversionRejected, Reason: "invalid document", Check: &check}},
+	}, "/document", DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fixture := range []struct {
+		raw, stage, path, reason string
+		code                     IssueCode
+	}{
+		{`{"reject":true,"location":"/messages/7/tool_calls"}`, "wire.output", "/messages/7/tool_calls", rejection.Reason, InvalidAssociation},
+		{`{"reject":false,"valid":false}`, "wire", "", "invalid document", ConversionRejected},
+		{`{"reject":false,"valid":true}`, "", "", "", ""},
+	} {
+		err := contract.validator.ValidateWireOutput(EncodeRequest, parseTestValue(t, fixture.raw))
+		if fixture.code == "" {
+			if err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		var failure *ConversionError
+		if !errors.As(err, &failure) || len(failure.Issues) != 1 {
+			t.Fatal("check lost its classification", err)
+		}
+		issue := failure.Issues[0]
+		if issue.Code != fixture.code || issue.Stage != fixture.stage || issue.Path != fixture.path || issue.Reason != fixture.reason {
+			t.Fatal("check replaced the selected branch diagnostic", issue)
+		}
+		var declared *declaredRejectionError
+		if fixture.code == InvalidAssociation && !errors.As(err, &declared) {
+			t.Fatal("check discarded its original rejection cause", err)
+		}
+	}
+}

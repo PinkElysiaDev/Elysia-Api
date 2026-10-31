@@ -5048,34 +5048,622 @@
       }
     },
     {
-      "path": "/messages",
-      "schema": {
-        "type": "array"
-      },
-      "code": "conversion_rejected",
-      "reason": "wire contract requires an array",
-      "diagnostic": {
-        "code": "conversion_rejected",
-        "stage": "wire.output"
-      },
-      "each": [
-        {
-          "path": "",
-          "schema": {
-            "type": "object",
-            "allowUnknown": true
+  "path": "/messages",
+  "schema": {
+    "type": "array"
+  },
+  "code": "conversion_rejected",
+  "reason": "wire contract requires an array",
+  "diagnostic": {
+    "code": "conversion_rejected",
+    "stage": "wire.output"
+  },
+  "check": {
+    "op": "with_index",
+    "name": "pending-calls",
+    "keyMode": "raw_json",
+    "policy": "last",
+    "body": {
+      "op": "with_index",
+      "name": "last-call",
+      "keyMode": "raw_json",
+      "policy": "last",
+      "body": {
+        "op": "let",
+        "name": "checked-history",
+        "source": {
+          "op": "map",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": ""
           },
-          "code": "invalid_input",
-          "reason": "expected JSON object",
-          "diagnostic": {
-            "code": "invalid_input",
-            "stage": "runtime",
-            "path": "/",
-            "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+          "body": {
+            "op": "let",
+            "name": "message",
+            "source": {
+              "op": "read",
+              "from": "item",
+              "path": ""
+            },
+            "body": {
+              "op": "let",
+              "name": "message-path",
+              "source": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "literal",
+                    "value": "/messages/"
+                  },
+                  {
+                    "op": "cast",
+                    "source": {
+                      "op": "index"
+                    },
+                    "to": "string"
+                  }
+                ]
+              },
+              "body": {
+                "op": "if",
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "message"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "object"
+                      }
+                    ]
+                  }
+                },
+                "then": {
+                  "op": "reject",
+                  "path": "/",
+                  "reason": "expected JSON object",
+                  "diagnostic": {
+                    "code": "invalid_input",
+                    "stage": "runtime",
+                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+                  }
+                },
+                "otherwise": {
+                  "op": "let",
+                  "name": "checked-pending",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "integer",
+                          "operation": "gt",
+                          "items": [
+                            {
+                              "op": "index_size",
+                              "name": "pending-calls"
+                            },
+                            {
+                              "op": "literal",
+                              "value": 0
+                            }
+                          ]
+                        },
+                        {
+                          "op": "not",
+                          "source": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/role",
+                                "name": "message"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "tool"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "reject",
+                      "source": {
+                        "op": "join",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "message-path"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "/role"
+                          }
+                        ]
+                      },
+                      "reason": "Chat requires results for all outstanding tool calls immediately after the assistant call message",
+                      "diagnostic": {
+                        "code": "invalid_association",
+                        "stage": "wire.output"
+                      }
+                    },
+                    "otherwise": {
+                      "op": "omit"
+                    }
+                  },
+                  "body": {
+                    "op": "let",
+                    "name": "consumed-result",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/role",
+                            "name": "message"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "tool"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "if",
+                        "when": {
+                          "op": "forget",
+                          "name": "pending-calls",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/tool_call_id",
+                            "name": "message"
+                          }
+                        },
+                        "then": {
+                          "op": "omit"
+                        },
+                        "otherwise": {
+                          "op": "reject",
+                          "source": {
+                            "op": "join",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "",
+                                "name": "message-path"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "/tool_call_id"
+                              }
+                            ]
+                          },
+                          "reason": "tool result must match an outstanding call in the immediately preceding assistant turn",
+                          "diagnostic": {
+                            "code": "invalid_association",
+                            "stage": "wire.output"
+                          }
+                        }
+                      },
+                      "otherwise": {
+                        "op": "omit"
+                      }
+                    },
+                    "body": {
+                      "op": "let",
+                      "name": "calls",
+                      "source": {
+                        "op": "if",
+                        "when": {
+                          "op": "present",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/tool_calls",
+                            "name": "message"
+                          }
+                        },
+                        "then": {
+                          "op": "if",
+                          "when": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "type",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "/tool_calls",
+                                  "name": "message"
+                                }
+                              },
+                              {
+                                "op": "literal",
+                                "value": "array"
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/tool_calls",
+                            "name": "message"
+                          },
+                          "otherwise": {
+                            "op": "reject",
+                            "path": "/",
+                            "reason": "expected JSON array",
+                            "diagnostic": {
+                              "code": "invalid_input",
+                              "stage": "runtime",
+                              "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+                            }
+                          }
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": []
+                        }
+                      },
+                      "body": {
+                        "op": "let",
+                        "name": "checked-owner",
+                        "source": {
+                          "op": "if",
+                          "when": {
+                            "op": "all",
+                            "items": [
+                              {
+                                "op": "integer",
+                                "operation": "gt",
+                                "items": [
+                                  {
+                                    "op": "length",
+                                    "source": {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "",
+                                      "name": "calls"
+                                    }
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": 0
+                                  }
+                                ]
+                              },
+                              {
+                                "op": "not",
+                                "source": {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "/role",
+                                      "name": "message"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "assistant"
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "reject",
+                            "source": {
+                              "op": "join",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "",
+                                  "name": "message-path"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "/tool_calls"
+                                }
+                              ]
+                            },
+                            "reason": "only assistant messages may issue tool calls",
+                            "diagnostic": {
+                              "code": "invalid_association",
+                              "stage": "wire.output"
+                            }
+                          },
+                          "otherwise": {
+                            "op": "omit"
+                          }
+                        },
+                        "body": {
+                          "op": "let",
+                          "name": "checked-calls",
+                          "source": {
+                            "op": "map",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "calls"
+                            },
+                            "body": {
+                              "op": "let",
+                              "name": "call",
+                              "source": {
+                                "op": "read",
+                                "from": "item",
+                                "path": ""
+                              },
+                              "body": {
+                                "op": "let",
+                                "name": "call-path",
+                                "source": {
+                                  "op": "join",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "",
+                                      "name": "message-path"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "/tool_calls/"
+                                    },
+                                    {
+                                      "op": "cast",
+                                      "source": {
+                                        "op": "index"
+                                      },
+                                      "to": "string"
+                                    }
+                                  ]
+                                },
+                                "body": {
+                                  "op": "if",
+                                  "when": {
+                                    "op": "not",
+                                    "source": {
+                                      "op": "equal",
+                                      "items": [
+                                        {
+                                          "op": "type",
+                                          "source": {
+                                            "op": "read",
+                                            "from": "binding",
+                                            "path": "",
+                                            "name": "call"
+                                          }
+                                        },
+                                        {
+                                          "op": "literal",
+                                          "value": "object"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "then": {
+                                    "op": "reject",
+                                    "path": "/",
+                                    "reason": "expected JSON object",
+                                    "diagnostic": {
+                                      "code": "invalid_input",
+                                      "stage": "runtime",
+                                      "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+                                    }
+                                  },
+                                  "otherwise": {
+                                    "op": "if",
+                                    "when": {
+                                      "op": "any",
+                                      "items": [
+                                        {
+                                          "op": "not",
+                                          "source": {
+                                            "op": "equal",
+                                            "items": [
+                                              {
+                                                "op": "type",
+                                                "source": {
+                                                  "op": "read",
+                                                  "from": "binding",
+                                                  "path": "/id",
+                                                  "name": "call"
+                                                }
+                                              },
+                                              {
+                                                "op": "literal",
+                                                "value": "string"
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        {
+                                          "op": "equal",
+                                          "items": [
+                                            {
+                                              "op": "read",
+                                              "from": "binding",
+                                              "path": "/id",
+                                              "name": "call"
+                                            },
+                                            {
+                                              "op": "literal",
+                                              "value": ""
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "op": "exists",
+                                          "source": {
+                                            "op": "recall",
+                                            "name": "pending-calls",
+                                            "source": {
+                                              "op": "read",
+                                              "from": "binding",
+                                              "path": "/id",
+                                              "name": "call"
+                                            },
+                                            "policy": "omit"
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "then": {
+                                      "op": "reject",
+                                      "source": {
+                                        "op": "join",
+                                        "items": [
+                                          {
+                                            "op": "read",
+                                            "from": "binding",
+                                            "path": "",
+                                            "name": "call-path"
+                                          },
+                                          {
+                                            "op": "literal",
+                                            "value": "/id"
+                                          }
+                                        ]
+                                      },
+                                      "reason": "tool call requires a unique nonempty ID",
+                                      "diagnostic": {
+                                        "code": "invalid_association",
+                                        "stage": "wire.output"
+                                      }
+                                    },
+                                    "otherwise": {
+                                      "op": "let",
+                                      "name": "registered-call",
+                                      "source": {
+                                        "op": "remember",
+                                        "name": "pending-calls",
+                                        "source": {
+                                          "op": "read",
+                                          "from": "binding",
+                                          "path": "/id",
+                                          "name": "call"
+                                        },
+                                        "body": {
+                                          "op": "literal",
+                                          "value": true
+                                        }
+                                      },
+                                      "body": {
+                                        "op": "let",
+                                        "name": "registered-path",
+                                        "source": {
+                                          "op": "remember",
+                                          "name": "last-call",
+                                          "source": {
+                                            "op": "literal",
+                                            "value": "path"
+                                          },
+                                          "body": {
+                                            "op": "join",
+                                            "items": [
+                                              {
+                                                "op": "read",
+                                                "from": "binding",
+                                                "path": "",
+                                                "name": "message-path"
+                                              },
+                                              {
+                                                "op": "literal",
+                                                "value": "/tool_calls"
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "body": {
+                                          "op": "omit"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "body": {
+                            "op": "omit"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "body": {
+          "op": "if",
+          "when": {
+            "op": "integer",
+            "operation": "gt",
+            "items": [
+              {
+                "op": "index_size",
+                "name": "pending-calls"
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          },
+          "then": {
+            "op": "reject",
+            "source": {
+              "op": "recall",
+              "name": "last-call",
+              "source": {
+                "op": "literal",
+                "value": "path"
+              },
+              "policy": "reject"
+            },
+            "reason": "Chat generation requires results for every outstanding tool call; incomplete history is not discarded",
+            "diagnostic": {
+              "code": "invalid_association",
+              "stage": "wire.output"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": true
           }
         }
-      ]
-    },
+      }
+    }
+  }
+},
     {
       "path": "/messages",
       "schema": {

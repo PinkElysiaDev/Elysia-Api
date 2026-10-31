@@ -34,7 +34,7 @@ func TestPackageFinalRequestStructure(t *testing.T) {
 }
 
 func chatFinalRequestCases() []finalWireCase {
-	return []finalWireCase{
+	return append([]finalWireCase{
 		{"empty-history", `{"model":"m","messages":[]}`, acceptedFinalWire},
 		{"whitespace-model", `{"model":" ","messages":[]}`, acceptedFinalWire},
 		{"escaped-role", `{"model":"m","messages":[{"role":"\u0075ser","content":"hello"}]}`, acceptedFinalWire},
@@ -52,6 +52,43 @@ func chatFinalRequestCases() []finalWireCase {
 		{"thinking-with-empty-content", `{"model":"m","messages":[{"role":"assistant","reasoning_content":"think","content":""}]}`, acceptedFinalWire},
 		{"thinking-with-refusal", `{"model":"m","messages":[{"role":"assistant","reasoning_content":"think","content":null,"refusal":""}]}`, acceptedFinalWire},
 		{"thinking-with-tool-history", `{"model":"m","messages":[{"role":"assistant","reasoning_content":"think","content":null,"tool_calls":[{"id":"c","type":"function","function":{"name":"lookup","arguments":"{}"}}]},{"role":"tool","tool_call_id":"c","content":"done"}]}`, acceptedFinalWire},
+	}, chatToolSequenceCases()...)
+}
+
+func chatToolSequenceCases() []finalWireCase {
+	call := func(id string) string {
+		return `{"role":"assistant","tool_calls":[{"id":` + id + `,"type":"function","function":{"name":"lookup","arguments":"{}"}}]}`
+	}
+	result := func(id string) string {
+		return `{"role":"tool","tool_call_id":` + id + `,"content":"done"}`
+	}
+	fixture := func(name, messages, path string) finalWireCase {
+		return finalWireCase{name, `{"model":"m","messages":[` + messages + `]}`, path}
+	}
+	const parallel = `{"role":"assistant","tool_calls":[{"id":"first","type":"function","function":{"name":"lookup","arguments":"{}"}},{"id":"second","type":"function","function":{"name":"lookup","arguments":"{}"}}]}`
+	return []finalWireCase{
+		fixture("completed-tools", call(`"c"`)+`,`+result(`"c"`), acceptedFinalWire),
+		fixture("parallel-results-reordered", parallel+`,`+result(`"second"`)+`,`+result(`"first"`), acceptedFinalWire),
+		fixture("raw-escaped-id-matches", call(`"\u0063"`)+`,`+result(`"\u0063"`), acceptedFinalWire),
+		fixture("raw-escaped-id-differs", call(`"c"`)+`,`+result(`"\u0063"`), "/messages/1/tool_call_id"),
+		fixture("whitespace-call-id", call(`" "`)+`,`+result(`" "`), acceptedFinalWire),
+		fixture("unfinished-calls", call(`"c"`), "/messages/0/tool_calls"),
+		fixture("parallel-result-missing", parallel+`,`+result(`"first"`), "/messages/0/tool_calls"),
+		fixture("interrupted-calls", call(`"c"`)+`,{"role":"user","content":"interruption"},`+result(`"c"`), "/messages/1/role"),
+		fixture("unmatched-result", call(`"c"`)+`,`+result(`"other"`), "/messages/1/tool_call_id"),
+		fixture("orphan-result", result(`"c"`), "/messages/0/tool_call_id"),
+		fixture("duplicate-result", call(`"c"`)+`,`+result(`"c"`)+`,`+result(`"c"`), "/messages/2/tool_call_id"),
+		fixture("duplicate-pending-id", `{"role":"assistant","tool_calls":[{"id":"c"},{"id":"c"}]}`, "/messages/0/tool_calls/1/id"),
+		fixture("null-call-id", call(`null`), "/messages/0/tool_calls/0/id"),
+		fixture("empty-call-id", call(`""`), "/messages/0/tool_calls/0/id"),
+		fixture("null-tool-list", `{"role":"user","content":"hi","tool_calls":null}`, acceptedFinalWire),
+		fixture("empty-tool-list", `{"role":"user","content":"hi","tool_calls":[]}`, acceptedFinalWire),
+		fixture("tool-list-before-role", `{"role":"future","tool_calls":false}`, "/"),
+		fixture("tool-owner-before-role", `{"role":"future","tool_calls":[{}]}`, "/messages/0/tool_calls"),
+		fixture("tool-call-object", `{"role":"assistant","tool_calls":[null]}`, "/"),
+		fixture("message-object-before-pending", call(`"c"`)+`,null`, "/"),
+		fixture("pending-before-tool-list", call(`"c"`)+`,{"role":"user","tool_calls":false}`, "/messages/1/role"),
+		fixture("result-before-tool-list", call(`"c"`)+`,{"role":"tool","tool_call_id":"other","tool_calls":false}`, "/messages/1/tool_call_id"),
 	}
 }
 
@@ -151,7 +188,7 @@ func TestPackageFinalRequestRemainingConstraints(t *testing.T) {
 		codec, name, wire, path, stage string
 		code                          p.IssueCode
 	}{
-		{Chat, "openai-chat", `{"model":"m","messages":[{"role":"assistant","tool_calls":[{"id":"c","type":"function","function":{"name":"lookup","arguments":"{}"}}]}]}`, "/messages/0/tool_calls", "wire.output", p.InvalidAssociation},
+		{Chat, "openai-chat", `{"model":"m","messages":[{"role":"assistant","tool_calls":[{"id":"c","type":"function","function":{"name":"lookup","arguments":"{}"}}]},{"role":"tool","tool_call_id":"c","content":"done"},{"role":"assistant","tool_calls":[{"id":"\u0063","type":"function","function":{"name":"lookup","arguments":"{}"}}]},{"role":"tool","tool_call_id":"\u0063","content":"done"}]}`, "/content/2/children/0/callId", "wire.output", p.InvalidAssociation},
 		{Responses, "openai-responses", `{"model":"m","input":[{"type":"function_call_output","call_id":"missing","output":"done"}]}`, "/content/0/callId", "wire.output", p.InvalidAssociation},
 		{Anthropic, "anthropic", `{"model":"m","max_tokens":32,"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"missing","content":"done"}]}]}`, "/content/0/children/0/callId", "wire.output", p.InvalidAssociation},
 		{Gemini, "google-generate-content", `{"contents":[{"role":"user","parts":[{"functionResponse":{"name":"lookup","response":{}}}]}]}`, "/functionResponse", "wire", p.UnsupportedCapability},
@@ -167,7 +204,7 @@ func TestPackageFinalRequestRemainingConstraints(t *testing.T) {
 			if err := draft.ValidateWireOutput(p.EncodeRequest, wire); err != nil {
 				t.Fatal("recorded request-final gap changed; review and close this ledger entry", err)
 			}
-			t.Log("NOT CLOSED: request-final structure is declared; tool sequence, association and decoder validation remain incomplete", oldErr)
+			t.Log("NOT CLOSED: request-final structure and Chat adjacency are declared; full-tree association and decoder validation remain incomplete", oldErr)
 		})
 	}
 }

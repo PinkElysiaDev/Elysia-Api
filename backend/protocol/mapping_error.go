@@ -7,7 +7,7 @@ import (
 )
 
 func validateDiagnosticClassification(code IssueCode, stage, path string) error {
-	if !slices.Contains([]IssueCode{InvalidInput, UnsupportedCapability, ConversionRejected, UpstreamContractViolation}, code) {
+	if !slices.Contains([]IssueCode{InvalidInput, InvalidAssociation, UnsupportedCapability, ConversionRejected, UpstreamContractViolation}, code) {
 		return fmt.Errorf("%s/code: unsupported diagnostic classification", path)
 	}
 	if stage != "wire" && stage != "evaluate" && stage != "runtime" {

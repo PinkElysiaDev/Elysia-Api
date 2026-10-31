@@ -10,13 +10,14 @@
 
 | 协议 | 已声明 |
 |---|---|
-| Chat | 非空 model、messages 数组、消息对象预检、角色枚举、孤立 thinking 拒绝 |
+| Chat | 非空 model、messages 数组、相邻工具调用／结果序列、角色枚举、孤立 thinking 拒绝 |
 | Responses | 非空 model；input 的字符串／数组／前序响应形式；消息角色；assistant 数组内容不得使用 input_text |
 | Anthropic | 非空 model、messages 数组与 user／assistant／system 角色；末尾保留 thinking／output_config 局部断言 |
 | Gemini | contents 数组及消息对象；role 可缺失，存在时仅 user／model |
 
 字符串不额外 trim，转义字符串按原解码值比较。错误按声明顺序产生，
-Chat 先做原邻接扫描中的消息对象预检，再校验角色；这保留无工具错误干扰时的原首错顺序。
+Chat 先完成工具邻接扫描，再校验角色；消息对象、未完成调用、工具结果、调用数组、
+调用方角色和调用 ID 按旧扫描的实际顺序检查，不能先把所有字段按 schema 校验完再检查关系。
 Anthropic 局部 controls 保留 `request.validation` 阶段及旧路径，
 包括 `/parameters/anthropic_thinking`、`/parameters/anthropic_output_config`。
 
@@ -25,17 +26,43 @@ Anthropic 的 `max_tokens` 属于独立 operation input 门槛：新旧 generate
 现有候选 generation 合同更严格，继续保留；最终合同不复制它的根 schema、model 和消息数组检查。
 只有必要的七条 thinking／output_config 局部断言在最终文档中显式声明，未新增引用框架或运行两份整文档。
 
+## Chat 工具邻接声明
+
+`upstream-request` 的消息数组断言使用现有 `with_index`、`remember`、`recall`，
+以及通用的 lexical-only `forget`、`index_size`。供应商字段、角色及诊断全部留在 Spec。
+一个临时索引保存当前待完成的原始调用 ID，另一个只有一项，保存最后调用数组的诊断路径。
+检查按消息／调用数组顺序执行，map 的每项结果均省略，不积累副本或编码完整历史。
+成功和失败都会退出临时作用域；没有跨请求状态、额外全请求解码或逐项扫描整个索引。
+
+在任意非 tool 消息之前，待完成集合必须为空；tool 消息必须消费一个待完成 ID；
+非空 tool_calls 只能属于 assistant。调用 ID 必须是非空字符串，且不能在待完成集合中重复。
+最终集合非空时，按原实现报告最后调用数组路径。并行调用的结果可交换顺序。
+
+索引使用 `raw_json` 比较方式，保留旧邻接检查的 ID 写法边界：`"c"` 与 `"\u0063"`
+不能互相消费，但完全相同的转义写法可以匹配。后续全树关联使用解码后的 ID，
+所以两轮分别匹配、但两轮 ID 仅写法不同的历史，仍必须由下一层检查拒绝。
+此差别没有被归一化或新的通用索引语义掩盖。
+
+消息／调用非对象和 tool_calls 非数组的错误说明直接对应旧 `Value.ReadObject/ReadArray`
+的固定文本，保留 `invalid_input / runtime / /`；邻接关系错误保持
+`invalid_association / wire.output` 及动态消息／调用位置。
+Wire check 内明确声明的 reject 保留自己的诊断与错误链；普通断言失败仍使用原结构错误。
+`TestPackageFinalRequestStructure/openai-chat` 对照旧模块核对这些边界和多故障首错，
+包括 pending 打断、重复／孤立结果、并行顺序、空列表、工具字段类型及原始 ID 拼写。
+
 ## 尚未闭合
 
 这不是完整请求最终校验替代，不能据此切换生产预置：
 
-- Chat outstanding calls 的紧邻结果及末尾排空、调用 ID 原文比较，以及包含工具错误时的首错顺序。
+- Chat 全树调用 ID 的解码字符串去重；它不同于已迁移的待完成集合原文比较。
 - 四协议全树调用／结果关联、重复 ID 和结果、工具必需字段及关联节点预算。
 - Gemini 无 ID 调用／结果的隐式身份和同名歧义处理。
 - 旧最终重解码承担的其余参数、工具 JSON、reasoning、媒体、cache 和 metadata 动态约束。
 
 `TestPackageFinalRequestRemainingConstraints` 明确登记四个尚未迁移的拒绝边界：
 旧模块拒绝而结构文档暂时接受。它不是差异忽略列表；将来补齐时必须审查并关闭相应记录。
+Chat 原“末尾有待完成调用”已经迁移并移入接受／拒绝对照，当前剩余例是两轮调用分别有结果、
+但解码后复用了同一 ID，旧版在 `/content/2/children/0/callId` 拒绝。
 字段结构已迁移的测试使用旧／新 `ValidateWireOutput(EncodeRequest)` 同一入口，
 比较接受结果、错误码、方向、阶段、位置及原因。
 后置修改测试从有效 wire 经 ApplyMutations 改坏 thinking、effort 或角色，确认检查实际最终结果及原首错。

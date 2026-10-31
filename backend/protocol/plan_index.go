@@ -104,6 +104,27 @@ func (plan *compiledOutputPlan) recallValue(state evaluation) (plannedOutput, er
 	return value, nil
 }
 
+func (plan *compiledOutputPlan) forgetValue(state evaluation) (plannedOutput, error) {
+	keyOutput, err := plan.source.build(state)
+	if err != nil {
+		return plannedOutput{}, err
+	}
+	key, err := rawIndexKey(keyOutput.output)
+	if err != nil {
+		return plannedOutput{}, err
+	}
+	index := state.indexes.frames[plan.expression.indexSlot]
+	value, exists := index.values[key]
+	if exists {
+		delete(index.values, key)
+		bytes := len(key) + value.bytes
+		index.bytes -= bytes
+		state.indexes.bytes -= bytes
+		state.indexes.entries--
+	}
+	return plannedLeaf(coreBoolean(exists)), nil
+}
+
 func rawIndexKey(output JSONOutput) (string, error) {
 	if output.node != nil {
 		return "", fmt.Errorf("raw_json index key requires existing JSON; constructed containers are not encoded")
