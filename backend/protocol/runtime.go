@@ -259,15 +259,32 @@ func (compiled *Compiled) decodeEvents(ctx context.Context, direction Direction,
 			return nil, err
 		}
 		event.Native = nil
-		if compiled.native.Preserve && !*options.transportControl && (!options.compoundFrame || event.Type == NativeEvent) {
+		isAuxiliary := options.inputView != nil && options.inputView.sourceReceipt != nil && options.inputView.sourceReceipt.class == wireFrameAuxiliary
+		if isAuxiliary || compiled.native.Preserve && !*options.transportControl && (!options.compoundFrame || event.Type == NativeEvent) {
 			event.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: direction, Scope: options.Scope}, Value: frame}
 			// Only an installed Responses decoder can designate this native
 			// envelope as auxiliary metadata. Authored labels are insufficient.
-			if event.Type == NativeEvent && direction == DecodeEvent && compiled.Codec(direction) == "responses" {
+			if compiled.packagePlan == nil && event.Type == NativeEvent && direction == DecodeEvent && compiled.Codec(direction) == "responses" {
 				kind, _ := readValuePointer(frame, []string{"type"})
 				if kind.IsString("response.metadata") && ValidateResponsesMetadataFrame(frame) == nil {
 					event.Native.Source.Path = responsesMetadataPath
 				}
+			}
+		}
+		if isAuxiliary {
+			if len(events) != 1 {
+				return nil, streamIssue(UnsupportedNative, "/events", "one auxiliary frame must map to one isolated native event")
+			}
+			if err := options.inputView.sourceReceipt.attach(event); err != nil {
+				return nil, err
+			}
+		}
+		if options.inputView != nil && options.inputView.sourceReceipt != nil && options.inputView.sourceReceipt.class == wireFrameState {
+			if len(events) != 1 {
+				return nil, streamIssue(UnsupportedNative, "/events", "one state frame must map to one isolated control event")
+			}
+			if err := options.inputView.sourceReceipt.attachControl(event, options.inputView); err != nil {
+				return nil, err
 			}
 		}
 		target := compiled.target(direction, options)
@@ -483,7 +500,12 @@ func stampResourceScope(resource *Resource, scope Scope) error {
 }
 
 func (compiled *Compiled) target(direction Direction, options EvaluationContext) Target {
-	return Target{Codec: compiled.Codec(direction), Protocol: compiled.identity, Direction: direction, Scope: options.Scope, Capabilities: compiled.mappings[direction].capabilities, coreVersion: compiled.CoreVersion()}
+	target := Target{Codec: compiled.Codec(direction), Protocol: compiled.identity, Direction: direction, Scope: options.Scope, Capabilities: compiled.mappings[direction].capabilities, coreVersion: compiled.CoreVersion()}
+	if isEventDirection(direction) {
+		target.eventEncoderHash = compiled.mappings[eventEncoder(direction)].definitionHash
+		target.eventDecoderHash = compiled.mappings[eventDecoder(direction)].definitionHash
+	}
+	return target
 }
 
 // Target binds validation and collection to this revision's core version and

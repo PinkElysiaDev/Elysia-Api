@@ -10,24 +10,7 @@ import (
 func sparseIdentityStream(t *testing.T) *ProtocolStreamSpec {
 	t.Helper()
 	var spec ProtocolStreamSpec
-	raw := Value{raw: `{
-		"discriminator":"/type", "responseId":"/response_id", "itemId":"/index",
-		"inheritResponseId":true, "itemIdIsIndex":true,
-		"events":{
-			"message_start":[{"action":"response_start","responseId":"/message/id"}],
-			"content_block_start":[
-				{"action":"item_start","when":{"op":"equal","items":[{"op":"read","from":"input","path":"/content_block/type"},{"op":"literal","value":"text"}]}},
-				{"action":"tool_start","when":{"op":"equal","items":[{"op":"read","from":"input","path":"/content_block/type"},{"op":"literal","value":"tool_use"}]},"tool":{"name":"/content_block/name","callId":"/content_block/id"}}
-			],
-			"content_block_delta":[
-				{"action":"text_delta","text":"/delta/text","when":{"op":"equal","items":[{"op":"read","from":"input","path":"/delta/type"},{"op":"literal","value":"text_delta"}]}},
-				{"action":"tool_delta","arguments":"/delta/partial_json","when":{"op":"equal","items":[{"op":"read","from":"input","path":"/delta/type"},{"op":"literal","value":"input_json_delta"}]}}
-			],
-			"content_block_stop":[{"action":"item_finish"}],
-			"message_delta":[{"action":"usage","usage":{"output":"/usage/output_tokens"}}],
-			"message_stop":[{"action":"response_finish"}]
-		}
-	}`}
+	raw := Value{raw: `{"discriminator":"/type","responseId":"/response_id","inheritResponseId":true,"namespaces":{"item":{"keyType":"integer"}},"lifecycle":{"eof":"require_terminal","openEntities":"reject"},"events":{"message_start":[{"action":"stream_start","responseId":"/message/id"}],"content_block_start":[{"action":"entity_start","when":{"op":"equal","items":[{"op":"read","from":"input","path":"/content_block/type"},{"op":"literal","value":"text"}]},"entity":"text","key":{"path":"/index"}},{"action":"entity_start","when":{"op":"equal","items":[{"op":"read","from":"input","path":"/content_block/type"},{"op":"literal","value":"tool_use"}]},"entity":"function_call","key":{"path":"/index"},"identities":{"name":{"path":"/content_block/name"},"call_id":{"path":"/content_block/id"}}}],"content_block_delta":[{"action":"entity_append","when":{"op":"equal","items":[{"op":"read","from":"input","path":"/delta/type"},{"op":"literal","value":"text_delta"}]},"entity":"text","key":{"path":"/index"},"payload":{"path":"/delta/text"}},{"action":"entity_append","when":{"op":"equal","items":[{"op":"read","from":"input","path":"/delta/type"},{"op":"literal","value":"input_json_delta"}]},"entity":"function_call","key":{"path":"/index"},"payload":{"path":"/delta/partial_json"}}],"content_block_stop":[{"action":"entity_finish","namespace":"item","key":{"path":"/index"}}],"message_delta":[{"action":"assert","assertions":[{"path":"/usage/output_tokens","when":{"op":"exists","source":{"op":"read","from":"input","path":"/usage/output_tokens"}},"schema":{"type":"integer"},"code":"upstream_contract_violation","reason":"counter must be nonnegative","check":{"op":"integer","operation":"gte","items":[{"op":"read","from":"input","path":""},{"op":"literal","value":0}]}},{"path":"","code":"upstream_contract_violation","reason":"count observation requires a value","check":{"op":"any","items":[{"op":"exists","source":{"op":"read","from":"input","path":"/usage/output_tokens"}}]}}],"afterTerminal":true},{"action":"observe","afterTerminal":true}],"message_stop":[{"action":"stream_finish"}]},"entities":{"text":{"namespace":"item","payload":"text"},"function_call":{"namespace":"item","payload":"json","identities":{"name":{"type":"string","requiredAt":"start"},"call_id":{"type":"string","requiredAt":"start","unique":true}}}}}`}
 	if err := raw.Decode(&spec); err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +89,7 @@ func TestPackageStreamSparseIdentityRejections(t *testing.T) {
 func TestPackageStreamDeclaredIdentityDefaults(t *testing.T) {
 	spec := sparseIdentityStream(t)
 	spec.OptionalResponseID = true
-	spec.ItemIDValue = &Expression{Op: "if", When: &Expression{Op: "present", Source: expressionPointer(readExpression("input", "/index"))}, Then: expressionPointer(readExpression("input", "/index")), Otherwise: expressionPointer(literalExpression(0))}
+	setWireTestKeyValue(spec, &Expression{Op: "if", When: &Expression{Op: "present", Source: expressionPointer(readExpression("input", "/index"))}, Then: expressionPointer(readExpression("input", "/index")), Otherwise: expressionPointer(literalExpression(0))})
 	state := newSparseIdentityValidation(t, spec)
 	for _, raw := range []string{
 		`{"type":"message_start","message":{}}`,
@@ -127,7 +110,7 @@ func TestPackageStreamDeclaredIdentityDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertPackageRuntimeIssue(t, state.consume(t.Context(), Value{raw: `{"type":"content_block_start","index":"0","content_block":{"type":"text"}}`}), UpstreamContractViolation, "/index")
-	spec.ItemIDValue = expressionPointer(readExpression("state", "/index"))
+	setWireTestKeyValue(spec, expressionPointer(readExpression("state", "/index")))
 	if _, err := compilePackageStreamContract(spec, "/stream", DefaultLimits()); err == nil {
 		t.Fatal("wire identity normalization read mapping state")
 	}
@@ -144,7 +127,7 @@ func TestPackageStreamDeclaredResponseIdentity(t *testing.T) {
 	for _, direction := range []Direction{DecodeEvent, EncodeEvent} {
 		t.Run(string(direction), func(t *testing.T) {
 			state := newSparseIdentityValidation(t, spec)
-			state.direction, state.target.Direction, state.replay.target.Direction = direction, direction, direction
+			state.direction, state.target.Direction = direction, direction
 			for _, raw := range []string{
 				`{"type":"message_start","message":{"id":"actual"},"response_id":false}`,
 				`{"type":"content_block_start","index":0,"content_block":{"type":"text"},"response_id":"extension"}`,
@@ -165,5 +148,20 @@ func TestPackageStreamDeclaredResponseIdentity(t *testing.T) {
 	spec.ResponseIDValue = expressionPointer(readExpression("state", "/identity"))
 	if _, err := compilePackageStreamContract(spec, "/stream", DefaultLimits()); err == nil {
 		t.Fatal("wire response identity read mapping state")
+	}
+}
+
+func setWireTestKeyValue(spec *ProtocolStreamSpec, value *Expression) {
+	var update func([]ProtocolStreamActionSpec)
+	update = func(actions []ProtocolStreamActionSpec) {
+		for index := range actions {
+			if actions[index].Key != nil {
+				actions[index].Key.Value = value
+			}
+			update(actions[index].Actions)
+		}
+	}
+	for _, actions := range spec.Events {
+		update(actions)
 	}
 }

@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -101,7 +102,7 @@ func TestAnthropicPackageSparseStreamIdentities(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, raw := range []string{
+			for index, raw := range []string{
 				fmt.Sprintf(`{"type":"message_start","message":{%s}}`, fixture.message),
 				fmt.Sprintf(`{"type":"content_block_start"%s,"content_block":{"type":"text","text":""}}`, fixture.index),
 				fmt.Sprintf(`{"type":"content_block_delta"%s,"delta":{"type":"text_delta","text":"hello"}}`, fixture.index),
@@ -114,10 +115,14 @@ func TestAnthropicPackageSparseStreamIdentities(t *testing.T) {
 				if err != nil {
 					t.Fatal("legacy boundary", err)
 				}
-				if err := wire.Consume(t.Context(), frame); err != nil {
-					t.Fatal("declared boundary", err)
+				after, err := wire.DecodeFrame(t.Context(), frame, newOptions)
+				if index == 1 && (fixture.name == "missing-index" || fixture.name == "null-index") {
+					var failure *p.ConversionError
+					if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Code != p.UpstreamContractViolation || failure.Issues[0].Path != "/index" {
+						t.Fatal("declared contract must reject the legacy implicit index-zero fallback", err)
+					}
+					return
 				}
-				after, err := candidate.DecodeFrame(t.Context(), frame, newOptions)
 				if err != nil {
 					t.Fatal("declared mapping", err)
 				}

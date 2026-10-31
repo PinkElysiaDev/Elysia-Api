@@ -15,6 +15,8 @@ type ResponseMetadata struct {
 	SourceCodec string `json:"sourceCodec"`
 	Path        string `json:"path"`
 	Value       Value  `json:"value"`
+	// Update is append only for an item delta; collected metadata is a snapshot.
+	Update string `json:"update,omitempty"`
 }
 
 // MetadataFieldType is shared by JSON and SSE decoders. Stateful references,

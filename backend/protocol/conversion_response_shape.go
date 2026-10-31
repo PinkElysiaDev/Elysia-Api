@@ -231,6 +231,9 @@ func (c *CompiledConversion) responseObject(action string, phase ConversionPhase
 	}
 	e := document.(*Event)
 	if action == "response_shape" && codec != "responses" {
+		if e.Collection != "" {
+			return false, streamIssue(UnsupportedCapability, "/collection", "reasoning child collections require an explicit target mapping")
+		}
 		if !e.ParentID.IsZero() {
 			if err := c.issue(rule, phase, route, "/parentId", "target expresses message content as a flat assistant turn", sink, true); err != nil {
 				return false, err

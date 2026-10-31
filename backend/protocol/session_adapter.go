@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"errors"
 	"strconv"
 )
 
@@ -23,11 +24,14 @@ func (adapter *SessionAdapter) Release() { adapter.options.State.Release() }
 
 // NewSessionAdapter constructs the shared offline/live duplex translation path.
 // The caller supplies its already-authorized model group and upstream scope.
-func NewSessionAdapter(ingress, upstream *Compiled, clientOperation, upstreamOperation Operation, binding Binding, scope Scope, model Value) (*SessionAdapter, error) {
+func NewSessionAdapter(ingress, upstream *Compiled, clientOperation, upstreamOperation Operation, binding Binding, options EvaluationContext, model Value) (*SessionAdapter, error) {
 	if err := CheckSessionCompatibility(clientOperation, upstreamOperation); err != nil {
 		return nil, err
 	}
-	options := EvaluationContext{Scope: scope, State: NewEvaluationState()}
+	if options.operation == nil {
+		return nil, operationMetadataError("/operation", "session execution requires bound operation metadata")
+	}
+	options.State = NewEvaluationState()
 	limits := ingress.limits
 	limits.StateItems = min(limits.StateItems, upstream.limits.StateItems)
 	limits.BufferBytes = min(limits.BufferBytes, upstream.limits.BufferBytes)
@@ -127,7 +131,11 @@ func (adapter *SessionAdapter) convertMedia(origin EventOrigin, frame SessionFra
 }
 
 // Finish validates the observed session terminal instead of inventing one on EOF.
-func (adapter *SessionAdapter) Finish() error { return adapter.replay.Finish() }
+func (adapter *SessionAdapter) Finish() error {
+	return errors.Join(adapter.replay.Finish(),
+		adapter.ingress.finishInputEvents(context.Background(), DecodeClientEvent, adapter.options),
+		adapter.upstream.finishInputEvents(context.Background(), DecodeEvent, adapter.options))
+}
 
 // IsClosed reports an explicit close/failure, never a completed single response.
 func (adapter *SessionAdapter) IsClosed() bool { return adapter.replay.isClosed }

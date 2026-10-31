@@ -10929,7 +10929,9 @@
                       "path": "",
                       "name": "wire-item-id"
                     }
-                  },
+                  ,
+"namespace": "content_block"
+},
                   "body": {
                     "op": "if",
                     "when": {
@@ -10945,20 +10947,20 @@
                           }
                         },
                         {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/kind",
-                              "name": "delivered-item"
-                            },
-                            {
-                              "op": "literal",
-                              "value": "text"
-                            }
-                          ]
-                        },
+  "op": "equal",
+  "items": [
+    {
+      "op": "read",
+      "from": "binding",
+      "path": "/entity",
+      "name": "delivered-item"
+    },
+    {
+      "op": "literal",
+      "value": "text_block"
+    }
+  ]
+},
                         {
                           "op": "equal",
                           "items": [
@@ -11003,7 +11005,9 @@
                           "path": "",
                           "name": "wire-item-id"
                         }
-                      },
+                      ,
+"namespace": "content_block"
+},
                       "body": {
                         "op": "object",
                         "fields": {
@@ -13342,6 +13346,677 @@
   },
   "otherwise": {
     "op": "omit"
+  }
+}
+,
+"conversion-has-session-resource": {
+  "op": "if",
+  "when": {
+    "op": "present",
+    "source": {
+      "op": "read",
+      "from": "input",
+      "path": "/resources"
+    }
+  },
+  "then": {
+    "op": "integer",
+    "operation": "gt",
+    "items": [
+      {
+        "op": "length",
+        "source": {
+          "op": "filter",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/resources"
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "item",
+                "path": "/kind"
+              },
+              {
+                "op": "literal",
+                "value": "session"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "op": "literal",
+        "value": 0
+      }
+    ]
+  },
+  "otherwise": {
+    "op": "literal",
+    "value": false
+  }
+}
+,
+"conversion-check-cross-safety": {
+  "op": "let",
+  "name": "safety-list",
+  "source": {
+    "op": "read",
+    "from": "input",
+    "path": "/parameters/gemini_safety_settings"
+  },
+  "body": {
+    "op": "let",
+    "name": "safety-list-type",
+    "source": {
+      "op": "if",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "type",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "safety-list"
+            }
+          },
+          {
+            "op": "literal",
+            "value": "array"
+          }
+        ]
+      },
+      "then": {
+        "op": "literal",
+        "value": true
+      },
+      "otherwise": {
+        "op": "reject",
+        "path": "/safetySettings",
+        "reason": "safetySettings must be an array or null",
+        "diagnostic": {
+          "code": "invalid_input",
+          "stage": "evaluate"
+        }
+      }
+    },
+    "body": {
+      "op": "with_index",
+      "name": "safety-categories",
+      "keyMode": "raw_json",
+      "policy": "reject",
+      "body": {
+        "op": "let",
+        "name": "checked-safety-items",
+        "source": {
+          "op": "map",
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "path": "",
+            "name": "safety-list"
+          },
+          "body": {
+            "op": "let",
+            "name": "safety-setting",
+            "source": {
+              "op": "read",
+              "from": "item",
+              "path": ""
+            },
+            "body": {
+              "op": "let",
+              "name": "safety-path",
+              "source": {
+                "op": "pointer_join",
+                "source": {
+                  "op": "literal",
+                  "value": "/safetySettings"
+                },
+                "items": [
+                  {
+                    "op": "cast",
+                    "to": "string",
+                    "source": {
+                      "op": "index"
+                    }
+                  }
+                ]
+              },
+              "body": {
+                "op": "let",
+                "name": "safety-shape",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "safety-setting"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "object"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": true
+                  },
+                  "otherwise": {
+                    "op": "reject",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "safety-path"
+                    },
+                    "reason": "safety setting must be an object",
+                    "diagnostic": {
+                      "code": "invalid_input",
+                      "stage": "evaluate"
+                    }
+                  }
+                },
+                "body": {
+                  "op": "let",
+                  "name": "safety-category-type",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "type",
+                              "source": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/category",
+                                "name": "safety-setting"
+                              }
+                            },
+                            {
+                              "op": "literal",
+                              "value": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "not",
+                          "source": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/category",
+                                "name": "safety-setting"
+                              },
+                              {
+                                "op": "literal",
+                                "value": ""
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": true
+                    },
+                    "otherwise": {
+                      "op": "reject",
+                      "source": {
+                        "op": "pointer_join",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "safety-path"
+                        },
+                        "items": [
+                          {
+                            "op": "literal",
+                            "value": "category"
+                          }
+                        ]
+                      },
+                      "reason": "safety setting requires a nonempty string",
+                      "diagnostic": {
+                        "code": "invalid_input",
+                        "stage": "evaluate"
+                      }
+                    }
+                  },
+                  "body": {
+                    "op": "let",
+                    "name": "safety-threshold-type",
+                    "source": {
+                      "op": "if",
+                      "when": {
+                        "op": "all",
+                        "items": [
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "type",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "/threshold",
+                                  "name": "safety-setting"
+                                }
+                              },
+                              {
+                                "op": "literal",
+                                "value": "string"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "not",
+                            "source": {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "/threshold",
+                                  "name": "safety-setting"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": ""
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "literal",
+                        "value": true
+                      },
+                      "otherwise": {
+                        "op": "reject",
+                        "source": {
+                          "op": "pointer_join",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "safety-path"
+                          },
+                          "items": [
+                            {
+                              "op": "literal",
+                              "value": "threshold"
+                            }
+                          ]
+                        },
+                        "reason": "safety setting requires a nonempty string",
+                        "diagnostic": {
+                          "code": "invalid_input",
+                          "stage": "evaluate"
+                        }
+                      }
+                    },
+                    "body": {
+                      "op": "let",
+                      "name": "safety-category-unique",
+                      "source": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "recall",
+                            "name": "safety-categories",
+                            "source": {
+                              "op": "join",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "/category",
+                                  "name": "safety-setting"
+                                }
+                              ]
+                            },
+                            "policy": "omit"
+                          }
+                        },
+                        "then": {
+                          "op": "reject",
+                          "source": {
+                            "op": "pointer_join",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "safety-path"
+                            },
+                            "items": [
+                              {
+                                "op": "literal",
+                                "value": "category"
+                              }
+                            ]
+                          },
+                          "reason": "only one safety setting is allowed per category",
+                          "diagnostic": {
+                            "code": "invalid_input",
+                            "stage": "evaluate"
+                          }
+                        },
+                        "otherwise": {
+                          "op": "remember",
+                          "name": "safety-categories",
+                          "source": {
+                            "op": "join",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/category",
+                                "name": "safety-setting"
+                              }
+                            ]
+                          },
+                          "body": {
+                            "op": "literal",
+                            "value": true
+                          }
+                        }
+                      },
+                      "body": {
+                        "op": "let",
+                        "name": "safety-properties",
+                        "source": {
+                          "op": "map",
+                          "source": {
+                            "op": "keys",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "safety-setting"
+                            }
+                          },
+                          "body": {
+                            "op": "if",
+                            "when": {
+                              "op": "any",
+                              "items": [
+                                {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": ""
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "category"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": ""
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "threshold"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "then": {
+                              "op": "literal",
+                              "value": true
+                            },
+                            "otherwise": {
+                              "op": "reject",
+                              "source": {
+                                "op": "pointer_join",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "",
+                                  "name": "safety-path"
+                                },
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "item",
+                                    "path": ""
+                                  }
+                                ]
+                              },
+                              "reason": "additional safety setting fields have no equivalent mapping",
+                              "diagnostic": {
+                                "code": "conversion_rejected",
+                                "stage": "evaluate"
+                              }
+                            }
+                          }
+                        },
+                        "body": {
+                          "op": "let",
+                          "name": "safety-category-known",
+                          "source": {
+                            "op": "if",
+                            "when": {
+                              "op": "any",
+                              "items": [
+                                {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "/category",
+                                      "name": "safety-setting"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "HARM_CATEGORY_HATE_SPEECH"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "/category",
+                                      "name": "safety-setting"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "HARM_CATEGORY_DANGEROUS_CONTENT"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "/category",
+                                      "name": "safety-setting"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "HARM_CATEGORY_HARASSMENT"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "/category",
+                                      "name": "safety-setting"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "HARM_CATEGORY_SEXUALLY_EXPLICIT"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "/category",
+                                      "name": "safety-setting"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "HARM_CATEGORY_CIVIC_INTEGRITY"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "then": {
+                              "op": "literal",
+                              "value": true
+                            },
+                            "otherwise": {
+                              "op": "reject",
+                              "source": {
+                                "op": "pointer_join",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "",
+                                  "name": "safety-path"
+                                },
+                                "items": [
+                                  {
+                                    "op": "literal",
+                                    "value": "category"
+                                  }
+                                ]
+                              },
+                              "reason": "unrecognized Gemini safety category has no equivalent target mapping",
+                              "diagnostic": {
+                                "code": "conversion_rejected",
+                                "stage": "evaluate"
+                              }
+                            }
+                          },
+                          "body": {
+                            "op": "if",
+                            "when": {
+                              "op": "any",
+                              "items": [
+                                {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "/threshold",
+                                      "name": "safety-setting"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "BLOCK_NONE"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "/threshold",
+                                      "name": "safety-setting"
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "OFF"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "then": {
+                              "op": "literal",
+                              "value": true
+                            },
+                            "otherwise": {
+                              "op": "reject",
+                              "source": {
+                                "op": "pointer_join",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "",
+                                  "name": "safety-path"
+                                },
+                                "items": [
+                                  {
+                                    "op": "literal",
+                                    "value": "threshold"
+                                  }
+                                ]
+                              },
+                              "reason": "target cannot enforce this Gemini category threshold; blocking constraints cannot be omitted",
+                              "diagnostic": {
+                                "code": "conversion_rejected",
+                                "stage": "evaluate"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "body": {
+          "op": "literal",
+          "value": true
+        }
+      }
+    }
   }
 }
 },
@@ -20533,7 +21208,25 @@
       }
     }
   },
-  "effects": [],
+  "effects": [{
+  "id": "reasoning-collection-projection",
+  "kind": "reject",
+  "path": "/collection",
+  "when": {
+    "op": "exists",
+    "source": {
+      "op": "read",
+      "from": "input",
+      "path": "/collection"
+    }
+  },
+  "reason": "target has no declared mapping for a reasoning collection child",
+  "diagnostic": {
+    "code": "unsupported_capability",
+    "stage": "evaluate"
+  }
+}
+],
   "finalDocument": "client-event"
 }
 },
@@ -32048,4 +32741,211 @@
       }
     ]
   }
+,
+"conversionDefaults": [
+{
+  "id": "event-control",
+  "order": 210,
+  "enabled": true,
+  "phase": "event",
+  "control": {
+    "kinds": [
+      "continuation_state"
+    ],
+    "disposition": "omit",
+    "path": "/headers",
+    "reason": "target has no equivalent continuation state channel"
+  }
+},
+{
+  "id": "event-metadata",
+  "order": 220,
+  "enabled": true,
+  "phase": "event",
+  "auxiliary": {
+    "disposition": "omit",
+    "path": "/metadata",
+    "reason": "target cannot represent the source auxiliary event"
+  }
+},
+  {
+    "id": "responses-context",
+    "order": 185,
+    "enabled": true,
+    "phase": "request",
+    "match": {},
+    "steps": [
+      {
+        "when": {
+          "op": "any",
+          "items": [
+            {
+              "op": "ref",
+              "ref": "conversion-has-session-resource"
+            },
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/responses_previous_response_id"
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "reject",
+          "path": "/previous_response_id",
+          "reason": {
+            "op": "literal",
+            "value": "target cannot resolve a previous response; complete history restoration is required before conversion"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/parameters/responses_truncation"
+          }
+        },
+        "diagnostic": {
+          "kind": "reject",
+          "path": "/truncation",
+          "reason": {
+            "op": "literal",
+            "value": "target has no verified equivalent context truncation behavior; this constraint cannot be omitted"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/responses_previous_response_id"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "null"
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "normalize",
+          "path": "/previous_response_id",
+          "reason": {
+            "op": "literal",
+            "value": "null previous response reference normalized to no history reference"
+          }
+        },
+        "set": {
+          "/parameters/responses_previous_response_id": {
+            "op": "omit"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "gemini-safety-settings",
+    "order": 170,
+    "enabled": true,
+    "phase": "request",
+    "match": {},
+    "steps": [
+      {
+        "when": {
+          "op": "any",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/gemini_safety_settings"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "null"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/gemini_safety_settings"
+                },
+                {
+                  "op": "literal",
+                  "value": []
+                }
+              ]
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "normalize",
+          "path": "/safetySettings",
+          "reason": {
+            "op": "literal",
+            "value": "empty Gemini safety settings contain no category overrides"
+          }
+        },
+        "set": {
+          "/parameters/gemini_safety_settings": {
+            "op": "omit"
+          }
+        },
+        "stop": true
+      },
+      {
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/gemini_safety_settings"
+              }
+            },
+            {
+              "op": "ref",
+              "ref": "conversion-check-cross-safety"
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "degrade",
+          "path": "/safetySettings",
+          "reason": {
+            "op": "literal",
+            "value": "target has no Gemini category filter controls; BLOCK_NONE/OFF cannot disable the target's own safety policy, which remains in force"
+          }
+        },
+        "set": {
+          "/parameters/gemini_safety_settings": {
+            "op": "omit"
+          }
+        }
+      }
+    ]
+  }
+]
 }

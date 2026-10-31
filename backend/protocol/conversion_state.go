@@ -18,6 +18,10 @@ type conversionState struct {
 	requestNormalized     bool
 	requestPartition      *requestPartition
 	resolvedModelControls *modelControlExecution
+	auxiliary             *sourceFrameReceipt
+	omittedAuxiliary      *omittedEventReceipt
+	control               *controlEventReceipt
+	omittedControl        *omittedEventReceipt
 }
 
 func (state *conversionState) validateContext(phase ConversionPhase) error {
@@ -31,6 +35,12 @@ func (state *conversionState) validateContext(phase ConversionPhase) error {
 }
 
 func (state *conversionState) accepts(phase ConversionPhase, rule ConversionRule) bool {
+	if rule.Action == "auxiliary_event" || rule.Action == "control_event" {
+		return phase == ConversionEvent
+	}
+	if rule.Action == "core_controls" {
+		return phase == ConversionRequest || phase == ConversionResponse
+	}
 	if phase == ConversionResponse || phase == ConversionEvent {
 		switch rule.Action {
 		case "chat_response_model", "responses_turn_state", "anthropic_usage_envelope", "response_shape", "response_envelope", "response_metadata", "error_metadata", "usage_projection", "signatures":
@@ -82,6 +92,11 @@ func (state *conversionState) load(phase ConversionPhase, strict bool) error {
 	if err != nil {
 		return err
 	}
+	if phase == ConversionEvent {
+		if err := restoreProtectedEvent(document.(*Event), state.auxiliary, state.omittedAuxiliary, state.control, state.omittedControl, true); err != nil {
+			return err
+		}
+	}
 	state.document, state.isStrict = document, strict
 	state.requestNormalized, state.requestPartition = false, nil
 	return nil
@@ -107,7 +122,17 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 	var target string
 	var err error
 	shouldEncode := true
-	if isNodeRule {
+	if rule.Action == "control_event" {
+		event := state.document.(*Event)
+		shouldEncode, err = c.applyControlEvent(event, route, rule, sink)
+		state.control, state.omittedControl = event.controlReceipt, event.omittedControl
+	} else if rule.Action == "auxiliary_event" {
+		event := state.document.(*Event)
+		shouldEncode, err = c.applyAuxiliaryEvent(event, route, rule, sink)
+		state.auxiliary, state.omittedAuxiliary = event.auxiliary, event.omittedAuxiliary
+	} else if rule.Action == "core_controls" {
+		shouldEncode, err = c.applyCoreControls(ctx, state.document, route, rule, sink)
+	} else if isNodeRule {
 		err = c.applyNodeObject(ctx, phase, state.document, route, sink, rule, state.cache)
 	} else if rule.Action == "response_metadata" {
 		err = c.metadataObject(phase, state.document, route, rule, sink)
@@ -136,6 +161,11 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 		state.cache.normalizeDocument(reflect.ValueOf(state.document), typedLimitPlans[reflect.TypeOf(state.document)])
 	}
 	state.requestNormalized = phase == ConversionRequest
+	if phase == ConversionEvent {
+		if err := restoreProtectedEvent(state.document.(*Event), state.auxiliary, state.omittedAuxiliary, state.control, state.omittedControl, true); err != nil {
+			return "", err
+		}
+	}
 	state.needsEncoding, state.isStrict = true, true
 	state.wire = Value{} // The owned document now contains the complete current value.
 	return target, nil

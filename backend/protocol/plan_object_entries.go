@@ -7,7 +7,11 @@ func (plan *compiledOutputPlan) buildEntries(state evaluation) (plannedOutput, e
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	fields, err := plannedObjectFields(source.output)
+	readFields := plannedObjectFields
+	if plan.expression.policy == "preserve" {
+		readFields = coreObjectFields
+	}
+	fields, err := readFields(source.output)
 	if err != nil {
 		return plannedOutput{}, err
 	}

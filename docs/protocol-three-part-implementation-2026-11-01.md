@@ -1,6 +1,6 @@
 # 三部分架构实施记录
 
-基线：`refactor/protocol-dsl`，`b2844846 / dev.101`。当前开发编译器为 `dev.102`，仅本地提交。新验收依据见[契约](protocol-three-part-contract.md)。
+基线：`refactor/protocol-dsl`，`b2844846 / dev.101`。第一阶段提交为 `acc97556 / dev.102`；当前开发编译器为 `dev.103`，仅本地提交。新验收依据见[契约](protocol-three-part-contract.md)。
 
 ## 基线留档
 
@@ -31,10 +31,51 @@
 - 旧格式4之前的两源包与版本1转换策略不满足新格式执行门槛；历史身份仍可读取。旧模块格式尚未最终退役。
 - Gemini 仍使用已有单 candidate 能力范围，本阶段不扩大供应商 API。
 
+## 第二阶段：外部流实体与 Responses 重建
+
+- Spec 使用外部实体、命名空间、父子关系及生命周期；不再通过构造核心事件执行外部流验证。来源外部状态与 Mapping 状态独立，当前帧字段读取共享。
+- `base` 复用已编译文档，并仅允许附加断言；Responses 来源与最终输出共用结构，最终输出额外要求序号。未提高配置节点上限。
+- Responses 目标流接入 reasoning 两类集合、annotation／logprobs 增量、JSON／文本工具参数、晚到工具身份及 usage 终态。工具用量复用 JSON Mapping 的配置片段，不重复累计为模型 token。
+- 原生复合帧通过显式 observer 同步状态，只回放一份原帧。缺少目标必需序号的合法来源帧由 `nativeWhen` 选择语义重建；输出序号按已交付位置与当前批次偏移计算。
+- 通用 `control.updated` 保留续传状态载荷，辅助 metadata 与纯传输控制独立分类。成功来源校验产生绑定方向、Scope 和帧的私有凭据；兼容省略由目标规则授权，严格模式拒绝损失。
+- `buffer_text`／`buffer_array` 支持事务式增量、快照前缀校对、读取及释放。收集器的显式 metadata append 采用分段累积，最终输出清除增量指令。
+- `core_controls` 与字段观察接通三类配置默认策略：Responses 上下文引用、Gemini safety 取舍、Chat 缺失响应模型。用户同 ID 替换后重新编译，不沿用被替换规则的执行计划。
+- 网关、收集入口、会话及离线验证绑定一轮执行 ID 和时间。普通 context JSON 不能改写这些运行事实；没有 DSL 随机值或缺失身份常量兜底。
+
+`phase-two-responses-arrays` 已通过六类往返（reasoning、文本阶段、函数参数、增量 metadata、文本工具、工具用量）、原生字节保真、晚到身份和缺失序号重建。它是组件验收，不代表四协议 HTTP 组合或性能验收已完成。
+
+第二阶段扩大回归后发现：旧测试缺少独立流状态、部分断言比较旧内部 Native/错误树、外部事件配置与动态 StateItems 预算混用，以及空 metadata 增量的计费问题。已按新契约分别修复实现或测试，保留实际内容、身份、用量、终态和拒绝边界验证。
+
+控制事件凭据已经脱离整份原帧：只保留独立载荷、来源事实、映射指纹和帧摘要；原帧仍由 EventFrame 持有。既有测试用 2 MiB 前导空白与小 headers 检查小载荷不共享大输入，以及 Scope／映射变化拒绝。
+
+本阶段的表示与接受边界变化：
+
+- 同一身份字符串的不同 JSON 转义写法相等；不同 ID、null、重复身份和乱序帧继续拒绝。
+- Anthropic 流的缺失或 null block index 不再默认为 0，按外部合同拒绝。
+- 纯传输 keepalive 产生零个核心事件；空终态不要求内部 content 使用非 nil 空切片。最终 wire 结构仍由目标合同验证。
+- 结构和生命周期错误按实际源／目标边界归因，不再复刻旧 `unsupported_capability` 覆盖或旧错误树。
+- 来源位置和原文片段以实际输入为准，逐项目不再重复保存仅为旧表示对照所需的 Native 副本；原帧保真由 EventFrame 负责。
+- JSON 工具用量错误使用真实 `/tool_usage/...`，流帧嵌套字段使用 `/response/tool_usage/...`；不再把 JSON 断言标成 `decode_event`。DSL `check_usage` 的核心约束使用 `core.usage` 阶段，由实际调用补齐方向，保留原始错误链。
+
+第二阶段复核记录（Windows amd64、Go 1.27.2）：
+
+| 记录 | 结果与范围 |
+|---|---|
+| `phase-two-go-all-final` | `go test -p=1 ./... -count=1` 全部通过；147.7 秒。包括核心、新包组件、网关、Agent、存储及既有旧预置路径 |
+| `phase-two-vet-final` | `go vet ./...` 通过 |
+| `phase-two-race` / `phase-two-race-builtin-serial` | 核心和网关相关 race 通过；builtin 初次编译因系统提交内存不足中断，单包 `-p=1` 复核通过。没有观察到数据竞争报告 |
+| `phase-two-staticcheck-final` | 固定 v0.8.2 仍因 24 条存量诊断退出 1；无新增诊断 |
+
+新核心类型最初使计量生成器多产生一条无用局部赋值。修正生成器后，原有 21 条同模式 `SA4006` 也消除，静态诊断从基线 45 条降至 24 条；没有忽略规则或手改生成产物。完整静态差异位于 `checks/phase-two-staticcheck-final-diff.json`。
+
+race 编译失败时系统可用物理内存约 8.7 GiB，提交额度占用约 98%。这是工具执行环境的记录，不是网关运行内存结论。后续 31 MiB 四并发性能测试仍须重新检查既定环境门槛。
+
+本阶段沿用第一阶段已通过的前端与审计结果；最终新引擎切换仍需重新执行完整页面、审计、六目标构建和实际调用矩阵。性能收益等待功能完整后的正式测量。
+
 ## 尚未完成的门槛
 
-- Gemini 尚未完成全部跨协议 HTTP/Agent 流组合验收；Responses 目标流和其余复杂源事件尚未闭合。
-- Spec 仍有借用核心 NodeKind/EventReplay 的实现，需改成外部实体关系。
+- Gemini／Responses 已接入双向流，但尚未完成全部跨协议 HTTP/Agent 组合验收；Chat 目标 logprobs、Anthropic 混合接续及 Responses 宿主工具原生事件还需闭合。
+- 跨协议 metadata、usage、错误及输出组织的默认策略尚未全部配置化；四份默认包的完整激活样例与组合证据仍需补齐。
 - 新资源契约尚未覆盖所有保留状态；默认转换策略仍有供应商 Go 分支。
 - 生产预置仍走旧加载器；旧执行路径、自动修复绑定及旧格式执行尚未退役。
 - 四协议 16 方向实际调用、最终全量/静态/race/页面/六目标验收，以及三版本正式配对性能与火焰图尚未完成。

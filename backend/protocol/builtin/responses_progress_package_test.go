@@ -2,7 +2,6 @@ package builtin
 
 import (
 	"bytes"
-	"errors"
 	"strings"
 	"testing"
 
@@ -43,11 +42,27 @@ func TestResponsesPackageProgressSourceStream(t *testing.T) {
 			`{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","output":42,"error":{"message":"not a failure event"},"usage":{"input_tokens":3}}}`, progressEnd}},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
+			if fixture.name == "hosted-usage" {
+				_, response := decodePackageStream(t, candidate, fixture.frames, p.Scope{})
+				if response.Usage == nil || len(response.Usage.Details) != 8 || response.Usage.Total == nil || response.Usage.Total.Count != 4 || response.Usage.Details["tools.web_search_calls"].Count != 2 || response.Usage.Details["tools.image_generation.total_tokens"].Count != 12 {
+					t.Fatal("hosted progress counted snapshots twice or changed model totals", response.Usage)
+				}
+				if len(response.Content) != 1 || response.Content[0].Kind != p.MessageNode || len(response.Content[0].Children) != 1 || !response.Content[0].Children[0].Payload.IsString("OK") {
+					t.Fatal("hosted progress lost generated output", response.Content)
+				}
+				return
+			}
 			oldOptions := p.EvaluationContext{State: p.NewEvaluationState()}
 			newOptions := p.EvaluationContext{State: p.NewEvaluationState()}
 			defer oldOptions.State.Release()
 			defer newOptions.State.Release()
 			wire, err := candidate.NewWireInputStreamValidation(p.Scope{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			target := candidate.Target(p.DecodeEvent, p.Scope{})
+			target.Direction = p.EncodeEvent
+			collector, err := p.NewResponseCollector(target, candidate.ResourceLimits())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -57,24 +72,55 @@ func TestResponsesPackageProgressSourceStream(t *testing.T) {
 				if err != nil {
 					t.Fatal("legacy progress", index, err)
 				}
-				if err := wire.Consume(t.Context(), value); err != nil {
-					t.Fatal("independent progress contract", index, err)
-				}
-				after, err := candidate.DecodeFrame(t.Context(), value, newOptions)
+				after, err := wire.DecodeFrame(t.Context(), value, newOptions)
 				if err != nil {
 					t.Fatal("declared progress", index, err)
 				}
-				want, err := p.EncodeValue(responsesTextEventsAtOriginalLocations(t, before.Events, value))
-				if err != nil {
-					t.Fatal(err)
-				}
-				got, err := p.EncodeValue(after.Events)
-				if err != nil || !bytes.Equal(want.Bytes(), got.Bytes()) {
-					t.Fatalf("progress event changed at %d: %v\nold: %s\nnew: %s", index, err, want.JSONString(), got.JSONString())
+				assertResponsesControlObservations(t, candidate, before.Events, after.Events)
+				for _, event := range after.Events {
+					if _, _, err := collector.Consume(event); err != nil {
+						t.Fatal("progress semantic collection", index, err)
+					}
 				}
 			}
 			if err := wire.Finish(); err != nil {
 				t.Fatal(err)
+			}
+			response, err := collector.Finish()
+			if err != nil || len(response.Content) != 0 || !response.ID.IsString("r") || !response.Model.IsString("m") || !response.Status.IsString("completed") {
+				t.Fatal("progress changed the empty completed response", response, err)
+			}
+			switch fixture.name {
+			case "partial-model-usage":
+				if response.Usage == nil || response.Usage.Input == nil || response.Usage.Input.Count != 3 || response.Usage.Output == nil || response.Usage.Output.Count != 4 || response.Usage.CacheRead == nil || response.Usage.CacheRead.Count != 1 || response.Usage.Details["output.reasoning_tokens"].Count != 2 {
+					t.Fatal("partial usage fields were lost", response.Usage)
+				}
+			case "usage-tails":
+				if response.Usage == nil || response.Usage.Input != nil || response.Usage.Total != nil || response.Usage.Output == nil || response.Usage.Output.Count != 4 || response.Usage.Details["output.reasoning_tokens"].Count != 2 {
+					t.Fatal("usage tail was lost or invented input/total counters", response.Usage)
+				}
+			case "usage-metadata-tail":
+				usage := response.Usage
+				if usage != nil && (usage.Input != nil || usage.Output != nil || usage.Total != nil || usage.CacheRead != nil || usage.CacheCreation != nil || len(usage.Details) != 0) {
+					t.Fatal("usage metadata tail invented token counters", usage)
+				}
+				hasServiceTier := false
+				for _, metadata := range response.Metadata {
+					if metadata.Codec == Responses && metadata.Location == "response" && metadata.Name == "service_tier" {
+						hasServiceTier = metadata.Value.IsString("default")
+					}
+				}
+				if !hasServiceTier {
+					t.Fatal("usage metadata tail lost its observed service tier", response.Metadata)
+				}
+			case "created-does-not-seed-progress", "ordinary-update-does-not-decode-output":
+				if response.Usage == nil {
+					t.Fatal("an observed partial usage value disappeared")
+				}
+			default:
+				if response.Usage != nil {
+					t.Fatal("empty metadata invented usage", response.Usage)
+				}
 			}
 		})
 	}
@@ -138,64 +184,38 @@ func TestResponsesPackageProgressReplacesLargeUsageField(t *testing.T) {
 	}
 }
 
-func TestResponsesPackageProgressFailureOrder(t *testing.T) {
-	legacy, candidate := shippedProjectionProtocol(t, Responses), compileBuiltinPackage(t, "openai-responses")
+func TestResponsesPackageProgressRejectsInvalidUpdates(t *testing.T) {
+	compiled := compileBuiltinPackage(t, "openai-responses")
 	for _, fixture := range []struct {
 		name   string
 		prefix []string
 		frame  string
 	}{
-		{"identity-before-sequence-and-usage", nil, `{"type":"response.in_progress","sequence_number":0,"response":{"id":"other","usage":{"input_tokens":null}}}`},
-		{"sequence-before-usage", nil, `{"type":"response.in_progress","sequence_number":0,"response":{"id":"r","usage":{"input_tokens":null}}}`},
-		{"model-before-hosted-usage", nil, `{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","usage":{"input_tokens":null},"tool_usage":{"web_search":{"num_requests":null}}}}`},
-		{"accumulated-before-hosted-usage", []string{`{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","usage":{"output_tokens":2}}}`},
+		{"identity-and-usage", nil, `{"type":"response.in_progress","sequence_number":0,"response":{"id":"other","usage":{"input_tokens":null}}}`},
+		{"sequence-and-usage", nil, `{"type":"response.in_progress","sequence_number":0,"response":{"id":"r","usage":{"input_tokens":null}}}`},
+		{"model-and-hosted-usage", nil, `{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","usage":{"input_tokens":null},"tool_usage":{"web_search":{"num_requests":null}}}}`},
+		{"cumulative-and-hosted-usage", []string{`{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","usage":{"output_tokens":2}}}`},
 			`{"type":"response.in_progress","sequence_number":2,"response":{"id":"r","usage":{"output_tokens_details":{"reasoning_tokens":3}},"tool_usage":{"web_search":{"num_requests":null}}}}`},
 		{"hosted-counter", nil, `{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","tool_usage":{"web_search":{"num_requests":-1}}}}`},
-		{"invalid-tail-before-lifecycle", []string{progressEnd}, `{"type":"response.in_progress","sequence_number":11,"response":{"id":"r","usage":{"output_tokens":null}}}`},
+		{"invalid-usage-tail", []string{progressEnd}, `{"type":"response.in_progress","sequence_number":11,"response":{"id":"r","usage":{"output_tokens":null}}}`},
 		{"metadata-after-terminal", []string{progressEnd}, `{"type":"response.in_progress","sequence_number":11,"response":{"id":"r","metadata":{"label":"late"}}}`},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
-			options := p.EvaluationContext{State: p.NewEvaluationState()}
-			defer options.State.Release()
-			replay, err := p.NewEventReplay(legacy.Target(p.EncodeEvent, p.Scope{}), legacy.ResourceLimits())
-			if err != nil {
-				t.Fatal(err)
-			}
-			decodeLegacy := func(value p.Value) error {
-				frame, err := legacy.DecodeFrame(t.Context(), value, options)
-				if err != nil {
-					return err
-				}
-				for _, event := range frame.Events {
-					if _, err := replay.Consume(event); err != nil {
-						return legacy.AnnotateSourceEventError(err)
-					}
-				}
-				return nil
-			}
-			wire, err := candidate.NewWireInputStreamValidation(p.Scope{})
+			wire, err := compiled.NewWireInputStreamValidation(p.Scope{})
 			if err != nil {
 				t.Fatal(err)
 			}
 			for _, raw := range append([]string{progressStart}, fixture.prefix...) {
-				value := testValue(t, raw)
-				if err := decodeLegacy(value); err != nil {
-					t.Fatal(err)
-				}
-				if err := wire.Consume(t.Context(), value); err != nil {
-					t.Fatal(err)
+				if err := wire.Consume(t.Context(), testValue(t, raw)); err != nil {
+					t.Fatal("valid progress prefix was rejected", err)
 				}
 			}
 			value := testValue(t, fixture.frame)
-			before := decodeLegacy(value)
-			after := wire.Consume(t.Context(), value)
-			var oldFailure, newFailure *p.ConversionError
-			if !errors.As(before, &oldFailure) || !errors.As(after, &newFailure) || len(oldFailure.Issues) == 0 || len(newFailure.Issues) == 0 {
-				t.Fatal("progress failure lost its classification", before, after)
-			}
-			oldIssue, newIssue := oldFailure.Issues[0], newFailure.Issues[0]
-			if oldIssue.Code != newIssue.Code || oldIssue.Stage != newIssue.Stage || oldIssue.Path != newIssue.Path || oldIssue.Direction != newIssue.Direction || oldIssue.Protocol != newIssue.Protocol {
-				t.Fatal("progress first error changed", oldIssue, newIssue)
+			issue := requireResponsesWireRejection(t, compiled, wire.Consume(t.Context(), value))
+			// Several independent faults are present. The reported location must
+			// belong to the original frame; their rejection order is not a contract.
+			if issue.Path != "/" && (!strings.HasPrefix(issue.Path, "/") || migrationPointerValue(t, value.Bytes(), issue.Path) == nil) {
+				t.Fatal("progress rejection points outside the original frame", issue)
 			}
 		})
 	}

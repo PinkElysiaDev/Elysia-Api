@@ -1,7 +1,6 @@
 package builtin
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -31,7 +30,7 @@ func responsesToolStreamSample(t *testing.T) p.Sample {
 }
 
 func TestResponsesPackageToolSourceStream(t *testing.T) {
-	legacy, candidate := shippedProjectionProtocol(t, Responses), compileBuiltinPackage(t, "openai-responses")
+	compiled := compileBuiltinPackage(t, "openai-responses")
 	sample := responsesToolStreamSample(t)
 	var original []p.Value
 	if err := sample.Input.Decode(&original); err != nil {
@@ -39,15 +38,19 @@ func TestResponsesPackageToolSourceStream(t *testing.T) {
 	}
 	for _, hasSequence := range []bool{true, false} {
 		t.Run(fmt.Sprintf("sequence=%t", hasSequence), func(t *testing.T) {
-			oldOptions := p.EvaluationContext{Scope: sample.Scope, State: p.NewEvaluationState()}
-			newOptions := p.EvaluationContext{Scope: sample.Scope, State: p.NewEvaluationState()}
-			defer oldOptions.State.Release()
-			defer newOptions.State.Release()
-			wire, err := candidate.NewWireInputStreamValidation(sample.Scope)
+			options := p.EvaluationContext{Scope: sample.Scope, State: p.NewEvaluationState()}
+			defer options.State.Release()
+			wire, err := compiled.NewWireInputStreamValidation(sample.Scope)
 			if err != nil {
 				t.Fatal(err)
 			}
-			var expected, actual []p.Event
+			target := compiled.Target(p.DecodeEvent, sample.Scope)
+			target.Direction = p.EncodeEvent
+			collector, err := p.NewResponseCollector(target, compiled.ResourceLimits())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var events []p.Event
 			for _, frame := range original {
 				if !hasSequence {
 					fields, err := frame.ReadObject()
@@ -60,74 +63,61 @@ func TestResponsesPackageToolSourceStream(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				before, err := legacy.DecodeFrame(t.Context(), frame, oldOptions)
+				decoded, err := wire.DecodeFrame(t.Context(), frame, options)
 				if err != nil {
-					t.Fatal("legacy source sample", err)
+					t.Fatal("source contract and mapping", err)
 				}
-				if err := wire.Consume(t.Context(), frame); err != nil {
-					t.Fatal("independent source contract", err)
+				assertResponsesToolTerminalOrigins(t, decoded.Events, frame)
+				for _, event := range decoded.Events {
+					if _, _, err := collector.Consume(event); err != nil {
+						t.Fatal(err)
+					}
 				}
-				after, err := candidate.DecodeFrame(t.Context(), frame, newOptions)
-				if err != nil {
-					t.Fatal("declared source sample", err)
-				}
-				assertResponsesToolTerminalOrigins(t, before.Events, frame, false)
-				assertResponsesToolTerminalOrigins(t, after.Events, frame, true)
-				expected = append(expected, before.Events...)
-				actual = append(actual, after.Events...)
+				events = append(events, decoded.Events...)
 			}
 			if err := wire.Finish(); err != nil {
 				t.Fatal(err)
 			}
-			want, err := p.EncodeValue(responsesToolEventsAtOriginalLocations(t, expected))
+			response, err := collector.Finish()
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := p.EncodeValue(actual)
-			if err != nil || !bytes.Equal(want.Bytes(), got.Bytes()) {
-				t.Fatalf("tool source events changed: %v\nold: %s\nnew: %s", err, want.JSONString(), got.JSONString())
+			kinds := []p.EventType{p.ResponseStarted, p.ItemStarted, p.ItemDelta, p.ItemSnapshot, p.ItemFinished, p.ResponseFinished}
+			if len(events) != len(kinds) {
+				t.Fatal("tool lifecycle duplicated or lost", len(events))
 			}
-			oldWire := encodeMigratedStream(t, Chat, expected, sample.Scope)
-			newWire := encodeMigratedStream(t, Chat, streamEventsAtVersion(actual, p.SemanticSchemaVersion), sample.Scope)
-			if !bytes.Equal(oldWire.Bytes(), newWire.Bytes()) {
-				t.Fatal("Responses JSON tool migration changed Chat output", oldWire.JSONString(), newWire.JSONString())
+			for index, event := range events {
+				if event.Type != kinds[index] || event.Source != compiled.Identity() || event.SchemaVersion != compiled.CoreVersion() || !event.ResponseID.IsString("r") {
+					t.Fatal("event identity or order changed", index, event)
+				}
+				if index > 0 && index < len(events)-1 && (!event.ItemID.IsString("output:0") || event.Index == nil || *event.Index != 0) {
+					t.Fatal("tool association changed", event)
+				}
+			}
+			for _, index := range []int{1, 3, 4} {
+				node := events[index].Item
+				if node == nil || node.Kind != p.ToolCallNode || !node.ID.IsString("r_item_0") || !node.CallID.IsString("call") || !node.Name.IsString("lookup") || node.Input == nil || node.Input.Kind != p.JSONInput {
+					t.Fatal("tool item changed", node)
+				}
+				if node.Source == nil || node.Source.Path != "/item" || node.Source.Scope != sample.Scope {
+					t.Fatal("tool lost its original source location", node.Source)
+				}
+			}
+			if !events[2].Delta.IsString(`{"n":9007199254740993}`) || events[3].Item.Input.Value.JSONString() != `{"n":9007199254740993}` {
+				t.Fatal("tool argument precision or spelling changed")
+			}
+			if len(response.Content) != 1 || response.Usage != nil || !response.Status.IsString("completed") || !response.Attributes["finishReason"].IsString("tool_calls") {
+				t.Fatal("tool terminal or absent usage changed", response)
+			}
+			call := response.Content[0]
+			if !call.CallID.IsString("call") || !call.Name.IsString("lookup") || call.Input == nil || call.Input.Value.JSONString() != `{"n":9007199254740993}` {
+				t.Fatal("collected tool changed", call)
 			}
 		})
 	}
 }
 
-// The reviewed representation changes are core v2 and true /response envelope
-// locations. Every payload, event and remaining provenance field stays compared.
-func responsesToolEventsAtOriginalLocations(t *testing.T, events []p.Event) []p.Event {
-	t.Helper()
-	result := streamEventsAtVersion(events, p.ProtocolCoreVersion)
-	for index := range result {
-		response := result[index].Response
-		if result[index].Type != p.ResponseFinished || response == nil {
-			continue
-		}
-		if response.Native != nil {
-			t.Fatal("legacy stream response unexpectedly owns a second native envelope")
-		}
-		response.Content = append([]p.Node(nil), response.Content...)
-		for position := range response.Content {
-			node := &response.Content[position]
-			path := fmt.Sprintf("/output/%d", position)
-			if node.Kind != p.ToolCallNode || node.Native == nil || node.Native.Source.Path != path || node.Source == nil || node.Source.Path != path {
-				t.Fatal("unexpected legacy tool provenance", node)
-			}
-			origin := *node.Native
-			origin.Source.Path = "/response" + origin.Source.Path
-			node.Native = &origin
-			source := *node.Source
-			source.Path = "/response" + source.Path
-			node.Source = &source
-		}
-	}
-	return result
-}
-
-func assertResponsesToolTerminalOrigins(t *testing.T, events []p.Event, frame p.Value, isPackage bool) {
+func assertResponsesToolTerminalOrigins(t *testing.T, events []p.Event, frame p.Value) {
 	t.Helper()
 	for _, event := range events {
 		if event.Type != p.ResponseFinished {
@@ -146,28 +136,22 @@ func assertResponsesToolTerminalOrigins(t *testing.T, events []p.Event, frame p.
 		if err := responseFields["output"].Decode(&items); err != nil {
 			t.Fatal(err)
 		}
-		prefix := ""
-		if isPackage {
-			prefix = "/response"
-		}
 		response := event.Response
 		if response == nil || response.Native != nil || len(response.Content) != len(items) {
-			t.Fatal("terminal response changed frame ownership or output shape", isPackage, response)
+			t.Fatal("terminal response changed frame ownership or output shape", response)
 		}
 		for index, node := range response.Content {
-			path := fmt.Sprintf("%s/output/%d", prefix, index)
+			path := fmt.Sprintf("/response/output/%d", index)
 			expected := items[index]
-			if isPackage {
-				// capture_native keeps the selected fragment with ConfigStd's
-				// container spelling, without decoding its numbers or fields.
-				encoded, err := sonic.ConfigStd.Marshal(expected)
-				if err != nil {
-					t.Fatal(err)
-				}
-				expected, err = p.ParseValue(encoded)
-				if err != nil {
-					t.Fatal(err)
-				}
+			// capture_native keeps the selected fragment with ConfigStd's
+			// container spelling, without decoding its numbers or fields.
+			encoded, err := sonic.ConfigStd.Marshal(expected)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected, err = p.ParseValue(encoded)
+			if err != nil {
+				t.Fatal(err)
 			}
 			if node.Native == nil || node.Native.Source.Path != path || node.Native.Value != expected || node.Source == nil || node.Source.Path != path {
 				sourcePath, nativePath, captured := "<absent>", "<absent>", "<absent>"
@@ -177,7 +161,7 @@ func assertResponsesToolTerminalOrigins(t *testing.T, events []p.Event, frame p.
 				if node.Native != nil {
 					nativePath, captured = node.Native.Source.Path, node.Native.Value.JSONString()
 				}
-				t.Fatalf("tool provenance changed: package=%t expectedPath=%q sourcePath=%q nativePath=%q\ncaptured=%s\nexpected=%s", isPackage, path, sourcePath, nativePath, captured, expected.JSONString())
+				t.Fatalf("tool provenance changed: expectedPath=%q sourcePath=%q nativePath=%q\ncaptured=%s\nexpected=%s", path, sourcePath, nativePath, captured, expected.JSONString())
 			}
 		}
 	}
@@ -190,14 +174,18 @@ func TestResponsesPackageToolWireIdentityBoundaries(t *testing.T) {
 	if err := sample.Input.Decode(&original); err != nil {
 		t.Fatal(err)
 	}
-	for _, raw := range []string{
-		`{"type":"response.function_call_arguments.delta","output_index":0,"item_id":"different","delta":"{}","sequence_number":2}`,
-		`{"type":"response.function_call_arguments.delta","output_index":0,"item_id":"r_item_\u0030","delta":"{}","sequence_number":2}`,
-		`{"type":"response.output_item.added","output_index":1,"item":{"id":"r_item_0","type":"function_call","name":"other","call_id":"other","arguments":""},"sequence_number":2}`,
-		`{"type":"response.output_item.added","output_index":1,"item_id":"frame","item":{"id":"item","type":"function_call","name":"other","call_id":"other","arguments":""},"sequence_number":2}`,
-		`{"type":"response.function_call_arguments.delta","output_index":0,"item_id":null,"delta":"{}","sequence_number":2}`,
-		`{"type":"response.function_call_arguments.delta","output_index":0,"item_id":"r_item_0","delta":"{}","sequence_number":1}`,
+	for _, fixture := range []struct {
+		name, raw    string
+		isEquivalent bool
+	}{
+		{"changed-id", `{"type":"response.function_call_arguments.delta","output_index":0,"item_id":"different","delta":"{}","sequence_number":2}`, false},
+		{"equivalent-escape", `{"type":"response.function_call_arguments.delta","output_index":0,"item_id":"r_item_\u0030","delta":"{}","sequence_number":2}`, true},
+		{"reused-id", `{"type":"response.output_item.added","output_index":1,"item":{"id":"r_item_0","type":"function_call","name":"other","call_id":"other","arguments":""},"sequence_number":2}`, false},
+		{"mixed-id", `{"type":"response.output_item.added","output_index":1,"item_id":"frame","item":{"id":"item","type":"function_call","name":"other","call_id":"other","arguments":""},"sequence_number":2}`, false},
+		{"null-id", `{"type":"response.function_call_arguments.delta","output_index":0,"item_id":null,"delta":"{}","sequence_number":2}`, false},
+		{"stale-sequence", `{"type":"response.function_call_arguments.delta","output_index":0,"item_id":"r_item_0","delta":"{}","sequence_number":1}`, false},
 	} {
+		raw := fixture.raw
 		options := p.EvaluationContext{Scope: sample.Scope, State: p.NewEvaluationState()}
 		wire, err := candidate.NewWireInputStreamValidation(sample.Scope)
 		if err != nil {
@@ -214,13 +202,23 @@ func TestResponsesPackageToolWireIdentityBoundaries(t *testing.T) {
 		_, oldErr := legacy.DecodeFrame(t.Context(), testValue(t, raw), options)
 		newErr := wire.Consume(t.Context(), testValue(t, raw))
 		options.State.Release()
+		if fixture.isEquivalent {
+			if oldErr == nil || newErr != nil {
+				t.Fatal("typed wire identities must accept equivalent escapes while recording the legacy byte-comparison difference", oldErr, newErr)
+			}
+			continue
+		}
 		var before, after *p.ConversionError
 		if !errors.As(oldErr, &before) || !errors.As(newErr, &after) || len(before.Issues) == 0 || len(after.Issues) == 0 {
-			t.Fatal("identity boundary was accepted or lost its diagnostic", oldErr, newErr)
+			t.Fatal("identity boundary was accepted or lost its diagnostic", fixture.name, oldErr, newErr)
 		}
 		a, b := before.Issues[0], after.Issues[0]
-		if a.Code != b.Code || a.Stage != b.Stage || a.Path != b.Path || a.Protocol != b.Protocol || a.Direction != b.Direction {
-			t.Fatal("identity rejection classification changed", a, b)
+		expectedCode, expectedStage := p.UpstreamContractViolation, "wire.stream"
+		if fixture.name == "mixed-id" {
+			expectedStage = "wire"
+		}
+		if b.Code != expectedCode || b.Stage != expectedStage || a.Path != b.Path || a.Protocol != b.Protocol || a.Direction != b.Direction {
+			t.Fatal("identity rejection lost its declared boundary", fixture.name, a, b)
 		}
 	}
 }

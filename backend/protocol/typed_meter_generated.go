@@ -156,7 +156,6 @@ func (meter *typedMeter) measure0(value Request) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
 		if !meter.scalar(14) || !meter.measure19(value.ClientOutput) {
 			return false
@@ -273,7 +272,6 @@ func (meter *typedMeter) measure1(value Response) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
 		if !meter.scalar(8) || !meter.measure18(value.Native) {
 			return false
@@ -315,13 +313,23 @@ func (meter *typedMeter) measure5(value Event) bool {
 		return false
 	}
 	count := 0
+	if value.Control != nil {
+		if count > 0 {
+			meter.bytes++
+		}
+		count++
+		meter.bytes++
+		if !meter.scalar(9) || !meter.measure22(value.Control) {
+			return false
+		}
+	}
 	if value.ResponsesTurnState != nil {
 		if count > 0 {
 			meter.bytes++
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(20) || !meter.measure22(value.ResponsesTurnState) {
+		if !meter.scalar(20) || !meter.measure23(value.ResponsesTurnState) {
 			return false
 		}
 	}
@@ -361,7 +369,7 @@ func (meter *typedMeter) measure5(value Event) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(6) || !meter.measure23(value.Type) {
+		if !meter.scalar(6) || !meter.measure24(value.Type) {
 			return false
 		}
 	}
@@ -405,6 +413,16 @@ func (meter *typedMeter) measure5(value Event) bool {
 			return false
 		}
 	}
+	if len(value.Collection) != 0 {
+		if count > 0 {
+			meter.bytes++
+		}
+		count++
+		meter.bytes++
+		if !meter.scalar(12) || !meter.measure25(value.Collection) {
+			return false
+		}
+	}
 	if !value.CallID.IsZero() {
 		if count > 0 {
 			meter.bytes++
@@ -431,7 +449,7 @@ func (meter *typedMeter) measure5(value Event) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(7) || !meter.measure24(value.Index) {
+		if !meter.scalar(7) || !meter.measure26(value.Index) {
 			return false
 		}
 	}
@@ -491,7 +509,7 @@ func (meter *typedMeter) measure5(value Event) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(7) || !meter.measure25(value.Media) {
+		if !meter.scalar(7) || !meter.measure27(value.Media) {
 			return false
 		}
 	}
@@ -519,7 +537,6 @@ func (meter *typedMeter) measure5(value Event) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
 		if !meter.scalar(10) || !meter.measure18(value.Unmapped) {
 			return false
@@ -537,7 +554,7 @@ func (meter *typedMeter) measure7(value *Node) bool {
 	if value == nil {
 		return meter.scalar(4)
 	}
-	return meter.measure26(*value)
+	return meter.measure28(*value)
 }
 func (meter *typedMeter) measure8(value int) bool {
 	var buffer [20]byte
@@ -554,7 +571,7 @@ func (meter *typedMeter) measure9(value Identity) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(8) || !meter.measure27(value.Family) {
+		if !meter.scalar(8) || !meter.measure25(value.Family) {
 			return false
 		}
 	}
@@ -564,7 +581,7 @@ func (meter *typedMeter) measure9(value Identity) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(13) || !meter.measure27(value.WireVersion) {
+		if !meter.scalar(13) || !meter.measure25(value.WireVersion) {
 			return false
 		}
 	}
@@ -574,7 +591,7 @@ func (meter *typedMeter) measure9(value Identity) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(14) || !meter.measure27(value.DefinitionID) {
+		if !meter.scalar(14) || !meter.measure25(value.DefinitionID) {
 			return false
 		}
 	}
@@ -582,9 +599,8 @@ func (meter *typedMeter) measure9(value Identity) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
-		if !meter.scalar(10) || !meter.measure27(value.Revision) {
+		if !meter.scalar(10) || !meter.measure25(value.Revision) {
 			return false
 		}
 	}
@@ -604,7 +620,7 @@ func (meter *typedMeter) measure11(value []Node) bool {
 		if index > 0 {
 			meter.bytes++
 		}
-		if !meter.measure26(value[index]) {
+		if !meter.measure28(value[index]) {
 			return false
 		}
 	}
@@ -621,7 +637,7 @@ func (meter *typedMeter) measure12(value []Tool) bool {
 		if index > 0 {
 			meter.bytes++
 		}
-		if !meter.measure28(value[index]) {
+		if !meter.measure29(value[index]) {
 			return false
 		}
 	}
@@ -657,26 +673,9 @@ func (meter *typedMeter) measure15(value *ReasoningIntent) bool {
 	if value == nil {
 		return meter.scalar(4)
 	}
-	return meter.measure29(*value)
+	return meter.measure30(*value)
 }
 func (meter *typedMeter) measure16(value []CacheIntent) bool {
-	if value == nil {
-		return meter.scalar(4)
-	}
-	if !meter.open() {
-		return false
-	}
-	for index := range value {
-		if index > 0 {
-			meter.bytes++
-		}
-		if !meter.measure30(value[index]) {
-			return false
-		}
-	}
-	return meter.close()
-}
-func (meter *typedMeter) measure17(value []Resource) bool {
 	if value == nil {
 		return meter.scalar(4)
 	}
@@ -693,17 +692,34 @@ func (meter *typedMeter) measure17(value []Resource) bool {
 	}
 	return meter.close()
 }
+func (meter *typedMeter) measure17(value []Resource) bool {
+	if value == nil {
+		return meter.scalar(4)
+	}
+	if !meter.open() {
+		return false
+	}
+	for index := range value {
+		if index > 0 {
+			meter.bytes++
+		}
+		if !meter.measure32(value[index]) {
+			return false
+		}
+	}
+	return meter.close()
+}
 func (meter *typedMeter) measure18(value *Native) bool {
 	if value == nil {
 		return meter.scalar(4)
 	}
-	return meter.measure32(*value)
+	return meter.measure33(*value)
 }
 func (meter *typedMeter) measure19(value *ClientOutput) bool {
 	if value == nil {
 		return meter.scalar(4)
 	}
-	return meter.measure33(*value)
+	return meter.measure34(*value)
 }
 func (meter *typedMeter) measure20(value []ResponseMetadata) bool {
 	if value == nil {
@@ -716,7 +732,7 @@ func (meter *typedMeter) measure20(value []ResponseMetadata) bool {
 		if index > 0 {
 			meter.bytes++
 		}
-		if !meter.measure34(value[index]) {
+		if !meter.measure35(value[index]) {
 			return false
 		}
 	}
@@ -726,30 +742,39 @@ func (meter *typedMeter) measure21(value *Usage) bool {
 	if value == nil {
 		return meter.scalar(4)
 	}
-	return meter.measure35(*value)
-}
-func (meter *typedMeter) measure22(value *ResponsesTurnState) bool {
-	if value == nil {
-		return meter.scalar(4)
-	}
 	return meter.measure36(*value)
 }
-func (meter *typedMeter) measure23(value EventType) bool {
-	return meter.scalar(jsonStringBytes(string(value)))
-}
-func (meter *typedMeter) measure24(value *int) bool {
-	if value == nil {
-		return meter.scalar(4)
-	}
-	return meter.measure8(*value)
-}
-func (meter *typedMeter) measure25(value *Media) bool {
+func (meter *typedMeter) measure22(value *ControlState) bool {
 	if value == nil {
 		return meter.scalar(4)
 	}
 	return meter.measure37(*value)
 }
-func (meter *typedMeter) measure26(value Node) bool {
+func (meter *typedMeter) measure23(value *ResponsesTurnState) bool {
+	if value == nil {
+		return meter.scalar(4)
+	}
+	return meter.measure38(*value)
+}
+func (meter *typedMeter) measure24(value EventType) bool {
+	return meter.scalar(jsonStringBytes(string(value)))
+}
+func (meter *typedMeter) measure25(value string) bool {
+	return meter.scalar(jsonStringBytes(string(value)))
+}
+func (meter *typedMeter) measure26(value *int) bool {
+	if value == nil {
+		return meter.scalar(4)
+	}
+	return meter.measure8(*value)
+}
+func (meter *typedMeter) measure27(value *Media) bool {
+	if value == nil {
+		return meter.scalar(4)
+	}
+	return meter.measure39(*value)
+}
+func (meter *typedMeter) measure28(value Node) bool {
 	if !meter.open() {
 		return false
 	}
@@ -770,7 +795,7 @@ func (meter *typedMeter) measure26(value Node) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(6) || !meter.measure38(value.Kind) {
+		if !meter.scalar(6) || !meter.measure40(value.Kind) {
 			return false
 		}
 	}
@@ -780,7 +805,7 @@ func (meter *typedMeter) measure26(value Node) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(15) || !meter.measure39(value.ReasoningForm) {
+		if !meter.scalar(15) || !meter.measure41(value.ReasoningForm) {
 			return false
 		}
 	}
@@ -860,7 +885,7 @@ func (meter *typedMeter) measure26(value Node) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(7) || !meter.measure40(value.Input) {
+		if !meter.scalar(7) || !meter.measure42(value.Input) {
 			return false
 		}
 	}
@@ -910,7 +935,7 @@ func (meter *typedMeter) measure26(value Node) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(8) || !meter.measure41(value.Source) {
+		if !meter.scalar(8) || !meter.measure43(value.Source) {
 			return false
 		}
 	}
@@ -918,7 +943,6 @@ func (meter *typedMeter) measure26(value Node) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
 		if !meter.scalar(8) || !meter.measure18(value.Native) {
 			return false
@@ -926,10 +950,7 @@ func (meter *typedMeter) measure26(value Node) bool {
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure27(value string) bool {
-	return meter.scalar(jsonStringBytes(string(value)))
-}
-func (meter *typedMeter) measure28(value Tool) bool {
+func (meter *typedMeter) measure29(value Tool) bool {
 	if !meter.open() {
 		return false
 	}
@@ -940,7 +961,7 @@ func (meter *typedMeter) measure28(value Tool) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(6) || !meter.measure42(value.Kind) {
+		if !meter.scalar(6) || !meter.measure44(value.Kind) {
 			return false
 		}
 	}
@@ -1008,7 +1029,6 @@ func (meter *typedMeter) measure28(value Tool) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
 		if !meter.scalar(8) || !meter.measure18(value.Native) {
 			return false
@@ -1016,7 +1036,7 @@ func (meter *typedMeter) measure28(value Tool) bool {
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure29(value ReasoningIntent) bool {
+func (meter *typedMeter) measure30(value ReasoningIntent) bool {
 	if !meter.open() {
 		return false
 	}
@@ -1027,7 +1047,7 @@ func (meter *typedMeter) measure29(value ReasoningIntent) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(6) || !meter.measure27(value.Mode) {
+		if !meter.scalar(6) || !meter.measure25(value.Mode) {
 			return false
 		}
 	}
@@ -1047,7 +1067,7 @@ func (meter *typedMeter) measure29(value ReasoningIntent) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(13) || !meter.measure27(value.EffortScope) {
+		if !meter.scalar(13) || !meter.measure25(value.EffortScope) {
 			return false
 		}
 	}
@@ -1085,7 +1105,6 @@ func (meter *typedMeter) measure29(value ReasoningIntent) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
 		if !meter.scalar(18) || !meter.measure10(value.HistoryRetention) {
 			return false
@@ -1093,7 +1112,7 @@ func (meter *typedMeter) measure29(value ReasoningIntent) bool {
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure30(value CacheIntent) bool {
+func (meter *typedMeter) measure31(value CacheIntent) bool {
 	if !meter.open() {
 		return false
 	}
@@ -1104,7 +1123,7 @@ func (meter *typedMeter) measure30(value CacheIntent) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(6) || !meter.measure27(value.Kind) {
+		if !meter.scalar(6) || !meter.measure25(value.Kind) {
 			return false
 		}
 	}
@@ -1114,7 +1133,7 @@ func (meter *typedMeter) measure30(value CacheIntent) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(10) || !meter.measure27(value.Location) {
+		if !meter.scalar(10) || !meter.measure25(value.Location) {
 			return false
 		}
 	}
@@ -1142,15 +1161,14 @@ func (meter *typedMeter) measure30(value CacheIntent) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
-		if !meter.scalar(10) || !meter.measure43(value.Resource) {
+		if !meter.scalar(10) || !meter.measure45(value.Resource) {
 			return false
 		}
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure31(value Resource) bool {
+func (meter *typedMeter) measure32(value Resource) bool {
 	if !meter.open() {
 		return false
 	}
@@ -1161,7 +1179,7 @@ func (meter *typedMeter) measure31(value Resource) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(6) || !meter.measure27(value.Kind) {
+		if !meter.scalar(6) || !meter.measure25(value.Kind) {
 			return false
 		}
 	}
@@ -1179,15 +1197,14 @@ func (meter *typedMeter) measure31(value Resource) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
-		if !meter.scalar(7) || !meter.measure44(value.Scope) {
+		if !meter.scalar(7) || !meter.measure46(value.Scope) {
 			return false
 		}
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure32(value Native) bool {
+func (meter *typedMeter) measure33(value Native) bool {
 	if !meter.open() {
 		return false
 	}
@@ -1198,7 +1215,7 @@ func (meter *typedMeter) measure32(value Native) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(8) || !meter.measure45(value.Source) {
+		if !meter.scalar(8) || !meter.measure47(value.Source) {
 			return false
 		}
 	}
@@ -1216,15 +1233,14 @@ func (meter *typedMeter) measure32(value Native) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
-		if !meter.scalar(16) || !meter.measure46(value.RequestContext) {
+		if !meter.scalar(16) || !meter.measure48(value.RequestContext) {
 			return false
 		}
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure33(value ClientOutput) bool {
+func (meter *typedMeter) measure34(value ClientOutput) bool {
 	if !meter.open() {
 		return false
 	}
@@ -1245,7 +1261,7 @@ func (meter *typedMeter) measure33(value ClientOutput) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(14) || !meter.measure47(value.IncludeUsage) {
+		if !meter.scalar(14) || !meter.measure49(value.IncludeUsage) {
 			return false
 		}
 	}
@@ -1273,15 +1289,14 @@ func (meter *typedMeter) measure33(value ClientOutput) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
-		if !meter.scalar(18) || !meter.measure48(value.ResponsesStorage) {
+		if !meter.scalar(18) || !meter.measure50(value.ResponsesStorage) {
 			return false
 		}
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure34(value ResponseMetadata) bool {
+func (meter *typedMeter) measure35(value ResponseMetadata) bool {
 	if !meter.open() {
 		return false
 	}
@@ -1292,7 +1307,7 @@ func (meter *typedMeter) measure34(value ResponseMetadata) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(6) || !meter.measure27(value.Name) {
+		if !meter.scalar(6) || !meter.measure25(value.Name) {
 			return false
 		}
 	}
@@ -1302,7 +1317,7 @@ func (meter *typedMeter) measure34(value ResponseMetadata) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(10) || !meter.measure27(value.Location) {
+		if !meter.scalar(10) || !meter.measure25(value.Location) {
 			return false
 		}
 	}
@@ -1312,7 +1327,7 @@ func (meter *typedMeter) measure34(value ResponseMetadata) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(7) || !meter.measure27(value.Codec) {
+		if !meter.scalar(7) || !meter.measure25(value.Codec) {
 			return false
 		}
 	}
@@ -1322,7 +1337,7 @@ func (meter *typedMeter) measure34(value ResponseMetadata) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(13) || !meter.measure27(value.SourceCodec) {
+		if !meter.scalar(13) || !meter.measure25(value.SourceCodec) {
 			return false
 		}
 	}
@@ -1332,7 +1347,7 @@ func (meter *typedMeter) measure34(value ResponseMetadata) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(6) || !meter.measure27(value.Path) {
+		if !meter.scalar(6) || !meter.measure25(value.Path) {
 			return false
 		}
 	}
@@ -1346,9 +1361,18 @@ func (meter *typedMeter) measure34(value ResponseMetadata) bool {
 			return false
 		}
 	}
+	if len(value.Update) != 0 {
+		if count > 0 {
+			meter.bytes++
+		}
+		meter.bytes++
+		if !meter.scalar(8) || !meter.measure25(value.Update) {
+			return false
+		}
+	}
 	return meter.close()
 }
-func (meter *typedMeter) measure35(value Usage) bool {
+func (meter *typedMeter) measure36(value Usage) bool {
 	if !meter.open() {
 		return false
 	}
@@ -1379,7 +1403,7 @@ func (meter *typedMeter) measure35(value Usage) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(7) || !meter.measure49(value.Input) {
+		if !meter.scalar(7) || !meter.measure51(value.Input) {
 			return false
 		}
 	}
@@ -1389,7 +1413,7 @@ func (meter *typedMeter) measure35(value Usage) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(8) || !meter.measure49(value.Output) {
+		if !meter.scalar(8) || !meter.measure51(value.Output) {
 			return false
 		}
 	}
@@ -1399,7 +1423,7 @@ func (meter *typedMeter) measure35(value Usage) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(7) || !meter.measure49(value.Total) {
+		if !meter.scalar(7) || !meter.measure51(value.Total) {
 			return false
 		}
 	}
@@ -1409,7 +1433,7 @@ func (meter *typedMeter) measure35(value Usage) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(11) || !meter.measure49(value.CacheRead) {
+		if !meter.scalar(11) || !meter.measure51(value.CacheRead) {
 			return false
 		}
 	}
@@ -1419,7 +1443,7 @@ func (meter *typedMeter) measure35(value Usage) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(15) || !meter.measure49(value.CacheCreation) {
+		if !meter.scalar(15) || !meter.measure51(value.CacheCreation) {
 			return false
 		}
 	}
@@ -1427,15 +1451,60 @@ func (meter *typedMeter) measure35(value Usage) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
-		if !meter.scalar(9) || !meter.measure50(value.Details) {
+		if !meter.scalar(9) || !meter.measure52(value.Details) {
 			return false
 		}
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure36(value ResponsesTurnState) bool {
+func (meter *typedMeter) measure37(value ControlState) bool {
+	if !meter.open() {
+		return false
+	}
+	count := 0
+	if true {
+		if count > 0 {
+			meter.bytes++
+		}
+		count++
+		meter.bytes++
+		if !meter.scalar(6) || !meter.measure25(value.Kind) {
+			return false
+		}
+	}
+	if true {
+		if count > 0 {
+			meter.bytes++
+		}
+		count++
+		meter.bytes++
+		if !meter.scalar(9) || !meter.measure10(value.Payload) {
+			return false
+		}
+	}
+	if true {
+		if count > 0 {
+			meter.bytes++
+		}
+		count++
+		meter.bytes++
+		if !meter.scalar(8) || !meter.measure47(value.Source) {
+			return false
+		}
+	}
+	if value.FrameNumber != 0 {
+		if count > 0 {
+			meter.bytes++
+		}
+		meter.bytes++
+		if !meter.scalar(13) || !meter.measure53(value.FrameNumber) {
+			return false
+		}
+	}
+	return meter.close()
+}
+func (meter *typedMeter) measure38(value ResponsesTurnState) bool {
 	if !meter.open() {
 		return false
 	}
@@ -1456,7 +1525,7 @@ func (meter *typedMeter) measure36(value ResponsesTurnState) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(8) || !meter.measure45(value.Source) {
+		if !meter.scalar(8) || !meter.measure47(value.Source) {
 			return false
 		}
 	}
@@ -1464,7 +1533,6 @@ func (meter *typedMeter) measure36(value ResponsesTurnState) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
 		if !meter.scalar(13) || !meter.measure8(value.FrameNumber) {
 			return false
@@ -1472,7 +1540,7 @@ func (meter *typedMeter) measure36(value ResponsesTurnState) bool {
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure37(value Media) bool {
+func (meter *typedMeter) measure39(value Media) bool {
 	if !meter.open() {
 		return false
 	}
@@ -1483,7 +1551,7 @@ func (meter *typedMeter) measure37(value Media) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(6) || !meter.measure27(value.Type) {
+		if !meter.scalar(6) || !meter.measure25(value.Type) {
 			return false
 		}
 	}
@@ -1493,7 +1561,7 @@ func (meter *typedMeter) measure37(value Media) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(8) || !meter.measure27(value.Format) {
+		if !meter.scalar(8) || !meter.measure25(value.Format) {
 			return false
 		}
 	}
@@ -1521,42 +1589,41 @@ func (meter *typedMeter) measure37(value Media) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
-		if !meter.scalar(11) || !meter.measure31(value.Reference) {
+		if !meter.scalar(11) || !meter.measure32(value.Reference) {
 			return false
 		}
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure38(value NodeKind) bool {
+func (meter *typedMeter) measure40(value NodeKind) bool {
 	return meter.scalar(jsonStringBytes(string(value)))
 }
-func (meter *typedMeter) measure39(value ReasoningForm) bool {
+func (meter *typedMeter) measure41(value ReasoningForm) bool {
 	return meter.scalar(jsonStringBytes(string(value)))
 }
-func (meter *typedMeter) measure40(value *ToolInput) bool {
+func (meter *typedMeter) measure42(value *ToolInput) bool {
 	if value == nil {
 		return meter.scalar(4)
 	}
-	return meter.measure51(*value)
+	return meter.measure54(*value)
 }
-func (meter *typedMeter) measure41(value *Provenance) bool {
+func (meter *typedMeter) measure43(value *Provenance) bool {
 	if value == nil {
 		return meter.scalar(4)
 	}
-	return meter.measure45(*value)
+	return meter.measure47(*value)
 }
-func (meter *typedMeter) measure42(value ToolKind) bool {
+func (meter *typedMeter) measure44(value ToolKind) bool {
 	return meter.scalar(jsonStringBytes(string(value)))
 }
-func (meter *typedMeter) measure43(value *Resource) bool {
+func (meter *typedMeter) measure45(value *Resource) bool {
 	if value == nil {
 		return meter.scalar(4)
 	}
-	return meter.measure31(*value)
+	return meter.measure32(*value)
 }
-func (meter *typedMeter) measure44(value Scope) bool {
+func (meter *typedMeter) measure46(value Scope) bool {
 	if !meter.open() {
 		return false
 	}
@@ -1567,7 +1634,7 @@ func (meter *typedMeter) measure44(value Scope) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(10) || !meter.measure27(value.Provider) {
+		if !meter.scalar(10) || !meter.measure25(value.Provider) {
 			return false
 		}
 	}
@@ -1577,7 +1644,7 @@ func (meter *typedMeter) measure44(value Scope) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(9) || !meter.measure27(value.Account) {
+		if !meter.scalar(9) || !meter.measure25(value.Account) {
 			return false
 		}
 	}
@@ -1587,7 +1654,7 @@ func (meter *typedMeter) measure44(value Scope) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(7) || !meter.measure27(value.Model) {
+		if !meter.scalar(7) || !meter.measure25(value.Model) {
 			return false
 		}
 	}
@@ -1595,15 +1662,14 @@ func (meter *typedMeter) measure44(value Scope) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
-		if !meter.scalar(9) || !meter.measure27(value.Session) {
+		if !meter.scalar(9) || !meter.measure25(value.Session) {
 			return false
 		}
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure45(value Provenance) bool {
+func (meter *typedMeter) measure47(value Provenance) bool {
 	if !meter.open() {
 		return false
 	}
@@ -1624,7 +1690,7 @@ func (meter *typedMeter) measure45(value Provenance) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(11) || !meter.measure52(value.Direction) {
+		if !meter.scalar(11) || !meter.measure55(value.Direction) {
 			return false
 		}
 	}
@@ -1634,7 +1700,7 @@ func (meter *typedMeter) measure45(value Provenance) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(6) || !meter.measure27(value.Path) {
+		if !meter.scalar(6) || !meter.measure25(value.Path) {
 			return false
 		}
 	}
@@ -1642,39 +1708,38 @@ func (meter *typedMeter) measure45(value Provenance) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
-		if !meter.scalar(7) || !meter.measure44(value.Scope) {
+		if !meter.scalar(7) || !meter.measure46(value.Scope) {
 			return false
 		}
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure46(value *NativeRequestContext) bool {
+func (meter *typedMeter) measure48(value *NativeRequestContext) bool {
 	if value == nil {
 		return meter.scalar(4)
 	}
-	return meter.measure53(*value)
+	return meter.measure56(*value)
 }
-func (meter *typedMeter) measure47(value *bool) bool {
+func (meter *typedMeter) measure49(value *bool) bool {
 	if value == nil {
 		return meter.scalar(4)
 	}
 	return meter.measure14(*value)
 }
-func (meter *typedMeter) measure48(value *ResponsesStorageIntent) bool {
+func (meter *typedMeter) measure50(value *ResponsesStorageIntent) bool {
 	if value == nil {
 		return meter.scalar(4)
 	}
-	return meter.measure54(*value)
+	return meter.measure57(*value)
 }
-func (meter *typedMeter) measure49(value *Counter) bool {
+func (meter *typedMeter) measure51(value *Counter) bool {
 	if value == nil {
 		return meter.scalar(4)
 	}
-	return meter.measure55(*value)
+	return meter.measure58(*value)
 }
-func (meter *typedMeter) measure50(value map[string]Counter) bool {
+func (meter *typedMeter) measure52(value map[string]Counter) bool {
 	if value == nil {
 		return meter.scalar(4)
 	}
@@ -1688,13 +1753,17 @@ func (meter *typedMeter) measure50(value map[string]Counter) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(jsonStringBytes(string(key))) || !meter.measure55(child) {
+		if !meter.scalar(jsonStringBytes(string(key))) || !meter.measure58(child) {
 			return false
 		}
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure51(value ToolInput) bool {
+func (meter *typedMeter) measure53(value int64) bool {
+	var buffer [20]byte
+	return meter.scalar(len(strconv.AppendInt(buffer[:0], int64(value), 10)))
+}
+func (meter *typedMeter) measure54(value ToolInput) bool {
 	if !meter.open() {
 		return false
 	}
@@ -1705,7 +1774,7 @@ func (meter *typedMeter) measure51(value ToolInput) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(6) || !meter.measure56(value.Kind) {
+		if !meter.scalar(6) || !meter.measure59(value.Kind) {
 			return false
 		}
 	}
@@ -1713,7 +1782,6 @@ func (meter *typedMeter) measure51(value ToolInput) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
 		if !meter.scalar(7) || !meter.measure10(value.Value) {
 			return false
@@ -1721,10 +1789,10 @@ func (meter *typedMeter) measure51(value ToolInput) bool {
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure52(value Direction) bool {
+func (meter *typedMeter) measure55(value Direction) bool {
 	return meter.scalar(jsonStringBytes(string(value)))
 }
-func (meter *typedMeter) measure53(value NativeRequestContext) bool {
+func (meter *typedMeter) measure56(value NativeRequestContext) bool {
 	if !meter.open() {
 		return false
 	}
@@ -1735,7 +1803,7 @@ func (meter *typedMeter) measure53(value NativeRequestContext) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(7) || !meter.measure44(value.Scope) {
+		if !meter.scalar(7) || !meter.measure46(value.Scope) {
 			return false
 		}
 	}
@@ -1753,7 +1821,6 @@ func (meter *typedMeter) measure53(value NativeRequestContext) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
 		if !meter.scalar(21) || !meter.measure14(value.InterleavedThinking) {
 			return false
@@ -1761,7 +1828,7 @@ func (meter *typedMeter) measure53(value NativeRequestContext) bool {
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure54(value ResponsesStorageIntent) bool {
+func (meter *typedMeter) measure57(value ResponsesStorageIntent) bool {
 	if !meter.open() {
 		return false
 	}
@@ -1772,7 +1839,7 @@ func (meter *typedMeter) measure54(value ResponsesStorageIntent) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(13) || !meter.measure27(value.SourceCodec) {
+		if !meter.scalar(13) || !meter.measure25(value.SourceCodec) {
 			return false
 		}
 	}
@@ -1820,7 +1887,6 @@ func (meter *typedMeter) measure54(value ResponsesStorageIntent) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
 		if !meter.scalar(11) || !meter.measure14(value.Effective) {
 			return false
@@ -1828,7 +1894,7 @@ func (meter *typedMeter) measure54(value ResponsesStorageIntent) bool {
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure55(value Counter) bool {
+func (meter *typedMeter) measure58(value Counter) bool {
 	if !meter.open() {
 		return false
 	}
@@ -1839,7 +1905,7 @@ func (meter *typedMeter) measure55(value Counter) bool {
 		}
 		count++
 		meter.bytes++
-		if !meter.scalar(7) || !meter.measure57(value.Count) {
+		if !meter.scalar(7) || !meter.measure53(value.Count) {
 			return false
 		}
 	}
@@ -1847,21 +1913,16 @@ func (meter *typedMeter) measure55(value Counter) bool {
 		if count > 0 {
 			meter.bytes++
 		}
-		count++
 		meter.bytes++
-		if !meter.scalar(8) || !meter.measure58(value.Origin) {
+		if !meter.scalar(8) || !meter.measure60(value.Origin) {
 			return false
 		}
 	}
 	return meter.close()
 }
-func (meter *typedMeter) measure56(value InputKind) bool {
+func (meter *typedMeter) measure59(value InputKind) bool {
 	return meter.scalar(jsonStringBytes(string(value)))
 }
-func (meter *typedMeter) measure57(value int64) bool {
-	var buffer [20]byte
-	return meter.scalar(len(strconv.AppendInt(buffer[:0], int64(value), 10)))
-}
-func (meter *typedMeter) measure58(value CounterOrigin) bool {
+func (meter *typedMeter) measure60(value CounterOrigin) bool {
 	return meter.scalar(jsonStringBytes(string(value)))
 }

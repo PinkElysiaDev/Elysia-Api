@@ -474,6 +474,8 @@ func writeCoreEvent(output JSONOutput, value *Event, reader *valueReader) error 
 }
 func writeCoreEventField(field jsonOutputField, value *Event, reader *valueReader) error {
 	switch field.key {
+	case "control":
+		return writeCoreControlStatePointer(field.value, &value.Control, reader)
 	case "responsesTurnState":
 		return writeCoreResponsesTurnStatePointer(field.value, &value.ResponsesTurnState, reader)
 	case "metadata":
@@ -492,6 +494,8 @@ func writeCoreEventField(field jsonOutputField, value *Event, reader *valueReade
 		return writeCoreValue(field.value, &value.ItemID, reader)
 	case "parentId":
 		return writeCoreValue(field.value, &value.ParentID, reader)
+	case "collection":
+		return writeCoreString(field.value, &value.Collection, reader)
 	case "callId":
 		return writeCoreValue(field.value, &value.CallID, reader)
 	case "sequence":
@@ -517,7 +521,7 @@ func writeCoreEventField(field jsonOutputField, value *Event, reader *valueReade
 	case "unmapped":
 		return writeCoreNativePointer(field.value, &value.Unmapped, reader)
 	default:
-		key := foldedCoreField(field.key, []string{"responsesTurnState", "metadata", "schemaVersion", "source", "type", "sessionId", "responseId", "itemId", "parentId", "callId", "sequence", "index", "delta", "item", "response", "request", "usage", "media", "error", "native", "unmapped"})
+		key := foldedCoreField(field.key, []string{"control", "responsesTurnState", "metadata", "schemaVersion", "source", "type", "sessionId", "responseId", "itemId", "parentId", "collection", "callId", "sequence", "index", "delta", "item", "response", "request", "usage", "media", "error", "native", "unmapped"})
 		if key == "" {
 			return unknownCoreField(field.key)
 		}
@@ -528,6 +532,11 @@ func writeCoreEventField(field jsonOutputField, value *Event, reader *valueReade
 func readCoreEvent(value Event, pointer []string) (JSONOutput, error) {
 	if len(pointer) != 0 {
 		switch pointer[0] {
+		case "control":
+			if value.Control != nil {
+				return readCoreControlStatePointer(value.Control, pointer[1:])
+			}
+			return JSONOutput{}, nil
 		case "responsesTurnState":
 			if value.ResponsesTurnState != nil {
 				return readCoreResponsesTurnStatePointer(value.ResponsesTurnState, pointer[1:])
@@ -562,6 +571,11 @@ func readCoreEvent(value Event, pointer []string) (JSONOutput, error) {
 		case "parentId":
 			if !value.ParentID.IsZero() {
 				return readCoreValue(value.ParentID, pointer[1:])
+			}
+			return JSONOutput{}, nil
+		case "collection":
+			if len(value.Collection) != 0 {
+				return readCoreString(value.Collection, pointer[1:])
 			}
 			return JSONOutput{}, nil
 		case "callId":
@@ -628,9 +642,16 @@ func readCoreEvent(value Event, pointer []string) (JSONOutput, error) {
 			return JSONOutput{}, nil
 		}
 	}
-	fields := make([]jsonOutputField, 0, 21)
+	fields := make([]jsonOutputField, 0, 23)
 	var output JSONOutput
 	var err error
+	if value.Control != nil {
+		output, err = readCoreControlStatePointer(value.Control, nil)
+		if err != nil {
+			return JSONOutput{}, err
+		}
+		fields = append(fields, jsonOutputField{"control", output})
+	}
 	if value.ResponsesTurnState != nil {
 		output, err = readCoreResponsesTurnStatePointer(value.ResponsesTurnState, nil)
 		if err != nil {
@@ -687,6 +708,13 @@ func readCoreEvent(value Event, pointer []string) (JSONOutput, error) {
 			return JSONOutput{}, err
 		}
 		fields = append(fields, jsonOutputField{"parentId", output})
+	}
+	if len(value.Collection) != 0 {
+		output, err = readCoreString(value.Collection, nil)
+		if err != nil {
+			return JSONOutput{}, err
+		}
+		fields = append(fields, jsonOutputField{"collection", output})
 	}
 	if !value.CallID.IsZero() {
 		output, err = readCoreValue(value.CallID, nil)
@@ -1225,6 +1253,22 @@ func readCoreUsagePointer(value *Usage, pointer []string) (JSONOutput, error) {
 	}
 	return readCoreUsage(*value, pointer)
 }
+func writeCoreControlStatePointer(output JSONOutput, value **ControlState, reader *valueReader) error {
+	if coreOutputIsNull(output) {
+		*value = nil
+		return nil
+	}
+	if *value == nil {
+		*value = new(ControlState)
+	}
+	return writeCoreControlState(output, *value, reader)
+}
+func readCoreControlStatePointer(value *ControlState, pointer []string) (JSONOutput, error) {
+	if value == nil {
+		return readCoreScalar(Value{raw: "null"}, pointer)
+	}
+	return readCoreControlState(*value, pointer)
+}
 func writeCoreResponsesTurnStatePointer(output JSONOutput, value **ResponsesTurnState, reader *valueReader) error {
 	if coreOutputIsNull(output) {
 		*value = nil
@@ -1245,6 +1289,12 @@ func writeCoreEventType(output JSONOutput, value *EventType, reader *valueReader
 	return writeCoreScalar(output, value)
 }
 func readCoreEventType(value EventType, pointer []string) (JSONOutput, error) {
+	return readCoreScalar(StringValue(string(value)), pointer)
+}
+func writeCoreString(output JSONOutput, value *string, reader *valueReader) error {
+	return writeCoreScalar(output, value)
+}
+func readCoreString(value string, pointer []string) (JSONOutput, error) {
 	return readCoreScalar(StringValue(string(value)), pointer)
 }
 func writeCoreIntPointer(output JSONOutput, value **int, reader *valueReader) error {
@@ -1294,12 +1344,6 @@ func readCoreMediaPointer(value *Media, pointer []string) (JSONOutput, error) {
 		return readCoreScalar(Value{raw: "null"}, pointer)
 	}
 	return readCoreMedia(*value, pointer)
-}
-func writeCoreString(output JSONOutput, value *string, reader *valueReader) error {
-	return writeCoreScalar(output, value)
-}
-func readCoreString(value string, pointer []string) (JSONOutput, error) {
-	return readCoreScalar(StringValue(string(value)), pointer)
 }
 func writeCoreNode(output JSONOutput, value *Node, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -2236,8 +2280,10 @@ func writeCoreResponseMetadataField(field jsonOutputField, value *ResponseMetada
 		return writeCoreString(field.value, &value.Path, reader)
 	case "value":
 		return writeCoreValue(field.value, &value.Value, reader)
+	case "update":
+		return writeCoreString(field.value, &value.Update, reader)
 	default:
-		key := foldedCoreField(field.key, []string{"name", "location", "codec", "sourceCodec", "path", "value"})
+		key := foldedCoreField(field.key, []string{"name", "location", "codec", "sourceCodec", "path", "value", "update"})
 		if key == "" {
 			return unknownCoreField(field.key)
 		}
@@ -2260,11 +2306,16 @@ func readCoreResponseMetadata(value ResponseMetadata, pointer []string) (JSONOut
 			return readCoreString(value.Path, pointer[1:])
 		case "value":
 			return readCoreValue(value.Value, pointer[1:])
+		case "update":
+			if len(value.Update) != 0 {
+				return readCoreString(value.Update, pointer[1:])
+			}
+			return JSONOutput{}, nil
 		default:
 			return JSONOutput{}, nil
 		}
 	}
-	fields := make([]jsonOutputField, 0, 6)
+	fields := make([]jsonOutputField, 0, 7)
 	var output JSONOutput
 	var err error
 	output, err = readCoreString(value.Name, nil)
@@ -2297,6 +2348,13 @@ func readCoreResponseMetadata(value ResponseMetadata, pointer []string) (JSONOut
 		return JSONOutput{}, err
 	}
 	fields = append(fields, jsonOutputField{"value", output})
+	if len(value.Update) != 0 {
+		output, err = readCoreString(value.Update, nil)
+		if err != nil {
+			return JSONOutput{}, err
+		}
+		fields = append(fields, jsonOutputField{"update", output})
+	}
 	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
 }
 func writeCoreUsage(output JSONOutput, value *Usage, reader *valueReader) error {
@@ -2447,6 +2505,86 @@ func readCoreUsage(value Usage, pointer []string) (JSONOutput, error) {
 			return JSONOutput{}, err
 		}
 		fields = append(fields, jsonOutputField{"details", output})
+	}
+	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+}
+func writeCoreControlState(output JSONOutput, value *ControlState, reader *valueReader) error {
+	if coreOutputIsNull(output) {
+		return nil
+	}
+	reader = coreOutputReader(output, reader)
+	fields, err := coreObjectFields(output)
+	if err != nil {
+		return err
+	}
+	for _, field := range fields {
+		if err := writeCoreControlStateField(field, value, reader); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func writeCoreControlStateField(field jsonOutputField, value *ControlState, reader *valueReader) error {
+	switch field.key {
+	case "kind":
+		return writeCoreString(field.value, &value.Kind, reader)
+	case "payload":
+		return writeCoreValue(field.value, &value.Payload, reader)
+	case "source":
+		return writeCoreProvenance(field.value, &value.Source, reader)
+	case "frameNumber":
+		return writeCoreInt64(field.value, &value.FrameNumber, reader)
+	default:
+		key := foldedCoreField(field.key, []string{"kind", "payload", "source", "frameNumber"})
+		if key == "" {
+			return unknownCoreField(field.key)
+		}
+		field.key = key
+		return writeCoreControlStateField(field, value, reader)
+	}
+}
+func readCoreControlState(value ControlState, pointer []string) (JSONOutput, error) {
+	if len(pointer) != 0 {
+		switch pointer[0] {
+		case "kind":
+			return readCoreString(value.Kind, pointer[1:])
+		case "payload":
+			return readCoreValue(value.Payload, pointer[1:])
+		case "source":
+			return readCoreProvenance(value.Source, pointer[1:])
+		case "frameNumber":
+			if value.FrameNumber != 0 {
+				return readCoreInt64(value.FrameNumber, pointer[1:])
+			}
+			return JSONOutput{}, nil
+		default:
+			return JSONOutput{}, nil
+		}
+	}
+	fields := make([]jsonOutputField, 0, 4)
+	var output JSONOutput
+	var err error
+	output, err = readCoreString(value.Kind, nil)
+	if err != nil {
+		return JSONOutput{}, err
+	}
+	fields = append(fields, jsonOutputField{"kind", output})
+	output, err = readCoreValue(value.Payload, nil)
+	if err != nil {
+		return JSONOutput{}, err
+	}
+	fields = append(fields, jsonOutputField{"payload", output})
+	output, err = readCoreProvenance(value.Source, nil)
+	if err != nil {
+		return JSONOutput{}, err
+	}
+	fields = append(fields, jsonOutputField{"source", output})
+	if value.FrameNumber != 0 {
+		output, err = readCoreInt64(value.FrameNumber, nil)
+		if err != nil {
+			return JSONOutput{}, err
+		}
+		fields = append(fields, jsonOutputField{"frameNumber", output})
 	}
 	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
 }
@@ -2964,6 +3102,12 @@ func readCoreCounterMap(value map[string]Counter, pointer []string) (JSONOutput,
 	}
 	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
 }
+func writeCoreInt64(output JSONOutput, value *int64, reader *valueReader) error {
+	return writeCoreScalar(output, value)
+}
+func readCoreInt64(value int64, pointer []string) (JSONOutput, error) {
+	return readCoreScalar(coreInteger(int64(value)), pointer)
+}
 func writeCoreToolInput(output JSONOutput, value *ToolInput, reader *valueReader) error {
 	if coreOutputIsNull(output) {
 		return nil
@@ -3288,12 +3432,6 @@ func writeCoreInputKind(output JSONOutput, value *InputKind, reader *valueReader
 }
 func readCoreInputKind(value InputKind, pointer []string) (JSONOutput, error) {
 	return readCoreScalar(StringValue(string(value)), pointer)
-}
-func writeCoreInt64(output JSONOutput, value *int64, reader *valueReader) error {
-	return writeCoreScalar(output, value)
-}
-func readCoreInt64(value int64, pointer []string) (JSONOutput, error) {
-	return readCoreScalar(coreInteger(int64(value)), pointer)
 }
 func writeCoreCounterOrigin(output JSONOutput, value *CounterOrigin, reader *valueReader) error {
 	return writeCoreScalar(output, value)

@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+func sessionTestContext(t *testing.T, scope Scope) EvaluationContext {
+	t.Helper()
+	options, err := (EvaluationContext{Scope: scope}).WithOperation("session-test-execution", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return options
+}
+
 type memorySessionConnection struct {
 	input  chan SessionFrame
 	output chan SessionFrame
@@ -155,7 +164,7 @@ func TestSessionAdapterSharesTraceRulesAndUsage(t *testing.T) {
 	compiled := compileSessionDefinition(t, definition)
 	binding := Binding{ProtocolID: definition.ID, RevisionHash: compiled.Hash(), Capabilities: definition.Capabilities, Transports: []Transport{WebSocket}}
 	operation := compiled.Operations()["session"]
-	adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, binding, Scope{Model: "m"}, StringValue("m"))
+	adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, binding, sessionTestContext(t, Scope{Model: "m"}), StringValue("m"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +194,7 @@ func TestRunSessionInterleavesDirectionsAndFlushesExplicitClose(t *testing.T) {
 	definition := sessionVerificationDefinition(t)
 	compiled := compileSessionDefinition(t, definition)
 	operation := compiled.Operations()["session"]
-	adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, Binding{Capabilities: definition.Capabilities}, Scope{Model: "m"}, StringValue("m"))
+	adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, Binding{Capabilities: definition.Capabilities}, sessionTestContext(t, Scope{Model: "m"}), StringValue("m"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +248,7 @@ func checkSessionAdapterMediaAndModel(t *testing.T, compiled *Compiled) {
 	t.Helper()
 	operation := compiled.Operations()["session"]
 	binding := Binding{Capabilities: compiled.capabilities}
-	adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, binding, Scope{Model: "upstream-model"}, StringValue("group"))
+	adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, binding, sessionTestContext(t, Scope{Model: "upstream-model"}), StringValue("group"))
 	if err != nil {
 		t.Fatal(err)
 	}

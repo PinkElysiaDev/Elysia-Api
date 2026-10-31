@@ -14,6 +14,7 @@ const (
 	ItemFinished        EventType = "item.finished"
 	UsageUpdated        EventType = "usage.updated"
 	MetadataUpdated     EventType = "metadata.updated"
+	ControlUpdated      EventType = "control.updated"
 	ResponseFinished    EventType = "response.finished"
 	OperationFailed     EventType = "operation.failed"
 	OperationCancelled  EventType = "operation.cancelled"
@@ -38,8 +39,23 @@ type Media struct {
 	Reference Resource `json:"reference"`
 }
 
+// ControlState preserves an opaque, source-bound session or continuation state.
+// FrameNumber is assigned by source wire validation, never inferred from a
+// provider's optional sequence field.
+type ControlState struct {
+	Kind        string     `json:"kind"`
+	Payload     Value      `json:"payload"`
+	Source      Provenance `json:"source"`
+	FrameNumber int64      `json:"frameNumber,omitempty"`
+}
+
 // Event associates deltas and snapshots with stable session/response/item IDs.
 type Event struct {
+	auxiliary          *sourceFrameReceipt
+	omittedAuxiliary   *omittedEventReceipt
+	controlReceipt     *controlEventReceipt
+	omittedControl     *omittedEventReceipt
+	Control            *ControlState       `json:"control,omitempty"`
 	ResponsesTurnState *ResponsesTurnState `json:"responsesTurnState,omitempty"`
 	Metadata           []ResponseMetadata  `json:"metadata,omitempty"`
 	SchemaVersion      int                 `json:"schemaVersion"`
@@ -48,20 +64,23 @@ type Event struct {
 	SessionID          Value               `json:"sessionId,omitzero"`
 	ResponseID         Value               `json:"responseId,omitzero"`
 	ItemID             Value               `json:"itemId,omitzero"`
-	// ParentID references an open message's semantic ItemID. Index remains a
-	// response-wide item identity; child order is its order of ItemStarted events.
-	ParentID Value     `json:"parentId,omitzero"`
-	CallID   Value     `json:"callId,omitzero"`
-	Sequence Value     `json:"sequence,omitzero"`
-	Index    *int      `json:"index,omitempty"`
-	Delta    Value     `json:"delta,omitzero"`
-	Item     *Node     `json:"item,omitempty"`
-	Response *Response `json:"response,omitempty"`
-	Request  *Request  `json:"request,omitempty"`
-	Usage    *Usage    `json:"usage,omitempty"`
-	Media    *Media    `json:"media,omitempty"`
-	Error    Value     `json:"error,omitzero"`
-	Native   *Native   `json:"native,omitempty"`
+	// ParentID references an open message or structured reasoning item. Index
+	// remains response-wide; children are ordered by ItemStarted per collection.
+	ParentID Value `json:"parentId,omitzero"`
+	// Collection selects summary or reasoning_content on a reasoning parent.
+	// Message children leave it empty.
+	Collection string    `json:"collection,omitempty"`
+	CallID     Value     `json:"callId,omitzero"`
+	Sequence   Value     `json:"sequence,omitzero"`
+	Index      *int      `json:"index,omitempty"`
+	Delta      Value     `json:"delta,omitzero"`
+	Item       *Node     `json:"item,omitempty"`
+	Response   *Response `json:"response,omitempty"`
+	Request    *Request  `json:"request,omitempty"`
+	Usage      *Usage    `json:"usage,omitempty"`
+	Media      *Media    `json:"media,omitempty"`
+	Error      Value     `json:"error,omitzero"`
+	Native     *Native   `json:"native,omitempty"`
 	// Unmapped is semantic evidence of wire fields without a declared mapping.
 	// It may survive same-wire frame replay, but cannot silently cross families.
 	Unmapped *Native `json:"unmapped,omitempty"`

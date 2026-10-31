@@ -101,7 +101,7 @@ func TestWireSourceDecodeFrameSharesReadsWithoutSharingState(t *testing.T) {
 			t.Fatal("shared reads changed the decoded frame", err, got, want)
 		}
 	}
-	if err := combined.Finish(); err != nil {
+	if err := errors.Join(combined.Finish(), separate.Finish(), compiled.FinishInputEvents(t.Context(), baselineOptions)); err != nil {
 		t.Fatal("source decoding did not complete the independent lifecycle", err)
 	}
 	output, err := compiled.NewWireStreamValidation(scope)
@@ -121,13 +121,15 @@ func TestWireSourceDecodeFrameCannotHideInvalidWire(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := validation.DecodeFrame(t.Context(), packageStreamFrame(ResponseStarted, 0, ""), EvaluationContext{}); err != nil {
+	options := EvaluationContext{State: NewEvaluationState()}
+	defer options.State.Release()
+	if _, err := validation.DecodeFrame(t.Context(), packageStreamFrame(ResponseStarted, 0, ""), options); err != nil {
 		t.Fatal(err)
 	}
 	repeated := packageStreamFrame(ResponseFinished, 0, "")
-	if _, err := compiled.DecodeFrame(t.Context(), repeated, EvaluationContext{}); err != nil {
+	if _, err := compiled.DecodeEvents(t.Context(), repeated, options); err != nil {
 		t.Fatal("fixture mapping did not hide the raw sequence", err)
 	}
-	_, err = validation.DecodeFrame(t.Context(), repeated, EvaluationContext{})
+	_, err = validation.DecodeFrame(t.Context(), repeated, options)
 	assertPackageRuntimeIssue(t, err, UpstreamContractViolation, "/seq")
 }

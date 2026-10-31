@@ -21,6 +21,11 @@ func comparableSemantic(input any) (Value, error) {
 		return EncodeValue(copy)
 	case Event:
 		value.Metadata = comparableMetadata(value.Metadata)
+		if value.Control != nil {
+			control := *value.Control
+			control.Source, control.FrameNumber = Provenance{}, 0
+			value.Control = &control
+		}
 		value.Source, value.SchemaVersion, value.Native = Identity{}, 0, nil
 		if value.Unmapped != nil {
 			copy := *value.Unmapped
@@ -145,6 +150,9 @@ func observeCapabilities(value any) capabilityEvidence {
 		}
 	case []Event:
 		for _, event := range semantic {
+			if event.Type == ControlUpdated && event.controlReceipt != nil {
+				evidence.observed[ControlStateCapability] = true
+			}
 			if event.Unmapped != nil {
 				evidence.observed[NativeExtensionsCapability] = true
 			}

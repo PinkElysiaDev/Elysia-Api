@@ -84,5 +84,6 @@ func (state *EvaluationState) Release() {
 	clear(state.packageStates)
 	clear(state.modules)
 	clear(state.initialized)
+	clear(state.sourceStreams)
 	state.packageStateItems, state.packageStateBytes = 0, 0
 }

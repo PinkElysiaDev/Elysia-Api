@@ -34,6 +34,8 @@ type EvaluationContext struct {
 	inputView          *inputView
 	requestReplay      *requestReplay
 	outputStream       *WireStreamValidation
+	operation          *operationMetadata
+	emissionOffset     int
 	packageTransaction *packageStreamTransaction
 	// ResolveRequestScope is supplied by the gateway after model/authorization
 	// lookup. Definitions cannot execute it or replace its returned binding.
@@ -125,22 +127,24 @@ func NewCompiler(limits Limits, modules []Module, features []string) (*Compiler,
 }
 
 type compiledMapping struct {
-	streamObserver    *compiledOutputPlan
-	capabilities      CapabilitySet
-	module            Module
-	outputPlan        *compiledOutputPlan
-	streamState       *compiledPackageState
-	streamFinalizer   *compiledOutputPlan
-	hasCoreInputPlan  bool
-	hasCoreOutputPlan bool
-	after             *compiledOutputPlan
-	initial           *compiledOutputPlan
-	input, output     *runtimeValueSchema
-	rules             []compiledEventRule
-	frameBatch        bool
-	isEventBatch      bool
-	canDeferEvents    bool
-	definitionHash    string
+	preservesDynamicNative bool
+	nativeWhen             *compiledOutputPlan
+	streamObserver         *compiledOutputPlan
+	capabilities           CapabilitySet
+	module                 Module
+	outputPlan             *compiledOutputPlan
+	streamState            *compiledPackageState
+	streamFinalizer        *compiledOutputPlan
+	hasCoreInputPlan       bool
+	hasCoreOutputPlan      bool
+	after                  *compiledOutputPlan
+	initial                *compiledOutputPlan
+	input, output          *runtimeValueSchema
+	rules                  []compiledEventRule
+	frameBatch             bool
+	isEventBatch           bool
+	canDeferEvents         bool
+	definitionHash         string
 }
 
 type compiledEventRule struct{ when, emit *compiledOutputPlan }

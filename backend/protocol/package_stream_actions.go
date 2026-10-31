@@ -76,6 +76,9 @@ func (frame *streamActionFrame) consume(actions []compiledPackageStreamEvent, in
 		}
 		action = qualifyStreamAction(action, path)
 		if action.isAssertion || action.isStateUpdate {
+			if frame.state.accepted.isTerminal && !action.canFollowTerminal {
+				return frame.state.issue(frame.state.contract.discriminator.path, "validation action arrived after the declared terminal", nil)
+			}
 			var err error
 			if action.isAssertion {
 				err = validateWireAssertions(action.assertions, input, path)
@@ -105,7 +108,7 @@ func (frame *streamActionFrame) consume(actions []compiledPackageStreamEvent, in
 		if err := frame.checkSequence(); err != nil {
 			return err
 		}
-		if err := frame.state.consumeAction(input.ctx, action, responseID, read); err != nil {
+		if err := frame.state.consumeAction(input.ctx, action, responseID, read, input.valueReader); err != nil {
 			return err
 		}
 		frame.hasAction = true
@@ -149,7 +152,10 @@ func (frame *streamActionFrame) consumeArray(action compiledPackageStreamEvent, 
 }
 
 func (frame *streamActionFrame) responseIdentity(action compiledPackageStreamEvent, read func(streamField) (Value, error)) (string, error) {
-	if action.canPrecedeResponse && (action.action == OperationFailed || action.action == OperationCancelled) {
+	if action.isResponseIndependent {
+		return "", nil
+	}
+	if action.canPrecedeResponse && (action.action == wireFail || action.action == wireCancel) {
 		return frame.state.accepted.responseID, nil
 	}
 	if action.isControl {
@@ -157,6 +163,14 @@ func (frame *streamActionFrame) responseIdentity(action compiledPackageStreamEve
 		if err != nil || value.IsZero() {
 			return "", err
 		}
+		identity, err := frame.state.readIdentityValue(value, action.responseID.path)
+		if err != nil {
+			return "", err
+		}
+		if frame.state.accepted.responseID != "" && frame.state.accepted.responseID != identity {
+			return "", frame.state.issue(action.responseID.path, "control frame changed the response identity", nil)
+		}
+		return identity, nil
 	}
 	return frame.state.readResponseIdentity(action.responseID, read)
 }
@@ -205,14 +219,16 @@ func qualifyStreamAction(action compiledPackageStreamEvent, path string) compile
 			field.path = path + field.path
 		}
 	}
-	for _, field := range []*streamField{&action.foreach, &action.responseID, &action.itemID, &action.parentID, &action.ordinal, &action.wireID, &action.role, &action.status, &action.properties, &action.childrenCount, &action.delta, &action.failure, &action.usage[0], &action.usage[1], &action.usage[2]} {
+	for _, field := range []*streamField{&action.foreach, &action.responseID, &action.key, &action.parent, &action.ordinal, &action.offset, &action.properties, &action.childrenCount, &action.delta, &action.failure} {
 		qualify(field)
 	}
-	if action.tool != nil {
-		tool := *action.tool
-		qualify(&tool.name)
-		qualify(&tool.callID)
-		action.tool = &tool
+	if len(action.identities) > 0 {
+		selections := make([]compiledEntityIdentitySelection, len(action.identities))
+		copy(selections, action.identities)
+		for index := range selections {
+			qualify(&selections[index].field)
+		}
+		action.identities = selections
 	}
 	return action
 }

@@ -3,8 +3,9 @@ package protocol
 import "strings"
 
 type collectedPosition struct {
-	parent string
-	index  int
+	parent     string
+	collection string
+	index      int
 }
 
 // ResponseCollector assembles a bounded result for consumers that need a whole
@@ -18,16 +19,16 @@ type ResponseCollector struct {
 	startedResponseID Value
 	// Prefix entries become immutable once preceding messages close. Advancing
 	// this frontier visits each top-level item once across the whole stream.
-	topKeys                                  []string
-	ordinals                                 []int
-	containers                               bool
-	texts                                    map[string]*collectedText
-	metadata                                 map[string]int
-	logprobs                                 map[string]*collectedLogprobs
-	logprobItems, logprobBytes, logprobLimit int
-	unmapped                                 []Value
-	bytes                                    int
-	limit                                    int
+	topKeys                                     []string
+	ordinals                                    []int
+	containers                                  bool
+	texts                                       map[string]*collectedText
+	metadata                                    map[string]int
+	metadataDeltas                              map[string][]*collectedMetadata
+	metadataItems, metadataBytes, metadataLimit int
+	unmapped                                    []Value
+	bytes                                       int
+	limit                                       int
 }
 
 type collectedText struct {
@@ -61,7 +62,7 @@ func (collector *ResponseCollector) CompletedNode(event Event) (Node, int, bool)
 		return Node{}, 0, false
 	}
 	position, ok := collector.items[key]
-	if !ok {
+	if !ok || position.collection != "" {
 		return Node{}, 0, false
 	}
 	node := collector.item(key)
@@ -95,14 +96,18 @@ func (collector *ResponseCollector) CompletedNode(event Event) (Node, int, bool)
 		ordinal += position.index
 	}
 	collector.materializeText(key)
-	collector.materializeLogprob(key)
+	collector.materializeItemMetadata(key)
 	return CanonicalReasoning(cloneNodes([]Node{*node})[0]), ordinal, true
 }
 
 func (collector *ResponseCollector) item(key string) *Node {
 	p := collector.items[key]
 	if p.parent != "" {
-		return &collector.item(p.parent).Children[p.index]
+		parent := collector.item(p.parent)
+		if p.collection == "reasoning_content" {
+			return &parent.ReasoningContent[p.index]
+		}
+		return &parent.Children[p.index]
 	}
 	return &collector.response.Content[p.index]
 }
@@ -113,7 +118,7 @@ func NewResponseCollector(target Target, limits Limits) (*ResponseCollector, err
 	if err != nil {
 		return nil, err
 	}
-	return &ResponseCollector{replay: replay, response: Response{SchemaVersion: target.coreSchemaVersion(), Source: target.Protocol}, items: map[string]collectedPosition{}, texts: map[string]*collectedText{}, metadata: map[string]int{}, limit: limits.BufferBytes, logprobLimit: limits.StateItems}, nil
+	return &ResponseCollector{replay: replay, response: Response{SchemaVersion: target.coreSchemaVersion(), Source: target.Protocol}, items: map[string]collectedPosition{}, texts: map[string]*collectedText{}, metadata: map[string]int{}, limit: limits.BufferBytes, metadataLimit: limits.StateItems}, nil
 }
 
 // Consume returns the newly appended text, if any. Snapshot prefixes and
@@ -135,6 +140,15 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 	if err != nil || !isAccepted {
 		return "", "", err
 	}
+	if event.controlReceipt != nil {
+		return "", "", nil
+	}
+	if event.auxiliary != nil {
+		if collector.startedResponseID.IsZero() || !equalValues(collector.startedResponseID, event.ResponseID) {
+			return "", "", streamIssue(InvalidAssociation, "/responseId", "auxiliary event requires the identity of an earlier response start")
+		}
+		return "", "", nil
+	}
 	if isMetadata, err := isResponsesMetadataEvent(event); isMetadata || err != nil {
 		if err == nil && (collector.startedResponseID.IsZero() || !equalValues(collector.startedResponseID, event.ResponseID)) {
 			err = streamIssue(InvalidAssociation, "/response_id", "auxiliary metadata requires the identity of an earlier response start")
@@ -154,7 +168,7 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 	case ResponseStarted:
 		collector.startedResponseID = event.ResponseID
 		if event.Response != nil {
-			collector.materializeLogprobs()
+			collector.materializeMetadata()
 			id, metadata := collector.response.ID, collector.response.Metadata
 			collector.response = *event.Response
 			if collector.response.ID.IsZero() {
@@ -172,7 +186,7 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 		return "", "", streamIssue(UpstreamContractViolation, "/type", "generation ended with "+string(event.Type))
 	case ResponseFinished:
 		collector.materializeTexts()
-		collector.materializeLogprobs()
+		collector.materializeMetadata()
 		if err := collector.finishTools(); err != nil {
 			return "", "", err
 		}
@@ -299,25 +313,35 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 	}
 	if event.Type == ItemStarted {
 		parent := collector.replay.items[key].parent
+		node := *event.Item
+		node.Children = cloneNodes(node.Children)
+		node.ReasoningContent = cloneNodes(node.ReasoningContent)
 		if parent == "" {
 			collector.items[key] = collectedPosition{index: len(collector.response.Content)}
 			for len(collector.topKeys) < len(collector.response.Content) {
 				collector.topKeys = append(collector.topKeys, "")
 			}
 			collector.topKeys = append(collector.topKeys, key)
-			collector.response.Content = append(collector.response.Content, *event.Item)
+			collector.response.Content = append(collector.response.Content, node)
 		} else {
-			node := collector.item(parent)
-			collector.items[key] = collectedPosition{parent: parent, index: len(node.Children)}
-			node.Children = append(node.Children, *event.Item)
+			parentNode := collector.item(parent)
+			children := &parentNode.Children
+			if event.Collection == "reasoning_content" {
+				children = &parentNode.ReasoningContent
+			}
+			collector.items[key] = collectedPosition{parent: parent, collection: event.Collection, index: len(*children)}
+			*children = append(*children, node)
 		}
 		collector.containers = collector.containers || event.Item.Kind == MessageNode
 		collector.texts[key] = &collectedText{}
 	}
 	item := collector.item(key)
-	isDeferred := collector.deferLogprobDelta(key, event)
+	isDeferred, err := collector.deferMetadataDelta(key, event)
+	if err != nil {
+		return "", "", err
+	}
 	if !isDeferred {
-		collector.materializeLogprob(key)
+		collector.materializeItemMetadata(key)
 	}
 	if event.Item != nil {
 		item.Metadata = MergeNodeMetadata(item.Metadata, event.Item.Metadata, false)
@@ -336,10 +360,10 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 		if event.Item.Resources != nil {
 			item.Resources = append([]Resource(nil), event.Item.Resources...)
 		}
-		if event.Item.Children != nil && item.Kind != MessageNode {
+		if event.Type != ItemStarted && event.Item.Children != nil && item.Kind != MessageNode && !collector.replay.items[key].hasSummaryChildren {
 			item.Children = append([]Node(nil), event.Item.Children...)
 		}
-		if event.Item.ReasoningContent != nil {
+		if event.Type != ItemStarted && event.Item.ReasoningContent != nil && !collector.replay.items[key].hasContentChildren {
 			item.ReasoningContent = cloneNodes(event.Item.ReasoningContent)
 		}
 		if event.Item.Cache != nil {
@@ -353,12 +377,14 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 		}
 	}
 	if !isDeferred {
-		item.Metadata = MergeNodeMetadata(item.Metadata, event.Metadata, event.Type == ItemDelta)
+		if err := collector.mergeEventMetadata(key, event); err != nil {
+			return "", "", err
+		}
 	}
 	if !event.CallID.IsZero() {
 		item.CallID = event.CallID
 	}
-	if event.Item != nil || !event.CallID.IsZero() {
+	if event.Item != nil || !event.CallID.IsZero() || (!isDeferred && len(event.Metadata) != 0) {
 		if err := collector.accountItemMetadata(key, *item); err != nil {
 			return "", "", err
 		}
@@ -405,6 +431,13 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 			}
 		}
 		buffer.dirty = true
+		if event.Collection != "" {
+			if event.Type == ItemFinished {
+				collector.materializeText(key)
+				collector.materializeItemMetadata(key)
+			}
+			return ReasoningNode, delta, nil
+		}
 		return item.Kind, delta, nil
 	}
 	if event.Type == ItemFinished {
@@ -423,8 +456,12 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 func (collector *ResponseCollector) accountItemMetadata(key string, node Node) error {
 	// Text and input bytes are accounted by their independent accumulators.
 	node.Payload = Value{}
-	if node.Kind == MessageNode {
-		node.Children = nil // Children have independent budgets.
+	item := collector.replay.items[key]
+	if node.Kind == MessageNode || item.hasSummaryChildren {
+		node.Children = nil // Associated children have independent budgets.
+	}
+	if item.hasContentChildren {
+		node.ReasoningContent = nil
 	}
 	if node.Input != nil {
 		node.Input = &ToolInput{Kind: node.Input.Kind}
@@ -448,7 +485,7 @@ func (collector *ResponseCollector) Finish() (*Response, error) {
 		return nil, err
 	}
 	collector.materializeTexts()
-	collector.materializeLogprobs()
+	collector.materializeMetadata()
 	collector.response.Usage = collector.replay.Usage()
 	for i := range collector.response.Content {
 		collector.response.Content[i] = CanonicalReasoning(collector.response.Content[i])
@@ -461,7 +498,7 @@ func (collector *ResponseCollector) Finish() (*Response, error) {
 // successful terminal and cannot authorize execution of incomplete tool calls.
 func (collector *ResponseCollector) Partial() (*Response, error) {
 	collector.materializeTexts()
-	collector.materializeLogprobs()
+	collector.materializeMetadata()
 	partial := collector.response
 	partial.Status = StringValue("incomplete")
 	partial.Usage = collector.replay.Usage()

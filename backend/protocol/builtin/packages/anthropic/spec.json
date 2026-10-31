@@ -619,22 +619,21 @@
               ]
             }
           }
+        },
+        {
+          "path": "",
+          "code": "invalid_association",
+          "reason": "tool history links are inconsistent",
+          "diagnostic": {
+            "code": "invalid_association",
+            "stage": "wire"
+          },
+          "check": {
+            "op": "ref",
+            "ref": "request-tool-links"
+          }
         }
-      ,
-{
-  "path": "",
-  "code": "invalid_association",
-  "reason": "tool history links are inconsistent",
-  "diagnostic": {
-    "code": "invalid_association",
-    "stage": "wire"
-  },
-  "check": {
-    "op": "ref",
-    "ref": "request-tool-links"
-  }
-}
-]
+      ]
     },
     "generation-request": {
       "schema": {
@@ -2543,16 +2542,168 @@
       "stream": {
         "discriminator": "/type",
         "responseId": "/message/id",
-        "itemId": "/index",
         "inheritResponseId": true,
-        "itemIdIsIndex": true,
+        "optionalResponseId": true,
+        "responseIdValue": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          },
+          "then": {
+            "op": "read",
+            "from": "input",
+            "path": "/message/id"
+          },
+          "otherwise": {
+            "op": "omit"
+          }
+        },
+        "lifecycle": {
+          "eof": "require_terminal",
+          "openEntities": "reject"
+        },
+        "namespaces": {
+          "content_block": {
+            "keyType": "integer"
+          }
+        },
+        "entities": {
+          "text_block": {
+            "namespace": "content_block",
+            "payload": "text"
+          },
+          "thinking_block": {
+            "namespace": "content_block",
+            "payload": "text"
+          },
+          "redacted_thinking_block": {
+            "namespace": "content_block",
+            "payload": "none"
+          },
+          "tool_use_block": {
+            "namespace": "content_block",
+            "payload": "json",
+            "identities": {
+              "name": {
+                "type": "string",
+                "requiredAt": "start"
+              },
+              "id": {
+                "type": "string",
+                "requiredAt": "start",
+                "unique": true
+              }
+            }
+          }
+        },
         "events": {
           "message_start": [
             {
-              "action": "response_start"
+              "action": "stream_start"
             },
             {
-              "action": "usage",
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "/message/usage/input_tokens",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/message/usage/input_tokens"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "/message/usage/output_tokens",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/message/usage/output_tokens"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "",
+                  "code": "upstream_contract_violation",
+                  "reason": "counter observation requires at least one count",
+                  "check": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/message/usage/input_tokens"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/message/usage/output_tokens"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
               "when": {
                 "op": "all",
                 "items": [
@@ -2583,15 +2734,45 @@
                   }
                 ]
               },
-              "usage": {
-                "input": "/message/usage/input_tokens",
-                "output": "/message/usage/output_tokens"
-              }
+              "afterTerminal": true
+            },
+            {
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/message/usage"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/message/usage"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "action": "observe"
             }
           ],
           "content_block_start": [
             {
-              "action": "item_start",
+              "action": "entity_start",
               "when": {
                 "op": "equal",
                 "items": [
@@ -2605,47 +2786,56 @@
                     "value": "text"
                   }
                 ]
+              },
+              "entity": "text_block",
+              "key": {
+                "path": "/index"
               }
             },
             {
-              "action": "item_start",
-              "kind": "reasoning",
+              "action": "entity_start",
               "when": {
-                "op": "any",
+                "op": "equal",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/content_block/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "thinking"
-                      }
-                    ]
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_block/type"
                   },
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/content_block/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "redacted_thinking"
-                      }
-                    ]
+                    "op": "literal",
+                    "value": "thinking"
                   }
                 ]
+              },
+              "entity": "thinking_block",
+              "key": {
+                "path": "/index"
               }
             },
             {
-              "action": "tool_start",
+              "action": "entity_start",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_block/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "redacted_thinking"
+                  }
+                ]
+              },
+              "entity": "redacted_thinking_block",
+              "key": {
+                "path": "/index"
+              }
+            },
+            {
+              "action": "entity_start",
               "when": {
                 "op": "equal",
                 "items": [
@@ -2660,16 +2850,23 @@
                   }
                 ]
               },
-              "tool": {
-                "name": "/content_block/name",
-                "callId": "/content_block/id"
+              "entity": "tool_use_block",
+              "key": {
+                "path": "/index"
+              },
+              "identities": {
+                "name": {
+                  "path": "/content_block/name"
+                },
+                "id": {
+                  "path": "/content_block/id"
+                }
               }
             }
           ],
           "content_block_delta": [
             {
-              "action": "text_delta",
-              "text": "/delta/text",
+              "action": "entity_append",
               "when": {
                 "op": "equal",
                 "items": [
@@ -2683,12 +2880,17 @@
                     "value": "text_delta"
                   }
                 ]
+              },
+              "entity": "text_block",
+              "key": {
+                "path": "/index"
+              },
+              "payload": {
+                "path": "/delta/text"
               }
             },
             {
-              "action": "text_delta",
-              "kind": "reasoning",
-              "text": "/delta/thinking",
+              "action": "entity_append",
               "when": {
                 "op": "equal",
                 "items": [
@@ -2702,11 +2904,17 @@
                     "value": "thinking_delta"
                   }
                 ]
+              },
+              "entity": "thinking_block",
+              "key": {
+                "path": "/index"
+              },
+              "payload": {
+                "path": "/delta/thinking"
               }
             },
             {
-              "action": "tool_delta",
-              "arguments": "/delta/partial_json",
+              "action": "entity_append",
               "when": {
                 "op": "equal",
                 "items": [
@@ -2720,6 +2928,13 @@
                     "value": "input_json_delta"
                   }
                 ]
+              },
+              "entity": "tool_use_block",
+              "key": {
+                "path": "/index"
+              },
+              "payload": {
+                "path": "/delta/partial_json"
               }
             },
             {
@@ -2742,7 +2957,11 @@
           ],
           "content_block_stop": [
             {
-              "action": "item_finish"
+              "action": "entity_finish",
+              "namespace": "content_block",
+              "key": {
+                "path": "/index"
+              }
             }
           ],
           "message_delta": [
@@ -2750,7 +2969,97 @@
               "action": "observe"
             },
             {
-              "action": "usage",
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "/usage/input_tokens",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage/input_tokens"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "/usage/output_tokens",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage/output_tokens"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "",
+                  "code": "upstream_contract_violation",
+                  "reason": "counter observation requires at least one count",
+                  "check": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/usage/input_tokens"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/usage/output_tokens"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
               "when": {
                 "op": "all",
                 "items": [
@@ -2781,68 +3090,54 @@
                   }
                 ]
               },
-              "usage": {
-                "input": "/usage/input_tokens",
-                "output": "/usage/output_tokens"
-              }
+              "afterTerminal": true
+            },
+            {
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/usage"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "action": "observe"
             }
           ],
           "message_stop": [
             {
-              "action": "response_finish"
+              "action": "stream_finish"
             }
           ],
           "ping": [
             {
-              "action": "control"
+              "action": "control",
+              "allowBeforeStart": true,
+              "afterTerminal": true
             }
           ]
-        },
-        "itemIdValue": {
-          "op": "if",
-          "when": {
-            "op": "present",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/index"
-            }
-          },
-          "then": {
-            "op": "read",
-            "from": "input",
-            "path": "/index"
-          },
-          "otherwise": {
-            "op": "literal",
-            "value": 0
-          }
-        },
-        "optionalResponseId": true,
-        "responseIdValue": {
-          "op": "if",
-          "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "message_start"
-              }
-            ]
-          },
-          "then": {
-            "op": "read",
-            "from": "input",
-            "path": "/message/id"
-          },
-          "otherwise": {
-            "op": "omit"
-          }
         }
       }
     },
@@ -4317,16 +4612,168 @@
       "stream": {
         "discriminator": "/type",
         "responseId": "/message/id",
-        "itemId": "/index",
         "inheritResponseId": true,
-        "itemIdIsIndex": true,
+        "responseIdValue": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          },
+          "then": {
+            "op": "read",
+            "from": "input",
+            "path": "/message/id"
+          },
+          "otherwise": {
+            "op": "omit"
+          }
+        },
+        "optionalResponseId": true,
+        "lifecycle": {
+          "eof": "require_terminal",
+          "openEntities": "reject"
+        },
+        "namespaces": {
+          "content_block": {
+            "keyType": "integer"
+          }
+        },
+        "entities": {
+          "text_block": {
+            "namespace": "content_block",
+            "payload": "text"
+          },
+          "thinking_block": {
+            "namespace": "content_block",
+            "payload": "text"
+          },
+          "redacted_thinking_block": {
+            "namespace": "content_block",
+            "payload": "none"
+          },
+          "tool_use_block": {
+            "namespace": "content_block",
+            "payload": "json",
+            "identities": {
+              "name": {
+                "type": "string",
+                "requiredAt": "start"
+              },
+              "id": {
+                "type": "string",
+                "requiredAt": "start",
+                "unique": true
+              }
+            }
+          }
+        },
         "events": {
           "message_start": [
             {
-              "action": "response_start"
+              "action": "stream_start"
             },
             {
-              "action": "usage",
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "/message/usage/input_tokens",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/message/usage/input_tokens"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "/message/usage/output_tokens",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/message/usage/output_tokens"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "",
+                  "code": "upstream_contract_violation",
+                  "reason": "counter observation requires at least one count",
+                  "check": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/message/usage/input_tokens"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/message/usage/output_tokens"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
               "when": {
                 "op": "all",
                 "items": [
@@ -4357,15 +4804,45 @@
                   }
                 ]
               },
-              "usage": {
-                "input": "/message/usage/input_tokens",
-                "output": "/message/usage/output_tokens"
-              }
+              "afterTerminal": true
+            },
+            {
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/message/usage"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/message/usage"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "action": "observe"
             }
           ],
           "content_block_start": [
             {
-              "action": "item_start",
+              "action": "entity_start",
               "when": {
                 "op": "equal",
                 "items": [
@@ -4379,47 +4856,56 @@
                     "value": "text"
                   }
                 ]
+              },
+              "entity": "text_block",
+              "key": {
+                "path": "/index"
               }
             },
             {
-              "action": "item_start",
-              "kind": "reasoning",
+              "action": "entity_start",
               "when": {
-                "op": "any",
+                "op": "equal",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/content_block/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "thinking"
-                      }
-                    ]
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_block/type"
                   },
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/content_block/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "redacted_thinking"
-                      }
-                    ]
+                    "op": "literal",
+                    "value": "thinking"
                   }
                 ]
+              },
+              "entity": "thinking_block",
+              "key": {
+                "path": "/index"
               }
             },
             {
-              "action": "tool_start",
+              "action": "entity_start",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_block/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "redacted_thinking"
+                  }
+                ]
+              },
+              "entity": "redacted_thinking_block",
+              "key": {
+                "path": "/index"
+              }
+            },
+            {
+              "action": "entity_start",
               "when": {
                 "op": "equal",
                 "items": [
@@ -4434,14 +4920,21 @@
                   }
                 ]
               },
-              "tool": {
-                "name": "/content_block/name",
-                "callId": "/content_block/id"
+              "entity": "tool_use_block",
+              "key": {
+                "path": "/index"
+              },
+              "identities": {
+                "name": {
+                  "path": "/content_block/name"
+                },
+                "id": {
+                  "path": "/content_block/id"
+                }
               }
             },
             {
-              "action": "text_snapshot",
-              "text": "/content_block/text",
+              "action": "entity_snapshot",
               "when": {
                 "op": "all",
                 "items": [
@@ -4477,13 +4970,19 @@
                     ]
                   }
                 ]
+              },
+              "entity": "text_block",
+              "key": {
+                "path": "/index"
+              },
+              "payload": {
+                "path": "/content_block/text"
               }
             }
           ],
           "content_block_delta": [
             {
-              "action": "text_delta",
-              "text": "/delta/text",
+              "action": "entity_append",
               "when": {
                 "op": "equal",
                 "items": [
@@ -4497,12 +4996,17 @@
                     "value": "text_delta"
                   }
                 ]
+              },
+              "entity": "text_block",
+              "key": {
+                "path": "/index"
+              },
+              "payload": {
+                "path": "/delta/text"
               }
             },
             {
-              "action": "text_delta",
-              "kind": "reasoning",
-              "text": "/delta/thinking",
+              "action": "entity_append",
               "when": {
                 "op": "equal",
                 "items": [
@@ -4516,11 +5020,17 @@
                     "value": "thinking_delta"
                   }
                 ]
+              },
+              "entity": "thinking_block",
+              "key": {
+                "path": "/index"
+              },
+              "payload": {
+                "path": "/delta/thinking"
               }
             },
             {
-              "action": "tool_delta",
-              "arguments": "/delta/partial_json",
+              "action": "entity_append",
               "when": {
                 "op": "equal",
                 "items": [
@@ -4534,6 +5044,13 @@
                     "value": "input_json_delta"
                   }
                 ]
+              },
+              "entity": "tool_use_block",
+              "key": {
+                "path": "/index"
+              },
+              "payload": {
+                "path": "/delta/partial_json"
               }
             },
             {
@@ -4556,7 +5073,11 @@
           ],
           "content_block_stop": [
             {
-              "action": "item_finish"
+              "action": "entity_finish",
+              "namespace": "content_block",
+              "key": {
+                "path": "/index"
+              }
             }
           ],
           "message_delta": [
@@ -4564,7 +5085,97 @@
               "action": "observe"
             },
             {
-              "action": "usage",
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "/usage/input_tokens",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage/input_tokens"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "/usage/output_tokens",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage/output_tokens"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "",
+                  "code": "upstream_contract_violation",
+                  "reason": "counter observation requires at least one count",
+                  "check": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/usage/input_tokens"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/usage/output_tokens"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
               "when": {
                 "op": "all",
                 "items": [
@@ -4595,56 +5206,62 @@
                   }
                 ]
               },
-              "usage": {
-                "input": "/usage/input_tokens",
-                "output": "/usage/output_tokens"
-              }
+              "afterTerminal": true
+            },
+            {
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/usage"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "action": "observe"
             }
           ],
           "message_stop": [
             {
-              "action": "response_finish"
+              "action": "stream_finish"
             }
           ],
           "ping": [
             {
-              "action": "control"
+              "action": "control",
+              "allowBeforeStart": true,
+              "afterTerminal": true
             }
           ],
           "error": [
             {
-              "action": "failure",
+              "action": "stream_fail",
               "error": "/error",
               "allowBeforeStart": true
             }
           ]
-        },
-        "responseIdValue": {
-          "op": "if",
-          "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "message_start"
-              }
-            ]
-          },
-          "then": {
-            "op": "read",
-            "from": "input",
-            "path": "/message/id"
-          },
-          "otherwise": {
-            "op": "omit"
-          }
-        },
-        "optionalResponseId": true
+        }
       }
     },
     "response-candidate": {
@@ -4771,16 +5388,167 @@
       "stream": {
         "discriminator": "/type",
         "responseId": "/message/id",
-        "itemId": "/index",
         "inheritResponseId": true,
-        "itemIdIsIndex": true,
+        "responseIdValue": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          },
+          "then": {
+            "op": "read",
+            "from": "input",
+            "path": "/message/id"
+          },
+          "otherwise": {
+            "op": "omit"
+          }
+        },
+        "lifecycle": {
+          "eof": "require_terminal",
+          "openEntities": "reject"
+        },
+        "namespaces": {
+          "content_block": {
+            "keyType": "integer"
+          }
+        },
+        "entities": {
+          "text_block": {
+            "namespace": "content_block",
+            "payload": "text"
+          },
+          "thinking_block": {
+            "namespace": "content_block",
+            "payload": "text"
+          },
+          "redacted_thinking_block": {
+            "namespace": "content_block",
+            "payload": "none"
+          },
+          "tool_use_block": {
+            "namespace": "content_block",
+            "payload": "json",
+            "identities": {
+              "name": {
+                "type": "string",
+                "requiredAt": "start"
+              },
+              "id": {
+                "type": "string",
+                "requiredAt": "start",
+                "unique": true
+              }
+            }
+          }
+        },
         "events": {
           "message_start": [
             {
-              "action": "response_start"
+              "action": "stream_start"
             },
             {
-              "action": "usage",
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "/message/usage/input_tokens",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/message/usage/input_tokens"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "/message/usage/output_tokens",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/message/usage/output_tokens"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "",
+                  "code": "upstream_contract_violation",
+                  "reason": "counter observation requires at least one count",
+                  "check": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/message/usage/input_tokens"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/message/usage/output_tokens"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
               "when": {
                 "op": "all",
                 "items": [
@@ -4811,15 +5579,45 @@
                   }
                 ]
               },
-              "usage": {
-                "input": "/message/usage/input_tokens",
-                "output": "/message/usage/output_tokens"
-              }
+              "afterTerminal": true
+            },
+            {
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/message/usage"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/message/usage"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "action": "observe"
             }
           ],
           "content_block_start": [
             {
-              "action": "item_start",
+              "action": "entity_start",
               "when": {
                 "op": "equal",
                 "items": [
@@ -4833,47 +5631,56 @@
                     "value": "text"
                   }
                 ]
+              },
+              "entity": "text_block",
+              "key": {
+                "path": "/index"
               }
             },
             {
-              "action": "item_start",
-              "kind": "reasoning",
+              "action": "entity_start",
               "when": {
-                "op": "any",
+                "op": "equal",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/content_block/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "thinking"
-                      }
-                    ]
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_block/type"
                   },
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/content_block/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "redacted_thinking"
-                      }
-                    ]
+                    "op": "literal",
+                    "value": "thinking"
                   }
                 ]
+              },
+              "entity": "thinking_block",
+              "key": {
+                "path": "/index"
               }
             },
             {
-              "action": "tool_start",
+              "action": "entity_start",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content_block/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "redacted_thinking"
+                  }
+                ]
+              },
+              "entity": "redacted_thinking_block",
+              "key": {
+                "path": "/index"
+              }
+            },
+            {
+              "action": "entity_start",
               "when": {
                 "op": "equal",
                 "items": [
@@ -4888,16 +5695,23 @@
                   }
                 ]
               },
-              "tool": {
-                "name": "/content_block/name",
-                "callId": "/content_block/id"
+              "entity": "tool_use_block",
+              "key": {
+                "path": "/index"
+              },
+              "identities": {
+                "name": {
+                  "path": "/content_block/name"
+                },
+                "id": {
+                  "path": "/content_block/id"
+                }
               }
             }
           ],
           "content_block_delta": [
             {
-              "action": "text_delta",
-              "text": "/delta/text",
+              "action": "entity_append",
               "when": {
                 "op": "equal",
                 "items": [
@@ -4911,12 +5725,17 @@
                     "value": "text_delta"
                   }
                 ]
+              },
+              "entity": "text_block",
+              "key": {
+                "path": "/index"
+              },
+              "payload": {
+                "path": "/delta/text"
               }
             },
             {
-              "action": "text_delta",
-              "kind": "reasoning",
-              "text": "/delta/thinking",
+              "action": "entity_append",
               "when": {
                 "op": "equal",
                 "items": [
@@ -4930,11 +5749,17 @@
                     "value": "thinking_delta"
                   }
                 ]
+              },
+              "entity": "thinking_block",
+              "key": {
+                "path": "/index"
+              },
+              "payload": {
+                "path": "/delta/thinking"
               }
             },
             {
-              "action": "tool_delta",
-              "arguments": "/delta/partial_json",
+              "action": "entity_append",
               "when": {
                 "op": "equal",
                 "items": [
@@ -4948,6 +5773,13 @@
                     "value": "input_json_delta"
                   }
                 ]
+              },
+              "entity": "tool_use_block",
+              "key": {
+                "path": "/index"
+              },
+              "payload": {
+                "path": "/delta/partial_json"
               }
             },
             {
@@ -4970,7 +5802,11 @@
           ],
           "content_block_stop": [
             {
-              "action": "item_finish"
+              "action": "entity_finish",
+              "namespace": "content_block",
+              "key": {
+                "path": "/index"
+              }
             }
           ],
           "message_delta": [
@@ -4978,7 +5814,97 @@
               "action": "observe"
             },
             {
-              "action": "usage",
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "/usage/input_tokens",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage/input_tokens"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "/usage/output_tokens",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage/output_tokens"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "",
+                  "code": "upstream_contract_violation",
+                  "reason": "counter observation requires at least one count",
+                  "check": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/usage/input_tokens"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/usage/output_tokens"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
               "when": {
                 "op": "all",
                 "items": [
@@ -5009,53 +5935,60 @@
                   }
                 ]
               },
-              "usage": {
-                "input": "/usage/input_tokens",
-                "output": "/usage/output_tokens"
-              }
+              "afterTerminal": true
+            },
+            {
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usage"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/usage"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "action": "observe"
             }
           ],
           "message_stop": [
             {
-              "action": "response_finish"
+              "action": "stream_finish"
             }
           ],
           "ping": [
             {
-              "action": "control"
+              "action": "control",
+              "allowBeforeStart": true,
+              "afterTerminal": true
             }
           ],
           "error": [
             {
-              "action": "failure",
+              "action": "stream_fail",
               "error": "/error"
             }
           ]
-        },
-        "responseIdValue": {
-          "op": "if",
-          "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "message_start"
-              }
-            ]
-          },
-          "then": {
-            "op": "read",
-            "from": "input",
-            "path": "/message/id"
-          },
-          "otherwise": {
-            "op": "omit"
-          }
         }
       }
     },
@@ -5555,13 +6488,19 @@
             "suggestion": "correct the request controls or declared /output_config/effort rule"
           }
         },
-        {"path":"","code":"conversion_rejected","reason":"tool history links are inconsistent","diagnostic":{
+        {
+          "path": "",
+          "code": "conversion_rejected",
+          "reason": "tool history links are inconsistent",
+          "diagnostic": {
             "code": "conversion_rejected",
             "stage": "wire"
-          },"check":{
+          },
+          "check": {
             "op": "ref",
             "ref": "request-tool-links"
-          }}
+          }
+        }
       ]
     }
   },

@@ -6,7 +6,7 @@ func toolSnapshotStream(t *testing.T) *ProtocolStreamSpec {
 	t.Helper()
 	spec := toolStreamPackage(t).Spec.Documents["provider-event"].Stream
 	spec.OptionalSequence = true
-	spec.Events["tool.snapshot"] = ProtocolStreamEventSpec{{Action: "tool_snapshot", Arguments: "/arguments"}}
+	spec.Events["tool.snapshot"] = ProtocolStreamEventSpec{{Action: "entity_snapshot", Entity: "function_call", Key: &ProtocolStreamValueSpec{Path: "/item_id"}, Payload: &ProtocolStreamValueSpec{Path: "/arguments"}, Encoding: "json_text"}}
 	return spec
 }
 
@@ -26,7 +26,7 @@ func TestPackageStreamToolSnapshotsAndOptionalSequence(t *testing.T) {
 			t.Fatal(raw, err)
 		}
 	}
-	if !state.accepted.hasSequence || state.accepted.sequence != 6 || state.replay.state.buffered != 0 {
+	if !state.accepted.hasSequence || state.accepted.sequence != 6 || state.bufferedBytes != 0 {
 		t.Fatal("missing sequence reset its watermark or completed input remained buffered")
 	}
 	if err := state.consume(t.Context(), Value{raw: `{"kind":"response.finished","response_id":"r","seq":7}`}); err != nil || state.finish() != nil {
@@ -51,9 +51,9 @@ func TestPackageStreamToolSnapshotsAndOptionalSequence(t *testing.T) {
 func TestPackageStreamSnapshotCompilation(t *testing.T) {
 	for _, edit := range []func(*ProtocolStreamSpec){
 		func(spec *ProtocolStreamSpec) { spec.Sequence = "" },
-		func(spec *ProtocolStreamSpec) { spec.Events["tool.snapshot"][0].Arguments = "" },
+		func(spec *ProtocolStreamSpec) { spec.Events["tool.snapshot"][0].Payload.Path = "" },
 		func(spec *ProtocolStreamSpec) {
-			spec.Events["tool.snapshot"][0].Tool = &ProtocolStreamToolSpec{Name: "/name", CallID: "/call_id"}
+			spec.Events["tool.snapshot"][0].Encoding = "unknown"
 		},
 	} {
 		spec := toolSnapshotStream(t)
@@ -66,7 +66,7 @@ func TestPackageStreamSnapshotCompilation(t *testing.T) {
 
 func TestPackageStreamKeyedRawIdentities(t *testing.T) {
 	spec := sparseIdentityStream(t)
-	spec.Events["heartbeat"] = ProtocolStreamEventSpec{{Action: "control"}}
+	spec.Events["heartbeat"] = ProtocolStreamEventSpec{{Action: "control", FrameClass: "control", AllowBeforeStart: true, AfterTerminal: true}}
 	spec.Identities = []ProtocolStreamIdentitySpec{{Path: "/wire_id", Type: StringType,
 		Key: &Expression{Op: "cast", Source: expressionPointer(readExpression("input", "/index")), To: StringType}, KeyPath: "/index", Comparison: "raw_json", Unique: true,
 		Diagnostic: &RejectDiagnostic{Code: UnsupportedCapability, Stage: "wire"},

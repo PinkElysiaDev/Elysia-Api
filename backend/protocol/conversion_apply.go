@@ -86,6 +86,9 @@ func (c *CompiledConversion) Response(ctx context.Context, response *Response, r
 }
 
 func (c *CompiledConversion) Event(ctx context.Context, event Event, route ConversionContext, sink *DiagnosticSink) (Event, error) {
+	if event.auxiliary != nil || event.omittedAuxiliary != nil || event.controlReceipt != nil || event.omittedControl != nil {
+		return c.convertProtectedEvent(ctx, event, route, sink)
+	}
 	if c != nil && c.canOwnPhase(ConversionEvent) {
 		budget := semanticLimits(DefaultLimits())
 		if err := checkSemanticValue(event, budget); err != nil {

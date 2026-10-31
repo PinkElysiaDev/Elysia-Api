@@ -5,7 +5,7 @@ package protocol
 const DefinitionSchemaVersion = 2
 
 // CompilerVersion binds verification evidence to execution semantics.
-const CompilerVersion = "2.0.0-dev.102"
+const CompilerVersion = "2.0.0-dev.103"
 
 // Preset protocol identifiers. Presets ship with the engine, are read-only for
 // authoring, and are refreshed to the shipped revision on every startup;
@@ -231,6 +231,7 @@ type Expression struct {
 	Op         string                   `json:"op"`
 	Operation  string                   `json:"operation,omitempty"`
 	Name       string                   `json:"name,omitempty"`
+	Namespace  string                   `json:"namespace,omitempty"`
 	KeyMode    string                   `json:"keyMode,omitempty"`
 	From       string                   `json:"from,omitempty"`
 	Path       string                   `json:"path,omitempty"`

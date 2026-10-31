@@ -14,6 +14,7 @@ import (
 type compiledExpression struct {
 	outputPlan                          *compiledOutputPlan
 	trackerName                         string
+	streamNamespace                     string
 	op                                  string
 	operation                           string
 	path                                string
@@ -65,6 +66,7 @@ func newExpressionCompiler(limits Limits, references map[string]Expression) *exp
 }
 
 type expressionScope struct {
+	isWireContract         bool
 	canReadNativeFrame     bool
 	trackerChannels        map[string]bool
 	walkCoreItem           reflect.Type
@@ -83,6 +85,7 @@ type expressionScope struct {
 	wireCapture            bool
 	canReadRuntime         bool
 	canReadOutputStream    bool
+	outputNamespaces       map[string]int
 	canReadNative          bool
 	bindings               map[string]expressionBinding
 	stateSlots             map[string]expressionBinding
@@ -136,6 +139,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		return compiler.compileReference(expression.Ref, path, scope, depth)
 	}
 	compiled := &compiledExpression{op: expression.Op, operation: expression.Operation, path: path, from: expression.From, value: expression.Value, to: expression.To, policy: expression.Policy, isRequired: expression.Required, result: operation.Result}
+	if scope.isWireContract && compiled.op == "check_usage" {
+		return nil, fmt.Errorf("%s: core usage checks belong to Mapping, not an external wire contract", path)
+	}
 	if _, hasDiagnostic := expression.present["onConflict"]; hasDiagnostic || expression.OnConflict != nil {
 		var err error
 		compiled.onConflict, err = compileMergeConflictDiagnostic(expression.OnConflict, path+"/onConflict")
@@ -193,6 +199,12 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 				compiled.result = BooleanType
 			case len(pointer) == 2 && pointer[0] == "scope" && pointer[1] == "model":
 				compiled.result = StringType
+			case len(pointer) == 2 && pointer[0] == "operation" && pointer[1] == "id":
+				compiled.result = StringType
+			case len(pointer) == 2 && pointer[0] == "operation" && pointer[1] == "startedAt":
+				compiled.result = IntegerType
+			case len(pointer) == 2 && pointer[0] == "emission" && pointer[1] == "offset" && scope.canReadOutputStream:
+				compiled.result = IntegerType
 			case len(pointer) == 2 && pointer[0] == "delivered" && pointer[1] == "maxItemIndex" && scope.canReadOutputStream:
 				compiled.result = IntegerType
 			case len(pointer) == 2 && pointer[0] == "stream" && scope.canReadOutputStream:
@@ -254,13 +266,20 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		if !scope.canReadOutputStream || scope.canReadNativeFrame {
 			return nil, fmt.Errorf("%s: delivered item access requires an event encoder, outside native observation", path)
 		}
+		if !definitionIdentifier.MatchString(expression.Namespace) {
+			return nil, fmt.Errorf("%s/namespace: requires a fixed namespace identifier", path)
+		}
+		if _, exists := scope.outputNamespaces[expression.Namespace]; !exists {
+			return nil, fmt.Errorf("%s/namespace: namespace is not declared by the final wire contract", path)
+		}
+		compiled.streamNamespace = expression.Namespace
 	}
-	if compiled.op == "resolve_item" || compiled.op == "track_text" || compiled.op == "track_tool" || compiled.op == "resume_text" {
+	if compiled.op == "resolve_item" || compiled.op == "track_text" || compiled.op == "track_tool" || compiled.op == "resume_text" || compiled.op == "buffer_text" || compiled.op == "buffer_array" {
 		if !scope.canUseStreamPrimitives || !scope.canWriteStreamIndexes {
 			return nil, fmt.Errorf("%s: stream primitives require an event program", path)
 		}
 		*scope.streamPrimitiveUsed = true
-		if compiled.op == "track_text" || compiled.op == "track_tool" || compiled.op == "resume_text" {
+		if compiled.op == "track_text" || compiled.op == "track_tool" || compiled.op == "resume_text" || compiled.op == "buffer_text" || compiled.op == "buffer_array" {
 			if !definitionIdentifier.MatchString(expression.Name) {
 				return nil, fmt.Errorf("%s/name: expected a fixed tracker channel identifier", path)
 			}
@@ -467,6 +486,15 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		if !isAssignable(expression.source.result, StringType) {
 			return fail("read_delivered_item requires a string wire identity")
 		}
+	case "pointer_join":
+		if !isAssignable(expression.source.result, StringType) {
+			return fail("pointer_join requires a string pointer prefix")
+		}
+		for _, item := range expression.items {
+			if !isAssignable(item.result, StringType) {
+				return fail("pointer_join segments must be strings")
+			}
+		}
 	case "resume_text":
 		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, StringType) {
 			return fail("resume_text requires string tracker and wire identities")
@@ -474,6 +502,10 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 	case "track_tool":
 		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, ObjectType) {
 			return fail("track_tool requires a string key and an observation object")
+		}
+	case "buffer_text", "buffer_array":
+		if err := compileBufferOperation(expression); err != nil {
+			return fail(err.Error())
 		}
 	case "track_text":
 		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, StringType) || !slices.Contains([]string{"delta", "snapshot"}, expression.policy) {
@@ -563,7 +595,7 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 			return fail(expression.op + " requires a literal string and a string source")
 		}
 		expression.literalText = text
-	case "lower", "quote_string":
+	case "lower", "quote_string", "has_control":
 		if !isAssignable(expression.source.result, StringType) {
 			return fail(expression.op + " source must produce a string")
 		}
@@ -630,6 +662,9 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		}
 		expression.schema = &ValueSchema{Type: ArrayType, Items: &ValueSchema{Type: StringType}}
 		if expression.op == "entries" {
+			if expression.policy != "" && expression.policy != "preserve" {
+				return fail("entries policy must be preserve or omitted")
+			}
 			expression.schema.Items = &ValueSchema{Type: ObjectType, Required: []string{"key", "value"}, Properties: map[string]ValueSchema{"key": {Type: StringType}, "value": {Type: AnyType}}}
 		}
 	case "from_entries":

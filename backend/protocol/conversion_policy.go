@@ -53,6 +53,7 @@ type ConversionUsageSettings struct {
 type ConversionRule struct {
 	// Compiled execution hint; never part of an authored policy or its hash.
 	partitionRequest bool
+	preparedOption   *preparedConversionOption
 	ID               string          `json:"id"`
 	Order            int             `json:"order"`
 	Enabled          bool            `json:"enabled"`
@@ -87,6 +88,7 @@ type ConversionSelection struct {
 }
 
 type ConversionContext struct {
+	fieldObservations map[string]fieldObservation
 	// ResponseWire is trusted delivery metadata, unavailable to mapping JSON.
 	ResponseWire        bool                   `json:"-"`
 	ResponseModel       *ResponseModelOrigin   `json:"responseModel,omitempty"`
@@ -238,7 +240,25 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if err := action.validate(r); err != nil {
 			return nil, err
 		}
-		if r.Action == "model_controls" {
+		if r.Action == "control_event" {
+			option, err := compileControlEventOption(r)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
+		} else if r.Action == "auxiliary_event" {
+			option, err := compileAuxiliaryOption(r)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
+		} else if r.Action == "core_controls" {
+			option, err := compileCoreControlOption(r, limits)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
+		} else if r.Action == "model_controls" {
 			option, err := compileModelControlOptions(r.Value, limits)
 			if err != nil {
 				return nil, err
@@ -456,6 +476,7 @@ func (c *CompiledConversion) Wire(ctx context.Context, body []byte, route Conver
 func (c *CompiledConversion) WithVerificationContext(route ConversionContext) *CompiledConversion {
 	// Observed response fields belong to a single attempt, never a binding proof.
 	route.ResponseModel = nil
+	route.fieldObservations = nil
 	if route.Reasoning != nil {
 		capability := *route.Reasoning
 		capability.Levels = slices.Clone(capability.Levels)

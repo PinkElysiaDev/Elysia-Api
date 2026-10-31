@@ -32,6 +32,76 @@ func TestPackageDocumentsShareCompiledContract(t *testing.T) {
 	}
 }
 
+func TestPackageDocumentBaseKeepsChecksAndIdentityIndependent(t *testing.T) {
+	document := eventProtocolPackage(t)
+	document.Spec.Expressions = map[string]Expression{"delivery-check": literalExpression(true)}
+	document.Spec.Documents["client-event"] = WireContractSpec{Base: "provider-event", Assertions: []WireAssertion{{
+		Path: "/delivery_tag", Schema: &ValueSchema{Type: StringType}, Code: ConversionRejected, Reason: "delivery marker is required",
+		When: &Expression{Op: "ref", Ref: "delivery-check"},
+	}}}
+	compiled := compilePackageForTest(t, document)
+	source, target := compiled.wireContracts[DecodeEvent], compiled.wireContracts[EncodeEvent]
+	if source.packageStream != target.packageStream || source.validator.(*specWireValidator).schema != target.validator.(*specWireValidator).schema {
+		t.Fatal("base document rebuilt immutable schema or stream state declarations")
+	}
+	input, err := compiled.NewWireInputStreamValidation(Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := compiled.NewWireStreamValidation(Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame := packageStreamFrame(ResponseStarted, 0, "")
+	if err := input.Consume(t.Context(), frame); err != nil {
+		t.Fatal("local delivery check changed the base boundary", err)
+	}
+	if err := output.Consume(t.Context(), frame); err == nil {
+		t.Fatal("derived document omitted its local assertion")
+	}
+	document.Spec.Expressions["delivery-check"] = literalExpression(false)
+	changed := compilePackageForTest(t, document)
+	if compiled.mappings[DecodeEvent].definitionHash != changed.mappings[DecodeEvent].definitionHash || compiled.mappings[EncodeEvent].definitionHash == changed.mappings[EncodeEvent].definitionHash {
+		t.Fatal("local assertion reference was omitted or changed its base identity")
+	}
+	base := document.Spec.Documents["provider-event"]
+	stream := *base.Stream
+	stream.Sequence = "/changed_sequence"
+	base.Stream = &stream
+	document.Spec.Documents["provider-event"] = base
+	withBaseChange := compilePackageForTest(t, document)
+	for _, direction := range []Direction{DecodeEvent, EncodeEvent} {
+		if changed.mappings[direction].definitionHash == withBaseChange.mappings[direction].definitionHash {
+			t.Fatal("base identity change did not reach its derived document", direction)
+		}
+	}
+}
+
+func TestPackageDocumentBaseRejectsCyclesAndOverrides(t *testing.T) {
+	for _, declaration := range []WireContractSpec{
+		{Base: "missing"},
+		{Base: "client-event"},
+		{Base: "provider-event", Schema: &ValueSchema{Type: ObjectType}},
+		{Base: "provider-event", Stream: &ProtocolStreamSpec{}},
+	} {
+		document := eventProtocolPackage(t)
+		document.Spec.Documents["client-event"] = declaration
+		if err := document.Validate(DefaultLimits()); err == nil || !strings.Contains(err.Error(), "/base") {
+			t.Fatal("invalid document reuse compiled", err)
+		}
+	}
+	document := eventProtocolPackage(t)
+	previous := "provider-event"
+	for index := range DefaultLimits().Depth {
+		name := "reuse-" + strings.Repeat("a", index+1)
+		document.Spec.Documents[name] = WireContractSpec{Base: previous}
+		previous = name
+	}
+	if err := document.Validate(DefaultLimits()); err == nil || !strings.Contains(err.Error(), "depth limit") {
+		t.Fatal("cached base chain bypassed the document depth limit", err)
+	}
+}
+
 func TestPackageDocumentsValidateWithoutMappingReferences(t *testing.T) {
 	document := eventProtocolPackage(t)
 	delete(document.Mapping.Directions, DecodeEvent)

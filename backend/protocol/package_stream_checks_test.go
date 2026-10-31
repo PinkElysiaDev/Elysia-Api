@@ -30,7 +30,7 @@ func wireSlotPackage(t *testing.T) ProtocolPackage {
 			}},
 		}},
 		{Action: "assert", Assertions: []WireAssertion{accumulated}},
-		{Action: "usage", Usage: &ProtocolStreamUsageSpec{Input: "/usage/input"}},
+		{Action: "observe"},
 	}
 	decode := document.Mapping.Directions[DecodeEvent]
 	decode.State = map[string]ProtocolStateSlot{"total": {
@@ -142,6 +142,13 @@ func TestPackageStreamWireSlotIterations(t *testing.T) {
 	if err := validation.Consume(t.Context(), packageStreamFrame("batch", 2, `,"parts":[{"usage":{"input":4}},{"usage":{"input":8}}],"maximum":10`)); err == nil || state.slots[0].raw != "2" || state.slots[1].raw != "5" || state.accepted.sequence != 1 {
 		t.Fatal("failed later member committed an earlier update", err, state.slots)
 	}
+	validation, _ = compiled.NewWireInputStreamValidation(Scope{})
+	for _, frame := range []Value{packageStreamFrame(ResponseStarted, 0, ""), packageStreamFrame("batch", 1, `,"parts":[{"usage":{"input":2}},{"usage":{"input":3}}],"maximum":10`)} {
+		if err := validation.Consume(t.Context(), frame); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state = validation.packageStream
 	if err := validation.Consume(t.Context(), packageStreamFrame("clear", 2, "")); err != nil || !state.slots[0].IsZero() || state.slots[1].raw != "5" || state.slotBytes != 1 {
 		t.Fatal("omission did not clear just the selected slot and release its bytes", err, state.slots, state.slotBytes)
 	}
@@ -223,61 +230,62 @@ func TestPackageStreamCheckCompilation(t *testing.T) {
 func TestPackageStreamToolValueSelectors(t *testing.T) {
 	document := toolStreamPackage(t)
 	stream := document.Spec.Documents["provider-event"].Stream
-	stream.Events[string(packageToolStarted)][0].Tool.CallIDValue = expressionPointer(readExpression("input", "/external_id"))
-	stream.Events[string(packageToolDelta)][0].ArgumentsValue = expressionPointer(readExpression("input", "/fragment"))
-	stream.Events["tool.snapshot"] = ProtocolStreamEventSpec{{Action: "tool_snapshot", Arguments: "/arguments",
-		ArgumentsValue: &Expression{Op: "stringify_json", Source: expressionPointer(readExpression("input", "/args"))},
+	stream.Events[string(packageToolStarted)][0].Identities["call_id"] = ProtocolStreamValueSpec{Path: "/external_id", Value: expressionPointer(readExpression("input", "/external_id"))}
+	stream.Events[string(packageToolDelta)][0].Payload = &ProtocolStreamValueSpec{Path: "/fragment", Value: expressionPointer(readExpression("input", "/fragment"))}
+	stream.Events["tool.snapshot"] = ProtocolStreamEventSpec{{Action: "entity_snapshot", Entity: "function_call", Key: &ProtocolStreamValueSpec{Path: "/item_id"}, Encoding: "json_text",
+		Payload: &ProtocolStreamValueSpec{Path: "/args", Value: &Expression{Op: "stringify_json", Source: expressionPointer(readExpression("input", "/args"))}},
 	}}
 	compiled := compilePackageForTest(t, document)
-	validation, err := compiled.NewWireInputStreamValidation(Scope{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, frame := range []Value{
+	prefix := []Value{
 		packageStreamFrame(ResponseStarted, 0, ""),
 		packageStreamFrame(packageToolStarted, 1, `,"item_id":"t","name":"f","external_id":"c"`),
 		packageStreamFrame(packageToolDelta, 2, `,"item_id":"t","fragment":"{\"n\":"`),
 		packageStreamFrame("tool.snapshot", 3, `,"item_id":"t","args":{"n":9007199254740993}`),
-	} {
-		if err := validation.Consume(t.Context(), frame); err != nil {
+	}
+	newValidation := func() *WireStreamValidation {
+		t.Helper()
+		validation, err := compiled.NewWireInputStreamValidation(Scope{})
+		if err != nil {
 			t.Fatal(err)
 		}
+		for _, frame := range prefix {
+			if err := validation.Consume(t.Context(), frame); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return validation
 	}
-	state := validation.packageStream.replay
-	tool := state.state.tools[state.identities.aliases["item:t"]]
-	if tool == nil || tool.callID != "c" || tool.input.String() != `{"n":9007199254740993}` {
-		t.Fatal("declared selectors lost tool identity or exact arguments", tool)
+	validation := newValidation()
+	state := validation.packageStream
+	entity := state.entities[state.contract.namespaceSlots["item"]]["t"]
+	if entity == nil || entity.identities[0] != "c" || entity.json.String() != `{"n":9007199254740993}` {
+		t.Fatal("declared selectors lost identity or exact JSON", entity)
 	}
 	for _, fixture := range []struct{ name, raw, path string }{
-		{"call-id", `,"item_id":"other","name":"f","external_id":42`, "/call_id"},
-		{"arguments", `,"item_id":"t","fragment":42`, "/arguments"},
+		{"call-id", `,"item_id":"other","name":"f","external_id":42`, "/external_id"},
+		{"arguments", `,"item_id":"t","fragment":42`, "/fragment"},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
+			validation := newValidation()
 			kind := packageToolStarted
 			if fixture.name == "arguments" {
 				kind = packageToolDelta
 			}
-			err := validation.Consume(t.Context(), packageStreamFrame(kind, 4, fixture.raw))
-			var failure *ConversionError
-			if !errors.As(err, &failure) || failure.Issues[0].Path != fixture.path {
-				t.Fatal("computed selector lost its declared diagnostic path", err)
-			}
+			assertPackageRuntimeIssue(t, validation.Consume(t.Context(), packageStreamFrame(kind, 4, fixture.raw)), UpstreamContractViolation, fixture.path)
 		})
 	}
 	for _, edit := range []func(*ProtocolStreamSpec){
 		func(spec *ProtocolStreamSpec) {
-			spec.Events[string(packageToolDelta)][0].Arguments = ""
-			spec.Events[string(packageToolDelta)][0].ArgumentsValue = expressionPointer(literalExpression("{}"))
+			spec.Events[string(packageToolDelta)][0].Payload = &ProtocolStreamValueSpec{Value: expressionPointer(literalExpression("{}"))}
 		},
 		func(spec *ProtocolStreamSpec) {
-			spec.Events[string(packageToolStarted)][0].Tool.CallID = ""
-			spec.Events[string(packageToolStarted)][0].Tool.CallIDValue = expressionPointer(literalExpression("c"))
+			spec.Events[string(packageToolStarted)][0].Identities["call_id"] = ProtocolStreamValueSpec{Value: expressionPointer(literalExpression("c"))}
 		},
 		func(spec *ProtocolStreamSpec) {
-			spec.Events[string(ResponseStarted)][0].ArgumentsValue = expressionPointer(literalExpression("{}"))
+			spec.Events[string(ResponseStarted)][0].Payload = &ProtocolStreamValueSpec{Path: "/payload", Value: expressionPointer(literalExpression("{}"))}
 		},
 		func(spec *ProtocolStreamSpec) {
-			spec.Events[string(UsageUpdated)][0].Tool = &ProtocolStreamToolSpec{Name: "/name", CallID: "/call_id", CallIDValue: expressionPointer(literalExpression("c"))}
+			spec.Events[string(UsageUpdated)][0].Identities = map[string]ProtocolStreamValueSpec{"name": {Path: "/name"}}
 		},
 	} {
 		invalid := toolStreamPackage(t)
@@ -288,19 +296,12 @@ func TestPackageStreamToolValueSelectors(t *testing.T) {
 	}
 	t.Run("snapshot-only", func(t *testing.T) {
 		delete(stream.Events, string(packageToolDelta))
-		stream.ItemKinds = []NodeKind{TextNode, ToolCallNode}
 		compiled := compilePackageForTest(t, document)
 		validation, err := compiled.NewWireInputStreamValidation(Scope{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, frame := range []Value{
-			packageStreamFrame(ResponseStarted, 0, ""),
-			packageStreamFrame(packageToolStarted, 1, `,"item_id":"t","name":"f","external_id":"c"`),
-			packageStreamFrame("tool.snapshot", 2, `,"item_id":"t","args":{"n":9007199254740993}`),
-			packageStreamFrame(packageToolFinished, 3, `,"item_id":"t"`),
-			packageStreamFrame(ResponseFinished, 4, ""),
-		} {
+		for _, frame := range []Value{prefix[0], prefix[1], packageStreamFrame("tool.snapshot", 2, `,"item_id":"t","args":{"n":9007199254740993}`), packageStreamFrame(packageToolFinished, 3, `,"item_id":"t"`), packageStreamFrame(ResponseFinished, 4, "")} {
 			if err := validation.Consume(t.Context(), frame); err != nil {
 				t.Fatal(err)
 			}
@@ -312,18 +313,16 @@ func TestPackageStreamToolValueSelectors(t *testing.T) {
 }
 
 func TestPackageStreamExplicitCheckDiagnostics(t *testing.T) {
-	invalidUsage := literalExpression(map[string]any{
-		"output":  map[string]any{"count": 2, "origin": "observed"},
-		"details": map[string]any{"output.reasoning_tokens": map[string]any{"count": 3, "origin": "observed"}},
-	})
-	checked := Expression{Op: "let", Name: "checked", Source: &Expression{Op: "check_usage", Source: &invalidUsage}, Body: expressionPointer(literalExpression(true))}
+	checked := Expression{Op: "if", When: &Expression{Op: "integer", Operation: "lte", Items: []Expression{readExpression("input", "/usage/reasoning"), readExpression("input", "/usage/output")}},
+		Then: expressionPointer(literalExpression(true)), Otherwise: &Expression{Op: "reject", Path: "/usage/reasoning", Reason: "reasoning count exceeds output", Diagnostic: &RejectDiagnostic{Code: InvalidInput, Stage: "wire"}}}
+
 	for _, fixture := range []struct {
 		name, path string
 		check      Expression
 		code       IssueCode
 		stage      string
 	}{
-		{"checked-arithmetic", "/usage/details/output.reasoning_tokens", checked, InvalidInput, "stream"},
+		{"checked-arithmetic", "/usage/reasoning", checked, InvalidInput, "wire"},
 		{"declared-reject", "/declared", Expression{Op: "reject", Path: "/declared", Reason: "declared boundary", Diagnostic: &RejectDiagnostic{Code: UnsupportedCapability, Stage: "wire"}}, UnsupportedCapability, "wire"},
 		{"ordinary-expression", "/fallback", Expression{Op: "parse_json", Source: expressionPointer(literalExpression("not-json"))}, ConversionRejected, "wire"},
 	} {
@@ -338,15 +337,15 @@ func TestPackageStreamExplicitCheckDiagnostics(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = validation.Consume(t.Context(), packageStreamFrame("checked", 0, ""))
+			err = validation.Consume(t.Context(), packageStreamFrame("checked", 0, `,"usage":{"output":2,"reasoning":3}`))
 			var failure *ConversionError
 			if !errors.As(err, &failure) || failure.Issues[0].Code != fixture.code || failure.Issues[0].Stage != fixture.stage || failure.Issues[0].Path != fixture.path {
 				t.Fatal("explicit constraint or ordinary expression diagnostic changed", err)
 			}
 			if fixture.name == "checked-arithmetic" {
-				var checked *declaredCheckError
+				var checked *declaredRejectionError
 				if !errors.As(err, &checked) {
-					t.Fatal("arithmetic error lost its marked cause", err)
+					t.Fatal("declared wire arithmetic lost its rejection cause", err)
 				}
 			}
 		})

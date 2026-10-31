@@ -7,73 +7,71 @@ import (
 	"strings"
 )
 
-// One response owns this state. The contract and mapping share no mutable state;
-// Identities and digests survive each item. JSON tool arguments are retained
-// only until tool completion or an unsuccessful response terminal.
+// Wire state owns external identities and payload validators, never core events.
 type packageStreamValidation struct {
-	contract             *compiledPackageStreamContract
-	replay               *EventReplay
-	target               Target
-	direction            Direction
-	openItems            int
-	identityBytes        int
-	snapshotBytes        int
-	slots                []Value
-	slotBytes            int
-	pendingSlotBytes     int
-	hasPendingSlots      bool
-	identities           []string
-	identityBindings     []streamIdentityBindings
-	identityItems        int
-	toolPaths            map[string]streamToolPaths
-	accepted             streamPosition
-	delivered            streamPosition
-	hasPendingDelivery   bool
-	itemSnapshots        map[string]*streamItemSnapshot
-	frameNumber          uint64
-	deliveredFrameNumber uint64
-	hasRejectedFrame     bool
+	contract                                    *compiledPackageStreamContract
+	target                                      Target
+	direction                                   Direction
+	limits                                      Limits
+	entities                                    []map[string]*wireEntityState
+	entityCount, openItems                      int
+	identityBytes, snapshotBytes, bufferedBytes int
+	slots                                       []Value
+	slotBytes, pendingSlotBytes                 int
+	hasPendingSlots                             bool
+	identities                                  []string
+	identityBindings                            []streamIdentityBindings
+	identityItems                               int
+	entityIdentityKeys                          map[string]map[string]*wireEntityState
+	accepted, delivered                         streamPosition
+	hasPendingDelivery                          bool
+	frameNumber, deliveredFrameNumber           uint64
+	hasRejectedFrame                            bool
+	frameClass                                  wireFrameClass
+	frameHadResponse, frameHasSequence          bool
+	frameResponseID                             string
+	frameSequence                               int64
+	entityOrder                                 []*wireEntityState
 }
-
 type streamPosition struct {
-	responseID   string
-	sequence     int64
-	hasSequence  bool
-	hasStarted   bool
-	isTerminal   bool
-	maxItemIndex int64
-	hasItemIndex bool
+	responseID                          string
+	sequence                            int64
+	hasSequence, hasStarted, isTerminal bool
+	maxItemIndex                        int64
+	hasItemIndex                        bool
 }
 
 func newPackageStreamValidation(contract *compiledPackageStreamContract, target Target, limits Limits) (*packageStreamValidation, error) {
-	replay, err := NewEventReplay(target, limits)
-	if err != nil {
-		return nil, err
-	}
-	state := &packageStreamValidation{contract: contract, replay: replay, target: target, direction: target.Direction, identities: make([]string, len(contract.identities))}
+	state := &packageStreamValidation{contract: contract, target: target, direction: target.Direction, limits: limits,
+		identities: make([]string, len(contract.identities)), entities: make([]map[string]*wireEntityState, len(contract.namespaces))}
 	if contract.state != nil {
 		state.slots, state.slotBytes = contract.state.initial, contract.state.initialBytes
 	}
 	return state, nil
 }
-
 func (state *packageStreamValidation) consume(ctx context.Context, frame Value) error {
 	return state.consumeInputView(ctx, newInputView(frame))
 }
-
-func (state *packageStreamValidation) consumeInputView(ctx context.Context, view *inputView) error {
+func (state *packageStreamValidation) consumeInputView(ctx context.Context, view *inputView) (err error) {
+	if state.hasRejectedFrame {
+		return state.issue("/", "rejected stream state cannot accept another frame", nil)
+	}
 	defer func() {
 		state.pendingSlotBytes, state.hasPendingSlots = 0, false
+		if err != nil {
+			state.hasRejectedFrame = true
+		}
 	}()
 	state.frameNumber++
+	state.frameClass = wireFrameOrdinary
+	prior := state.accepted
 	frame := view.value
 	conditions := evaluation{ctx: ctx, input: frame, root: frame, inputView: view, valueReader: &view.borrowed, objectReader: view.objectReader(), streamSlots: state.slots,
-		budget: &evaluationBudget{limits: state.replay.limits, stepLimit: state.replay.limits.Nodes}}
+		budget: &evaluationBudget{limits: state.limits, stepLimit: state.limits.Nodes}}
 	if state.contract.bindingSlots != 0 {
 		conditions.bindings = make([]JSONOutput, state.contract.bindingSlots)
 	}
-	read := state.fieldReader(conditions)
-	tag, err := state.readIdentity(state.contract.discriminator, read)
+	tag, err := state.readIdentity(state.contract.discriminator, state.fieldReader(conditions))
 	if err != nil {
 		return err
 	}
@@ -96,213 +94,97 @@ func (state *packageStreamValidation) consumeInputView(ctx context.Context, view
 		state.slots, state.slotBytes = current.slots, current.slotBytes
 	}
 	state.hasPendingDelivery = state.direction == EncodeEvent
+	state.frameHadResponse, state.frameResponseID = prior.hasStarted, prior.responseID
+	state.frameHasSequence, state.frameSequence = current.hasSequence, current.sequence
 	return nil
 }
-
 func (state *packageStreamValidation) checkActionPosition(action compiledPackageStreamEvent) error {
-	if action.isControl {
-		return nil
+	if state.accepted.isTerminal && !action.canFollowTerminal {
+		return state.boundaryIssue(action.diagnostic, state.contract.discriminator.path, "event arrived after the declared terminal", nil)
 	}
-	if state.replay.isTerminal && action.action != UsageUpdated {
-		return state.boundaryIssue(action.diagnostic, state.contract.discriminator.path, "event arrived after terminal; only usage tails are permitted", nil)
+	if action.action == wireStart && state.accepted.hasStarted && !action.isImplicit {
+		return state.boundaryIssue(action.diagnostic, state.contract.discriminator.path, "stream started more than once", nil)
 	}
-	if action.action == ResponseStarted && state.accepted.hasStarted && !action.isImplicit {
-		return state.boundaryIssue(action.diagnostic, state.contract.discriminator.path, "response started more than once", nil)
-	}
-	if action.action != ResponseStarted && !action.canPrecedeResponse && !state.accepted.hasStarted {
-		return state.boundaryIssue(action.diagnostic, state.contract.discriminator.path, "event requires a preceding response start", nil)
+	if action.action != wireStart && !action.canPrecedeResponse && !state.accepted.hasStarted {
+		return state.boundaryIssue(action.diagnostic, state.contract.discriminator.path, "event requires a preceding stream start", nil)
 	}
 	return nil
 }
-
-func (state *packageStreamValidation) consumeAction(ctx context.Context, definition compiledPackageStreamEvent, responseID string, read func(streamField) (Value, error)) error {
-	if definition.isControl {
-		return ctx.Err()
-	}
-	isRepeatedStart := definition.isImplicit && definition.action == ResponseStarted && state.accepted.hasStarted
-	event := Event{SchemaVersion: state.target.coreSchemaVersion(), Source: state.target.Protocol, Type: definition.action}
-	identityBytes := state.identityBytes
-	if state.accepted.responseID == "" {
-		identityBytes += len(responseID)
-	}
-	itemBytes, err := state.readPayload(&event, &definition, read)
-	if err != nil {
-		return err
-	}
-	if definition.isImplicit && definition.action == ItemStarted && !definition.isTool {
-		itemID, _ := readString(event.ItemID)
-		isRepeatedStart = state.replay.items[state.replay.identities.aliases["item:"+itemID]] != nil
-	}
-	identityBytes += itemBytes
-	snapshot, snapshotBytes, skipReplay, err := state.prepareItemSnapshot(event, definition, read)
-	if err != nil {
-		return err
-	}
-	snapshotBytes += state.snapshotBytes
-	isRepeatedStart = isRepeatedStart || skipReplay
-	toolKey, toolPaths, pathBytes := state.prepareToolPaths(event, definition)
-	identityBytes += pathBytes
-	// Bound retained identity bytes as well as identity count. This is a logical
-	// payload budget, not an estimate of Go map or allocator overhead.
-	if err := state.checkRetainedState(identityBytes, snapshotBytes, state.contract.itemID.path); err != nil {
-		return err
-	}
+func (state *packageStreamValidation) consumeAction(ctx context.Context, action compiledPackageStreamEvent, responseID string, read func(streamField) (Value, error), reader *valueReader) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if !isRepeatedStart {
-		// The replay buffer owns decoded tool arguments. Give it the remaining
-		// retention allowance, without reducing frame or semantic input limits.
-		bufferLimit := state.replay.state.limits.BufferBytes
-		state.replay.state.limits.BufferBytes = state.replay.limits.BufferBytes - identityBytes - snapshotBytes - state.retainedSlotBytes()
-		_, err := state.replay.Consume(event)
-		state.replay.state.limits.BufferBytes = bufferLimit
-		if err != nil {
-			return state.replayError(err, definition)
+	if action.frameClass != wireFrameOrdinary {
+		if state.frameClass != wireFrameOrdinary && state.frameClass != action.frameClass {
+			return state.issue(state.contract.discriminator.path, "frame declares conflicting classes", nil)
 		}
+		state.frameClass = action.frameClass
 	}
-	if state.accepted.responseID == "" {
-		state.accepted.responseID = responseID
-	}
-	state.accepted.hasStarted = state.accepted.hasStarted || event.Type == ResponseStarted
-	state.identityBytes = identityBytes
-	state.snapshotBytes = snapshotBytes
-	state.commitItemSnapshot(event, definition, snapshot)
-	if toolKey != "" {
-		if state.toolPaths == nil {
-			state.toolPaths = make(map[string]streamToolPaths)
+	if action.action >= wireEntityStart && action.action <= wireEntityFinish {
+		if err := state.consumeEntity(ctx, action, read, reader); err != nil {
+			return err
 		}
-		state.toolPaths[toolKey] = toolPaths
-	}
-	switch event.Type {
-	case ItemStarted:
-		if !isRepeatedStart {
-			state.openItems++
-			if state.contract.isItemIDIndex {
-				id, _ := readString(event.ItemID)
-				index, _ := strconv.ParseInt(id, 10, 64)
-				state.accepted.maxItemIndex = max(state.accepted.maxItemIndex, index)
-				state.accepted.hasItemIndex = true
+	} else {
+		switch action.action {
+		case wireFinish:
+			if err := state.finishEntities(ctx, action); err != nil {
+				return err
+			}
+		case wireFail:
+			value, err := read(action.failure)
+			if err != nil {
+				return err
+			}
+			if value.IsZero() || value.IsNull() {
+				return state.issue(action.failure.path, "failure event requires an error", nil)
 			}
 		}
-	case ItemFinished:
-		if !skipReplay {
-			state.openItems--
-		}
-	case ResponseFinished, OperationFailed, OperationCancelled:
-		state.accepted.isTerminal = true
-		if state.contract.closeItemsOnFinish {
-			state.openItems = 0
-		}
 	}
-	if state.contract.hasTools && (event.Type == OperationFailed || event.Type == OperationCancelled) {
-		for _, tool := range state.replay.state.tools {
-			tool.input.Reset()
+	if !action.isControl && !action.isResponseIndependent && state.accepted.responseID == "" && responseID != "" {
+		if err := state.checkRetainedBytes(state.identityBytes+len(responseID), action.responseID.path); err != nil {
+			return err
 		}
-		state.replay.state.buffered = 0
+		state.accepted.responseID = strings.Clone(responseID)
+		state.identityBytes += len(responseID)
+	}
+	if action.action == wireStart {
+		state.accepted.hasStarted = true
+	}
+	if action.action == wireFinish || action.action == wireFail || action.action == wireCancel {
+		state.accepted.isTerminal = true
+		// No payload-bearing action is valid after a terminal, including delivery retries.
+		for _, entity := range state.entityOrder {
+			entity.json.Reset()
+			entity.array = nil
+			entity.arrayBytes, entity.arrayNodes = 0, 0
+		}
+		state.bufferedBytes = 0
 	}
 	return nil
 }
-
-func (state *packageStreamValidation) checkRetainedBytes(identityBytes int, path string) error {
-	return state.checkRetainedState(identityBytes, state.snapshotBytes, path)
-}
-
-func (state *packageStreamValidation) checkRetainedState(identityBytes, snapshotBytes int, path string) error {
-	return state.checkRetainedStateWithSlots(identityBytes, snapshotBytes, state.retainedSlotBytes(), path)
-}
-
 func (state *packageStreamValidation) retainedSlotBytes() int {
 	if state.hasPendingSlots {
 		return state.pendingSlotBytes
 	}
 	return state.slotBytes
 }
-
+func (state *packageStreamValidation) checkRetainedBytes(identityBytes int, path string) error {
+	return state.checkRetainedState(identityBytes, state.snapshotBytes, path)
+}
+func (state *packageStreamValidation) checkRetainedState(identityBytes, snapshotBytes int, path string) error {
+	return state.checkRetainedStateWithSlots(identityBytes, snapshotBytes, state.retainedSlotBytes(), path)
+}
 func (state *packageStreamValidation) checkRetainedStateWithSlots(identityBytes, snapshotBytes, slotBytes int, path string) error {
-	retained := identityBytes + snapshotBytes + slotBytes + state.replay.state.buffered
-	limit := state.replay.limits.BufferBytes
-	if retained <= limit {
+	retained := identityBytes + snapshotBytes + slotBytes + state.bufferedBytes
+	if retained <= state.limits.BufferBytes {
 		return nil
 	}
-	metric, observed, reason := "state_bytes", retained, "stream retained state exceeds the buffer limit"
-	if identityBytes > limit {
-		// Preserve the established identity-only diagnostic and its cause;
-		// state_bytes identifies a limit reached only by combining payloads.
-		metric, observed, reason = "identity_bytes", identityBytes, "stream identities exceed the buffer limit"
+	metric, observed := "state_bytes", retained
+	if identityBytes > state.limits.BufferBytes {
+		metric, observed = "identity_bytes", identityBytes
 	}
-	return state.issue(path, reason, resourceFailure("stream", metric, limit, observed))
+	return state.issue(path, "stream retained state exceeds the buffer limit", resourceFailure("stream", metric, state.limits.BufferBytes, observed))
 }
-
-func (state *packageStreamValidation) readPayload(event *Event, definition *compiledPackageStreamEvent, read func(streamField) (Value, error)) (int, error) {
-	switch event.Type {
-	case ItemStarted, ItemDelta, ItemSnapshot, ItemFinished:
-		return state.readItemPayload(event, definition, read)
-	case UsageUpdated:
-		var err error
-		event.Usage, err = state.readUsage(definition.usage[:], definition.canOmitUsageCounters, read)
-		return 0, err
-	case ResponseFinished:
-		if err := state.checkRequiredItems(*definition); err != nil {
-			return 0, err
-		}
-		if state.openItems != 0 && !state.contract.closeItemsOnFinish {
-			if state.contract.hasTools {
-				return 0, state.issue(state.contract.discriminator.path, "response finished before all stream items", nil)
-			}
-			return 0, state.issue(state.contract.discriminator.path, "response finished before all text items", nil)
-		}
-	case OperationFailed:
-		var err error
-		event.Error, err = read(definition.failure)
-		if err != nil {
-			return 0, err
-		}
-		if event.Error.IsZero() || event.Error.IsNull() {
-			return 0, state.issue(definition.failure.path, "failure event requires an error", nil)
-		}
-	}
-	return 0, nil
-}
-
-func (state *packageStreamValidation) readToolIdentity(field streamField, isSparse bool, read func(streamField) (Value, error)) (Value, int, error) {
-	value, err := read(field)
-	if err != nil || isSparse && value.IsZero() {
-		return Value{}, 0, err
-	}
-	text, err := readString(value)
-	if err != nil || !isSparse && text == "" {
-		return Value{}, 0, state.issue(field.path, "tool identity must be a string", err)
-	}
-	return StringValue(text), len(text), nil
-}
-
-func (state *packageStreamValidation) readUsage(fields []streamField, canOmitCounters bool, read func(streamField) (Value, error)) (*Usage, error) {
-	usage := &Usage{}
-	for index, counter := range []**Counter{&usage.Input, &usage.Output, &usage.Total} {
-		field := fields[index]
-		if field.path == "" {
-			continue
-		}
-		value, err := read(field)
-		if err != nil {
-			return nil, err
-		}
-		if value.IsZero() {
-			continue
-		}
-		count, err := state.readCount(value, field.path)
-		if err != nil {
-			return nil, err
-		}
-		*counter = &Counter{Count: count, Origin: ObservedCount}
-	}
-	if !canOmitCounters && usage.Input == nil && usage.Output == nil && usage.Total == nil {
-		return nil, state.issue(state.contract.discriminator.path, "usage event requires at least one observed counter", nil)
-	}
-	return usage, nil
-}
-
 func (state *packageStreamValidation) readResponseIdentity(field streamField, read func(streamField) (Value, error)) (string, error) {
 	value, err := read(field)
 	if err != nil {
@@ -322,21 +204,6 @@ func (state *packageStreamValidation) readResponseIdentity(field streamField, re
 		return "", state.issue(field.path, "response identity changed", nil)
 	}
 	return identity, nil
-}
-
-func (state *packageStreamValidation) readItemIdentity(field streamField, read func(streamField) (Value, error)) (string, error) {
-	if !state.contract.isItemIDIndex {
-		return state.readIdentity(field, read)
-	}
-	value, err := read(field)
-	if err != nil {
-		return "", err
-	}
-	index, err := state.readCount(value, field.path)
-	if err != nil {
-		return "", err
-	}
-	return strconv.FormatInt(index, 10), nil
 }
 
 func (state *packageStreamValidation) readIdentity(field streamField, read func(streamField) (Value, error)) (string, error) {
@@ -364,9 +231,14 @@ func (state *packageStreamValidation) readCount(value Value, path string) (int64
 }
 
 func (state *packageStreamValidation) finish() error {
-	return state.replayError(state.replay.Finish(), compiledPackageStreamEvent{itemID: state.contract.itemID})
+	if state.hasRejectedFrame {
+		return state.issue("/", "rejected stream state cannot finish", nil)
+	}
+	if !state.accepted.isTerminal {
+		return state.issue(state.contract.discriminator.path, "stream ended before its declared terminal", nil)
+	}
+	return nil
 }
-
 func (state *packageStreamValidation) issue(path, reason string, cause error) error {
 	code := ConversionRejected
 	if state.direction == DecodeEvent {
@@ -377,72 +249,4 @@ func (state *packageStreamValidation) issue(path, reason string, cause error) er
 		code = LimitExceeded
 	}
 	return &ConversionError{cause: cause, Issues: []ConversionIssue{{Code: code, Severity: SeverityError, Protocol: state.target.Protocol, Direction: state.direction, Stage: "wire.stream", Path: path, Reason: reason}}}
-}
-
-func (state *packageStreamValidation) replayError(err error, event compiledPackageStreamEvent) error {
-	if err == nil {
-		return nil
-	}
-	var conversion *ConversionError
-	if !errors.As(err, &conversion) {
-		return state.issue("/", "stream lifecycle validation failed", err)
-	}
-	issues := make([]ConversionIssue, len(conversion.Issues))
-	for index, issue := range conversion.Issues {
-		issue.Protocol, issue.Direction, issue.Stage = state.target.Protocol, state.direction, "wire.stream"
-		switch issue.Path {
-		case "/type":
-			issue.Path = state.contract.discriminator.path
-		case "/item", "/itemId", "/item/kind":
-			issue.Path = event.itemID.path
-		case "/delta", "/item/input/value":
-			issue.Path = event.delta.path
-		case "snapshot":
-			if event.action == ItemSnapshot {
-				issue.Path = event.delta.path
-			}
-		case "/item/name":
-			issue.Path = event.itemID.path
-			if event.tool != nil {
-				issue.Path = event.tool.name.path
-			}
-		case "/item/callId", "/callId":
-			issue.Path = event.itemID.path
-			if event.tool != nil {
-				issue.Path = event.tool.callID.path
-			}
-		case "/error":
-			issue.Path = event.failure.path
-		case "/usage":
-			issue.Path = "/"
-		}
-		if item := state.replay.items[issue.Path]; item != nil && item.kind == ToolCallNode {
-			paths := state.toolPaths[issue.Path]
-			switch event.action {
-			case ItemStarted:
-				issue.Path = event.tool.callID.path
-			case ItemDelta, ItemSnapshot:
-				issue.Path = event.delta.path
-			case ItemFinished:
-				issue.Path = event.itemID.path
-			case ResponseFinished:
-				switch {
-				case item.name == "":
-					issue.Path = paths.name
-				case item.callID == "":
-					issue.Path = paths.callID
-				default:
-					issue.Path = paths.arguments
-				}
-			}
-		}
-		if issue.Code != LimitExceeded {
-			issue.Code = ConversionRejected
-			if state.direction == DecodeEvent {
-				issue.Code = UpstreamContractViolation
-			}
-		}
-		issues[index] = issue
-	}
-	return &ConversionError{cause: err, Issues: issues}
 }

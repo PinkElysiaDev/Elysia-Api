@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -19,7 +20,7 @@ type sessionTraceFrame struct {
 
 func executeSessionSample(ctx context.Context, compiled *Compiled, sample SessionSample) (sessionEvidence, error) {
 	result := sessionEvidence{coverage: map[Direction]CapabilitySet{}}
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	options := newVerificationContext(sample.Scope, sample.Context)
 	defer options.State.Release()
 	operation := compiled.operations[sample.Operation]
 	replay, err := NewSessionReplay(sessionLaneTarget(compiled, ClientEvent, options), sessionLaneTarget(compiled, UpstreamEvent, options), compiled.limits, SessionPolicy{Model: sample.Model, CanGenerateAutomatically: operation.Session.CanGenerateAutomatically})
@@ -78,7 +79,7 @@ func executeSessionSample(ctx context.Context, compiled *Compiled, sample Sessio
 		}
 		result.checks = append(result.checks, check)
 	}
-	return result, replay.Finish()
+	return result, errors.Join(replay.Finish(), compiled.finishInputEvents(ctx, DecodeClientEvent, options), compiled.finishInputEvents(ctx, DecodeEvent, options))
 }
 
 func eventOrigin(direction Direction) EventOrigin {

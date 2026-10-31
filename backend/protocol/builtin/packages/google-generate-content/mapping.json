@@ -13765,7 +13765,58 @@
         }
       }
     }
+  ,
+"conversion-has-session-resource": {
+  "op": "if",
+  "when": {
+    "op": "present",
+    "source": {
+      "op": "read",
+      "from": "input",
+      "path": "/resources"
+    }
   },
+  "then": {
+    "op": "integer",
+    "operation": "gt",
+    "items": [
+      {
+        "op": "length",
+        "source": {
+          "op": "filter",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/resources"
+          },
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "item",
+                "path": "/kind"
+              },
+              {
+                "op": "literal",
+                "value": "session"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "op": "literal",
+        "value": 0
+      }
+    ]
+  },
+  "otherwise": {
+    "op": "literal",
+    "value": false
+  }
+}
+},
   "directions": {
     "decode_request": {
       "document": "request",
@@ -16471,7 +16522,26 @@
           },
           "reason": "target has no cache creation counter; configure usage projection"
         }
-      ],
+      ,
+{
+  "id": "reasoning-collection-projection",
+  "kind": "reject",
+  "path": "/collection",
+  "when": {
+    "op": "exists",
+    "source": {
+      "op": "read",
+      "from": "input",
+      "path": "/collection"
+    }
+  },
+  "reason": "target has no declared mapping for a reasoning collection child",
+  "diagnostic": {
+    "code": "unsupported_capability",
+    "stage": "evaluate"
+  }
+}
+],
       "capabilities": {
         "text": true,
         "tools.function": true,
@@ -27473,4 +27543,118 @@
       }
     ]
   }
+,
+"conversionDefaults": [
+{
+  "id": "event-control",
+  "order": 210,
+  "enabled": true,
+  "phase": "event",
+  "control": {
+    "kinds": [
+      "continuation_state"
+    ],
+    "disposition": "omit",
+    "path": "/headers",
+    "reason": "target has no equivalent continuation state channel"
+  }
+},
+{
+  "id": "event-metadata",
+  "order": 220,
+  "enabled": true,
+  "phase": "event",
+  "auxiliary": {
+    "disposition": "omit",
+    "path": "/metadata",
+    "reason": "target cannot represent the source auxiliary event"
+  }
+},
+  {
+    "id": "responses-context",
+    "order": 185,
+    "enabled": true,
+    "phase": "request",
+    "match": {},
+    "steps": [
+      {
+        "when": {
+          "op": "any",
+          "items": [
+            {
+              "op": "ref",
+              "ref": "conversion-has-session-resource"
+            },
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/responses_previous_response_id"
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "reject",
+          "path": "/previous_response_id",
+          "reason": {
+            "op": "literal",
+            "value": "target cannot resolve a previous response; complete history restoration is required before conversion"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/parameters/responses_truncation"
+          }
+        },
+        "diagnostic": {
+          "kind": "reject",
+          "path": "/truncation",
+          "reason": {
+            "op": "literal",
+            "value": "target has no verified equivalent context truncation behavior; this constraint cannot be omitted"
+          }
+        }
+      },
+      {
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/responses_previous_response_id"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "null"
+            }
+          ]
+        },
+        "diagnostic": {
+          "kind": "normalize",
+          "path": "/previous_response_id",
+          "reason": {
+            "op": "literal",
+            "value": "null previous response reference normalized to no history reference"
+          }
+        },
+        "set": {
+          "/parameters/responses_previous_response_id": {
+            "op": "omit"
+          }
+        }
+      }
+    ]
+  }
+]
 }

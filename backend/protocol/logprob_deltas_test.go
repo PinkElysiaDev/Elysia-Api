@@ -68,12 +68,12 @@ func TestCollectorDeferredLogprobsMatchImmediateObservation(t *testing.T) {
 					hasDeferred := false
 					for index, event := range events {
 						kind, text, err := actual.Consume(event)
-						hasDeferred = hasDeferred || actual.logprobItems > 0
+						hasDeferred = hasDeferred || actual.metadataItems > 0
 						wantKind, wantText, wantErr := reference.Consume(event)
 						// Materializing each accepted update reproduces the old
 						// eager boundary; the pure merger is checked against the
 						// unchanged pairwise implementation above.
-						reference.materializeLogprobs()
+						reference.materializeMetadata()
 						if kind != wantKind || text != wantText || fmt.Sprint(err) != fmt.Sprint(wantErr) {
 							t.Fatalf("event %d: (%s,%q,%v) != (%s,%q,%v)", index, kind, text, err, wantKind, wantText, wantErr)
 						}
@@ -123,7 +123,7 @@ func TestCollectorLogprobSnapshotsAndItemIsolation(t *testing.T) {
 				t.Helper()
 				kind, delta, err := actual.Consume(event)
 				wantKind, wantDelta, wantErr := reference.Consume(event)
-				reference.materializeLogprobs()
+				reference.materializeMetadata()
 				if kind != wantKind || delta != wantDelta || fmt.Sprint(err) != fmt.Sprint(wantErr) {
 					t.Fatal("event result changed", err, wantErr)
 				}

@@ -91,6 +91,9 @@ func (session *SessionReplay) Consume(origin EventOrigin, event Event) (bool, er
 	if session.isClosed {
 		return false, streamIssue(UpstreamContractViolation, "/type", "event arrived after session close")
 	}
+	if event.Type == ControlUpdated && event.controlReceipt != nil {
+		return true, session.checkBudget()
+	}
 	if origin == ClientEvent {
 		err = session.consumeClient(event)
 	} else {

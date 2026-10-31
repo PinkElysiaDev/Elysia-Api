@@ -80,7 +80,20 @@ func TestPackageFinalEventDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := validation.CommitDelivery(); err == nil {
+		t.Fatal("rejected final frame was committed")
+	}
+	if err := validation.Consume(t.Context(), valid); err == nil {
+		t.Fatal("rejected validation state was reused")
+	}
+	validation, err = compiled.NewWireStreamValidation(Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := validation.Consume(t.Context(), valid); err != nil {
-		t.Fatal("failed final contract advanced the stream", err)
+		t.Fatal("new validator rejected the valid final contract", err)
+	}
+	if err := validation.CommitDelivery(); err != nil {
+		t.Fatal(err)
 	}
 }

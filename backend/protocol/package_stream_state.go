@@ -36,7 +36,9 @@ type packageStreamState struct {
 // Updates are staged separately from retained state. The outer event boundary
 // commits only after decoding, provenance and native reconciliation succeed.
 type packageStreamTransaction struct {
-	trackChannels                  map[string]uint8
+	trackChannels                  map[string]int
+	bufferUpdates                  map[streamTrackKey]*pendingStreamBuffer
+	bufferByteDelta                int
 	trackItems                     int
 	toolUpdates                    map[streamTrackKey]*pendingStreamTool
 	toolCallUpdates                map[streamTrackKey]string
@@ -244,11 +246,11 @@ func (transaction *packageStreamTransaction) currentSlotBytes() int {
 // All retained payloads share one budget. Category deltas keep appending a
 // frame constant-time without granting each table a separate buffer allowance.
 func (transaction *packageStreamTransaction) retainedBytes() int {
-	bytes := transaction.currentSlotBytes() + transaction.indexByteDelta + transaction.aliasBytes + transaction.trackedBytes + transaction.toolCallBytes + transaction.toolBufferDelta
+	bytes := transaction.currentSlotBytes() + transaction.indexByteDelta + transaction.aliasBytes + transaction.trackedBytes + transaction.toolCallBytes + transaction.toolBufferDelta + transaction.bufferByteDelta
 	if transaction.previous != nil {
 		bytes += transaction.previous.indexBytes
 		if primitives := transaction.previous.primitives; primitives != nil {
-			bytes += primitives.aliasBytes + primitives.trackedBytes + primitives.toolCallBytes + primitives.toolBuffered
+			bytes += primitives.aliasBytes + primitives.trackedBytes + primitives.toolCallBytes + primitives.toolBuffered + primitives.buffered
 		}
 	}
 	return bytes

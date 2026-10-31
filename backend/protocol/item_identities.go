@@ -23,7 +23,7 @@ func (index *ItemIdentities) Parent(value Value) (string, error) {
 	}
 	id, err := readString(value)
 	if err != nil || id == "" || index.aliases["item:"+id] == "" {
-		return "", streamIssue(InvalidAssociation, "/parentId", "parent must reference an already started message item")
+		return "", streamIssue(InvalidAssociation, "/parentId", "parent must reference an already started item")
 	}
 	return index.aliases["item:"+id], nil
 }

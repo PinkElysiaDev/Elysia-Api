@@ -130,7 +130,12 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 		if err = checkResourceValue(value, limits, "semantic"); err != nil {
 			return Value{}, err
 		}
-		*state = conversionState{wire: value, limits: limits}
+		*state = conversionState{wire: value, limits: limits, auxiliary: state.auxiliary, omittedAuxiliary: state.omittedAuxiliary, control: state.control, omittedControl: state.omittedControl}
+		if phase == ConversionEvent && (state.auxiliary != nil || state.omittedAuxiliary != nil || state.control != nil || state.omittedControl != nil) {
+			if err := state.load(phase, true); err != nil {
+				return Value{}, err
+			}
+		}
 	}
 	if returnValue {
 		var flushErr error

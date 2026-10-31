@@ -11,10 +11,11 @@ type compiledWireStateUpdate struct {
 }
 
 func (compiler *packageStreamCompiler) compileCheckAction(spec ProtocolStreamActionSpec, path string) (compiledPackageStreamEvent, error) {
-	event := compiledPackageStreamEvent{}
-	if spec.Kind != "" || spec.ResponseID != "" || spec.ItemID != "" || spec.ItemIDValue != nil || spec.Text != "" || spec.Arguments != "" || spec.ArgumentsValue != nil || spec.Tool != nil || spec.Error != "" || spec.Usage != nil || spec.Implicit || spec.SparseIdentity || spec.AllowBeforeStart || hasStreamItemSelectors(spec) {
+	event := compiledPackageStreamEvent{canFollowTerminal: spec.AfterTerminal}
+	if hasStreamEntitySelectors(spec) || spec.ResponseID != "" || spec.Error != "" || spec.Implicit || spec.AllowBeforeStart || spec.ResponseIndependent || spec.FrameClass != "" {
 		return event, fmt.Errorf("%s: validation actions cannot declare lifecycle payloads", path)
 	}
+
 	if spec.Action == "state_update" {
 		if len(spec.Updates) == 0 || len(spec.Assertions) != 0 || compiler.contract.state == nil {
 			return event, fmt.Errorf("%s: state_update requires declared slots and nonempty updates without assertions", path)

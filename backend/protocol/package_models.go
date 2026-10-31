@@ -12,7 +12,7 @@ func (compiled *Compiled) compilePackageModelMappings(spec ProtocolSpec, mapping
 			continue
 		}
 		path := "/mapping/operations/" + escapePointer(name) + "/decodeModels"
-		wire := spec.Documents[operation.Response]
+		wire := wireSpec.resolvedDocuments[operation.Response]
 		program := *mapping.Operations[name].DecodeModels
 		references := map[string]Expression{}
 		expressions.mappingReferences = references

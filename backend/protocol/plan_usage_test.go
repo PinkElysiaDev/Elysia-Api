@@ -1,9 +1,32 @@
 package protocol
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 )
+
+func TestPlanCheckUsageUsesJSONDirection(t *testing.T) {
+	document := textProtocolPackage(t)
+	document.Mapping.Capabilities[UsageCapability] = true
+	document.Spec.Documents["provider-response"].Schema.Properties["usage"] = ValueSchema{Type: ObjectType, AllowUnknown: true}
+	document.Mapping.Directions[DecodeResponse].Program.Fields["usage"] = Expression{Op: "check_usage", Source: expressionPointer(readExpression("input", "/usage"))}
+	compiled := compilePackageForTest(t, document)
+	_, err := compiled.DecodeResponse(t.Context(), []byte(`{"reply":"ok","usage":{"output":{"count":1,"origin":"observed"},"details":{"output.reasoning_tokens":{"count":2,"origin":"observed"}}}}`), EvaluationContext{})
+	var failure *ConversionError
+	if !errors.As(err, &failure) || len(failure.Issues) != 1 {
+		t.Fatal("usage check lost its structured rejection", err)
+	}
+	issue := failure.Issues[0]
+	if issue.Code != InvalidInput || issue.Protocol != compiled.Identity() || issue.Direction != DecodeResponse || issue.Stage != "core.usage" || issue.Path != "/usage/details/output.reasoning_tokens" {
+		t.Fatal("JSON check_usage lost its direction or core location", issue)
+	}
+	var checked *declaredCheckError
+	var neutral *ConversionError
+	if !errors.As(err, &checked) || !errors.As(checked.err, &neutral) || neutral.Issues[0].Direction != "" || neutral.Unwrap() == nil || !errors.Is(err, neutral.Unwrap()) {
+		t.Fatal("declared usage check lost its neutral error or original cause", err)
+	}
+}
 
 func TestPlanMergeUsageRetainsObservedCounts(t *testing.T) {
 	plan := numericTestPlan(t, Expression{Op: "merge_usage", Items: []Expression{

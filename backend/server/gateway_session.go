@@ -108,7 +108,11 @@ func (s *Server) serveGatewaySession(ctx context.Context, c *app.RequestContext,
 	}
 	request := candidate.prepared.Clone()
 	request.Model = protocol.StringValue(candidate.model.Identifier())
-	sessionOptions := protocol.EvaluationContext{Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}}
+	sessionOptions, err := (protocol.EvaluationContext{Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}}).WithOperation(record.RequestID, record.StartedAt.Unix())
+	if err != nil {
+		s.failGateway(ctx, c, record, http.StatusBadRequest, err)
+		return
+	}
 	releases = append(releases, func() { record.appendConversionIssues(sessionOptions.Diagnostics.Issues()) })
 	if candidate.model.CacheSynthesis {
 		protocol.SynthesizeCacheBreakpoints(request, candidate.compiled.Capabilities(protocol.EncodeRequest), sessionOptions)
@@ -125,7 +129,7 @@ func (s *Server) serveGatewaySession(ctx context.Context, c *app.RequestContext,
 		s.failGateway(ctx, c, record, http.StatusBadRequest, err)
 		return
 	}
-	adapter, err = protocol.NewSessionAdapter(ingress, candidate.compiled, plan.operation, candidate.operation, candidate.binding, candidate.scope, plan.request.Model)
+	adapter, err = protocol.NewSessionAdapter(ingress, candidate.compiled, plan.operation, candidate.operation, candidate.binding, sessionOptions, plan.request.Model)
 	if err != nil {
 		s.failGateway(ctx, c, record, http.StatusBadRequest, err)
 		return

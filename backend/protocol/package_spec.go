@@ -66,10 +66,11 @@ type ProtocolTaskMapping struct {
 }
 
 type compiledProtocolSpec struct {
-	documents        map[string]compiledWireContract
-	documentHashes   map[string]string
-	operations       map[string]Operation
-	operationSchemas map[string]*runtimeValueSchema
+	documents         map[string]compiledWireContract
+	resolvedDocuments map[string]WireContractSpec
+	documentHashes    map[string]string
+	operations        map[string]Operation
+	operationSchemas  map[string]*runtimeValueSchema
 }
 
 // Identity returns the authored wire identity; content hashes bind its execution.
@@ -85,35 +86,18 @@ func (spec ProtocolSpec) compile(limits Limits) (compiledProtocolSpec, error) {
 		return compiledProtocolSpec{}, fmt.Errorf("/spec: requires named documents and operations")
 	}
 	compiled := compiledProtocolSpec{
-		documents:        make(map[string]compiledWireContract, len(spec.Documents)),
-		documentHashes:   make(map[string]string, len(spec.Documents)),
-		operations:       make(map[string]Operation, len(spec.Operations)),
-		operationSchemas: make(map[string]*runtimeValueSchema, len(spec.Operations)),
+		documents:         make(map[string]compiledWireContract, len(spec.Documents)),
+		resolvedDocuments: make(map[string]WireContractSpec, len(spec.Documents)),
+		documentHashes:    make(map[string]string, len(spec.Documents)),
+		operations:        make(map[string]Operation, len(spec.Operations)),
+		operationSchemas:  make(map[string]*runtimeValueSchema, len(spec.Operations)),
 	}
 	expressions := newExpressionCompiler(limits, spec.Expressions)
-	// Compile every declaration once, including documents not selected by this
-	// mapping. A second mapping can use the same standalone spec differently.
+	documentCompiler := protocolDocumentCompiler{spec: spec, compiled: &compiled, expressions: expressions, visiting: map[string]bool{}, depths: map[string]int{}}
 	for _, name := range sortedKeys(spec.Documents) {
-		path := "/spec/documents/" + escapePointer(name)
-		if !definitionIdentifier.MatchString(name) {
-			return compiledProtocolSpec{}, fmt.Errorf("%s: invalid document name", path)
-		}
-		references := map[string]Expression{}
-		expressions.mappingReferences = references
-		contract, err := expressions.compileWireContractSpec(spec.Documents[name], path)
-		expressions.mappingReferences = nil
-		if err != nil {
+		if err := documentCompiler.compile(name, 1); err != nil {
 			return compiledProtocolSpec{}, err
 		}
-		identity, err := EncodeValue(struct {
-			Document   WireContractSpec      `json:"document"`
-			References map[string]Expression `json:"references"`
-		}{spec.Documents[name], references})
-		if err != nil {
-			return compiledProtocolSpec{}, err
-		}
-		compiled.documents[name] = contract
-		compiled.documentHashes[name] = hashValue(identity)
 	}
 	for _, name := range sortedKeys(spec.Expressions) {
 		if !expressions.used[name] {

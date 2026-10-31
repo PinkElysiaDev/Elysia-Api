@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
@@ -73,7 +74,7 @@ func TestCollectedChatModelRepairAndPreview(t *testing.T) {
 				t.Fatal(err)
 			}
 			candidate := gatewayCandidate{compiled: upstream, conversion: conversion, operation: operation, operationName: operationName, model: config.ModelRef{ID: "configured-model", Name: "configured-model", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
-			record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: 1 << 20}}
+			record := &usageRecord{RequestID: "fixture-execution", StartedAt: time.Now(), bodyOpts: usageBodyOptions{maxBytes: 1 << 20}}
 			before := calls
 			result, collectErr := s.collectProtocolGeneration(t.Context(), candidate, request, record, nil)
 			if calls != before+1 {

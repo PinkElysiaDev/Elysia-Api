@@ -1,7 +1,9 @@
 package protocol
 
-// A check deliberately invokes a semantic constraint. Wire assertions retain
-// its existing business diagnostic instead of treating it as a failed predicate.
+import "errors"
+
+// Declared checks retain their business diagnostics and error chains instead
+// of being reported as an unclassified failed predicate.
 type declaredCheckError struct{ err error }
 
 func (failure *declaredCheckError) Error() string { return failure.err.Error() }
@@ -20,6 +22,18 @@ func (plan *compiledOutputPlan) checkUsage(state evaluation) (plannedOutput, err
 		return plannedOutput{}, err
 	}
 	if err := ValidateUsageArithmetic(usage); err != nil {
+		// The legacy validator reports stream attribution even for JSON. Its
+		// code, core location and cause remain valid; this invocation owns stage.
+		var failure *ConversionError
+		if errors.As(err, &failure) {
+			issues := append([]ConversionIssue(nil), failure.Issues...)
+			for index := range issues {
+				issues[index].Protocol, issues[index].Direction = Identity{}, ""
+				issues[index].Stage = "core.usage"
+				issues[index].Suggestion = "Correct the usage counters or the mapping that produced them."
+			}
+			err = &ConversionError{cause: err, Issues: issues, CandidateOnly: failure.CandidateOnly}
+		}
 		return plannedOutput{}, &declaredCheckError{err: err}
 	}
 	return value, nil

@@ -44,7 +44,10 @@ type gatewayStream struct {
 
 func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext, record *usageRecord, plan *gatewayResponsePlan, candidate gatewayCandidate, response *http.Response) error {
 	limits := plan.ingress.ResourceLimits()
-	options := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}
+	options, err := (protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}).WithOperation(record.RequestID, record.StartedAt.Unix())
+	if err != nil {
+		return err
+	}
 	defer options.State.Release()
 	options.ClientOutput = plan.clientOutput
 	defer func() { record.appendConversionIssues(options.Diagnostics.Issues()) }()

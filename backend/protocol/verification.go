@@ -121,6 +121,11 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 		if isEventDecoder(sample.Direction) && compiled.native.Preserve && evidence.observed[NativeExtensionsCapability] && compiled.Supports(eventEncoder(sample.Direction)) {
 			coverage[eventEncoder(sample.Direction)][NativeExtensionsCapability] = true
 		}
+		// Source receipts cannot be authored in an encode fixture. The completed
+		// frame roundtrip is the corresponding target state-channel evidence.
+		if isEventDecoder(sample.Direction) && evidence.observed[ControlStateCapability] && compiled.Supports(eventEncoder(sample.Direction)) {
+			coverage[eventEncoder(sample.Direction)][ControlStateCapability] = true
+		}
 		hasSample[sample.Direction] = true
 		if sample.Direction == DecodeRequest || sample.Direction == EncodeRequest {
 			for name, operation := range compiled.operations {
@@ -192,7 +197,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 }
 
 func executeVerificationSample(ctx context.Context, compiled *Compiled, sample Sample) (verificationResult, error) {
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	options := newVerificationContext(sample.Scope, sample.Context)
 	defer options.State.Release()
 	var result verificationResult
 	var err error
@@ -238,7 +243,7 @@ func executeVerificationSample(ctx context.Context, compiled *Compiled, sample S
 }
 
 func executeEventFixture(ctx context.Context, compiled *Compiled, sample Sample) (verificationResult, error) {
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	options := newVerificationContext(sample.Scope, sample.Context)
 	defer options.State.Release()
 	return executeEventFixtureWithState(ctx, compiled, sample, options)
 }
@@ -270,12 +275,13 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 	for _, input := range inputs {
 		hasOutputFrames := false
 		if isEventDecoder(sample.Direction) {
-			if wireValidation != nil {
-				if err := wireValidation.Consume(ctx, input); err != nil {
-					return verificationResult{}, err
-				}
+			var frame *EventFrame
+			var err error
+			if wireValidation != nil && wireValidation.packageStream != nil {
+				frame, err = wireValidation.decodeFrame(ctx, input, options)
+			} else {
+				frame, err = compiled.decodeFrame(ctx, sample.Direction, input, options)
 			}
-			frame, err := compiled.decodeFrame(ctx, sample.Direction, input, options)
 			if err != nil {
 				return verificationResult{}, err
 			}

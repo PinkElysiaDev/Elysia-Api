@@ -20,7 +20,7 @@ func (transaction *packageStreamTransaction) reserveTrackChannel(item string, li
 		transaction.trackedBytes += len(item)
 	}
 	if transaction.trackChannels == nil {
-		transaction.trackChannels = make(map[string]uint8)
+		transaction.trackChannels = make(map[string]int)
 	}
 	transaction.trackChannels[item]++
 	if channels == 0 {
@@ -30,7 +30,9 @@ func (transaction *packageStreamTransaction) reserveTrackChannel(item string, li
 }
 
 type packageStreamPrimitives struct {
-	trackedItems  map[string]uint8
+	trackedItems  map[string]int
+	buffers       map[streamTrackKey]*streamBuffer
+	buffered      int
 	tools         map[streamTrackKey]*streamTrackedTool
 	toolCalls     map[streamTrackKey]string
 	toolBuffered  int
@@ -112,7 +114,7 @@ func (plan *compiledOutputPlan) resolveStreamItem(state evaluation) (plannedOutp
 		parent, err := readString(event.ParentID)
 		resolved := readItemAlias(base.identities.aliases, transaction.aliasUpdates, "item:"+parent)
 		if err != nil || parent == "" || resolved == "" {
-			return plannedOutput{}, streamIssue(InvalidAssociation, "/parentId", "parent must reference an already started message item")
+			return plannedOutput{}, streamIssue(InvalidAssociation, "/parentId", "parent must reference an already started item")
 		}
 		fields["parent"] = JSONLeaf(StringValue(resolved))
 	}
@@ -135,12 +137,20 @@ func (transaction *packageStreamTransaction) commitPrimitives() *packageStreamPr
 	base.trackedBytes += transaction.trackedBytes
 	base.toolCallBytes += transaction.toolCallBytes
 	if len(transaction.trackChannels) != 0 && base.trackedItems == nil {
-		base.trackedItems = make(map[string]uint8)
+		base.trackedItems = make(map[string]int)
 	}
 	for item, count := range transaction.trackChannels {
-		base.trackedItems[strings.Clone(item)] += count
+		if count == 0 {
+			continue
+		}
+		if remaining := base.trackedItems[item] + count; remaining != 0 {
+			base.trackedItems[strings.Clone(item)] = remaining
+		} else {
+			delete(base.trackedItems, item)
+		}
 	}
 
+	transaction.commitBuffers(base)
 	transaction.commitTools(base)
 	if len(transaction.textUpdates) != 0 && base.texts == nil {
 		base.texts = make(map[streamTrackKey]*TextTracker)

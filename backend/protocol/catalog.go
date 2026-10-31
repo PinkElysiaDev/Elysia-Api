@@ -16,8 +16,11 @@ var expressionOperations = []OperationInfo{
 	{"with_input", []string{"source", "body"}, []string{"source", "body"}, AnyType, "Evaluate body with the selected immutable input without encoding it; root remains the original document, and only original reads retain wire provenance."},
 	{"track_tool", []string{"name", "source", "body"}, []string{"name", "source", "body"}, StringType, "Stage bounded JSON/text tool arguments with explicit snapshot, done and emit flags; emit returns every previously withheld byte once."},
 	{"track_text", []string{"name", "source", "body", "policy"}, []string{"name", "source", "body", "policy"}, StringType, "Stage a text delta or append-only snapshot for a stable item key and fixed channel, returning only its new suffix."},
-	{"read_delivered_item", []string{"source"}, []string{"source"}, ObjectType, "Read kind, completion and a declared numeric index for one delivered wire item; an unbound output stream or absent item yields missing. Unsent or rejected validation state is never readable."},
-	{"resume_text", []string{"name", "source", "body"}, []string{"name", "source", "body"}, AnyType, "Initialize a new text tracker from an open delivered wire item, cloning only its digest and byte count; source names the tracker item, body selects the wire item, and success yields missing."},
+	{"buffer_text", []string{"name", "source", "body", "operation"}, []string{"name", "source", "operation"}, StringType, "Retain bounded text by item and fixed channel. Append/snapshot return the suffix; read materializes an immutable whole, length reads byte count, release discards it."},
+	{"buffer_array", []string{"name", "source", "body", "operation"}, []string{"name", "source", "operation"}, ArrayType, "Retain a bounded array by item and fixed channel. Append/snapshot return added members; read shares an immutable array, length reads member count, release discards it."},
+	{"read_delivered_item", []string{"namespace", "source"}, []string{"namespace", "source"}, ObjectType, "Read entity, payload type and completion for a delivered item in a fixed wire namespace; unsent or rejected state is never readable."},
+	{"resume_text", []string{"namespace", "name", "source", "body"}, []string{"namespace", "name", "source", "body"}, AnyType, "Initialize a text tracker from an open delivered entity in a fixed namespace, cloning its digest and byte count; success yields missing."},
+	{"pointer_join", []string{"source", "items"}, []string{"source", "items"}, StringType, "Append decoded string segments to an RFC 6901 pointer, escaping each segment without reading or writing the selected document."},
 	{"resolve_item", []string{"source"}, []string{"source"}, ObjectType, "Resolve item/call/index aliases and an existing parent within the current stream transaction."},
 	{"index_values", []string{"name"}, []string{"name"}, ArrayType, "Read current values of a declared persistent index; enumerate explicitly, then sort by the authored numeric position when order matters."},
 	{"with_index", []string{"name", "keyMode", "policy", "body"}, []string{"name", "keyMode", "policy", "body"}, AnyType, "Create a lexical raw_json index with last, first or reject duplicate policy; its bounded state lasts only through body."},
@@ -55,7 +58,7 @@ var expressionOperations = []OperationInfo{
 	{"merge_usage", []string{"items"}, []string{"items"}, ObjectType, "Merge core Usage snapshots in order, preserving observed counters and recomputing inferred totals; missing or null snapshots are absent, and an entirely absent result is omitted."},
 	{"project", []string{"source", "keys", "policy"}, []string{"source", "keys", "policy"}, ObjectType, "Include or exclude declared object keys; retain present null values and never create missing fields."},
 	{"keys", []string{"source"}, []string{"source"}, ArrayType, "Return an object's sorted, unique decoded key strings after JSON key normalization, without materializing member values or granting native provenance. Missing, null and non-object sources are errors."},
-	{"entries", []string{"source"}, []string{"source"}, ArrayType, "Read sorted object members as key/value entries; retain null values and fold decoded duplicate keys like object reads."},
+	{"entries", []string{"source", "policy"}, []string{"source"}, ArrayType, "Read key/value members. Omitted policy sorts and folds decoded duplicate keys; preserve retains original member order and duplicates for explicit validation."},
 	{"from_entries", []string{"source", "policy", "onConflict"}, []string{"source", "policy"}, ObjectType, "Construct an object from key/value entries. Explicitly reject duplicate keys, require byte-identical values, or select the last value. No implicit empty value."},
 	{"concat", []string{"items"}, []string{"items"}, ArrayType, "Concatenate ordered arrays."},
 	{"join", []string{"items", "source"}, nil, StringType, "Concatenate either string expressions in items or a source array of strings, without implicit coercion."},
@@ -77,10 +80,11 @@ var expressionOperations = []OperationInfo{
 	{"strip_prefix", []string{"source", "value"}, []string{"source", "value"}, StringType, "Remove a required literal string prefix; a mismatching input is an error."},
 	{"trim_prefix", []string{"source", "value"}, []string{"source", "value"}, StringType, "Remove a literal string prefix when present; a mismatching input passes through unchanged."},
 	{"lower", []string{"source"}, []string{"source"}, StringType, "Convert a string to Unicode lower case without coercing other JSON values."},
+	{"has_control", []string{"source"}, []string{"source"}, BooleanType, "Report whether a string contains a Unicode control character (category Cc)."},
 	{"quote_string", []string{"source"}, []string{"source"}, StringType, "Quote a string as a Go string literal for exact diagnostic text; do not apply JSON HTML escaping."},
 	{"has_prefix", []string{"source", "value"}, []string{"source", "value"}, BooleanType, "Test whether a string begins with a declared literal string; matching is case sensitive."},
 	{"contains", []string{"source", "value"}, []string{"source", "value"}, BooleanType, "Test whether a string contains a declared literal string; matching is case sensitive."},
-	{"ref", []string{"ref"}, []string{"ref"}, AnyType, "Expand a named expression at compile time; recursive references fail."},
+	{"ref", []string{"ref"}, []string{"ref"}, AnyType, "Invoke a named program compiled once for its static scope; recursive references fail, and execution values remain local to each invocation."},
 }
 
 // ExpressionCatalog returns an independent copy of mapping operation metadata.
@@ -96,7 +100,7 @@ func ExpressionCatalog() []OperationInfo {
 
 // CapabilityCatalog lists every semantic feature recognized by this engine.
 func CapabilityCatalog() []Capability {
-	return []Capability{TextCapability, FunctionToolsCapability, FreeTextToolsCapability, ServerToolsCapability, NativeExtensionsCapability, ImagesCapability, AudioCapability, VideoCapability, DocumentsCapability, ReasoningCapability, ReasoningHistoryRetentionCapability, SignaturesCapability, EncryptedReasoningCapability, CacheBreakpointsCapability, CacheKeysCapability, CacheRetentionCapability, CacheResourcesCapability, CacheOptionsCapability, CachePrewarmCapability, SessionsCapability, RealtimeMediaCapability, AsyncJobsCapability, UsageCapability}
+	return []Capability{TextCapability, FunctionToolsCapability, FreeTextToolsCapability, ServerToolsCapability, NativeExtensionsCapability, ControlStateCapability, ImagesCapability, AudioCapability, VideoCapability, DocumentsCapability, ReasoningCapability, ReasoningHistoryRetentionCapability, SignaturesCapability, EncryptedReasoningCapability, CacheBreakpointsCapability, CacheKeysCapability, CacheRetentionCapability, CacheResourcesCapability, CacheOptionsCapability, CachePrewarmCapability, SessionsCapability, RealtimeMediaCapability, AsyncJobsCapability, UsageCapability}
 }
 
 // DirectionCatalog lists independently implementable adapter operations.

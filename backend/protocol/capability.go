@@ -11,6 +11,7 @@ const (
 	FreeTextToolsCapability             Capability = "tools.free_text"
 	ServerToolsCapability               Capability = "tools.server"
 	NativeExtensionsCapability          Capability = "native_extensions"
+	ControlStateCapability              Capability = "control.state"
 	ImagesCapability                    Capability = "images"
 	AudioCapability                     Capability = "audio"
 	VideoCapability                     Capability = "video"
@@ -173,6 +174,7 @@ func (check *capabilityCheck) content(nodes []Node, path string, depth int) {
 			return
 		}
 		location := fmt.Sprintf("%s/%d", path, index)
+		check.metadataSnapshot(node.Metadata, location+"/metadata")
 		switch node.Kind {
 		case MessageNode:
 			check.requireName(node.Role, location+"/role")
@@ -345,6 +347,14 @@ func (check *capabilityCheck) resources(resources []Resource, path string) {
 			check.require(CacheResourcesCapability, location)
 		default:
 			check.add(UnsupportedNative, location, NativeExtensionsCapability, "resource kind has no declared mapping")
+		}
+	}
+}
+
+func (check *capabilityCheck) metadataSnapshot(metadata []ResponseMetadata, path string) {
+	for index, field := range metadata {
+		if field.Update != "" {
+			check.add(InvalidInput, fmt.Sprintf("%s/%d/update", path, index), "", "metadata snapshots cannot carry update instructions")
 		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
@@ -64,7 +65,7 @@ func TestCollectorAppliesStartupConversion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: 1 << 20}}
+	record := &usageRecord{RequestID: "fixture-execution", StartedAt: time.Now(), bodyOpts: usageBodyOptions{maxBytes: 1 << 20}}
 	result, err := s.collectProtocolGeneration(t.Context(), candidate, request, record, nil)
 	if err != nil || result == nil {
 		t.Fatalf("enabled startup rule failed: %v", err)

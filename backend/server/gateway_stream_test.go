@@ -206,7 +206,12 @@ func TestGatewayOutputPositionCommitsAfterFlush(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			options := (protocol.EvaluationContext{}).WithOutputStream(validation)
+			options := (protocol.EvaluationContext{State: protocol.NewEvaluationState()}).WithOutputStream(validation)
+			defer options.State.Release()
+			sourceOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
+			defer sourceOptions.State.Release()
+			wireOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
+			defer wireOptions.State.Release()
 			present := true
 			conversion, err := protocol.CompileConversion(protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "final-sequence", Rules: []protocol.ConversionRule{{
 				ID: "sequence", Enabled: true, Phase: protocol.ConversionWire, Match: protocol.ConversionMatch{Path: "/initial", Present: &present},
@@ -217,9 +222,9 @@ func TestGatewayOutputPositionCommitsAfterFlush(t *testing.T) {
 			}
 			stream := &gatewayStream{ctx: ctx, context: c, writer: writer, record: &usageRecord{FirstByteMs: 1},
 				plan:      &gatewayResponsePlan{ingress: compiled, operation: protocol.Operation{Transport: protocol.SSE}},
-				candidate: gatewayCandidate{conversion: conversion}, limits: compiled.ResourceLimits(), options: options, finalValidation: validation}
+				candidate: gatewayCandidate{conversion: conversion}, limits: compiled.ResourceLimits(), options: options, finalValidation: validation, wireValidation: wireOptions}
 			raw := mustProtocolValue(t, `{"type":"response.started","responseId":"delivered-id","sequence":0,"initial":true}`)
-			decoded, err := compiled.DecodeFrame(ctx, raw, protocol.EvaluationContext{})
+			decoded, err := compiled.DecodeFrame(ctx, raw, sourceOptions)
 			if err != nil {
 				t.Fatal(err)
 			}

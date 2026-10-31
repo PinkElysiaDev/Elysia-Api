@@ -25,6 +25,13 @@ func (compiled *Compiled) DecodeFrame(ctx context.Context, frame Value, options 
 }
 
 func (compiled *Compiled) decodeFrame(ctx context.Context, direction Direction, frame Value, options EvaluationContext) (result *EventFrame, err error) {
+	options, err = compiled.validateSourceFrame(ctx, direction, frame, options)
+	if err != nil {
+		return nil, compiled.runtimeError(direction, err)
+	}
+	if options.inputView != nil && options.inputView.sourceReceipt != nil && options.inputView.sourceReceipt.class == wireFrameControl {
+		return &EventFrame{}, nil
+	}
 	options, transaction, err := compiled.beginPackageTransaction(direction, options)
 	if err != nil {
 		return nil, compiled.runtimeError(direction, err)
@@ -150,8 +157,21 @@ func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Dire
 				return nil, fmt.Errorf("modified compound native frame requires explicit wire mutations")
 			}
 		}
+		if predicate := compiled.mappings[direction].nativeWhen; predicate != nil {
+			view := newInputView(frame.native.Value)
+			state := evaluation{ctx: ctx, input: view.value, root: view.value, valueReader: &view.borrowed, objectReader: view.objectReader(), inputView: view,
+				budget: &evaluationBudget{limits: compiled.limits, stepLimit: compiled.limits.Nodes}}
+			value, err := predicate.evaluate(state)
+			if err != nil {
+				return nil, compiled.mappingError(direction, err)
+			}
+			canReplay, err = readBoolean(value)
+			if err != nil {
+				return nil, compiled.mappingError(direction, err)
+			}
+		}
 	}
-	if canReplay && compiled.packagePlan != nil && compiled.mappings[direction].outputPlan.hasOutputStreamRead {
+	if canReplay && compiled.packagePlan != nil && compiled.mappings[direction].outputPlan.hasOutputStreamRead && !compiled.mappings[direction].preservesDynamicNative {
 		if len(frame.Events) != 1 {
 			return nil, streamIssue(UnsupportedNative, "/frame", "compound native frames require explicit dynamic field ownership before reading output stream metadata")
 		}
@@ -169,6 +189,9 @@ func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Dire
 		if err := IssuesError(CheckEvent(event, target, compiled.limits)); err != nil {
 			return nil, err
 		}
+		if isOmittedAuxiliaryEvent(event, target) || isOmittedControlEvent(event, target) {
+			continue
+		}
 		// Pinned same-wire streams remain native throughout; source decoding and
 		// replay validate the lifecycle before any original frame is emitted.
 		if canReplay {
@@ -179,6 +202,7 @@ func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Dire
 			}
 			continue
 		}
+		options.emissionOffset = len(frames)
 		value, err := compiled.encodeFrames(ctx, direction, event, options)
 		if err != nil {
 			return nil, err

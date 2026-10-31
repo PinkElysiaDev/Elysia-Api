@@ -8,10 +8,11 @@ import (
 func compoundEventPackage(t *testing.T) ProtocolPackage {
 	t.Helper()
 	document := eventProtocolPackage(t)
-	document.Spec.Documents["provider-event"].Stream.Events["combined"] = ProtocolStreamEventSpec{
-		{Action: "response_start"}, {Action: "item_start"}, {Action: "text_delta", Text: "/text"},
-		{Action: "item_finish"}, {Action: "usage", Usage: &ProtocolStreamUsageSpec{Input: "/usage/input", Output: "/usage/output", Total: "/usage/total"}}, {Action: "response_finish"},
+	stream := document.Spec.Documents["provider-event"].Stream
+	for _, tag := range []EventType{ResponseStarted, ItemStarted, ItemDelta, ItemFinished, UsageUpdated, ResponseFinished} {
+		stream.Events["combined"] = append(stream.Events["combined"], stream.Events[string(tag)]...)
 	}
+
 	mapping := document.Mapping.Directions[DecodeEvent]
 	single := mapping.Program
 	mapping.Program = Expression{Op: "array"}
@@ -41,10 +42,9 @@ func TestPackageCompoundFramePreservesOneNativeCarrier(t *testing.T) {
 	compiled := compilePackageForTest(t, document)
 	input := parseTestValue(t, `{ "kind":"combined","response_id":"r","item_id":"t","seq":0,"text":"hello","usage":{"input":2,"output":1,"total":3},"unknown":9007199254740993 }`)
 	source, _ := compiled.NewWireInputStreamValidation(Scope{})
-	if err := source.Consume(t.Context(), input); err != nil {
-		t.Fatal(err)
-	}
-	frame, err := compiled.DecodeFrame(t.Context(), input, EvaluationContext{})
+	options := EvaluationContext{State: NewEvaluationState()}
+	defer options.State.Release()
+	frame, err := source.DecodeFrame(t.Context(), input, options)
 	if err != nil || len(frame.Events) != 6 {
 		t.Fatal("compound frame lost actions", frame, err)
 	}
@@ -112,7 +112,9 @@ func TestPackageCompoundFrameRejectsHiddenFailure(t *testing.T) {
 	document := compoundEventPackage(t)
 	document.Mapping.Directions[DecodeEvent].Program.Items[1].Fields["schemaVersion"] = literalExpression(1)
 	compiled := compilePackageForTest(t, document)
-	_, err := compiled.DecodeFrame(t.Context(), input, EvaluationContext{})
+	options := EvaluationContext{State: NewEvaluationState()}
+	defer options.State.Release()
+	_, err := compiled.DecodeFrame(t.Context(), input, options)
 	assertPackageRuntimeIssue(t, err, InvalidInput, "/1/schemaVersion")
 	document = compoundEventPackage(t)
 	actions := document.Spec.Documents["provider-event"].Stream.Events["combined"]

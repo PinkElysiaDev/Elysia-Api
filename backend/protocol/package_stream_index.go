@@ -33,7 +33,7 @@ func compilePackageIndexes(declarations map[string]ProtocolStateIndex, direction
 	if len(declarations) == 0 {
 		return nil, nil
 	}
-	if !isEventDirection(direction) || len(declarations) > limits.StateItems {
+	if !isEventDirection(direction) || len(declarations) > limits.Nodes {
 		return nil, fmt.Errorf("%s: indexes require an event direction and bounded table count", path)
 	}
 	indexes := make([]compiledPackageIndex, 0, len(declarations))

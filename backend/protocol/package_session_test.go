@@ -37,7 +37,7 @@ func TestSessionPackagesPreserveExistingTraces(t *testing.T) {
 			}
 			binding := Binding{ProtocolID: compiled.identity.DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.capabilities, Transports: []Transport{WebSocket}}
 			operation, _ := compiled.Operation("session")
-			adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, binding, Scope{Model: "m"}, StringValue("m"))
+			adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, binding, sessionTestContext(t, Scope{Model: "m"}), StringValue("m"))
 			if err != nil {
 				t.Fatal(err)
 			}

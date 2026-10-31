@@ -1,0 +1,198 @@
+package protocol
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"reflect"
+)
+
+type controlStepResult struct {
+	hasChanges       bool
+	changedReasoning bool
+	shouldStop       bool
+}
+
+func compileTypedControlSetter(root reflect.Type, path string) (func(any, JSONOutput, *valueReader) error, JSONType, error) {
+	if root == reflect.TypeFor[Request]() {
+		setter, kind, err := compileControlSetter(path)
+		if err != nil {
+			return nil, "", err
+		}
+		return func(document any, output JSONOutput, reader *valueReader) error {
+			return setter(document.(*Request), output, reader)
+		}, kind, nil
+	}
+	if root == reflect.TypeFor[Response]() && path == "/model" {
+		return func(document any, output JSONOutput, reader *valueReader) error {
+			return assignCoreValue(output, &document.(*Response).Model, reader)
+		}, AnyType, nil
+	}
+	return nil, "", fmt.Errorf("control update does not support %s field %s", root.Name(), path)
+}
+
+func applyControlSteps(state evaluation, conversion *CompiledConversion, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, steps []compiledControlStep) (controlStepResult, error) {
+	result := controlStepResult{}
+	for _, step := range steps {
+		if err := state.ctx.Err(); err != nil {
+			return result, err
+		}
+		if step.when != nil {
+			condition, err := step.when.evaluate(state)
+			if err != nil {
+				return result, err
+			}
+			isApplicable, err := readBoolean(condition)
+			if err != nil {
+				return result, err
+			}
+			if !isApplicable {
+				continue
+			}
+		}
+		if diagnostic := step.diagnostic; diagnostic != nil {
+			message, err := diagnostic.reason.evaluate(state)
+			if err != nil {
+				return result, err
+			}
+			reason, err := readString(message)
+			if err != nil {
+				return result, err
+			}
+			if err := conversion.controlDiagnostic(rule, route, diagnostic.declaration, reason, sink); err != nil {
+				return result, err
+			}
+		}
+		values := make([]JSONOutput, len(step.updates))
+		for index, update := range step.updates {
+			value, err := update.program.build(state)
+			if err != nil {
+				return result, err
+			}
+			values[index] = value.output
+		}
+		for index, update := range step.updates {
+			if err := update.set(document, values[index], state.valueReader); err != nil {
+				return result, err
+			}
+			result.hasChanges = true
+			result.changedReasoning = result.changedReasoning || update.changesReasoning
+		}
+		if step.shouldStop {
+			result.shouldStop = true
+			break
+		}
+	}
+	return result, nil
+}
+
+func (conversion *CompiledConversion) controlDiagnostic(rule ConversionRule, route ConversionContext, diagnostic ProtocolControlDiagnostic, reason string, sink *DiagnosticSink) error {
+	if diagnostic.Kind == "invalid" {
+		return IssuesError([]ConversionIssue{{Code: diagnostic.Code, Severity: SeverityError, Direction: diagnostic.Direction, Stage: diagnostic.Stage, Path: diagnostic.Path, Reason: reason, Suggestion: diagnostic.Suggestion}})
+	}
+	issue := ConversionIssue{Code: ConversionDegraded, Severity: SeverityWarning, Fidelity: "lossy_compatible",
+		Protocol: route.Target, Direction: controlDirection(rule.Phase, false), Stage: "conversion." + string(rule.Phase),
+		Path: diagnostic.Path, Reason: reason, RuleID: rule.ID, PolicyHash: conversion.Hash,
+		PolicyRevision: conversion.RuleRevisions[rule.ID], Evidence: conversion.Origins[rule.ID]}
+	if diagnostic.Attribution == "source" {
+		issue.Protocol, issue.Direction = route.Source, controlDirection(rule.Phase, true)
+	}
+	if diagnostic.Kind == "normalize" {
+		issue.Code, issue.Severity, issue.Fidelity = ConversionNormalized, SeverityInfo, "preserved"
+	} else if diagnostic.Kind == "reject" || conversion.Policy.Mode == "strict" {
+		issue.Code, issue.Severity, issue.Fidelity = ConversionRejected, SeverityError, "rejected"
+		failure := IssuesError([]ConversionIssue{issue})
+		if rule.Phase == ConversionRequest {
+			return candidateFailure(failure)
+		}
+		return failure
+	}
+	sink.Add(issue)
+	return nil
+}
+
+func controlDirection(phase ConversionPhase, isSource bool) Direction {
+	switch phase {
+	case ConversionRequest:
+		if isSource {
+			return DecodeRequest
+		}
+		return EncodeRequest
+	case ConversionResponse:
+		if isSource {
+			return DecodeResponse
+		}
+		return EncodeResponse
+	case ConversionEvent:
+		if isSource {
+			return DecodeEvent
+		}
+		return EncodeEvent
+	default:
+		return ""
+	}
+}
+
+func (conversion *CompiledConversion) applyCoreControls(ctx context.Context, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (bool, error) {
+	return conversion.applySelectedCoreControls(ctx, document, route, rule, sink, false)
+}
+
+func (conversion *CompiledConversion) applySelectedCoreControls(ctx context.Context, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, isCollection bool) (bool, error) {
+	options, err := readConversionOption[coreControlOptions](conversion, rule)
+	if err != nil {
+		return false, err
+	}
+	if options.Phase != rule.Phase || options.Target != route.Target && !(isCollection && options.Collection && route.Target == route.Source) {
+		return false, streamIssue(InvalidInput, "/conversionDefaults", "core controls do not match the pinned target and phase")
+	}
+	var contextValue Value
+	if options.hasContext {
+		contextValue, err = EncodeValue(struct {
+			Transport    Transport                   `json:"transport"`
+			Observations map[string]fieldObservation `json:"observations,omitempty"`
+		}{route.Transport, route.fieldObservations})
+		if err != nil {
+			return false, err
+		}
+	}
+	var read func([]string) (JSONOutput, error)
+	switch current := document.(type) {
+	case *Request:
+		if current.SchemaVersion != options.CoreVersion {
+			return false, streamIssue(InvalidInput, "/schemaVersion", "core controls require their declared core version")
+		}
+		read = func(pointer []string) (JSONOutput, error) { return readCoreRequestOutput(current, pointer) }
+	case *Response:
+		if current.SchemaVersion != options.CoreVersion {
+			return false, streamIssue(InvalidInput, "/schemaVersion", "core controls require their declared core version")
+		}
+		read = func(pointer []string) (JSONOutput, error) { return readCoreResponseOutput(current, pointer) }
+	default:
+		return false, fmt.Errorf("core controls require their compiled request or response")
+	}
+	limits := conversion.phaseLimits(ctx, rule.Phase)
+	ownerLimits := options.Limits
+	if rule.Phase == ConversionRequest {
+		ownerLimits = requestLimits(ctx, ownerLimits, options.ExplicitLimits)
+	}
+	limits = intersectControlLimits(limits, semanticLimits(ownerLimits))
+	state := evaluation{ctx: ctx, inputReader: read, rootReader: read, context: contextValue, valueReader: &valueReader{},
+		objectReader: newPlanObjectReader(contextValue, objectReuseReads), bindings: make([]JSONOutput, options.bindingSlots), budget: &evaluationBudget{limits: limits, stepLimit: min(conversion.limits.Nodes, options.Limits.Nodes)}}
+	state.coreRequest, _ = document.(*Request)
+	result, err := applyControlSteps(state, conversion, document, route, rule, sink, options.steps)
+	if err != nil {
+		var classified interface {
+			issue(Identity, Direction) ConversionIssue
+		}
+		if errors.As(err, &classified) {
+			issue := classified.issue(route.Target, controlDirection(rule.Phase, false))
+			issue.Stage = "conversion." + string(rule.Phase)
+			issue.RuleID, issue.PolicyHash, issue.PolicyRevision, issue.Evidence = rule.ID, conversion.Hash, conversion.RuleRevisions[rule.ID], conversion.Origins[rule.ID]
+			err = &ConversionError{cause: err, Issues: []ConversionIssue{issue}}
+			if rule.Phase == ConversionRequest && issue.Code == ConversionRejected {
+				err = candidateFailure(err)
+			}
+		}
+	}
+	return result.hasChanges, err
+}

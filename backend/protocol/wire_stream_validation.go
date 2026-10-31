@@ -82,18 +82,25 @@ func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 // DecodeFrame validates and decodes one source frame using shared immutable
 // reads. Wire lifecycle and mapping state remain independent of each other.
 func (v *WireStreamValidation) DecodeFrame(ctx context.Context, frame Value, options EvaluationContext) (*EventFrame, error) {
-	if v.direction != DecodeEvent || v.packageStream == nil {
+	if v.direction != DecodeEvent {
+		return nil, fmt.Errorf("provider frame decoding requires a provider source validator")
+	}
+	return v.decodeFrame(ctx, frame, options)
+}
+
+func (v *WireStreamValidation) decodeFrame(ctx context.Context, frame Value, options EvaluationContext) (*EventFrame, error) {
+	if !isEventDecoder(v.direction) || v.packageStream == nil {
 		return nil, fmt.Errorf("frame decoding requires source wire stream validation")
 	}
 	if options.Scope != v.options.Scope {
-		return nil, v.compiled.runtimeError(DecodeEvent, streamIssue(ResourceScopeMismatch, "/state", "frame scope does not match source wire stream validation"))
+		return nil, v.compiled.runtimeError(v.direction, streamIssue(ResourceScopeMismatch, "/state", "frame scope does not match source wire stream validation"))
 	}
 	view := newInputView(frame)
 	if err := v.consume(ctx, frame, view); err != nil {
 		return nil, err
 	}
 	options.inputView = view
-	return v.compiled.DecodeFrame(ctx, frame, options)
+	return v.compiled.decodeFrame(ctx, v.direction, frame, options)
 }
 
 func (v *WireStreamValidation) consume(ctx context.Context, frame Value, view *inputView) error {
@@ -122,6 +129,11 @@ func (v *WireStreamValidation) consume(ctx context.Context, frame Value, view *i
 		err := v.packageStream.consumeInputView(ctx, view)
 		if err != nil {
 			return v.annotatePackageFailure(v.rejectPackageFrame(err))
+		}
+		if isEventDecoder(v.direction) {
+			state := v.packageStream
+			view.sourceReceipt = &sourceFrameReceipt{compiled: v.compiled, contract: state.contract, direction: v.direction, scope: v.options.Scope, frame: frame, class: state.frameClass,
+				responseID: state.frameResponseID, hadResponse: state.frameHadResponse, hasSequence: state.frameHasSequence, sequence: state.frameSequence, frameNumber: state.frameNumber}
 		}
 		return nil
 	}

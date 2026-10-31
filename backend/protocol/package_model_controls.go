@@ -19,13 +19,14 @@ type ProtocolControlStep struct {
 // ProtocolControlDiagnostic declares the observable consequence of a control
 // change. Dynamic messages read the same pre-update input as the step's values.
 type ProtocolControlDiagnostic struct {
-	Kind       string     `json:"kind"`
-	Path       string     `json:"path"`
-	Reason     Expression `json:"reason"`
-	Code       IssueCode  `json:"code,omitempty"`
-	Direction  Direction  `json:"direction,omitempty"`
-	Stage      string     `json:"stage,omitempty"`
-	Suggestion string     `json:"suggestion,omitempty"`
+	Kind        string     `json:"kind"`
+	Attribution string     `json:"attribution,omitempty"`
+	Path        string     `json:"path"`
+	Reason      Expression `json:"reason"`
+	Code        IssueCode  `json:"code,omitempty"`
+	Direction   Direction  `json:"direction,omitempty"`
+	Stage       string     `json:"stage,omitempty"`
+	Suggestion  string     `json:"suggestion,omitempty"`
 }
 
 type compiledControlStep struct {
@@ -37,7 +38,7 @@ type compiledControlStep struct {
 
 type compiledControlUpdate struct {
 	program          *compiledOutputPlan
-	set              func(*Request, JSONOutput, *valueReader) error
+	set              func(any, JSONOutput, *valueReader) error
 	changesReasoning bool
 }
 
@@ -129,11 +130,15 @@ func stampReasoningValidation(reasoning *ReasoningIntent) reasoningValidationSta
 }
 
 func compileControlSteps(steps []ProtocolControlStep, compiler *expressionCompiler, path string, isCheck bool) ([]compiledControlStep, error) {
+	return compileTypedControlSteps(steps, compiler, path, isCheck, reflect.TypeFor[Request]())
+}
+
+func compileTypedControlSteps(steps []ProtocolControlStep, compiler *expressionCompiler, path string, isCheck bool, root reflect.Type) ([]compiledControlStep, error) {
 	if len(steps) > compiler.limits.Mutations {
 		return nil, fmt.Errorf("%s: control step count exceeds mutation limit", path)
 	}
 	result := make([]compiledControlStep, 0, len(steps))
-	scope := expressionScope{coreInput: reflect.TypeFor[Request]()}
+	scope := expressionScope{coreInput: root}
 	for index, declaration := range steps {
 		at := fmt.Sprintf("%s/%d", path, index)
 		if isCheck && len(declaration.Set) != 0 || len(declaration.Set) == 0 && declaration.Diagnostic == nil && !declaration.Stop {
@@ -151,7 +156,7 @@ func compileControlSteps(steps []ProtocolControlStep, compiler *expressionCompil
 			step.when = condition
 		}
 		for _, key := range sortedKeys(declaration.Set) {
-			setter, kind, err := compileControlSetter(key)
+			setter, kind, err := compileTypedControlSetter(root, key)
 			if err != nil {
 				return nil, fmt.Errorf("%s/set/%s: %w", at, escapePointer(key), err)
 			}
@@ -165,6 +170,9 @@ func compileControlSteps(steps []ProtocolControlStep, compiler *expressionCompil
 			step.updates = append(step.updates, compiledControlUpdate{program: program, set: setter, changesReasoning: key == "/reasoning"})
 		}
 		if diagnostic := declaration.Diagnostic; diagnostic != nil {
+			if diagnostic.Attribution != "" && diagnostic.Attribution != "source" && diagnostic.Attribution != "target" {
+				return nil, fmt.Errorf("%s/diagnostic/attribution: expected source or target", at)
+			}
 			if !slices.Contains([]string{"normalize", "degrade", "reject", "invalid"}, diagnostic.Kind) {
 				return nil, fmt.Errorf("%s/diagnostic/kind: unsupported control diagnostic", at)
 			}
@@ -172,6 +180,9 @@ func compileControlSteps(steps []ProtocolControlStep, compiler *expressionCompil
 				return nil, fmt.Errorf("%s/diagnostic/path: %w", at, err)
 			}
 			if diagnostic.Kind == "invalid" {
+				if diagnostic.Attribution != "" {
+					return nil, fmt.Errorf("%s/diagnostic: invalid results use their explicit direction", at)
+				}
 				if !slices.Contains(DiagnosticCatalog(), diagnostic.Code) || diagnostic.Stage == "" || diagnostic.Direction != "" && !slices.Contains(DirectionCatalog(), diagnostic.Direction) {
 					return nil, fmt.Errorf("%s/diagnostic: invalid result requires a declared code and stage", at)
 				}
@@ -346,64 +357,8 @@ func (execution *modelControlExecution) apply(ctx context.Context, conversion *C
 	read := func(pointer []string) (JSONOutput, error) { return readCoreRequest(*request, pointer) }
 	reader := &valueReader{}
 	state := evaluation{ctx: ctx, coreRequest: request, inputReader: read, rootReader: read, context: execution.context, valueReader: reader, objectReader: execution.contextReader, bindings: execution.bindings, budget: &evaluationBudget{limits: execution.limits, stepLimit: execution.limits.Nodes}}
-	for _, step := range steps {
-		if step.when != nil {
-			condition, err := step.when.evaluate(state)
-			if err != nil {
-				return err
-			}
-			applies, err := readBoolean(condition)
-			if err != nil {
-				return err
-			}
-			if !applies {
-				continue
-			}
-		}
-		if diagnostic := step.diagnostic; diagnostic != nil {
-			message, err := diagnostic.reason.evaluate(state)
-			if err != nil {
-				return err
-			}
-			reason, err := readString(message)
-			if err != nil {
-				return err
-			}
-			declaration, rule := diagnostic.declaration, execution.rule
-			switch declaration.Kind {
-			case "normalize":
-				conversion.normalized(rule, route, declaration.Path, reason, sink)
-			case "degrade", "reject":
-				if declaration.Kind == "reject" {
-					rule.Action = "reject"
-				}
-				if err := conversion.issue(rule, ConversionRequest, route, declaration.Path, reason, sink, true); err != nil {
-					return candidateFailure(err)
-				}
-			case "invalid":
-				return IssuesError([]ConversionIssue{{Code: declaration.Code, Severity: SeverityError, Direction: declaration.Direction, Stage: declaration.Stage, Path: declaration.Path, Reason: reason, Suggestion: declaration.Suggestion}})
-			}
-		}
-		values := make([]JSONOutput, len(step.updates))
-		for index, update := range step.updates {
-			value, err := update.program.build(state)
-			if err != nil {
-				return err
-			}
-			execution.changedReasoning = execution.changedReasoning || update.changesReasoning
-			values[index] = value.output
-		}
-		for index, update := range step.updates {
-			if err := update.set(request, values[index], reader); err != nil {
-				return err
-			}
-		}
-		if step.shouldStop {
-			if isProjection {
-				execution.stoppedProjection = true
-			}
-			return nil
-		}
-	}
-	return nil
+	result, err := applyControlSteps(state, conversion, request, route, execution.rule, sink, steps)
+	execution.changedReasoning = execution.changedReasoning || result.changedReasoning
+	execution.stoppedProjection = execution.stoppedProjection || isProjection && result.shouldStop
+	return err
 }

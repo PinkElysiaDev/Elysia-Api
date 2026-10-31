@@ -11,7 +11,7 @@ func eventProtocolPackage(t *testing.T) ProtocolPackage {
 	document := textProtocolPackage(t)
 	document.Mapping.Capabilities[UsageCapability] = true
 	document.Mapping.Native.Preserve = true
-	stream := Value{raw: `{"discriminator":"/kind","responseId":"/response_id","itemId":"/item_id","sequence":"/seq","events":{"response.started":[{"action":"response_start"}],"item.started":[{"action":"item_start"}],"item.delta":[{"action":"text_delta","text":"/text"}],"item.finished":[{"action":"item_finish"}],"usage.updated":[{"action":"usage","usage":{"input":"/usage/input","output":"/usage/output","total":"/usage/total"}}],"response.finished":[{"action":"response_finish"}],"operation.failed":[{"action":"failure","error":"/error"}],"operation.cancelled":[{"action":"cancel"}]}}`}
+	stream := Value{raw: `{"discriminator":"/kind","responseId":"/response_id","sequence":"/seq","namespaces":{"item":{"keyType":"string"}},"lifecycle":{"eof":"require_terminal","openEntities":"reject"},"events":{"response.started":[{"action":"stream_start"}],"item.started":[{"action":"entity_start","entity":"text","key":{"path":"/item_id"}}],"item.delta":[{"action":"entity_append","entity":"text","key":{"path":"/item_id"},"payload":{"path":"/text"}}],"item.finished":[{"action":"entity_finish","namespace":"item","key":{"path":"/item_id"}}],"usage.updated":[{"action":"assert","assertions":[{"path":"/usage/input","when":{"op":"exists","source":{"op":"read","from":"input","path":"/usage/input"}},"schema":{"type":"integer"},"code":"upstream_contract_violation","reason":"counter must be nonnegative","check":{"op":"integer","operation":"gte","items":[{"op":"read","from":"input","path":""},{"op":"literal","value":0}]}},{"path":"/usage/output","when":{"op":"exists","source":{"op":"read","from":"input","path":"/usage/output"}},"schema":{"type":"integer"},"code":"upstream_contract_violation","reason":"counter must be nonnegative","check":{"op":"integer","operation":"gte","items":[{"op":"read","from":"input","path":""},{"op":"literal","value":0}]}},{"path":"/usage/total","when":{"op":"exists","source":{"op":"read","from":"input","path":"/usage/total"}},"schema":{"type":"integer"},"code":"upstream_contract_violation","reason":"counter must be nonnegative","check":{"op":"integer","operation":"gte","items":[{"op":"read","from":"input","path":""},{"op":"literal","value":0}]}},{"path":"","code":"upstream_contract_violation","reason":"count observation requires a value","check":{"op":"any","items":[{"op":"exists","source":{"op":"read","from":"input","path":"/usage/input"}},{"op":"exists","source":{"op":"read","from":"input","path":"/usage/output"}},{"op":"exists","source":{"op":"read","from":"input","path":"/usage/total"}}]}}],"afterTerminal":true},{"action":"observe","afterTerminal":true}],"response.finished":[{"action":"stream_finish"}],"operation.failed":[{"action":"stream_fail","error":"/error"}],"operation.cancelled":[{"action":"stream_cancel"}]},"entities":{"text":{"namespace":"item","payload":"text"}}}`}
 	var lifecycle ProtocolStreamSpec
 	if err := stream.Decode(&lifecycle); err != nil {
 		t.Fatal(err)
@@ -171,7 +171,9 @@ func TestPackageNativeFrameRunsEncodeEffects(t *testing.T) {
 	wire := packageStreamFrame(ResponseStarted, 0, `,"future":9007199254740993`)
 	for _, entry := range []string{"event", "frame", "converted-frame"} {
 		t.Run(entry, func(t *testing.T) {
-			frame, err := compiled.DecodeFrame(t.Context(), wire, EvaluationContext{})
+			sourceOptions := EvaluationContext{State: NewEvaluationState()}
+			defer sourceOptions.State.Release()
+			frame, err := compiled.DecodeFrame(t.Context(), wire, sourceOptions)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -204,7 +206,12 @@ func TestPackageNativeEffectsReadStreamWithoutChangingOutput(t *testing.T) {
 		validation, _ := compiled.NewWireStreamValidation(Scope{})
 		options := (EvaluationContext{}).WithOutputStream(validation)
 		wire := packageStreamFrame(UsageUpdated, 1, `,"usage":{"input":7},"future":9007199254740993`)
-		frame, err := compiled.DecodeFrame(t.Context(), wire, EvaluationContext{})
+		sourceOptions := EvaluationContext{State: NewEvaluationState()}
+		defer sourceOptions.State.Release()
+		if _, err := compiled.DecodeFrame(t.Context(), packageStreamFrame(ResponseStarted, 0, ""), sourceOptions); err != nil {
+			t.Fatal(err)
+		}
+		frame, err := compiled.DecodeFrame(t.Context(), wire, sourceOptions)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -220,6 +227,12 @@ func TestPackageNativeEffectsReadStreamWithoutChangingOutput(t *testing.T) {
 		encoded, err := compiled.EncodeFrame(t.Context(), frame, options)
 		if err != nil || len(encoded) != 1 || encoded[0] != wire {
 			t.Fatal("passing effects were mistaken for an output dependency or lost native fields", hasUnusedRead, encoded, err)
+		}
+		if _, err := compiled.DecodeFrame(t.Context(), packageStreamFrame(ResponseFinished, 2, ""), sourceOptions); err != nil {
+			t.Fatal(err)
+		}
+		if err := compiled.FinishInputEvents(t.Context(), sourceOptions); err != nil {
+			t.Fatal(err)
 		}
 	}
 }

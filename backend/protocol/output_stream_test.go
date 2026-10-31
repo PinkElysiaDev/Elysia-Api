@@ -127,8 +127,16 @@ func TestOutputStreamBindingAndLazyReads(t *testing.T) {
 	if _, err := unused.EncodeEvent(t.Context(), start, (EvaluationContext{Scope: scope}).WithOutputStream(otherValidation)); err != nil {
 		t.Fatal("unused conditional runtime branch rejected inherited options", err)
 	}
-	if _, err := unused.DecodeFrame(t.Context(), packageStreamFrame(ResponseStarted, 0, ""), (EvaluationContext{Scope: scope}).WithOutputStream(validation)); err != nil {
+	sourceOptions := (EvaluationContext{Scope: scope, State: NewEvaluationState()}).WithOutputStream(validation)
+	defer sourceOptions.State.Release()
+	if _, err := unused.DecodeFrame(t.Context(), packageStreamFrame(ResponseStarted, 0, ""), sourceOptions); err != nil {
 		t.Fatal("source decoding rejected an unused output binding", err)
+	}
+	if _, err := unused.DecodeFrame(t.Context(), packageStreamFrame(ResponseFinished, 1, ""), sourceOptions); err != nil {
+		t.Fatal(err)
+	}
+	if err := unused.FinishInputEvents(t.Context(), sourceOptions); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -157,7 +165,8 @@ func TestOutputStreamNativePositionOwnsOnlyIdentity(t *testing.T) {
 	delete(document.Mapping.Directions[EncodeEvent].Program.Fields, "observed")
 	compiled := compilePackageForTest(t, document)
 	validation, _ := compiled.NewWireStreamValidation(Scope{})
-	options := (EvaluationContext{}).WithOutputStream(validation)
+	options := (EvaluationContext{State: NewEvaluationState()}).WithOutputStream(validation)
+	defer options.State.Release()
 	wire := Value{raw: `{"kind":"response.started","response_id":"small-id","seq":7,"padding":"` + strings.Repeat("x", 2<<20) + `"}`}
 	decoded, err := compiled.DecodeFrame(t.Context(), wire, options)
 	if err != nil {
@@ -176,6 +185,12 @@ func TestOutputStreamNativePositionOwnsOnlyIdentity(t *testing.T) {
 	position := validation.packageStream.delivered
 	if position.responseID != "small-id" || position.sequence != 7 || sharesValueStorage(wire, Value{raw: position.responseID}) {
 		t.Fatal("native delivery lost its identity or retained the large source frame")
+	}
+	if _, err := compiled.DecodeFrame(t.Context(), Value{raw: `{"kind":"response.finished","response_id":"small-id","seq":8}`}, options); err != nil {
+		t.Fatal(err)
+	}
+	if err := compiled.FinishInputEvents(t.Context(), options); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -231,9 +246,11 @@ func TestOutputStreamNativeCannotHideStateDependentEncoding(t *testing.T) {
 	compiled := compilePackageForTest(t, document)
 	validation, _ := compiled.NewWireStreamValidation(Scope{})
 	sourceValidation, _ := compiled.NewWireInputStreamValidation(Scope{})
+	sourceOptions := EvaluationContext{State: NewEvaluationState()}
+	defer sourceOptions.State.Release()
 	// Source order is valid (1, 2). Only the first delivered target frame was
 	// edited to 41; a state-dependent encoder must not replay the next source 2.
-	if err := sourceValidation.Consume(t.Context(), packageStreamFrame(ResponseStarted, 1, "")); err != nil {
+	if _, err := sourceValidation.DecodeFrame(t.Context(), packageStreamFrame(ResponseStarted, 1, ""), sourceOptions); err != nil {
 		t.Fatal(err)
 	}
 	if err := validation.Consume(t.Context(), packageStreamFrame(ResponseStarted, 41, "")); err != nil {
@@ -243,7 +260,8 @@ func TestOutputStreamNativeCannotHideStateDependentEncoding(t *testing.T) {
 		t.Fatal(err)
 	}
 	wire := packageStreamFrame(UsageUpdated, 2, `,"usage":{"input":7},"future":{"n":9007199254740993}`)
-	if err := sourceValidation.Consume(t.Context(), wire); err != nil {
+	frame, err := sourceValidation.DecodeFrame(t.Context(), wire, sourceOptions)
+	if err != nil {
 		t.Fatal(err)
 	}
 	options := (EvaluationContext{}).WithOutputStream(validation)
@@ -268,10 +286,6 @@ func TestOutputStreamNativeCannotHideStateDependentEncoding(t *testing.T) {
 			if entry == "event" {
 				output, encodeErr = compiled.EncodeEvent(t.Context(), events[0], options)
 			} else {
-				frame, err := compiled.DecodeFrame(t.Context(), wire, EvaluationContext{})
-				if err != nil {
-					t.Fatal(err)
-				}
 				var encoded []Value
 				if entry == "frame" {
 					encoded, encodeErr = compiled.EncodeFrame(t.Context(), frame, options)
@@ -287,6 +301,12 @@ func TestOutputStreamNativeCannotHideStateDependentEncoding(t *testing.T) {
 				t.Fatal("state-dependent native encoding must reject until dynamic field ownership is proven; it cannot restore sequence 2 or discard unknown fields", encodeErr, output.JSONString())
 			}
 		})
+	}
+	if _, err := sourceValidation.DecodeFrame(t.Context(), packageStreamFrame(ResponseFinished, 3, ""), sourceOptions); err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceValidation.Finish(); err != nil {
+		t.Fatal(err)
 	}
 }
 

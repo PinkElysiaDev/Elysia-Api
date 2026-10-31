@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 const scalarOperandCapacity = 2
@@ -77,6 +78,19 @@ func (plan *compiledOutputPlan) buildReadValue(state evaluation) (plannedOutput,
 		}
 		if expression.pointer[0] == "scope" {
 			return plannedLeaf(StringValue(state.runtime.scopeModel)), nil
+		}
+		if expression.pointer[0] == "operation" {
+			if state.runtime.operation == nil {
+				return plannedOutput{}, operationMetadataError("/operation", "operation metadata is not bound")
+			}
+			if expression.pointer[1] == "id" {
+				return plannedLeaf(state.runtime.operation.id), nil
+			}
+			return plannedLeaf(state.runtime.operation.startedAt), nil
+		}
+		if expression.pointer[0] == "emission" {
+			state.budget.hasReadOutputStream = true
+			return plannedLeaf(coreInteger(int64(state.runtime.emissionOffset))), nil
 		}
 		if expression.pointer[0] == "delivered" {
 			output, err := state.runtime.deliveredItems()
@@ -155,7 +169,7 @@ func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, er
 			return plannedOutput{}, fmt.Errorf("%s/values: enum value is unmapped", expression.path)
 		}
 		return plannedLeaf(value), nil
-	case "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains":
+	case "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains", "has_control":
 		text, err := readPlannedString(source.output)
 		if err != nil {
 			return plannedOutput{}, err
@@ -163,6 +177,8 @@ func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, er
 		switch expression.op {
 		case "lower":
 			return plannedLeaf(StringValue(strings.ToLower(text))), nil
+		case "has_control":
+			return plannedLeaf(coreBoolean(strings.IndexFunc(text, unicode.IsControl) >= 0)), nil
 		case "quote_string":
 			return plannedLeaf(StringValue(strconv.Quote(text))), nil
 		case "has_prefix":

@@ -27,6 +27,7 @@ type compiledReference struct {
 	indexes        map[string]int
 	streamIndexes  map[string]int
 	trackers       map[string]bool
+	namespaces     map[string]int
 }
 
 func referenceKey(name string, scope expressionScope) referenceContext {
@@ -35,7 +36,7 @@ func referenceKey(name string, scope expressionScope) referenceContext {
 		bindingDepth: scope.bindingDepth, indexDepth: scope.indexDepth, streamPrimitiveUsed: scope.streamPrimitiveUsed}
 	for index, enabled := range [...]bool{scope.canReadNativeFrame, scope.canUseStreamPrimitives, scope.hasInputScope,
 		scope.isIteration, scope.isSingleVisit, scope.isWalk, scope.wireCapture, scope.canReadRuntime,
-		scope.canReadOutputStream, scope.canReadNative, scope.canWriteStreamIndexes} {
+		scope.canReadOutputStream, scope.canReadNative, scope.canWriteStreamIndexes, scope.isWireContract} {
 		if enabled {
 			key.permissions |= 1 << index
 		}
@@ -46,7 +47,7 @@ func referenceKey(name string, scope expressionScope) referenceContext {
 func (reference compiledReference) matches(scope expressionScope) bool {
 	return maps.Equal(reference.bindings, scope.bindings) && maps.Equal(reference.stateSlots, scope.stateSlots) &&
 		maps.Equal(reference.indexes, scope.indexes) && maps.Equal(reference.streamIndexes, scope.streamIndexes) &&
-		maps.Equal(reference.trackers, scope.trackerChannels)
+		maps.Equal(reference.trackers, scope.trackerChannels) && maps.Equal(reference.namespaces, scope.outputNamespaces)
 }
 
 func (compiler *expressionCompiler) compileReference(name, path string, scope expressionScope, depth int) (*compiledExpression, error) {
@@ -84,7 +85,7 @@ func (compiler *expressionCompiler) compileReference(name, path string, scope ex
 	}
 	reference := compiledReference{expression: compiled, expansionDepth: expansionDepth, dependencies: sortedKeys(dependencies),
 		bindings: scope.bindings, stateSlots: scope.stateSlots, indexes: scope.indexes,
-		streamIndexes: scope.streamIndexes, trackers: maps.Clone(scope.trackerChannels)}
+		streamIndexes: scope.streamIndexes, trackers: maps.Clone(scope.trackerChannels), namespaces: scope.outputNamespaces}
 	if compiler.instances == nil {
 		compiler.instances = make(map[referenceContext][]compiledReference)
 	}

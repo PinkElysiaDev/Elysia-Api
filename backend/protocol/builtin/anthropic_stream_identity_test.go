@@ -1,10 +1,33 @@
 package builtin
 
 import (
+	"errors"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
 )
+
+func TestAnthropicStreamRequiresDeclaredBlockIndex(t *testing.T) {
+	compiled := compileBuiltinPackage(t, "anthropic")
+	start := testValue(t, `{"type":"message_start","message":{"id":"response","model":"model","type":"message","role":"assistant","content":[],"usage":{"input_tokens":1,"output_tokens":0}}}`)
+	for _, raw := range []string{
+		`{"type":"content_block_start","content_block":{"type":"text","text":""}}`,
+		`{"type":"content_block_start","index":null,"content_block":{"type":"text","text":""}}`,
+	} {
+		validator, err := compiled.NewWireInputStreamValidation(p.Scope{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := validator.Consume(t.Context(), start); err != nil {
+			t.Fatal(err)
+		}
+		err = validator.Consume(t.Context(), testValue(t, raw))
+		var failure *p.ConversionError
+		if !errors.As(err, &failure) || len(failure.Issues) == 0 || failure.Issues[0].Path != "/index" {
+			t.Fatal("missing or null block index acquired index zero", err)
+		}
+	}
+}
 
 func TestAnthropicStreamResponseIDExtension(t *testing.T) {
 	legacy, candidate := shippedProjectionProtocol(t, Anthropic), compileBuiltinPackage(t, "anthropic")

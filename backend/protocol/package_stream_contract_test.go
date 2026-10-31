@@ -18,9 +18,15 @@ func toolStreamPackage(t *testing.T) ProtocolPackage {
 	t.Helper()
 	document := eventProtocolPackage(t)
 	document.Mapping.Capabilities[FunctionToolsCapability] = true
-	document.Spec.Documents["provider-event"].Stream.Events[string(packageToolStarted)] = ProtocolStreamEventSpec{{Action: "tool_start", Tool: &ProtocolStreamToolSpec{Name: "/name", CallID: "/call_id"}}}
-	document.Spec.Documents["provider-event"].Stream.Events[string(packageToolDelta)] = ProtocolStreamEventSpec{{Action: "tool_delta", Arguments: "/arguments"}}
-	document.Spec.Documents["provider-event"].Stream.Events[string(packageToolFinished)] = ProtocolStreamEventSpec{{Action: "tool_finish"}}
+	stream := document.Spec.Documents["provider-event"].Stream
+	stream.Entities["function_call"] = ProtocolStreamEntitySpec{Namespace: "item", Payload: "json", PayloadSchema: &ValueSchema{Type: ObjectType, AllowUnknown: true},
+		Identities: map[string]ProtocolStreamEntityIdentitySpec{
+			"name": {Type: StringType, RequiredAt: "start"}, "call_id": {Type: StringType, RequiredAt: "start", Unique: true},
+		}}
+	stream.Events[string(packageToolStarted)] = ProtocolStreamEventSpec{{Action: "entity_start", Entity: "function_call", Key: &ProtocolStreamValueSpec{Path: "/item_id"},
+		Identities: map[string]ProtocolStreamValueSpec{"name": {Path: "/name"}, "call_id": {Path: "/call_id"}}}}
+	stream.Events[string(packageToolDelta)] = ProtocolStreamEventSpec{{Action: "entity_append", Entity: "function_call", Key: &ProtocolStreamValueSpec{Path: "/item_id"}, Payload: &ProtocolStreamValueSpec{Path: "/arguments"}}}
+	stream.Events[string(packageToolFinished)] = ProtocolStreamEventSpec{{Action: "entity_finish", Entity: "function_call", Key: &ProtocolStreamValueSpec{Path: "/item_id"}}}
 	isTag := func(tag EventType) Expression {
 		return Expression{Op: "equal", Items: []Expression{readExpression("input", "/kind"), literalExpression(tag)}}
 	}
@@ -58,32 +64,28 @@ func TestPackageStreamContractCompilation(t *testing.T) {
 		edit func(*ProtocolPackage)
 		path string
 	}{
-		{"pointer", func(p *ProtocolPackage) { p.Spec.Documents["provider-event"].Stream.ResponseID = "response_id" }, "/spec/documents/client-event/stream/responseId"},
-		{"missing-item-selector", func(p *ProtocolPackage) { p.Spec.Documents["provider-event"].Stream.ItemID = "" }, "/spec/documents/client-event/stream/events/item.delta/0/itemId"},
-		{"missing-action", func(p *ProtocolPackage) { delete(p.Spec.Documents["provider-event"].Stream.Events, "item.delta") }, "/spec/documents/client-event/stream/events"},
+		{"pointer", func(p *ProtocolPackage) { p.Spec.Documents["provider-event"].Stream.ResponseID = "response_id" }, "/stream/responseId"},
+		{"missing-entity-key", func(p *ProtocolPackage) { p.Spec.Documents["provider-event"].Stream.Events["item.delta"][0].Key = nil }, "/events/item.delta/0"},
+		{"missing-start", func(p *ProtocolPackage) { delete(p.Spec.Documents["provider-event"].Stream.Events, "item.started") }, "/entities/text"},
 		{"unknown-action", func(p *ProtocolPackage) {
 			p.Spec.Documents["provider-event"].Stream.Events["future"] = ProtocolStreamEventSpec{{Action: "infer"}}
-		}, "/spec/documents/client-event/stream/events/future/0/action"},
-		{"misplaced-text", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events["response.started"] = ProtocolStreamEventSpec{{Action: "response_start", Text: "/text"}}
-		}, "/spec/documents/client-event/stream/events/response.started"},
-		{"missing-text", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events["item.delta"] = ProtocolStreamEventSpec{{Action: "text_delta"}}
-		}, "/spec/documents/client-event/stream/events/item.delta"},
-		{"empty-usage", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events["usage.updated"] = ProtocolStreamEventSpec{{Action: "usage", Usage: &ProtocolStreamUsageSpec{}}}
-		}, "/spec/documents/client-event/stream/events/usage.updated/0/usage"},
+		}, "/events/future/0/action"},
+		{"misplaced-payload", func(p *ProtocolPackage) {
+			p.Spec.Documents["provider-event"].Stream.Events["response.started"][0].Payload = &ProtocolStreamValueSpec{Path: "/text"}
+		}, "/events/response.started/0"},
+		{"missing-payload", func(p *ProtocolPackage) {
+			p.Spec.Documents["provider-event"].Stream.Events["item.delta"][0].Payload = nil
+		}, "/events/item.delta/0/payload"},
+		{"empty-assertion", func(p *ProtocolPackage) {
+			p.Spec.Documents["provider-event"].Stream.Events["usage.updated"] = ProtocolStreamEventSpec{{Action: "assert"}}
+		}, "/events/usage.updated/0/assertions"},
 		{"missing-error", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events["operation.failed"] = ProtocolStreamEventSpec{{Action: "failure"}}
-		}, "/spec/documents/client-event/stream/events/operation.failed"},
-		{"capabilities", func(p *ProtocolPackage) {
-			entry := p.Mapping.Directions[EncodeEvent]
-			entry.Capabilities = CapabilitySet{TextCapability: true}
-			p.Mapping.Directions[EncodeEvent] = entry
-		}, "/mapping/directions/encode_event/capabilities"},
-		{"missing-event-document", func(p *ProtocolPackage) {
-			delete(p.Spec.Documents, p.Mapping.Directions[DecodeEvent].Document)
-		}, "/mapping/directions/decode_event/document"},
+			p.Spec.Documents["provider-event"].Stream.Events["operation.failed"] = ProtocolStreamEventSpec{{Action: "stream_fail"}}
+		}, "/events/operation.failed/0/error"},
+		{"invalid-namespace-key", func(p *ProtocolPackage) {
+			p.Spec.Documents["provider-event"].Stream.Namespaces["item"] = ProtocolStreamNamespaceSpec{KeyType: BooleanType}
+		}, "/namespaces/item"},
+		{"missing-event-document", func(p *ProtocolPackage) { delete(p.Spec.Documents, p.Mapping.Directions[DecodeEvent].Document) }, "/mapping/directions/decode_event/document"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			document := eventProtocolPackage(t)
@@ -93,6 +95,7 @@ func TestPackageStreamContractCompilation(t *testing.T) {
 			}
 		})
 	}
+
 	document := eventProtocolPackage(t)
 	before := compilePackageForTest(t, document)
 	document.Spec.Documents["provider-event"].Stream.Sequence = "/other_seq"
@@ -196,9 +199,8 @@ func TestPackageStreamUsageAndTermination(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			usage := validation.packageStream.replay.Usage()
-			if err := validation.Finish(); err != nil || usage.Input.Count != 0 || usage.Output.Count != 2 {
-				t.Fatal("terminal or late partial usage rejected", err, usage)
+			if err := validation.Finish(); err != nil {
+				t.Fatal("terminal or late count observation rejected", err)
 			}
 		})
 	}
@@ -207,8 +209,13 @@ func TestPackageStreamUsageAndTermination(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertPackageRuntimeIssue(t, validation.Finish(), UpstreamContractViolation, "/kind")
+	validation, _ = compiled.NewWireInputStreamValidation(Scope{})
+	if err := validation.Consume(t.Context(), packageStreamFrame(ResponseStarted, 0, "")); err != nil {
+		t.Fatal(err)
+	}
 	err := validation.Consume(t.Context(), packageStreamFrame(UsageUpdated, 1, `,"usage":{}`))
-	assertPackageRuntimeIssue(t, err, UpstreamContractViolation, "/kind")
+	assertPackageRuntimeIssue(t, err, UpstreamContractViolation, "")
+	assertPackageRuntimeIssue(t, validation.Consume(t.Context(), packageStreamFrame(UsageUpdated, 2, `,"usage":{"input":1}`)), UpstreamContractViolation, "/")
 }
 
 func TestPackageStreamIndependentValidationAndLimits(t *testing.T) {
@@ -259,33 +266,30 @@ func TestPackageStreamToolContractCompilation(t *testing.T) {
 		edit func(*ProtocolPackage)
 		path string
 	}{
-		{"missing-name", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolStarted)][0].Tool.Name = ""
-		}, "/spec/documents/client-event/stream/events/tool.started/0/tool/name"},
-		{"missing-call-id", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolStarted)][0].Tool.CallID = ""
-		}, "/spec/documents/client-event/stream/events/tool.started/0/tool/callId"},
-		{"missing-arguments", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolDelta)] = ProtocolStreamEventSpec{{Action: "tool_delta"}}
-		}, "/spec/documents/client-event/stream/events/tool.delta"},
-		{"misplaced-tool", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolFinished)] = ProtocolStreamEventSpec{{Action: "tool_finish", Tool: &ProtocolStreamToolSpec{Name: "/name", CallID: "/call_id"}}}
-		}, "/spec/documents/client-event/stream/events/tool.finished"},
-		{"tools-cannot-replace-text", func(p *ProtocolPackage) { delete(p.Spec.Documents["provider-event"].Stream.Events, string(ItemDelta)) }, "/spec/documents/client-event/stream/events"},
-		{"snapshot-missing-arguments", func(p *ProtocolPackage) {
-			p.Spec.Documents["provider-event"].Stream.Events["tool.snapshot"] = ProtocolStreamEventSpec{{Action: "tool_snapshot"}}
-		}, "/spec/documents/client-event/stream/events/tool.snapshot/0/arguments"},
-		{"missing-capability", func(p *ProtocolPackage) {
-			entry := p.Mapping.Directions[EncodeEvent]
-			entry.Capabilities = CapabilitySet{TextCapability: true, UsageCapability: true}
-			p.Mapping.Directions[EncodeEvent] = entry
-		}, "/mapping/directions/encode_event/capabilities"},
+		{"missing-name-path", func(p *ProtocolPackage) {
+			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolStarted)][0].Identities["name"] = ProtocolStreamValueSpec{}
+		}, "/identities/name/path"},
+		{"undeclared-identity", func(p *ProtocolPackage) {
+			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolStarted)][0].Identities["other"] = ProtocolStreamValueSpec{Path: "/other"}
+		}, "/identities/other"},
+		{"missing-payload", func(p *ProtocolPackage) {
+			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolDelta)][0].Payload = nil
+		}, "/payload"},
+		{"namespace-finish-cannot-rebind", func(p *ProtocolPackage) {
+			p.Spec.Documents["provider-event"].Stream.Events[string(packageToolFinished)] = ProtocolStreamEventSpec{{Action: "entity_finish", Namespace: "item", Key: &ProtocolStreamValueSpec{Path: "/item_id"}, Identities: map[string]ProtocolStreamValueSpec{"name": {Path: "/name"}}}}
+		}, "/events/tool.finished/0"},
+		{"missing-json-start", func(p *ProtocolPackage) {
+			delete(p.Spec.Documents["provider-event"].Stream.Events, string(packageToolStarted))
+		}, "/entities/function_call"},
+		{"snapshot-missing-encoding", func(p *ProtocolPackage) {
+			p.Spec.Documents["provider-event"].Stream.Events["tool.snapshot"] = ProtocolStreamEventSpec{{Action: "entity_snapshot", Entity: "function_call", Key: &ProtocolStreamValueSpec{Path: "/item_id"}, Payload: &ProtocolStreamValueSpec{Path: "/arguments"}}}
+		}, "/encoding"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			document := toolStreamPackage(t)
 			test.edit(&document)
 			if err := document.Validate(DefaultLimits()); err == nil || !strings.Contains(err.Error(), test.path) {
-				t.Fatalf("expected tool declaration error at %s, got %v", test.path, err)
+				t.Fatalf("expected entity declaration error at %s, got %v", test.path, err)
 			}
 		})
 	}
@@ -309,15 +313,17 @@ func TestPackageStreamJSONToolLifecycle(t *testing.T) {
 				if err := validation.Consume(t.Context(), frame); err != nil {
 					t.Fatal(err)
 				}
-				if index == 3 && validation.packageStream.replay.state.buffered != len(`{"n":9007199254740993}`) {
+				if index == 3 && validation.packageStream.bufferedBytes != len(`{"n":9007199254740993}`) {
 					t.Fatal("tool fragments bypassed bounded accumulation")
 				}
-				if index >= 4 && validation.packageStream.replay.state.buffered != 0 {
+				if index >= 4 && validation.packageStream.bufferedBytes != 0 {
 					t.Fatal("completed tool retained argument bytes")
 				}
 			}
-			if err := validation.Finish(); err != nil || validation.packageStream.identityBytes != len("rtoollookupcall") || validation.packageStream.replay.Usage().Output.Count != 0 {
-				t.Fatal("tool completion changed identities, usage or terminal", err)
+			state := validation.packageStream
+			entity := state.entities[state.contract.namespaceSlots["item"]]["tool"]
+			if err := validation.Finish(); err != nil || entity == nil || !entity.isFinished || entity.identities[0] != "call" || entity.identities[1] != "lookup" {
+				t.Fatal("entity completion changed identities or terminal", err)
 			}
 		})
 	}
@@ -334,10 +340,12 @@ func TestPackageStreamToolMappingRoundTrip(t *testing.T) {
 	// tool-specific end tag, remembered item kind or fabricated input snapshot.
 	delete(targetDocument.Spec.Documents["provider-event"].Stream.Events, string(packageToolFinished))
 	source, target := compilePackageForTest(t, sourceDocument), compilePackageForTest(t, targetDocument)
-	sourceValidation, err := source.NewWireInputStreamValidation(Scope{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	sourceOptions := EvaluationContext{State: NewEvaluationState()}
+	receivedOptions := EvaluationContext{State: NewEvaluationState()}
+	encodedOptions := EvaluationContext{State: NewEvaluationState()}
+	defer sourceOptions.State.Release()
+	defer receivedOptions.State.Release()
+	defer encodedOptions.State.Release()
 	finalValidation, err := target.NewWireStreamValidation(Scope{})
 	if err != nil {
 		t.Fatal(err)
@@ -357,17 +365,14 @@ func TestPackageStreamToolMappingRoundTrip(t *testing.T) {
 		packageStreamFrame(UsageUpdated, 6, `,"usage":{"input":5,"output":2,"total":7}`),
 	}
 	for index, wire := range frames {
-		if err := sourceValidation.Consume(t.Context(), wire); err != nil {
-			t.Fatal(err)
-		}
-		decoded, err := source.DecodeFrame(t.Context(), wire, EvaluationContext{})
+		decoded, err := source.DecodeFrame(t.Context(), wire, sourceOptions)
 		if err != nil || len(decoded.Events) != 1 {
 			t.Fatal("tool mapping failed to decode one event", err)
 		}
 		if index == 4 && decoded.Events[0].Item != nil {
 			t.Fatal("tool completion invented a snapshot")
 		}
-		encoded, err := target.EncodeFrame(t.Context(), decoded, EvaluationContext{})
+		encoded, err := target.EncodeFrame(t.Context(), decoded, encodedOptions)
 		if err != nil || len(encoded) != 1 {
 			t.Fatal("tool mapping failed to encode one frame", err)
 		}
@@ -389,7 +394,7 @@ func TestPackageStreamToolMappingRoundTrip(t *testing.T) {
 		if err := finalValidation.CommitDelivery(); err != nil {
 			t.Fatal(err)
 		}
-		delivered, err := target.DecodeFrame(t.Context(), encoded[0], EvaluationContext{})
+		delivered, err := target.DecodeFrame(t.Context(), encoded[0], receivedOptions)
 		if err != nil || len(delivered.Events) != 1 {
 			t.Fatal("delivered tool mapping failed", err)
 		}
@@ -402,7 +407,7 @@ func TestPackageStreamToolMappingRoundTrip(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := errors.Join(sourceValidation.Finish(), finalValidation.Finish()); err != nil {
+	if err := errors.Join(source.FinishInputEvents(t.Context(), sourceOptions), target.FinishInputEvents(t.Context(), receivedOptions), finalValidation.Finish()); err != nil {
 		t.Fatal(err)
 	}
 	response, err := collector.Finish()
@@ -434,7 +439,7 @@ func TestPackageStreamRejectsInvalidToolLifecycle(t *testing.T) {
 		{"tool-delta-on-text", []Value{start, text, packageToolDeltaFrame(2, "text", `{}`)}, "/item_id"},
 		{"tool-finish-on-text", []Value{start, text, packageStreamFrame(packageToolFinished, 2, `,"item_id":"text"`)}, "/item_id"},
 		{"duplicate-call-id", []Value{start, tool, packageStreamFrame(packageToolStarted, 2, `,"item_id":"other","name":"lookup","call_id":"call"`)}, "/call_id"},
-		{"unfinished-json", []Value{start, tool, packageToolDeltaFrame(2, "tool", `{"n":`), packageStreamFrame(ItemFinished, 3, `,"item_id":"tool"`)}, "/item_id"},
+		{"unfinished-json", []Value{start, tool, packageToolDeltaFrame(2, "tool", `{"n":`), packageStreamFrame(ItemFinished, 3, `,"item_id":"tool"`)}, "/arguments"},
 		{"duplicate-finish", []Value{start, tool, delta, finish, packageStreamFrame(packageToolFinished, 4, `,"item_id":"tool"`)}, "/item_id"},
 		{"terminal-with-open-tool", []Value{start, tool, delta, packageStreamFrame(ResponseFinished, 3, "")}, "/kind"},
 	} {
@@ -470,7 +475,7 @@ func TestPackageStreamToolTerminationAndBudgets(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := validation.Finish(); err != nil || validation.packageStream.replay.state.buffered != 0 {
+			if err := validation.Finish(); err != nil || validation.packageStream.bufferedBytes != 0 {
 				t.Fatal("unsuccessful terminal kept partial JSON or required completion", err)
 			}
 		})
@@ -497,7 +502,7 @@ func TestPackageStreamToolTerminationAndBudgets(t *testing.T) {
 			err := validation.Consume(t.Context(), packageToolDeltaFrame(5, "two", arguments))
 			if !shouldFinish {
 				assertPackageRuntimeIssue(t, err, LimitExceeded, "/arguments")
-			} else if err != nil || validation.packageStream.replay.state.buffered != len(arguments) {
+			} else if err != nil || validation.packageStream.bufferedBytes != len(arguments) {
 				t.Fatal("completed argument budget was not reusable", err)
 			}
 		})

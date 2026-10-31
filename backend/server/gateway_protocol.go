@@ -199,7 +199,10 @@ func (s *Server) forwardGateway(ctx context.Context, c *app.RequestContext, reco
 	request := prepared.Clone()
 	// 上行模型串用 API id；Name 是显示名（Gemini displayName 直接拼路径会 404）。
 	request.Model = protocol.StringValue(candidate.model.Identifier())
-	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}, ClientOutput: request.ClientOutput}
+	options, err := (protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}, ClientOutput: request.ClientOutput}).WithOperation(record.RequestID, record.StartedAt.Unix())
+	if err != nil {
+		return err
+	}
 	delivery := plan.responsePlan(options.ClientOutput)
 	if candidate.continuation != nil {
 		candidate.continuation.sink = options.Diagnostics
@@ -211,7 +214,6 @@ func (s *Server) forwardGateway(ctx context.Context, c *app.RequestContext, reco
 	s.estimateGatewayAttempt(record, request)
 	record.SystemStructure.After = systemStructure(request)
 	wireValue, isPrepared := candidate.takeRequestValue(ctx, request, options)
-	var err error
 	if !isPrepared {
 		wireValue, err = candidate.compiled.EncodeRequestValue(ctx, request, options)
 		if err != nil {

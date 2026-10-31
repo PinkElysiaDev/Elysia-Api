@@ -63,7 +63,18 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if record != nil {
 		s.estimateGatewayAttempt(record, request)
 	}
-	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}
+	var operationID string
+	var startedAt time.Time
+	if record != nil {
+		operationID, startedAt = record.RequestID, record.StartedAt
+	} else {
+		startedAt = time.Now()
+		operationID = usageRequestID(startedAt)
+	}
+	options, err := (protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}).WithOperation(operationID, startedAt.Unix())
+	if err != nil {
+		return nil, err
+	}
 	defer options.State.Release()
 	defer func() {
 		if record != nil {

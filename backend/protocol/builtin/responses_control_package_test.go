@@ -2,6 +2,8 @@ package builtin
 
 import (
 	"bytes"
+	"errors"
+	"maps"
 	"testing"
 
 	"github.com/bytedance/sonic"
@@ -37,9 +39,9 @@ func TestResponsesPackageControlSourceStream(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			sourceTarget := legacy.Target(p.DecodeEvent, p.Scope{})
+			sourceTarget := candidate.Target(p.DecodeEvent, p.Scope{})
 			sourceTarget.Direction = p.EncodeEvent
-			replay, err := p.NewEventReplay(sourceTarget, legacy.ResourceLimits())
+			replay, err := p.NewEventReplay(sourceTarget, candidate.ResourceLimits())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -50,26 +52,39 @@ func TestResponsesPackageControlSourceStream(t *testing.T) {
 				if err != nil {
 					t.Fatal("legacy control", index, err)
 				}
-				for _, event := range before.Events {
-					if _, err := replay.Consume(event); err != nil {
-						t.Fatal("legacy lifecycle", index, err)
-					}
-				}
-				if err := wire.Consume(t.Context(), value); err != nil {
-					t.Fatal("independent control contract", index, err)
-				}
-				after, err := candidate.DecodeFrame(t.Context(), value, newOptions)
+				after, err := wire.DecodeFrame(t.Context(), value, newOptions)
 				if err != nil {
 					t.Fatal("declared control", index, err)
 				}
-				want, err := p.EncodeValue(responsesTextEventsAtOriginalLocations(t, before.Events, value))
+				for _, event := range after.Events {
+					if _, err := replay.Consume(event); err != nil {
+						t.Fatal("declared semantic lifecycle", index, err)
+					}
+				}
+				fields, err := value.ReadObject()
 				if err != nil {
 					t.Fatal(err)
 				}
-				got, err := p.EncodeValue(after.Events)
-				if err != nil || !bytes.Equal(want.Bytes(), got.Bytes()) {
-					t.Fatalf("control event changed at %d: %v\nold: %s\nnew: %s", index, err, want.JSONString(), got.JSONString())
+				switch {
+				case fields["type"].IsString("keepalive"):
+					if len(after.Events) != 0 {
+						t.Fatal("payload-free transport control became a semantic event", after.Events)
+					}
+				case fields["type"].IsString("response.output_item.added"):
+					if len(after.Events) != 1 {
+						t.Fatal("tool start split or disappeared", after.Events)
+					}
+					event := after.Events[0]
+					if event.Type != p.ItemStarted || !event.ItemID.IsString("output:0") || event.Index == nil || *event.Index != 0 || event.Item == nil || event.Item.Kind != p.ToolCallNode || !event.Item.ID.IsString("tool") || !event.Item.CallID.IsString("call") || !event.Item.Name.IsString("lookup") || event.Item.Input == nil || event.Item.Input.Kind != p.JSONInput || !event.Item.Input.Value.IsZero() {
+						t.Fatal("partial tool association changed", event)
+					}
+					if event.Item.Source == nil || event.Item.Source.Path != "/item" || event.Item.Source.Protocol != candidate.Identity() {
+						t.Fatal("tool start lost its actual source", event.Item.Source)
+					}
+				default:
+					assertResponsesControlObservations(t, candidate, before.Events, after.Events)
 				}
+
 				oldEvents, newEvents = append(oldEvents, before.Events...), append(newEvents, after.Events...)
 			}
 			if err := wire.Finish(); err != nil {
@@ -77,6 +92,21 @@ func TestResponsesPackageControlSourceStream(t *testing.T) {
 			}
 			if err := replay.Finish(); err != nil {
 				t.Fatal(err)
+			}
+			if fixture.name == "keepalive" {
+				collector, err := p.NewResponseCollector(sourceTarget, candidate.ResourceLimits())
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, event := range newEvents {
+					if _, _, err := collector.Consume(event); err != nil {
+						t.Fatal(err)
+					}
+				}
+				response, err := collector.Finish()
+				if err != nil || len(response.Content) != 0 || response.Usage != nil || !response.ID.IsString("r") || !response.Status.IsString("completed") {
+					t.Fatal("transport controls changed the empty generation", response, err)
+				}
 			}
 			if fixture.name == "nested-error" || fixture.name == "flat-error" {
 				for _, target := range []string{Chat, Responses, Anthropic, Gemini} {
@@ -92,48 +122,31 @@ func TestResponsesPackageControlSourceStream(t *testing.T) {
 }
 
 func TestResponsesPackageControlTerminalBoundary(t *testing.T) {
-	legacy, candidate := shippedProjectionProtocol(t, Responses), compileBuiltinPackage(t, "openai-responses")
-	for _, raw := range []string{
-		`{"type":"error","sequence_number":11,"message":"too late"}`,
-		`{"type":"response.failed","sequence_number":11,"response":{"id":"r","error":{"message":"too late"}}}`,
-		`{"type":"keepalive","sequence_number":11,"vendor":42}`,
-		`{"type":"keepalive","sequence_number":10}`,
+	candidate := compileBuiltinPackage(t, "openai-responses")
+	for _, fixture := range []struct{ frame, path string }{
+		{`{"type":"error","sequence_number":11,"message":"too late"}`, "/type"},
+		{`{"type":"response.failed","sequence_number":11,"response":{"id":"r","error":{"message":"too late"}}}`, "/type"},
+		{`{"type":"keepalive","sequence_number":11,"vendor":42}`, "/type"},
+		{`{"type":"keepalive","sequence_number":10}`, "/sequence_number"},
 	} {
-		options := p.EvaluationContext{State: p.NewEvaluationState()}
-		defer options.State.Release()
 		wire, err := candidate.NewWireInputStreamValidation(p.Scope{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		sourceTarget := legacy.Target(p.DecodeEvent, p.Scope{})
-		sourceTarget.Direction = p.EncodeEvent
-		replay, err := p.NewEventReplay(sourceTarget, legacy.ResourceLimits())
-		if err != nil {
-			t.Fatal(err)
-		}
-		decodeLegacy := func(value p.Value) error {
-			frame, err := legacy.DecodeFrame(t.Context(), value, options)
-			if err != nil {
-				return err
-			}
-			for _, event := range frame.Events {
-				if _, err := replay.Consume(event); err != nil {
-					return legacy.AnnotateSourceEventError(err)
-				}
-			}
-			return nil
-		}
 		for _, prefix := range []string{progressStart, progressEnd} {
-			value := testValue(t, prefix)
-			if err := decodeLegacy(value); err != nil {
-				t.Fatal(err)
-			}
-			if err := wire.Consume(t.Context(), value); err != nil {
+			if err := wire.Consume(t.Context(), testValue(t, prefix)); err != nil {
 				t.Fatal(err)
 			}
 		}
-		value := testValue(t, raw)
-		checkPackageFailureRejection(t, decodeLegacy(value), wire.Consume(t.Context(), value))
+		err = wire.Consume(t.Context(), testValue(t, fixture.frame))
+		var failure *p.ConversionError
+		if !errors.As(err, &failure) || len(failure.Issues) == 0 {
+			t.Fatal("post-terminal frame was accepted", fixture.frame, err)
+		}
+		issue := failure.Issues[0]
+		if issue.Code != p.UpstreamContractViolation || issue.Direction != p.DecodeEvent || issue.Protocol != candidate.Identity() || issue.Path != fixture.path {
+			t.Fatal("terminal barrier lost its wire attribution", issue)
+		}
 	}
 	validation, err := candidate.NewWireInputStreamValidation(p.Scope{})
 	if err != nil {
@@ -148,36 +161,36 @@ func TestResponsesPackageControlTerminalBoundary(t *testing.T) {
 }
 
 func TestResponsesPackageControlRejections(t *testing.T) {
-	legacy, candidate := shippedProjectionProtocol(t, Responses), compileBuiltinPackage(t, "openai-responses")
-	for _, fixture := range responsesErrorRejections() {
-		options := p.EvaluationContext{State: p.NewEvaluationState()}
-		defer options.State.Release()
-		wire, err := candidate.NewWireInputStreamValidation(p.Scope{})
+	compiled := compileBuiltinPackage(t, "openai-responses")
+	fixtures := append(responsesErrorRejections(), []struct{ body, path string }{
+		{`{"type":"keepalive","sequence_number":null}`, "/sequence_number"},
+		{`{"type":"keepalive","sequence_number":"1"}`, "/sequence_number"},
+		{`{"type":"error","sequence_number":1,"error":{"type":"","message":"failed"}}`, "/error/type"},
+		{`{"type":"response.failed","sequence_number":1,"response":{"error":null}}`, "/response/error"},
+	}...)
+	for _, fixture := range fixtures {
+		wire, err := compiled.NewWireInputStreamValidation(p.Scope{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		value := testValue(t, fixture.body)
-		_, before := legacy.DecodeFrame(t.Context(), value, options)
-		after := wire.Consume(t.Context(), value)
-		checkPackageFailureRejection(t, before, after)
-	}
-	for _, raw := range []string{
-		`{"type":"keepalive","sequence_number":null}`,
-		`{"type":"keepalive","sequence_number":"1"}`,
-		`{"type":"error","sequence_number":1,"error":{"type":"","message":"failed"}}`,
-		`{"type":"response.failed","sequence_number":1,"response":{"error":null}}`,
-	} {
-		options := p.EvaluationContext{State: p.NewEvaluationState()}
-		defer options.State.Release()
-		wire, err := candidate.NewWireInputStreamValidation(p.Scope{})
-		if err != nil {
-			t.Fatal(err)
+		issue := requireResponsesWireRejection(t, compiled, wire.Consume(t.Context(), testValue(t, fixture.body)))
+		if issue.Path != fixture.path {
+			t.Fatal("invalid control lost its source field location", fixture.path, issue)
 		}
-		value := testValue(t, raw)
-		_, before := legacy.DecodeFrame(t.Context(), value, options)
-		after := wire.Consume(t.Context(), value)
-		checkPackageFailureRejection(t, before, after)
 	}
+}
+
+func requireResponsesWireRejection(t *testing.T, compiled *p.Compiled, err error) p.ConversionIssue {
+	t.Helper()
+	var failure *p.ConversionError
+	if !errors.As(err, &failure) || len(failure.Issues) == 0 {
+		t.Fatal("invalid source wire was accepted or lost its structured rejection", err)
+	}
+	issue := failure.Issues[0]
+	if issue.Code == "" || issue.Severity != p.SeverityError || issue.Direction != p.DecodeEvent || issue.Protocol != compiled.Identity() || issue.Stage == "" || issue.Reason == "" || issue.Path == "" {
+		t.Fatal("source rejection lost its attribution", issue)
+	}
+	return issue
 }
 
 func TestResponsesPackageControlPreservesExtensions(t *testing.T) {
@@ -215,6 +228,50 @@ func TestResponsesPackageControlPreservesExtensions(t *testing.T) {
 		unmapped := after.Events[0].Unmapped
 		if unmapped.Source.Path != "" || unmapped.Source.Protocol != candidate.Identity() || unmapped.Source.Direction != p.DecodeEvent || !bytes.Equal(unmapped.Value.Bytes(), expected) {
 			t.Fatal("control extension lost its original frame", unmapped)
+		}
+	}
+}
+
+func assertResponsesControlObservations(t *testing.T, compiled *p.Compiled, expected, actual []p.Event) {
+	t.Helper()
+	if len(expected) != len(actual) {
+		t.Fatal("control observation count changed", len(expected), len(actual))
+	}
+	assertValue := func(before, after any) {
+		t.Helper()
+		want, err := p.EncodeValue(before)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := p.EncodeValue(after)
+		if err != nil || want != got {
+			t.Fatal("observed control value changed", want.JSONString(), got.JSONString(), err)
+		}
+	}
+	for index, event := range actual {
+		before := expected[index]
+		if event.SchemaVersion != compiled.CoreVersion() || event.Source != compiled.Identity() || event.Type != before.Type || event.ResponseID != before.ResponseID || event.ItemID != before.ItemID || event.CallID != before.CallID || event.ParentID != before.ParentID || event.Delta != before.Delta || event.Error != before.Error {
+			t.Fatal("control identity, lifecycle or payload changed", event)
+		}
+		if event.Item != nil || event.Request != nil || event.Media != nil || event.Control != nil || event.ResponsesTurnState != nil {
+			t.Fatal("control observation acquired unassociated generation or state payload", event)
+		}
+		assertValue(before.Usage, event.Usage)
+		assertValue(before.Metadata, event.Metadata)
+		if before.Response == nil {
+			if event.Response != nil {
+				t.Fatal("control invented a response snapshot", event.Response)
+			}
+			continue
+		}
+		response := event.Response
+		if response == nil || response.SchemaVersion != compiled.CoreVersion() || response.Source != compiled.Identity() || response.ID != before.Response.ID || response.Model != before.Response.Model || response.Status != before.Response.Status || response.Error != before.Response.Error || len(response.Content) != 0 || len(before.Response.Content) != 0 {
+			t.Fatal("empty response observation changed", response)
+		}
+		assertValue(before.Response.Usage, response.Usage)
+		assertValue(before.Response.Metadata, response.Metadata)
+		if !maps.Equal(before.Response.Attributes, response.Attributes) {
+			t.Fatal("response attribute fields changed", before.Response.Attributes, response.Attributes)
 		}
 	}
 }

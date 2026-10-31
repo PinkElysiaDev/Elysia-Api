@@ -7,28 +7,19 @@ func MergeLogprobDeltas(initial Value, deltas []Value, codec string) Value {
 	if len(deltas) == 0 {
 		return initial
 	}
-	values := make([]Value, 0, len(deltas)+1)
-	values = append(values, initial)
-	values = append(values, deltas...)
 	if codec == "responses" {
-		var entries []Value
-		for index, value := range values {
-			var next []Value
-			if err := value.Decode(&next); err != nil {
-				return mergeLogprobDeltasSequentially(initial, deltas, codec)
-			}
-			if index == 0 {
-				entries = next
-			} else {
-				entries = append(entries, next...)
-			}
+		output, err := mergeArrayDeltas(initial, deltas)
+		if err != nil {
+			return mergeLogprobDeltasSequentially(initial, deltas, codec)
 		}
-		output, _ := EncodeValue(entries)
 		return output
 	}
 	if codec != "openai-chat" {
 		return mergeLogprobDeltasSequentially(initial, deltas, codec)
 	}
+	values := make([]Value, 0, len(deltas)+1)
+	values = append(values, initial)
+	values = append(values, deltas...)
 	fields := make(map[string][]Value)
 	for _, value := range values {
 		if value.IsNull() {
@@ -87,4 +78,20 @@ func canDeferLogprobValue(value Value, codec string) bool {
 		}
 	}
 	return true
+}
+
+// Array fragments stay independent until the consumer requests a snapshot.
+func mergeArrayDeltas(initial Value, deltas []Value) (Value, error) {
+	var entries []Value
+	if err := initial.Decode(&entries); err != nil {
+		return Value{}, err
+	}
+	for _, value := range deltas {
+		var next []Value
+		if err := value.Decode(&next); err != nil {
+			return Value{}, err
+		}
+		entries = append(entries, next...)
+	}
+	return EncodeValue(entries)
 }

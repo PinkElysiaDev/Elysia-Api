@@ -18,6 +18,8 @@ type compiledPackagePlan struct {
 	taskContracts        map[string]map[string]packageTaskContracts
 	finalContracts       map[Direction]compiledWireContract
 	modelPolicy          *compiledModelPolicy
+	conversionDefaults   []ConversionRule
+	fieldObservations    map[string]compiledFieldObservation
 }
 
 type compiledSemanticEffect struct {
@@ -110,8 +112,8 @@ func (compiler *Compiler) compilePackage(document ProtocolPackage) (*Compiled, [
 				hasProof := provesPackageEmission(program, output, input)
 				if !hasProof && !isPackageDecodeDirection(direction) {
 					if effect.when == nil {
-						wire := document.Spec.Documents[document.Mapping.Directions[direction].Document]
-						hasProof = provesDeepMergeEmission(program, output, input, wire.Schema)
+						schema := document.Spec.resolvedDocumentSchema(document.Mapping.Directions[direction].Document)
+						hasProof = provesDeepMergeEmission(program, output, input, schema)
 					} else {
 						hasProof = provesGuardedDeepMergeEmission(program, output, input, effect.when.expression, compiler.limits.Nodes)
 					}
@@ -169,8 +171,11 @@ func (compiled *Compiled) bindPackageIdentity(document ProtocolPackage) error {
 	return nil
 }
 
-func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Direction, wire WireContractSpec, documentHashes map[string]string, compiler *expressionCompiler, coreVersion, dslVersion int) (compiledMapping, []compiledSemanticEffect, error) {
+func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Direction, wire WireContractSpec, documentHashes map[string]string, outputNamespaces map[string]int, compiler *expressionCompiler, coreVersion, dslVersion int) (compiledMapping, []compiledSemanticEffect, error) {
 	path := "/mapping/directions/" + string(direction)
+	if err := validateNativeReplayMode(mapping, direction, path); err != nil {
+		return compiledMapping{}, nil, err
+	}
 	isDecode := isPackageDecodeDirection(direction)
 	if mapping.IsEventBatch && !isEventDecoder(direction) {
 		return compiledMapping{}, nil, fmt.Errorf("%s/eventBatch: requires an event decoder", path)
@@ -182,7 +187,7 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		return compiledMapping{}, nil, fmt.Errorf("%s/frameBatch: requires an event encoder", path)
 	}
 	usesStreamPrimitive := false
-	scope := expressionScope{canReadRuntime: true, canReadOutputStream: direction == EncodeEvent, canUseStreamPrimitives: isEventDirection(direction), streamPrimitiveUsed: &usesStreamPrimitive, trackerChannels: map[string]bool{}}
+	scope := expressionScope{canReadRuntime: true, canReadOutputStream: direction == EncodeEvent, outputNamespaces: outputNamespaces, canUseStreamPrimitives: isEventDirection(direction), streamPrimitiveUsed: &usesStreamPrimitive, trackerChannels: map[string]bool{}}
 	if isDecode {
 		scope.input = wire.Schema
 	} else {
@@ -191,6 +196,20 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	references := map[string]Expression{}
 	compiler.mappingReferences = references
 	defer func() { compiler.mappingReferences = nil }()
+	var nativeWhen *compiledOutputPlan
+	if mapping.NativeWhen != nil {
+		if mapping.NativeReplay != "original_frame" {
+			return compiledMapping{}, nil, fmt.Errorf("%s/nativeWhen: requires original_frame replay", path)
+		}
+		predicate, err := compiler.compilePlan(*mapping.NativeWhen, path+"/nativeWhen", expressionScope{input: wire.Schema, root: wire.Schema, isWireContract: true}, 1)
+		if err != nil {
+			return compiledMapping{}, nil, err
+		}
+		if !isAssignable(predicate.expression.result, BooleanType) {
+			return compiledMapping{}, nil, fmt.Errorf("%s/nativeWhen: requires a boolean frame predicate", path)
+		}
+		nativeWhen = predicate
+	}
 	indexes, err := compilePackageIndexes(mapping.Indexes, direction, path+"/indexes", compiler.limits, &scope)
 	if err != nil {
 		return compiledMapping{}, nil, err
@@ -367,13 +386,25 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		return compiledMapping{}, nil, fmt.Errorf("%s/program: expression has no compiled execution plan", path)
 	}
 	return compiledMapping{
-		outputPlan: plan, definitionHash: hashValue(identity), streamState: streamState, streamFinalizer: finalizer, streamObserver: observer,
+		preservesDynamicNative: mapping.NativeReplay == "original_frame",
+		nativeWhen:             nativeWhen,
+		outputPlan:             plan, definitionHash: hashValue(identity), streamState: streamState, streamFinalizer: finalizer, streamObserver: observer,
 		isEventBatch:      mapping.IsEventBatch,
 		canDeferEvents:    mapping.CanDeferEvents,
 		frameBatch:        mapping.IsFrameBatch,
 		hasCoreOutputPlan: isPackageDecodeDirection(direction),
 		hasCoreInputPlan:  !isPackageDecodeDirection(direction),
 	}, effects, nil
+}
+
+func validateNativeReplayMode(mapping ProtocolDirectionMapping, direction Direction, path string) error {
+	if mapping.NativeReplay == "" {
+		return nil
+	}
+	if mapping.NativeReplay != "original_frame" || direction != EncodeEvent || !mapping.IsFrameBatch || mapping.Observe == nil {
+		return fmt.Errorf("%s/nativeReplay: original_frame requires a frame-batch event encoder and a native observer", path)
+	}
+	return nil
 }
 
 func isPackageDecodeDirection(direction Direction) bool {

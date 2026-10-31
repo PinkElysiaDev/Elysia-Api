@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
@@ -155,7 +156,7 @@ func TestHTTP524GatewayAndAgentPreserveObservedFailure(t *testing.T) {
 			t.Fatal(err)
 		}
 		candidate := gatewayCandidate{compiled: upstream, operation: operation, operationName: name, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []protocol.Transport{operation.Transport}}}
-		record := &usageRecord{}
+		record := &usageRecord{RequestID: "fixture-execution", StartedAt: time.Now()}
 		before := calls.Load()
 		result, err := s.collectProtocolGeneration(t.Context(), candidate, request, record, nil)
 		var failure *upstreamHTTPFailure

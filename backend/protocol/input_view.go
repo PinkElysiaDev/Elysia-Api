@@ -6,15 +6,16 @@ import "context"
 // selections; mapping detaches them before they can become retained core values.
 // Only readers and successful root checks are shared, never stream state.
 type inputView struct {
-	value        Value
-	owned        valueReader
-	borrowed     valueReader
-	objects      planObjectReader
-	rootLimits   Limits
-	hasRootCheck bool
-	validator    *specWireValidator
-	direction    Direction
-	specLimits   Limits
+	value         Value
+	owned         valueReader
+	borrowed      valueReader
+	objects       planObjectReader
+	rootLimits    Limits
+	hasRootCheck  bool
+	validator     *specWireValidator
+	direction     Direction
+	specLimits    Limits
+	sourceReceipt *sourceFrameReceipt
 }
 
 func newInputView(value Value) *inputView {

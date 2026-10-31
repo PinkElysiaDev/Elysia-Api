@@ -12,7 +12,8 @@ import (
 // WireContractSpec validates a wire document independently of its mapping.
 // Assertions run in authored order after the document schema succeeds.
 type WireContractSpec struct {
-	Schema     *ValueSchema        `json:"schema"`
+	Base       string              `json:"base,omitempty"`
+	Schema     *ValueSchema        `json:"schema,omitempty"`
 	Assertions []WireAssertion     `json:"assertions,omitempty"`
 	Stream     *ProtocolStreamSpec `json:"stream,omitempty"`
 }
@@ -82,7 +83,7 @@ func (expressions *expressionCompiler) compileWireContractSpec(spec WireContract
 }
 
 func compileWireAssertions(assertions []WireAssertion, path string, input, root *ValueSchema, expressions *expressionCompiler, depth int) ([]compiledWireAssertion, error) {
-	return compileWireAssertionsInScope(assertions, path, expressionScope{input: input, root: root}, expressions, depth)
+	return compileWireAssertionsInScope(assertions, path, expressionScope{input: input, root: root, isWireContract: true}, expressions, depth)
 }
 
 func compileWireAssertionsInScope(assertions []WireAssertion, path string, scope expressionScope, expressions *expressionCompiler, depth int) ([]compiledWireAssertion, error) {

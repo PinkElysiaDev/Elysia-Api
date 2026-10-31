@@ -21,13 +21,20 @@ func (runtime evaluationRuntime) deliveredItems() (*packageStreamValidation, err
 	return state, nil
 }
 
-func (runtime evaluationRuntime) deliveredItem(id string) (*replayItem, *TextTracker, error) {
+func (runtime evaluationRuntime) deliveredItem(namespace, id string) (*wireEntityState, *TextTracker, error) {
 	state, err := runtime.deliveredItems()
 	if err != nil || state == nil {
 		return nil, nil, err
 	}
-	key := state.replay.identities.aliases["item:"+id]
-	return state.replay.items[key], state.replay.state.texts[key], nil
+	slot, exists := state.contract.namespaceSlots[namespace]
+	if !exists {
+		return nil, nil, fmt.Errorf("unknown delivered namespace %q", namespace)
+	}
+	item := state.entities[slot][id]
+	if item == nil {
+		return nil, nil, nil
+	}
+	return item, &item.text, nil
 }
 
 func (plan *compiledOutputPlan) readDeliveredItem(state evaluation) (plannedOutput, error) {
@@ -39,21 +46,40 @@ func (plan *compiledOutputPlan) readDeliveredItem(state evaluation) (plannedOutp
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	item, _, err := state.runtime.deliveredItem(id)
+	item, _, err := state.runtime.deliveredItem(plan.expression.streamNamespace, id)
 	if err == nil && state.runtime.outputStream != nil {
 		state.budget.hasReadOutputStream = true
 	}
 	if err != nil || item == nil {
 		return plannedOutput{}, err
 	}
+	contract := state.runtime.outputStream.contract
+	definition := contract.entities[item.definition]
 	fields := map[string]JSONOutput{
-		"kind":       JSONLeaf(StringValue(string(item.kind))),
-		"isFinished": JSONLeaf(coreBoolean(item.isFinished)),
+		"entity": JSONLeaf(StringValue(definition.name)), "payload": JSONLeaf(StringValue(definition.payload)), "isFinished": JSONLeaf(coreBoolean(item.isFinished)),
 	}
-	if state.runtime.outputStream.contract.isItemIDIndex {
-		// The contract stored this key only after readCount and FormatInt.
+	if contract.namespaces[definition.namespace].keyType == IntegerType {
 		index, _ := strconv.ParseInt(id, 10, 64)
 		fields["index"] = JSONLeaf(coreInteger(index))
+	}
+	if item.parent != nil {
+		parentDefinition := contract.entities[item.parent.definition]
+		fields["parent"] = JSONObject(map[string]JSONOutput{"namespace": JSONLeaf(StringValue(contract.namespaces[parentDefinition.namespace].name)), "key": JSONLeaf(StringValue(item.parent.key))})
+	}
+	if item.hasOrdinal {
+		fields["ordinal"] = JSONLeaf(coreInteger(item.ordinal))
+	}
+	if !item.properties.IsZero() {
+		fields["properties"] = JSONLeaf(item.properties)
+	}
+	if len(item.identities) > 0 {
+		identities := make(map[string]JSONOutput, len(item.identities))
+		for slot, identity := range item.identities {
+			if identity != "" {
+				identities[definition.identities[slot].name] = JSONLeaf(StringValue(identity))
+			}
+		}
+		fields["identities"] = JSONObject(identities)
 	}
 	output := JSONObject(fields)
 	return plannedOutput{output: output, bytes: normalizedOutputBytes(output)}, nil
@@ -76,14 +102,14 @@ func (plan *compiledOutputPlan) resumeDeliveredText(state evaluation) (plannedOu
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	item, tracker, err := state.runtime.deliveredItem(id)
+	item, tracker, err := state.runtime.deliveredItem(plan.expression.streamNamespace, id)
 	if err != nil {
 		return plannedOutput{}, err
 	}
 	if state.runtime.outputStream != nil {
 		state.budget.hasReadOutputStream = true
 	}
-	if item == nil || item.isFinished || item.kind != TextNode && item.kind != RefusalNode && item.kind != ReasoningNode {
+	if item == nil || item.isFinished || state.runtime.outputStream.contract.entities[item.definition].payload != "text" {
 		return plannedOutput{}, fmt.Errorf("text continuation requires an open delivered text item")
 	}
 	transaction := state.streamTransaction

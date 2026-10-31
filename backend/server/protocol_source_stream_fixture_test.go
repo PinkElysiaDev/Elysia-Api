@@ -59,12 +59,22 @@ func sourceStreamPackage(t *testing.T) protocol.ProtocolPackage {
 		protocol.DecodeEvent:    {Document: "provider-event", Program: protocol.Expression{Op: "object", Fields: decode}, Effects: optionalEmit("responseId")},
 		protocol.EncodeEvent:    {Document: "client-event", Program: protocol.Expression{Op: "object", Fields: encode}, Effects: optionalEmit("responseId")},
 	}
-	stream := &protocol.ProtocolStreamSpec{Discriminator: "/type", ResponseID: "/responseId", ItemID: "/itemId", Sequence: "/sequence",
+	counter := protocol.ValueSchema{Type: protocol.ObjectType, AllowUnknown: true, Properties: map[string]protocol.ValueSchema{
+		"count": {Type: protocol.IntegerType},
+	}}
+	stream := &protocol.ProtocolStreamSpec{Discriminator: "/type", ResponseID: "/responseId", Sequence: "/sequence",
+		Namespaces: map[string]protocol.ProtocolStreamNamespaceSpec{"item": {KeyType: protocol.StringType}},
+		Entities:   map[string]protocol.ProtocolStreamEntitySpec{"text": {Namespace: "item", Payload: "text"}},
+		Lifecycle:  protocol.ProtocolStreamLifecycleSpec{EOF: "require_terminal", OpenEntities: "reject"},
 		Events: map[string]protocol.ProtocolStreamEventSpec{
-			"response.started": {{Action: "response_start"}}, "response.finished": {{Action: "response_finish"}},
-			"item.started": {{Action: "item_start"}}, "item.delta": {{Action: "text_delta", Text: "/delta"}}, "item.finished": {{Action: "item_finish"}},
-			"usage.updated":    {{Action: "usage", Usage: &protocol.ProtocolStreamUsageSpec{Input: "/usage/input/count", Output: "/usage/output/count", Total: "/usage/total/count"}}},
-			"operation.failed": {{Action: "failure", Error: "/error"}},
+			"response.started": {{Action: "stream_start"}}, "response.finished": {{Action: "stream_finish"}},
+			"item.started":  {{Action: "entity_start", Entity: "text", Key: &protocol.ProtocolStreamValueSpec{Path: "/itemId"}}},
+			"item.delta":    {{Action: "entity_append", Entity: "text", Key: &protocol.ProtocolStreamValueSpec{Path: "/itemId"}, Payload: &protocol.ProtocolStreamValueSpec{Path: "/delta"}}},
+			"item.finished": {{Action: "entity_finish", Entity: "text", Key: &protocol.ProtocolStreamValueSpec{Path: "/itemId"}}},
+			"usage.updated": {{Action: "assert", AfterTerminal: true, Assertions: []protocol.WireAssertion{{Path: "/usage", Code: protocol.UpstreamContractViolation, Reason: "usage counters require integer count fields", Schema: &protocol.ValueSchema{Type: protocol.ObjectType, AllowUnknown: true, Properties: map[string]protocol.ValueSchema{
+				"input": counter, "output": counter, "total": counter,
+			}}}}}, {Action: "observe", AfterTerminal: true}},
+			"operation.failed": {{Action: "stream_fail", Error: "/error"}},
 		}}
 	documents := map[string]protocol.WireContractSpec{}
 	for direction, mapping := range directions {

@@ -53,7 +53,7 @@ func isResponsesMetadataEvent(event Event) (bool, error) {
 		event.ResponsesTurnState != nil || event.Unmapped != nil || !event.SessionID.IsZero() ||
 		event.Response != nil || event.Item != nil || event.Request != nil || event.Usage != nil || event.Media != nil ||
 		!event.Delta.IsZero() || !event.Error.IsZero() || len(event.Metadata) != 0 ||
-		!event.ItemID.IsZero() || !event.ParentID.IsZero() || !event.CallID.IsZero() || event.Index != nil {
+		event.Collection != "" || !event.ItemID.IsZero() || !event.ParentID.IsZero() || !event.CallID.IsZero() || event.Index != nil {
 		return false, streamIssue(InvalidInput, "/metadata", "auxiliary response metadata must remain isolated from generation data")
 	}
 	id, _ := readValuePointer(frame, []string{"response_id"})

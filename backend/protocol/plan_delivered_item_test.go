@@ -8,13 +8,13 @@ import (
 
 func TestDeliveredTextResumesOnlyCommittedState(t *testing.T) {
 	document := eventProtocolPackage(t)
-	document.Spec.Documents["client-event"].Stream.IsItemIDIndex = true
+	document.Spec.Documents["client-event"].Stream.Namespaces["item"] = ProtocolStreamNamespaceSpec{KeyType: IntegerType}
 	mapping := document.Mapping.Directions[EncodeEvent]
 	mapping.Program.Fields["item_id"] = literalExpression(7)
 	mapping.Program.Fields["text"] = Expression{Op: "track_text", Name: "body", Source: expressionPointer(literalExpression("target")), Body: expressionPointer(readExpression("input", "/delta")), Policy: "snapshot"}
-	mapping.Program.Fields["observed"] = Expression{Op: "read_delivered_item", Source: expressionPointer(literalExpression("7"))}
+	mapping.Program.Fields["observed"] = Expression{Op: "read_delivered_item", Namespace: "item", Source: expressionPointer(literalExpression("7"))}
 	mapping.Program.Fields["maximum"] = readExpression("runtime", "/delivered/maxItemIndex")
-	mapping.Program = Expression{Op: "let", Name: "resumed", Source: &Expression{Op: "resume_text", Name: "body", Source: expressionPointer(literalExpression("target")), Body: expressionPointer(literalExpression("7"))}, Body: expressionPointer(mapping.Program)}
+	mapping.Program = Expression{Op: "let", Name: "resumed", Source: &Expression{Op: "resume_text", Namespace: "item", Name: "body", Source: expressionPointer(literalExpression("target")), Body: expressionPointer(literalExpression("7"))}, Body: expressionPointer(mapping.Program)}
 	mapping.Observe = &Expression{Op: "omit"}
 	document.Mapping.Directions[EncodeEvent] = mapping
 	compiled := compilePackageForTest(t, document)
@@ -64,14 +64,14 @@ func TestDeliveredTextResumesOnlyCommittedState(t *testing.T) {
 		t.Fatal("failed resumption changed the next transaction", err)
 	}
 	fields, _ := wire.ReadObject()
-	if !fields["text"].IsString("suffix") || fields["maximum"].raw != "7" || !equalValues(fields["observed"], Value{raw: `{"kind":"text","isFinished":false,"index":7}`}) {
+	if !fields["text"].IsString("suffix") || fields["maximum"].raw != "7" || !equalValues(fields["observed"], Value{raw: `{"entity":"text","payload":"text","isFinished":false,"index":7}`}) {
 		t.Fatal("resumption lost delivered item facts or repeated the prefix", wire)
 	}
-	key := validation.packageStream.replay.identities.aliases["item:7"]
-	if validation.packageStream.replay.state.texts[key].Length() != len("prefix") {
+	item := validation.packageStream.entities[validation.packageStream.contract.namespaceSlots["item"]]["7"]
+	if item.text.Length() != len("prefix") {
 		t.Fatal("the resumed tracker shared mutable digest state with validation")
 	}
-	if suffix, err := validation.packageStream.replay.state.texts[key].snapshotSuffix("prefix"); err != nil || suffix != "" {
+	if suffix, err := item.text.snapshotSuffix("prefix"); err != nil || suffix != "" {
 		t.Fatal("the resumed tracker changed the validator's digest", suffix, err)
 	}
 	for _, scope := range []Scope{{}, {Account: "other"}} {

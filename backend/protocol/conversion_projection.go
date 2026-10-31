@@ -49,6 +49,9 @@ func (s *Service) ResolvePreviewConversion(route ConversionContext, phase Conver
 func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 	p := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "engine-default", Name: "引擎默认", Mode: "compatible", Rules: []ConversionRule{},
 		Continuation: &ContinuationSettings{ClientCarrier: true, Persist: true, RetentionSeconds: 7 * 24 * 3600, TurnsPerSession: 64, MaxBytes: 512 << 20, RecordBytes: 8 << 20}}
+	p.Rules = append(p.Rules, upstream.defaultConversionRules(ConversionRequest)...)
+	p.Rules = append(p.Rules, ingress.defaultConversionRules(ConversionResponse)...)
+	p.Rules = append(p.Rules, ingress.defaultConversionRules(ConversionEvent)...)
 	if chatResponseModelPair(ingress, upstream) {
 		p.Rules = append(p.Rules, ConversionRule{ID: "chat-response-model", Order: 205, Enabled: true, Phase: ConversionResponse, Action: "chat_response_model"})
 	}

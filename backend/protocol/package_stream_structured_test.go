@@ -8,25 +8,7 @@ import (
 func structuredStreamSpec(t *testing.T) *ProtocolStreamSpec {
 	t.Helper()
 	var spec ProtocolStreamSpec
-	raw := Value{raw: `{
-		"discriminator":"/object","discriminatorValue":{"op":"literal","value":"chunk"},
-		"responseId":"/id","optionalResponseId":true,"itemId":"/index","sequence":"/seq","closeItemsOnFinish":true,
-		"identities":[{"path":"/model","type":"string","when":{"op":"not","source":{"op":"present","source":{"op":"read","path":"/error"}}}},{"path":"/created","type":"integer"}],
-		"events":{"chunk":[
-			{"action":"failure","allowBeforeStart":true,"error":"/error","when":{"op":"present","source":{"op":"read","path":"/error"}}},
-			{"foreach":"/choices","actions":[
-				{"action":"response_start","implicit":true},
-				{"action":"item_start","implicit":true,"itemIdValue":{"op":"literal","value":"text"},"when":{"op":"present","source":{"op":"read","path":"/delta/content"}}},
-				{"action":"text_delta","text":"/delta/content","itemIdValue":{"op":"literal","value":"text"},"when":{"op":"present","source":{"op":"read","path":"/delta/content"}}},
-				{"foreach":"/delta/tool_calls","actions":[
-					{"action":"tool_start","implicit":true,"sparseIdentity":true,"itemIdValue":{"op":"cast","source":{"op":"read","path":"/index"},"to":"string"},"tool":{"name":"/function/name","callId":"/id"}},
-					{"action":"tool_delta","arguments":"/function/arguments","itemIdValue":{"op":"cast","source":{"op":"read","path":"/index"},"to":"string"},"when":{"op":"exists","source":{"op":"read","path":"/function/arguments"}}}
-				]},
-				{"action":"response_finish","when":{"op":"present","source":{"op":"read","path":"/finish_reason"}}}
-			]},
-			{"action":"usage","usage":{"output":"/usage/output"},"when":{"op":"present","source":{"op":"read","path":"/usage"}}}
-		]}
-	}`}
+	raw := Value{raw: `{"discriminator":"/object","discriminatorValue":{"op":"literal","value":"chunk"},"responseId":"/id","optionalResponseId":true,"sequence":"/seq","identities":[{"path":"/model","type":"string","when":{"op":"not","source":{"op":"present","source":{"op":"read","path":"/error"}}}},{"path":"/created","type":"integer"}],"namespaces":{"item":{"keyType":"string"}},"lifecycle":{"eof":"require_terminal","openEntities":"finish"},"events":{"chunk":[{"action":"stream_fail","allowBeforeStart":true,"error":"/error","when":{"op":"present","source":{"op":"read","path":"/error"}}},{"foreach":"/choices","actions":[{"action":"stream_start","implicit":true},{"action":"entity_start","implicit":true,"when":{"op":"present","source":{"op":"read","path":"/delta/content"}},"entity":"text","key":{"path":"/index","value":{"op":"literal","value":"text"}}},{"action":"entity_append","when":{"op":"present","source":{"op":"read","path":"/delta/content"}},"entity":"text","key":{"path":"/index","value":{"op":"literal","value":"text"}},"payload":{"path":"/delta/content"}},{"foreach":"/delta/tool_calls","actions":[{"action":"entity_start","implicit":true,"entity":"function_call","key":{"path":"/index","value":{"op":"cast","source":{"op":"read","path":"/index"},"to":"string"}},"identities":{"name":{"path":"/function/name"},"call_id":{"path":"/id"}}},{"action":"entity_append","when":{"op":"exists","source":{"op":"read","path":"/function/arguments"}},"entity":"function_call","key":{"path":"/index","value":{"op":"cast","source":{"op":"read","path":"/index"},"to":"string"}},"payload":{"path":"/function/arguments"}}]},{"action":"stream_finish","when":{"op":"present","source":{"op":"read","path":"/finish_reason"}}}]},{"action":"assert","assertions":[{"path":"/usage/output","when":{"op":"exists","source":{"op":"read","from":"input","path":"/usage/output"}},"schema":{"type":"integer"},"code":"upstream_contract_violation","reason":"counter must be nonnegative","check":{"op":"integer","operation":"gte","items":[{"op":"read","from":"input","path":""},{"op":"literal","value":0}]}},{"path":"","code":"upstream_contract_violation","reason":"count observation requires a value","check":{"op":"any","items":[{"op":"exists","source":{"op":"read","from":"input","path":"/usage/output"}}]}}],"when":{"op":"present","source":{"op":"read","path":"/usage"}},"afterTerminal":true},{"action":"observe","when":{"op":"present","source":{"op":"read","path":"/usage"}},"afterTerminal":true}]},"entities":{"text":{"namespace":"item","payload":"text"},"function_call":{"namespace":"item","payload":"json","identities":{"name":{"type":"string","requiredAt":"finish","allowEmpty":true},"call_id":{"type":"string","requiredAt":"finish","unique":true,"allowEmpty":true}}}}}`}
 	if err := raw.Decode(&spec); err != nil {
 		t.Fatal(err)
 	}
@@ -49,12 +31,10 @@ func TestPackageStreamStructuredActions(t *testing.T) {
 	if err := state.finish(); err != nil {
 		t.Fatal(err)
 	}
-	if len(state.replay.items) != 2 || state.openItems != 0 || state.replay.state.buffered != 0 || state.accepted.sequence != 4 {
+	if state.entityCount != 2 || state.openItems != 0 || state.bufferedBytes != 0 || state.accepted.sequence != 4 {
 		t.Fatal("nested actions repeated starts, retained completed arguments, or advanced the sequence per member")
 	}
-	if usage := state.replay.Usage(); usage == nil || usage.Output == nil || usage.Output.Count != 5 {
-		t.Fatal("usage tail lost", usage)
-	}
+
 	assertPackageRuntimeIssue(t, state.consume(t.Context(), Value{raw: `{"seq":5,"choices":[{"delta":{"content":"late"}}]}`}), UpstreamContractViolation, "/object")
 	state = newSparseIdentityValidation(t, structuredStreamSpec(t))
 	if err := state.consume(t.Context(), Value{raw: `{"seq":0,"model":false,"error":{"message":"failed"}}`}); err != nil {
@@ -72,7 +52,8 @@ func TestPackageStreamStructuredRejections(t *testing.T) {
 		{"invalid-delta", `{"seq":1,"choices":[{"delta":{"tool_calls":[{"index":2,"function":{"arguments":false}}]}}]}`, "/choices/0/delta/tool_calls/0/function/arguments"},
 		{"null-tool-id", `{"seq":1,"choices":[{"delta":{"tool_calls":[{"index":2,"id":null}]}}]}`, "/choices/0/delta/tool_calls/0/id"},
 		{"null-tool-array", `{"seq":1,"choices":[{"delta":{"tool_calls":null}}]}`, "/choices/0/delta/tool_calls"},
-		{"missing-tool-name", `{"seq":1,"choices":[{"delta":{},"finish_reason":"stop"}]}`, "/choices/0/delta/tool_calls/0/function/name"},
+		{"missing-tool-name", `{"seq":1,"choices":[{"delta":{"tool_calls":[{"index":2,"id":"call","function":{"arguments":"1}"}}]},"finish_reason":"stop"}]}`, "/choices/0/delta/tool_calls/0/function/name"},
+		{"missing-tool-id", `{"seq":1,"choices":[{"delta":{"tool_calls":[{"index":2,"function":{"name":"lookup","arguments":"1}"}}]},"finish_reason":"stop"}]}`, "/choices/0/delta/tool_calls/0/id"},
 		{"stale-frame", `{"seq":0,"choices":[]}`, "/seq"},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
@@ -98,7 +79,7 @@ func TestPackageStreamStructuredCompilation(t *testing.T) {
 	for _, edit := range []func(*ProtocolStreamSpec){
 		func(spec *ProtocolStreamSpec) { spec.Events["chunk"][1].Action = "observe" },
 		func(spec *ProtocolStreamSpec) { spec.Events["chunk"][1].Actions[2].Implicit = true },
-		func(spec *ProtocolStreamSpec) { spec.Events["chunk"][1].Actions[1].SparseIdentity = true },
+		func(spec *ProtocolStreamSpec) { spec.Events["chunk"][1].Actions[1].Encoding = "json_text" },
 		func(spec *ProtocolStreamSpec) { spec.Identities[0].Type = ObjectType },
 		func(spec *ProtocolStreamSpec) {
 			spec.DiscriminatorValue = expressionPointer(readExpression("state", "/kind"))
@@ -114,19 +95,21 @@ func TestPackageStreamStructuredCompilation(t *testing.T) {
 
 func TestPackageStreamDeclaredSparseUsage(t *testing.T) {
 	spec := structuredStreamSpec(t)
-	usage := &spec.Events["chunk"][2]
-	usage.AllowBeforeStart = true
-	usage.Usage.AllowEmpty = true
+	assertion := &spec.Events["chunk"][2]
+	observation := &spec.Events["chunk"][3]
+	observation.AllowBeforeStart = true
+	required := assertion.Assertions[len(assertion.Assertions)-1]
+	assertion.Assertions = assertion.Assertions[:len(assertion.Assertions)-1]
 	state := newSparseIdentityValidation(t, spec)
 	if err := state.consume(t.Context(), Value{raw: `{"seq":0,"usage":{}}`}); err != nil {
-		t.Fatal("declared empty usage observation rejected", err)
+		t.Fatal("declared empty observation rejected", err)
 	}
-	if state.accepted.hasStarted || state.replay.usage == nil || state.replay.usage.Input != nil || state.replay.usage.Output != nil || state.replay.usage.Total != nil {
-		t.Fatal("empty usage invented a response or zero counters")
+	if state.accepted.hasStarted || state.entityCount != 0 {
+		t.Fatal("empty observation invented an entity or start")
 	}
-	usage.Usage.AllowEmpty = false
+	assertion.Assertions = append(assertion.Assertions, required)
 	state = newSparseIdentityValidation(t, spec)
-	assertPackageRuntimeIssue(t, state.consume(t.Context(), Value{raw: `{"seq":0,"usage":{}}`}), UpstreamContractViolation, "/object")
+	assertPackageRuntimeIssue(t, state.consume(t.Context(), Value{raw: `{"seq":0,"usage":{}}`}), UpstreamContractViolation, "")
 }
 
 func TestPackageWireSharedRetentionBudget(t *testing.T) {
@@ -152,8 +135,8 @@ func TestPackageWireSharedRetentionBudget(t *testing.T) {
 	if err := state.consume(t.Context(), initial); err != nil {
 		t.Fatal(err)
 	}
-	additional := limits.BufferBytes - state.identityBytes - state.replay.state.buffered + 1
-	if additional <= 0 || state.replay.state.buffered+additional > limits.BufferBytes {
+	additional := limits.BufferBytes - state.identityBytes - state.bufferedBytes + 1
+	if additional <= 0 || state.bufferedBytes+additional > limits.BufferBytes {
 		t.Fatal("fixture must exceed only the shared retention budget")
 	}
 	next := frame(1, strings.Repeat("x", additional))

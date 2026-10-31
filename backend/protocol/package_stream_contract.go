@@ -1,9 +1,6 @@
 package protocol
 
-import (
-	"fmt"
-	"slices"
-)
+import "fmt"
 
 type streamField struct {
 	path     string
@@ -12,74 +9,124 @@ type streamField struct {
 	fromRoot bool
 }
 
+type wireFrameClass uint8
+
+const (
+	wireFrameOrdinary wireFrameClass = iota
+	wireFrameGenerated
+	wireFrameAuxiliary
+	wireFrameControl
+	wireFrameState
+)
+
+type wireStreamAction uint8
+
+const (
+	wireObserve wireStreamAction = iota
+	wireStart
+	wireEntityStart
+	wireEntityAppend
+	wireEntitySnapshot
+	wireEntityVerify
+	wireEntityFinish
+	wireFinish
+	wireFail
+	wireCancel
+)
+
+type compiledWireNamespace struct {
+	name    string
+	keyType JSONType
+}
+type compiledWireEntity struct {
+	name                     string
+	namespace                int
+	payload                  string
+	retainCompletedJSON      bool
+	isArray, closeWithParent bool
+	childNamespaces          []int
+	arrayItems               *wireSchemaPlan
+	schema                   *wireSchemaPlan
+	parentNamespace          int
+	parentEntities           []int
+	identities               []compiledWireEntityIdentity
+}
+type compiledWireEntityIdentity struct {
+	name                                          string
+	kind                                          JSONType
+	requiredAtStart, isRaw, isUnique, allowsEmpty bool
+}
+type compiledEntityIdentitySelection struct {
+	slot  int
+	field streamField
+}
+
 type compiledPackageStreamContract struct {
-	discriminator, responseID, itemID, sequence streamField
-	events                                      map[string][]compiledPackageStreamEvent
-	hasTools                                    bool
-	hasTypedItems                               bool
-	canInheritResponseID                        bool
-	isResponseIDOptional                        bool
-	isItemIDIndex                               bool
-	isSequenceOptional                          bool
-	sequenceDiagnostic                          *RejectDiagnostic
-	sequenceReason                              string
-	closeItemsOnFinish                          bool
-	identities                                  []compiledStreamIdentity
-	itemKinds                                   []NodeKind
-	bindingSlots                                int
-	state                                       *compiledPackageState
+	discriminator, responseID, sequence                            streamField
+	events                                                         map[string][]compiledPackageStreamEvent
+	canInheritResponseID, isResponseIDOptional, isSequenceOptional bool
+	sequenceDiagnostic                                             *RejectDiagnostic
+	sequenceReason                                                 string
+	finishOpenEntities                                             bool
+	identities                                                     []compiledStreamIdentity
+	namespaces                                                     []compiledWireNamespace
+	namespaceSlots                                                 map[string]int
+	entities                                                       []compiledWireEntity
+	entitySlots                                                    map[string]int
+	bindingSlots                                                   int
+	state                                                          *compiledPackageState
 }
-
 type compiledStreamIdentity struct {
-	field      streamField
-	kind       JSONType
-	when       *compiledOutputPlan
-	key        *compiledOutputPlan
-	keyPath    string
-	isRaw      bool
-	isUnique   bool
-	diagnostic *RejectDiagnostic
+	field           streamField
+	kind            JSONType
+	when, key       *compiledOutputPlan
+	keyPath         string
+	isRaw, isUnique bool
+	diagnostic      *RejectDiagnostic
 }
-
 type compiledPackageStreamEvent struct {
-	kind                                       NodeKind
-	action                                     EventType
-	when                                       *compiledOutputPlan
-	foreach                                    streamField
-	actions                                    []compiledPackageStreamEvent
-	responseID, itemID                         streamField
-	parentID, ordinal                          streamField
-	wireID, role, status                       streamField
-	properties, childrenCount                  streamField
-	delta, failure                             streamField
-	usage                                      [3]streamField
-	tool                                       *compiledStreamTool
-	isTool                                     bool
-	isControl                                  bool
-	isImplicit                                 bool
-	isSparseIdentity                           bool
-	canPrecedeResponse                         bool
-	canOmitUsageCounters                       bool
-	itemBinding, indexBinding                  int
-	canBindItem, canBindIndex                  bool
-	sealsText, verifiesItem, verifiesCompleted bool
-	requiredItems                              []NodeKind
-	diagnostic                                 *RejectDiagnostic
-	assertions                                 []compiledWireAssertion
-	updates                                    []compiledWireStateUpdate
-	isAssertion, isStateUpdate                 bool
+	action                                                                              wireStreamAction
+	frameClass                                                                          wireFrameClass
+	entity, namespace, childrenNamespace                                                int
+	when                                                                                *compiledOutputPlan
+	foreach                                                                             streamField
+	actions                                                                             []compiledPackageStreamEvent
+	responseID, key, parent, ordinal, offset, properties, childrenCount, delta, failure streamField
+	identities                                                                          []compiledEntityIdentitySelection
+	isControl, isImplicit, canPrecedeResponse, canFollowTerminal, isResponseIndependent bool
+	isArrayItem                                                                         bool
+	isJSONValue                                                                         bool
+	itemBinding, indexBinding                                                           int
+	canBindItem, canBindIndex                                                           bool
+	sealsPayload, verifiesCompleted                                                     bool
+	verifiedChildren                                                                    []int
+	requiredEntities                                                                    []int
+	diagnostic                                                                          *RejectDiagnostic
+	assertions                                                                          []compiledWireAssertion
+	updates                                                                             []compiledWireStateUpdate
+	isAssertion, isStateUpdate                                                          bool
 }
-
-type compiledStreamTool struct {
-	name, callID streamField
+type packageStreamCompiler struct {
+	contract      *compiledPackageStreamContract
+	expressions   *expressionCompiler
+	limits        Limits
+	actions       map[wireStreamAction]bool
+	entityActions map[int]map[wireStreamAction]bool
+	actionCount   int
+	scope         expressionScope
 }
 
 func (expressions *expressionCompiler) compilePackageStreamContract(spec *ProtocolStreamSpec, path string) (*compiledPackageStreamContract, error) {
 	if spec == nil {
 		return nil, nil
 	}
-	limits := expressions.limits
-	contract := &compiledPackageStreamContract{events: make(map[string][]compiledPackageStreamEvent, len(spec.Events)), canInheritResponseID: spec.InheritResponseID, isResponseIDOptional: spec.OptionalResponseID, isItemIDIndex: spec.IsItemIDIndex, isSequenceOptional: spec.OptionalSequence, closeItemsOnFinish: spec.CloseItemsOnFinish}
+	contract := &compiledPackageStreamContract{events: make(map[string][]compiledPackageStreamEvent, len(spec.Events)),
+		canInheritResponseID: spec.InheritResponseID, isResponseIDOptional: spec.OptionalResponseID,
+		isSequenceOptional: spec.OptionalSequence, finishOpenEntities: spec.Lifecycle.OpenEntities == "finish",
+		namespaceSlots: map[string]int{}, entitySlots: map[string]int{}}
+	if spec.Lifecycle.EOF != "require_terminal" || spec.Lifecycle.OpenEntities != "reject" && spec.Lifecycle.OpenEntities != "finish" {
+		return nil, fmt.Errorf("%s/lifecycle: requires EOF require_terminal and openEntities reject or finish", path)
+	}
 	if spec.OptionalSequence && spec.Sequence == "" {
 		return nil, fmt.Errorf("%s/optionalSequence: requires a sequence selector", path)
 	}
@@ -94,51 +141,42 @@ func (expressions *expressionCompiler) compilePackageStreamContract(spec *Protoc
 			return nil, err
 		}
 		copy := *spec.SequenceDiagnostic
-		contract.sequenceDiagnostic = &copy
-		contract.sequenceReason = spec.SequenceReason
+		contract.sequenceDiagnostic, contract.sequenceReason = &copy, spec.SequenceReason
 	}
 	for _, selector := range []struct {
-		name, path string
-		field      *streamField
-	}{{"discriminator", spec.Discriminator, &contract.discriminator}, {"responseId", spec.ResponseID, &contract.responseID}, {"itemId", spec.ItemID, &contract.itemID}, {"sequence", spec.Sequence, &contract.sequence}} {
-		if (selector.name == "sequence" || selector.name == "itemId") && selector.path == "" {
+		name, pointer string
+		field         *streamField
+	}{
+		{"discriminator", spec.Discriminator, &contract.discriminator}, {"responseId", spec.ResponseID, &contract.responseID}, {"sequence", spec.Sequence, &contract.sequence}} {
+		if selector.name == "sequence" && selector.pointer == "" {
 			continue
 		}
-		field, err := compileStreamField(selector.path, path+"/"+selector.name, limits)
+		field, err := compileStreamField(selector.pointer, path+"/"+selector.name, expressions.limits)
 		if err != nil {
 			return nil, err
 		}
 		*selector.field = field
 	}
-	if len(spec.Events) == 0 || len(spec.Events) > limits.StateItems {
+	if len(spec.Events) == 0 || len(spec.Events) > expressions.limits.Nodes {
 		return nil, fmt.Errorf("%s/events: requires a nonempty bounded event table", path)
 	}
-	compiler := packageStreamCompiler{contract: contract, expressions: expressions, limits: limits,
-		actions: map[EventType]bool{}, toolActions: map[EventType]bool{}}
+	compiler := packageStreamCompiler{contract: contract, expressions: expressions, limits: expressions.limits, actions: map[wireStreamAction]bool{}, entityActions: map[int]map[wireStreamAction]bool{}, scope: expressionScope{isWireContract: true}}
 	var err error
-	contract.state, err = compilePackageStateSlots(spec.State, nil, DecodeEvent, path+"/state", compiler.expressions, &compiler.scope)
+	contract.state, err = compilePackageStateSlots(spec.State, nil, DecodeEvent, path+"/state", expressions, &compiler.scope)
 	if err != nil {
 		return nil, err
 	}
-	if spec.ItemKinds != nil {
-		if len(spec.ItemKinds) == 0 {
-			return nil, fmt.Errorf("%s/itemKinds: explicit item kinds must not be empty", path)
-		}
-		for _, kind := range spec.ItemKinds {
-			if !slices.Contains([]NodeKind{TextNode, ReasoningNode, RefusalNode, ToolCallNode, MessageNode}, kind) || slices.Contains(contract.itemKinds, kind) {
-				return nil, fmt.Errorf("%s/itemKinds: requires distinct supported item kinds", path)
-			}
-			contract.itemKinds = append(contract.itemKinds, kind)
-		}
-		compiler.itemActions = make(map[NodeKind]map[EventType]bool, len(spec.ItemKinds))
+	if err := compiler.compileEntities(spec, path); err != nil {
+		return nil, err
 	}
 	contract.responseID.fromRoot = true
-	for _, field := range []struct {
-		name   string
-		value  *Expression
-		target *streamField
-	}{{"discriminatorValue", spec.DiscriminatorValue, &contract.discriminator}, {"responseIdValue", spec.ResponseIDValue, &contract.responseID}, {"itemIdValue", spec.ItemIDValue, &contract.itemID}} {
-		if err := compiler.compileValue(field.value, path+"/"+field.name, field.target); err != nil {
+	for _, entry := range []struct {
+		name  string
+		value *Expression
+		field *streamField
+	}{
+		{"discriminatorValue", spec.DiscriminatorValue, &contract.discriminator}, {"responseIdValue", spec.ResponseIDValue, &contract.responseID}} {
+		if err := compiler.compileValue(entry.value, path+"/"+entry.name, entry.field); err != nil {
 			return nil, err
 		}
 	}
@@ -146,12 +184,11 @@ func (expressions *expressionCompiler) compilePackageStreamContract(spec *Protoc
 		return nil, err
 	}
 	for _, tag := range sortedKeys(spec.Events) {
-		eventPath := path + "/events/" + escapePointer(tag)
+		at := path + "/events/" + escapePointer(tag)
 		if tag == "" {
-			return nil, fmt.Errorf("%s: event tag must not be empty", eventPath)
+			return nil, fmt.Errorf("%s: empty event tag", at)
 		}
-		var err error
-		contract.events[tag], err = compiler.compileActions(spec.Events[tag], eventPath, 1)
+		contract.events[tag], err = compiler.compileActions(spec.Events[tag], at, 1)
 		if err != nil {
 			return nil, err
 		}
@@ -160,16 +197,6 @@ func (expressions *expressionCompiler) compilePackageStreamContract(spec *Protoc
 		return nil, err
 	}
 	return contract, nil
-}
-
-type packageStreamCompiler struct {
-	contract             *compiledPackageStreamContract
-	expressions          *expressionCompiler
-	limits               Limits
-	actions, toolActions map[EventType]bool
-	itemActions          map[NodeKind]map[EventType]bool
-	actionCount          int
-	scope                expressionScope
 }
 
 func (compiler *packageStreamCompiler) compileValue(value *Expression, path string, field *streamField) error {
@@ -185,8 +212,8 @@ func (compiler *packageStreamCompiler) compileValue(value *Expression, path stri
 }
 
 func (compiler *packageStreamCompiler) compileIdentities(identities []ProtocolStreamIdentitySpec, path string) error {
-	if len(identities) > compiler.limits.StateItems {
-		return fmt.Errorf("%s: identity fields exceed the stream item limit", path)
+	if len(identities) > compiler.limits.Nodes {
+		return fmt.Errorf("%s: identity declarations exceed the configuration node limit", path)
 	}
 	seen := make(map[string]bool, len(identities))
 	for index, identity := range identities {
@@ -214,7 +241,7 @@ func (compiler *packageStreamCompiler) compileIdentities(identities []ProtocolSt
 }
 
 func (compiler *packageStreamCompiler) compileIdentitySelection(spec ProtocolStreamIdentitySpec, path string, identity *compiledStreamIdentity) error {
-	if spec.Comparison != "" && spec.Comparison != "raw_json" {
+	if spec.Comparison != "" && spec.Comparison != "typed" && spec.Comparison != "raw_json" {
 		return fmt.Errorf("%s/comparison: requires raw_json or the default typed equality", path)
 	}
 	identity.isRaw = spec.Comparison == "raw_json"
@@ -246,19 +273,31 @@ func (compiler *packageStreamCompiler) compileIdentitySelection(spec ProtocolStr
 	return nil
 }
 
+func (compiler *packageStreamCompiler) compileSelection(spec *ProtocolStreamValueSpec, path string) (streamField, error) {
+	if spec == nil {
+		return streamField{}, nil
+	}
+	field, err := compileStreamField(spec.Path, path+"/path", compiler.limits)
+	if err != nil {
+		return field, err
+	}
+	err = compiler.compileValue(spec.Value, path+"/value", &field)
+	return field, err
+}
+
 func (compiler *packageStreamCompiler) compileActions(entries []ProtocolStreamActionSpec, path string, depth int) ([]compiledPackageStreamEvent, error) {
 	compiler.actionCount += len(entries)
-	if len(entries) == 0 || compiler.actionCount > compiler.limits.StateItems || depth > compiler.limits.Depth {
-		return nil, fmt.Errorf("%s: requires nonempty actions within the stream item and depth limits", path)
+	if len(entries) == 0 || compiler.actionCount > compiler.limits.Nodes || depth > compiler.limits.Depth {
+		return nil, fmt.Errorf("%s: requires nonempty bounded actions", path)
 	}
 	actions := make([]compiledPackageStreamEvent, 0, len(entries))
 	for index, entry := range entries {
 		at := fmt.Sprintf("%s/%d", path, index)
-		var event compiledPackageStreamEvent
+		event := compiledPackageStreamEvent{entity: -1, namespace: -1, childrenNamespace: -1}
 		var err error
 		if entry.ForEach != "" {
-			if entry.Action != "" || entry.Kind != "" || entry.ResponseID != "" || entry.ItemID != "" || entry.ItemIDValue != nil || entry.Text != "" || entry.Arguments != "" || entry.ArgumentsValue != nil || entry.Tool != nil || entry.Error != "" || entry.Usage != nil || entry.Implicit || entry.SparseIdentity || entry.AllowBeforeStart || len(entry.Assertions) != 0 || entry.Updates != nil || hasStreamItemSelectors(entry) {
-				return nil, fmt.Errorf("%s: foreach declares only its selector, condition and nested actions", at)
+			if entry.Action != "" || hasStreamEntitySelectors(entry) || entry.ResponseID != "" || entry.Error != "" || entry.Implicit || entry.AllowBeforeStart || entry.AfterTerminal || entry.ResponseIndependent || entry.FrameClass != "" || len(entry.Assertions) != 0 || entry.Updates != nil {
+				return nil, fmt.Errorf("%s: foreach only declares iteration and nested actions", at)
 			}
 			event.foreach, err = compileStreamField(entry.ForEach, at+"/foreach", compiler.limits)
 			if err == nil {
@@ -271,16 +310,13 @@ func (compiler *packageStreamCompiler) compileActions(entries []ProtocolStreamAc
 			}
 		} else {
 			if len(entry.Actions) != 0 || entry.As != "" || entry.IndexAs != "" {
-				return nil, fmt.Errorf("%s/actions: nested actions require foreach", at)
+				return nil, fmt.Errorf("%s: nested actions require foreach", at)
 			}
 			if entry.Action == "assert" || entry.Action == "state_update" {
 				event, err = compiler.compileCheckAction(entry, at)
 			} else {
-				if len(entry.Assertions) != 0 {
-					return nil, fmt.Errorf("%s/assertions: assertions require an assert action", at)
-				}
-				if entry.Updates != nil {
-					return nil, fmt.Errorf("%s/updates: updates require a state_update action", at)
+				if len(entry.Assertions) != 0 || entry.Updates != nil {
+					return nil, fmt.Errorf("%s: assertions and updates require their own actions", at)
 				}
 				event, err = compiler.compileAction(entry, at)
 			}
@@ -297,53 +333,82 @@ func (compiler *packageStreamCompiler) compileActions(entries []ProtocolStreamAc
 	return actions, nil
 }
 
-func (compiler *packageStreamCompiler) compileAction(entry ProtocolStreamActionSpec, path string) (compiledPackageStreamEvent, error) {
-	event, err := compileStreamEvent(entry, path, compiler.limits)
-	if err != nil {
-		return event, err
+func (compiler *packageStreamCompiler) compileAction(spec ProtocolStreamActionSpec, path string) (compiledPackageStreamEvent, error) {
+	event := compiledPackageStreamEvent{entity: -1, namespace: -1, childrenNamespace: -1, responseID: compiler.contract.responseID,
+		isImplicit: spec.Implicit, canPrecedeResponse: spec.AllowBeforeStart, canFollowTerminal: spec.AfterTerminal}
+	actions := map[string]wireStreamAction{"stream_start": wireStart, "entity_start": wireEntityStart, "entity_append": wireEntityAppend, "entity_snapshot": wireEntitySnapshot, "entity_verify": wireEntityVerify, "entity_finish": wireEntityFinish, "stream_finish": wireFinish, "stream_fail": wireFail, "stream_cancel": wireCancel, "observe": wireObserve, "control": wireObserve}
+	var exists bool
+	event.action, exists = actions[spec.Action]
+	if !exists {
+		return event, fmt.Errorf("%s/action: unknown external lifecycle action", path)
 	}
-	if entry.Implicit && event.action != ResponseStarted && event.action != ItemStarted || entry.SparseIdentity && (!event.isTool || event.action != ItemStarted) {
-		return event, fmt.Errorf("%s: implicit requires a start action and sparseIdentity requires tool_start", path)
+	event.isControl = spec.Action == "control"
+	event.isResponseIndependent = spec.ResponseIndependent
+	if spec.ResponseIndependent && (spec.Action != "observe" || !spec.AllowBeforeStart || spec.FrameClass != "" && spec.FrameClass != "state") {
+		return event, fmt.Errorf("%s/responseIndependent: requires an ordinary observation allowed before start", path)
 	}
-	if entry.AllowBeforeStart && event.action != OperationFailed && event.action != OperationCancelled && event.action != UsageUpdated && entry.Action != "observe" {
-		return event, fmt.Errorf("%s/allowBeforeStart: only failure, cancel, usage or observation may precede the response", path)
+
+	if event.action >= wireEntityStart && event.action <= wireEntityFinish {
+		event.frameClass = wireFrameGenerated
 	}
-	event.canPrecedeResponse = entry.AllowBeforeStart
-	event.isImplicit, event.isSparseIdentity = entry.Implicit, entry.SparseIdentity
-	event.responseID, event.itemID = compiler.contract.responseID, compiler.contract.itemID
-	for _, selector := range []struct {
-		name, pointer string
-		field         *streamField
-	}{{"responseId", entry.ResponseID, &event.responseID}, {"itemId", entry.ItemID, &event.itemID}} {
-		if selector.pointer != "" {
-			*selector.field, err = compileStreamField(selector.pointer, path+"/"+selector.name, compiler.limits)
-			if err != nil {
-				return event, err
+	if spec.FrameClass != "" {
+		if event.action != wireObserve {
+			return event, fmt.Errorf("%s/frameClass: only observations declare a frame class", path)
+		}
+		switch spec.FrameClass {
+		case "generated":
+			event.frameClass = wireFrameGenerated
+		case "auxiliary":
+			event.frameClass = wireFrameAuxiliary
+		case "control":
+			event.frameClass = wireFrameControl
+		case "state":
+			if spec.Action != "observe" {
+				return event, fmt.Errorf("%s/frameClass: state requires an observation", path)
 			}
+			event.frameClass = wireFrameState
+		default:
+			return event, fmt.Errorf("%s/frameClass: requires generated, auxiliary, state or control", path)
 		}
 	}
-	if err := compiler.compileValue(entry.ItemIDValue, path+"/itemIdValue", &event.itemID); err != nil {
-		return event, err
+
+	if spec.Implicit && event.action != wireStart && event.action != wireEntityStart {
+		return event, fmt.Errorf("%s/implicit: requires a start action", path)
 	}
-	if err := compiler.compileValue(entry.ArgumentsValue, path+"/argumentsValue", &event.delta); err != nil {
-		return event, err
+	if spec.AllowBeforeStart && event.action != wireObserve && event.action != wireFail && event.action != wireCancel {
+		return event, fmt.Errorf("%s/allowBeforeStart: only observation or failure may precede start", path)
 	}
-	if entry.Tool != nil {
-		if err := compiler.compileValue(entry.Tool.CallIDValue, path+"/tool/callIdValue", &event.tool.callID); err != nil {
+	if spec.AfterTerminal && event.action != wireObserve {
+		return event, fmt.Errorf("%s/afterTerminal: only observation may follow terminal", path)
+	}
+	if (event.action == wireFail) != (spec.Error != "") {
+		return event, fmt.Errorf("%s/error: only stream_fail requires an error selector", path)
+	}
+	var err error
+	if spec.ResponseID != "" {
+		event.responseID, err = compileStreamField(spec.ResponseID, path+"/responseId", compiler.limits)
+		if err != nil {
 			return event, err
 		}
 	}
-	if err := compiler.compileItemSelectors(entry, &event, path); err != nil {
+	if spec.Error != "" {
+		event.failure, err = compileStreamField(spec.Error, path+"/error", compiler.limits)
+		if err != nil {
+			return event, err
+		}
+	}
+	if err := compiler.compileEntitySelectors(spec, &event, path); err != nil {
 		return event, err
 	}
-	compiler.contract.hasTypedItems = compiler.contract.hasTypedItems || entry.Kind != ""
-	if err := compiler.recordItemAction(event, path); err != nil {
-		return event, err
-	}
-	if event.isTool {
-		compiler.contract.hasTools, compiler.toolActions[event.action] = true, true
-	} else {
-		compiler.actions[event.action] = true
+	compiler.actions[event.action] = true
+	if event.entity >= 0 {
+		if event.action == wireEntityVerify || event.verifiesCompleted {
+			compiler.contract.entities[event.entity].retainCompletedJSON = true
+		}
+		if compiler.entityActions[event.entity] == nil {
+			compiler.entityActions[event.entity] = map[wireStreamAction]bool{}
+		}
+		compiler.entityActions[event.entity][event.action] = true
 	}
 	return event, nil
 }
@@ -357,106 +422,4 @@ func compileStreamField(pointer, path string, limits Limits) (streamField, error
 		return streamField{}, fmt.Errorf("%s: requires a non-root pointer within the depth limit", path)
 	}
 	return streamField{path: pointer, pointer: parts}, nil
-}
-
-func compileStreamEvent(spec ProtocolStreamActionSpec, path string, limits Limits) (compiledPackageStreamEvent, error) {
-	event := compiledPackageStreamEvent{}
-	switch spec.Action {
-	case "response_start":
-		event.action = ResponseStarted
-	case "item_start":
-		event.action = ItemStarted
-	case "text_delta":
-		event.action = ItemDelta
-	case "text_snapshot":
-		event.action = ItemSnapshot
-	case "item_verify":
-		event.action, event.verifiesItem = ItemSnapshot, true
-	case "item_finish":
-		event.action = ItemFinished
-	case "tool_start":
-		event.action, event.isTool = ItemStarted, true
-	case "tool_delta":
-		event.action, event.isTool = ItemDelta, true
-	case "tool_snapshot":
-		event.action, event.isTool = ItemSnapshot, true
-	case "tool_finish":
-		event.action, event.isTool = ItemFinished, true
-	case "usage":
-		event.action = UsageUpdated
-	case "response_finish":
-		event.action = ResponseFinished
-	case "failure":
-		event.action = OperationFailed
-	case "cancel":
-		event.action = OperationCancelled
-	case "observe":
-		event.action = MetadataUpdated
-	case "control":
-		event.action, event.isControl = MetadataUpdated, true
-	default:
-		return event, fmt.Errorf("%s/action: unsupported lifecycle action", path)
-	}
-	if spec.Kind != "" && (!slices.Contains([]string{"item_start", "text_delta", "text_snapshot", "item_finish", "item_verify"}, spec.Action) || !slices.Contains([]NodeKind{TextNode, ReasoningNode, RefusalNode, MessageNode}, spec.Kind) || spec.Kind == MessageNode && (spec.Action == "text_delta" || spec.Action == "text_snapshot")) {
-		return event, fmt.Errorf("%s/kind: kind requires a compatible item lifecycle action", path)
-	}
-	event.kind = spec.Kind
-	if event.kind == "" {
-		event.kind = TextNode
-	}
-	canReadText := slices.Contains([]string{"item_start", "text_delta", "text_snapshot", "item_finish", "item_verify"}, spec.Action) && event.kind != MessageNode
-	if spec.Text != "" && !canReadText || (spec.Action == "text_delta" || spec.Action == "text_snapshot") && spec.Text == "" || (event.action == OperationFailed) != (spec.Error != "") || (event.action == UsageUpdated) != (spec.Usage != nil) {
-		return event, fmt.Errorf("%s: text, error and usage selectors belong only to their respective actions and are required there", path)
-	}
-	if spec.Action == "tool_snapshot" && spec.Arguments == "" {
-		return event, fmt.Errorf("%s/arguments: tool_snapshot requires a JSON snapshot selector", path)
-	}
-	if spec.ArgumentsValue != nil && spec.Arguments == "" {
-		return event, fmt.Errorf("%s/argumentsValue: requires an arguments diagnostic pointer", path)
-	}
-	if (spec.Action == "tool_delta" || spec.Action == "tool_snapshot") != (spec.Arguments != "") || (spec.Action == "tool_start") != (spec.Tool != nil) {
-		return event, fmt.Errorf("%s: tool identity belongs to tool_start and arguments to tool_delta/tool_snapshot; both are required there", path)
-	}
-	var err error
-	if spec.Text != "" {
-		event.delta, err = compileStreamField(spec.Text, path+"/text", limits)
-	}
-	if spec.Arguments != "" {
-		event.delta, err = compileStreamField(spec.Arguments, path+"/arguments", limits)
-	}
-	if spec.Error != "" {
-		event.failure, err = compileStreamField(spec.Error, path+"/error", limits)
-	}
-	if err != nil {
-		return event, err
-	}
-	if spec.Tool != nil {
-		event.tool = &compiledStreamTool{}
-		for _, field := range []struct {
-			name, pointer string
-			target        *streamField
-		}{{"name", spec.Tool.Name, &event.tool.name}, {"callId", spec.Tool.CallID, &event.tool.callID}} {
-			selected, err := compileStreamField(field.pointer, path+"/tool/"+field.name, limits)
-			if err != nil {
-				return event, err
-			}
-			*field.target = selected
-		}
-	}
-	if spec.Usage != nil {
-		event.canOmitUsageCounters = spec.Usage.AllowEmpty
-		if spec.Usage.Input == "" && spec.Usage.Output == "" && spec.Usage.Total == "" && !spec.Usage.AllowEmpty {
-			return event, fmt.Errorf("%s/usage: requires at least one counter selector", path)
-		}
-		for index, selector := range []struct{ name, pointer string }{{"input", spec.Usage.Input}, {"output", spec.Usage.Output}, {"total", spec.Usage.Total}} {
-			if selector.pointer == "" {
-				continue
-			}
-			event.usage[index], err = compileStreamField(selector.pointer, path+"/usage/"+selector.name, limits)
-			if err != nil {
-				return event, err
-			}
-		}
-	}
-	return event, nil
 }

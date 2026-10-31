@@ -15,6 +15,7 @@ func CheckResponse(response *Response, target Target, limits Limits) []Conversio
 		check.add(InvalidInput, "/schemaVersion", "", "missing response or unsupported semantic version")
 		return check.issues
 	}
+	check.metadataSnapshot(response.Metadata, "/metadata")
 	check.content(response.Content, "/content", 1)
 	check.usage(response.Usage, "/usage")
 	return check.issues
@@ -57,6 +58,22 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 		check.add(InvalidInput, "/schemaVersion", "", "unsupported semantic event version")
 		return check.issues
 	}
+	if err := restoreProtectedEvent(&event, event.auxiliary, event.omittedAuxiliary, event.controlReceipt, event.omittedControl, false); err != nil {
+		check.add(UnsupportedNative, "/native", "", err.Error())
+		return check.issues
+	}
+	if event.omittedAuxiliary != nil && !isOmittedAuxiliaryEvent(event, target) {
+		check.add(UnsupportedNative, "/native", "", "auxiliary omission belongs to a different target or scope")
+		return check.issues
+	}
+	if event.omittedControl != nil && !isOmittedControlEvent(event, target) {
+		check.add(UnsupportedNative, "/control", "", "control omission belongs to a different target, mapping or scope")
+		return check.issues
+	}
+	if event.Control != nil && event.Type != ControlUpdated {
+		check.add(InvalidInput, "/control", "", "control state requires its isolated event type")
+		return check.issues
+	}
 	if event.Unmapped != nil {
 		for _, path := range unmappedEventPaths(event.Unmapped) {
 			check.require(NativeExtensionsCapability, path)
@@ -88,7 +105,33 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 			check.add(InvalidAssociation, "/parentId", "", "only item lifecycle events can reference a parent")
 		}
 	}
+	if event.Collection != "" {
+		if event.Collection != "summary" && event.Collection != "reasoning_content" {
+			check.add(InvalidAssociation, "/collection", "", "unknown reasoning child collection")
+		}
+		if event.ParentID.IsZero() {
+			check.add(InvalidAssociation, "/collection", "", "reasoning collection requires a parent")
+		}
+		if event.Item != nil && event.Item.Kind != TextNode {
+			check.add(InvalidAssociation, "/item/kind", "", "reasoning collection children must be text")
+		}
+	}
 	switch event.Type {
+	case ControlUpdated:
+		if event.Control == nil || event.controlReceipt == nil {
+			check.add(UnsupportedNative, "/control", "", "control state requires a validated source wire receipt")
+		} else {
+			check.require(ControlStateCapability, "/control")
+			if !CanPreserveNative(event.Control.Source, target) {
+				check.add(UnsupportedNative, "/control", "", "control state requires an explicit target disposition")
+			}
+			if !CheckScope(event.Control.Source.Scope, target.Scope) {
+				check.add(ResourceScopeMismatch, "/control", "", "control state scope differs from target")
+			}
+			if event.Native != nil && (!event.controlReceipt.canReplayNative || event.controlReceipt.encoderHash != target.eventEncoderHash || event.controlReceipt.decoderHash != target.eventDecoderHash) {
+				check.add(UnsupportedNative, "/native", "", "control native replay requires source preservation and equivalent event mappings")
+			}
+		}
 	case SessionStarted, SessionConfigured, SessionConfigure, InputCommit, ResponseCreate, ResponseCancel, SessionClose:
 		check.require(SessionsCapability, "/type")
 	case InputAppend:
@@ -138,9 +181,21 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 	default:
 		check.add(InvalidInput, "/type", "", fmt.Sprintf("unknown event type %q", event.Type))
 	}
+	for index, metadata := range event.Metadata {
+		if metadata.Update == "" {
+			continue
+		}
+		path := fmt.Sprintf("/metadata/%d/update", index)
+		if metadata.Update != "append" || event.Type != ItemDelta || metadata.Location == "response" || metadata.Location == "usage" || strings.HasPrefix(metadata.Location, "event:") {
+			check.add(InvalidInput, path, "", "append metadata requires an item delta and item-owned array")
+		} else if !metadata.Value.IsArray() {
+			check.add(InvalidInput, fmt.Sprintf("/metadata/%d/value", index), "", "append metadata requires an array")
+		}
+	}
 	check.usage(event.Usage, "/usage")
 	if event.Item != nil {
 		if event.Item.Kind == ToolCallNode && event.Type != ItemFinished {
+			check.metadataSnapshot(event.Item.Metadata, "/item/metadata")
 			if event.Item.Input == nil || (event.Item.Input.Kind != JSONInput && event.Item.Input.Kind != TextInput) {
 				check.add(InvalidInput, "/item/input/kind", "", "streamed tool item requires an input kind")
 			} else if event.Item.Input.Kind == JSONInput {

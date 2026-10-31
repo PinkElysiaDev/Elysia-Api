@@ -9,7 +9,7 @@ import (
 func TestPackageStreamContainerRetentionBudget(t *testing.T) {
 	limits := DefaultLimits()
 	limits.BufferBytes = 256
-	state, err := newPackageStreamValidation(containerStreamContract(t), Target{Direction: DecodeEvent, Capabilities: CapabilitySet{TextCapability: true, UsageCapability: true}}, limits)
+	state, err := newPackageStreamValidation(containerStreamContract(t, "reject"), Target{Direction: DecodeEvent, Capabilities: CapabilitySet{TextCapability: true, UsageCapability: true}}, limits)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,37 +26,52 @@ func TestPackageStreamContainerRetentionBudget(t *testing.T) {
 	frame, _ := ParseValue([]byte(`{"type":"part","response":"r","id":"p","parent":"m","position":0,"text":"","properties":{"detail":"` + strings.Repeat("y", 80) + `"}}`))
 	err = state.consume(t.Context(), frame)
 	var limit *ResourceLimitError
-	if !errors.As(err, &limit) || limit.Metric != "state_bytes" || state.snapshotBytes != before || len(state.itemSnapshots) != 1 {
-		t.Fatal("properties escaped the shared retention budget or committed on failure", err, state.snapshotBytes, len(state.itemSnapshots))
+	if !errors.As(err, &limit) || limit.Metric != "state_bytes" || state.snapshotBytes != before || state.entityCount != 1 {
+		t.Fatal("properties escaped the shared retention budget or committed on failure", err, state.snapshotBytes, state.entityCount)
 	}
 }
 
-func containerStreamContract(t *testing.T) *compiledPackageStreamContract {
+func containerStreamContract(t *testing.T, openEntities string) *compiledPackageStreamContract {
 	t.Helper()
+	field := func(path string) *ProtocolStreamValueSpec { return &ProtocolStreamValueSpec{Path: path} }
 	properties := readExpression("input", "/properties")
+	messageProperties := Expression{Op: "merge", Policy: "last", Items: []Expression{properties, objectExpression(map[string]Expression{"status": readExpression("input", "/status")})}}
 	count := Expression{Op: "length", Source: expressionPointer(readExpression("input", "/parts"))}
-	message := ProtocolStreamActionSpec{Action: "item_finish", Kind: MessageNode, WireID: "/wireId", Role: "/role", Status: "/status", PropertiesPath: "/properties", Properties: &properties, ChildrenPath: "/parts", ChildrenCount: &count}
-	part := ProtocolStreamActionSpec{Action: "item_verify", Kind: TextNode, Text: "/text", ParentID: "/parent", Ordinal: "/position", PropertiesPath: "/properties", Properties: &properties}
+	identities := map[string]ProtocolStreamValueSpec{"id": {Path: "/wireId"}, "role": {Path: "/role"}}
+	message := ProtocolStreamActionSpec{Action: "entity_finish", Entity: "message", Key: field("/id"), Identities: identities, Properties: &ProtocolStreamValueSpec{Path: "/properties", Value: &messageProperties}, ChildrenCount: &ProtocolStreamValueSpec{Path: "/parts", Value: &count}, ChildrenNamespace: "part"}
+	part := ProtocolStreamActionSpec{Action: "entity_verify", Entity: "text", Key: field("/id"), Payload: field("/text"), Parent: field("/parent"), Ordinal: field("/position"), Properties: field("/properties")}
 	partWithoutOrdinal := part
-	partWithoutOrdinal.Ordinal = ""
+	partWithoutOrdinal.Ordinal = nil
 	terminalPart := part
-	terminalPart.ParentIDValue = expressionPointer(Expression{Op: "read", From: "binding", Name: "message", Path: "/id"})
-	terminalPart.OrdinalValue = expressionPointer(Expression{Op: "index"})
+	terminalPart.Parent = &ProtocolStreamValueSpec{Path: "/parent", Value: expressionPointer(Expression{Op: "read", From: "binding", Name: "message", Path: "/id"})}
+	terminalPart.Ordinal = &ProtocolStreamValueSpec{Path: "/position", Value: expressionPointer(Expression{Op: "index"})}
 	terminalMessage := message
 	terminalMessage.VerifyCompleted = true
+	messageStart := message
+	messageStart.Action = "entity_start"
+	messageStart.ChildrenCount = nil
+	messageStart.ChildrenNamespace = ""
+	messageSnapshot := messageStart
+	messageSnapshot.Action = "entity_snapshot"
+	partStart := part
+	partStart.Action = "entity_start"
 	contract, err := compilePackageStreamContract(&ProtocolStreamSpec{
-		Discriminator: "/type", ResponseID: "/response", ItemID: "/id", ItemKinds: []NodeKind{MessageNode, TextNode},
+		Discriminator: "/type", ResponseID: "/response", Lifecycle: ProtocolStreamLifecycleSpec{EOF: "require_terminal", OpenEntities: openEntities},
+		Namespaces: map[string]ProtocolStreamNamespaceSpec{"message": {KeyType: StringType}, "part": {KeyType: StringType}},
+		Entities: map[string]ProtocolStreamEntitySpec{
+			"message": {Namespace: "message", Payload: "none", Identities: map[string]ProtocolStreamEntityIdentitySpec{"id": {Type: StringType, RequiredAt: "start"}, "role": {Type: StringType, RequiredAt: "start"}}},
+			"text":    {Namespace: "part", Payload: "text", ParentNamespace: "message"},
+		},
 		Events: map[string]ProtocolStreamEventSpec{
-			"start":         {{Action: "response_start"}},
-			"message":       {{Action: "item_start", Kind: MessageNode, WireID: "/wireId", Role: "/role", Status: "/status", PropertiesPath: "/properties", Properties: &properties}},
-			"part":          {{Action: "item_start", Kind: TextNode, ParentID: "/parent", Ordinal: "/position", Text: "/text", PropertiesPath: "/properties", Properties: &properties}},
-			"delta":         {{Action: "text_delta", ParentID: "/parent", Text: "/text"}},
-			"seal":          {{Action: "text_snapshot", ParentID: "/parent", Text: "/text", SealText: true}},
-			"close-part":    {{Action: "item_finish", ParentID: "/parent", Text: "/text", PropertiesPath: "/properties", Properties: &properties}},
+			"start": {{Action: "stream_start"}}, "message": {messageStart}, "message-snapshot": {messageSnapshot}, "part": {partStart},
+			"finish-open":   {{Action: "stream_finish"}},
+			"delta":         {{Action: "entity_append", Entity: "text", Key: field("/id"), Parent: field("/parent"), Payload: field("/text")}},
+			"seal":          {{Action: "entity_snapshot", Entity: "text", Key: field("/id"), Parent: field("/parent"), Payload: field("/text"), SealPayload: true}},
+			"close-part":    {{Action: "entity_finish", Entity: "text", Key: field("/id"), Parent: field("/parent"), Payload: field("/text"), Properties: field("/properties")}},
 			"verify-part":   {partWithoutOrdinal},
 			"close-message": {{ForEach: "/parts", Actions: []ProtocolStreamActionSpec{part}}, message},
-			"usage":         {{Action: "usage", Usage: &ProtocolStreamUsageSpec{Total: "/total"}}},
-			"finish":        {{ForEach: "/messages", As: "message", IndexAs: "message-position", Actions: []ProtocolStreamActionSpec{{ForEach: "/parts", Actions: []ProtocolStreamActionSpec{terminalPart}}, terminalMessage}}, {Action: "response_finish", RequireItems: []NodeKind{MessageNode}}},
+			"usage":         {{Action: "assert", Assertions: []WireAssertion{{Path: "/total", Schema: &ValueSchema{Type: IntegerType}, Code: UpstreamContractViolation, Reason: "total must be an integer"}}}, {Action: "observe"}},
+			"finish":        {{ForEach: "/messages", As: "message", IndexAs: "message-position", Actions: []ProtocolStreamActionSpec{{ForEach: "/parts", Actions: []ProtocolStreamActionSpec{terminalPart}}, terminalMessage}}, {Action: "stream_finish", RequireVerified: []string{"message"}}},
 		},
 	}, "/stream", DefaultLimits())
 	if err != nil {
@@ -67,7 +82,7 @@ func containerStreamContract(t *testing.T) *compiledPackageStreamContract {
 
 func consumeContainerFrames(t *testing.T, frames []string) (*packageStreamValidation, error) {
 	t.Helper()
-	state, err := newPackageStreamValidation(containerStreamContract(t), Target{Direction: DecodeEvent, Capabilities: CapabilitySet{TextCapability: true, UsageCapability: true}}, DefaultLimits())
+	state, err := newPackageStreamValidation(containerStreamContract(t, "reject"), Target{Direction: DecodeEvent, Capabilities: CapabilitySet{TextCapability: true, UsageCapability: true}}, DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,5 +149,32 @@ func TestPackageStreamContainerSnapshots(t *testing.T) {
 				t.Fatal("accepted a changed or incomplete container")
 			}
 		})
+	}
+}
+
+func TestPackageStreamContainerAutomaticCompletion(t *testing.T) {
+	state, err := newPackageStreamValidation(containerStreamContract(t, "finish"), Target{Direction: DecodeEvent}, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{
+		`{"type":"start","response":"r"}`,
+		`{"type":"message","response":"r","id":"m","wireId":"wire-m","role":"assistant","properties":{"phase":"initial"}}`,
+		`{"type":"message-snapshot","response":"r","id":"m","properties":{"phase":"active"}}`,
+		`{"type":"part","response":"r","id":"p","parent":"m","position":0,"text":"","properties":{}}`,
+		`{"type":"delta","response":"r","id":"p","parent":"m","text":"hello"}`,
+		`{"type":"finish-open","response":"r"}`,
+	} {
+		if err := state.consume(t.Context(), Value{raw: raw}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := state.finish(); err != nil || state.openItems != 0 {
+		t.Fatal("automatic completion did not close children before their parent", err)
+	}
+	for _, item := range state.entityOrder {
+		if !item.isFinished {
+			t.Fatal("terminal retained an open entity")
+		}
 	}
 }

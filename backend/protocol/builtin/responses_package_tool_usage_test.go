@@ -45,24 +45,27 @@ func TestResponsesPackageToolUsage(t *testing.T) {
 			}
 		})
 	}
-	for _, usage := range []string{
-		`42`, `[]`, `{"web_search":null}`, `{"web_search":{"num_requests":null}}`,
-		`{"web_search":{"num_requests":-1}}`, `{"web_search":{"num_requests":1.5}}`,
-		`{"web_search":{"num_requests":9223372036854775808}}`,
-		`{"image_gen":{"input_tokens":2,"output_tokens":3,"total_tokens":4}}`,
-		`{"image_gen":{"input_tokens":1,"input_tokens_details":{"image_tokens":2}}}`,
+	for _, fixture := range []struct{ usage, path string }{
+		{`42`, "/tool_usage"},
+		{`[]`, "/tool_usage"},
+		{`{"web_search":null}`, "/tool_usage/web_search"},
+		{`{"web_search":{"num_requests":null}}`, "/tool_usage/web_search/num_requests"},
+		{`{"web_search":{"num_requests":-1}}`, "/tool_usage/web_search/num_requests"},
+		{`{"web_search":{"num_requests":1.5}}`, "/tool_usage/web_search/num_requests"},
+		{`{"web_search":{"num_requests":9223372036854775808}}`, "/tool_usage/web_search/num_requests"},
+		{`{"image_gen":{"input_tokens":2,"output_tokens":3,"total_tokens":4}}`, "/tool_usage/image_gen/total_tokens"},
+		{`{"image_gen":{"input_tokens":1,"input_tokens_details":{"image_tokens":2}}}`, "/tool_usage/image_gen/input_tokens"},
 	} {
-		t.Run("invalid/"+usage, func(t *testing.T) {
-			raw := []byte(hostedUsageResponse(usage))
-			_, oldErr := legacy.DecodeResponse(t.Context(), raw, p.EvaluationContext{})
-			_, newErr := draft.DecodeResponse(t.Context(), raw, p.EvaluationContext{})
-			var oldFailure, newFailure *p.ConversionError
-			if !errors.As(oldErr, &oldFailure) || !errors.As(newErr, &newFailure) || len(oldFailure.Issues) != 1 || len(newFailure.Issues) != 1 {
-				t.Fatal("invalid hosted-tool ledger acceptance changed", oldErr, newErr)
+		t.Run("invalid/"+fixture.usage, func(t *testing.T) {
+			raw := []byte(hostedUsageResponse(fixture.usage))
+			_, err := draft.DecodeResponse(t.Context(), raw, p.EvaluationContext{})
+			var failure *p.ConversionError
+			if !errors.As(err, &failure) || len(failure.Issues) != 1 {
+				t.Fatal("invalid hosted-tool ledger lost its structured rejection", err)
 			}
-			before, after := oldFailure.Issues[0], newFailure.Issues[0]
-			if before.Code != after.Code || before.Direction != after.Direction || before.Stage != after.Stage || before.Path != after.Path || before.Reason != after.Reason {
-				t.Fatal("hosted-tool rejection diagnosis changed", before, after)
+			issue := failure.Issues[0]
+			if issue.Code != p.InvalidInput || issue.Severity != p.SeverityError || issue.Protocol != draft.Identity() || issue.Direction != p.DecodeResponse || issue.Stage != "wire" || issue.Reason == "" || issue.Path != fixture.path {
+				t.Fatal("hosted-tool rejection lost its source attribution", issue)
 			}
 		})
 	}

@@ -103,8 +103,8 @@ func (state *packageStreamValidation) bindKeyedIdentity(index int, identity comp
 	if identity.isUnique && bindings.keys[value] != "" {
 		return state.boundaryIssue(identity.diagnostic, identity.keyPath, "stream identity was reused at another key", nil)
 	}
-	if state.identityItems >= state.replay.limits.StateItems {
-		return state.boundaryIssue(identity.diagnostic, identity.field.path, "stream identity bindings exceed the item limit", resourceFailure("stream", "identity_items", state.replay.limits.StateItems, state.identityItems+1))
+	if state.identityItems >= state.limits.StateItems {
+		return state.boundaryIssue(identity.diagnostic, identity.field.path, "stream identity bindings exceed the item limit", resourceFailure("stream", "identity_items", state.limits.StateItems, state.identityItems+1))
 	}
 	bytes := len(key) + len(value)
 	if err := state.checkRetainedBytes(state.identityBytes+bytes, identity.field.path); err != nil {

@@ -56,8 +56,8 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	plan := &compiledOutputPlan{expression: expression}
 	switch expression.op {
 	case "omit", "reject", "literal", "read", "let", "with_input", "with_index", "remember", "recall", "forget", "index_size", "index", "capture_native", "capture_source", "replay_native", "native_matches", "object", "check_fields", "project", "keys", "array", "map", "walk", "visit", "recur", "flatmap", "filter", "if", "choose",
-		"merge", "merge_deep", "merge_usage", "check_usage", "check_links", "resolve_item", "track_text", "track_tool", "read_delivered_item", "resume_text", "index_values", "length", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
-		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains", "equal", "equal_text", "all", "any", "entries", "from_entries", "group_runs":
+		"merge", "merge_deep", "merge_usage", "check_usage", "check_links", "resolve_item", "track_text", "track_tool", "buffer_text", "buffer_array", "read_delivered_item", "resume_text", "pointer_join", "index_values", "length", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
+		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains", "has_control", "equal", "equal_text", "all", "any", "entries", "from_entries", "group_runs":
 	default:
 		return nil, false
 	}
@@ -75,11 +75,11 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			plan.itemObjectReads = 1
 		}
 	}
-	plan.hasStreamWrites = expression.op == "resolve_item" || expression.op == "track_text" || expression.op == "track_tool" || expression.op == "resume_text" || expression.op == "remember" && expression.isStreamIndex
+	plan.hasStreamWrites = expression.op == "resolve_item" || expression.op == "track_text" || expression.op == "track_tool" || expression.op == "buffer_text" || expression.op == "buffer_array" || expression.op == "resume_text" || expression.op == "remember" && expression.isStreamIndex
 	plan.hasCapture = expression.op == "capture_native"
 	plan.hasSourceCapture = expression.op == "capture_source"
 	plan.hasNativeTarget = expression.op == "replay_native" || expression.op == "native_matches"
-	plan.hasOutputStreamRead = expression.op == "read" && expression.from == "runtime" && len(expression.pointer) == 2 && expression.pointer[0] == "stream"
+	plan.hasOutputStreamRead = expression.op == "read" && expression.from == "runtime" && len(expression.pointer) == 2 && (expression.pointer[0] == "stream" || expression.pointer[0] == "emission")
 	if (expression.op == "keys" || expression.op == "type") && expression.source != nil && expression.source.op == "read" && (expression.source.from == "input" || expression.source.from == "root") {
 		plan.hasRequestObjectSource = isCoreRequestPointerObjectPath(expression.source.pointer)
 	}
@@ -207,12 +207,16 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.checkUsage(state)
 	case "check_links":
 		return plan.checkLinks(state)
+	case "pointer_join":
+		return plan.buildPointerJoin(state)
 	case "resolve_item":
 		return plan.resolveStreamItem(state)
 	case "track_text":
 		return plan.trackStreamText(state)
 	case "track_tool":
 		return plan.trackStreamTool(state)
+	case "buffer_text", "buffer_array":
+		return plan.useStreamBuffer(state)
 	case "read_delivered_item":
 		return plan.readDeliveredItem(state)
 	case "resume_text":
@@ -270,7 +274,7 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.buildKeyedArray(state)
 	case "parse_json", "stringify_json":
 		return plan.buildJSONScalar(state)
-	case "exists", "present", "not", "enum", "cast", "strip_prefix", "trim_prefix", "split_data_uri", "lower", "quote_string", "has_prefix", "contains":
+	case "exists", "present", "not", "enum", "cast", "strip_prefix", "trim_prefix", "split_data_uri", "lower", "quote_string", "has_prefix", "contains", "has_control":
 		return plan.buildScalar(state)
 	case "type", "is_integer":
 		return plan.buildTypeQuery(state)

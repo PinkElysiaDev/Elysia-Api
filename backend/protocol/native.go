@@ -53,12 +53,14 @@ type Mutation struct {
 
 // Target contains the pinned wire and resource identity used for conversion.
 type Target struct {
-	Codec        string // installed direction module; never inferred from a family label
-	Protocol     Identity
-	Direction    Direction
-	Scope        Scope
-	Capabilities CapabilitySet
-	coreVersion  int
+	Codec            string // installed direction module; never inferred from a family label
+	Protocol         Identity
+	Direction        Direction
+	Scope            Scope
+	Capabilities     CapabilitySet
+	coreVersion      int
+	eventEncoderHash string
+	eventDecoderHash string
 }
 
 // CanPreserveNative requires an explicit family and wire-version match. A

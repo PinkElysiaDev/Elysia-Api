@@ -67,10 +67,12 @@ func TestPackageDeferredEventRetainsTerminalMetadata(t *testing.T) {
 
 func TestPackageStreamControlDoesNotStartResponse(t *testing.T) {
 	spec := sparseIdentityStream(t)
-	spec.Events["ping"] = ProtocolStreamEventSpec{{Action: "control"}}
+	spec.Events["ping"] = ProtocolStreamEventSpec{{Action: "control", AllowBeforeStart: true}}
 	state := newSparseIdentityValidation(t, spec)
-	if err := state.consume(t.Context(), Value{raw: `{"type":"ping"}`}); err != nil {
-		t.Fatal(err)
+	for _, raw := range []string{`{"type":"ping"}`, `{"type":"ping","response_id":"unstarted"}`} {
+		if err := state.consume(t.Context(), Value{raw: raw}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if state.accepted.hasStarted || state.identityBytes != 0 {
 		t.Fatal("control frame established a response")
