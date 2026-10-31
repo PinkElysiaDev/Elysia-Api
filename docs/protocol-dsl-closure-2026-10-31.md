@@ -4,7 +4,7 @@
 再对功能等价的完整链路测量并优化；未通过门槛前不切换四预置，不移除生产旧入口。
 仅本地提交，使用合成数据和模拟上游。
 
-当前阶段为 dev.100：已补 Chat 请求工具邻接与根控制字段、Responses 普通文本/容器及进度源流，
+当前阶段为 dev.101：已补 Chat 请求工具邻接与根控制字段、Responses 普通文本/容器、进度及错误源流，
 并独立修复有交付校验器的 Anthropic 原生文本接续。四协议 SSE、完整请求动态约束、
 组合调用、正式性能测量及最终退役仍未全部完成，生产预置继续使用旧执行链。
 
@@ -490,8 +490,10 @@ merge 仍会重复计量操作数，不能作为修复后的结果。
 `closure-progress-identity-budget-probe` 已确认其中的字节差异：相同 8 MiB 限额下，
 2 MiB 合成响应 ID 加 5 MiB 未知 usage 值，旧解码、EventReplay、真实终态和 EOF 均成功，
 新独立 wire 合同在 `/state` 提前拒绝。探针退出成功仅表示采集完成；这是切换阻断项，
-不是通过的回归。单独跳过 wire 观察 Mapping 也不代表完整成功，其目标 replay 还会因
-草案未声明 unmapped 能力拒绝；没有用这一旁路绕过真实入口。累计节点差异暂为代码推断。
+不是通过的回归。首版探针另外错用了尚未声明的 EncodeEvent 目标能力，导致旁路
+Mapping 的 replay 报 `/unmapped`；这不是已证实的配置缺口。真实来源入口使用
+DecodeEvent 能力并设置 EncodeEvent 的校验方向，修正版探针沿用这一构造；旧探针与
+结果均保留。单独绕过 wire 观察 Mapping 不代表完整成功。累计节点差异暂为代码推断。
 
 尚未接入任何预置的 Chat logprobs 目标计量草稿、测试及审查笔记完整归档于
 `.tmp-dev/protocol-dsl-closure-2026-10-31/unwired-trackers/`。它们尚未证明容量与旧
@@ -504,3 +506,40 @@ staticcheck 首轮指出本次提取后已无调用的旧 predicate 包装方法
 对比新增/移除均为零。结果见 `closure-dev100-staticcheck-diff.json`，未把退出 1 写成通过。
 `closure-dev100-race` 的状态槽、有序断言、Responses 进度、Anthropic 原生接续及事件
 运行期定向 race 通过；本阶段没有改动 WebUI，也没有把以前的跨平台产物当成本版本构建。
+
+## 第十六批：Responses 普通心跳与错误源流（dev.101）
+
+`keepalive`、`response.failed`、扁平/嵌套 `error` 现由 Spec 与 Mapping 声明。心跳
+不补响应或终态；带额外字段的心跳仍产生未映射证据，包括其他事件已认识的 metadata
+字段。失败只解码错误载荷，不以完整响应规则增加 output、status、usage 要求，可先于
+created，也可结束尚未闭合的工具参数。失败后的 usage 尾帧保留原规则。
+
+错误载荷表达式从既有 JSON 实现提取，HTTP 上下文、类别、别名、未知错误字段和原
+JSON 的可选 error 判断不变。复用原两种包络与七种拒绝样例，比较完整核心事件及四个
+旧目标的错误重建字节；这验证了新源的语义输出，不是尚未迁入的新 Responses 目标。
+生命周期测试保留重复终态、带载荷的终态后心跳、只有心跳的提前 EOF 及部分工具失败。
+
+新增严格比较发现序号错误原因仍是通用文字，与旧 Responses 的统一错误句不同。
+Spec 新增限定的 `sequenceReason`，要求同时有 `sequenceDiagnostic`；类型/null/负数
+与重复/倒序均使用同一配置文字，原默认合同不变。没有新增另一份序号账本，也没有
+在 Go 中写供应商判断。原 `closure-responses-control-first` 失败保留；
+`closure-responses-control-sequence` 定向通过，`closure-dev101-go-all` 全后端通过
+（约 97 秒），`closure-dev101-vet` 通过。
+
+修正 source target 后的 `closure-progress-identity-source-probe` 再次确认上一批
+`/state` 预算阻断。新旧单独的来源语义 replay 均可完成 EOF，首版探针的 `/unmapped`
+错误已消失；没有用这个旁路代替独立 wire 验收。探针源码及前版均在日期目录保留。
+
+仍未覆盖 `SSE-Keep-Alive:true` 空 delta 哨兵的显式消费及 normalization 诊断。
+普通 keepalive 不能代替该分支；Responses 剩余源事件、目标编码、Gemini 双向 SSE、
+全部策略/资源边界及正式性能验收仍未完成。生产预置和旧执行链继续保留。
+
+新增[能力迁移清单](protocol-dsl-capability-status.md)连接旧入口、两源声明、现有测试
+和剩余缺口。独立阅读还定位到来源入口重复静态校验、节点扫描及解析缓存创建，记录于
+`.tmp-dev/protocol-dsl-closure-2026-10-31/source-read-reuse-review.md`；它是待 profile
+验证的代码线索，没有测得绝对成本，不能称为这批修改的性能收益。
+
+`closure-dev101-race` 的流状态、有序断言、进度及错误源流回归通过。
+`closure-dev101-staticcheck` 仍是原 45 条诊断，内容/数量比较新增与移除均为零；
+`closure-dev101-audit-self` 的 161 项审计自测通过，无跳过。这是本阶段开发验证，
+不替代四协议完整迁移、真实客户端、正式性能或最终六目标验收。
