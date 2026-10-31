@@ -46,6 +46,7 @@ type ProtocolStreamSpec struct {
 	Sequence           string                             `json:"sequence,omitempty"`
 	OptionalSequence   bool                               `json:"optionalSequence,omitempty"`
 	SequenceDiagnostic *RejectDiagnostic                  `json:"sequenceDiagnostic,omitempty"`
+	SequenceReason     string                             `json:"sequenceReason,omitempty"`
 	CloseItemsOnFinish bool                               `json:"closeItemsOnFinish,omitempty"`
 	Identities         []ProtocolStreamIdentitySpec       `json:"identities,omitempty"`
 	State              map[string]ProtocolStateSlot       `json:"state,omitempty"`

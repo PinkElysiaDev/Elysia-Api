@@ -147,6 +147,7 @@ func TestPackageStreamCheckCompilation(t *testing.T) {
 		edit func(*ProtocolStreamSpec)
 	}{
 		{"update-without-slots", func(stream *ProtocolStreamSpec) { stream.State = nil }},
+		{"sequence-reason-without-diagnostic", func(stream *ProtocolStreamSpec) { stream.SequenceReason = "sequence is invalid" }},
 		{"nested-update", func(stream *ProtocolStreamSpec) {
 			stream.Events["nested"] = ProtocolStreamEventSpec{{ForEach: "/items", Actions: []ProtocolStreamActionSpec{{Action: "state_update"}}}}
 		}},

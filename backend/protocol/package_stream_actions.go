@@ -178,14 +178,21 @@ func (frame *streamActionFrame) checkSequence() error {
 		if frame.state.contract.sequenceDiagnostic == nil {
 			return err
 		}
-		return frame.state.boundaryIssue(frame.state.contract.sequenceDiagnostic, field.path, "stream sequence must be a nonnegative integer", err)
+		return frame.state.sequenceIssue("stream sequence must be a nonnegative integer", err)
 	}
 	if frame.state.accepted.hasSequence && sequence <= frame.state.accepted.sequence {
-		return frame.state.boundaryIssue(frame.state.contract.sequenceDiagnostic, field.path, "stream sequence must increase strictly", nil)
+		return frame.state.sequenceIssue("stream sequence must increase strictly", nil)
 	}
 	frame.sequence, frame.hasSequence = sequence, true
 	frame.hasCheckedSequence = true
 	return nil
+}
+
+func (state *packageStreamValidation) sequenceIssue(reason string, cause error) error {
+	if state.contract.sequenceReason != "" {
+		reason = state.contract.sequenceReason
+	}
+	return state.boundaryIssue(state.contract.sequenceDiagnostic, state.contract.sequence.path, reason, cause)
 }
 
 func qualifyStreamAction(action compiledPackageStreamEvent, path string) compiledPackageStreamEvent {

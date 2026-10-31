@@ -13827,455 +13827,34 @@
     }
   },
   "decode-failure": {
-  "op": "if",
-  "when": {
-    "op": "present",
-    "source": {
-      "op": "read",
-      "from": "input",
-      "path": "/error"
-    }
-  },
-  "then": {
-    "op": "let",
-    "name": "wire-failure",
-    "source": {
-      "op": "read",
-      "from": "input",
-      "path": "/error"
-    },
-    "body": {
       "op": "if",
       "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "type",
-            "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "wire-failure"
-            }
-          },
-          {
-            "op": "literal",
-            "value": "object"
-          }
-        ]
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/error"
+        }
       },
       "then": {
         "op": "let",
-        "name": "error-type",
+        "name": "wire-failure",
         "source": {
-          "op": "if",
-          "when": {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "/type",
-              "name": "wire-failure"
-            }
-          },
-          "then": {
-            "op": "if",
-            "when": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "type",
-                  "source": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/type",
-                    "name": "wire-failure"
-                  }
-                },
-                {
-                  "op": "literal",
-                  "value": "string"
-                }
-              ]
-            },
-            "then": {
-              "op": "read",
-              "from": "binding",
-              "path": "/type",
-              "name": "wire-failure"
-            },
-            "otherwise": {
-              "op": "if",
-              "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/type",
-                    "name": "wire-failure"
-                  },
-                  {
-                    "op": "literal",
-                    "value": null
-                  }
-                ]
-              },
-              "then": {
-                "op": "reject",
-                "path": "/",
-                "reason": "expected string, got null",
-                "diagnostic": {
-                  "code": "upstream_contract_violation",
-                  "stage": "runtime"
-                }
-              },
-              "otherwise": {
-                "op": "reject",
-                "path": "/",
-                "reason": "error field requires a string",
-                "diagnostic": {
-                  "code": "upstream_contract_violation",
-                  "stage": "runtime"
-                }
-              }
-            }
-          },
-          "otherwise": {
-            "op": "literal",
-            "value": ""
-          }
+          "op": "read",
+          "from": "input",
+          "path": "/error"
         },
         "body": {
-          "op": "let",
-          "name": "type-category",
-          "source": {
-            "op": "choose",
-            "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "error-type"
-            },
-            "cases": {
-              "invalid_request_error": {
-                "op": "literal",
-                "value": "invalid_request"
-              },
-              "rate_limit_error": {
-                "op": "literal",
-                "value": "rate_limit"
-              },
-              "insufficient_quota": {
-                "op": "literal",
-                "value": "rate_limit"
-              },
-              "service_unavailable_error": {
-                "op": "literal",
-                "value": "overloaded"
-              },
-              "api_error": {
-                "op": "literal",
-                "value": "upstream"
-              },
-              "upstream_error": {
-                "op": "literal",
-                "value": "upstream"
-              },
-              "server_error": {
-                "op": "literal",
-                "value": "server"
-              },
-              "content_filter": {
-                "op": "literal",
-                "value": "invalid_request"
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": ""
-            }
-          },
-          "body": {
-            "op": "let",
-            "name": "canonical-type",
-            "source": {
-              "op": "choose",
-              "source": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "type-category"
-              },
-              "cases": {
-                "invalid_request": {
-                  "op": "literal",
-                  "value": "invalid_request_error"
-                },
-                "authentication": {
-                  "op": "literal",
-                  "value": "invalid_request_error"
-                },
-                "permission": {
-                  "op": "literal",
-                  "value": "invalid_request_error"
-                },
-                "model_not_found": {
-                  "op": "literal",
-                  "value": "invalid_request_error"
-                },
-                "rate_limit": {
-                  "op": "literal",
-                  "value": "rate_limit_error"
-                },
-                "overloaded": {
-                  "op": "literal",
-                  "value": "service_unavailable_error"
-                },
-                "upstream": {
-                  "op": "literal",
-                  "value": "api_error"
-                },
-                "server": {
-                  "op": "literal",
-                  "value": "api_error"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": "api_error"
-              }
-            },
-            "body": {
-              "op": "let",
-              "name": "provider-wrapper",
-              "source": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "error-type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "new_api_error"
-                  }
-                ]
-              },
-              "body": {
-                "op": "let",
-                "name": "error-code",
-                "source": {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/code",
-                      "name": "wire-failure"
-                    }
-                  },
-                  "then": {
-                    "op": "if",
-                    "when": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "type",
-                          "source": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/code",
-                            "name": "wire-failure"
-                          }
-                        },
-                        {
-                          "op": "literal",
-                          "value": "string"
-                        }
-                      ]
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/code",
-                      "name": "wire-failure"
-                    },
-                    "otherwise": {
-                      "op": "reject",
-                      "path": "/error/code",
-                      "reason": "provider error code requires a string or null",
-                      "diagnostic": {
-                        "code": "upstream_contract_violation",
-                        "stage": "decode.error"
-                      }
-                    }
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
-                },
-                "body": {
-                  "op": "let",
-                  "name": "checked-param",
-                  "source": {
-                    "op": "if",
-                    "when": {
-                      "op": "present",
-                      "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/param",
-                        "name": "wire-failure"
-                      }
-                    },
-                    "then": {
-                      "op": "if",
-                      "when": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "type",
-                            "source": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/param",
-                              "name": "wire-failure"
-                            }
-                          },
-                          {
-                            "op": "literal",
-                            "value": "string"
-                          }
-                        ]
-                      },
-                      "then": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/param",
-                        "name": "wire-failure"
-                      },
-                      "otherwise": {
-                        "op": "reject",
-                        "path": "/error/param",
-                        "reason": "provider error param requires a string or null",
-                        "diagnostic": {
-                          "code": "unsupported_capability",
-                          "stage": "wire",
-                          "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
-                        }
-                      }
-                    },
-                    "otherwise": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/param",
-                      "name": "wire-failure"
-                    }
-                  },
-                  "body": {
-                    "op": "let",
-                    "name": "error-category",
-                    "source": {
-                      "op": "ref",
-                      "ref": "decode-failure-category"
-                    },
-                    "body": {
-                      "op": "ref",
-                      "ref": "decode-failure-fields"
-                    }
-                  }
-                }
-              }
-            }
-          }
+          "op": "ref",
+          "ref": "decode-failure-payload"
         }
       },
       "otherwise": {
-        "op": "object",
-        "fields": {
-          "message": {
-            "op": "join",
-            "items": [
-              {
-                "op": "if",
-                "when": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "type",
-                      "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "wire-failure"
-                      }
-                    },
-                    {
-                      "op": "literal",
-                      "value": "string"
-                    }
-                  ]
-                },
-                "then": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "",
-                  "name": "wire-failure"
-                },
-                "otherwise": {
-                  "op": "if",
-                  "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "wire-failure"
-                      },
-                      {
-                        "op": "literal",
-                        "value": null
-                      }
-                    ]
-                  },
-                  "then": {
-                    "op": "reject",
-                    "path": "/",
-                    "reason": "expected string, got null",
-                    "diagnostic": {
-                      "code": "upstream_contract_violation",
-                      "stage": "runtime"
-                    }
-                  },
-                  "otherwise": {
-                    "op": "reject",
-                    "path": "/",
-                    "reason": "error field requires a string",
-                    "diagnostic": {
-                      "code": "upstream_contract_violation",
-                      "stage": "runtime"
-                    }
-                  }
-                }
-              }
-            ]
-          }
-        }
+        "op": "read",
+        "from": "input",
+        "path": "/error"
       }
-    }
-  },
-  "otherwise": {
-    "op": "read",
-    "from": "input",
-    "path": "/error"
-  }
-},
+    },
   "decode-error-envelope": {
     "op": "let",
     "name": "model-usage",
@@ -17727,6 +17306,754 @@
         "op": "literal",
         "value": false
       }
+    },
+    "decode-failure-payload": {
+      "op": "if",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "type",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "wire-failure"
+            }
+          },
+          {
+            "op": "literal",
+            "value": "object"
+          }
+        ]
+      },
+      "then": {
+        "op": "let",
+        "name": "error-type",
+        "source": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "/type",
+              "name": "wire-failure"
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/type",
+                    "name": "wire-failure"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "string"
+                }
+              ]
+            },
+            "then": {
+              "op": "read",
+              "from": "binding",
+              "path": "/type",
+              "name": "wire-failure"
+            },
+            "otherwise": {
+              "op": "if",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/type",
+                    "name": "wire-failure"
+                  },
+                  {
+                    "op": "literal",
+                    "value": null
+                  }
+                ]
+              },
+              "then": {
+                "op": "reject",
+                "path": "/",
+                "reason": "expected string, got null",
+                "diagnostic": {
+                  "code": "upstream_contract_violation",
+                  "stage": "runtime"
+                }
+              },
+              "otherwise": {
+                "op": "reject",
+                "path": "/",
+                "reason": "error field requires a string",
+                "diagnostic": {
+                  "code": "upstream_contract_violation",
+                  "stage": "runtime"
+                }
+              }
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": ""
+          }
+        },
+        "body": {
+          "op": "let",
+          "name": "type-category",
+          "source": {
+            "op": "choose",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "error-type"
+            },
+            "cases": {
+              "invalid_request_error": {
+                "op": "literal",
+                "value": "invalid_request"
+              },
+              "rate_limit_error": {
+                "op": "literal",
+                "value": "rate_limit"
+              },
+              "insufficient_quota": {
+                "op": "literal",
+                "value": "rate_limit"
+              },
+              "service_unavailable_error": {
+                "op": "literal",
+                "value": "overloaded"
+              },
+              "api_error": {
+                "op": "literal",
+                "value": "upstream"
+              },
+              "upstream_error": {
+                "op": "literal",
+                "value": "upstream"
+              },
+              "server_error": {
+                "op": "literal",
+                "value": "server"
+              },
+              "content_filter": {
+                "op": "literal",
+                "value": "invalid_request"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": ""
+            }
+          },
+          "body": {
+            "op": "let",
+            "name": "canonical-type",
+            "source": {
+              "op": "choose",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "type-category"
+              },
+              "cases": {
+                "invalid_request": {
+                  "op": "literal",
+                  "value": "invalid_request_error"
+                },
+                "authentication": {
+                  "op": "literal",
+                  "value": "invalid_request_error"
+                },
+                "permission": {
+                  "op": "literal",
+                  "value": "invalid_request_error"
+                },
+                "model_not_found": {
+                  "op": "literal",
+                  "value": "invalid_request_error"
+                },
+                "rate_limit": {
+                  "op": "literal",
+                  "value": "rate_limit_error"
+                },
+                "overloaded": {
+                  "op": "literal",
+                  "value": "service_unavailable_error"
+                },
+                "upstream": {
+                  "op": "literal",
+                  "value": "api_error"
+                },
+                "server": {
+                  "op": "literal",
+                  "value": "api_error"
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": "api_error"
+              }
+            },
+            "body": {
+              "op": "let",
+              "name": "provider-wrapper",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "error-type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "new_api_error"
+                  }
+                ]
+              },
+              "body": {
+                "op": "let",
+                "name": "error-code",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/code",
+                      "name": "wire-failure"
+                    }
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "type",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/code",
+                            "name": "wire-failure"
+                          }
+                        },
+                        {
+                          "op": "literal",
+                          "value": "string"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/code",
+                      "name": "wire-failure"
+                    },
+                    "otherwise": {
+                      "op": "reject",
+                      "path": "/error/code",
+                      "reason": "provider error code requires a string or null",
+                      "diagnostic": {
+                        "code": "upstream_contract_violation",
+                        "stage": "decode.error"
+                      }
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                },
+                "body": {
+                  "op": "let",
+                  "name": "checked-param",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/param",
+                        "name": "wire-failure"
+                      }
+                    },
+                    "then": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/param",
+                              "name": "wire-failure"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "string"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/param",
+                        "name": "wire-failure"
+                      },
+                      "otherwise": {
+                        "op": "reject",
+                        "path": "/error/param",
+                        "reason": "provider error param requires a string or null",
+                        "diagnostic": {
+                          "code": "unsupported_capability",
+                          "stage": "wire",
+                          "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                        }
+                      }
+                    },
+                    "otherwise": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/param",
+                      "name": "wire-failure"
+                    }
+                  },
+                  "body": {
+                    "op": "let",
+                    "name": "error-category",
+                    "source": {
+                      "op": "ref",
+                      "ref": "decode-failure-category"
+                    },
+                    "body": {
+                      "op": "ref",
+                      "ref": "decode-failure-fields"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "otherwise": {
+        "op": "object",
+        "fields": {
+          "message": {
+            "op": "join",
+            "items": [
+              {
+                "op": "if",
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "type",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "wire-failure"
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": "string"
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "wire-failure"
+                },
+                "otherwise": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "wire-failure"
+                      },
+                      {
+                        "op": "literal",
+                        "value": null
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "reject",
+                    "path": "/",
+                    "reason": "expected string, got null",
+                    "diagnostic": {
+                      "code": "upstream_contract_violation",
+                      "stage": "runtime"
+                    }
+                  },
+                  "otherwise": {
+                    "op": "reject",
+                    "path": "/",
+                    "reason": "error field requires a string",
+                    "diagnostic": {
+                      "code": "upstream_contract_violation",
+                      "stage": "runtime"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "decode-stream-failure": {
+      "op": "let",
+      "name": "wire-failure",
+      "source": {
+        "op": "if",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/type"
+            },
+            {
+              "op": "literal",
+              "value": "response.failed"
+            }
+          ]
+        },
+        "then": {
+          "op": "read",
+          "from": "input",
+          "path": "/response/error"
+        },
+        "otherwise": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/error"
+            }
+          },
+          "then": {
+            "op": "read",
+            "from": "input",
+            "path": "/error"
+          },
+          "otherwise": {
+            "op": "project",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            "keys": [
+              "message",
+              "code",
+              "param"
+            ],
+            "policy": "include"
+          }
+        }
+      },
+      "body": {
+        "op": "ref",
+        "ref": "decode-failure-payload"
+      }
+    },
+    "decode-stream-envelope-metadata": {
+      "op": "let",
+      "name": "tool-usage",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/tool_usage"
+      },
+      "body": {
+        "op": "ref",
+        "ref": "decode-response-metadata"
+      }
+    },
+    "has-failure-envelope-extensions": {
+      "op": "with_index",
+      "name": "envelope-metadata-names",
+      "keyMode": "raw_json",
+      "policy": "last",
+      "body": {
+        "op": "let",
+        "name": "registered-metadata",
+        "source": {
+          "op": "map",
+          "source": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "envelope-metadata"
+              }
+            },
+            "then": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "envelope-metadata"
+            },
+            "otherwise": {
+              "op": "array",
+              "items": []
+            }
+          },
+          "body": {
+            "op": "remember",
+            "name": "envelope-metadata-names",
+            "source": {
+              "op": "read",
+              "from": "item",
+              "path": "/name"
+            },
+            "body": {
+              "op": "literal",
+              "value": true
+            }
+          }
+        },
+        "body": {
+          "op": "not",
+          "source": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "filter",
+                "source": {
+                  "op": "entries",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/type"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "error"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "project",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      "keys": [
+                        "type",
+                        "sequence_number",
+                        "error",
+                        "message",
+                        "code",
+                        "param"
+                      ],
+                      "policy": "exclude"
+                    },
+                    "otherwise": {
+                      "op": "project",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      "keys": [
+                        "type",
+                        "sequence_number",
+                        "response_id",
+                        "output_index",
+                        "content_index",
+                        "summary_index",
+                        "item_id",
+                        "delta",
+                        "text",
+                        "refusal",
+                        "arguments",
+                        "input",
+                        "item",
+                        "part",
+                        "response",
+                        "error",
+                        "logprobs",
+                        "annotation",
+                        "annotation_index"
+                      ],
+                      "policy": "exclude"
+                    }
+                  }
+                },
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "exists",
+                    "source": {
+                      "op": "recall",
+                      "name": "envelope-metadata-names",
+                      "source": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/key"
+                      },
+                      "policy": "omit"
+                    }
+                  }
+                }
+              },
+              {
+                "op": "literal",
+                "value": []
+              }
+            ]
+          }
+        }
+      }
+    },
+    "preserve-stream-extensions": {
+      "op": "let",
+      "name": "unmapped",
+      "source": {
+        "op": "capture_native",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": ""
+        }
+      },
+      "body": {
+        "op": "map",
+        "source": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "events"
+              },
+              {
+                "op": "literal",
+                "value": []
+              }
+            ]
+          },
+          "then": {
+            "op": "array",
+            "items": [
+              {
+                "op": "object",
+                "fields": {
+                  "schemaVersion": {
+                    "op": "literal",
+                    "value": 2
+                  },
+                  "type": {
+                    "op": "literal",
+                    "value": "native"
+                  },
+                  "responseId": {
+                    "op": "read",
+                    "from": "state",
+                    "path": "/response"
+                  }
+                }
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "read",
+            "from": "binding",
+            "path": "",
+            "name": "events"
+          }
+        },
+        "body": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "index"
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          },
+          "then": {
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "read",
+                "from": "item",
+                "path": ""
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "unmapped": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "unmapped"
+                  }
+                }
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "read",
+            "from": "item",
+            "path": ""
+          }
+        }
+      }
     }
   },
   "directions": {
@@ -18331,16 +18658,63 @@
           "update": {
             "op": "if",
             "when": {
-              "op": "equal",
+              "op": "any",
               "items": [
                 {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/type"
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "response.in_progress"
+                    }
+                  ]
                 },
                 {
-                  "op": "literal",
-                  "value": "response.in_progress"
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "keepalive"
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "response.failed"
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "error"
+                    }
+                  ]
                 }
               ]
             },
@@ -20032,289 +20406,157 @@
                     }
                   }
                 }
+              },
+              "keepalive": {
+                "op": "array",
+                "items": []
+              },
+              "response.failed": {
+                "op": "array",
+                "items": [
+                  {
+                    "op": "object",
+                    "fields": {
+                      "schemaVersion": {
+                        "op": "literal",
+                        "value": 2
+                      },
+                      "type": {
+                        "op": "literal",
+                        "value": "operation.failed"
+                      },
+                      "responseId": {
+                        "op": "read",
+                        "from": "state",
+                        "path": "/response"
+                      },
+                      "error": {
+                        "op": "ref",
+                        "ref": "decode-stream-failure"
+                      }
+                    }
+                  }
+                ]
+              },
+              "error": {
+                "op": "array",
+                "items": [
+                  {
+                    "op": "object",
+                    "fields": {
+                      "schemaVersion": {
+                        "op": "literal",
+                        "value": 2
+                      },
+                      "type": {
+                        "op": "literal",
+                        "value": "operation.failed"
+                      },
+                      "responseId": {
+                        "op": "read",
+                        "from": "state",
+                        "path": "/response"
+                      },
+                      "error": {
+                        "op": "ref",
+                        "ref": "decode-stream-failure"
+                      }
+                    }
+                  }
+                ]
               }
             }
           },
           "body": {
-            "op": "if",
-            "when": {
-              "op": "all",
-              "items": [
-                {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "project",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
-                      },
-                      "keys": [
-                        "type",
-                        "sequence_number",
-                        "response_id",
-                        "output_index",
-                        "content_index",
-                        "summary_index",
-                        "item_id",
-                        "delta",
-                        "text",
-                        "refusal",
-                        "arguments",
-                        "input",
-                        "item",
-                        "part",
-                        "response",
-                        "error",
-                        "logprobs",
-                        "annotation",
-                        "annotation_index"
-                      ],
-                      "policy": "exclude"
-                    },
-                    {
-                      "op": "literal",
-                      "value": {}
-                    }
-                  ]
-                },
-                {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "if",
-                      "when": {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/item"
-                        }
-                      },
-                      "then": {
-                        "op": "project",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/item"
-                        },
-                        "keys": [
-                          "type",
-                          "id",
-                          "call_id",
-                          "name",
-                          "arguments",
-                          "status",
-                          "role",
-                          "content",
-                          "phase",
-                          "metadata",
-                          "internal_chat_message_metadata_passthrough"
-                        ],
-                        "policy": "exclude"
-                      },
-                      "otherwise": {
-                        "op": "object",
-                        "fields": {}
-                      }
-                    },
-                    {
-                      "op": "literal",
-                      "value": {}
-                    }
-                  ]
-                },
-                {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "if",
-                      "when": {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/part"
-                        }
-                      },
-                      "then": {
-                        "op": "project",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/part"
-                        },
-                        "keys": [
-                          "type",
-                          "text",
-                          "refusal",
-                          "annotations",
-                          "logprobs"
-                        ],
-                        "policy": "exclude"
-                      },
-                      "otherwise": {
-                        "op": "object",
-                        "fields": {}
-                      }
-                    },
-                    {
-                      "op": "literal",
-                      "value": {}
-                    }
-                  ]
-                },
-                {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "filter",
-                      "source": {
-                        "op": "if",
-                        "when": {
-                          "op": "present",
-                          "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/item/content"
-                          }
-                        },
-                        "then": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/item/content"
-                        },
-                        "otherwise": {
-                          "op": "array",
-                          "items": []
-                        }
-                      },
-                      "when": {
-                        "op": "not",
-                        "source": {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "project",
-                              "source": {
-                                "op": "read",
-                                "from": "item",
-                                "path": ""
-                              },
-                              "keys": [
-                                "type",
-                                "text",
-                                "refusal",
-                                "annotations",
-                                "logprobs"
-                              ],
-                              "policy": "exclude"
-                            },
-                            {
-                              "op": "literal",
-                              "value": {}
-                            }
-                          ]
-                        }
-                      }
-                    },
-                    {
-                      "op": "literal",
-                      "value": []
-                    }
-                  ]
-                },
-                {
-                  "op": "not",
-                  "source": {
-                    "op": "ref",
-                    "ref": "has-progress-extensions"
-                  }
-                }
-              ]
-            },
-            "then": {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "events"
-            },
-            "otherwise": {
-              "op": "let",
-              "name": "unmapped",
-              "source": {
-                "op": "capture_native",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                }
-              },
-              "body": {
-                "op": "map",
-                "source": {
-                  "op": "if",
-                  "when": {
+            "op": "let",
+            "name": "envelope-metadata",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "any",
+                "items": [
+                  {
                     "op": "equal",
                     "items": [
                       {
                         "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "events"
+                        "from": "input",
+                        "path": "/type"
                       },
                       {
                         "op": "literal",
-                        "value": []
+                        "value": "error"
                       }
                     ]
                   },
-                  "then": {
-                    "op": "array",
+                  {
+                    "op": "equal",
                     "items": [
                       {
-                        "op": "object",
-                        "fields": {
-                          "schemaVersion": {
-                            "op": "literal",
-                            "value": 2
-                          },
-                          "type": {
-                            "op": "literal",
-                            "value": "native"
-                          },
-                          "responseId": {
-                            "op": "read",
-                            "from": "state",
-                            "path": "/response"
-                          }
-                        }
+                        "op": "read",
+                        "from": "input",
+                        "path": "/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "response.failed"
                       }
                     ]
-                  },
-                  "otherwise": {
+                  }
+                ]
+              },
+              "then": {
+                "op": "ref",
+                "ref": "decode-stream-envelope-metadata"
+              }
+            },
+            "body": {
+              "op": "let",
+              "name": "events",
+              "source": {
+                "op": "if",
+                "when": {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/type"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "error"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/type"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "response.failed"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "map",
+                  "source": {
                     "op": "read",
                     "from": "binding",
                     "path": "",
                     "name": "events"
-                  }
-                },
-                "body": {
-                  "op": "if",
-                  "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "index"
-                      },
-                      {
-                        "op": "literal",
-                        "value": 0
-                      }
-                    ]
                   },
-                  "then": {
+                  "body": {
                     "op": "merge",
                     "policy": "reject",
                     "items": [
@@ -20326,20 +20568,313 @@
                       {
                         "op": "object",
                         "fields": {
-                          "unmapped": {
+                          "metadata": {
                             "op": "read",
                             "from": "binding",
                             "path": "",
-                            "name": "unmapped"
+                            "name": "envelope-metadata"
                           }
                         }
                       }
                     ]
+                  }
+                },
+                "otherwise": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "events"
+                }
+              },
+              "body": {
+                "op": "choose",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                "cases": {
+                  "keepalive": {
+                    "op": "if",
+                    "when": {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "project",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": ""
+                            },
+                            "keys": [
+                              "type",
+                              "sequence_number"
+                            ],
+                            "policy": "exclude"
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      }
+                    },
+                    "then": {
+                      "op": "ref",
+                      "ref": "preserve-stream-extensions"
+                    },
+                    "otherwise": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "events"
+                    }
+                  },
+                  "error": {
+                    "op": "if",
+                    "when": {
+                      "op": "ref",
+                      "ref": "has-failure-envelope-extensions"
+                    },
+                    "then": {
+                      "op": "ref",
+                      "ref": "preserve-stream-extensions"
+                    },
+                    "otherwise": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "events"
+                    }
+                  },
+                  "response.failed": {
+                    "op": "if",
+                    "when": {
+                      "op": "ref",
+                      "ref": "has-failure-envelope-extensions"
+                    },
+                    "then": {
+                      "op": "ref",
+                      "ref": "preserve-stream-extensions"
+                    },
+                    "otherwise": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "events"
+                    }
+                  }
+                },
+                "otherwise": {
+                  "op": "if",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "project",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": ""
+                            },
+                            "keys": [
+                              "type",
+                              "sequence_number",
+                              "response_id",
+                              "output_index",
+                              "content_index",
+                              "summary_index",
+                              "item_id",
+                              "delta",
+                              "text",
+                              "refusal",
+                              "arguments",
+                              "input",
+                              "item",
+                              "part",
+                              "response",
+                              "error",
+                              "logprobs",
+                              "annotation",
+                              "annotation_index"
+                            ],
+                            "policy": "exclude"
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "if",
+                            "when": {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/item"
+                              }
+                            },
+                            "then": {
+                              "op": "project",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/item"
+                              },
+                              "keys": [
+                                "type",
+                                "id",
+                                "call_id",
+                                "name",
+                                "arguments",
+                                "status",
+                                "role",
+                                "content",
+                                "phase",
+                                "metadata",
+                                "internal_chat_message_metadata_passthrough"
+                              ],
+                              "policy": "exclude"
+                            },
+                            "otherwise": {
+                              "op": "object",
+                              "fields": {}
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "if",
+                            "when": {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/part"
+                              }
+                            },
+                            "then": {
+                              "op": "project",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/part"
+                              },
+                              "keys": [
+                                "type",
+                                "text",
+                                "refusal",
+                                "annotations",
+                                "logprobs"
+                              ],
+                              "policy": "exclude"
+                            },
+                            "otherwise": {
+                              "op": "object",
+                              "fields": {}
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "filter",
+                            "source": {
+                              "op": "if",
+                              "when": {
+                                "op": "present",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/item/content"
+                                }
+                              },
+                              "then": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/item/content"
+                              },
+                              "otherwise": {
+                                "op": "array",
+                                "items": []
+                              }
+                            },
+                            "when": {
+                              "op": "not",
+                              "source": {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "project",
+                                    "source": {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": ""
+                                    },
+                                    "keys": [
+                                      "type",
+                                      "text",
+                                      "refusal",
+                                      "annotations",
+                                      "logprobs"
+                                    ],
+                                    "policy": "exclude"
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": {}
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": []
+                          }
+                        ]
+                      },
+                      {
+                        "op": "not",
+                        "source": {
+                          "op": "ref",
+                          "ref": "has-progress-extensions"
+                        }
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "events"
                   },
                   "otherwise": {
-                    "op": "read",
-                    "from": "item",
-                    "path": ""
+                    "op": "ref",
+                    "ref": "preserve-stream-extensions"
                   }
                 }
               }

@@ -166,6 +166,20 @@ Spec 的 observe/control 只需区分“还有载荷”和“空控制帧”，�
 
 Spec 仍展开独立模型计数与托管工具检查；不能引用 Mapping 的可变状态来缩短配置。observe/control 已改用现有投影表达式，避免为存在性判断重复构造 metadata。其余共享不可变帧读取结果的优化仍需测量；此处没有最新性能无回退结论，也没有默认切换预置。
 
+## Responses 普通心跳与失败源帧
+
+普通 `type:"keepalive"` 声明为控制帧，只含 type 和可选递增序号时产生空事件批次；它不建立响应、不完成生成，终态后仍可出现。任何额外字段继续保留为未映射载荷，包括在其他事件中属于 metadata 的 `service_tier`。原帧仍由 EventFrame 持有，不能因为事件批次为空就丢掉同协议重放所需字节。
+
+`response.failed` 只解码 `/response/error`，不会借用完整响应解码增加 status、output 或 usage 的要求。`error` 分别声明扁平和嵌套包络：嵌套 error 必须为对象且含非空 type，不能混入顶层 message/code/param；message 为字符串，code/param 可缺失或为 null。两种事件都可先于 created，也可以结束尚有未完成工具参数的响应；不会从失败包络建立新的响应 ID。失败后的 usage 尾帧与其他终态沿用同一规则。
+
+Mapping 的 `decode-failure-payload` 从现有 JSON 解码表达式提取，错误类别、供应商别名、HTTP 上下文和未知错误字段继续由同一表达式处理。JSON 入口保留原本的可选 error 判断；流入口直接检查必需 payload。错误包络与 payload 校验先于 metadata，metadata 先于后置生命周期拒绝；不会将 HTTP JSON 的方向写死到流诊断中。外层未知字段仍作为原帧证据，嵌套错误扩展仍属于核心 error，不移到其他位置。
+
+这里不包含 `SSE-Keep-Alive:true` 的空 delta 哨兵。旧实现会明确消费该传输帧并记录 normalization 诊断；当前声明式空事件批次没有同样的消费指令，不能用普通 keepalive 代替。Responses 目标编码器、完整 metadata 表和全局多故障首错顺序仍是独立闭合项；本节描述源声明，不作为新目标编码或线上切换的验收证据。
+
+`sequenceDiagnostic` 可以配合静态 `sequenceReason` 为序号类型、null、负数及倒序使用同一原因；
+没有覆盖时保留通用诊断。有原因而没有序号诊断的声明在编译时拒绝。Responses 使用这一声明
+保留旧序号错误文字，不为诊断另存一套序号状态。
+
 ## 从已交付文本按需接续
 
 `read_delivered_item` 的 `source` 是 Mapping 明确选出的 wire item ID 字符串，返回 `kind`、`isFinished`；仅在 Spec 的 `itemIdIsIndex` 为 true 时附带 `index`。未绑定匹配的输出校验器或未找到该项时返回 missing；有尚未交付的校验结果或失败帧时拒绝读取。协议身份、映射指纹和 scope 继续由绑定入口限定。

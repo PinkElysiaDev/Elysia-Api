@@ -6422,31 +6422,12 @@
         "responseIdValue": {
           "op": "if",
           "when": {
-            "op": "all",
-            "items": [
-              {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "response.in_progress"
-                  }
-                ]
-              },
-              {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/error"
-                }
-              }
-            ]
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/error"
+            }
           },
           "then": {
             "op": "omit"
@@ -6509,6 +6490,7 @@
         },
         "sequence": "/sequence_number",
         "optionalSequence": true,
+        "sequenceReason": "Responses event sequence must increase; repeated or reordered frames cannot be replayed",
         "sequenceDiagnostic": {
           "code": "unsupported_capability",
           "stage": "wire",
@@ -6523,35 +6505,14 @@
               "stage": "decode.event"
             },
             "when": {
-              "op": "if",
-              "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "response.in_progress"
-                  }
-                ]
-              },
-              "then": {
-                "op": "not",
+              "op": "not",
+              "source": {
+                "op": "present",
                 "source": {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/error"
-                  }
+                  "op": "read",
+                  "from": "input",
+                  "path": "/error"
                 }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": true
               }
             }
           },
@@ -6563,35 +6524,14 @@
               "stage": "decode.event"
             },
             "when": {
-              "op": "if",
-              "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "response.in_progress"
-                  }
-                ]
-              },
-              "then": {
-                "op": "not",
+              "op": "not",
+              "source": {
+                "op": "present",
                 "source": {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/error"
-                  }
+                  "op": "read",
+                  "from": "input",
+                  "path": "/error"
                 }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": true
               }
             }
           },
@@ -6603,35 +6543,14 @@
               "stage": "decode.event"
             },
             "when": {
-              "op": "if",
-              "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "response.in_progress"
-                  }
-                ]
-              },
-              "then": {
-                "op": "not",
+              "op": "not",
+              "source": {
+                "op": "present",
                 "source": {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/error"
-                  }
+                  "op": "read",
+                  "from": "input",
+                  "path": "/error"
                 }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": true
               }
             }
           },
@@ -14048,6 +13967,1678 @@
                     }
                   }
                 }
+              }
+            }
+          ],
+          "keepalive": [
+            {
+              "action": "control",
+              "when": {
+                "op": "not",
+                "source": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "project",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": ""
+                        },
+                        "keys": [
+                          "type",
+                          "sequence_number"
+                        ],
+                        "policy": "exclude"
+                      },
+                      {
+                        "op": "literal",
+                        "value": {}
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "action": "observe",
+              "when": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "project",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      "keys": [
+                        "type",
+                        "sequence_number"
+                      ],
+                      "policy": "exclude"
+                    },
+                    {
+                      "op": "literal",
+                      "value": {}
+                    }
+                  ]
+                }
+              },
+              "allowBeforeStart": true,
+              "diagnostic": {
+                "code": "upstream_contract_violation",
+                "stage": "stream",
+                "suggestion": "correct the upstream stream or declared /type rule"
+              }
+            }
+          ],
+          "response.failed": [
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "/response",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "response failure requires its response object",
+                  "diagnostic": {
+                    "code": "upstream_contract_violation",
+                    "stage": "runtime",
+                    "path": "/",
+                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+                  }
+                },
+                {
+                  "path": "",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "invalid provider failure payload",
+                  "diagnostic": {
+                    "code": "upstream_contract_violation",
+                    "stage": "runtime",
+                    "path": "/",
+                    "suggestion": "Correct the wire input or semantic mapping and verify the revision again."
+                  },
+                  "check": {
+                    "op": "let",
+                    "name": "wire-failure",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/response/error"
+                    },
+                    "body": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "wire-failure"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "object"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "let",
+                        "name": "error-type",
+                        "source": {
+                          "op": "if",
+                          "when": {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/type",
+                              "name": "wire-failure"
+                            }
+                          },
+                          "then": {
+                            "op": "if",
+                            "when": {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "type",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "binding",
+                                    "path": "/type",
+                                    "name": "wire-failure"
+                                  }
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "string"
+                                }
+                              ]
+                            },
+                            "then": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/type",
+                              "name": "wire-failure"
+                            },
+                            "otherwise": {
+                              "op": "if",
+                              "when": {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "binding",
+                                    "path": "/type",
+                                    "name": "wire-failure"
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": null
+                                  }
+                                ]
+                              },
+                              "then": {
+                                "op": "reject",
+                                "path": "/",
+                                "reason": "expected string, got null",
+                                "diagnostic": {
+                                  "code": "upstream_contract_violation",
+                                  "stage": "runtime"
+                                }
+                              },
+                              "otherwise": {
+                                "op": "reject",
+                                "path": "/",
+                                "reason": "error field requires a string",
+                                "diagnostic": {
+                                  "code": "upstream_contract_violation",
+                                  "stage": "runtime"
+                                }
+                              }
+                            }
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": ""
+                          }
+                        },
+                        "body": {
+                          "op": "let",
+                          "name": "error-code",
+                          "source": {
+                            "op": "if",
+                            "when": {
+                              "op": "present",
+                              "source": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/code",
+                                "name": "wire-failure"
+                              }
+                            },
+                            "then": {
+                              "op": "if",
+                              "when": {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "type",
+                                    "source": {
+                                      "op": "read",
+                                      "from": "binding",
+                                      "path": "/code",
+                                      "name": "wire-failure"
+                                    }
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": "string"
+                                  }
+                                ]
+                              },
+                              "then": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/code",
+                                "name": "wire-failure"
+                              },
+                              "otherwise": {
+                                "op": "reject",
+                                "path": "/error/code",
+                                "reason": "provider error code requires a string or null",
+                                "diagnostic": {
+                                  "code": "upstream_contract_violation",
+                                  "stage": "decode.error"
+                                }
+                              }
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": ""
+                            }
+                          },
+                          "body": {
+                            "op": "let",
+                            "name": "checked-param",
+                            "source": {
+                              "op": "if",
+                              "when": {
+                                "op": "present",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "/param",
+                                  "name": "wire-failure"
+                                }
+                              },
+                              "then": {
+                                "op": "if",
+                                "when": {
+                                  "op": "equal",
+                                  "items": [
+                                    {
+                                      "op": "type",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "binding",
+                                        "path": "/param",
+                                        "name": "wire-failure"
+                                      }
+                                    },
+                                    {
+                                      "op": "literal",
+                                      "value": "string"
+                                    }
+                                  ]
+                                },
+                                "then": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "/param",
+                                  "name": "wire-failure"
+                                },
+                                "otherwise": {
+                                  "op": "reject",
+                                  "path": "/error/param",
+                                  "reason": "provider error param requires a string or null",
+                                  "diagnostic": {
+                                    "code": "unsupported_capability",
+                                    "stage": "wire",
+                                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                                  }
+                                }
+                              },
+                              "otherwise": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/param",
+                                "name": "wire-failure"
+                              }
+                            },
+                            "body": {
+                              "op": "literal",
+                              "value": true
+                            }
+                          }
+                        }
+                      },
+                      "otherwise": {
+                        "op": "let",
+                        "name": "checked-failure",
+                        "source": {
+                          "op": "object",
+                          "fields": {
+                            "message": {
+                              "op": "join",
+                              "items": [
+                                {
+                                  "op": "if",
+                                  "when": {
+                                    "op": "equal",
+                                    "items": [
+                                      {
+                                        "op": "type",
+                                        "source": {
+                                          "op": "read",
+                                          "from": "binding",
+                                          "path": "",
+                                          "name": "wire-failure"
+                                        }
+                                      },
+                                      {
+                                        "op": "literal",
+                                        "value": "string"
+                                      }
+                                    ]
+                                  },
+                                  "then": {
+                                    "op": "read",
+                                    "from": "binding",
+                                    "path": "",
+                                    "name": "wire-failure"
+                                  },
+                                  "otherwise": {
+                                    "op": "if",
+                                    "when": {
+                                      "op": "equal",
+                                      "items": [
+                                        {
+                                          "op": "read",
+                                          "from": "binding",
+                                          "path": "",
+                                          "name": "wire-failure"
+                                        },
+                                        {
+                                          "op": "literal",
+                                          "value": null
+                                        }
+                                      ]
+                                    },
+                                    "then": {
+                                      "op": "reject",
+                                      "path": "/",
+                                      "reason": "expected string, got null",
+                                      "diagnostic": {
+                                        "code": "upstream_contract_violation",
+                                        "stage": "runtime"
+                                      }
+                                    },
+                                    "otherwise": {
+                                      "op": "reject",
+                                      "path": "/",
+                                      "reason": "error field requires a string",
+                                      "diagnostic": {
+                                        "code": "upstream_contract_violation",
+                                        "stage": "runtime"
+                                      }
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "body": {
+                          "op": "literal",
+                          "value": true
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "/background",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/background"
+                    }
+                  },
+                  "schema": {
+                    "type": "boolean",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected bool or null"
+                },
+                {
+                  "path": "/completed_at",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/completed_at"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/frequency_penalty",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/frequency_penalty"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/max_output_tokens",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/max_output_tokens"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/max_tool_calls",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/max_tool_calls"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/metadata",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/metadata"
+                    }
+                  },
+                  "schema": {
+                    "type": "object",
+                    "nullable": true,
+                    "allowUnknown": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected object or null"
+                },
+                {
+                  "path": "/output_text",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/output_text"
+                    }
+                  },
+                  "schema": {
+                    "type": "string"
+                  },
+                  "code": "invalid_input",
+                  "reason": "output_text requires a string"
+                },
+                {
+                  "path": "/parallel_tool_calls",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parallel_tool_calls"
+                    }
+                  },
+                  "schema": {
+                    "type": "boolean",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected bool or null"
+                },
+                {
+                  "path": "/presence_penalty",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/presence_penalty"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/prompt_cache_key",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/prompt_cache_key"
+                    }
+                  },
+                  "schema": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected string or null"
+                },
+                {
+                  "path": "/prompt_cache_retention",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/prompt_cache_retention"
+                    }
+                  },
+                  "schema": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected string or null"
+                },
+                {
+                  "path": "/reasoning",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning"
+                    }
+                  },
+                  "schema": {
+                    "type": "object",
+                    "nullable": true,
+                    "allowUnknown": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected object or null"
+                },
+                {
+                  "path": "/safety_identifier",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/safety_identifier"
+                    }
+                  },
+                  "schema": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected string or null"
+                },
+                {
+                  "path": "/service_tier",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/service_tier"
+                    }
+                  },
+                  "schema": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected string or null"
+                },
+                {
+                  "path": "/store",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/store"
+                    }
+                  },
+                  "schema": {
+                    "type": "boolean",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected bool or null"
+                },
+                {
+                  "path": "/temperature",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/temperature"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/text",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/text"
+                    }
+                  },
+                  "schema": {
+                    "type": "object",
+                    "nullable": true,
+                    "allowUnknown": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected object or null"
+                },
+                {
+                  "path": "/tools",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/tools"
+                    }
+                  },
+                  "schema": {
+                    "type": "array",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected array or null"
+                },
+                {
+                  "path": "/top_logprobs",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/top_logprobs"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/top_p",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/top_p"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/truncation",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/truncation"
+                    }
+                  },
+                  "schema": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected string or null"
+                },
+                {
+                  "path": "/user",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/user"
+                    }
+                  },
+                  "schema": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected string or null"
+                }
+              ]
+            },
+            {
+              "action": "failure",
+              "error": "/response/error",
+              "allowBeforeStart": true,
+              "diagnostic": {
+                "code": "upstream_contract_violation",
+                "stage": "stream",
+                "suggestion": "correct the upstream stream or declared /type rule"
+              }
+            }
+          ],
+          "error": [
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "/error",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "unsupported_capability",
+                  "reason": "Responses error payload requires an object",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire",
+                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                  },
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  }
+                },
+                {
+                  "path": "/message",
+                  "schema": {
+                    "type": "any"
+                  },
+                  "code": "unsupported_capability",
+                  "reason": "Responses error cannot combine nested and flat failure fields",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire",
+                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                  },
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/error"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/message"
+                        }
+                      }
+                    ]
+                  },
+                  "check": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                {
+                  "path": "/code",
+                  "schema": {
+                    "type": "any"
+                  },
+                  "code": "unsupported_capability",
+                  "reason": "Responses error cannot combine nested and flat failure fields",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire",
+                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                  },
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/error"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/code"
+                        }
+                      }
+                    ]
+                  },
+                  "check": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                {
+                  "path": "/param",
+                  "schema": {
+                    "type": "any"
+                  },
+                  "code": "unsupported_capability",
+                  "reason": "Responses error cannot combine nested and flat failure fields",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire",
+                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                  },
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/error"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/param"
+                        }
+                      }
+                    ]
+                  },
+                  "check": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                {
+                  "path": "/error/type",
+                  "schema": {
+                    "type": "string"
+                  },
+                  "code": "unsupported_capability",
+                  "reason": "Responses nested error requires a nonempty type string",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire",
+                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                  },
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  "check": {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": ""
+                        },
+                        {
+                          "op": "literal",
+                          "value": ""
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "path": "/error/message",
+                  "schema": {
+                    "type": "string"
+                  },
+                  "code": "unsupported_capability",
+                  "reason": "Responses error requires a message string",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire",
+                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                  },
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  }
+                },
+                {
+                  "path": "/error/code",
+                  "schema": {
+                    "type": "any"
+                  },
+                  "code": "unsupported_capability",
+                  "reason": "Responses error field requires a string or null",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire",
+                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                  },
+                  "when": {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/error"
+                      }
+                    },
+                    "then": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/error/code"
+                      }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": false
+                    }
+                  },
+                  "check": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": ""
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "string"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "/error/param",
+                  "schema": {
+                    "type": "any"
+                  },
+                  "code": "unsupported_capability",
+                  "reason": "Responses error field requires a string or null",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire",
+                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                  },
+                  "when": {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/error"
+                      }
+                    },
+                    "then": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/error/param"
+                      }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": false
+                    }
+                  },
+                  "check": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": ""
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "string"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "/message",
+                  "schema": {
+                    "type": "string"
+                  },
+                  "code": "unsupported_capability",
+                  "reason": "Responses error requires a message string",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire",
+                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                  },
+                  "when": {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/error"
+                      }
+                    }
+                  }
+                },
+                {
+                  "path": "/code",
+                  "schema": {
+                    "type": "any"
+                  },
+                  "code": "unsupported_capability",
+                  "reason": "Responses error field requires a string or null",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire",
+                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                  },
+                  "when": {
+                    "op": "if",
+                    "when": {
+                      "op": "not",
+                      "source": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/error"
+                        }
+                      }
+                    },
+                    "then": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/code"
+                      }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": false
+                    }
+                  },
+                  "check": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": ""
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "string"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "/param",
+                  "schema": {
+                    "type": "any"
+                  },
+                  "code": "unsupported_capability",
+                  "reason": "Responses error field requires a string or null",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire",
+                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                  },
+                  "when": {
+                    "op": "if",
+                    "when": {
+                      "op": "not",
+                      "source": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/error"
+                        }
+                      }
+                    },
+                    "then": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/param"
+                      }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": false
+                    }
+                  },
+                  "check": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": ""
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "string"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "/background",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/background"
+                    }
+                  },
+                  "schema": {
+                    "type": "boolean",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected bool or null"
+                },
+                {
+                  "path": "/completed_at",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/completed_at"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/frequency_penalty",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/frequency_penalty"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/max_output_tokens",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/max_output_tokens"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/max_tool_calls",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/max_tool_calls"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/metadata",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/metadata"
+                    }
+                  },
+                  "schema": {
+                    "type": "object",
+                    "nullable": true,
+                    "allowUnknown": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected object or null"
+                },
+                {
+                  "path": "/output_text",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/output_text"
+                    }
+                  },
+                  "schema": {
+                    "type": "string"
+                  },
+                  "code": "invalid_input",
+                  "reason": "output_text requires a string"
+                },
+                {
+                  "path": "/parallel_tool_calls",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parallel_tool_calls"
+                    }
+                  },
+                  "schema": {
+                    "type": "boolean",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected bool or null"
+                },
+                {
+                  "path": "/presence_penalty",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/presence_penalty"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/prompt_cache_key",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/prompt_cache_key"
+                    }
+                  },
+                  "schema": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected string or null"
+                },
+                {
+                  "path": "/prompt_cache_retention",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/prompt_cache_retention"
+                    }
+                  },
+                  "schema": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected string or null"
+                },
+                {
+                  "path": "/reasoning",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/reasoning"
+                    }
+                  },
+                  "schema": {
+                    "type": "object",
+                    "nullable": true,
+                    "allowUnknown": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected object or null"
+                },
+                {
+                  "path": "/safety_identifier",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/safety_identifier"
+                    }
+                  },
+                  "schema": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected string or null"
+                },
+                {
+                  "path": "/service_tier",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/service_tier"
+                    }
+                  },
+                  "schema": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected string or null"
+                },
+                {
+                  "path": "/store",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/store"
+                    }
+                  },
+                  "schema": {
+                    "type": "boolean",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected bool or null"
+                },
+                {
+                  "path": "/temperature",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/temperature"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/text",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/text"
+                    }
+                  },
+                  "schema": {
+                    "type": "object",
+                    "nullable": true,
+                    "allowUnknown": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected object or null"
+                },
+                {
+                  "path": "/tools",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/tools"
+                    }
+                  },
+                  "schema": {
+                    "type": "array",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected array or null"
+                },
+                {
+                  "path": "/top_logprobs",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/top_logprobs"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/top_p",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/top_p"
+                    }
+                  },
+                  "schema": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected number or null"
+                },
+                {
+                  "path": "/truncation",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/truncation"
+                    }
+                  },
+                  "schema": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected string or null"
+                },
+                {
+                  "path": "/user",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/user"
+                    }
+                  },
+                  "schema": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "code": "invalid_input",
+                  "reason": "invalid response metadata type; expected string or null"
+                }
+              ]
+            },
+            {
+              "action": "failure",
+              "error": "/error",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/error"
+                }
+              },
+              "allowBeforeStart": true,
+              "diagnostic": {
+                "code": "upstream_contract_violation",
+                "stage": "stream",
+                "suggestion": "correct the upstream stream or declared /type rule"
+              }
+            },
+            {
+              "action": "failure",
+              "error": "/message",
+              "when": {
+                "op": "not",
+                "source": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/error"
+                  }
+                }
+              },
+              "allowBeforeStart": true,
+              "diagnostic": {
+                "code": "upstream_contract_violation",
+                "stage": "stream",
+                "suggestion": "correct the upstream stream or declared /type rule"
               }
             }
           ]

@@ -22,6 +22,7 @@ type compiledPackageStreamContract struct {
 	isItemIDIndex                               bool
 	isSequenceOptional                          bool
 	sequenceDiagnostic                          *RejectDiagnostic
+	sequenceReason                              string
 	closeItemsOnFinish                          bool
 	identities                                  []compiledStreamIdentity
 	itemKinds                                   []NodeKind
@@ -80,6 +81,9 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 	if spec.OptionalSequence && spec.Sequence == "" {
 		return nil, fmt.Errorf("%s/optionalSequence: requires a sequence selector", path)
 	}
+	if spec.SequenceReason != "" && spec.SequenceDiagnostic == nil {
+		return nil, fmt.Errorf("%s/sequenceReason: requires a sequence diagnostic", path)
+	}
 	if spec.SequenceDiagnostic != nil {
 		if spec.Sequence == "" {
 			return nil, fmt.Errorf("%s/sequenceDiagnostic: requires a sequence selector", path)
@@ -89,6 +93,7 @@ func compilePackageStreamContract(spec *ProtocolStreamSpec, path string, limits 
 		}
 		copy := *spec.SequenceDiagnostic
 		contract.sequenceDiagnostic = &copy
+		contract.sequenceReason = spec.SequenceReason
 	}
 	for _, selector := range []struct {
 		name, path string
