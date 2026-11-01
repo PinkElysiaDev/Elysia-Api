@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 )
@@ -16,15 +17,35 @@ type ProtocolValueMapping struct {
 	Unmatched string  `json:"unmatched"`
 }
 
-func validateHistoryValueMapping(direction Direction, path string, mapping *ProtocolValueMapping, limits Limits) error {
-	if mapping == nil || (direction != DecodeRequest && direction != EncodeRequest) || path != historyRetentionPath || !mapping.Value.IsString("all") {
-		return fmt.Errorf("finite value mappings currently require request historyRetention all")
+func validateFiniteValueMapping(direction Direction, path string, mapping *ProtocolValueMapping, limits Limits) error {
+	if mapping == nil || (direction != DecodeRequest && direction != EncodeRequest) || mapping.Value.IsZero() {
+		return fmt.Errorf("finite value mappings require a request field and a present core value")
+	}
+	pointer, err := parsePointer(path)
+	if err != nil {
+		return err
+	}
+	kind := mappedRequestFieldType(pointer)
+	if kind == nil {
+		return fmt.Errorf("finite value mapping requires an explicit semantic field")
+	}
+	if kind != reflect.TypeFor[Value]() {
+		if mapping.Value.IsNull() {
+			return fmt.Errorf("finite value mapping cannot assign null to a scalar core field")
+		}
+		if err := mapping.Value.Decode(reflect.New(kind).Interface()); err != nil {
+			return fmt.Errorf("finite value mapping conflicts with its core field type: %w", err)
+		}
 	}
 	if len(mapping.Variants) == 0 || len(mapping.Variants) > limits.Mutations || !strings.HasPrefix(mapping.Unmatched, "/parameters/") {
 		return fmt.Errorf("value mapping requires bounded wire variants and an unmatched parameter path")
 	}
-	if _, err := parsePointer(mapping.Unmatched); err != nil {
+	unmatched, err := parsePointer(mapping.Unmatched)
+	if err != nil {
 		return err
+	}
+	if slices.Equal(pointer, unmatched) {
+		return fmt.Errorf("canonical field and unmatched wire value require separate owners")
 	}
 	for index, value := range mapping.Variants {
 		if value.IsZero() {
@@ -35,6 +56,42 @@ func validateHistoryValueMapping(direction Direction, path string, mapping *Prot
 				return fmt.Errorf("value mapping has duplicate wire variants")
 			}
 		}
+	}
+	return nil
+}
+
+func mappedRequestFieldType(pointer []string) reflect.Type {
+	if len(pointer) == 0 || slices.Contains([]string{"schemaVersion", "source", "native", "resources", "clientOutput"}, pointer[0]) {
+		return nil
+	}
+	kind := reflect.TypeFor[Request]()
+	for _, key := range pointer {
+		for kind.Kind() == reflect.Pointer {
+			kind = kind.Elem()
+		}
+		if kind == reflect.TypeFor[Object]() {
+			kind = reflect.TypeFor[Value]()
+			continue
+		}
+		if kind.Kind() != reflect.Struct || kind == reflect.TypeFor[Value]() {
+			return nil
+		}
+		var fieldType reflect.Type
+		for index := range kind.NumField() {
+			field := kind.Field(index)
+			name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+			if field.IsExported() && name == key {
+				fieldType = field.Type
+				break
+			}
+		}
+		if fieldType == nil {
+			return nil
+		}
+		kind = fieldType
+	}
+	if kind == reflect.TypeFor[Value]() || slices.Contains([]reflect.Kind{reflect.String, reflect.Bool, reflect.Int, reflect.Int64}, kind.Kind()) {
+		return kind
 	}
 	return nil
 }
@@ -170,14 +227,14 @@ func provesCopiedField(program *compiledExpression, output, input []string) bool
 
 func checkHistoryValueInput(state evaluation, effect compiledSemanticEffect, output JSONOutput) error {
 	if output.node != nil || !equalValues(output.value, effect.valueMapping.Value) {
-		return fmt.Errorf("history retention differs from the declared representation")
+		return fmt.Errorf("core field differs from the declared representation")
 	}
 	unmatched, err := state.readPackageInput(effect.valueUnmatched)
 	if err != nil {
 		return err
 	}
 	if !unmatched.IsZero() {
-		return fmt.Errorf("canonical history retention conflicts with an unmatched wire value")
+		return fmt.Errorf("canonical core field conflicts with an unmatched wire value")
 	}
 	return nil
 }

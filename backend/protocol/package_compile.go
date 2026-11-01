@@ -92,8 +92,8 @@ func (compiler *Compiler) compilePackage(document ProtocolPackage) (*Compiled, [
 			if effect.kind == "aggregate" {
 				path := fmt.Sprintf("/mapping/directions/%s/effects/%d", direction, index)
 				if effect.valueMapping != nil {
-					if !compiled.mappings[direction].capabilities[ReasoningHistoryRetentionCapability] || !provesHistoryValueMapping(compiled.mappings[direction].outputPlan.expression, direction, effect, compiler.limits.Nodes) {
-						return nil, definitionIssues(compiled.identity, path, fmt.Errorf("history value mapping requires declared capability and a provable whole-value partition or reconstruction"))
+					if !provesHistoryValueMapping(compiled.mappings[direction].outputPlan.expression, direction, effect, compiler.limits.Nodes) {
+						return nil, definitionIssues(compiled.identity, path, fmt.Errorf("value mapping requires a provable whole-value partition or reconstruction"))
 					}
 					continue
 				}
@@ -342,7 +342,7 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 				if effect.Layout != nil {
 					return compiledMapping{}, nil, fmt.Errorf("%s: aggregate cannot combine object and value mappings", at)
 				}
-				if err := validateHistoryValueMapping(direction, effect.Path, effect.ValueMapping, compiler.limits); err != nil {
+				if err := validateFiniteValueMapping(direction, effect.Path, effect.ValueMapping, compiler.limits); err != nil {
 					return compiledMapping{}, nil, fmt.Errorf("%s/valueMapping: %w", at, err)
 				}
 				entry.valueMapping = effect.ValueMapping

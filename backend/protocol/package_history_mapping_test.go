@@ -235,3 +235,59 @@ func TestHistoryValueMappingRejectsUnprovedRelations(t *testing.T) {
 		}
 	}
 }
+
+func TestFiniteValueMappingUsesDeclaredCoreField(t *testing.T) {
+	document := textProtocolPackage(t)
+	corePath := "/parameters/history_mode"
+	unmatched := "/parameters/wire_mode"
+	variants := []Value{StringValue("full"), StringValue("complete")}
+	read := func(path string) Expression { return readExpression("input", path) }
+	exists := func(path string) *Expression { return &Expression{Op: "exists", Source: expressionPointer(read(path))} }
+	decode := document.Mapping.Directions[DecodeRequest]
+	var canonical, other Expression
+	if err := fixtureValue(t, decode.Program).Decode(&canonical); err != nil {
+		t.Fatal(err)
+	}
+	canonical.Fields["parameters"] = objectExpression(map[string]Expression{"history_mode": literalExpression("all")})
+	if err := fixtureValue(t, decode.Program).Decode(&other); err != nil {
+		t.Fatal(err)
+	}
+	other.Fields["parameters"] = objectExpression(map[string]Expression{"wire_mode": read("/mode")})
+	decode.Program = Expression{Op: "if", When: &Expression{Op: "any", Items: []Expression{
+		{Op: "equal", Items: []Expression{read("/mode"), literalExpression("full")}},
+		{Op: "equal", Items: []Expression{read("/mode"), literalExpression("complete")}},
+	}}, Then: &canonical, Otherwise: &other}
+	decode.Effects = append(decode.Effects, ProtocolSemanticEffect{ID: "mode-owner", Kind: "aggregate", Path: corePath, Target: "/mode", When: exists("/mode"), ValueMapping: &ProtocolValueMapping{Value: StringValue("all"), Variants: variants, Unmatched: unmatched}})
+	document.Mapping.Directions[DecodeRequest] = decode
+	encode := document.Mapping.Directions[EncodeRequest]
+	encode.Program.Fields["mode"] = Expression{Op: "if", When: exists(corePath), Then: expressionPointer(literalExpression("full")), Otherwise: expressionPointer(read(unmatched))}
+	encode.Effects = append(encode.Effects, ProtocolSemanticEffect{ID: "mode-owner", Kind: "aggregate", Path: corePath, Target: "/mode", When: exists(corePath), ValueMapping: &ProtocolValueMapping{Value: StringValue("all"), Variants: variants, Unmatched: unmatched}})
+	document.Mapping.Directions[EncodeRequest] = encode
+	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
+		contract := document.Spec.Documents[document.Mapping.Directions[direction].Document]
+		contract.Schema.Properties["mode"] = ValueSchema{Type: StringType}
+	}
+	compiled := compilePackageForTest(t, document)
+	for _, mode := range []string{"full", "complete", "future"} {
+		request, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","prompt":"hello","mode":"`+mode+`"}`), EvaluationContext{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wire, err := compiled.EncodeRequestValue(t.Context(), request, EvaluationContext{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		value, err := readValuePointer(wire, []string{"mode"})
+		if mode != "future" {
+			mode = "full"
+		}
+		if err != nil || !value.IsString(mode) {
+			t.Fatal("finite mapping lost declared or unmatched value", wire, err)
+		}
+	}
+	for _, path := range []string{"/native/value", "/source/family", "/parameters", "/parameters/history_mode/nested", "/missing"} {
+		if err := validateFiniteValueMapping(DecodeRequest, path, decode.Effects[len(decode.Effects)-1].ValueMapping, DefaultLimits()); err == nil {
+			t.Fatal("finite mapping accepted an inaccessible owner", path)
+		}
+	}
+}

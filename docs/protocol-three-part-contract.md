@@ -83,6 +83,8 @@ Mapping 的 `buffer_text`／`buffer_array` 按固定通道和项目身份保存�
 
 `conversionDefaults[].use` 显式绑定 `request_projection` 或 `model_policy`。前者引用 encode_request 的目标处置 effects，后者引用 modelPolicy 的目标步骤；均为独立 request 规则，不能与 steps、recovery 或辅助事件处置混用。ID、order、enabled 直接来自声明。省略声明不运行该程序，编码所需的最终约束仍然生效。来源模型规范化只在显式绑定的模型程序中接入。
 
+有限值映射的 valueMapping 由声明核心路径和规范值决定，余项保存在独立 parameters 字段中；编译证明识别分支完整保留规范值、非识别分支完整保留原值。普通标量检查实际核心类型，Value 字段保留精确 JSON；来源、Native、资源、客户端意图以及整容器替换不属于此原语。historyRetention 只是现有默认包的一种使用，不是原语内置的唯一字段。
+
 `core_controls` 的 `each.select` 遍历核心中已定义的 node、metadata、usage 或请求 tools。局部 `input` 指向当前条目，`root` 仍指向完整核心对象；不通过任意反射查询或重新解析完整正文执行。省略前检查原值，诊断可引用真实来源路径。规则不能改写 Source、Scope、Native 或私有来源凭据。普通 metadata 与辅助帧共用 `event-metadata` 默认规则的完整覆盖／禁用边界。
 
 `tool` 选择仅用于请求，允许更新 `options.strict`、`options.strictDefault` 和 `options.eager_input_streaming`。来源缺省 strict 行为由 Mapping 写入 automatic／disabled，不能从 codec 名称推断。目标 `tool-options` 规则显式解决缺省差异和流式提示；严格模式拒绝已声明的损失，禁用后编码器不补做处置。工具名字、schema 和 Native 不在此选择器的写权限内。

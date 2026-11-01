@@ -38,3 +38,16 @@
 | closure-declared-defaults-types / lint | 前端类型检查和修改文件 lint 通过 |
 
 检查日志在原 checks 目录。测试初次暴露一个仍依赖自动规则的缓存夹具，补齐声明后核心全量通过；未改生产兜底。该切片不代表批次 1 全部完成，metadata 白名单、共享请求外部校验和聚合证明仍待迁移；没有正式性能结论。
+
+## 批次 1B：有限值映射的核心位置（dev.113）
+
+有限值映射不再把核心路径固定为 reasoning.historyRetention，或把规范值固定为 all。编译按显式核心字段、字段类型、独立余项所有者和完整分区／重建证明检查；来源、Native、资源和客户端意图不在此原语的写入范围。仍不支持任意对象替换和数组布局。类型反射仅在配置编译阶段执行，运行期沿用原映射及所有权检查。
+
+新增定向场景以 parameters.history_mode 映射 full／complete 为规范值、未知 future 留在独立余项位置，验证双向转换确实不依赖旧路径；原 historyRetention 的配置、严格拒绝及 Native 测试保持通过。聚合对象布局和请求字段处置仍有后续通用化工作，不能将该切片称为整个聚合原语完成。
+
+- closure-finite-values-all：protocol 全量 6.833 秒、builtin 全量 34.827 秒，四包正式证据通过。
+- closure-finite-values-final：最后的标量 null／独立所有者检查后，有限值与历史定向复核通过。
+- closure-finite-values-race：有限值与历史相关 race 通过，无竞争报告。
+- closure-finite-values-vet：protocol 全部 vet 通过。
+
+未采集正式性能，不把编译期结构判断外推成运行期性能收益。
