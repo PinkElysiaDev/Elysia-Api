@@ -187,11 +187,37 @@ Responses 包按实际 JSON token 计量，包含对象键和容器边界。通�
 
 内存不足已实际表现为记录器无法提交几 MiB 堆、Go `VirtualAlloc` 的 8192 字节申请失败（Windows errno 1455），并非性能测量。系统余量恢复后，服务端采用 GOMAXPROCS=2、GOGC=50、GOMEMLIMIT=1GiB 完成全量及 race；只复核未完成部分，没有延长日志落库等业务断言的等待时间。未结束用户程序或修改分页设置。检查设置逐命令保存在忽略目录，不能与正式性能门槛混用。
 
+## 第六阶段 A：usage 收集与客户端展示
+
+`dev.107` 将完整请求转换的 usage 设置收敛到统一出口：typed 与 JSON 入口都在来源、请求规则完成后填充 `CollectUsage`；缺省展示设置只补未指定的 `IncludeUsage`，显式 false 保留。新包默认开启上游 usage 收集，用户的 Usage 整段覆盖仍能关闭它。单阶段 `ApplyValue` 预览只运行所选阶段。
+
+Chat 的 `nativeWhen` 使用受限只读 `runtime.clientOutput` 决定是否转发带 usage 的原帧。无展示 owner 的独立 codec 使用保留原帧；实际请求明确不展示 usage 时走语义编码，内部计量仍保存上游报告。缺失／null usage 不影响原生回放，空对象也遵守展示选择。命名程序的编译缓存区分该权限，不开放流状态、执行身份或交付位置。
+
+新定向回归先复现了另一处真实缺口：原生开始帧之后转入语义重建，Chat observer 没有登记消息父身份。对应修复复用项目状态消费，观察器同步身份、增量与终止状态，不通过渲染后丢弃帧实现，也不移除父子关联检查。未映射扩展仍拒绝，不能为隐藏 usage 而清除其它载荷。
+
+混合路径同时复用 metadata 的增量跟踪和注释去重。工具实际索引由来源 Mapping 捕获原文 `/index` 整数，目标通过通用 `native_matches / array_item_field` 分类并经 `replay_native` 授权取值；不解析内部工具 ID，不捕获工具正文。节点显式来源与该 Native 字段片段各保留自己的真实位置；协议、方向及 Scope 仍由当前编译结果绑定。工具编号在已有表的小型游标中推进，避免稀疏原生编号与后续分配冲突。
+
+Chat 的父结束仍等待全部子项完成。文本、拒绝、可见 thinking 各自只允许一个活动实体，独立工具可并行；不再把所有通道错误地限制为串行。该变化修复了原生文本与工具交错后不能重建的拒绝边界，不移除同通道重叠、孤立子项或提前结束父项的检查。配置仍使用现有状态表，没有新增逐帧 goroutine 或整轮原文缓存。
+
+开发检查曾拦住两项配置实现错误：从重建对象捕获来源，以及在只读槽更新中执行有副作用的身份操作。前者改为直接遍历原始数组，后者将游标推进放在实际项目消费处；没有放宽来源证明或状态权限。
+
+本阶段是功能修复，尚未提供正式配对性能结果。`store` 的核心所有权、Agent 输出意图和最终出站一致性继续作为下一纵向切片处理。
+
+| 验证记录 | 结果与范围 |
+|---|---|
+| `phase-six-core-source-final` | protocol 全量通过 |
+| `phase-six-builtin-all` | builtin 全量通过，27.3 秒；含四包完整激活证据 |
+| `phase-six-usage-race` | 核心权限、Chat 混合流、客户端 usage 偏好及 32 个网关场景通过，287.2 秒；Windows amd64，无 race 报告 |
+| `phase-six-usage-vet-final` | 最新工作区全量 vet 通过 |
+| `phase-six-usage-staticcheck-final` | 固定 v0.8.2 仍为 24 条存量诊断，新增／移除均为零；退出 1，不能称全净 |
+
+代码差异与文件哈希保存在忽略目录 `phase-six-usage-archive/`。四包 JSON token 计数分别为 Chat 91,608、Responses 99,710、Anthropic 83,863、Gemini 66,881，未提高限额。上述受限测试环境用于功能验证，不替代正式性能、全项目最终验收或六目标构建。
+
 ## 尚未完成的门槛
 
 - 四协议文本的 16 方向 JSON／SSE 主链已通过，Chat 目标 logprobs、Anthropic 混合接续和 Responses 服务端产物已有组件验收；复杂能力的 HTTP/Agent 组合及多消息布局仍需闭合。
 - 四份默认包的完整独立激活证据已齐；组合证据及目标取舍仍需完善。metadata／usage、模型归一化、Gemini historyRetention/safety 已配置化；错误、签名恢复、缓存提示、工具结果、历史布局及客户端交付意图尚需接线。
-- 本轮只读审计定位了后续必须关闭的实际入口缺口：package 默认策略尚未启用上游计量收集；Responses include 未进入客户端续传要求，Agent 仍在参数区表达 store/include；Gemini 的工具 strict、结果错误状态和结构结果尚无完整处置；Anthropic 多根输出、Gemini 有序输出与多个候选尚需明确区分。单文本矩阵不覆盖这些语义，不构成切换生产的依据。
+- 本轮只读审计定位了后续必须关闭的实际入口缺口：Responses include 未进入客户端续传要求，Agent 仍在参数区表达 store/include；Gemini 的工具 strict、结果错误状态和结构结果尚无完整处置；Anthropic 多根输出、Gemini 有序输出与多个候选尚需明确区分。单文本矩阵不覆盖这些语义，不构成切换生产的依据。
 - 新资源契约尚未覆盖所有保留状态；默认转换策略仍有供应商 Go 分支。
 - 生产预置仍走旧加载器；旧执行路径、自动修复绑定及旧格式执行尚未退役。
 - 复杂能力实际调用、最终全量/静态/race/页面/六目标验收，以及三版本正式配对性能与火焰图尚未完成。

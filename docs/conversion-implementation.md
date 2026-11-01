@@ -101,6 +101,8 @@ Chat 启动身份兼容使用 `source_event` 阶段的 `chat_stream_identity` �
 
 原 `/preview` 支持 `mode=conversion`，原 `/combinations` 支持 `conversionPolicy`。绑定中的 `conversion` 可固定 `policyId/revisionHash` 并增加 `overrides`；固定修订不随全局激活漂移。
 
+`/preview` 的 `mode=conversion` 仅执行选定阶段的规则；`/conversion-policies/preview` 的 `phase=request` 使用完整请求入口，包含 ingress、request 规则及成功后的 usage 设置。
+
 策略、绑定和派生证据同事务更新；请求通过一次数据库读事务固定策略及绑定。提交时检查配置代数和读取集合，变化返回 409。证据关联双方定义／样例 hash、编译器、完整能力契约及最终策略 hash；条件规则另外绑定模型／操作／传输上下文。
 
 ## 签名恢复

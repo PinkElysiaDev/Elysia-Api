@@ -12,6 +12,10 @@ type nativeEvaluation struct {
 	limits Limits
 }
 
+type nativeLocationPattern struct {
+	prefix, suffix string
+}
+
 func (compiled *Compiled) newNativeEvaluation(ctx context.Context, direction Direction, options EvaluationContext) *nativeEvaluation {
 	if !compiled.mappings[direction].outputPlan.hasNativeTarget {
 		return nil
@@ -61,8 +65,10 @@ func (plan *compiledOutputPlan) matchNativeLocation(output JSONOutput, target Ta
 	if !CanPreserveNative(*origin, target) {
 		return plannedLeaf(coreBoolean(false)), nil
 	}
-	index, hasParent := strings.CutPrefix(origin.Path, plan.expression.pathPrefix)
-	if !hasParent {
+	location := plan.expression.nativeLocation
+	index, hasParent := strings.CutPrefix(origin.Path, location.prefix)
+	index, hasField := strings.CutSuffix(index, location.suffix)
+	if !hasParent || !hasField {
 		return plannedLeaf(coreBoolean(false)), nil
 	}
 	position, err := strconv.Atoi(index)

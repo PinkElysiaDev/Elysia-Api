@@ -179,6 +179,28 @@ func TestNativeMatchesClassifiesLocations(t *testing.T) {
 			t.Fatal("missing native location must not match", got, err)
 		}
 	}
+	fieldPlan, err := compiler.compilePlan(Expression{Op: "native_matches", Operation: "array_item_field", Path: "/items", Name: "wire/index~", Source: expressionPointer(readExpression("input", ""))}, "/match", expressionScope{canReadNative: true, coreInput: reflect.TypeFor[Provenance]()}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fixture := range []struct {
+		path string
+		want bool
+	}{
+		{"/items/7/wire~1index~0", true},
+		{"/items/7", false},
+		{"/items/7/index", false},
+		{"/items/7/nested/wire~1index~0", false},
+		{"/items/-1/wire~1index~0", false},
+	} {
+		origin := Provenance{Protocol: target.Protocol, Direction: DecodeRequest, Path: fixture.path}
+		state := numericTestState(t, fixtureValue(t, origin))
+		state.native = &nativeEvaluation{target: target}
+		got, err := fieldPlan.evaluate(state)
+		if err != nil || got != coreBoolean(fixture.want) {
+			t.Fatal("field location classification changed", fixture.path, got, err)
+		}
+	}
 }
 
 func TestNativeReplayUsesMappingNormalization(t *testing.T) {
@@ -235,9 +257,11 @@ func TestNativeTargetOperationsRequireEncodeProgram(t *testing.T) {
 	for _, expression := range []Expression{
 		{Op: "native_matches", Operation: "unknown", Path: "/items", Source: expressionPointer(readExpression("input", ""))},
 		{Op: "native_matches", Operation: "array_item", Path: "not-a-pointer", Source: expressionPointer(readExpression("input", ""))},
+		{Op: "native_matches", Operation: "array_item_field", Path: "/items", Source: expressionPointer(readExpression("input", ""))},
+		{Op: "native_matches", Operation: "array_item", Path: "/items", Name: "index", Source: expressionPointer(readExpression("input", ""))},
 	} {
 		compiler := expressionCompiler{limits: DefaultLimits()}
-		if _, err := compiler.compilePlan(expression, "/program", expressionScope{canReadNative: true}, 1); err == nil {
+		if _, err := compiler.compilePlan(expression, "/program", expressionScope{canReadNative: true, coreInput: reflect.TypeFor[Provenance]()}, 1); err == nil {
 			t.Fatal("invalid native location operation compiled")
 		}
 	}

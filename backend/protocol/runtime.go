@@ -313,12 +313,12 @@ func (compiled *Compiled) stampNodeProvenance(nodes []Node, direction Direction,
 
 func (compiled *Compiled) stampNodeOrigin(node *Node, direction Direction, scope Scope) {
 	compiled.stampNative(node.Native, direction, scope)
-	if node.Native != nil {
-		origin := node.Native.Source
-		node.Source = &origin
-	} else if node.Source != nil {
+	if node.Source != nil {
 		origin := *node.Source
 		origin.Protocol, origin.Direction, origin.Scope = compiled.identity, direction, scope
+		node.Source = &origin
+	} else if node.Native != nil {
+		origin := node.Native.Source
 		node.Source = &origin
 	}
 }

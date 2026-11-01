@@ -201,7 +201,9 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		if mapping.NativeReplay != "original_frame" {
 			return compiledMapping{}, nil, fmt.Errorf("%s/nativeWhen: requires original_frame replay", path)
 		}
-		predicate, err := compiler.compilePlan(*mapping.NativeWhen, path+"/nativeWhen", expressionScope{input: wire.Schema, root: wire.Schema, isWireContract: true}, 1)
+		// Replay selection may observe caller delivery preferences, without
+		// access to operation metadata, stream state or delivered positions.
+		predicate, err := compiler.compilePlan(*mapping.NativeWhen, path+"/nativeWhen", expressionScope{input: wire.Schema, root: wire.Schema, isWireContract: true, canReadClientOutput: true}, 1)
 		if err != nil {
 			return compiledMapping{}, nil, err
 		}

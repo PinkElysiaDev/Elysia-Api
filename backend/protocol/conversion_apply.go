@@ -6,6 +6,8 @@ import (
 	"reflect"
 )
 
+// Request applies ingress and request rules to an owned result, then resolves
+// gateway usage settings. ApplyValue executes only its selected rule phase.
 func (c *CompiledConversion) Request(ctx context.Context, request *Request, route ConversionContext, sink *DiagnosticSink) (*Request, error) {
 	if c != nil {
 		if err := checkSemanticValue(request, c.phaseLimits(ctx, ConversionRequest)); err != nil {
@@ -30,12 +32,7 @@ func (c *CompiledConversion) Request(ctx context.Context, request *Request, rout
 	if err = decodeContract(v.Bytes(), &result); err != nil {
 		return nil, err
 	}
-	if c.Policy.Usage != nil {
-		if result.ClientOutput == nil {
-			result.ClientOutput = &ClientOutput{}
-		}
-		result.ClientOutput.CollectUsage = c.Policy.Usage.CollectUpstreamUsage
-	}
+	applyClientOutputSettings(&result, c.Policy.Usage)
 	return &result, nil
 }
 
@@ -61,13 +58,23 @@ func (c *CompiledConversion) convertOwnedRequest(ctx context.Context, request *R
 	if _, err := c.applyConversionState(ctx, ConversionRequest, Value{}, route, sink, &state, false); err != nil {
 		return nil, err
 	}
-	if c.Policy.Usage != nil {
-		if owned.ClientOutput == nil {
-			owned.ClientOutput = &ClientOutput{}
-		}
-		owned.ClientOutput.CollectUsage = c.Policy.Usage.CollectUpstreamUsage
-	}
+	applyClientOutputSettings(owned, c.Policy.Usage)
 	return owned, nil
+}
+
+func applyClientOutputSettings(request *Request, settings *ConversionUsageSettings) {
+	if settings == nil {
+		return
+	}
+	if request.ClientOutput == nil {
+		request.ClientOutput = &ClientOutput{}
+	}
+	output := request.ClientOutput
+	output.CollectUsage = settings.CollectUpstreamUsage
+	if settings.DefaultIncludeUsage && output.IncludeUsage == nil {
+		includeUsage := true
+		output.IncludeUsage = &includeUsage
+	}
 }
 
 func (c *CompiledConversion) Response(ctx context.Context, response *Response, route ConversionContext, sink *DiagnosticSink) (*Response, error) {
@@ -142,18 +149,7 @@ func (c *CompiledConversion) streamOptions(request *Request, route ConversionCon
 		delete(tool.Options, "eager_input_streaming")
 	}
 	output := request.ClientOutput
-	if output == nil {
-		if c.Policy.Usage == nil || !c.Policy.Usage.DefaultIncludeUsage {
-			return nil
-		}
-		output = &ClientOutput{}
-		request.ClientOutput = output
-	}
-	if output.IncludeUsage == nil && c.Policy.Usage != nil && c.Policy.Usage.DefaultIncludeUsage {
-		v := true
-		output.IncludeUsage = &v
-	}
-	if output.RawStreamOptions.IsZero() {
+	if output == nil || output.RawStreamOptions.IsZero() {
 		return nil
 	}
 	if _, err := ParseClientOutput(output.RawStreamOptions); err != nil {

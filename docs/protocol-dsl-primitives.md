@@ -183,7 +183,9 @@ HTTP context 的底层解码文字与静态诊断仍有明确记录的差异。
 `replay_native` 仍检查 scope。数字部分沿用现有 Atoi 的非负整数规则，包括 `+1`、`01`。
 原快照 role 等协议条件仍由声明组合 read/equal 检查，核心原语不认识供应商字段。
 
-两种原语只允许用于 v3 编码 program；Mapping effects、Spec 断言、v2 和解码 program 不开放。
+需要保留数组成员的单个来源字段时，使用 `operation:"array_item_field"`，`path` 仍为父数组指针，`name` 是该成员的直接字段名。例如 `path:"/choices/0/delta/tool_calls"`、`name:"index"` 匹配 `/choices/0/delta/tool_calls/2/index`，而不匹配整个工具或更深的字段。字段名在编译时按 JSON Pointer 转义；只捕获索引整数即可保持混合原生／重建流的工具位置，不需保留工具正文。
+
+两种原语用于 v4 编码 program 及原生 observer；Mapping effects、Spec 断言、旧模块和解码 program 不开放。
 未使用它们的计划不创建原生目标上下文。操作数使用闭合 Native/Provenance 核心形状；
 这不能等同于旧 raw 接口对任意含未知核心字段 JSON 的宽松解码。
 

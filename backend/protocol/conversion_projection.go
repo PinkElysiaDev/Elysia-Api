@@ -44,8 +44,8 @@ func (s *Service) ResolvePreviewConversion(route ConversionContext, phase Conver
 	return c, route, err
 }
 
-// DefaultConversionPolicy follows installed codecs in custom and shipped definitions.
-// Explicitly authored encoders receive no guessed wire projections.
+// DefaultConversionPolicy combines declared package rules and installed codec defaults.
+// Usage collection is gateway intent; each target mapping chooses its wire form.
 func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 	p := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "engine-default", Name: "引擎默认", Mode: "compatible", Rules: []ConversionRule{},
 		Continuation: &ContinuationSettings{ClientCarrier: true, Persist: true, RetentionSeconds: 7 * 24 * 3600, TurnsPerSession: 64, MaxBytes: 512 << 20, RecordBytes: 8 << 20}}
@@ -73,8 +73,10 @@ func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 	if codec := ingress.Codec(EncodeEvent); upstream.Codec(DecodeEvent) == "responses" && knownConversionCodec(codec) {
 		p.Rules = append(p.Rules, ConversionRule{ID: "responses-turn-state", Order: 210, Enabled: true, Phase: ConversionEvent, Action: "responses_turn_state", Value: StringValue(codec)})
 	}
-	if codec := upstream.Codec(EncodeRequest); knownConversionCodec(codec) {
+	if upstream != nil && (upstream.packagePlan != nil || knownConversionCodec(upstream.Codec(EncodeRequest))) {
 		p.Usage = &ConversionUsageSettings{CollectUpstreamUsage: true}
+	}
+	if codec := upstream.Codec(EncodeRequest); knownConversionCodec(codec) {
 		sourceCodec := ingress.Codec(DecodeRequest)
 		if !knownConversionCodec(sourceCodec) {
 			sourceCodec = ""

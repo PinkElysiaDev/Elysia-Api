@@ -36,7 +36,7 @@ func referenceKey(name string, scope expressionScope) referenceContext {
 		bindingDepth: scope.bindingDepth, indexDepth: scope.indexDepth, streamPrimitiveUsed: scope.streamPrimitiveUsed}
 	for index, enabled := range [...]bool{scope.canReadNativeFrame, scope.canUseStreamPrimitives, scope.hasInputScope,
 		scope.isIteration, scope.isSingleVisit, scope.isWalk, scope.wireCapture, scope.canReadRuntime,
-		scope.canReadOutputStream, scope.canReadNative, scope.canWriteStreamIndexes, scope.isWireContract, scope.canReadFrameUsage, scope.canReadOperation} {
+		scope.canReadOutputStream, scope.canReadNative, scope.canWriteStreamIndexes, scope.isWireContract, scope.canReadFrameUsage, scope.canReadOperation, scope.canReadClientOutput} {
 		if enabled {
 			key.permissions |= 1 << index
 		}

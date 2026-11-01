@@ -418,3 +418,103 @@ func TestChatPackageStreamReplaysOriginalFramesOnce(t *testing.T) {
 		})
 	}
 }
+
+func TestChatPackageNativeUsageRespectsClientPreference(t *testing.T) {
+	candidate := compileBuiltinPackage(t, "openai-chat")
+	include, exclude := true, false
+	const first = `{"id":"r","object":"chat.completion.chunk","created":9007199254740993,"model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":"A"},"finish_reason":null}],"usage":null}`
+	const content = `{"id":"r","object":"chat.completion.chunk","created":9007199254740993,"model":"m","choices":[{"index":0,"delta":{"content":"B"},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":2,"total_tokens":9}}`
+	for _, fixture := range []struct {
+		name           string
+		output         *p.ClientOutput
+		replay         bool
+		extension      bool
+		nativeTerminal bool
+	}{
+		{name: "no-delivery-owner", replay: true},
+		{name: "include", output: &p.ClientOutput{IncludeUsage: &include}, replay: true},
+		{name: "exclude", output: &p.ClientOutput{IncludeUsage: &exclude}},
+		{name: "owner-without-include", output: &p.ClientOutput{}},
+		{name: "native-terminal-after-filtered-usage", output: &p.ClientOutput{IncludeUsage: &exclude}, nativeTerminal: true},
+		{name: "unmapped-usage-extension", output: &p.ClientOutput{IncludeUsage: &exclude}, extension: true},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			decode := p.EvaluationContext{State: p.NewEvaluationState()}
+			encode := p.EvaluationContext{State: p.NewEvaluationState(), ClientOutput: fixture.output}
+			defer decode.State.Release()
+			defer encode.State.Release()
+			second := content
+			if fixture.extension {
+				second = strings.TrimSuffix(second, "}") + `,"future":{"n":9007199254740993}}`
+			}
+			inputs := []string{first, second}
+			if fixture.nativeTerminal {
+				inputs[1] = strings.Replace(second, `"finish_reason":"stop"`, `"finish_reason":null`, 1)
+				inputs = append(inputs, `{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`)
+			}
+			inputs = append(inputs, `{"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":2,"total_tokens":9}}`, `{"choices":[],"usage":{}}`)
+			var output []p.Value
+			for index, raw := range inputs {
+				original := testValue(t, raw)
+				frame, err := candidate.DecodeFrame(t.Context(), original, decode)
+				if err != nil {
+					t.Fatal("decode", index, err)
+				}
+				batch, err := candidate.EncodeFrame(t.Context(), frame, encode)
+				if fixture.extension && index == 1 {
+					var failure *p.ConversionError
+					if !errors.As(err, &failure) || len(failure.Issues) == 0 || failure.Issues[0].Code != p.UnsupportedCapability || failure.Issues[0].Path != "/unmapped" {
+						t.Fatal("unmapped extension must not disappear when usage prevents replay", err, batch)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal("encode", index, err)
+				}
+				if (fixture.replay || index == 0) && (len(batch) != 1 || batch[0] != original) {
+					t.Fatal("allowed native frame changed", index, batch)
+				}
+				output = append(output, batch...)
+			}
+			// Null usage remains native; even an empty usage object must obey
+			// the delivery preference when a caller owns ClientOutput.
+			tail, err := candidate.FinishEvents(t.Context(), encode)
+			if err != nil || fixture.replay && len(tail) != 0 {
+				t.Fatal("finish", err, tail)
+			}
+			output = append(output, tail...)
+			var text strings.Builder
+			terminals := 0
+			for _, frame := range output {
+				var fields struct {
+					Created int64   `json:"created"`
+					Usage   p.Value `json:"usage"`
+					Choices []struct {
+						Delta struct {
+							Content string `json:"content"`
+						} `json:"delta"`
+						FinishReason p.Value `json:"finish_reason"`
+					} `json:"choices"`
+				}
+				if err := frame.Decode(&fields); err != nil {
+					t.Fatal(err)
+				}
+				if !fixture.replay && !fields.Usage.IsZero() && !fields.Usage.IsNull() {
+					t.Fatal("caller received unrequested usage", frame.JSONString())
+				}
+				if fields.Created != 0 && fields.Created != 9007199254740993 {
+					t.Fatal("native-to-semantic transition rounded the timestamp", frame.JSONString())
+				}
+				for _, choice := range fields.Choices {
+					text.WriteString(choice.Delta.Content)
+					if choice.FinishReason.IsString("stop") {
+						terminals++
+					}
+				}
+			}
+			if text.String() != "AB" || terminals != 1 {
+				t.Fatal("usage filtering changed content or terminal delivery", text.String(), terminals, output)
+			}
+		})
+	}
+}

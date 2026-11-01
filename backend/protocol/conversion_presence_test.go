@@ -121,6 +121,78 @@ func TestOwnedPresenceConversionBoundaries(t *testing.T) {
 	}
 }
 
+func TestConversionRequestClientOutputSettings(t *testing.T) {
+	rawOptions := Value{raw: `{"include_usage":false}`}
+	for _, fixture := range []struct {
+		name     string
+		settings *ConversionUsageSettings
+		input    *ClientOutput
+		want     *ClientOutput
+	}{
+		{
+			name:     "default-usage",
+			settings: &ConversionUsageSettings{DefaultIncludeUsage: true, CollectUpstreamUsage: true},
+			want:     &ClientOutput{IncludeUsage: boolPtr(true), CollectUsage: true},
+		},
+		{
+			name:     "explicit-exclusion",
+			settings: &ConversionUsageSettings{DefaultIncludeUsage: true, CollectUpstreamUsage: true},
+			input:    &ClientOutput{IncludeUsage: boolPtr(false), RawStreamOptions: rawOptions},
+			want:     &ClientOutput{IncludeUsage: boolPtr(false), RawStreamOptions: rawOptions, CollectUsage: true},
+		},
+		{
+			name:     "collection-disabled",
+			settings: &ConversionUsageSettings{},
+			input:    &ClientOutput{IncludeUsage: boolPtr(true), CollectUsage: true},
+			want:     &ClientOutput{IncludeUsage: boolPtr(true)},
+		},
+		{
+			name:  "settings-absent",
+			input: &ClientOutput{RawStreamOptions: Value{raw: "null"}, CollectUsage: true},
+			want:  &ClientOutput{RawStreamOptions: Value{raw: "null"}, CollectUsage: true},
+		},
+		{name: "settings-and-output-absent"},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "client-output-settings", Usage: fixture.settings, Rules: []ConversionRule{}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, typed := range []bool{false, true} {
+				name := "raw"
+				if typed {
+					name = "typed"
+				}
+				t.Run(name, func(t *testing.T) {
+					candidate := *conversion
+					candidate.ownedPhases = map[ConversionPhase]bool{ConversionRequest: typed}
+					request := &Request{SchemaVersion: ProtocolCoreVersion, Model: StringValue("model"), ClientOutput: fixture.input}
+					before := fixtureValue(t, request)
+					result, err := candidate.Request(t.Context(), request, ConversionContext{}, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !reflect.DeepEqual(result.ClientOutput, fixture.want) {
+						t.Fatalf("client output = %+v, want %+v", result.ClientOutput, fixture.want)
+					}
+					if fixtureValue(t, request) != before {
+						t.Fatal("request settings mutated the caller")
+					}
+					if result.ClientOutput != nil {
+						result.ClientOutput.CollectUsage = !result.ClientOutput.CollectUsage
+						if result.ClientOutput.IncludeUsage != nil {
+							*result.ClientOutput.IncludeUsage = !*result.ClientOutput.IncludeUsage
+						}
+					}
+					if fixtureValue(t, request) != before {
+						t.Fatal("request settings share mutable caller state")
+					}
+				})
+			}
+		})
+	}
+}
+
 func BenchmarkConversionPresenceBoundary(b *testing.B) {
 	request := &Request{SchemaVersion: 1, Parameters: Object{"stream": Value{raw: "false"}}, Content: []Node{{Kind: ImageNode, Payload: StringValue(strings.Repeat("A", 2<<20))}}}
 	conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "presence-benchmark", Rules: []ConversionRule{{ID: "stream", Enabled: true, Phase: ConversionRequest, Action: "stream_options", Value: StringValue("anthropic"), Match: ConversionMatch{Path: "/parameters/stream", Present: boolPtr(true)}}}})

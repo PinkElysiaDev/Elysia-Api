@@ -186,3 +186,87 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 		})
 	}
 }
+
+func TestPackageChatUsageCollectionRespectsClientPreference(t *testing.T) {
+	for _, collectUsage := range []bool{true, false} {
+		t.Run(fmt.Sprintf("collect=%t", collectUsage), func(t *testing.T) {
+			server, _ := newProtocolAdminTestServer(t)
+			compiled := seedGatewayPackages(t, server)["openai-chat"]
+			stream := buildPackageGatewayReply(t, compiled, true)
+			var calls atomic.Int32
+			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				calls.Add(1)
+				body, err := io.ReadAll(request.Body)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				var control struct {
+					Stream        bool `json:"stream"`
+					StreamOptions struct {
+						IncludeUsage *bool `json:"include_usage"`
+					} `json:"stream_options"`
+				}
+				if err := sonic.ConfigStd.Unmarshal(body, &control); err != nil {
+					t.Error(err)
+					return
+				}
+				if !control.Stream || control.StreamOptions.IncludeUsage == nil || *control.StreamOptions.IncludeUsage != collectUsage {
+					t.Error("upstream usage instruction ignored the selected policy", string(body))
+				}
+				// A provider may report usage even when it was not requested.
+				writer.Header().Set("Content-Type", "text/event-stream")
+				_, _ = writer.Write(stream)
+			}))
+			defer provider.Close()
+			setupGatewayModelWithCapabilities(t, server, compiled, provider.URL, protocol.CapabilitySet{
+				protocol.TextCapability: true, protocol.UsageCapability: true,
+			})
+			if !collectUsage {
+				bindings, err := server.store.ListProtocolBindings(t.Context())
+				if err != nil {
+					t.Fatal(err)
+				}
+				binding := bindings[0]
+				binding.Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{
+					SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "usage-preference",
+					Usage: &protocol.ConversionUsageSettings{CollectUpstreamUsage: false},
+				}}
+				binding.Combinations = verifyFixtureBinding(t, server, binding)
+				if err := server.store.SaveProtocolBinding(t.Context(), binding); err != nil {
+					t.Fatal(err)
+				}
+				server.invalidateRouteCache()
+			}
+			request := httptest.NewRequest(http.MethodPost, "/gateway/"+compiled.Identity().DefinitionID+compiled.Operations()["stream"].Path,
+				strings.NewReader(`{"model":"group","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":false}}`))
+			request.Header.Set("Authorization", "Bearer gateway-test-token")
+			request.Header.Set("Content-Type", "application/json")
+			reply := httptest.NewRecorder()
+			serveTestHTTP(server.engine, reply, request)
+			if reply.Code != http.StatusOK || calls.Load() != 1 {
+				t.Fatal("generation failed or repeated", reply.Code, calls.Load(), reply.Body.String())
+			}
+			response := collectPackageGatewayReply(t, compiled, reply, true)
+			if !response.Status.IsString("completed") || response.Usage != nil || len(response.Content) != 1 || len(response.Content[0].Children) != 1 || !response.Content[0].Children[0].Payload.IsString("hi") {
+				t.Fatal("client preference changed content, termination or exposed usage", response)
+			}
+			records := latestUsageRecords(t, server)
+			if len(records) != 1 || records[0].Error != "" {
+				t.Fatal("request did not settle once", records)
+			}
+			raw, exists, err := server.store.GetUsageRecordJSON(t.Context(), records[0].RequestID)
+			if err != nil || !exists {
+				t.Fatal("missing final record", err)
+			}
+			var record usageRecord
+			if err := sonic.ConfigStd.Unmarshal(raw, &record); err != nil {
+				t.Fatal(err)
+			}
+			usage := record.ProtocolUsage
+			if usage == nil || usage.Input == nil || usage.Input.Count != 20 || usage.Output == nil || usage.Output.Count != 2 || record.Usage.Estimated {
+				t.Fatal("client presentation suppressed observed accounting", usage, record.Usage)
+			}
+		})
+	}
+}

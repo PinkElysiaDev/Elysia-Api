@@ -61,6 +61,8 @@ func TestChatPackageDirectMessageAssociations(t *testing.T) {
 	collection.Collection = "summary"
 	other := parent
 	other.ItemID = p.StringValue("other")
+	overlapping := child
+	overlapping.ItemID = p.StringValue("other-text")
 	annotated := parent
 	annotatedNode := *parent.Item
 	annotated.Item = &annotatedNode
@@ -74,6 +76,7 @@ func TestChatPackageDirectMessageAssociations(t *testing.T) {
 		{"closed-parent", []p.Event{parent, finish}, child},
 		{"changed-parent", []p.Event{parent, child}, unparented},
 		{"parent-before-child", []p.Event{parent, child}, finish},
+		{"overlapping-text-channel", []p.Event{parent, child}, overlapping},
 		{"reasoning-collection", []p.Event{parent}, collection},
 		{"interleaved-messages", []p.Event{parent}, other},
 		{"independent-messages", []p.Event{parent, finish}, other},

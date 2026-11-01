@@ -1,6 +1,67 @@
 package protocol
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestPackageNativePredicateClientOutput(t *testing.T) {
+	document := eventProtocolPackage(t)
+	entry := document.Mapping.Directions[EncodeEvent]
+	entry.IsFrameBatch, entry.NativeReplay = true, "original_frame"
+	entry.Observe = &Expression{Op: "omit"}
+	entry.Program = Expression{Op: "array", Items: []Expression{entry.Program}}
+	entry.Effects[0].Target = "/0/response_id"
+	document.Mapping.Expressions = map[string]Expression{"allow-native": {Op: "equal", Items: []Expression{readExpression("runtime", "/clientOutput/includeUsage"), literalExpression(true)}}}
+	entry.NativeWhen = &Expression{Op: "ref", Ref: "allow-native"}
+	document.Mapping.Directions[EncodeEvent] = entry
+	compiled := compilePackageForTest(t, document)
+	source := EvaluationContext{State: NewEvaluationState()}
+	defer source.State.Release()
+	wire := packageStreamFrame(ResponseStarted, 0, `,"extension":9007199254740993`)
+	frame, err := compiled.DecodeFrame(t.Context(), wire, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fixture := range []struct {
+		name   string
+		output *ClientOutput
+		replay bool
+	}{
+		{name: "absent"},
+		{name: "unspecified", output: &ClientOutput{}},
+		{name: "excluded", output: &ClientOutput{IncludeUsage: boolPtr(false)}},
+		{name: "included", output: &ClientOutput{IncludeUsage: boolPtr(true)}, replay: true},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			target := EvaluationContext{State: NewEvaluationState(), ClientOutput: fixture.output}
+			defer target.State.Release()
+			frames, err := compiled.EncodeFrame(t.Context(), frame, target)
+			if err != nil || len(frames) != 1 {
+				t.Fatal("native predicate changed the event count", frames, err)
+			}
+			if fixture.replay {
+				if frames[0] != wire {
+					t.Fatal("allowed native frame was rebuilt", frames[0])
+				}
+			} else if !equalValues(frames[0], packageStreamFrame(ResponseStarted, 0, "")) {
+				t.Fatal("excluded native frame bypassed the declared renderer", frames[0])
+			}
+		})
+	}
+	for _, path := range []string{"/scope/model", "/interleavedThinking", "/operation/id", "/frame/usage", "/nativeFrame", "/stream/sequence", "/emission/offset", "/delivered/maxItemIndex"} {
+		entry.NativeWhen = &Expression{Op: "exists", Source: expressionPointer(readExpression("runtime", path))}
+		document.Mapping.Directions[EncodeEvent] = entry
+		if err := document.Validate(DefaultLimits()); err == nil || !strings.Contains(err.Error(), "runtime metadata requires") {
+			t.Fatal("native predicate gained unrelated runtime access", path, err)
+		}
+	}
+	entry.NativeWhen = &Expression{Op: "exists", Source: expressionPointer(readExpression("state", "/count"))}
+	document.Mapping.Directions[EncodeEvent] = entry
+	if err := document.Validate(DefaultLimits()); err == nil || !strings.Contains(err.Error(), "state slot is not declared") {
+		t.Fatal("native predicate gained stream state access", err)
+	}
+}
 
 func TestPackageNativeObserverRetainsActualWirePosition(t *testing.T) {
 	document := eventProtocolPackage(t)

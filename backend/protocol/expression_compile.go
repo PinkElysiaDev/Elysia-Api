@@ -18,7 +18,7 @@ type compiledExpression struct {
 	op                                  string
 	operation                           string
 	path                                string
-	pathPrefix                          string
+	nativeLocation                      *nativeLocationPattern
 	pointer                             []string
 	from                                string
 	bindingSlot                         int
@@ -85,6 +85,7 @@ type expressionScope struct {
 	isWalk                 bool
 	wireCapture            bool
 	canReadRuntime         bool
+	canReadClientOutput    bool
 	canReadOperation       bool
 	canReadFrameUsage      bool
 	canReadOutputStream    bool
@@ -190,9 +191,10 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			compiled.stateSlot, schema, coreType = slot.slot, slot.schema, nil
 			pointer, compiled.pointer = pointer[1:], pointer[1:]
 		case "runtime":
+			isClientOutput := scope.canReadClientOutput && len(pointer) > 0 && pointer[0] == "clientOutput"
 			isFrameUsage := scope.canReadFrameUsage && len(pointer) >= 2 && pointer[0] == "frame" && pointer[1] == "usage"
 			isOperation := scope.canReadOperation && len(pointer) == 2 && pointer[0] == "operation" && (pointer[1] == "id" || pointer[1] == "startedAt")
-			if !scope.canReadRuntime && !isFrameUsage && !isOperation {
+			if !scope.canReadRuntime && !isClientOutput && !isFrameUsage && !isOperation {
 				return nil, fmt.Errorf("%s/from: runtime metadata requires a package mapping program or effect", path)
 			}
 			switch {
@@ -575,13 +577,19 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 			return fail("native target source requires an unchanged core " + originalType.Name() + " read")
 		}
 		if expression.op == "native_matches" {
-			if expression.operation != "array_item" {
-				return fail("native_matches requires array_item operation")
+			if expression.operation != "array_item" && expression.operation != "array_item_field" {
+				return fail("native_matches requires array_item or array_item_field operation")
+			}
+			if (expression.operation == "array_item_field") != (source.Name != "") {
+				return fail("native_matches name is required only for array_item_field")
 			}
 			if _, err := parsePointer(source.Path); err != nil {
 				return fail("native_matches path must be a parent JSON pointer")
 			}
-			expression.pathPrefix = source.Path + "/"
+			expression.nativeLocation = &nativeLocationPattern{prefix: source.Path + "/"}
+			if expression.operation == "array_item_field" {
+				expression.nativeLocation.suffix = "/" + escapePointer(source.Name)
+			}
 		}
 	case "capture_native", "capture_source":
 		if expression.source.op != "read" || !slices.Contains([]string{"input", "root", "item", "binding"}, expression.source.from) {
