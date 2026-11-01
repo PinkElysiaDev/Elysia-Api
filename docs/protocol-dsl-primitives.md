@@ -399,3 +399,25 @@ Unicode 转义和非法 Unicode 的处理与现有字符串解码一致。操作
 null 余项必须保持 null 且不带分拆字段。未知核心成员、变更标签、重复余项字段及没有表示
 的尾部数组成员拒绝；未知外部对象成员保留在余项。命名程序／绑定、条件和独占合并使用
 现有编译预算，运行期复用当前输入视图，不为证明解析配置或反射类型。
+
+## 核心内容稳定分区
+
+控制步骤 layout.operation:stable_partition 只作用于请求或完整响应的 /content。when 的
+input 是当前根节点，root 是完整文档；选中节点稳定移到未选中节点前，两组内部顺序保持。
+可声明 pathBinding 和 movedBinding，分别读取原核心位置与是否会移动。
+局部 steps 复用诊断及条件，仅能更新 role，不能替换节点、改写
+来源或删除资源。布局声明不能和同一步的 each、set、omit 或 auxiliary 混合。
+
+combine_children 把选中的相邻同 kind、同 role 普通容器的 children 顺序合入第一个容器，显式
+移除后续容器边界。身份、状态、payload、reasoning、metadata、缓存、资源或未知属性存在时
+拒绝；来源和 Native 不被当作语义载荷，合并后只保留首容器来源并清除该容器 Native。边界
+损失诊断由局部 steps 声明，该操作不能同时更新容器字段，也不能跨过未选中根；不能依赖编码器暗中合并。
+
+```json
+{"layout":{"operation":"stable_partition","path":"/content","when":{"op":"equal","items":[{"op":"read","path":"/role"},{"op":"literal","value":"system"}]}}}
+```
+
+原节点载荷和子节点共享已有不可变所有权，不作 JSON 往返。发生重排时只创建节点切片；
+无移动时不分配结果切片。结构变化清除根 Native，只有实际更新的容器清除自身 Native，
+叶子的资源和来源保留。多个根的 children 合并仅复制节点切片。规则需在 Mapping 中声明角色、作用位置及边界变化的诊断；DSL
+不识别 system、developer 或供应商。默认 Anthropic／Gemini 已使用此操作。

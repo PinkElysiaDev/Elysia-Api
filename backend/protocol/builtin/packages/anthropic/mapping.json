@@ -20373,6 +20373,791 @@
           ]
         }
       ]
+    },
+    "layout-system-node": {
+      "op": "if",
+      "when": {
+        "op": "if",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/native/source/path"
+          }
+        },
+        "then": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/native/source/protocol/family"
+                },
+                {
+                  "op": "literal",
+                  "value": "claude"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/native/source/protocol/wireVersion"
+                },
+                {
+                  "op": "literal",
+                  "value": "v2"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/native/source/direction"
+                },
+                {
+                  "op": "literal",
+                  "value": "decode_request"
+                }
+              ]
+            },
+            {
+              "op": "has_prefix",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/native/source/path"
+              },
+              "value": "/messages/"
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/native/value"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "object"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/native/value/role"
+                },
+                {
+                  "op": "literal",
+                  "value": "system"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/role"
+                },
+                {
+                  "op": "literal",
+                  "value": "system"
+                }
+              ]
+            }
+          ]
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "then": {
+        "op": "literal",
+        "value": false
+      },
+      "otherwise": {
+        "op": "all",
+        "items": [
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/kind"
+              },
+              {
+                "op": "literal",
+                "value": "message"
+              }
+            ]
+          },
+          {
+            "op": "any",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/role"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "system"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/role"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "developer"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "request-system-layout-valid": {
+      "op": "let",
+      "name": "layout-prefix",
+      "source": {
+        "op": "flatmap",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/content"
+        },
+        "body": {
+          "op": "if",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/native/source/path"
+                }
+              },
+              "then": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/native/source/protocol/family"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "claude"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/native/source/protocol/wireVersion"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "v2"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/native/source/direction"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "decode_request"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "has_prefix",
+                    "source": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/native/source/path"
+                    },
+                    "value": "/messages/"
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/native/value"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "object"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/native/value/role"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "system"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/role"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "system"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            },
+            "then": {
+              "op": "literal",
+              "value": false
+            },
+            "otherwise": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/kind"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "message"
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/role"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "system"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "then": {
+            "op": "array",
+            "items": [
+              {
+                "op": "index"
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "array",
+            "items": []
+          }
+        }
+      },
+      "body": {
+        "op": "all",
+        "items": [
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "filter",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/content"
+                },
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/role"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "developer"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "array",
+                "items": []
+              }
+            ]
+          },
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "map",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "layout-prefix"
+                },
+                "body": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": ""
+                    },
+                    {
+                      "op": "index"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "map",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "layout-prefix"
+                },
+                "body": {
+                  "op": "literal",
+                  "value": true
+                }
+              }
+            ]
+          },
+          {
+            "op": "integer",
+            "operation": "lte",
+            "items": [
+              {
+                "op": "length",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "name": "layout-prefix",
+                  "path": ""
+                }
+              },
+              {
+                "op": "literal",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "filter",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/content"
+                },
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "if",
+                    "when": {
+                      "op": "if",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/native/source/path"
+                        }
+                      },
+                      "then": {
+                        "op": "all",
+                        "items": [
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/native/source/protocol/family"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "claude"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/native/source/protocol/wireVersion"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "v2"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/native/source/direction"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "decode_request"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "has_prefix",
+                            "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/native/source/path"
+                            },
+                            "value": "/messages/"
+                          },
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "type",
+                                "source": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/native/value"
+                                }
+                              },
+                              {
+                                "op": "literal",
+                                "value": "object"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/native/value/role"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "system"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/role"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "system"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": false
+                      }
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": false
+                    },
+                    "otherwise": {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/kind"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "message"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/role"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "system"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "then": {
+                    "op": "not",
+                    "source": {
+                      "op": "with_input",
+                      "source": {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      },
+                      "body": {
+                        "op": "ref",
+                        "ref": "layout-system-container-valid"
+                      }
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                }
+              },
+              {
+                "op": "array",
+                "items": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "layout-system-container-valid": {
+      "op": "all",
+      "items": [
+        {
+          "op": "not",
+          "source": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/id"
+            }
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/status"
+            }
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/callId"
+            }
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/name"
+            }
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/payload"
+            }
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/input"
+            }
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/reasoningForm"
+            }
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/reasoningContent"
+            }
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/metadata"
+            }
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/cache"
+            }
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/resources"
+            }
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/attributes"
+            }
+          }
+        }
+      ]
     }
   },
   "directions": {
@@ -20911,6 +21696,19 @@
             }
           },
           "reason": "cache policy has a semantic owner in cache; wire extensions cannot replace it"
+        },
+        {
+          "id": "system-layout-required",
+          "kind": "reject",
+          "path": "/content",
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "ref",
+              "ref": "request-system-layout-valid"
+            }
+          },
+          "reason": "target requires the declared instruction layout before encoding"
         }
       ],
       "capabilities": {
@@ -48546,6 +49344,140 @@
                       ]
                     }
                   ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "system-instruction-hoist",
+      "order": 140,
+      "enabled": true,
+      "phase": "request",
+      "steps": [
+        {
+          "layout": {
+            "operation": "stable_partition",
+            "path": "/content",
+            "when": {
+              "op": "ref",
+              "ref": "layout-system-node"
+            },
+            "pathBinding": "layout-path",
+            "movedBinding": "layout-moved",
+            "steps": [
+              {
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "ref",
+                    "ref": "layout-system-container-valid"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "layout-path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "top-level instruction layout requires explicit preservation of container fields"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "layout-moved"
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/role"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "developer"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "layout-path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "top-level instruction changes the original scope or role precedence"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/role"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "developer"
+                    }
+                  ]
+                },
+                "set": {
+                  "/role": {
+                    "op": "literal",
+                    "value": "system"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "layout": {
+            "operation": "combine_children",
+            "path": "/content",
+            "when": {
+              "op": "ref",
+              "ref": "layout-system-node"
+            },
+            "pathBinding": "layout-path",
+            "steps": [
+              {
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "layout-path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target combines separate instruction roots in one system envelope"
+                  }
                 }
               }
             ]

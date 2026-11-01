@@ -514,6 +514,7 @@ export function ProtocolV2Editor({
                     metadata 处置由配置声明字段与形状；enum 的 otherwise 只处理未映射的字符串。
                     each.select: error 可读取当前错误并更新 message、code、param、details、providerType；分类和终态不可写。
                     aggregate.layout 通过 remainder、fields、labels 声明请求对象拆分；核心路径、成员类型和无覆盖重建在编译时检查。
+                    steps.layout 使用 stable_partition 或 combine_children 处理请求或完整响应的 /content；保留节点顺序与载荷，局部 steps 只允许角色更新与明确诊断。
                   </p>
                 )}
                 <label className="block space-y-1.5 text-xs font-medium text-foreground">

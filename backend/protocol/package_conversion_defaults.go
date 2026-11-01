@@ -276,6 +276,9 @@ func controlsReadContext(steps []compiledControlStep) bool {
 		return false
 	}
 	for _, step := range steps {
+		if step.layout != nil && (reads(step.layout.when) || controlsReadContext(step.layout.steps)) {
+			return true
+		}
 		if step.each != nil && controlsReadContext(step.each.steps) {
 			return true
 		}

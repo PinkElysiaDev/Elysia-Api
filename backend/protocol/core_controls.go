@@ -142,6 +142,13 @@ func applyControlSteps(state evaluation, conversion *CompiledConversion, documen
 			}
 			result.hasChanges = result.hasChanges || changed
 		}
+		if step.layout != nil {
+			changed, err := step.layout.apply(state, conversion, document, route, rule, sink, owner)
+			if err != nil {
+				return result, err
+			}
+			result.hasChanges = result.hasChanges || changed
+		}
 		if step.auxiliary != nil {
 			options := auxiliaryConversionOptions{CoreVersion: owner.CoreVersion, Target: owner.Target, EncoderHash: owner.MappingHash, DecoderHash: owner.DecoderHash, PreserveNative: owner.PreserveNative, Disposition: *step.auxiliary}
 			changed, err := conversion.applyAuxiliaryDisposition(document.(*Event), route, rule, sink, options)

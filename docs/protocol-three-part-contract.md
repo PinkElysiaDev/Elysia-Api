@@ -160,6 +160,14 @@ aggregate.layout 按声明的请求核心路径绑定对象类型。remainder �
 
 编码前检查剩余核心成员均有表示、标签匹配、余项为对象或 null、分拆字段不重复、固定数组所有者后没有未表示成员。成员目录及顺序在编译时建立；运行时不反射，也不重新解码整份核心。默认 Anthropic 根缓存使用该声明，wire 扩展不能重新定义 cache_control。
 
+## 指令布局（dev.121）
+
+ProtocolControlStep.layout 支持请求及完整响应 /content 的 stable_partition 和 combine_children。配置选择根节点并以普通控制步骤诊断、修改角色；Go 只移动既有节点或合并普通容器子节点，并处理 Native 所有权。pathBinding 是当前核心位置，movedBinding 表示相对选中组的位置改变。编译期禁止局部结构选择、整对象替换和受保护字段写入。combine_children 要求相邻同 kind、同 role，容器除 children、来源和 Native 外不得有未表示字段。
+
+Anthropic／Gemini Mapping 显式提供 system-instruction-hoist／140。system 在对话之后上提、developer 角色降为 system、多个根进入同一系统包络均诊断并在严格模式拒绝。容器附属字段没有明确目标表达时拒绝，叶子仍保留缓存、资源及来源。已确认的 Anthropic 同合同内联 system 消息保留；其位置分类来自 Mapping。编码前检查布局已满足，禁用规则后不会隐式再次上提。
+
+本阶段实现稳定分区、普通容器合并和受限角色更新；相邻分组、一般容器展开、文本合并、引用偏移及复杂 SSE 布局仍未闭合。
+
 ## 认证续传（dev.109）
 
 Responses 的 include 原表示由 `ClientOutput.RawResponsesInclude` 持有；`RequireContinuationState` 表示产生受保护状态时客户端必须获得可继续使用的表示。目标规则只写 `ResponsesIncludeResolved`，不能改写来源原值或撤销续传要求。Agent 可声明原值和要求，本地收集器直接保留资源进入后续轮次。

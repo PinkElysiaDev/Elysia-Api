@@ -13,6 +13,7 @@ type controlCompileScope struct {
 	canSelect, canUseAuxiliary, canOmit bool
 	isToolResult                        bool
 	isError                             bool
+	isLayout                            bool
 }
 
 type compiledControlEach struct {
@@ -28,10 +29,21 @@ func (scope controlCompileScope) compileSetter(root reflect.Type, path string) (
 	if scope.isError {
 		return compileErrorControlSetter(path)
 	}
+	if scope.isLayout {
+		if path != "/role" {
+			return nil, "", fmt.Errorf("layout controls can update only the selected role")
+		}
+		return func(document any, output JSONOutput, reader *valueReader) error {
+			return replaceControlValue(output, &document.(*Node).Role, reader)
+		}, StringType, nil
+	}
 	return compileTypedControlSetter(root, path)
 }
 
 func validateControlStepForm(step ProtocolControlStep, scope controlCompileScope, path string) error {
+	if step.Layout != nil && (!scope.canSelect || step.Each != nil || step.Auxiliary != nil || step.Omit || len(step.Set) != 0 || step.Diagnostic != nil) {
+		return fmt.Errorf("%s/layout: requires a standalone complete-document layout", path)
+	}
 	if step.Each != nil && (!scope.canSelect || step.Auxiliary != nil || step.Omit || len(step.Set) != 0 || step.Diagnostic != nil) {
 		return fmt.Errorf("%s/each: selection requires a complete core document and its own local steps", path)
 	}

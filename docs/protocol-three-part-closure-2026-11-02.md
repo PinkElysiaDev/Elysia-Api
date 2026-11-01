@@ -184,3 +184,25 @@ aggregate.layout 退出 /cache/0、ttl、breakpoint 和 request 的 Go 特例。
 | 前端类型与 ESLint | 本地 tsc 和修改编辑器 ESLint 通过 |
 
 初稿测试暴露重复所有者、漏掉额外数组成员、测试夹具 ID 及辅助函数引用问题，均修正后保留原直接断言。检查原文保存在忽略目录。布局、复杂流、全部入口和所有权仍待闭合；未形成版本 B，未测正式配对性能，也未切换生产加载器。
+
+## 批次 3A：显式指令布局（dev.121）
+
+新增受限 ProtocolControlStep.layout：stable_partition 稳定移动根节点，combine_children 合并相邻同 kind／role 普通容器的子节点。Go 不识别供应商、system 或 developer；选择、角色变化、作用范围及根边界损失由 Anthropic／Gemini Mapping 的 system-instruction-hoist／140 声明。普通容器必须没有未表示身份、状态、metadata、缓存、资源或未知属性；子节点保留自己的载荷、来源、缓存与资源。合并必须有无条件边界损失声明，严格模式拒绝；只诊断、没有实际合并时不额外报告损失。
+
+编码器检查目标要求的布局、容器字段及单根边界，规则禁用后不再暗中上提或合并。Anthropic 已确认的内联 system 兼容以 Mapping 中真实 Native 容器位置分类保留；单独 Source 注释不授权此位置。结构变化使根 Native 失效，角色变化使该容器 Native 失效；原样移动的节点和叶子 Native 保留。重排只复制节点切片，缺省未命中不创建结果切片，没有整树 JSON 往返。
+
+复用 32 场景网关矩阵，在 Chat→Anthropic／Gemini 的 JSON 和流请求中加入对话之后的 system/developer；模拟上游检查两条指令的实际顺序，保留完整响应、usage 和一次上游调用断言。必要组件覆盖严格／禁用、容器扩展拒绝、原生位置、根 Native 删除后拒绝伪保真，以及完整响应稳定分区的载荷所有权。
+
+| 检查 | 结果 |
+|---|---|
+| closure-content-layout-combined-all | protocol 全量 6.882 秒、builtin 全量 41.983 秒，通过 |
+| closure-content-layout-final-contract | 后续合同收紧的定向检查通过：protocol 0.289 秒、builtin 4.492 秒 |
+| closure-content-layout-combined-race | 核心 3.352 秒、builtin 11.962 秒、32 场景真实网关 135.375 秒，无 race 报告 |
+| closure-content-layout-final-race | 最终布局、Native／禁用边界和四包正式证据：核心 3.352 秒、builtin 45.142 秒，通过 |
+| closure-content-layout-final-gateway | 最终配置的 32 场景真实网关矩阵通过，10.803 秒 |
+| closure-content-layout-loss-order | 合并损失诊断必须位于首步的最终编译边界与正式证据通过：核心 0.246 秒、builtin 4.086 秒 |
+| closure-content-layout-final-vet | protocol／server vet 通过 |
+| closure-content-layout-final-staticcheck | 固定 v0.8.2，24 主诊断及 1 关联位置，多重集与 dev.120 相同，退出 1 |
+| 前端 | 本地 tsc 和修改编辑器 ESLint 通过 |
+
+最终整包 token：Anthropic 95,013、Gemini 76,038、Chat 99,315、Responses 99,824，限额保持。草稿的 Native effect 权限、测试对不存在叶子 Source 的假设，以及仅靠前缀检查仍会隐式合并根的问题已修正。全部中间失败与最终检查保留在忽略目录。一般相邻历史分组、多段 reasoning／多根输出、Gemini 混合结果、UTF-16 引用、复杂流和入口所有权仍待闭合；未归档版本 B、未测正式性能、未切换生产默认或删除旧链。

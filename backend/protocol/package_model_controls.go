@@ -17,6 +17,7 @@ type ProtocolControlStep struct {
 	Each       *ProtocolControlEach          `json:"each,omitempty"`
 	Auxiliary  *ProtocolAuxiliaryDisposition `json:"auxiliary,omitempty"`
 	Omit       bool                          `json:"omit,omitempty"`
+	Layout     *ProtocolContentLayout        `json:"layout,omitempty"`
 }
 
 // ProtocolControlEach selects typed tools, tool results, nodes, metadata, usage
@@ -49,6 +50,7 @@ type compiledControlStep struct {
 	shouldOmit bool
 	each       *compiledControlEach
 	auxiliary  *ProtocolAuxiliaryDisposition
+	layout     *compiledContentLayout
 }
 
 type compiledControlUpdate struct {
@@ -97,6 +99,9 @@ func controlBindingSlots(sequences ...[]compiledControlStep) int {
 	count := 0
 	for _, sequence := range sequences {
 		for _, step := range sequence {
+			if step.layout != nil {
+				count = max(count, step.layout.bindingSlots)
+			}
 			if step.each != nil {
 				count = max(count, step.each.pathSlot+1, controlBindingSlots(step.each.steps))
 			}
@@ -174,7 +179,7 @@ func compileScopedControlSteps(steps []ProtocolControlStep, compiler *expression
 		if *count > compiler.limits.Mutations {
 			return nil, fmt.Errorf("%s: complete control program exceeds mutation limit", path)
 		}
-		if isCheck && (len(declaration.Set) != 0 || declaration.Each != nil || declaration.Auxiliary != nil || declaration.Omit) || len(declaration.Set) == 0 && declaration.Diagnostic == nil && !declaration.Stop && declaration.Each == nil && declaration.Auxiliary == nil && !declaration.Omit {
+		if isCheck && (len(declaration.Set) != 0 || declaration.Each != nil || declaration.Auxiliary != nil || declaration.Omit || declaration.Layout != nil) || len(declaration.Set) == 0 && declaration.Diagnostic == nil && !declaration.Stop && declaration.Each == nil && declaration.Auxiliary == nil && !declaration.Omit && declaration.Layout == nil {
 			return nil, fmt.Errorf("%s: checks cannot change fields and every step must have an effect", at)
 		}
 		step := compiledControlStep{shouldStop: declaration.Stop, shouldOmit: declaration.Omit}
@@ -184,6 +189,13 @@ func compileScopedControlSteps(steps []ProtocolControlStep, compiler *expression
 		if declaration.Each != nil {
 			var err error
 			step.each, err = compileControlEach(*declaration.Each, compiler, at+"/each", context, count)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if declaration.Layout != nil {
+			var err error
+			step.layout, err = compileContentLayout(*declaration.Layout, compiler, at+"/layout", context, count)
 			if err != nil {
 				return nil, err
 			}

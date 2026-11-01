@@ -148,6 +148,7 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 				jsonReply = mustEncodedProtocolValue(t, fields).Bytes()
 			}
 			var calls atomic.Int32
+			var expectsInstructions atomic.Bool
 			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				calls.Add(1)
 				body, err := io.ReadAll(request.Body)
@@ -159,6 +160,25 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 				if err := sonic.ConfigStd.Unmarshal(body, &control); err != nil {
 					t.Error(err)
 					return
+				}
+				if upstreamName == "anthropic" || upstreamName == "google-generate-content" {
+					value, err := protocol.ParseValue(body)
+					if err != nil {
+						t.Error(err)
+						return
+					}
+					fields, err := value.ReadObject()
+					if err != nil {
+						t.Error(err)
+						return
+					}
+					instruction := fields["system"]
+					if upstreamName == "google-generate-content" {
+						instruction = fields["systemInstruction"]
+					}
+					if expectsInstructions.Load() && (instruction.IsZero() || !strings.Contains(instruction.JSONString(), "matrix policy") || !strings.Contains(instruction.JSONString(), "matrix detail") || strings.Index(instruction.JSONString(), "matrix policy") > strings.Index(instruction.JSONString(), "matrix detail")) {
+						t.Error("declared instruction layout changed upstream block order", string(body))
+					}
 				}
 				if upstreamName != "anthropic" {
 					value, err := protocol.ParseValue(body)
@@ -194,6 +214,11 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 						ingress := packages[ingressName]
 						path := strings.ReplaceAll(ingress.Operations()[operationName].Path, "{model}", "group")
 						body := buildPackageGatewayRequest(ingressName, isStream)
+						hasInstructions := ingressName == "openai-chat" && (upstreamName == "anthropic" || upstreamName == "google-generate-content")
+						expectsInstructions.Store(hasInstructions)
+						if hasInstructions {
+							body = strings.Replace(body, `"messages":[{"role":"user","content":"hi"}]`, `"messages":[{"role":"user","content":"hi"},{"role":"system","content":"matrix policy"},{"role":"developer","content":"matrix detail"}]`, 1)
+						}
 						if ingressName == "anthropic" && upstreamName != "anthropic" {
 							body = strings.TrimSuffix(body, "}") + `,"cache_control":{"type":"ephemeral","ttl":"1h"}}`
 						}
