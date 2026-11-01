@@ -114,6 +114,14 @@ Gemini 的 error／output 包络由 Mapping 双向表达，独立错误状态在
 | 废弃要求 | 旧错误文字与首错树、模拟 `/message/0` 等非原文位置、重复身份计费、旧 logprobs 检查点 | 不再作为迁移门槛 |
 | 性能要求 | 双方正确完成且工作量一致的负载 | 同机配对实测；不能比较旧版提前失败耗时 |
 
+## 请求外部合同（dev.116）
+
+默认 Spec 的具名约束覆盖 Gemini safetySettings、Responses truncation／previous_response_id、Anthropic metadata 以及 OpenAI metadata／user；来源、重建与最终出站引用相同合同。Gemini 类别使用解码后的字符串身份去重，同协议未知枚举和扩展保留，跨协议的可表达性仍由目标 Mapping 决定。最终用户 wire 修改由既有 ValidateRequestOutput 检查，不重新解码核心请求。
+
+核心版本 2 不再通过共享 Go 检查这些供应商字段。默认 Mapping 在省略源追踪载体前检查其形状；自定义包可以在同名参数位置声明不同的外部类型。工具选项、关联、资源作用域与 reasoning 的核心约束继续保留。旧 codec 的校验仅留在旧核心版本路径，随旧链退役一起删除。
+
+raw 编码不再接受数字／对象用户标识或静默忽略非对象 tracking metadata。旧错误文字及非原文位置不作为迁移门槛；非法字段的来源检查和最终出站检查分别使用输入错误和转换拒绝。
+
 ## 请求字段目标处置（dev.115）
 
 request_field 的位置可以是独立 parameters 字段或 reasoning 的 Value 叶子。default 声明目标等价的值，只有选中值与该默认值一致时才可清除；命中条件但值不同会拒绝。reject 不声明默认值，按条件拒绝。路径和清除动作在配置编译时绑定，不能改写来源、权限、资源、客户端意图或整个容器。现有 Gemini 历史保留声明复用此通用能力，不存在供应商对之间的特例。

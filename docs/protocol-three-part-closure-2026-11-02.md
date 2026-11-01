@@ -87,3 +87,25 @@ request_field 的编译及执行不再固定 historyRetention 或 all。支持�
 - closure-request-fields-staticcheck：固定 v0.8.2 的 24 条主诊断及关联位置无新增、无消失，退出 1。
 
 本批仍不含对象聚合通用化和共享请求外部合同迁移；未采集正式性能。
+
+## 批次 1E：请求外部合同退出共享核心（dev.116）
+
+四个 Spec 通过具名约束声明请求追踪、Gemini safety 和 Responses 上下文控制的外部类型；来源、重建及最终出站共用声明。Gemini 非空类别／阈值与类别唯一性使用现有表达式；未知枚举和额外字段同协议保留，跨协议目标规则继续决定是否可表达。没有增加新原语或第二个最终出站检查位置。
+
+核心版本 2 退出共享 Go 的供应商参数检查，保留工具、reasoning、资源和关联等核心约束；旧核心路径暂留旧校验。默认 Mapping 显式拒绝会在目标编码中消失的非法追踪载体，不能用省略绕过类型合同。新增自定义包回归在 metadata 参数位置声明数值 tracking，证明接收、转换、无根 Native 重建及修改后拒绝均只取决于配置。
+
+移除八条要求旧 raw 编码接受非法用户类型或忽略非对象 metadata 的差分项，改为明确拒绝边界；字符串、null、转义等价、冲突及未知字段测试保留。旧 Chat 全字段夹具原本因数值 metadata 提前失败，改用合法追踪值，使其实际验证其余字段的转换；非法值由直接合同回归验证。没有刷新旧差分快照或扩大忽略范围。诊断使用实际 wire 位置，不模拟旧参数路径。
+
+Responses 共享重复输出对象／索引约束、非空文本判断及六个重复绑定读取，为声明腾出空间；不提高限额。最终整包 token：Anthropic 90,843、Gemini 72,366、Chat 98,485、Responses 99,420。其余配置保持原有未修改区域的格式。
+
+| 检查 | 结果 |
+|---|---|
+| closure-request-contracts-all-final | protocol 全量 2.819 秒、builtin 全量 38.134 秒，通过 |
+| closure-request-contracts-gateway | 32 场景 JSON／SSE 网关矩阵及 storage／wire 相关回归通过，14.557 秒 |
+| closure-request-contracts-race | 请求合同、投影、最终输出和存储相关 race 通过，无竞争报告 |
+| closure-request-contracts-vet | protocol 全部 vet 通过 |
+| closure-request-contracts-staticcheck | 固定 v0.8.2：24 条主诊断及 1 条关联位置，与前批多重集比较无新增、无消失；退出 1 |
+
+测试初稿的诊断阶段写成未支持的名称，编译器拒绝；修正为既有 evaluate。随后测试指出旧差分仍要求非法 raw 类型成功，按新版本合同改为直接拒绝断言。所有最终检查记录保存在原忽略目录。
+
+本批不代表批次 1 全部完成：对象 aggregate 证明、output_text 修改后一致性还未闭合；缓存／错误、布局、真实流、入口所有权、正式性能及旧链退役继续待实施。未测 B／C，不宣称性能无回退。

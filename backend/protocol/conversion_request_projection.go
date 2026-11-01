@@ -14,8 +14,19 @@ type requestProjectionOptions struct {
 
 // Hint validation runs before authored rules and projection can remove fields.
 func validateRequestHints(req *Request) error {
+	if req.SchemaVersion != ProtocolCoreVersion {
+		if err := validateLegacyTrackingHints(req.Parameters); err != nil {
+			return err
+		}
+	}
+	return validateRequestIntentShapes(req)
+}
+
+// Legacy codecs still interpret tracking parameters in Go. Core v2 mappings
+// declare these external shapes in Spec and guard their own projections.
+func validateLegacyTrackingHints(parameters Object) error {
 	for _, key := range []string{"metadata", "anthropic_metadata", "user"} {
-		value := req.Parameters[key]
+		value := parameters[key]
 		if value.IsZero() || value.IsNull() {
 			continue
 		}
@@ -44,6 +55,10 @@ func validateRequestHints(req *Request) error {
 			}
 		}
 	}
+	return nil
+}
+
+func validateRequestIntentShapes(req *Request) error {
 	for i, tool := range req.Tools {
 		if err := ValidateToolStreamOption(tool.Options["eager_input_streaming"], fmt.Sprintf("/tools/%d/options/eager_input_streaming", i)); err != nil {
 			return err

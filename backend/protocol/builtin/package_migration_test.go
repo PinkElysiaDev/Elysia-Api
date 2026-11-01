@@ -91,14 +91,6 @@ func checkPackageTrackingUsers(t *testing.T, legacy, draft *p.Compiled) {
 		{"unknown-member", `{"anthropic_metadata":{"future":null}}`, "unknown", false},
 		{"unknown-before-conflict", `{"user":"current","anthropic_metadata":{"future":false,"user_id":"other"}}`, "unknown", false},
 		{"raw-string-equivalent", `{"user":"\u0075ser","anthropic_metadata":{"user_id":"user"}}`, "", true},
-		{"raw-number-identical", `{"user":1,"anthropic_metadata":{"user_id":1}}`, "", true},
-		{"raw-number-spelling", `{"user":1,"anthropic_metadata":{"user_id":1.0}}`, "conflict", true},
-		{"raw-object-identical", `{"user":{"a":1,"b":2},"anthropic_metadata":{"user_id":{"a":1,"b":2}}}`, "", true},
-		{"raw-object-order", `{"user":{"a":1,"b":2},"anthropic_metadata":{"user_id":{"b":2,"a":1}}}`, "conflict", true},
-		{"raw-metadata-string", `{"anthropic_metadata":"ignored"}`, "", true},
-		{"raw-metadata-number", `{"anthropic_metadata":1}`, "", true},
-		{"raw-metadata-boolean", `{"anthropic_metadata":false}`, "", true},
-		{"raw-metadata-array", `{"anthropic_metadata":[]}`, "", true},
 	} {
 		t.Run("tracking-user/"+fixture.name, func(t *testing.T) {
 			var want, got []byte

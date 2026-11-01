@@ -100,6 +100,9 @@
               "ref": "message-continuations"
             }
           ]
+        },
+        {
+          "ref": "request-tracking"
         }
       ]
     },
@@ -127,6 +130,9 @@
       "assertions": [
         {
           "ref": "function-tool-options"
+        },
+        {
+          "ref": "request-tracking"
         }
       ]
     },
@@ -5798,6 +5804,9 @@
         },
         {
           "ref": "function-tool-options"
+        },
+        {
+          "ref": "request-tracking"
         }
       ]
     }
@@ -6008,6 +6017,49 @@
         "ref": "request-tool-records"
       },
       "policy": "key"
+    },
+    "has-string-metadata-values": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "length",
+          "source": {
+            "op": "filter",
+            "source": {
+              "op": "entries",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "type",
+                    "source": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/value"
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "literal",
+          "value": 0
+        }
+      ]
     }
   },
   "constraints": {
@@ -6196,6 +6248,66 @@
         ],
         "code": "invalid_input",
         "reason": "tool declarations require an array"
+      }
+    ],
+    "request-tracking": [
+      {
+        "path": "/metadata",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/metadata"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "nullable": true,
+          "allowUnknown": true
+        },
+        "reason": "metadata must be an object of strings or null",
+        "check": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": null
+              }
+            ]
+          },
+          "then": {
+            "op": "literal",
+            "value": true
+          },
+          "otherwise": {
+            "op": "ref",
+            "ref": "has-string-metadata-values"
+          }
+        }
+      },
+      {
+        "path": "/user",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/user"
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "reason": "user must be a string or null"
       }
     ]
   }

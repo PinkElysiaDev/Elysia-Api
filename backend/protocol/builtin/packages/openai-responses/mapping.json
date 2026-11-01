@@ -62,10 +62,8 @@
       "op": "remember",
       "name": "targetItems",
       "source": {
-        "op": "read",
-        "from": "binding",
-        "path": "/key",
-        "name": "target-item"
+        "op": "ref",
+        "ref": "read-target-item-key"
       },
       "body": {
         "op": "merge",
@@ -93,10 +91,8 @@
       "op": "remember",
       "name": "targetItems",
       "source": {
-        "op": "read",
-        "from": "binding",
-        "path": "/key",
-        "name": "target-item"
+        "op": "ref",
+        "ref": "read-target-item-key"
       },
       "body": {
         "op": "merge",
@@ -12567,10 +12563,8 @@
               "path": "/parent"
             },
             {
-              "op": "read",
-              "from": "binding",
-              "path": "/key",
-              "name": "target-item"
+              "op": "ref",
+              "ref": "read-target-item-key"
             }
           ]
         }
@@ -13267,10 +13261,8 @@
         "op": "remember",
         "name": "targetItems",
         "source": {
-          "op": "read",
-          "from": "binding",
-          "path": "/key",
-          "name": "target-item"
+          "op": "ref",
+          "ref": "read-target-item-key"
         },
         "body": {
           "op": "read",
@@ -13296,10 +13288,8 @@
           "op": "buffer_text",
           "name": "body",
           "source": {
-            "op": "read",
-            "from": "binding",
-            "path": "/key",
-            "name": "target-item"
+            "op": "ref",
+            "ref": "read-target-item-key"
           },
           "operation": "append",
           "body": {
@@ -13319,10 +13309,8 @@
           "op": "buffer_text",
           "name": "body",
           "source": {
-            "op": "read",
-            "from": "binding",
-            "path": "/key",
-            "name": "target-item"
+            "op": "ref",
+            "ref": "read-target-item-key"
           },
           "operation": "append",
           "body": {
@@ -13337,10 +13325,8 @@
             "op": "buffer_array",
             "name": "annotations",
             "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "/key",
-              "name": "target-item"
+              "op": "ref",
+              "ref": "read-target-item-key"
             },
             "operation": "append",
             "body": {
@@ -13355,10 +13341,8 @@
               "op": "buffer_array",
               "name": "logprobs",
               "source": {
-                "op": "read",
-                "from": "binding",
-                "path": "/key",
-                "name": "target-item"
+                "op": "ref",
+                "ref": "read-target-item-key"
               },
               "operation": "append",
               "body": {
@@ -13394,20 +13378,16 @@
           "op": "buffer_text",
           "name": "body",
           "source": {
-            "op": "read",
-            "from": "binding",
-            "path": "/key",
-            "name": "target-item"
+            "op": "ref",
+            "ref": "read-target-item-key"
           },
           "operation": "append",
           "body": {
             "op": "track_tool",
             "name": "arguments",
             "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "/key",
-              "name": "target-item"
+              "op": "ref",
+              "ref": "read-target-item-key"
             },
             "body": {
               "op": "object",
@@ -13521,10 +13501,8 @@
               "op": "buffer_text",
               "name": "body",
               "source": {
-                "op": "read",
-                "from": "binding",
-                "path": "/key",
-                "name": "target-item"
+                "op": "ref",
+                "ref": "read-target-item-key"
               },
               "operation": "append",
               "body": {
@@ -13549,10 +13527,8 @@
                 "op": "buffer_text",
                 "name": "body",
                 "source": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/key",
-                  "name": "target-item"
+                  "op": "ref",
+                  "ref": "read-target-item-key"
                 },
                 "operation": "snapshot",
                 "body": {
@@ -13737,10 +13713,8 @@
                       "op": "buffer_array",
                       "name": "annotations",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/key",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-item-key"
                       },
                       "operation": "append",
                       "body": {
@@ -13754,10 +13728,8 @@
                       "op": "buffer_array",
                       "name": "logprobs",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/key",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-item-key"
                       },
                       "operation": "append",
                       "body": {
@@ -13782,10 +13754,8 @@
                       "op": "buffer_array",
                       "name": "annotations",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/key",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-item-key"
                       },
                       "operation": "snapshot",
                       "body": {
@@ -13799,10 +13769,8 @@
                       "op": "buffer_array",
                       "name": "logprobs",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/key",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-item-key"
                       },
                       "operation": "snapshot",
                       "body": {
@@ -13899,10 +13867,8 @@
                     "op": "join",
                     "items": [
                       {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/key",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-item-key"
                       },
                       {
                         "op": "literal",
@@ -13940,10 +13906,8 @@
                         "op": "object",
                         "fields": {
                           "itemKey": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/key",
-                            "name": "target-item"
+                            "op": "ref",
+                            "ref": "read-target-item-key"
                           }
                         }
                       }
@@ -13978,10 +13942,8 @@
               "path": "/itemKey"
             },
             {
-              "op": "read",
-              "from": "binding",
-              "path": "/key",
-              "name": "target-item"
+              "op": "ref",
+              "ref": "read-target-item-key"
             }
           ]
         }
@@ -14068,10 +14030,8 @@
                 "op": "buffer_array",
                 "name": "annotations",
                 "source": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/key",
-                  "name": "target-item"
+                  "op": "ref",
+                  "ref": "read-target-item-key"
                 },
                 "operation": "read"
               }
@@ -14106,10 +14066,8 @@
                 "op": "buffer_array",
                 "name": "logprobs",
                 "source": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/key",
-                  "name": "target-item"
+                  "op": "ref",
+                  "ref": "read-target-item-key"
                 },
                 "operation": "read"
               }
@@ -14623,10 +14581,8 @@
           "op": "object",
           "fields": {
             "id": {
-              "op": "read",
-              "from": "binding",
-              "path": "/wireID",
-              "name": "target-item"
+              "op": "ref",
+              "ref": "read-target-wire-id"
             },
             "status": {
               "op": "if",
@@ -14746,22 +14702,16 @@
                 "value": "response.reasoning_summary_part.added"
               },
               "response_id": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "response-id"
+                "op": "ref",
+                "ref": "read-response-id"
               },
               "output_index": {
-                "op": "read",
-                "from": "binding",
-                "path": "/outputIndex",
-                "name": "target-item"
+                "op": "ref",
+                "ref": "read-target-output-index"
               },
               "item_id": {
-                "op": "read",
-                "from": "binding",
-                "path": "/wireID",
-                "name": "target-item"
+                "op": "ref",
+                "ref": "read-target-wire-id"
               },
               "summary_index": {
                 "op": "read",
@@ -14783,22 +14733,16 @@
                 "value": "response.content_part.added"
               },
               "response_id": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "response-id"
+                "op": "ref",
+                "ref": "read-response-id"
               },
               "output_index": {
-                "op": "read",
-                "from": "binding",
-                "path": "/outputIndex",
-                "name": "target-item"
+                "op": "ref",
+                "ref": "read-target-output-index"
               },
               "item_id": {
-                "op": "read",
-                "from": "binding",
-                "path": "/wireID",
-                "name": "target-item"
+                "op": "ref",
+                "ref": "read-target-wire-id"
               },
               "content_index": {
                 "op": "read",
@@ -14907,22 +14851,16 @@
                         "value": "response.output_text.delta"
                       },
                       "response_id": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "response-id"
+                        "op": "ref",
+                        "ref": "read-response-id"
                       },
                       "output_index": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/outputIndex",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-output-index"
                       },
                       "item_id": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/wireID",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-wire-id"
                       },
                       "content_index": {
                         "op": "read",
@@ -15001,22 +14939,16 @@
                             "value": "response.custom_tool_call_input.delta"
                           },
                           "response_id": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "response-id"
+                            "op": "ref",
+                            "ref": "read-response-id"
                           },
                           "output_index": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/outputIndex",
-                            "name": "target-item"
+                            "op": "ref",
+                            "ref": "read-target-output-index"
                           },
                           "item_id": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/wireID",
-                            "name": "target-item"
+                            "op": "ref",
+                            "ref": "read-target-wire-id"
                           },
                           "delta": {
                             "op": "read",
@@ -15034,22 +14966,16 @@
                             "value": "response.function_call_arguments.delta"
                           },
                           "response_id": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "response-id"
+                            "op": "ref",
+                            "ref": "read-response-id"
                           },
                           "output_index": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/outputIndex",
-                            "name": "target-item"
+                            "op": "ref",
+                            "ref": "read-target-output-index"
                           },
                           "item_id": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/wireID",
-                            "name": "target-item"
+                            "op": "ref",
+                            "ref": "read-target-wire-id"
                           },
                           "delta": {
                             "op": "read",
@@ -15074,22 +15000,16 @@
                             "value": "response.reasoning_summary_text.delta"
                           },
                           "response_id": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "response-id"
+                            "op": "ref",
+                            "ref": "read-response-id"
                           },
                           "output_index": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/outputIndex",
-                            "name": "target-item"
+                            "op": "ref",
+                            "ref": "read-target-output-index"
                           },
                           "item_id": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/wireID",
-                            "name": "target-item"
+                            "op": "ref",
+                            "ref": "read-target-wire-id"
                           },
                           "summary_index": {
                             "op": "read",
@@ -15119,22 +15039,16 @@
                               "value": "response.reasoning_text.delta"
                             },
                             "response_id": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "",
-                              "name": "response-id"
+                              "op": "ref",
+                              "ref": "read-response-id"
                             },
                             "output_index": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/outputIndex",
-                              "name": "target-item"
+                              "op": "ref",
+                              "ref": "read-target-output-index"
                             },
                             "item_id": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/wireID",
-                              "name": "target-item"
+                              "op": "ref",
+                              "ref": "read-target-wire-id"
                             },
                             "content_index": {
                               "op": "read",
@@ -15164,22 +15078,16 @@
                                 "value": "response.refusal.delta"
                               },
                               "response_id": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "",
-                                "name": "response-id"
+                                "op": "ref",
+                                "ref": "read-response-id"
                               },
                               "output_index": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "/outputIndex",
-                                "name": "target-item"
+                                "op": "ref",
+                                "ref": "read-target-output-index"
                               },
                               "item_id": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "/wireID",
-                                "name": "target-item"
+                                "op": "ref",
+                                "ref": "read-target-wire-id"
                               },
                               "content_index": {
                                 "op": "read",
@@ -15203,22 +15111,16 @@
                                 "value": "response.output_text.delta"
                               },
                               "response_id": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "",
-                                "name": "response-id"
+                                "op": "ref",
+                                "ref": "read-response-id"
                               },
                               "output_index": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "/outputIndex",
-                                "name": "target-item"
+                                "op": "ref",
+                                "ref": "read-target-output-index"
                               },
                               "item_id": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "/wireID",
-                                "name": "target-item"
+                                "op": "ref",
+                                "ref": "read-target-wire-id"
                               },
                               "content_index": {
                                 "op": "read",
@@ -15293,22 +15195,16 @@
                     "value": "response.reasoning_summary_text.done"
                   },
                   "response_id": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "response-id"
+                    "op": "ref",
+                    "ref": "read-response-id"
                   },
                   "output_index": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/outputIndex",
-                    "name": "target-item"
+                    "op": "ref",
+                    "ref": "read-target-output-index"
                   },
                   "item_id": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/wireID",
-                    "name": "target-item"
+                    "op": "ref",
+                    "ref": "read-target-wire-id"
                   },
                   "summary_index": {
                     "op": "read",
@@ -15336,22 +15232,16 @@
                       "value": "response.reasoning_text.done"
                     },
                     "response_id": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "response-id"
+                      "op": "ref",
+                      "ref": "read-response-id"
                     },
                     "output_index": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/outputIndex",
-                      "name": "target-item"
+                      "op": "ref",
+                      "ref": "read-target-output-index"
                     },
                     "item_id": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/wireID",
-                      "name": "target-item"
+                      "op": "ref",
+                      "ref": "read-target-wire-id"
                     },
                     "content_index": {
                       "op": "read",
@@ -15379,22 +15269,16 @@
                         "value": "response.refusal.done"
                       },
                       "response_id": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "response-id"
+                        "op": "ref",
+                        "ref": "read-response-id"
                       },
                       "output_index": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/outputIndex",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-output-index"
                       },
                       "item_id": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/wireID",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-wire-id"
                       },
                       "content_index": {
                         "op": "read",
@@ -15416,22 +15300,16 @@
                         "value": "response.output_text.done"
                       },
                       "response_id": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "response-id"
+                        "op": "ref",
+                        "ref": "read-response-id"
                       },
                       "output_index": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/outputIndex",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-output-index"
                       },
                       "item_id": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/wireID",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-wire-id"
                       },
                       "content_index": {
                         "op": "read",
@@ -15455,10 +15333,8 @@
                           "op": "buffer_array",
                           "name": "logprobs",
                           "source": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/key",
-                            "name": "target-item"
+                            "op": "ref",
+                            "ref": "read-target-item-key"
                           },
                           "operation": "read"
                         }
@@ -15487,22 +15363,16 @@
                     "value": "response.reasoning_summary_part.done"
                   },
                   "response_id": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "response-id"
+                    "op": "ref",
+                    "ref": "read-response-id"
                   },
                   "output_index": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/outputIndex",
-                    "name": "target-item"
+                    "op": "ref",
+                    "ref": "read-target-output-index"
                   },
                   "item_id": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/wireID",
-                    "name": "target-item"
+                    "op": "ref",
+                    "ref": "read-target-wire-id"
                   },
                   "summary_index": {
                     "op": "read",
@@ -15524,22 +15394,16 @@
                     "value": "response.content_part.done"
                   },
                   "response_id": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "response-id"
+                    "op": "ref",
+                    "ref": "read-response-id"
                   },
                   "output_index": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/outputIndex",
-                    "name": "target-item"
+                    "op": "ref",
+                    "ref": "read-target-output-index"
                   },
                   "item_id": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/wireID",
-                    "name": "target-item"
+                    "op": "ref",
+                    "ref": "read-target-wire-id"
                   },
                   "content_index": {
                     "op": "read",
@@ -15630,22 +15494,16 @@
                             "value": "response.custom_tool_call_input.done"
                           },
                           "response_id": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "response-id"
+                            "op": "ref",
+                            "ref": "read-response-id"
                           },
                           "output_index": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/outputIndex",
-                            "name": "target-item"
+                            "op": "ref",
+                            "ref": "read-target-output-index"
                           },
                           "item_id": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/wireID",
-                            "name": "target-item"
+                            "op": "ref",
+                            "ref": "read-target-wire-id"
                           },
                           "input": {
                             "op": "ref",
@@ -15661,22 +15519,16 @@
                             "value": "response.function_call_arguments.done"
                           },
                           "response_id": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "response-id"
+                            "op": "ref",
+                            "ref": "read-response-id"
                           },
                           "output_index": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/outputIndex",
-                            "name": "target-item"
+                            "op": "ref",
+                            "ref": "read-target-output-index"
                           },
                           "item_id": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/wireID",
-                            "name": "target-item"
+                            "op": "ref",
+                            "ref": "read-target-wire-id"
                           },
                           "arguments": {
                             "op": "ref",
@@ -15729,16 +15581,12 @@
                         "value": "response.output_item.done"
                       },
                       "response_id": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "response-id"
+                        "op": "ref",
+                        "ref": "read-response-id"
                       },
                       "output_index": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/outputIndex",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-output-index"
                       },
                       "item": {
                         "op": "ref",
@@ -16063,10 +15911,8 @@
                     "op": "equal",
                     "items": [
                       {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/outputIndex",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-output-index"
                       },
                       {
                         "op": "read",
@@ -16379,10 +16225,8 @@
                 "op": "object",
                 "fields": {
                   "id": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "response-id"
+                    "op": "ref",
+                    "ref": "read-response-id"
                   },
                   "object": {
                     "op": "literal",
@@ -16647,10 +16491,8 @@
                   "op": "recall",
                   "name": "targetItems",
                   "source": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/key",
-                    "name": "target-item"
+                    "op": "ref",
+                    "ref": "read-target-item-key"
                   },
                   "policy": "reject"
                 },
@@ -16849,10 +16691,8 @@
               "op": "buffer_array",
               "name": "annotations",
               "source": {
-                "op": "read",
-                "from": "binding",
-                "path": "/key",
-                "name": "target-item"
+                "op": "ref",
+                "ref": "read-target-item-key"
               },
               "operation": "length"
             },
@@ -16883,22 +16723,16 @@
                 "value": "response.output_text.annotation.added"
               },
               "response_id": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "response-id"
+                "op": "ref",
+                "ref": "read-response-id"
               },
               "output_index": {
-                "op": "read",
-                "from": "binding",
-                "path": "/outputIndex",
-                "name": "target-item"
+                "op": "ref",
+                "ref": "read-target-output-index"
               },
               "item_id": {
-                "op": "read",
-                "from": "binding",
-                "path": "/wireID",
-                "name": "target-item"
+                "op": "ref",
+                "ref": "read-target-wire-id"
               },
               "content_index": {
                 "op": "read",
@@ -17848,16 +17682,12 @@
                     "value": "response.output_item.added"
                   },
                   "response_id": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "response-id"
+                    "op": "ref",
+                    "ref": "read-response-id"
                   },
                   "output_index": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/outputIndex",
-                    "name": "target-item"
+                    "op": "ref",
+                    "ref": "read-target-output-index"
                   },
                   "item": {
                     "op": "merge",
@@ -22490,10 +22320,8 @@
           "op": "buffer_text",
           "name": "body",
           "source": {
-            "op": "read",
-            "from": "binding",
-            "path": "/key",
-            "name": "target-item"
+            "op": "ref",
+            "ref": "read-target-item-key"
           },
           "operation": "append",
           "body": {
@@ -22518,10 +22346,8 @@
             "op": "buffer_text",
             "name": "body",
             "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "/key",
-              "name": "target-item"
+              "op": "ref",
+              "ref": "read-target-item-key"
             },
             "operation": "snapshot",
             "body": {
@@ -22681,10 +22507,8 @@
           "op": "remember",
           "name": "targetItems",
           "source": {
-            "op": "read",
-            "from": "binding",
-            "path": "/key",
-            "name": "target-item"
+            "op": "ref",
+            "ref": "read-target-item-key"
           },
           "body": {
             "op": "merge",
@@ -22719,22 +22543,16 @@
                   "value": "response.code_interpreter_call_code.done"
                 },
                 "response_id": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "",
-                  "name": "response-id"
+                  "op": "ref",
+                  "ref": "read-response-id"
                 },
                 "output_index": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/outputIndex",
-                  "name": "target-item"
+                  "op": "ref",
+                  "ref": "read-target-output-index"
                 },
                 "item_id": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/wireID",
-                  "name": "target-item"
+                  "op": "ref",
+                  "ref": "read-target-wire-id"
                 },
                 "code": {
                   "op": "ref",
@@ -22784,22 +22602,16 @@
                     "value": "response.code_interpreter_call_code.delta"
                   },
                   "response_id": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "response-id"
+                    "op": "ref",
+                    "ref": "read-response-id"
                   },
                   "output_index": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/outputIndex",
-                    "name": "target-item"
+                    "op": "ref",
+                    "ref": "read-target-output-index"
                   },
                   "item_id": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/wireID",
-                    "name": "target-item"
+                    "op": "ref",
+                    "ref": "read-target-wire-id"
                   },
                   "delta": {
                     "op": "read",
@@ -22851,22 +22663,16 @@
                         "value": "unused"
                       },
                       "response_id": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "response-id"
+                        "op": "ref",
+                        "ref": "read-response-id"
                       },
                       "output_index": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/outputIndex",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-output-index"
                       },
                       "item_id": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/wireID",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-wire-id"
                       }
                     }
                   },
@@ -22910,22 +22716,16 @@
                     "value": "response.image_generation_call.partial_image"
                   },
                   "response_id": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "response-id"
+                    "op": "ref",
+                    "ref": "read-response-id"
                   },
                   "output_index": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/outputIndex",
-                    "name": "target-item"
+                    "op": "ref",
+                    "ref": "read-target-output-index"
                   },
                   "item_id": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/wireID",
-                    "name": "target-item"
+                    "op": "ref",
+                    "ref": "read-target-wire-id"
                   },
                   "partial_image_index": {
                     "op": "read",
@@ -23339,10 +23139,8 @@
                     "op": "buffer_array",
                     "name": "annotations",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/key",
-                      "name": "target-item"
+                      "op": "ref",
+                      "ref": "read-target-item-key"
                     },
                     "operation": "read"
                   }
@@ -23359,10 +23157,8 @@
                     "op": "buffer_array",
                     "name": "logprobs",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/key",
-                      "name": "target-item"
+                      "op": "ref",
+                      "ref": "read-target-item-key"
                     },
                     "operation": "read"
                   }
@@ -23921,10 +23717,8 @@
       "op": "buffer_text",
       "name": "body",
       "source": {
-        "op": "read",
-        "from": "binding",
-        "path": "/key",
-        "name": "target-item"
+        "op": "ref",
+        "ref": "read-target-item-key"
       },
       "operation": "read"
     },
@@ -25773,6 +25567,113 @@
           }
         }
       ]
+    },
+    "read-usage-path": {
+      "op": "read",
+      "from": "binding",
+      "name": "usage-path",
+      "path": ""
+    },
+    "read-target-item-key": {
+      "op": "read",
+      "from": "binding",
+      "name": "target-item",
+      "path": "/key"
+    },
+    "read-response-id": {
+      "op": "read",
+      "from": "binding",
+      "name": "response-id",
+      "path": ""
+    },
+    "read-bound-model": {
+      "op": "read",
+      "from": "binding",
+      "name": "model",
+      "path": ""
+    },
+    "read-target-output-index": {
+      "op": "read",
+      "from": "binding",
+      "name": "target-item",
+      "path": "/outputIndex"
+    },
+    "read-target-wire-id": {
+      "op": "read",
+      "from": "binding",
+      "name": "target-item",
+      "path": "/wireID"
+    },
+    "request-tracking-object-valid": {
+      "op": "if",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/parameters/anthropic_metadata"
+        }
+      },
+      "then": {
+        "op": "if",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/anthropic_metadata"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "object"
+            }
+          ]
+        },
+        "then": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/anthropic_metadata/user_id"
+            }
+          },
+          "then": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "type",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/anthropic_metadata/user_id"
+                }
+              },
+              {
+                "op": "literal",
+                "value": "string"
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": true
+          }
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": true
+      }
     }
   },
   "directions": {
@@ -26036,6 +25937,23 @@
         }
       },
       "effects": [
+        {
+          "id": "invalid-tracking-metadata",
+          "kind": "reject",
+          "path": "/parameters/anthropic_metadata",
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "ref",
+              "ref": "request-tracking-object-valid"
+            }
+          },
+          "reason": "tracking metadata must be an object or null",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "evaluate"
+          }
+        },
         {
           "id": "model",
           "kind": "emit",
@@ -29576,10 +29494,8 @@
                                       "value": "error"
                                     },
                                     "response_id": {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "",
-                                      "name": "response-id"
+                                      "op": "ref",
+                                      "ref": "read-response-id"
                                     },
                                     "error": {
                                       "op": "read",
@@ -29602,10 +29518,8 @@
                                       "value": "error"
                                     },
                                     "response_id": {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "",
-                                      "name": "response-id"
+                                      "op": "ref",
+                                      "ref": "read-response-id"
                                     },
                                     "error": {
                                       "op": "object",
@@ -37506,20 +37420,16 @@
             {
               "op": "contains",
               "source": {
-                "op": "read",
-                "from": "binding",
-                "name": "model",
-                "path": ""
+                "op": "ref",
+                "ref": "read-bound-model"
               },
               "value": "pro"
             },
             {
               "op": "contains",
               "source": {
-                "op": "read",
-                "from": "binding",
-                "name": "model",
-                "path": ""
+                "op": "ref",
+                "ref": "read-bound-model"
               },
               "value": "codex"
             }
@@ -37542,10 +37452,8 @@
                 {
                   "op": "type",
                   "source": {
-                    "op": "read",
-                    "from": "binding",
-                    "name": "model",
-                    "path": ""
+                    "op": "ref",
+                    "ref": "read-bound-model"
                   }
                 },
                 {
@@ -37557,10 +37465,8 @@
             "then": {
               "op": "enum",
               "source": {
-                "op": "read",
-                "from": "binding",
-                "name": "model",
-                "path": ""
+                "op": "ref",
+                "ref": "read-bound-model"
               },
               "values": {
                 "gpt-4o": true,
@@ -37600,10 +37506,8 @@
                   "op": "equal",
                   "items": [
                     {
-                      "op": "read",
-                      "from": "binding",
-                      "name": "model",
-                      "path": ""
+                      "op": "ref",
+                      "ref": "read-bound-model"
                     },
                     {
                       "op": "literal",
@@ -37617,50 +37521,40 @@
                     {
                       "op": "has_prefix",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "name": "model",
-                        "path": ""
+                        "op": "ref",
+                        "ref": "read-bound-model"
                       },
                       "value": "gpt-5.6-sol"
                     },
                     {
                       "op": "has_prefix",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "name": "model",
-                        "path": ""
+                        "op": "ref",
+                        "ref": "read-bound-model"
                       },
                       "value": "gpt-6.1-sol"
                     },
                     {
                       "op": "has_prefix",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "name": "model",
-                        "path": ""
+                        "op": "ref",
+                        "ref": "read-bound-model"
                       },
                       "value": "gpt-6-astra"
                     },
                     {
                       "op": "has_prefix",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "name": "model",
-                        "path": ""
+                        "op": "ref",
+                        "ref": "read-bound-model"
                       },
                       "value": "gpt-6-sol"
                     },
                     {
                       "op": "has_prefix",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "name": "model",
-                        "path": ""
+                        "op": "ref",
+                        "ref": "read-bound-model"
                       },
                       "value": "gpt-6-luna"
                     }
@@ -37677,10 +37571,8 @@
                     "op": "equal",
                     "items": [
                       {
-                        "op": "read",
-                        "from": "binding",
-                        "name": "model",
-                        "path": ""
+                        "op": "ref",
+                        "ref": "read-bound-model"
                       },
                       {
                         "op": "literal",
@@ -37694,30 +37586,24 @@
                       {
                         "op": "has_prefix",
                         "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "name": "model",
-                          "path": ""
+                          "op": "ref",
+                          "ref": "read-bound-model"
                         },
                         "value": "gpt-5.6-sol"
                       },
                       {
                         "op": "has_prefix",
                         "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "name": "model",
-                          "path": ""
+                          "op": "ref",
+                          "ref": "read-bound-model"
                         },
                         "value": "gpt-6-sol"
                       },
                       {
                         "op": "has_prefix",
                         "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "name": "model",
-                          "path": ""
+                          "op": "ref",
+                          "ref": "read-bound-model"
                         },
                         "value": "gpt-6-luna"
                       }
@@ -37771,10 +37657,8 @@
                     "op": "equal",
                     "items": [
                       {
-                        "op": "read",
-                        "from": "binding",
-                        "name": "model",
-                        "path": ""
+                        "op": "ref",
+                        "ref": "read-bound-model"
                       },
                       {
                         "op": "literal",
@@ -37788,50 +37672,40 @@
                       {
                         "op": "has_prefix",
                         "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "name": "model",
-                          "path": ""
+                          "op": "ref",
+                          "ref": "read-bound-model"
                         },
                         "value": "gpt-5.1"
                       },
                       {
                         "op": "has_prefix",
                         "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "name": "model",
-                          "path": ""
+                          "op": "ref",
+                          "ref": "read-bound-model"
                         },
                         "value": "gpt-5.2"
                       },
                       {
                         "op": "has_prefix",
                         "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "name": "model",
-                          "path": ""
+                          "op": "ref",
+                          "ref": "read-bound-model"
                         },
                         "value": "gpt-5.4"
                       },
                       {
                         "op": "has_prefix",
                         "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "name": "model",
-                          "path": ""
+                          "op": "ref",
+                          "ref": "read-bound-model"
                         },
                         "value": "gpt-5.5"
                       },
                       {
                         "op": "has_prefix",
                         "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "name": "model",
-                          "path": ""
+                          "op": "ref",
+                          "ref": "read-bound-model"
                         },
                         "value": "gpt-5-"
                       }
@@ -37844,10 +37718,8 @@
                 "when": {
                   "op": "has_prefix",
                   "source": {
-                    "op": "read",
-                    "from": "binding",
-                    "name": "model",
-                    "path": ""
+                    "op": "ref",
+                    "ref": "read-bound-model"
                   },
                   "value": "gpt-5.5"
                 },
@@ -37875,20 +37747,16 @@
                       {
                         "op": "has_prefix",
                         "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "name": "model",
-                          "path": ""
+                          "op": "ref",
+                          "ref": "read-bound-model"
                         },
                         "value": "gpt-5.2"
                       },
                       {
                         "op": "has_prefix",
                         "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "name": "model",
-                          "path": ""
+                          "op": "ref",
+                          "ref": "read-bound-model"
                         },
                         "value": "gpt-5.4"
                       }
@@ -37915,10 +37783,8 @@
                     "when": {
                       "op": "has_prefix",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "name": "model",
-                        "path": ""
+                        "op": "ref",
+                        "ref": "read-bound-model"
                       },
                       "value": "gpt-5."
                     },
@@ -37964,30 +37830,24 @@
                     {
                       "op": "has_prefix",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "name": "model",
-                        "path": ""
+                        "op": "ref",
+                        "ref": "read-bound-model"
                       },
                       "value": "o1"
                     },
                     {
                       "op": "has_prefix",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "name": "model",
-                        "path": ""
+                        "op": "ref",
+                        "ref": "read-bound-model"
                       },
                       "value": "o3"
                     },
                     {
                       "op": "has_prefix",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "name": "model",
-                        "path": ""
+                        "op": "ref",
+                        "ref": "read-bound-model"
                       },
                       "value": "o4"
                     }
@@ -42142,10 +42002,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42183,10 +42041,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42224,10 +42080,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42265,10 +42119,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42306,10 +42158,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42347,10 +42197,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42388,10 +42236,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42429,10 +42275,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42470,10 +42314,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42511,10 +42353,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42552,10 +42392,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42593,10 +42431,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42634,10 +42470,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42675,10 +42509,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42716,10 +42548,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42757,10 +42587,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42798,10 +42626,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42855,10 +42681,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42896,10 +42720,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42937,10 +42759,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -42978,10 +42798,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -43019,10 +42837,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -43060,10 +42876,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -43101,10 +42915,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -43142,10 +42954,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -43183,10 +42993,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -43224,10 +43032,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -43265,10 +43071,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -43306,10 +43110,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -43347,10 +43149,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -43388,10 +43188,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -43429,10 +43227,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -43470,10 +43266,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {
@@ -43511,10 +43305,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "usage-path"
+                      "op": "ref",
+                      "ref": "read-usage-path"
                     },
                     "items": [
                       {

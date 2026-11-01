@@ -152,6 +152,12 @@
               "ref": "continuation-item"
             }
           ]
+        },
+        {
+          "ref": "request-tracking"
+        },
+        {
+          "ref": "request-context"
         }
       ]
     },
@@ -163,6 +169,12 @@
       "assertions": [
         {
           "ref": "function-tool-options"
+        },
+        {
+          "ref": "request-tracking"
+        },
+        {
+          "ref": "request-context"
         }
       ]
     },
@@ -2236,17 +2248,7 @@
       },
       "assertions": [
         {
-          "path": "",
-          "schema": {
-            "type": "object",
-            "allowUnknown": true
-          },
-          "code": "conversion_rejected",
-          "reason": "wire contract requires an object",
-          "diagnostic": {
-            "code": "conversion_rejected",
-            "stage": "wire.output"
-          }
+          "ref": "output-object"
         },
         {
           "path": "/error",
@@ -2311,21 +2313,8 @@
             "stage": "wire.output"
           },
           "check": {
-            "op": "not",
-            "source": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                },
-                {
-                  "op": "literal",
-                  "value": ""
-                }
-              ]
-            }
+            "op": "ref",
+            "ref": "is-nonempty-text"
           },
           "when": {
             "op": "ref",
@@ -2344,21 +2333,8 @@
             "stage": "wire.output"
           },
           "check": {
-            "op": "not",
-            "source": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                },
-                {
-                  "op": "literal",
-                  "value": ""
-                }
-              ]
-            }
+            "op": "ref",
+            "ref": "is-nonempty-text"
           },
           "when": {
             "op": "ref",
@@ -2377,21 +2353,8 @@
             "stage": "wire.output"
           },
           "check": {
-            "op": "not",
-            "source": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                },
-                {
-                  "op": "literal",
-                  "value": ""
-                }
-              ]
-            }
+            "op": "ref",
+            "ref": "is-nonempty-text"
           },
           "when": {
             "op": "ref",
@@ -2410,21 +2373,8 @@
             "stage": "wire.output"
           },
           "check": {
-            "op": "not",
-            "source": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                },
-                {
-                  "op": "literal",
-                  "value": ""
-                }
-              ]
-            }
+            "op": "ref",
+            "ref": "is-nonempty-text"
           },
           "when": {
             "op": "ref",
@@ -2464,17 +2414,7 @@
           },
           "each": [
             {
-              "path": "",
-              "schema": {
-                "type": "object",
-                "allowUnknown": true
-              },
-              "code": "conversion_rejected",
-              "reason": "wire contract requires an object",
-              "diagnostic": {
-                "code": "conversion_rejected",
-                "stage": "wire.output"
-              }
+              "ref": "output-object"
             },
             {
               "path": "/id",
@@ -2488,21 +2428,8 @@
                 "stage": "wire.output"
               },
               "check": {
-                "op": "not",
-                "source": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "input",
-                      "path": ""
-                    },
-                    {
-                      "op": "literal",
-                      "value": ""
-                    }
-                  ]
-                }
+                "op": "ref",
+                "ref": "is-nonempty-text"
               }
             },
             {
@@ -2522,17 +2449,7 @@
               },
               "each": [
                 {
-                  "path": "",
-                  "schema": {
-                    "type": "object",
-                    "allowUnknown": true
-                  },
-                  "code": "conversion_rejected",
-                  "reason": "wire contract requires an object",
-                  "diagnostic": {
-                    "code": "conversion_rejected",
-                    "stage": "wire.output"
-                  }
+                  "ref": "output-object"
                 },
                 {
                   "path": "/type",
@@ -2604,17 +2521,7 @@
               },
               "each": [
                 {
-                  "path": "",
-                  "schema": {
-                    "type": "object",
-                    "allowUnknown": true
-                  },
-                  "code": "conversion_rejected",
-                  "reason": "wire contract requires an object",
-                  "diagnostic": {
-                    "code": "conversion_rejected",
-                    "stage": "wire.output"
-                  }
+                  "ref": "output-object"
                 },
                 {
                   "path": "/type",
@@ -2732,21 +2639,8 @@
                 "stage": "wire.output"
               },
               "check": {
-                "op": "not",
-                "source": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "input",
-                      "path": ""
-                    },
-                    {
-                      "op": "literal",
-                      "value": ""
-                    }
-                  ]
-                }
+                "op": "ref",
+                "ref": "is-nonempty-text"
               },
               "when": {
                 "op": "ref",
@@ -2770,17 +2664,7 @@
               },
               "each": [
                 {
-                  "path": "",
-                  "schema": {
-                    "type": "object",
-                    "allowUnknown": true
-                  },
-                  "code": "conversion_rejected",
-                  "reason": "wire contract requires an object",
-                  "diagnostic": {
-                    "code": "conversion_rejected",
-                    "stage": "wire.output"
-                  }
+                  "ref": "output-object"
                 },
                 {
                   "path": "/text",
@@ -2894,17 +2778,7 @@
       },
       "assertions": [
         {
-          "path": "",
-          "schema": {
-            "type": "object",
-            "allowUnknown": true
-          },
-          "code": "conversion_rejected",
-          "reason": "wire contract requires an object",
-          "diagnostic": {
-            "code": "conversion_rejected",
-            "stage": "wire.output"
-          }
+          "ref": "output-object"
         },
         {
           "path": "/model",
@@ -2918,21 +2792,8 @@
             "stage": "wire.output"
           },
           "check": {
-            "op": "not",
-            "source": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                },
-                {
-                  "op": "literal",
-                  "value": ""
-                }
-              ]
-            }
+            "op": "ref",
+            "ref": "is-nonempty-text"
           }
         },
         {
@@ -2997,17 +2858,7 @@
           },
           "each": [
             {
-              "path": "",
-              "schema": {
-                "type": "object",
-                "allowUnknown": true
-              },
-              "code": "conversion_rejected",
-              "reason": "wire contract requires an object",
-              "diagnostic": {
-                "code": "conversion_rejected",
-                "stage": "wire.output"
-              }
+              "ref": "output-object"
             },
             {
               "path": "/role",
@@ -3203,6 +3054,12 @@
         },
         {
           "ref": "function-tool-options"
+        },
+        {
+          "ref": "request-tracking"
+        },
+        {
+          "ref": "request-context"
         }
       ]
     },
@@ -8909,21 +8766,8 @@
                     }
                   },
                   "check": {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": ""
-                        },
-                        {
-                          "op": "literal",
-                          "value": ""
-                        }
-                      ]
-                    }
+                    "op": "ref",
+                    "ref": "is-nonempty-text"
                   }
                 },
                 {
@@ -9280,16 +9124,7 @@
               "action": "assert",
               "assertions": [
                 {
-                  "path": "/output_index",
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "stream index must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
+                  "ref": "output-index"
                 },
                 {
                   "path": "/summary_index",
@@ -9328,16 +9163,7 @@
               "action": "assert",
               "assertions": [
                 {
-                  "path": "/output_index",
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "stream index must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
+                  "ref": "output-index"
                 },
                 {
                   "path": "/summary_index",
@@ -9423,16 +9249,7 @@
               "action": "assert",
               "assertions": [
                 {
-                  "path": "/output_index",
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "stream index must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
+                  "ref": "output-index"
                 },
                 {
                   "path": "/content_index",
@@ -9471,16 +9288,7 @@
               "action": "assert",
               "assertions": [
                 {
-                  "path": "/output_index",
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "stream index must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
+                  "ref": "output-index"
                 },
                 {
                   "path": "/content_index",
@@ -10669,21 +10477,8 @@
                     "type": "string"
                   },
                   "check": {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": ""
-                        },
-                        {
-                          "op": "literal",
-                          "value": ""
-                        }
-                      ]
-                    }
+                    "op": "ref",
+                    "ref": "is-nonempty-text"
                   }
                 },
                 {
@@ -13093,6 +12888,66 @@
           "value": "reasoning"
         }
       ]
+    },
+    "is-nonempty-text": {
+      "op": "not",
+      "source": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "read",
+            "from": "input",
+            "path": ""
+          },
+          {
+            "op": "literal",
+            "value": ""
+          }
+        ]
+      }
+    },
+    "has-string-metadata-values": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "length",
+          "source": {
+            "op": "filter",
+            "source": {
+              "op": "entries",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "type",
+                    "source": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/value"
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "literal",
+          "value": 0
+        }
+      ]
     }
   },
   "constraints": {
@@ -14295,16 +14150,7 @@
     ],
     "reasoning-summary-part": [
       {
-        "path": "/output_index",
-        "schema": {
-          "type": "integer"
-        },
-        "code": "upstream_contract_violation",
-        "reason": "stream index must be a nonnegative integer",
-        "check": {
-          "op": "ref",
-          "ref": "is-nonnegative-count"
-        }
+        "ref": "output-index"
       },
       {
         "path": "/summary_index",
@@ -14508,6 +14354,158 @@
         ],
         "code": "invalid_input",
         "reason": "tool declarations require an array"
+      }
+    ],
+    "output-object": [
+      {
+        "path": "",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        },
+        "code": "conversion_rejected",
+        "reason": "wire contract requires an object",
+        "diagnostic": {
+          "code": "conversion_rejected",
+          "stage": "wire.output"
+        }
+      }
+    ],
+    "output-index": [
+      {
+        "path": "/output_index",
+        "schema": {
+          "type": "integer"
+        },
+        "code": "upstream_contract_violation",
+        "reason": "stream index must be a nonnegative integer",
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-count"
+        }
+      }
+    ],
+    "request-tracking": [
+      {
+        "path": "/metadata",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/metadata"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "nullable": true,
+          "allowUnknown": true
+        },
+        "reason": "metadata must be an object of strings or null",
+        "check": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": null
+              }
+            ]
+          },
+          "then": {
+            "op": "literal",
+            "value": true
+          },
+          "otherwise": {
+            "op": "ref",
+            "ref": "has-string-metadata-values"
+          }
+        }
+      },
+      {
+        "path": "/user",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/user"
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "reason": "user must be a string or null"
+      }
+    ],
+    "request-context": [
+      {
+        "path": "/truncation",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/truncation"
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true,
+          "enum": [
+            "auto",
+            "disabled"
+          ]
+        },
+        "reason": "truncation must be auto, disabled or null"
+      },
+      {
+        "path": "/previous_response_id",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/previous_response_id"
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "reason": "previous_response_id must be a nonempty string or null",
+        "check": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": null
+              }
+            ]
+          },
+          "then": {
+            "op": "literal",
+            "value": true
+          },
+          "otherwise": {
+            "op": "ref",
+            "ref": "is-nonempty-text"
+          }
+        }
       }
     ]
   }

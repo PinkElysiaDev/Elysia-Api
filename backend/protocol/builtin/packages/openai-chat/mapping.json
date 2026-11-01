@@ -28117,8 +28117,79 @@
                         "op": "literal",
                         "value": true
                       }
+    },
+    "request-tracking-object-valid": {
+      "op": "if",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/parameters/anthropic_metadata"
+        }
+      },
+      "then": {
+        "op": "if",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/anthropic_metadata"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "object"
+            }
+          ]
+        },
+        "then": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/anthropic_metadata/user_id"
+            }
+          },
+          "then": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "type",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/parameters/anthropic_metadata/user_id"
+                }
+              },
+              {
+                "op": "literal",
+                "value": "string"
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": true
+          }
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": true
+      }
     }
-},
+  },
   "directions": {
     "decode_request": {
       "document": "request",
@@ -28244,6 +28315,23 @@
         }
       },
       "effects": [
+        {
+          "id": "invalid-tracking-metadata",
+          "kind": "reject",
+          "path": "/parameters/anthropic_metadata",
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "ref",
+              "ref": "request-tracking-object-valid"
+            }
+          },
+          "reason": "tracking metadata must be an object or null",
+          "diagnostic": {
+            "code": "invalid_input",
+            "stage": "evaluate"
+          }
+        },
         {
           "id": "unresolved-reasoning-controls",
           "kind": "reject",

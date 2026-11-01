@@ -699,6 +699,9 @@
               ]
             }
           ]
+        },
+        {
+          "ref": "request-tracking"
         }
       ]
     },
@@ -1093,6 +1096,9 @@
         },
         {
           "ref": "function-tool-options"
+        },
+        {
+          "ref": "request-tracking"
         }
       ]
     },
@@ -6805,6 +6811,9 @@
         },
         {
           "ref": "function-tool-options"
+        },
+        {
+          "ref": "request-tracking"
         }
       ]
     }
@@ -7488,6 +7497,56 @@
         ],
         "code": "invalid_input",
         "reason": "tool declarations require an array"
+      }
+    ],
+    "request-tracking": [
+      {
+        "path": "/metadata",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/metadata"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "nullable": true,
+          "allowUnknown": true
+        },
+        "reason": "metadata must be an object or null"
+      },
+      {
+        "path": "/metadata/user_id",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/metadata"
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/metadata/user_id"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "reason": "metadata user_id must be a string or null"
       }
     ]
   }

@@ -278,6 +278,9 @@
               }
             ]
           }
+        },
+        {
+          "ref": "request-safety"
         }
       ]
     },
@@ -285,7 +288,12 @@
       "schema": {
         "type": "object",
         "allowUnknown": true
-      }
+      },
+      "assertions": [
+        {
+          "ref": "request-safety"
+        }
+      ]
     },
     "provider-response": {
       "schema": {
@@ -941,6 +949,9 @@
             "op": "ref",
             "ref": "request-tool-links"
           }
+        },
+        {
+          "ref": "request-safety"
         }
       ]
     },
@@ -5135,6 +5146,112 @@
         "ref": "request-tool-records"
       },
       "policy": "unique_group"
+    },
+    "has-unique-safety-categories": {
+      "op": "let",
+      "name": "categories",
+      "source": {
+        "op": "associate",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": ""
+        },
+        "key": "/category"
+      },
+      "body": {
+        "op": "literal",
+        "value": true
+      }
     }
+  },
+  "constraints": {
+    "request-safety": [
+      {
+        "path": "/safetySettings",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/safetySettings"
+          }
+        },
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "allowUnknown": true
+          }
+        },
+        "reason": "safetySettings requires one setting per category",
+        "each": [
+          {
+            "path": "/category",
+            "schema": {
+              "type": "string"
+            },
+            "reason": "safety setting requires a nonempty string",
+            "check": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": ""
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "path": "/threshold",
+            "schema": {
+              "type": "string"
+            },
+            "reason": "safety setting requires a nonempty string",
+            "check": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": ""
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "path": "/safetySettings",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/safetySettings"
+          }
+        },
+        "check": {
+          "op": "ref",
+          "ref": "has-unique-safety-categories"
+        },
+        "reason": "only one safety setting is allowed per category"
+      }
+    ]
   }
 }
