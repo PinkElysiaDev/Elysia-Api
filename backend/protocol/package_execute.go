@@ -107,7 +107,7 @@ func (compiled *Compiled) checkPackageEffects(direction Direction, state evaluat
 				}
 				continue
 			}
-			if err := checkPackageAggregateInput(state, value); err != nil {
+			if err := checkPackageAggregateInput(state, value, effect); err != nil {
 				return compiled.packageEffectError(direction, effect, "aggregate input violates its core owner contract", err)
 			}
 		}

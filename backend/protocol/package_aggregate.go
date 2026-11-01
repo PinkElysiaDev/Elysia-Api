@@ -2,30 +2,123 @@ package protocol
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 )
 
-// The first aggregate contract is a single request cache owner. Its variant
-// labels belong to the core vocabulary; wire member names remain authored data.
-func validatePackageAggregateLayout(direction Direction, core []string, layout *ProtocolAggregateLayout) error {
-	if layout == nil {
-		return fmt.Errorf("aggregate requires an explicit layout")
-	}
-	if (direction != DecodeRequest && direction != EncodeRequest) || !slices.Equal(core, []string{"cache", "0"}) ||
-		layout.Remainder != "value" || len(layout.Fields) != 1 || len(layout.Labels) != 2 ||
-		!layout.Labels["kind"].IsString("breakpoint") || !layout.Labels["location"].IsString("request") {
-		return fmt.Errorf("unsupported core aggregate layout")
-	}
-	for _, member := range layout.Fields {
-		if member != "ttl" {
-			return fmt.Errorf("unsupported core aggregate field")
-		}
-	}
-	return nil
+type compiledAggregateLayout struct {
+	remainder string
+	fields    []aggregateField
+	labels    []aggregateLabel
+	members   map[string]bool
+	nextOwner []string
 }
 
-func provesPackageAggregate(program *compiledExpression, direction Direction, effect compiledSemanticEffect) bool {
+type aggregateField struct{ wire, core string }
+type aggregateLabel struct {
+	name  string
+	value Value
+}
+
+func compilePackageAggregateLayout(direction Direction, core []string, layout *ProtocolAggregateLayout) (*compiledAggregateLayout, error) {
+	if layout == nil || (direction != DecodeRequest && direction != EncodeRequest) || len(core) == 0 || core[0] == "schemaVersion" || isProtectedAggregateField(core[0]) {
+		return nil, fmt.Errorf("aggregate requires a request semantic owner and an explicit layout")
+	}
+	owner := aggregateOwnerType(reflect.TypeFor[Request](), core)
+	if owner == nil || owner.Kind() != reflect.Struct || owner == reflect.TypeFor[Value]() {
+		return nil, fmt.Errorf("aggregate owner requires a declared core object")
+	}
+	compiled := &compiledAggregateLayout{remainder: layout.Remainder, members: make(map[string]bool)}
+	if index, err := strconv.Atoi(core[len(core)-1]); err == nil {
+		compiled.nextOwner = slices.Clone(core)
+		compiled.nextOwner[len(core)-1] = strconv.Itoa(index + 1)
+	}
+	members := make(map[string]reflect.Type)
+	for index := range owner.NumField() {
+		field := owner.Field(index)
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if field.IsExported() && name != "" && name != "-" {
+			members[name] = field.Type
+			compiled.members[name] = false
+		}
+	}
+	if members[layout.Remainder] != reflect.TypeFor[Value]() {
+		return nil, fmt.Errorf("aggregate remainder requires a core Value field")
+	}
+	compiled.members[layout.Remainder] = true
+	seen := map[string]bool{layout.Remainder: true}
+	for _, wire := range sortedKeys(layout.Fields) {
+		member := layout.Fields[wire]
+		if wire == "" || seen[member] || members[member] != reflect.TypeFor[Value]() {
+			return nil, fmt.Errorf("aggregate fields require distinct declared Value members")
+		}
+		seen[member] = true
+		compiled.members[member] = true
+		compiled.fields = append(compiled.fields, aggregateField{wire: wire, core: member})
+	}
+	for _, name := range sortedKeys(layout.Labels) {
+		label := layout.Labels[name]
+		kind := members[name]
+		if seen[name] || kind == nil || label.IsZero() || label.IsNull() || !slices.Contains([]reflect.Kind{reflect.String, reflect.Bool, reflect.Int, reflect.Int64}, kind.Kind()) {
+			return nil, fmt.Errorf("aggregate labels require distinct declared scalar members")
+		}
+		if err := label.Decode(reflect.New(kind).Interface()); err != nil {
+			return nil, fmt.Errorf("aggregate label conflicts with its core type: %w", err)
+		}
+		seen[name] = true
+		compiled.members[name] = true
+		compiled.labels = append(compiled.labels, aggregateLabel{name: name, value: label})
+	}
+	return compiled, nil
+}
+
+func aggregateOwnerType(root reflect.Type, pointer []string) reflect.Type {
+	for _, key := range pointer {
+		for root.Kind() == reflect.Pointer {
+			root = root.Elem()
+		}
+		switch root.Kind() {
+		case reflect.Slice:
+			index, err := strconv.Atoi(key)
+			if err != nil || index < 0 || strconv.Itoa(index) != key {
+				return nil
+			}
+			root = root.Elem()
+		case reflect.Struct:
+			var selected reflect.Type
+			for index := range root.NumField() {
+				field := root.Field(index)
+				name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+				if field.IsExported() && name == key && !isProtectedAggregateField(name) {
+					selected = field.Type
+					break
+				}
+			}
+			if selected == nil {
+				return nil
+			}
+			root = selected
+		default:
+			return nil
+		}
+	}
+	for root.Kind() == reflect.Pointer {
+		root = root.Elem()
+	}
+	return root
+}
+
+func isProtectedAggregateField(name string) bool {
+	switch name {
+	case "source", "native", "resource", "resources", "clientOutput":
+		return true
+	}
+	return false
+}
+
+func provesPackageAggregate(program *compiledExpression, direction Direction, effect compiledSemanticEffect, steps int) bool {
 	input, output := effect.corePointer, effect.wirePointer
 	if direction == DecodeRequest {
 		input, output = output, input
@@ -33,40 +126,125 @@ func provesPackageAggregate(program *compiledExpression, direction Direction, ef
 	if effect.when == nil || !aggregatePresence(effect.when.expression, "exists", input) {
 		return false
 	}
-	selected, hasGuard := aggregateOutput(program, output, input)
-	if selected == nil || !hasGuard {
-		return false
-	}
-	if direction == DecodeRequest {
-		return provesObjectPartition(selected, input, effect.layout)
-	}
-	return provesObjectReconstruction(selected, input, effect.layout)
+	proof := aggregateOutputProof{steps: steps}
+	return proof.output(program, nil, output, input, direction, effect.layout, false)
 }
 
-// Only the matching optional-owner guard is discharged. Other conditionals or
-// possibly omitted preceding array entries cannot establish this output path.
-func aggregateOutput(program *compiledExpression, output, input []string) (*compiledExpression, bool) {
-	if program == nil {
-		return nil, false
+// Presence follows from the effect precondition. Unrelated branches must each
+// prove the same ownership; merges cannot contribute to an already owned field.
+type aggregateOutputProof struct{ steps int }
+
+func (proof *aggregateOutputProof) output(program *compiledExpression, scope *historyOwnerBinding, output, input []string, direction Direction, layout *ProtocolAggregateLayout, hasGuard bool) bool {
+	if program == nil || proof.steps <= 0 {
+		return false
 	}
-	if program.op == "if" && program.otherwise == nil && aggregatePresence(program.when, "exists", input) {
-		selected, _ := aggregateOutput(program.then, output, input)
-		return selected, true
+	proof.steps--
+	if program.op == "let" {
+		binding := historyOwnerBinding{slot: program.bindingSlot, source: program.source, sourceScope: scope, parent: scope}
+		return proof.output(program.body, &binding, output, input, direction, layout, hasGuard)
+	}
+	if program.op == "read" && program.from == "binding" {
+		for binding := scope; binding != nil; binding = binding.parent {
+			if binding.slot == program.bindingSlot {
+				return proof.output(binding.source, binding.sourceScope, append(slices.Clone(program.pointer), output...), input, direction, layout, hasGuard)
+			}
+		}
+		return false
+	}
+	if program.op == "if" && aggregateKnownPresence(program.when, input) {
+		return proof.output(program.then, scope, output, input, direction, layout, true)
 	}
 	if len(output) == 0 {
-		return program, false
+		if !hasGuard {
+			return false
+		}
+		if direction == DecodeRequest {
+			return provesObjectPartition(program, input, layout)
+		}
+		return provesObjectReconstruction(program, input, layout)
 	}
 	switch program.op {
+	case "if":
+		return proof.output(program.then, scope, output, input, direction, layout, hasGuard) &&
+			proof.output(program.otherwise, scope, output, input, direction, layout, hasGuard)
 	case "object":
-		return aggregateOutput(program.fields[output[0]], output[1:], input)
+		return proof.output(program.fields[output[0]], scope, output[1:], input, direction, layout, hasGuard)
 	case "array":
 		index, err := strconv.Atoi(output[0])
-		if err != nil || index != 0 || len(program.items) != 1 || strconv.Itoa(index) != output[0] {
-			return nil, false
+		if err != nil || index < 0 || index+1 != len(program.items) || strconv.Itoa(index) != output[0] {
+			return false
 		}
-		return aggregateOutput(program.items[index], output[1:], input)
+		for _, item := range program.items[:index] {
+			if !alwaysPresentOutput(item) {
+				return false
+			}
+		}
+		return proof.output(program.items[index], scope, output[1:], input, direction, layout, hasGuard)
+	case "concat":
+		if output[0] != "0" || len(program.items) == 0 {
+			return false
+		}
+		return proof.output(program.items[0], scope, output, input, direction, layout, hasGuard)
+	case "merge", "merge_deep":
+		if program.op == "merge" && program.policy != "reject" {
+			return false
+		}
+		var owner *compiledExpression
+		for _, item := range program.items {
+			if proof.omitsKey(item, scope, output[0]) {
+				continue
+			}
+			if owner != nil {
+				return false
+			}
+			owner = item
+		}
+		return proof.output(owner, scope, output, input, direction, layout, hasGuard)
 	}
-	return nil, false
+	return false
+}
+
+func aggregateKnownPresence(condition *compiledExpression, input []string) bool {
+	if aggregatePresence(condition, "exists", input) {
+		return true
+	}
+	if condition != nil && condition.op == "any" {
+		for _, item := range condition.items {
+			if aggregatePresence(item, "exists", input) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (proof *aggregateOutputProof) omitsKey(program *compiledExpression, scope *historyOwnerBinding, key string) bool {
+	if program == nil || proof.steps <= 0 {
+		return false
+	}
+	proof.steps--
+	switch program.op {
+	case "object":
+		_, exists := program.fields[key]
+		return !exists
+	case "project":
+		isListed := slices.Contains(program.keys, key)
+		return (program.policy == "exclude" && isListed) || (program.policy == "include" && !isListed)
+	case "if":
+		return proof.omitsKey(program.then, scope, key) && proof.omitsKey(program.otherwise, scope, key)
+	case "let":
+		binding := historyOwnerBinding{slot: program.bindingSlot, source: program.source, sourceScope: scope, parent: scope}
+		return proof.omitsKey(program.body, &binding, key)
+	case "read":
+		if program.from == "binding" {
+			for binding := scope; binding != nil; binding = binding.parent {
+				if binding.slot == program.bindingSlot && len(program.pointer) == 0 {
+					return proof.omitsKey(binding.source, binding.sourceScope, key)
+				}
+			}
+		}
+	}
+	return false
 }
 
 func provesObjectPartition(program *compiledExpression, input []string, layout *ProtocolAggregateLayout) bool {
@@ -146,58 +324,75 @@ func aggregateMember(owner []string, member string) []string {
 	return append(append([]string(nil), owner...), member)
 }
 
-func checkPackageAggregateInput(state evaluation, output JSONOutput) error {
-	second, err := state.readPackageInput([]string{"cache", "1"})
-	if err != nil {
-		return err
-	}
-	if !second.IsZero() {
-		return fmt.Errorf("one wire cache policy cannot express multiple intents")
-	}
-	var intent CacheIntent
-	hasValidatedCore := state.inputReader != nil
-	if hasValidatedCore {
-		// Both EncodeRequestValue and the native replay's finishDecodedRequest
-		// validate hints before entering this read-only typed plan.
-		kind, readErr := readOutputPointer(output, []string{"kind"}, nil)
-		if readErr != nil {
-			return readErr
+func checkPackageAggregateInput(state evaluation, output JSONOutput, effect compiledSemanticEffect) error {
+	layout := effect.aggregateLayout
+	if layout.nextOwner != nil {
+		value, err := state.readPackageInput(layout.nextOwner)
+		if err != nil {
+			return err
 		}
-		err = kind.value.Decode(&intent.Kind)
-	} else {
-		intent, err = readAggregateCacheIntent(output)
+		if !value.IsZero() {
+			return fmt.Errorf("aggregate owner leaves an additional array member without a representation")
+		}
 	}
-	if err != nil {
-		return err
-	}
-	if intent.Kind != "breakpoint" {
-		return fmt.Errorf("cache aggregate requires a breakpoint intent")
-	}
-	if hasValidatedCore {
-		return nil
-	}
-	// Location is descriptive metadata. The existing encoder does not reject a
-	// changed location, so reconstruction must not add a stricter label check.
-	return validateRequestHints(&Request{Cache: []CacheIntent{intent}})
-}
-
-func readAggregateCacheIntent(output JSONOutput) (CacheIntent, error) {
-	var intent CacheIntent
 	fields, err := coreObjectFields(output)
 	if err != nil {
-		return intent, err
+		return err
 	}
-	reader := coreOutputReader(output, nil)
+	reader := coreOutputReader(output, state.valueReader)
+	for _, label := range layout.labels {
+		value, err := readOutputPointer(output, []string{label.name}, reader)
+		if err != nil {
+			return err
+		}
+		if value.IsZero() || value.node != nil || !equalValues(value.value, label.value) {
+			return fmt.Errorf("aggregate label %s differs from its declared variant", label.name)
+		}
+	}
 	for _, field := range fields {
-		// Mapping pointers are exact, unlike the contract decoder's folded Go
-		// field aliases. Raw execution must not validate TTL then read /ttl as
-		// absent and discard it; typed input already has these canonical names.
-		if !slices.Contains([]string{"kind", "location", "value", "ttl", "resource"}, field.key) {
-			return intent, fmt.Errorf("cache aggregate requires canonical core members")
+		name := field.key
+		isMapped, isDeclared := layout.members[name]
+		if !isDeclared {
+			return fmt.Errorf("aggregate member %s is not a declared core field", name)
 		}
-		if err := writeCoreCacheIntentField(field, &intent, reader); err != nil {
-			return intent, err
+		if isMapped {
+			continue
+		}
+		if field.value.IsZero() || coreOutputIsNull(field.value) {
+			continue
+		}
+		return fmt.Errorf("aggregate member %s has no declared representation", name)
+	}
+	remainder, err := readOutputPointer(output, []string{layout.remainder}, reader)
+	if err != nil {
+		return err
+	}
+	if remainder.IsZero() {
+		return fmt.Errorf("aggregate remainder must be present")
+	}
+	if coreOutputIsNull(remainder) {
+		for _, field := range layout.fields {
+			value, err := readOutputPointer(output, []string{field.core}, reader)
+			if err != nil {
+				return err
+			}
+			if !value.IsZero() {
+				return fmt.Errorf("null aggregate remainder cannot carry projected members")
+			}
+		}
+		return nil
+	}
+	if plannedJSONType(remainder) != "object" {
+		return fmt.Errorf("aggregate remainder requires an object or null")
+	}
+	for _, field := range layout.fields {
+		value, err := readOutputPointer(remainder, []string{field.wire}, reader)
+		if err != nil {
+			return err
+		}
+		if !value.IsZero() {
+			return fmt.Errorf("aggregate remainder repeats projected member %s", field.wire)
 		}
 	}
-	return intent, nil
+	return nil
 }

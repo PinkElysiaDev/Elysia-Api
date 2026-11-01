@@ -165,3 +165,22 @@ Responses 共享 23 项真实重复的绑定读取，整包 token 从缓存初�
 | closure-error-details-types／lint | 前端类型检查与修改文件 ESLint 通过 |
 
 整包 token：Anthropic 93,456、Gemini 75,135、Chat 99,315、Responses 99,824。限额不变。没有正式性能结论；未知错误语义仍是明确拒绝边界，不宣称所有错误扩展均可跨协议。聚合证明、布局、复杂流、入口所有权、性能及生产退役仍未闭合。
+
+## 批次 1G：对象聚合按声明路径编译（dev.120）
+
+aggregate.layout 退出 /cache/0、ttl、breakpoint 和 request 的 Go 特例。编译器按现有核心结构绑定 owner、Value 成员及标量标签，禁止来源、Native、资源和客户端意图；按已有编译预算证明拆分和无覆盖重建。命名程序／局部绑定、稳定数组位置、条件双分支及独占字段合并进入同一证明。运行期使用已编译成员目录，保留必要的标签、余项、重复字段和未表示实体检查，无反射或整份核心 JSON 往返。
+
+默认 Anthropic 根缓存接入该声明，删去重复根对象 flatmap 和缓存数组临时绑定；缺失与 null 表示保持。TTL 删除同时覆盖 Native 协调和无根 Native 重建，未知外部成员留在余项。外部 wire 扩展不能再次声明 cache_control；这类核心双重所有者现在明确拒绝。自定义工具定义仅改变配置，即可把 name 和 schema 余项映射到 /tools/0，修改 name 后重建，并拒绝未表示的 description。标签不再被当成描述性注释：修改已声明 location 而无对应目标布局会拒绝。
+
+| 检查 | 结果 |
+|---|---|
+| closure-object-layout-all-2 | protocol 全量 2.826 秒、builtin 全量 41.505 秒，通过 |
+| closure-object-layout-final-cache | 最终 wire 所有者守卫、缓存及四包正式证据通过，4.569 秒 |
+| closure-object-layout-resource-boundary | 最后补充的受保护单资源路径编译边界通过，0.275 秒 |
+| closure-object-layout-gateway | 32 场景真实 JSON／SSE 网关矩阵通过，10.849 秒 |
+| closure-object-layout-race | protocol 3.799 秒、builtin 21.446 秒、server 122.499 秒，相关 race 通过 |
+| closure-object-layout-vet | protocol 与 server vet 通过 |
+| closure-object-layout-staticcheck | 固定 v0.8.2：24 条主诊断、1 关联位置；与 dev.119 多重集无新增、无消失，退出 1 |
+| 前端类型与 ESLint | 本地 tsc 和修改编辑器 ESLint 通过 |
+
+初稿测试暴露重复所有者、漏掉额外数组成员、测试夹具 ID 及辅助函数引用问题，均修正后保留原直接断言。检查原文保存在忽略目录。布局、复杂流、全部入口和所有权仍待闭合；未形成版本 B，未测正式配对性能，也未切换生产加载器。

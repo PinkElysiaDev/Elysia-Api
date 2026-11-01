@@ -384,3 +384,18 @@ Unicode 转义和非法 Unicode 的处理与现有字符串解码一致。操作
 响应状态或事件类型，也不能改写来源、资源或扩展。message 必须仍是字符串。如何验证细节、
 保留结构、转入消息或拒绝，由 Mapping 的普通 when／set／diagnostic 声明，执行器不判断
 供应商或错误类别。严格模式与规则禁用沿用现有完整规则边界。
+
+## 对象聚合证明
+
+请求方向的 aggregate effect 以 layout 声明对象的单一所有者：remainder 是完整余项，fields
+把外部成员分配给独立核心 Value 字段，labels 固定当前核心变体。路径和成员类型在编译时
+绑定，来源、Native、资源和客户端意图不属于可选 owner。
+
+默认 Anthropic 包用 /cache/0 把 cache_control.ttl 拆入 ttl，其余成员进入 value；
+另一个合法声明可以把 /tools/0 的 inputSchema 作为余项、name 作为独立字段。原语不识别
+协议或缓存字段。编译器要求可证明的 partition／reconstruction 程序，无法证明即拒绝配置，
+不在运行时换引擎。
+
+null 余项必须保持 null 且不带分拆字段。未知核心成员、变更标签、重复余项字段及没有表示
+的尾部数组成员拒绝；未知外部对象成员保留在余项。命名程序／绑定、条件和独占合并使用
+现有编译预算，运行期复用当前输入视图，不为证明解析配置或反射类型。

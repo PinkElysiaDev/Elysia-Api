@@ -513,6 +513,7 @@ export function ProtocolV2Editor({
                     conversionDefaults 使用 use: request_projection 或 model_policy 绑定已声明程序；ID、顺序和启用状态由本规则指定。
                     metadata 处置由配置声明字段与形状；enum 的 otherwise 只处理未映射的字符串。
                     each.select: error 可读取当前错误并更新 message、code、param、details、providerType；分类和终态不可写。
+                    aggregate.layout 通过 remainder、fields、labels 声明请求对象拆分；核心路径、成员类型和无覆盖重建在编译时检查。
                   </p>
                 )}
                 <label className="block space-y-1.5 text-xs font-medium text-foreground">

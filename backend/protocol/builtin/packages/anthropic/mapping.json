@@ -3020,122 +3020,140 @@
       }
     },
     "decode-request-cache": {
-      "op": "let",
-      "name": "selected",
-      "source": {
-        "op": "concat",
+      "op": "if",
+      "when": {
+        "op": "any",
         "items": [
           {
-            "op": "let",
-            "name": "root-cache",
+            "op": "exists",
             "source": {
               "op": "read",
               "from": "input",
-              "path": ""
-            },
-            "body": {
-              "op": "flatmap",
+              "path": "/cache_control"
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/prompt_cache_key"
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/prompt_cache_retention"
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/prewarm"
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/prompt_cache_options/mode"
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/prompt_cache_options/ttl"
+            }
+          }
+        ]
+      },
+      "then": {
+        "op": "concat",
+        "items": [
+          {
+            "op": "if",
+            "when": {
+              "op": "exists",
               "source": {
-                "op": "array",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "binding",
-                    "name": "root-cache",
-                    "path": ""
-                  }
-                ]
-              },
-              "body": {
-                "op": "if",
-                "when": {
-                  "op": "exists",
-                  "source": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/cache_control"
-                  }
-                },
-                "then": {
+                "op": "read",
+                "from": "input",
+                "path": "/cache_control"
+              }
+            },
+            "then": {
+              "op": "array",
+              "items": [
+                {
                   "op": "if",
                   "when": {
-                    "op": "exists",
+                    "op": "present",
                     "source": {
                       "op": "read",
-                      "from": "item",
+                      "from": "input",
                       "path": "/cache_control"
                     }
                   },
                   "then": {
-                    "op": "array",
-                    "items": [
-                      {
-                        "op": "if",
-                        "when": {
-                          "op": "present",
-                          "source": {
-                            "op": "read",
-                            "from": "item",
-                            "path": "/cache_control"
-                          }
+                    "op": "object",
+                    "fields": {
+                      "kind": {
+                        "op": "literal",
+                        "value": "breakpoint"
+                      },
+                      "location": {
+                        "op": "literal",
+                        "value": "request"
+                      },
+                      "value": {
+                        "op": "project",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/cache_control"
                         },
-                        "then": {
-                          "op": "object",
-                          "fields": {
-                            "kind": {
-                              "op": "literal",
-                              "value": "breakpoint"
-                            },
-                            "location": {
-                              "op": "literal",
-                              "value": "request"
-                            },
-                            "value": {
-                              "op": "project",
-                              "source": {
-                                "op": "read",
-                                "from": "item",
-                                "path": "/cache_control"
-                              },
-                              "keys": [
-                                "ttl"
-                              ],
-                              "policy": "exclude"
-                            },
-                            "ttl": {
-                              "op": "read",
-                              "from": "item",
-                              "path": "/cache_control/ttl"
-                            }
-                          }
-                        },
-                        "otherwise": {
-                          "op": "object",
-                          "fields": {
-                            "kind": {
-                              "op": "literal",
-                              "value": "breakpoint"
-                            },
-                            "location": {
-                              "op": "literal",
-                              "value": "request"
-                            },
-                            "value": {
-                              "op": "read",
-                              "from": "item",
-                              "path": "/cache_control"
-                            }
-                          }
-                        }
+                        "keys": [
+                          "ttl"
+                        ],
+                        "policy": "exclude"
+                      },
+                      "ttl": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/cache_control/ttl"
                       }
-                    ]
+                    }
+                  },
+                  "otherwise": {
+                    "op": "object",
+                    "fields": {
+                      "kind": {
+                        "op": "literal",
+                        "value": "breakpoint"
+                      },
+                      "location": {
+                        "op": "literal",
+                        "value": "request"
+                      },
+                      "value": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/cache_control"
+                      }
+                    }
                   }
-                },
-                "otherwise": {
-                  "op": "array",
-                  "items": []
                 }
-              }
+              ]
+            },
+            "otherwise": {
+              "op": "array",
+              "items": []
             }
           },
           {
@@ -3359,33 +3377,6 @@
             }
           }
         ]
-      },
-      "body": {
-        "op": "if",
-        "when": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "binding",
-              "name": "selected",
-              "path": ""
-            },
-            {
-              "op": "literal",
-              "value": []
-            }
-          ]
-        },
-        "then": {
-          "op": "omit"
-        },
-        "otherwise": {
-          "op": "read",
-          "from": "binding",
-          "name": "selected",
-          "path": ""
-        }
       }
     },
     "decode-request-content": {
@@ -6804,24 +6795,18 @@
                   ]
                 },
                 "then": {
-                  "op": "literal",
-                  "value": null
+                  "op": "read",
+                  "from": "input",
+                  "path": "/cache/0/value"
                 },
                 "otherwise": {
                   "op": "merge",
                   "policy": "reject",
                   "items": [
                     {
-                      "op": "project",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/cache/0/value"
-                      },
-                      "keys": [
-                        "ttl"
-                      ],
-                      "policy": "exclude"
+                      "op": "read",
+                      "from": "input",
+                      "path": "/cache/0/value"
                     },
                     {
                       "op": "object",
@@ -20491,6 +20476,30 @@
             ],
             "unmatched": "/parameters/wire:claude/context_management"
           }
+        },
+        {
+          "id": "request-cache-object",
+          "kind": "aggregate",
+          "path": "/cache/0",
+          "target": "/cache_control",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/cache_control"
+            }
+          },
+          "layout": {
+            "remainder": "value",
+            "fields": {
+              "ttl": "ttl"
+            },
+            "labels": {
+              "kind": "breakpoint",
+              "location": "request"
+            }
+          }
         }
       ],
       "capabilities": {
@@ -20534,7 +20543,8 @@
                 "path": "/parameters/wire:claude"
               },
               "keys": [
-                "context_management"
+                "context_management",
+                "cache_control"
               ],
               "policy": "exclude"
             }
@@ -20863,6 +20873,44 @@
             "ref": "cache-omittable-hint"
           },
           "reason": "target has no equivalent representation for this declared cache hint"
+        },
+        {
+          "id": "request-cache-object",
+          "kind": "aggregate",
+          "path": "/cache/0",
+          "target": "/cache_control",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/cache/0"
+            }
+          },
+          "layout": {
+            "remainder": "value",
+            "fields": {
+              "ttl": "ttl"
+            },
+            "labels": {
+              "kind": "breakpoint",
+              "location": "request"
+            }
+          }
+        },
+        {
+          "id": "cache-wire-owner",
+          "kind": "reject",
+          "path": "/parameters/wire:claude/cache_control",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/wire:claude/cache_control"
+            }
+          },
+          "reason": "cache policy has a semantic owner in cache; wire extensions cannot replace it"
         }
       ],
       "capabilities": {

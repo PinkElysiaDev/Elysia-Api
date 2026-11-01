@@ -28,6 +28,7 @@ type compiledSemanticEffect struct {
 	corePointer, wirePointer       []string
 	when                           *compiledOutputPlan
 	layout                         *ProtocolAggregateLayout
+	aggregateLayout                *compiledAggregateLayout
 	valueMapping                   *ProtocolValueMapping
 	valueUnmatched                 []string
 	scope                          string
@@ -99,10 +100,7 @@ func (compiler *Compiler) compilePackage(document ProtocolPackage) (*Compiled, [
 					}
 					continue
 				}
-				if !compiled.mappings[direction].capabilities[CacheBreakpointsCapability] {
-					return nil, definitionIssues(compiled.identity, path, fmt.Errorf("cache aggregate requires the declared cache.breakpoints capability"))
-				}
-				if !provesPackageAggregate(compiled.mappings[direction].outputPlan.expression, direction, effect) {
+				if !provesPackageAggregate(compiled.mappings[direction].outputPlan.expression, direction, effect, compiler.limits.Nodes) {
 					return nil, definitionIssues(compiled.identity, path, fmt.Errorf("aggregate requires a provable object partition or reconstruction"))
 				}
 			}
@@ -352,8 +350,11 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 				}
 				entry.valueMapping = effect.ValueMapping
 				entry.valueUnmatched, _ = parsePointer(effect.ValueMapping.Unmatched)
-			} else if err := validatePackageAggregateLayout(direction, entry.corePointer, effect.Layout); err != nil {
-				return compiledMapping{}, nil, fmt.Errorf("%s/layout: %w", at, err)
+			} else {
+				entry.aggregateLayout, err = compilePackageAggregateLayout(direction, entry.corePointer, effect.Layout)
+				if err != nil {
+					return compiledMapping{}, nil, fmt.Errorf("%s/layout: %w", at, err)
+				}
 			}
 			entry.layout = effect.Layout
 		} else if effect.Layout != nil || effect.ValueMapping != nil {

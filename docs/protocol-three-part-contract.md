@@ -152,6 +152,14 @@ Anthropic／Gemini Mapping 的 response-error-details、event-error-details（�
 
 这不代表所有错误扩展都已可跨协议：未知 type、details 结构和命名空间扩展必须有明确映射，否则继续拒绝。
 
+## 对象聚合所有权（dev.120）
+
+aggregate.layout 按声明的请求核心路径绑定对象类型。remainder 和 fields 必须分别对应不同的 Value 成员，labels 必须对应类型一致的标量字段；不能写入来源、Native、资源或客户端意图。外部字段名及变体由 Mapping 指定，不要求 cache、ttl 或特定标签值。
+
+编译器证明对象拆分、null 保留及无覆盖重建，追踪命名程序、局部绑定、稳定数组位置和互斥字段合并。无关条件的两个分支必须分别成立；不能用 deep merge 给已归属对象追加未声明成员。动态数组选择尚不属于此证明能力。
+
+编码前检查剩余核心成员均有表示、标签匹配、余项为对象或 null、分拆字段不重复、固定数组所有者后没有未表示成员。成员目录及顺序在编译时建立；运行时不反射，也不重新解码整份核心。默认 Anthropic 根缓存使用该声明，wire 扩展不能重新定义 cache_control。
+
 ## 认证续传（dev.109）
 
 Responses 的 include 原表示由 `ClientOutput.RawResponsesInclude` 持有；`RequireContinuationState` 表示产生受保护状态时客户端必须获得可继续使用的表示。目标规则只写 `ResponsesIncludeResolved`，不能改写来源原值或撤销续传要求。Agent 可声明原值和要求，本地收集器直接保留资源进入后续轮次。

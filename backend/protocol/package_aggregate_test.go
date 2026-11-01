@@ -9,8 +9,17 @@ import (
 // This package is an isolated declarative example, not an installed preset.
 func cacheOwnerPackage(t *testing.T) ProtocolPackage {
 	t.Helper()
-	document := verifiedTextPackage(t, "cache-owner")
+	document := aggregateOwnerPackage(t, "cache", "cache_control", &ProtocolAggregateLayout{Remainder: "value", Fields: map[string]string{"ttl": "ttl"}, Labels: Object{"kind": StringValue("breakpoint"), "location": StringValue("request")}})
 	document.Mapping.Capabilities[CacheBreakpointsCapability] = true
+	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
+		document.Mapping.Directions[direction].Effects[2].ID = "cache-owner"
+	}
+	return document
+}
+
+func aggregateOwnerPackage(t *testing.T, owner, wire string, layout *ProtocolAggregateLayout) ProtocolPackage {
+	t.Helper()
+	document := verifiedTextPackage(t, "object-owner")
 	document.Mapping.Native.Preserve = true
 	for _, direction := range []Direction{DecodeResponse, EncodeResponse} {
 		mapping := document.Mapping.Directions[direction]
@@ -20,29 +29,39 @@ func cacheOwnerPackage(t *testing.T) ProtocolPackage {
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
 		contract := document.Spec.Documents[document.Mapping.Directions[direction].Document]
 		contract.Schema.AllowUnknown = true
-		contract.Schema.Properties["cache_control"] = ValueSchema{Type: ObjectType, Nullable: true, AllowUnknown: true}
+		contract.Schema.Properties[wire] = ValueSchema{Type: ObjectType, Nullable: true, AllowUnknown: true}
 		document.Spec.Documents[document.Mapping.Directions[direction].Document] = contract
 	}
+	input := "/" + escapePointer(wire)
+	core := "/" + escapePointer(owner) + "/0"
 	read := func(path string) *Expression { return expressionPointer(readExpression("input", path)) }
 	exists := func(path string) *Expression { return &Expression{Op: "exists", Source: read(path)} }
 	labels := func(value Expression) map[string]Expression {
-		return map[string]Expression{"kind": literalExpression("breakpoint"), "location": literalExpression("request"), "value": value}
+		fields := map[string]Expression{layout.Remainder: value}
+		for name, label := range layout.Labels {
+			fields[name] = Expression{Op: "literal", Value: label}
+		}
+		return fields
 	}
-	parts := labels(Expression{Op: "project", Source: read("/cache_control"), Keys: []string{"ttl"}, Policy: "exclude"})
-	parts["ttl"] = *read("/cache_control/ttl")
+	parts := labels(Expression{Op: "project", Source: read(input), Keys: sortedKeys(layout.Fields), Policy: "exclude"})
+	reconstruction := map[string]Expression{}
+	for wire, member := range layout.Fields {
+		parts[member] = *read(input + "/" + escapePointer(wire))
+		reconstruction[wire] = *read(core + "/" + escapePointer(member))
+	}
 	decode := document.Mapping.Directions[DecodeRequest]
-	decode.Program.Fields["cache"] = Expression{Op: "if", When: exists("/cache_control"), Then: &Expression{Op: "array", Items: []Expression{
-		{Op: "if", When: &Expression{Op: "present", Source: read("/cache_control")}, Then: expressionPointer(objectExpression(parts)), Otherwise: expressionPointer(objectExpression(labels(*read("/cache_control"))))},
+	decode.Program.Fields[owner] = Expression{Op: "if", When: exists(input), Then: &Expression{Op: "array", Items: []Expression{
+		{Op: "if", When: &Expression{Op: "present", Source: read(input)}, Then: expressionPointer(objectExpression(parts)), Otherwise: expressionPointer(objectExpression(labels(*read(input))))},
 	}}}
-	layout := &ProtocolAggregateLayout{Remainder: "value", Fields: map[string]string{"ttl": "ttl"}, Labels: Object{"kind": StringValue("breakpoint"), "location": StringValue("request")}}
-	decode.Effects = append(decode.Effects, ProtocolSemanticEffect{ID: "cache-owner", Kind: "aggregate", Path: "/cache/0", Target: "/cache_control", When: exists("/cache_control"), Layout: layout})
+	decode.Effects = append(decode.Effects, ProtocolSemanticEffect{ID: "object-owner", Kind: "aggregate", Path: core, Target: input, When: exists(input), Layout: layout})
 	document.Mapping.Directions[DecodeRequest] = decode
 	encode := document.Mapping.Directions[EncodeRequest]
-	encode.Program.Fields["cache_control"] = Expression{Op: "if", When: exists("/cache/0"), Then: &Expression{
-		Op: "if", When: &Expression{Op: "equal", Items: []Expression{*read("/cache/0/value"), literalExpression(nil)}}, Then: read("/cache/0/value"),
-		Otherwise: &Expression{Op: "merge", Policy: "reject", Items: []Expression{*read("/cache/0/value"), objectExpression(map[string]Expression{"ttl": *read("/cache/0/ttl")})}},
+	remainder := core + "/" + escapePointer(layout.Remainder)
+	encode.Program.Fields[wire] = Expression{Op: "if", When: exists(core), Then: &Expression{
+		Op: "if", When: &Expression{Op: "equal", Items: []Expression{*read(remainder), literalExpression(nil)}}, Then: read(remainder),
+		Otherwise: &Expression{Op: "merge", Policy: "reject", Items: []Expression{*read(remainder), objectExpression(reconstruction)}},
 	}}
-	encode.Effects = append(encode.Effects, ProtocolSemanticEffect{ID: "cache-owner", Kind: "aggregate", Path: "/cache/0", Target: "/cache_control", When: exists("/cache/0"), Layout: layout})
+	encode.Effects = append(encode.Effects, ProtocolSemanticEffect{ID: "object-owner", Kind: "aggregate", Path: core, Target: input, When: exists(core), Layout: layout})
 	document.Mapping.Directions[EncodeRequest] = encode
 	return document
 }
@@ -108,9 +127,13 @@ func TestPackageAggregateCacheEdits(t *testing.T) {
 	}
 	request.Cache[0].TTL = Value{}
 	request.Cache[0].Location = "custom-location"
+	if _, err := compiled.EncodeRequestValue(t.Context(), request, EvaluationContext{}); err == nil {
+		t.Fatal("aggregate accepted a different declared location")
+	}
+	request.Cache[0].Location = "request"
 	output, err := compiled.EncodeRequestValue(t.Context(), request, EvaluationContext{})
 	if err != nil {
-		t.Fatal("reconstruction added a location restriction", err)
+		t.Fatal("cache reconstruction failed", err)
 	}
 	policy, err := readValuePointer(output, []string{"cache_control"})
 	if err != nil || policy.raw != `{"future":900719925474099312345,"type":"ephemeral"}` {
@@ -136,7 +159,7 @@ func TestPackageAggregateCacheEdits(t *testing.T) {
 			t.Fatal("raw execution discarded invalid aggregate data", intent)
 		}
 	}
-	request.Cache[0] = CacheIntent{Kind: "breakpoint", Value: Value{raw: `{"type":"ephemeral"}`}, TTL: StringValue("1h")}
+	request.Cache[0] = CacheIntent{Kind: "breakpoint", Location: "request", Value: Value{raw: `{"type":"ephemeral"}`}, TTL: StringValue("1h")}
 	core := fixtureValue(t, request)
 	aliased, err := ApplyMutations(core, []Mutation{{Op: DeleteValue, Path: "/cache/0/ttl"}, {Op: SetValue, Path: "/cache/0/TTL", Value: StringValue("1h")}}, DefaultLimits())
 	if err != nil {
@@ -157,7 +180,18 @@ func TestPackageAggregateRejectsUnprovedLayouts(t *testing.T) {
 			p.Mapping.Directions[DecodeRequest].Effects[2].Layout.Labels["role"] = StringValue("assistant")
 		}},
 		{"foreign-owner", func(p *ProtocolPackage) { p.Mapping.Directions[DecodeRequest].Effects[2].Path = "/tools/0/cache/0" }},
-		{"no-capability", func(p *ProtocolPackage) { delete(p.Mapping.Capabilities, CacheBreakpointsCapability) }},
+		{"protected-owner", func(p *ProtocolPackage) { p.Mapping.Directions[DecodeRequest].Effects[2].Path = "/native/source/scope" }},
+		{"protected-resource", func(p *ProtocolPackage) {
+			effect := &p.Mapping.Directions[DecodeRequest].Effects[2]
+			effect.Path = "/cache/0/resource"
+			effect.Layout = &ProtocolAggregateLayout{Remainder: "id", Labels: Object{"kind": StringValue("cache")}}
+		}},
+		{"duplicate-member", func(p *ProtocolPackage) {
+			p.Mapping.Directions[DecodeRequest].Effects[2].Layout.Fields["future"] = "ttl"
+		}},
+		{"wrong-label-type", func(p *ProtocolPackage) {
+			p.Mapping.Directions[DecodeRequest].Effects[2].Layout.Labels["kind"] = Value{raw: "1"}
+		}},
 		{"no-guard", func(p *ProtocolPackage) { p.Mapping.Directions[DecodeRequest].Effects[2].When = nil }},
 		{"lossy-project", func(p *ProtocolPackage) {
 			fields := p.Mapping.Directions[DecodeRequest].Program.Fields["cache"].Then.Items[0].Then.Fields
@@ -184,6 +218,16 @@ func TestPackageAggregateRejectsUnprovedLayouts(t *testing.T) {
 		{"changed-reconstruction", func(p *ProtocolPackage) {
 			p.Mapping.Directions[EncodeRequest].Program.Fields["cache_control"].Then.Otherwise.Items[1].Fields["ttl"] = literalExpression("5m")
 		}},
+		{"conditional-owner", func(p *ProtocolPackage) {
+			mapping := p.Mapping.Directions[EncodeRequest]
+			mapping.Program = Expression{Op: "if", When: expressionPointer(Expression{Op: "equal", Items: []Expression{readExpression("input", "/model"), literalExpression("m")}}), Then: expressionPointer(mapping.Program), Otherwise: expressionPointer(objectExpression(nil))}
+			p.Mapping.Directions[EncodeRequest] = mapping
+		}},
+		{"overlapping-deep-merge", func(p *ProtocolPackage) {
+			mapping := p.Mapping.Directions[EncodeRequest]
+			mapping.Program = Expression{Op: "merge_deep", Items: []Expression{mapping.Program, objectExpression(map[string]Expression{"cache_control": literalExpression(map[string]string{"future": "value"})})}}
+			p.Mapping.Directions[EncodeRequest] = mapping
+		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			document := cacheOwnerPackage(t)
@@ -206,5 +250,32 @@ func TestPackageAggregateRejectsUnprovedLayouts(t *testing.T) {
 	}
 	if strings.Contains(string(fixtureValue(t, document).Bytes()), "module") {
 		t.Fatal("cache fixture accidentally selected an installed codec")
+	}
+}
+
+func TestPackageAggregateToolDefinition(t *testing.T) {
+	document := aggregateOwnerPackage(t, "tools", "tool_definition", &ProtocolAggregateLayout{Remainder: "inputSchema", Fields: map[string]string{"name": "name"}, Labels: Object{"kind": StringValue("function")}})
+	document.Mapping.Capabilities[FunctionToolsCapability] = true
+	compiled := compilePackageForTest(t, document)
+	request, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","prompt":"hello","tool_definition":{"name":"lookup","type":"object","future":1}}`), EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(request.Tools) != 1 || request.Tools[0].Kind != FunctionTool || !request.Tools[0].Name.IsString("lookup") || !equalValues(request.Tools[0].InputSchema, Value{raw: `{"type":"object","future":1}`}) {
+		t.Fatal("declared tool partition lost fields", request.Tools)
+	}
+	request.Native = nil
+	request.Tools[0].Name = StringValue("updated")
+	output, err := compiled.EncodeRequestValue(t.Context(), request, EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition, err := readValuePointer(output, []string{"tool_definition"})
+	if err != nil || !equalValues(definition, Value{raw: `{"name":"updated","type":"object","future":1}`}) {
+		t.Fatal("declared tool reconstruction lost its edit or remainder", output, err)
+	}
+	request.Tools[0].Description = StringValue("unmapped")
+	if _, err := compiled.EncodeRequestValue(t.Context(), request, EvaluationContext{}); err == nil {
+		t.Fatal("aggregate discarded an unrepresented core member")
 	}
 }

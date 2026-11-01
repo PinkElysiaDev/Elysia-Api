@@ -165,6 +165,37 @@ func TestPackageCachePreservationAndUnknowns(t *testing.T) {
 	}
 }
 
+func TestPackageCacheObjectEdits(t *testing.T) {
+	compiled := compileBuiltinPackage(t, "anthropic")
+	const raw = `{"model":"m","max_tokens":32,"messages":[{"role":"user","content":"hi"}],"cache_control":{"type":"ephemeral","ttl":"1h","future":{"value":9007199254740993}}}`
+	request, err := compiled.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rebuild := range []bool{false, true} {
+		input := request.Clone()
+		if rebuild {
+			input.Native = nil
+		}
+		input.Cache[0].TTL = p.Value{}
+		output, err := compiled.EncodeRequest(t.Context(), input, p.EvaluationContext{})
+		if err != nil {
+			t.Fatal("cache edit failed", rebuild, err)
+		}
+		var wire struct {
+			Cache p.Value `json:"cache_control"`
+		}
+		if err := testValue(t, string(output)).Decode(&wire); err != nil || !equivalentJSON(wire.Cache, testValue(t, `{"type":"ephemeral","future":{"value":9007199254740993}}`)) {
+			t.Fatal("cache reconstruction revived TTL or changed its remainder", rebuild, string(output), err)
+		}
+	}
+	request.Native = nil
+	request.Parameters["wire:claude"] = testValue(t, `{"cache_control":{"type":"ephemeral","ttl":"5m"}}`)
+	if _, err := compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{}); err == nil {
+		t.Fatal("wire extension replaced the declared cache owner")
+	}
+}
+
 func cacheProjectionPolicy(t *testing.T, source, target *p.Compiled, mode string) p.ConversionPolicy {
 	t.Helper()
 	policy := p.DefaultConversionPolicy(source, target)
