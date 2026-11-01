@@ -167,12 +167,11 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 	case MetadataUpdated:
 		// Projection may remove all recognized metadata. This remains a no-op,
 		// not an observation of zero tokens and not a native extension escape.
-		for _, item := range event.Metadata {
-			if event.SchemaVersion == ProtocolCoreVersion && item.Name == "logprobs" {
-				continue
-			}
-			if err := ValidateMetadataValue(item.Codec, item.Location, item.Name, item.Value, item.Path); err != nil {
-				check.add(InvalidInput, item.Path, "", err.Error())
+		if event.SchemaVersion != ProtocolCoreVersion {
+			for _, item := range event.Metadata {
+				if err := ValidateMetadataValue(item.Codec, item.Location, item.Name, item.Value, item.Path); err != nil {
+					check.add(InvalidInput, item.Path, "", err.Error())
+				}
 			}
 		}
 	case OperationFailed:

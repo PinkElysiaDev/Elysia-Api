@@ -100,6 +100,8 @@ func TestOutputPlanParity(t *testing.T) {
 		{"not-constructed", Expression{Op: "not", Source: expressionPointer(Expression{Op: "equal", Items: []Expression{Expression{Op: "array", Items: []Expression{read}}, literalExpression([]int{1})}})}, `1`},
 		{"enum-constructed", Expression{Op: "enum", Source: expressionPointer(Expression{Op: "join", Items: []Expression{literalExpression("pre-"), read}}), Values: map[string]Value{"pre-value": StringValue("mapped")}}, `"value"`},
 		{"enum-unmapped", Expression{Op: "enum", Source: &read, Values: map[string]Value{"known": StringValue("mapped")}}, `"unknown"`},
+		{"enum-default", Expression{Op: "enum", Source: &read, Values: map[string]Value{"known": StringValue("mapped")}, Otherwise: expressionPointer(literalExpression(false))}, `"unknown"`},
+		{"enum-lazy-default", Expression{Op: "enum", Source: &read, Values: map[string]Value{"known": StringValue("mapped")}, Otherwise: expressionPointer(Expression{Op: "read", Path: "/absent", Required: true})}, `"known"`},
 		{"cast-constructed", Expression{Op: "cast", Source: expressionPointer(Expression{Op: "stringify_json", Source: &read}), To: NumberType}, `9007199254740993`},
 		{"cast-container", Expression{Op: "cast", Source: expressionPointer(Expression{Op: "array", Items: []Expression{read}}), To: StringType}, `1`},
 		{"strip-constructed", Expression{Op: "strip_prefix", Source: expressionPointer(Expression{Op: "join", Items: []Expression{literalExpression("prefix:"), read}}), Value: StringValue("prefix:")}, `"text"`},

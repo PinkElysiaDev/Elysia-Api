@@ -55,6 +55,811 @@
     "reasoning": true
   },
   "expressions": {
+    "metadata-type-string": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "metadata-is-null"
+      },
+      "then": {
+        "op": "literal",
+        "value": true
+      },
+      "otherwise": {
+        "op": "ref",
+        "ref": "metadata-is-string"
+      }
+    },
+    "metadata-type-boolean": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "metadata-is-null"
+      },
+      "then": {
+        "op": "literal",
+        "value": true
+      },
+      "otherwise": {
+        "op": "ref",
+        "ref": "metadata-is-boolean"
+      }
+    },
+    "metadata-type-number": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "metadata-is-null"
+      },
+      "then": {
+        "op": "literal",
+        "value": true
+      },
+      "otherwise": {
+        "op": "ref",
+        "ref": "metadata-is-number"
+      }
+    },
+    "metadata-type-object": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "metadata-is-null"
+      },
+      "then": {
+        "op": "literal",
+        "value": true
+      },
+      "otherwise": {
+        "op": "ref",
+        "ref": "metadata-is-object"
+      }
+    },
+    "metadata-type-array": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "metadata-is-null"
+      },
+      "then": {
+        "op": "literal",
+        "value": true
+      },
+      "otherwise": {
+        "op": "ref",
+        "ref": "metadata-is-array"
+      }
+    },
+    "metadata-type-text": {
+      "op": "ref",
+      "ref": "metadata-is-string"
+    },
+    "metadata-type-flag": {
+      "op": "ref",
+      "ref": "metadata-is-boolean"
+    },
+    "metadata-type-null": {
+      "op": "ref",
+      "ref": "metadata-is-null"
+    },
+    "metadata-type-reference": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "metadata-is-null"
+      },
+      "then": {
+        "op": "literal",
+        "value": true
+      },
+      "otherwise": {
+        "op": "all",
+        "items": [
+          {
+            "op": "ref",
+            "ref": "metadata-is-string"
+          },
+          {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/value"
+                },
+                {
+                  "op": "literal",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "metadata-type-container": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "metadata-is-null"
+      },
+      "then": {
+        "op": "literal",
+        "value": true
+      },
+      "otherwise": {
+        "op": "any",
+        "items": [
+          {
+            "op": "ref",
+            "ref": "metadata-is-string"
+          },
+          {
+            "op": "ref",
+            "ref": "metadata-is-object"
+          },
+          {
+            "op": "ref",
+            "ref": "metadata-is-array"
+          }
+        ]
+      }
+    },
+    "metadata-type-phase": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "metadata-is-null"
+      },
+      "then": {
+        "op": "literal",
+        "value": true
+      },
+      "otherwise": {
+        "op": "any",
+        "items": [
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/value"
+              },
+              {
+                "op": "literal",
+                "value": "commentary"
+              }
+            ]
+          },
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/value"
+              },
+              {
+                "op": "literal",
+                "value": "final_answer"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "metadata-type-citations": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "metadata-is-null"
+      },
+      "then": {
+        "op": "literal",
+        "value": true
+      },
+      "otherwise": {
+        "op": "if",
+        "when": {
+          "op": "ref",
+          "ref": "metadata-is-array"
+        },
+        "then": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "length",
+              "source": {
+                "op": "filter",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/value"
+                },
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": ""
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "object"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "op": "literal",
+              "value": 0
+            }
+          ]
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      }
+    },
+    "metadata-type-tags": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "metadata-is-null"
+      },
+      "then": {
+        "op": "literal",
+        "value": true
+      },
+      "otherwise": {
+        "op": "if",
+        "when": {
+          "op": "ref",
+          "ref": "metadata-is-object"
+        },
+        "then": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "length",
+              "source": {
+                "op": "filter",
+                "source": {
+                  "op": "entries",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/value"
+                  }
+                },
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "choose",
+                    "source": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/key"
+                    },
+                    "cases": {
+                      "turn_id": {
+                        "op": "all",
+                        "items": [
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "type",
+                                "source": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/value"
+                                }
+                              },
+                              {
+                                "op": "literal",
+                                "value": "string"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "not",
+                            "source": {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/value"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": ""
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      "create_time": {
+                        "op": "all",
+                        "items": [
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/name"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "internal_chat_message_metadata_passthrough"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "type",
+                                "source": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/value"
+                                }
+                              },
+                              {
+                                "op": "literal",
+                                "value": "number"
+                              }
+                            ]
+                          },
+                          {
+                            "op": "any",
+                            "items": [
+                              {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "item",
+                                    "path": "/value"
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": 0
+                                  }
+                                ]
+                              },
+                              {
+                                "op": "not",
+                                "source": {
+                                  "op": "has_prefix",
+                                  "source": {
+                                    "op": "stringify_json",
+                                    "source": {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": "/value"
+                                    }
+                                  },
+                                  "value": "-"
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "op": "literal",
+              "value": 0
+            }
+          ]
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      }
+    },
+    "metadata-type-tool-usage": {
+      "op": "ref",
+      "ref": "conversion-metadata-empty-special"
+    },
+    "metadata-type-access": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "metadata-is-null"
+      },
+      "then": {
+        "op": "literal",
+        "value": true
+      },
+      "otherwise": {
+        "op": "if",
+        "when": {
+          "op": "ref",
+          "ref": "metadata-is-object"
+        },
+        "then": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "keys",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/value"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": [
+                    "cyber"
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "any",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/value/cyber"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "standard"
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/value/cyber"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "daybreak_blue"
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/value/cyber"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "daybreak_red"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      }
+    },
+    "metadata-unknown": {
+      "op": "reject",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/path"
+      },
+      "reason": "metadata field has no declared target disposition",
+      "diagnostic": {
+        "code": "unsupported_capability",
+        "stage": "wire"
+      }
+    },
+    "metadata-is-string": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "type",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/value"
+          }
+        },
+        {
+          "op": "literal",
+          "value": "string"
+        }
+      ]
+    },
+    "metadata-is-boolean": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "type",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/value"
+          }
+        },
+        {
+          "op": "literal",
+          "value": "boolean"
+        }
+      ]
+    },
+    "metadata-is-number": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "type",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/value"
+          }
+        },
+        {
+          "op": "literal",
+          "value": "number"
+        }
+      ]
+    },
+    "metadata-is-object": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "type",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/value"
+          }
+        },
+        {
+          "op": "literal",
+          "value": "object"
+        }
+      ]
+    },
+    "metadata-is-array": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "type",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/value"
+          }
+        },
+        {
+          "op": "literal",
+          "value": "array"
+        }
+      ]
+    },
+    "metadata-is-null": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/value"
+        },
+        {
+          "op": "literal",
+          "value": null
+        }
+      ]
+    },
+    "conversion-metadata-valid": {
+      "op": "choose",
+      "source": {
+        "op": "enum",
+        "source": {
+          "op": "stringify_json",
+          "source": {
+            "op": "array",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/codec"
+              },
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/location"
+              },
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/name"
+              }
+            ]
+          }
+        },
+        "values": {
+          "[\"openai-chat\",\"response\",\"service_tier\"]": "string",
+          "[\"openai-chat\",\"response\",\"system_fingerprint\"]": "string",
+          "[\"openai-chat\",\"choice\",\"native_finish_reason\"]": "string",
+          "[\"openai-chat\",\"message\",\"annotations\"]": "citations",
+          "[\"openai-chat\",\"content\",\"logprobs\"]": "array",
+          "[\"responses\",\"response\",\"output_text\"]": "text",
+          "[\"responses\",\"response\",\"service_tier\"]": "string",
+          "[\"responses\",\"response\",\"user\"]": "string",
+          "[\"responses\",\"response\",\"safety_identifier\"]": "string",
+          "[\"responses\",\"response\",\"prompt_cache_key\"]": "string",
+          "[\"responses\",\"response\",\"prompt_cache_retention\"]": "string",
+          "[\"responses\",\"response\",\"truncation\"]": "string",
+          "[\"responses\",\"response\",\"store\"]": "boolean",
+          "[\"responses\",\"response\",\"background\"]": "boolean",
+          "[\"responses\",\"response\",\"parallel_tool_calls\"]": "boolean",
+          "[\"responses\",\"response\",\"temperature\"]": "number",
+          "[\"responses\",\"response\",\"top_p\"]": "number",
+          "[\"responses\",\"response\",\"max_output_tokens\"]": "number",
+          "[\"responses\",\"response\",\"max_tool_calls\"]": "number",
+          "[\"responses\",\"response\",\"top_logprobs\"]": "number",
+          "[\"responses\",\"response\",\"completed_at\"]": "number",
+          "[\"responses\",\"response\",\"frequency_penalty\"]": "number",
+          "[\"responses\",\"response\",\"presence_penalty\"]": "number",
+          "[\"responses\",\"response\",\"previous_response_id\"]": "reference",
+          "[\"responses\",\"response\",\"moderation\"]": "object",
+          "[\"responses\",\"response\",\"metadata\"]": "object",
+          "[\"responses\",\"response\",\"reasoning\"]": "object",
+          "[\"responses\",\"response\",\"text\"]": "object",
+          "[\"responses\",\"response\",\"tools\"]": "array",
+          "[\"responses\",\"response\",\"instructions\"]": "container",
+          "[\"responses\",\"response\",\"tool_choice\"]": "container",
+          "[\"responses\",\"response\",\"content_filters\"]": "null",
+          "[\"responses\",\"response\",\"tool_usage\"]": "tool-usage",
+          "[\"responses\",\"response\",\"access_programs\"]": "access",
+          "[\"responses\",\"message\",\"phase\"]": "phase",
+          "[\"responses\",\"message\",\"metadata\"]": "tags",
+          "[\"responses\",\"message\",\"internal_chat_message_metadata_passthrough\"]": "tags",
+          "[\"responses\",\"item\",\"metadata\"]": "tags",
+          "[\"responses\",\"item\",\"internal_chat_message_metadata_passthrough\"]": "tags",
+          "[\"responses\",\"content\",\"annotations\"]": "citations",
+          "[\"responses\",\"content\",\"logprobs\"]": "array",
+          "[\"responses\",\"event:response.created\",\"safety_buffering\"]": "flag",
+          "[\"responses\",\"event:response.in_progress\",\"safety_buffering\"]": "flag",
+          "[\"responses\",\"event:response.output_text.delta\",\"safety_buffering\"]": "flag",
+          "[\"responses\",\"event:response.output_text.delta\",\"obfuscation\"]": "text",
+          "[\"responses\",\"event:response.completed\",\"safety_buffering\"]": "flag",
+          "[\"responses\",\"event:response.refusal.delta\",\"obfuscation\"]": "text",
+          "[\"responses\",\"event:response.function_call_arguments.delta\",\"obfuscation\"]": "text",
+          "[\"responses\",\"event:response.custom_tool_call_input.delta\",\"obfuscation\"]": "text",
+          "[\"responses\",\"event:response.reasoning_text.delta\",\"obfuscation\"]": "text",
+          "[\"responses\",\"event:response.reasoning_summary_text.delta\",\"obfuscation\"]": "text",
+          "[\"anthropic\",\"response\",\"container\"]": "object",
+          "[\"anthropic\",\"response\",\"context_management\"]": "object",
+          "[\"anthropic\",\"response\",\"stop_details\"]": "object",
+          "[\"anthropic\",\"content\",\"citations\"]": "citations",
+          "[\"anthropic\",\"usage\",\"service_tier\"]": "string",
+          "[\"anthropic\",\"usage\",\"inference_geo\"]": "string",
+          "[\"anthropic\",\"usage\",\"server_tool_use\"]": "object",
+          "[\"gemini\",\"response\",\"createTime\"]": "string",
+          "[\"gemini\",\"candidate\",\"finishMessage\"]": "string",
+          "[\"gemini\",\"candidate\",\"avgLogprobs\"]": "number",
+          "[\"gemini\",\"candidate\",\"logprobsResult\"]": "object",
+          "[\"gemini\",\"candidate\",\"citationMetadata\"]": "object",
+          "[\"gemini\",\"candidate\",\"groundingMetadata\"]": "object",
+          "[\"gemini\",\"candidate\",\"safetyRatings\"]": "array",
+          "[\"gemini\",\"usage\",\"serviceTier\"]": "string"
+        },
+        "otherwise": {
+          "op": "ref",
+          "ref": "metadata-unknown"
+        }
+      },
+      "cases": {
+        "string": {
+          "op": "ref",
+          "ref": "metadata-type-string"
+        },
+        "boolean": {
+          "op": "ref",
+          "ref": "metadata-type-boolean"
+        },
+        "number": {
+          "op": "ref",
+          "ref": "metadata-type-number"
+        },
+        "object": {
+          "op": "ref",
+          "ref": "metadata-type-object"
+        },
+        "array": {
+          "op": "ref",
+          "ref": "metadata-type-array"
+        },
+        "text": {
+          "op": "ref",
+          "ref": "metadata-type-text"
+        },
+        "flag": {
+          "op": "ref",
+          "ref": "metadata-type-flag"
+        },
+        "null": {
+          "op": "ref",
+          "ref": "metadata-type-null"
+        },
+        "reference": {
+          "op": "ref",
+          "ref": "metadata-type-reference"
+        },
+        "container": {
+          "op": "ref",
+          "ref": "metadata-type-container"
+        },
+        "phase": {
+          "op": "ref",
+          "ref": "metadata-type-phase"
+        },
+        "citations": {
+          "op": "ref",
+          "ref": "metadata-type-citations"
+        },
+        "tags": {
+          "op": "ref",
+          "ref": "metadata-type-tags"
+        },
+        "tool-usage": {
+          "op": "ref",
+          "ref": "metadata-type-tool-usage"
+        },
+        "access": {
+          "op": "ref",
+          "ref": "metadata-type-access"
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
     "decode-request-cache": {
       "op": "let",
       "name": "selected",
@@ -44924,6 +45729,29 @@
             "steps": [
               {
                 "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "ref",
+                    "ref": "conversion-metadata-valid"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "invalid",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "code": "invalid_input",
+                  "stage": "conversion.metadata",
+                  "reason": {
+                    "op": "literal",
+                    "value": "metadata does not satisfy its declared disposition shape"
+                  }
+                }
+              },
+              {
+                "when": {
                   "op": "equal",
                   "items": [
                     {
@@ -45838,6 +46666,29 @@
             "steps": [
               {
                 "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "ref",
+                    "ref": "conversion-metadata-valid"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "invalid",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "code": "invalid_input",
+                  "stage": "conversion.metadata",
+                  "reason": {
+                    "op": "literal",
+                    "value": "metadata does not satisfy its declared disposition shape"
+                  }
+                }
+              },
+              {
+                "when": {
                   "op": "equal",
                   "items": [
                     {
@@ -46472,6 +47323,29 @@
           "each": {
             "select": "metadata",
             "steps": [
+              {
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "ref",
+                    "ref": "conversion-metadata-valid"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "invalid",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "code": "invalid_input",
+                  "stage": "conversion.metadata",
+                  "reason": {
+                    "op": "literal",
+                    "value": "metadata does not satisfy its declared disposition shape"
+                  }
+                }
+              },
               {
                 "when": {
                   "op": "equal",

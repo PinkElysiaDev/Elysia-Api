@@ -137,8 +137,11 @@ func MetadataFieldType(codec, location, name string) string {
 }
 
 func validateCoreMetadataValue(version int, field ResponseMetadata) error {
-	if version == ProtocolCoreVersion && field.Name == "logprobs" {
-		return validateCoreLogprobs(field)
+	if version == ProtocolCoreVersion {
+		if field.Name == "logprobs" {
+			return validateCoreLogprobs(field)
+		}
+		return nil // External field contracts belong to Spec and target dispositions.
 	}
 	return ValidateMetadataValue(field.Codec, field.Location, field.Name, field.Value, field.Path)
 }

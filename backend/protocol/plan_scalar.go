@@ -186,6 +186,9 @@ func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, er
 		}
 		value, ok := expression.values[key]
 		if !ok {
+			if plan.otherwise != nil {
+				return plan.otherwise.build(state)
+			}
 			return plannedOutput{}, fmt.Errorf("%s/values: enum value is unmapped", expression.path)
 		}
 		return plannedLeaf(value), nil

@@ -53,7 +53,7 @@ var expressionOperations = []OperationInfo{
 	{"group_runs", []string{"source", "when"}, []string{"source", "when"}, ArrayType, "Partition an array into consecutive runs with the same boolean predicate result; retain every original member in order without merging separated runs."},
 	{"choose", []string{"source", "cases", "otherwise"}, []string{"source", "cases"}, AnyType, "Select a required branch by string discriminator; no implicit fallback."},
 	{"if", []string{"when", "then", "otherwise"}, []string{"when", "then"}, AnyType, "Conditionally emit a value; false without otherwise means omission."},
-	{"enum", []string{"source", "values"}, []string{"source", "values"}, AnyType, "Map an explicit enum; an unmapped input is an error."},
+	{"enum", []string{"source", "values", "otherwise"}, []string{"source", "values"}, AnyType, "Map a string through declared literal values; evaluate otherwise only for an unmapped string, or reject when it is absent."},
 	{"cast", []string{"source", "to"}, []string{"source", "to"}, AnyType, "Perform a lossless scalar conversion; never truncate numbers."},
 	{"merge", []string{"items", "policy"}, []string{"items", "policy"}, ObjectType, "Explicitly merge objects with reject, first or last collision policy."},
 	{"merge_deep", []string{"items", "onConflict"}, []string{"items"}, ObjectType, "Recursively union objects; overlapping non-object values always conflict, even when equal. Optional onConflict classifies only this merge's leaf collisions. Arrays are atomic. Missing, null and non-object operands fail."},

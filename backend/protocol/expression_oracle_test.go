@@ -182,6 +182,9 @@ func (expression *compiledExpression) evaluateValue(state evaluation) (Value, er
 		}
 		mapped, exists := expression.values[key]
 		if !exists {
+			if expression.otherwise != nil {
+				return expression.otherwise.evaluate(state)
+			}
 			return Value{}, fmt.Errorf("%s/values: enum value is unmapped", expression.path)
 		}
 		return mapped, nil
