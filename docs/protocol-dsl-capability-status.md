@@ -1,4 +1,4 @@
-# DSL 能力状态（dev.117）
+# DSL 能力状态（dev.118）
 
 本表替代 dev.100／101 的过期迁移状态；旧调查可从 Git 历史读取。最新实施记录见[剩余闭合记录](protocol-three-part-closure-2026-11-02.md)。本轮从 a20f63ce 继续；四包已可独立编译和执行，但默认生产加载器仍为旧定义。
 
@@ -11,7 +11,7 @@
 | 工具选项 | Spec strict／streaming；Tool.Options | dev.110 tool-options／145；Agent 实际出站 | 不扩大不支持的工具 API |
 | 工具结果 | Spec 内容块／对象；ToolResult payload／children／status | dev.111 tool-results／150；真实三目标 JSON／SSE、Agent 两轮 | Gemini 混合包络、一般混合布局及复杂媒体组合 |
 | 历史与多根输出 | 已有消息父容器、关联及 reasoning 集合 | 配置已有局部分组与身份处置 | system/developer 上提、一般分组、多根／多段 reasoning |
-| 缓存 | CacheIntent 与资源 Scope；已有 cache_intents 通用执行 | 四包已有部分来源和编码表示 | 四份目标尚无 cache_intents 处置声明 |
+| 缓存 | CacheIntent 与资源 Scope；cache_intents 通用执行 | dev.118 四份目标显式处置；Native／重建、禁用及真实 JSON／SSE 请求 | 聚合证明、一般布局与复杂缓存组合；不扩大未声明策略 |
 | metadata／错误 | Spec 外部类型；核心通用载体与 logprobs 约束 | dev.114 处置前类型检查；dev.117 output_text 当前正文一致性、真实网关回归 | 一般错误处置、缓存／布局中的附属字段归属 |
 | 请求外部字段与目标规则 | Spec safety／上下文／追踪合同；参数及 reasoning 叶子 | dev.112 显式默认规则；dev.113／115 通用有限值与字段投影；dev.116 来源、重建和最终出站 | 对象 aggregate 仍限定单个 cache owner；缓存／布局待闭合 |
 | 管理／CLI／模型／任务／会话 | 整包编译、修订、快照与已有 task/session 合同 | 两源编辑器、CLI、Agent 与模型发现已有接线 | 所有入口统一、资源所有权及最终页面验收 |

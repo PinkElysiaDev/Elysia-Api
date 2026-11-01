@@ -160,7 +160,7 @@ func (compiled *Compiled) EncodeRequestValue(ctx context.Context, request *Reque
 	if err := IssuesError(CheckRequest(request, target, semanticLimits(compiled.nativeLimits(ctx, EncodeRequest)))); err != nil {
 		return Value{}, err
 	}
-	if compiled.packagePlan != nil && compiled.packagePlan.hasFieldProjection && compiled.native.Preserve && request.Native != nil && CanPreserveNative(request.Native.Source, target) {
+	if compiled.packagePlan != nil && (compiled.packagePlan.hasFieldProjection || compiled.packagePlan.hasCacheProjection) && compiled.native.Preserve && request.Native != nil && CanPreserveNative(request.Native.Source, target) {
 		options.requestReplay = newRequestReplay(compiled, options)
 	}
 	output, err := encodeTyped(ctx, compiled, EncodeRequest, request, options, func(module TypedModule, input *Request, options EvaluationContext) (Value, error) {

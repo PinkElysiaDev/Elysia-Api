@@ -128,6 +128,14 @@ request_field 的位置可以是独立 parameters 字段或 reasoning 的 Value 
 
 禁用投影规则后编码器只检查未解决的字段，不替规则执行省略。同协议 Native 仍需证明删除合同；仅清除当前核心字段不能授权恢复原始字段。没有相关字段与缓存意图时不分配执行状态。
 
+## 缓存提示目标处置（dev.118）
+
+四份 Mapping 通过 encode_request.effects 的 cache_intents 声明目标处置，并由显式 request-projection 规则运行。Anthropic 保留 breakpoint，OpenAI 两协议保留 request key／retention，Gemini 保留有 Scope 的资源引用。目标没有对应表示时，兼容模式只允许省略已声明的 request key、in_memory／24h retention，以及 type:ephemeral、TTL 缺失／null／5m／1h 的 breakpoint，并产生 info 诊断；严格模式拒绝这些损失。明确的 null 提示可按目标声明归一化，缺失不生成意图。
+
+资源引用、未知策略、额外策略成员及未声明的 TTL 不进入提示省略规则。不扩大 mode、options.ttl、prewarm 的现有能力范围。禁用或替换投影规则后，编码器只拒绝残留意图，不替规则执行省略。
+
+缓存检查与字段检查、Native 协调共享请求局部的重放准备结果。私有工作区仅为精确匹配时的复用凭据；缺失或改变时使用已有解码流程重新核验原始 wire，Scope、外部合同和认证续传约束继续生效。原始基线仍参与删除检查，不能通过清除当前 Cache 恢复已省略字段，也不能把任意政策修改作为 Native 删除证明。
+
 ## Metadata 配置边界（dev.114）
 
 dev.117 补齐派生文本一致性：四份目标 Mapping 在保留或省略 Responses output_text 前，通过 equal_text 将其与当前核心可见文本段比较；终态事件比较完整响应，不将文本 delta 与完整派生值比较。Responses Spec 的具名 response-output-text 约束同时用于来源、重建和最终客户端输出。比较不构造正文拼接字符串，refusal、reasoning 和工具参数不混入可见文本。

@@ -1442,10 +1442,8 @@
           "op": "equal",
           "items": [
             {
-              "op": "read",
-              "from": "binding",
-              "name": "selected",
-              "path": ""
+              "op": "ref",
+              "ref": "read-selected"
             },
             {
               "op": "literal",
@@ -1457,10 +1455,8 @@
           "op": "omit"
         },
         "otherwise": {
-          "op": "read",
-          "from": "binding",
-          "name": "selected",
-          "path": ""
+          "op": "ref",
+          "ref": "read-selected"
         }
       }
     },
@@ -3709,10 +3705,8 @@
         "when": {
           "op": "present",
           "source": {
-            "op": "read",
-            "from": "binding",
-            "path": "",
-            "name": "selected"
+            "op": "ref",
+            "ref": "read-selected"
           }
         },
         "then": {
@@ -4110,10 +4104,8 @@
             }
           },
           "body": {
-            "op": "read",
-            "from": "binding",
-            "path": "/0/value",
-            "name": "matches"
+            "op": "ref",
+            "ref": "read-first-match-value"
           }
         },
         "prompt_cache_retention": {
@@ -4140,10 +4132,8 @@
             }
           },
           "body": {
-            "op": "read",
-            "from": "binding",
-            "path": "/0/value",
-            "name": "matches"
+            "op": "ref",
+            "ref": "read-first-match-value"
           }
         },
         "prewarm": {
@@ -4170,10 +4160,8 @@
             }
           },
           "body": {
-            "op": "read",
-            "from": "binding",
-            "path": "/0/value",
-            "name": "matches"
+            "op": "ref",
+            "ref": "read-first-match-value"
           }
         },
         "prompt_cache_options": {
@@ -4206,10 +4194,8 @@
                   }
                 },
                 "body": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/0/value",
-                  "name": "matches"
+                  "op": "ref",
+                  "ref": "read-first-match-value"
                 }
               },
               "ttl": {
@@ -4236,10 +4222,8 @@
                   }
                 },
                 "body": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/0/value",
-                  "name": "matches"
+                  "op": "ref",
+                  "ref": "read-first-match-value"
                 }
               }
             }
@@ -7095,10 +7079,8 @@
       "source": {
         "op": "stringify_json",
         "source": {
-          "op": "read",
-          "from": "binding",
-          "path": "",
-          "name": "http-status"
+          "op": "ref",
+          "ref": "read-http-status"
         }
       },
       "cases": {
@@ -7146,10 +7128,8 @@
           "operation": "gte",
           "items": [
             {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "http-status"
+              "op": "ref",
+              "ref": "read-http-status"
             },
             {
               "op": "literal",
@@ -7201,10 +7181,8 @@
     "failure-openai-type": {
       "op": "choose",
       "source": {
-        "op": "read",
-        "from": "binding",
-        "path": "",
-        "name": "error-category"
+        "op": "ref",
+        "ref": "read-error-category"
       },
       "cases": {
         "invalid_request": {
@@ -7244,10 +7222,8 @@
     "failure-openai-code": {
       "op": "choose",
       "source": {
-        "op": "read",
-        "from": "binding",
-        "path": "",
-        "name": "error-category"
+        "op": "ref",
+        "ref": "read-error-category"
       },
       "cases": {
         "invalid_request": {
@@ -7290,10 +7266,8 @@
       "source": {
         "op": "choose",
         "source": {
-          "op": "read",
-          "from": "binding",
-          "path": "",
-          "name": "error-code"
+          "op": "ref",
+          "ref": "read-error-code"
         },
         "cases": {
           "invalid_api_key": {
@@ -7376,10 +7350,8 @@
               "otherwise": {
                 "op": "if",
                 "when": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "",
-                  "name": "provider-wrapper"
+                  "op": "ref",
+                  "ref": "read-provider-wrapper"
                 },
                 "then": {
                   "op": "literal",
@@ -7395,10 +7367,8 @@
           "otherwise": {
             "op": "if",
             "when": {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "provider-wrapper"
+              "op": "ref",
+              "ref": "read-provider-wrapper"
             },
             "then": {
               "op": "literal",
@@ -7429,10 +7399,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "",
-                  "name": "error-category"
+                  "op": "ref",
+                  "ref": "read-error-category"
                 },
                 {
                   "op": "literal",
@@ -7442,25 +7410,19 @@
             }
           },
           "then": {
-            "op": "read",
-            "from": "binding",
-            "path": "",
-            "name": "error-category"
+            "op": "ref",
+            "ref": "read-error-category"
           }
         },
         "providerType": {
           "op": "if",
           "when": {
-            "op": "read",
-            "from": "binding",
-            "path": "",
-            "name": "provider-wrapper"
+            "op": "ref",
+            "ref": "read-provider-wrapper"
           },
           "then": {
-            "op": "read",
-            "from": "binding",
-            "path": "/type",
-            "name": "wire-failure"
+            "op": "ref",
+            "ref": "read-failure-type"
           }
         },
         "code": {
@@ -7471,10 +7433,8 @@
               {
                 "op": "present",
                 "source": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/code",
-                  "name": "wire-failure"
+                  "op": "ref",
+                  "ref": "read-failure-code"
                 }
               },
               {
@@ -7488,10 +7448,8 @@
                         {
                           "op": "not",
                           "source": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "provider-wrapper"
+                            "op": "ref",
+                            "ref": "read-provider-wrapper"
                           }
                         },
                         {
@@ -7501,10 +7459,8 @@
                               "op": "equal",
                               "items": [
                                 {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "error-code"
+                                  "op": "ref",
+                                  "ref": "read-error-code"
                                 },
                                 {
                                   "op": "literal",
@@ -7516,10 +7472,8 @@
                               "op": "equal",
                               "items": [
                                 {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "error-code"
+                                  "op": "ref",
+                                  "ref": "read-error-code"
                                 },
                                 {
                                   "op": "literal",
@@ -7531,10 +7485,8 @@
                               "op": "equal",
                               "items": [
                                 {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "error-code"
+                                  "op": "ref",
+                                  "ref": "read-error-code"
                                 },
                                 {
                                   "op": "literal",
@@ -7555,10 +7507,8 @@
                             "op": "equal",
                             "items": [
                               {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "",
-                                "name": "error-category"
+                                "op": "ref",
+                                "ref": "read-error-category"
                               },
                               {
                                 "op": "literal",
@@ -7571,10 +7521,8 @@
                           "op": "equal",
                           "items": [
                             {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "",
-                              "name": "error-type"
+                              "op": "ref",
+                              "ref": "read-error-type"
                             },
                             {
                               "op": "read",
@@ -7588,16 +7536,12 @@
                           "op": "equal",
                           "items": [
                             {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "",
-                              "name": "error-code"
+                              "op": "ref",
+                              "ref": "read-error-code"
                             },
                             {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "",
-                              "name": "error-type"
+                              "op": "ref",
+                              "ref": "read-error-type"
                             }
                           ]
                         }
@@ -7609,10 +7553,8 @@
             ]
           },
           "then": {
-            "op": "read",
-            "from": "binding",
-            "path": "/code",
-            "name": "wire-failure"
+            "op": "ref",
+            "ref": "read-failure-code"
           }
         },
         "param": {
@@ -7623,10 +7565,8 @@
               {
                 "op": "present",
                 "source": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/param",
-                  "name": "wire-failure"
+                  "op": "ref",
+                  "ref": "read-failure-param"
                 }
               },
               {
@@ -7637,19 +7577,15 @@
                     {
                       "op": "not",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "provider-wrapper"
+                        "op": "ref",
+                        "ref": "read-provider-wrapper"
                       }
                     },
                     {
                       "items": [
                         {
-                          "from": "binding",
-                          "name": "error-category",
-                          "op": "read",
-                          "path": ""
+                          "op": "ref",
+                          "ref": "read-error-category"
                         },
                         {
                           "op": "literal",
@@ -7662,10 +7598,8 @@
                       "op": "equal",
                       "items": [
                         {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/param",
-                          "name": "wire-failure"
+                          "op": "ref",
+                          "ref": "read-failure-param"
                         },
                         {
                           "op": "literal",
@@ -7679,10 +7613,8 @@
             ]
           },
           "then": {
-            "op": "read",
-            "from": "binding",
-            "path": "/param",
-            "name": "wire-failure"
+            "op": "ref",
+            "ref": "read-failure-param"
           }
         },
         "wire:openai_responses": {
@@ -7694,10 +7626,8 @@
               "op": "any",
               "items": [
                 {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "",
-                  "name": "provider-wrapper"
+                  "op": "ref",
+                  "ref": "read-provider-wrapper"
                 },
                 {
                   "op": "all",
@@ -7727,10 +7657,8 @@
                           "op": "equal",
                           "items": [
                             {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "",
-                              "name": "error-type"
+                              "op": "ref",
+                              "ref": "read-error-type"
                             },
                             {
                               "op": "read",
@@ -7744,10 +7672,8 @@
                           "op": "equal",
                           "items": [
                             {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "",
-                              "name": "error-type"
+                              "op": "ref",
+                              "ref": "read-error-type"
                             },
                             {
                               "op": "literal",
@@ -7759,10 +7685,8 @@
                           "op": "equal",
                           "items": [
                             {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "",
-                              "name": "error-type"
+                              "op": "ref",
+                              "ref": "read-error-type"
                             },
                             {
                               "op": "literal",
@@ -7779,10 +7703,8 @@
             "then": {
               "op": "project",
               "source": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "wire-failure"
+                "op": "ref",
+                "ref": "read-wire-failure"
               },
               "keys": [
                 "message",
@@ -7795,10 +7717,8 @@
             "otherwise": {
               "op": "project",
               "source": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "wire-failure"
+                "op": "ref",
+                "ref": "read-wire-failure"
               },
               "keys": [
                 "message",
@@ -8033,10 +7953,8 @@
                 "when": {
                   "items": [
                     {
-                      "from": "binding",
-                      "name": "error-category",
-                      "op": "read",
-                      "path": ""
+                      "op": "ref",
+                      "ref": "read-error-category"
                     },
                     {
                       "op": "literal",
@@ -8296,10 +8214,8 @@
                               "op": "equal",
                               "items": [
                                 {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "http-status"
+                                  "op": "ref",
+                                  "ref": "read-http-status"
                                 },
                                 {
                                   "op": "literal",
@@ -8334,10 +8250,8 @@
                           {
                             "op": "type",
                             "source": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "",
-                              "name": "error-category"
+                              "op": "ref",
+                              "ref": "read-error-category"
                             }
                           },
                           {
@@ -8349,10 +8263,8 @@
                       "then": {
                         "op": "enum",
                         "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "error-category"
+                          "op": "ref",
+                          "ref": "read-error-category"
                         },
                         "values": {
                           "invalid_request": true,
@@ -9027,10 +8939,8 @@
               "body": {
                 "op": "exists",
                 "source": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/0",
-                  "name": "matches"
+                  "op": "ref",
+                  "ref": "read-first-match"
                 }
               }
             }
@@ -9534,10 +9444,8 @@
                   "source": {
                     "op": "exists",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/0",
-                      "name": "matches"
+                      "op": "ref",
+                      "ref": "read-first-match"
                     }
                   }
                 }
@@ -10653,19 +10561,15 @@
         "when": {
           "op": "exists",
           "source": {
-            "op": "read",
-            "from": "binding",
-            "path": "",
-            "name": "progress-metadata"
+            "op": "ref",
+            "ref": "read-progress-metadata"
           }
         },
         "then": {
           "op": "map",
           "source": {
-            "op": "read",
-            "from": "binding",
-            "path": "",
-            "name": "progress-metadata"
+            "op": "ref",
+            "ref": "read-progress-metadata"
           },
           "body": {
             "op": "merge",
@@ -10769,10 +10673,8 @@
           {
             "op": "type",
             "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "wire-failure"
+              "op": "ref",
+              "ref": "read-wire-failure"
             }
           },
           {
@@ -10789,10 +10691,8 @@
           "when": {
             "op": "exists",
             "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "/type",
-              "name": "wire-failure"
+              "op": "ref",
+              "ref": "read-failure-type"
             }
           },
           "then": {
@@ -10803,10 +10703,8 @@
                 {
                   "op": "type",
                   "source": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/type",
-                    "name": "wire-failure"
+                    "op": "ref",
+                    "ref": "read-failure-type"
                   }
                 },
                 {
@@ -10816,10 +10714,8 @@
               ]
             },
             "then": {
-              "op": "read",
-              "from": "binding",
-              "path": "/type",
-              "name": "wire-failure"
+              "op": "ref",
+              "ref": "read-failure-type"
             },
             "otherwise": {
               "op": "if",
@@ -10827,10 +10723,8 @@
                 "op": "equal",
                 "items": [
                   {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/type",
-                    "name": "wire-failure"
+                    "op": "ref",
+                    "ref": "read-failure-type"
                   },
                   {
                     "op": "literal",
@@ -10869,10 +10763,8 @@
           "source": {
             "op": "choose",
             "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "error-type"
+              "op": "ref",
+              "ref": "read-error-type"
             },
             "cases": {
               "invalid_request_error": {
@@ -10970,10 +10862,8 @@
                 "op": "equal",
                 "items": [
                   {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "error-type"
+                    "op": "ref",
+                    "ref": "read-error-type"
                   },
                   {
                     "op": "literal",
@@ -10989,10 +10879,8 @@
                   "when": {
                     "op": "present",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/code",
-                      "name": "wire-failure"
+                      "op": "ref",
+                      "ref": "read-failure-code"
                     }
                   },
                   "then": {
@@ -11003,10 +10891,8 @@
                         {
                           "op": "type",
                           "source": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/code",
-                            "name": "wire-failure"
+                            "op": "ref",
+                            "ref": "read-failure-code"
                           }
                         },
                         {
@@ -11016,10 +10902,8 @@
                       ]
                     },
                     "then": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/code",
-                      "name": "wire-failure"
+                      "op": "ref",
+                      "ref": "read-failure-code"
                     },
                     "otherwise": {
                       "op": "reject",
@@ -11044,10 +10928,8 @@
                     "when": {
                       "op": "present",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/param",
-                        "name": "wire-failure"
+                        "op": "ref",
+                        "ref": "read-failure-param"
                       }
                     },
                     "then": {
@@ -11058,10 +10940,8 @@
                           {
                             "op": "type",
                             "source": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/param",
-                              "name": "wire-failure"
+                              "op": "ref",
+                              "ref": "read-failure-param"
                             }
                           },
                           {
@@ -11071,10 +10951,8 @@
                         ]
                       },
                       "then": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/param",
-                        "name": "wire-failure"
+                        "op": "ref",
+                        "ref": "read-failure-param"
                       },
                       "otherwise": {
                         "op": "reject",
@@ -11088,10 +10966,8 @@
                       }
                     },
                     "otherwise": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/param",
-                      "name": "wire-failure"
+                      "op": "ref",
+                      "ref": "read-failure-param"
                     }
                   },
                   "body": {
@@ -11126,10 +11002,8 @@
                     {
                       "op": "type",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "wire-failure"
+                        "op": "ref",
+                        "ref": "read-wire-failure"
                       }
                     },
                     {
@@ -11139,10 +11013,8 @@
                   ]
                 },
                 "then": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "",
-                  "name": "wire-failure"
+                  "op": "ref",
+                  "ref": "read-wire-failure"
                 },
                 "otherwise": {
                   "op": "if",
@@ -11150,10 +11022,8 @@
                     "op": "equal",
                     "items": [
                       {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "wire-failure"
+                        "op": "ref",
+                        "ref": "read-wire-failure"
                       },
                       {
                         "op": "literal",
@@ -11399,10 +11269,8 @@
             "op": "equal",
             "items": [
               {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "events"
+                "op": "ref",
+                "ref": "read-events"
               },
               {
                 "op": "literal",
@@ -11434,10 +11302,8 @@
             ]
           },
           "otherwise": {
-            "op": "read",
-            "from": "binding",
-            "path": "",
-            "name": "events"
+            "op": "ref",
+            "ref": "read-events"
           }
         },
         "body": {
@@ -11791,10 +11657,8 @@
                       "otherwise": {
                         "op": "reject",
                         "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "safety-path"
+                          "op": "ref",
+                          "ref": "read-safety-path"
                         },
                         "reason": "safety setting must be an object",
                         "diagnostic": {
@@ -11817,10 +11681,8 @@
                                 {
                                   "op": "type",
                                   "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "/category",
-                                    "name": "safety-setting"
+                                    "op": "ref",
+                                    "ref": "read-safety-category"
                                   }
                                 },
                                 {
@@ -11835,10 +11697,8 @@
                                 "op": "equal",
                                 "items": [
                                   {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "/category",
-                                    "name": "safety-setting"
+                                    "op": "ref",
+                                    "ref": "read-safety-category"
                                   },
                                   {
                                     "op": "literal",
@@ -11858,10 +11718,8 @@
                           "source": {
                             "op": "pointer_join",
                             "source": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "",
-                              "name": "safety-path"
+                              "op": "ref",
+                              "ref": "read-safety-path"
                             },
                             "items": [
                               {
@@ -11932,10 +11790,8 @@
                             "source": {
                               "op": "pointer_join",
                               "source": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "",
-                                "name": "safety-path"
+                                "op": "ref",
+                                "ref": "read-safety-path"
                               },
                               "items": [
                                 {
@@ -11965,10 +11821,8 @@
                                   "op": "join",
                                   "items": [
                                     {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "/category",
-                                      "name": "safety-setting"
+                                      "op": "ref",
+                                      "ref": "read-safety-category"
                                     }
                                   ]
                                 },
@@ -11980,10 +11834,8 @@
                               "source": {
                                 "op": "pointer_join",
                                 "source": {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "safety-path"
+                                  "op": "ref",
+                                  "ref": "read-safety-path"
                                 },
                                 "items": [
                                   {
@@ -12005,10 +11857,8 @@
                                 "op": "join",
                                 "items": [
                                   {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "/category",
-                                    "name": "safety-setting"
+                                    "op": "ref",
+                                    "ref": "read-safety-category"
                                   }
                                 ]
                               },
@@ -12074,10 +11924,8 @@
                                   "source": {
                                     "op": "pointer_join",
                                     "source": {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "",
-                                      "name": "safety-path"
+                                      "op": "ref",
+                                      "ref": "read-safety-path"
                                     },
                                     "items": [
                                       {
@@ -12107,10 +11955,8 @@
                                       {
                                         "op": "type",
                                         "source": {
-                                          "op": "read",
-                                          "from": "binding",
-                                          "path": "/category",
-                                          "name": "safety-setting"
+                                          "op": "ref",
+                                          "ref": "read-safety-category"
                                         }
                                       },
                                       {
@@ -12122,10 +11968,8 @@
                                   "then": {
                                     "op": "enum",
                                     "source": {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "/category",
-                                      "name": "safety-setting"
+                                      "op": "ref",
+                                      "ref": "read-safety-category"
                                     },
                                     "values": {
                                       "HARM_CATEGORY_HATE_SPEECH": true,
@@ -12153,10 +11997,8 @@
                                   "source": {
                                     "op": "pointer_join",
                                     "source": {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "",
-                                      "name": "safety-path"
+                                      "op": "ref",
+                                      "ref": "read-safety-path"
                                     },
                                     "items": [
                                       {
@@ -12218,10 +12060,8 @@
                                   "source": {
                                     "op": "pointer_join",
                                     "source": {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "",
-                                      "name": "safety-path"
+                                      "op": "ref",
+                                      "ref": "read-safety-path"
                                     },
                                     "items": [
                                       {
@@ -12389,10 +12229,8 @@
         "when": {
           "op": "present",
           "source": {
-            "op": "read",
-            "from": "binding",
-            "path": "",
-            "name": "selected"
+            "op": "ref",
+            "ref": "read-selected"
           }
         },
         "then": {
@@ -12576,10 +12414,8 @@
       "when": {
         "op": "present",
         "source": {
-          "op": "read",
-          "from": "binding",
-          "path": "/item",
-          "name": "target-event"
+          "op": "ref",
+          "ref": "read-target-event-item"
         }
       },
       "then": {
@@ -12619,10 +12455,8 @@
           "then": {
             "op": "project",
             "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "/item",
-              "name": "target-event"
+              "op": "ref",
+              "ref": "read-target-event-item"
             },
             "keys": [
               "native",
@@ -12634,10 +12468,8 @@
           "otherwise": {
             "op": "project",
             "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "/item",
-              "name": "target-event"
+              "op": "ref",
+              "ref": "read-target-event-item"
             },
             "keys": [
               "native",
@@ -12649,10 +12481,8 @@
         "otherwise": {
           "op": "project",
           "source": {
-            "op": "read",
-            "from": "binding",
-            "path": "/item",
-            "name": "target-event"
+            "op": "ref",
+            "ref": "read-target-event-item"
           },
           "keys": [
             "payload",
@@ -12711,20 +12541,16 @@
         "when": {
           "op": "present",
           "source": {
-            "op": "read",
-            "from": "binding",
-            "path": "/parent",
-            "name": "target-identity"
+            "op": "ref",
+            "ref": "read-target-parent"
           }
         },
         "then": {
           "op": "recall",
           "name": "targetItems",
           "source": {
-            "op": "read",
-            "from": "binding",
-            "path": "/parent",
-            "name": "target-identity"
+            "op": "ref",
+            "ref": "read-target-parent"
           },
           "policy": "reject"
         },
@@ -12759,10 +12585,8 @@
                 "name": "new-order"
               },
               "parent": {
-                "op": "read",
-                "from": "binding",
-                "path": "/parent",
-                "name": "target-identity"
+                "op": "ref",
+                "ref": "read-target-parent"
               },
               "collection": {
                 "op": "read",
@@ -12781,10 +12605,8 @@
                 "when": {
                   "op": "present",
                   "source": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/parent",
-                    "name": "target-identity"
+                    "op": "ref",
+                    "ref": "read-target-parent"
                   }
                 },
                 "then": {
@@ -12818,10 +12640,8 @@
                 "when": {
                   "op": "present",
                   "source": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/parent",
-                    "name": "target-identity"
+                    "op": "ref",
+                    "ref": "read-target-parent"
                   }
                 },
                 "then": {
@@ -12903,10 +12723,8 @@
                 "when": {
                   "op": "present",
                   "source": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/parent",
-                    "name": "target-identity"
+                    "op": "ref",
+                    "ref": "read-target-parent"
                   }
                 },
                 "then": {
@@ -12993,10 +12811,8 @@
                   "source": {
                     "op": "present",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/parent",
-                      "name": "target-identity"
+                      "op": "ref",
+                      "ref": "read-target-parent"
                     }
                   }
                 },
@@ -13025,20 +12841,16 @@
                   "when": {
                     "op": "present",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/parent",
-                      "name": "target-identity"
+                      "op": "ref",
+                      "ref": "read-target-parent"
                     }
                   },
                   "then": {
                     "op": "remember",
                     "name": "targetItems",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/parent",
-                      "name": "target-identity"
+                      "op": "ref",
+                      "ref": "read-target-parent"
                     },
                     "body": {
                       "op": "merge",
@@ -13154,10 +12966,8 @@
                     {
                       "op": "present",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/item",
-                        "name": "target-event"
+                        "op": "ref",
+                        "ref": "read-target-event-item"
                       }
                     },
                     {
@@ -13421,10 +13231,8 @@
                     "when": {
                       "op": "present",
                       "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/item/input/value",
-                        "name": "target-event"
+                        "op": "ref",
+                        "ref": "read-target-input"
                       }
                     },
                     "then": {
@@ -13447,17 +13255,13 @@
                       "then": {
                         "op": "stringify_json",
                         "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/item/input/value",
-                          "name": "target-event"
+                          "op": "ref",
+                          "ref": "read-target-input"
                         }
                       },
                       "otherwise": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/item/input/value",
-                        "name": "target-event"
+                        "op": "ref",
+                        "ref": "read-target-input"
                       }
                     }
                   }
@@ -13603,10 +13407,8 @@
                   "op": "equal",
                   "items": [
                     {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/location",
-                      "name": "field"
+                      "op": "ref",
+                      "ref": "read-field-location"
                     },
                     {
                       "op": "literal",
@@ -13621,10 +13423,8 @@
                       "op": "equal",
                       "items": [
                         {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/name",
-                          "name": "field"
+                          "op": "ref",
+                          "ref": "read-field-name"
                         },
                         {
                           "op": "literal",
@@ -13636,10 +13436,8 @@
                       "op": "equal",
                       "items": [
                         {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/name",
-                          "name": "field"
+                          "op": "ref",
+                          "ref": "read-field-name"
                         },
                         {
                           "op": "literal",
@@ -13685,10 +13483,8 @@
                           "op": "equal",
                           "items": [
                             {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/name",
-                              "name": "field"
+                              "op": "ref",
+                              "ref": "read-field-name"
                             },
                             {
                               "op": "literal",
@@ -13703,10 +13499,8 @@
                 "then": {
                   "op": "choose",
                   "source": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/name",
-                    "name": "field"
+                    "op": "ref",
+                    "ref": "read-field-name"
                   },
                   "cases": {
                     "annotations": {
@@ -13744,10 +13538,8 @@
                 "otherwise": {
                   "op": "choose",
                   "source": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/name",
-                    "name": "field"
+                    "op": "ref",
+                    "ref": "read-field-name"
                   },
                   "cases": {
                     "annotations": {
@@ -13790,10 +13582,8 @@
                     "op": "object",
                     "fields": {
                       "name": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/name",
-                        "name": "field"
+                        "op": "ref",
+                        "ref": "read-field-name"
                       },
                       "value": {
                         "op": "read",
@@ -13815,10 +13605,8 @@
                     "op": "equal",
                     "items": [
                       {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/location",
-                        "name": "field"
+                        "op": "ref",
+                        "ref": "read-field-location"
                       },
                       {
                         "op": "literal",
@@ -13830,10 +13618,8 @@
                     "op": "equal",
                     "items": [
                       {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/location",
-                        "name": "field"
+                        "op": "ref",
+                        "ref": "read-field-location"
                       },
                       {
                         "op": "literal",
@@ -13844,10 +13630,8 @@
                   {
                     "op": "has_prefix",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/location",
-                      "name": "field"
+                      "op": "ref",
+                      "ref": "read-field-location"
                     },
                     "value": "event:"
                   }
@@ -13875,20 +13659,16 @@
                         "value": ":"
                       },
                       {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/location",
-                        "name": "field"
+                        "op": "ref",
+                        "ref": "read-field-location"
                       },
                       {
                         "op": "literal",
                         "value": ":"
                       },
                       {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/name",
-                        "name": "field"
+                        "op": "ref",
+                        "ref": "read-field-name"
                       }
                     ]
                   },
@@ -21674,10 +21454,8 @@
     "server-item-header": {
       "op": "project",
       "source": {
-        "op": "read",
-        "from": "binding",
-        "path": "/node",
-        "name": "registered-item"
+        "op": "ref",
+        "ref": "read-registered-node"
       },
       "keys": [
         "kind",
@@ -22286,10 +22064,8 @@
           "when": {
             "op": "present",
             "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "/item/input/value",
-              "name": "target-event"
+              "op": "ref",
+              "ref": "read-target-input"
             }
           },
           "then": {
@@ -22301,10 +22077,8 @@
             },
             "operation": "snapshot",
             "body": {
-              "op": "read",
-              "from": "binding",
-              "path": "/item/input/value",
-              "name": "target-event"
+              "op": "ref",
+              "ref": "read-target-input"
             }
           },
           "otherwise": {
@@ -22730,10 +22504,8 @@
           "op": "equal",
           "items": [
             {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "selected"
+              "op": "ref",
+              "ref": "read-selected"
             },
             {
               "op": "literal",
@@ -22743,10 +22515,8 @@
         }
       },
       "then": {
-        "op": "read",
-        "from": "binding",
-        "path": "",
-        "name": "selected"
+        "op": "ref",
+        "ref": "read-selected"
       }
     },
     "emit-nonempty-array": {
@@ -22757,10 +22527,8 @@
           "op": "equal",
           "items": [
             {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "selected"
+              "op": "ref",
+              "ref": "read-selected"
             },
             {
               "op": "literal",
@@ -22770,10 +22538,8 @@
         }
       },
       "then": {
-        "op": "read",
-        "from": "binding",
-        "path": "",
-        "name": "selected"
+        "op": "ref",
+        "ref": "read-selected"
       }
     },
     "emit-positive-inferred-count": {
@@ -25266,10 +25032,8 @@
           "ref": "read-current-item"
         },
         {
-          "from": "binding",
-          "name": "selected",
-          "op": "read",
-          "path": ""
+          "op": "ref",
+          "ref": "read-selected"
         }
       ],
       "op": "equal"
@@ -25340,10 +25104,8 @@
           "operation": "lt",
           "items": [
             {
-              "op": "read",
-              "from": "binding",
-              "name": "http-status",
-              "path": ""
+              "op": "ref",
+              "ref": "read-http-status"
             },
             {
               "op": "literal",
@@ -25356,10 +25118,8 @@
           "operation": "gte",
           "items": [
             {
-              "op": "read",
-              "from": "binding",
-              "name": "http-status",
-              "path": ""
+              "op": "ref",
+              "ref": "read-http-status"
             },
             {
               "op": "literal",
@@ -25824,6 +25584,263 @@
           }
         }
       ]
+    },
+    "read-error-category": {
+      "op": "read",
+      "from": "binding",
+      "name": "error-category",
+      "path": ""
+    },
+    "read-error-type": {
+      "op": "read",
+      "from": "binding",
+      "name": "error-type",
+      "path": ""
+    },
+    "read-failure-param": {
+      "op": "read",
+      "from": "binding",
+      "name": "wire-failure",
+      "path": "/param"
+    },
+    "read-safety-path": {
+      "op": "read",
+      "from": "binding",
+      "name": "safety-path",
+      "path": ""
+    },
+    "read-field-name": {
+      "op": "read",
+      "from": "binding",
+      "name": "field",
+      "path": "/name"
+    },
+    "read-node-path": {
+      "op": "read",
+      "from": "binding",
+      "name": "node-path",
+      "path": ""
+    },
+    "read-selected": {
+      "op": "read",
+      "from": "binding",
+      "name": "selected",
+      "path": ""
+    },
+    "read-target-parent": {
+      "op": "read",
+      "from": "binding",
+      "name": "target-identity",
+      "path": "/parent"
+    },
+    "read-events": {
+      "op": "read",
+      "from": "binding",
+      "name": "events",
+      "path": ""
+    },
+    "read-provider-wrapper": {
+      "op": "read",
+      "from": "binding",
+      "name": "provider-wrapper",
+      "path": ""
+    },
+    "read-wire-failure": {
+      "op": "read",
+      "from": "binding",
+      "name": "wire-failure",
+      "path": ""
+    },
+    "read-first-match": {
+      "op": "read",
+      "from": "binding",
+      "name": "matches",
+      "path": "/0"
+    },
+    "read-safety-category": {
+      "op": "read",
+      "from": "binding",
+      "name": "safety-setting",
+      "path": "/category"
+    },
+    "read-registered-node": {
+      "op": "read",
+      "from": "binding",
+      "name": "registered-item",
+      "path": "/node"
+    },
+    "read-first-match-value": {
+      "op": "read",
+      "from": "binding",
+      "name": "matches",
+      "path": "/0/value"
+    },
+    "read-http-status": {
+      "op": "read",
+      "from": "binding",
+      "name": "http-status",
+      "path": ""
+    },
+    "read-error-code": {
+      "op": "read",
+      "from": "binding",
+      "name": "error-code",
+      "path": ""
+    },
+    "read-failure-type": {
+      "op": "read",
+      "from": "binding",
+      "name": "wire-failure",
+      "path": "/type"
+    },
+    "read-failure-code": {
+      "op": "read",
+      "from": "binding",
+      "name": "wire-failure",
+      "path": "/code"
+    },
+    "read-progress-metadata": {
+      "op": "read",
+      "from": "binding",
+      "name": "progress-metadata",
+      "path": ""
+    },
+    "read-target-event-item": {
+      "op": "read",
+      "from": "binding",
+      "name": "target-event",
+      "path": "/item"
+    },
+    "read-target-input": {
+      "op": "read",
+      "from": "binding",
+      "name": "target-event",
+      "path": "/item/input/value"
+    },
+    "read-field-location": {
+      "op": "read",
+      "from": "binding",
+      "name": "field",
+      "path": "/location"
+    },
+    "cache-omittable-hint": {
+      "op": "all",
+      "items": [
+        {
+          "op": "not",
+          "source": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/resource"
+            }
+          }
+        },
+        {
+          "op": "any",
+          "items": [
+            {
+              "op": "all",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/kind"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "breakpoint"
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/value"
+                    },
+                    {
+                      "op": "literal",
+                      "value": {
+                        "type": "ephemeral"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/ttl"
+                        }
+                      }
+                    },
+                    {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/ttl"
+                            },
+                            {
+                              "op": "literal",
+                              "value": null
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/ttl"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "5m"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/ttl"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "1h"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   },
   "directions": {
@@ -26263,6 +26280,43 @@
             ]
           },
           "reason": "client output selection requires its declared target disposition"
+        },
+        {
+          "id": "cache-empty-default",
+          "kind": "default",
+          "scope": "cache_intents",
+          "default": null,
+          "when": {
+            "op": "any",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/kind"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "breakpoint"
+                  }
+                ]
+              }
+            ]
+          },
+          "reason": "an absent target cache hint equals the declared null source hint"
+        },
+        {
+          "id": "cache-unsupported-hint",
+          "kind": "drop",
+          "scope": "cache_intents",
+          "severity": "info",
+          "when": {
+            "op": "ref",
+            "ref": "cache-omittable-hint"
+          },
+          "reason": "target has no equivalent representation for this declared cache hint"
         }
       ],
       "capabilities": {
@@ -27195,10 +27249,8 @@
                                 "ref": "source-output-item"
                               },
                               "body": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "/node",
-                                "name": "registered-item"
+                                "op": "ref",
+                                "ref": "read-registered-node"
                               }
                             }
                           }
@@ -27347,10 +27399,8 @@
                               {
                                 "op": "project",
                                 "source": {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "/node",
-                                  "name": "registered-item"
+                                  "op": "ref",
+                                  "ref": "read-registered-node"
                                 },
                                 "keys": [
                                   "input"
@@ -27989,10 +28039,8 @@
                                     "name": "progress-usage"
                                   },
                                   "metadata": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "progress-metadata"
+                                    "op": "ref",
+                                    "ref": "read-progress-metadata"
                                   }
                                 }
                               }
@@ -28003,10 +28051,8 @@
                             "when": {
                               "op": "exists",
                               "source": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "",
-                                "name": "progress-metadata"
+                                "op": "ref",
+                                "ref": "read-progress-metadata"
                               }
                             },
                             "then": {
@@ -28029,10 +28075,8 @@
                                       "path": "/response"
                                     },
                                     "metadata": {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "",
-                                      "name": "progress-metadata"
+                                      "op": "ref",
+                                      "ref": "read-progress-metadata"
                                     }
                                   }
                                 }
@@ -28315,10 +28359,8 @@
                               {
                                 "op": "project",
                                 "source": {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "/node",
-                                  "name": "registered-item"
+                                  "op": "ref",
+                                  "ref": "read-registered-node"
                                 },
                                 "keys": [
                                   "input"
@@ -28583,10 +28625,8 @@
                               {
                                 "op": "project",
                                 "source": {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "/node",
-                                  "name": "registered-item"
+                                  "op": "ref",
+                                  "ref": "read-registered-node"
                                 },
                                 "keys": [
                                   "input",
@@ -28694,10 +28734,8 @@
                               {
                                 "op": "project",
                                 "source": {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "/node",
-                                  "name": "registered-item"
+                                  "op": "ref",
+                                  "ref": "read-registered-node"
                                 },
                                 "keys": [
                                   "children",
@@ -28809,10 +28847,8 @@
                   "then": {
                     "op": "map",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "events"
+                      "op": "ref",
+                      "ref": "read-events"
                     },
                     "body": {
                       "op": "merge",
@@ -28837,10 +28873,8 @@
                     }
                   },
                   "otherwise": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "events"
+                    "op": "ref",
+                    "ref": "read-events"
                   }
                 },
                 "body": {
@@ -28882,10 +28916,8 @@
                         "ref": "preserve-stream-extensions"
                       },
                       "otherwise": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "events"
+                        "op": "ref",
+                        "ref": "read-events"
                       }
                     },
                     "error": {
@@ -28899,10 +28931,8 @@
                         "ref": "preserve-stream-extensions"
                       },
                       "otherwise": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "events"
+                        "op": "ref",
+                        "ref": "read-events"
                       }
                     },
                     "response.failed": {
@@ -28916,10 +28946,8 @@
                         "ref": "preserve-stream-extensions"
                       },
                       "otherwise": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "events"
+                        "op": "ref",
+                        "ref": "read-events"
                       }
                     }
                   },
@@ -29139,10 +29167,8 @@
                       ]
                     },
                     "then": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "events"
+                      "op": "ref",
+                      "ref": "read-events"
                     },
                     "otherwise": {
                       "op": "ref",
@@ -40228,10 +40254,8 @@
                   "body": {
                     "op": "exists",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/0",
-                      "name": "matches"
+                      "op": "ref",
+                      "ref": "read-first-match"
                     }
                   }
                 }
@@ -40315,10 +40339,8 @@
                   "body": {
                     "op": "exists",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/0",
-                      "name": "matches"
+                      "op": "ref",
+                      "ref": "read-first-match"
                     }
                   }
                 }
@@ -40466,10 +40488,8 @@
                   "body": {
                     "op": "exists",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/0",
-                      "name": "matches"
+                      "op": "ref",
+                      "ref": "read-first-match"
                     }
                   }
                 }
@@ -40559,10 +40579,8 @@
                   "body": {
                     "op": "exists",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/0",
-                      "name": "matches"
+                      "op": "ref",
+                      "ref": "read-first-match"
                     }
                   }
                 }
@@ -43800,10 +43818,8 @@
                         "path": "/operation/id"
                       },
                       {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "node-path"
+                        "op": "ref",
+                        "ref": "read-node-path"
                       }
                     ]
                   }
@@ -43813,10 +43829,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "node-path"
+                      "op": "ref",
+                      "ref": "read-node-path"
                     },
                     "items": [
                       {
@@ -43872,10 +43886,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "node-path"
+                      "op": "ref",
+                      "ref": "read-node-path"
                     },
                     "items": [
                       {
@@ -44098,10 +44110,8 @@
                       "op": "equal",
                       "items": [
                         {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "node-path"
+                          "op": "ref",
+                          "ref": "read-node-path"
                         },
                         {
                           "op": "literal",
@@ -44156,10 +44166,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "node-path"
+                      "op": "ref",
+                      "ref": "read-node-path"
                     },
                     "items": [
                       {
@@ -44182,10 +44190,8 @@
                       "op": "equal",
                       "items": [
                         {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "node-path"
+                          "op": "ref",
+                          "ref": "read-node-path"
                         },
                         {
                           "op": "literal",
@@ -44277,10 +44283,8 @@
                   "source": {
                     "op": "pointer_join",
                     "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "node-path"
+                      "op": "ref",
+                      "ref": "read-node-path"
                     },
                     "items": [
                       {

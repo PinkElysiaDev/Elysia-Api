@@ -241,7 +241,7 @@ func TestPackageCacheProjectionRejectsResourceAndNativeRecovery(t *testing.T) {
 		t.Fatal("synthetic policy did not exercise post-projection validation", err)
 	}
 	_, err = sameWire.EncodeRequest(t.Context(), projected, EvaluationContext{})
-	assertPackageRuntimeIssue(t, err, UnsupportedNative, "/native")
+	assertPackageRuntimeIssue(t, err, InvalidInput, "")
 }
 
 func TestPackageCacheProjectionRejectsUnboundedDeclarations(t *testing.T) {

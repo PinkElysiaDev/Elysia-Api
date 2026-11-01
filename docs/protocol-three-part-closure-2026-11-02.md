@@ -125,3 +125,23 @@ Responses 共享重复输出对象／索引约束、非空文本判断及六个�
 - closure-output-text-staticcheck：固定 v0.8.2 仍为 24 条主诊断及 1 条关联位置，与前批无新增／消失；退出 1。
 
 本批不新增执行原语，不修改核心 Go 的供应商分派；旧拼接检查仅留在旧 codec 路径。对象 aggregate、缓存／一般错误、布局、复杂流、入口所有权和最终生产／性能门槛仍待完成。
+
+## 批次 2A：默认缓存提示处置（dev.118）
+
+四份 Mapping 接入已有 cache_intents，Anthropic 补上显式 request_projection 引用。目标保留已支持的 key、retention、breakpoint 和 scoped resource；仅配置列出的无对应表示提示可以兼容省略，并记录 info 诊断，严格模式拒绝。null 按声明归一化；未知策略、额外成员、未声明 TTL、资源引用不进入提示省略。禁用规则后，编码器检查残留而不补做降级。不新增原语或供应商 Go 判断。
+
+Responses 共享 23 项真实重复的绑定读取，整包 token 从缓存初稿的 100,041 降为 99,824；其余 Anthropic 91,692、Gemini 73,371、Chat 99,315。100,000 token／64 层限额保持不变；触及深度上限的两项读取提取已撤回。未修改子树继续保留原格式。
+
+全量检查暴露原缓存检查将私有工作区误当必要语义凭据，导致序列化正式样例被拒绝。改为复用已有 requestReplay：精确工作区用于复用，其他合法 Native 经相同解码边界重建基线；缓存、字段及 Native 协调共享请求局部准备结果。准备后的资源已完成 Scope stamping，移除缓存检查内的重复 stamping。认证续传仍需宿主证明；原始缓存删除证据保留，清空当前 Cache 不能绕过它。接受边界变化仅为不再因缺失私有工作区拒绝可重新核验的合法 Native；不是放开 Scope、外部合同或认证检查。
+
+必要回归覆盖明确提示省略、严格拒绝、null、禁用、输入隔离、Native／重建、TTL 与资源保真及未知策略拒绝。复用 32 场景网关矩阵，在 Anthropic 向其他三协议的 JSON／SSE 请求中加入缓存提示，模拟上游直接检查省略，完整响应及恰好一次上游调用断言保留。
+
+| 检查 | 结果 |
+|---|---|
+| closure-cache-defaults-all-closed | protocol 全量 6.877 秒、builtin 全量 40.214 秒，通过 |
+| closure-cache-defaults-gateway | 32 场景真实网关通过，10.659 秒 |
+| closure-cache-defaults-race | 核心缓存、四包缓存／续传及 32 场景网关通过，无 race 报告 |
+| closure-cache-defaults-vet | protocol 与 server vet 通过 |
+| closure-cache-defaults-staticcheck | v0.8.2，24 主诊断和 1 关联位置；与 dev.117 多重集逐条相同，退出 1 |
+
+原始失败和修复后的检查均留在忽略目录。前端未改，不重复其检查。尚未开展 B／C 正式性能；本批不宣称性能无回退。对象 aggregate、一般错误、布局、复杂流、入口所有权及生产切换继续待实施。

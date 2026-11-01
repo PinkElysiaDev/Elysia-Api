@@ -75,6 +75,12 @@ func TestPackageCacheNativeKeepsOriginalDispositionEvidence(t *testing.T) {
 		cleared.Cache = nil
 		_, err = compiled.EncodeRequestValue(t.Context(), cleared, EvaluationContext{})
 		assertPackageRuntimeIssue(t, err, UnsupportedNative, "/native")
+		serialized, err := decodeRequestContract(fixtureValue(t, cleared).Bytes(), ProtocolCoreVersion)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = compiled.EncodeRequestValue(t.Context(), serialized, EvaluationContext{})
+		assertPackageRuntimeIssue(t, err, UnsupportedNative, "/native")
 		// The immutable compiled policy, not this editable rule value, determines
 		// whether the original baseline contains a disposition candidate.
 		conversionPolicy := DefaultConversionPolicy(compiled, compiled)
@@ -97,7 +103,7 @@ func TestPackageCacheNativeKeepsOriginalDispositionEvidence(t *testing.T) {
 	}
 }
 
-func TestPackageCacheNativeRequiresExactWorkspace(t *testing.T) {
+func TestPackageCacheNativeReusesOnlyExactWorkspace(t *testing.T) {
 	document := noCachePackage(t)
 	document.Mapping.Native.Preserve = true
 	compiled := compilePackageForTest(t, document)
@@ -114,31 +120,43 @@ func TestPackageCacheNativeRequiresExactWorkspace(t *testing.T) {
 		{"value", func(r *Request) { r.Native.Value = Value{raw: `{"model":"changed","prompt":"hello"}`} }},
 		{"context", func(r *Request) { r.Native.RequestContext.Values["binding"] = StringValue("changed") }},
 		{"context-scope", func(r *Request) { r.Native.RequestContext.Scope.Account = "other" }},
-		{"scope", func(r *Request) { r.Native.Source.Scope.Account = "other" }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			changed := cloneRequestSemantic(request)
 			test.change(changed)
-			_, err := compiled.EncodeRequestValue(t.Context(), changed, options)
-			assertPackageRuntimeIssue(t, err, UnsupportedNative, "/native")
+			if compiled.requestReplayBaseline(changed.Native, compiled.wireLimits(t.Context(), DecodeRequest)) != nil {
+				t.Fatal("changed native evidence reused the private baseline")
+			}
+			if _, err := compiled.EncodeRequestValue(t.Context(), changed, options); err != nil {
+				t.Fatal("valid native input could not rebuild its baseline", err)
+			}
 		})
 	}
 	independent := compilePackageForTest(t, document)
-	_, err = independent.EncodeRequestValue(t.Context(), request, options)
-	assertPackageRuntimeIssue(t, err, UnsupportedNative, "/native")
+	if independent.requestReplayBaseline(request.Native, independent.wireLimits(t.Context(), DecodeRequest)) != nil {
+		t.Fatal("independent compilation reused another plan's baseline")
+	}
+	if _, err = independent.EncodeRequestValue(t.Context(), request, options); err != nil {
+		t.Fatal(err)
+	}
 	serialized := fixtureValue(t, request)
 	withoutWorkspace, err := decodeRequestContract(serialized.Bytes(), ProtocolCoreVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = compiled.EncodeRequestValue(t.Context(), withoutWorkspace, options)
-	assertPackageRuntimeIssue(t, err, UnsupportedNative, "/native")
+	if _, err = compiled.EncodeRequestValue(t.Context(), withoutWorkspace, options); err != nil {
+		t.Fatal("serialized native could not rebuild its baseline", err)
+	}
 	tighter, err := WithRequestBodyLimit(t.Context(), 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = compiled.EncodeRequestValue(tighter, request, options)
-	assertPackageRuntimeIssue(t, err, UnsupportedNative, "/native")
+	if compiled.requestReplayBaseline(request.Native, compiled.wireLimits(tighter, DecodeRequest)) != nil {
+		t.Fatal("changed resource limits reused the private baseline")
+	}
+	if _, err = compiled.EncodeRequestValue(tighter, request, options); err != nil {
+		t.Fatal(err)
+	}
 	options.Scope.Account = "other"
 	_, err = compiled.EncodeRequestValue(t.Context(), request, options)
 	if !hasIssueCode(err, ResourceScopeMismatch) {

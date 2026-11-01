@@ -44,7 +44,7 @@ func (compiled *Compiled) preparePackageState(direction Direction, state evaluat
 		}
 	}
 	if direction == EncodeRequest && compiled.packagePlan.hasCacheProjection {
-		if err := compiled.checkCacheDispositions(state, limits); err != nil {
+		if err := compiled.checkCacheDispositions(state, limits, options); err != nil {
 			return err
 		}
 	}

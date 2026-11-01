@@ -160,6 +160,17 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 					t.Error(err)
 					return
 				}
+				if upstreamName != "anthropic" {
+					value, err := protocol.ParseValue(body)
+					if err != nil {
+						t.Error(err)
+						return
+					}
+					fields, err := value.ReadObject()
+					if err != nil || !fields["cache_control"].IsZero() {
+						t.Error("declared cache omission did not reach the upstream", string(body), err)
+					}
+				}
 				isStream := control.Stream || request.URL.Query().Get("alt") == "sse"
 				if isStream {
 					writer.Header().Set("Content-Type", "text/event-stream")
@@ -182,7 +193,11 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 					t.Run(ingressName+"/"+operationName, func(t *testing.T) {
 						ingress := packages[ingressName]
 						path := strings.ReplaceAll(ingress.Operations()[operationName].Path, "{model}", "group")
-						request := httptest.NewRequest(http.MethodPost, "/gateway/"+ingress.Identity().DefinitionID+path, strings.NewReader(buildPackageGatewayRequest(ingressName, isStream)))
+						body := buildPackageGatewayRequest(ingressName, isStream)
+						if ingressName == "anthropic" && upstreamName != "anthropic" {
+							body = strings.TrimSuffix(body, "}") + `,"cache_control":{"type":"ephemeral","ttl":"1h"}}`
+						}
+						request := httptest.NewRequest(http.MethodPost, "/gateway/"+ingress.Identity().DefinitionID+path, strings.NewReader(body))
 						request.Header.Set("Authorization", "Bearer gateway-test-token")
 						request.Header.Set("Content-Type", "application/json")
 						before := calls.Load()

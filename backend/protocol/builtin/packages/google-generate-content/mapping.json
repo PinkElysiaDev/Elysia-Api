@@ -18030,6 +18030,215 @@
           }
         }
       ]
+    },
+    "cache-omittable-hint": {
+      "op": "all",
+      "items": [
+        {
+          "op": "not",
+          "source": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/resource"
+            }
+          }
+        },
+        {
+          "op": "any",
+          "items": [
+            {
+              "op": "all",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/location"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "request"
+                    }
+                  ]
+                },
+                {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/kind"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "key"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/kind"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "retention"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "any",
+                          "items": [
+                            {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/value"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "in_memory"
+                                }
+                              ]
+                            },
+                            {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/value"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "24h"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "all",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/kind"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "breakpoint"
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/value"
+                    },
+                    {
+                      "op": "literal",
+                      "value": {
+                        "type": "ephemeral"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/ttl"
+                        }
+                      }
+                    },
+                    {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/ttl"
+                            },
+                            {
+                              "op": "literal",
+                              "value": null
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/ttl"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "5m"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/ttl"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "1h"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   },
   "directions": {
@@ -18630,6 +18839,71 @@
             ]
           },
           "reason": "client output selection requires its declared target disposition"
+        },
+        {
+          "id": "cache-empty-default",
+          "kind": "default",
+          "scope": "cache_intents",
+          "default": null,
+          "when": {
+            "op": "any",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/kind"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "key"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/kind"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "retention"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/kind"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "breakpoint"
+                  }
+                ]
+              }
+            ]
+          },
+          "reason": "an absent target cache hint equals the declared null source hint"
+        },
+        {
+          "id": "cache-unsupported-hint",
+          "kind": "drop",
+          "scope": "cache_intents",
+          "severity": "info",
+          "when": {
+            "op": "ref",
+            "ref": "cache-omittable-hint"
+          },
+          "reason": "target has no equivalent representation for this declared cache hint"
         }
       ],
       "capabilities": {
