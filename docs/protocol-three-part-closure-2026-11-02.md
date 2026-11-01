@@ -72,3 +72,18 @@ enum 新增显式 otherwise，只有未命中的字符串会进入该分支。�
 pnpm 包装命令自动准备依赖时因未批准的 swc／esbuild 构建脚本中止；没有改变构建脚本授权，直接使用本地检查器完成类型与 lint。自动产生的 pnpm 文件不进入提交。
 
 本批不代表批次 1 全部完成。共享请求的外部类型／枚举、对象聚合证明和 request_field 仍待迁移；缓存／一般错误、布局、真实流、入口所有权、正式性能和旧链退役仍未闭合。未进行正式配对性能，不宣称性能无回退。
+
+## 批次 1D：请求字段处置解除历史专用路径（dev.115）
+
+request_field 的编译及执行不再固定 historyRetention 或 all。支持独立参数和 reasoning Value 叶子；编译绑定路径及清除动作，保留权限边界。目标 default 的声明值与选中值须一致；错误的恒真条件不能删除不同值。reject 使用声明路径返回诊断。默认包已有历史处置直接使用此实现，没有新增闲置原语。
+
+新增一个参数场景验证兼容／严格归一化、不同值拒绝、规则禁用和编码拒绝，以及受保护位置不能写。已有历史、Native 删除约束、Scope、原始执行与缓存夹具继续复用。全量检查发现初稿使空缓存路径多一次分配，恢复通用无意图快返后原零分配断言通过，没有改断言。
+
+- closure-request-fields-final：protocol 全量 6.768 秒、builtin 全量 36.448 秒，通过。
+- closure-request-fields-value-boundary：收紧声明默认值边界后的相关测试通过。
+- closure-request-fields-gateway：32 场景实际网关矩阵通过，10.363 秒。
+- closure-request-fields-race-final：请求字段、历史、有限值及缓存相关 race 通过。
+- closure-request-fields-vet：protocol vet 通过。
+- closure-request-fields-staticcheck：固定 v0.8.2 的 24 条主诊断及关联位置无新增、无消失，退出 1。
+
+本批仍不含对象聚合通用化和共享请求外部合同迁移；未采集正式性能。

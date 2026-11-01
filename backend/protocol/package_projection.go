@@ -11,7 +11,7 @@ func validateRequestProjectionEffect(direction Direction, effect ProtocolSemanti
 		return fmt.Errorf("diagnostic requires an unscoped reject effect")
 	}
 	if effect.Scope == requestFieldScope {
-		return validateHistoryDisposition(direction, effect)
+		return validateRequestFieldDisposition(direction, effect)
 	}
 	return validateCacheDisposition(direction, effect)
 }
@@ -62,7 +62,7 @@ func (compiled *Compiled) bindRequestProjection(document ProtocolPackage) error 
 			continue
 		}
 		compiled.packagePlan.hasCacheProjection = compiled.packagePlan.hasCacheProjection || effect.scope == cacheIntentScope
-		compiled.packagePlan.hasHistoryProjection = compiled.packagePlan.hasHistoryProjection || effect.scope == requestFieldScope
+		compiled.packagePlan.hasFieldProjection = compiled.packagePlan.hasFieldProjection || effect.scope == requestFieldScope
 		spec.Effects = append(spec.Effects, document.Mapping.Directions[EncodeRequest].Effects[index])
 		for name, expression := range effect.conditionReferences {
 			spec.Expressions[name] = expression

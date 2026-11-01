@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+const historyRetentionPath = "/reasoning/historyRetention"
+
 func historyPrototype(t *testing.T, name string) ProtocolPackage {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("testdata", "history", name+".json"))

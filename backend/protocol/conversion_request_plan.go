@@ -52,7 +52,12 @@ func compileRequestProjectionOption(raw Value, limits Limits) (conversionOption,
 			if !isAssignable(condition.expression.result, BooleanType) || !localProjectionCondition(condition) {
 				return conversionOption{}, fmt.Errorf("cache projection when must be a local boolean condition")
 			}
-			plan.effects = append(plan.effects, compiledSemanticEffect{id: effect.ID, kind: effect.Kind, path: effect.Path, scope: effect.Scope, when: condition, severity: effect.Severity, reason: effect.Reason})
+			entry := compiledSemanticEffect{id: effect.ID, kind: effect.Kind, path: effect.Path, scope: effect.Scope, when: condition, severity: effect.Severity, reason: effect.Reason, defaultValue: effect.Default}
+			if effect.Scope == requestFieldScope {
+				entry.corePointer, _ = parsePointer(effect.Path)
+				entry.clearField, _ = compileRequestFieldClear(effect.Path)
+			}
+			plan.effects = append(plan.effects, entry)
 			if len(plan.groups) == 0 || plan.groups[len(plan.groups)-1].scope != effect.Scope {
 				plan.groups = append(plan.groups, requestProjectionGroup{scope: effect.Scope, start: index, end: index + 1})
 			} else {

@@ -8,19 +8,19 @@ import (
 )
 
 type compiledPackagePlan struct {
-	continuation         *compiledContinuation
-	coreVersion          int
-	dslVersion           int
-	effects              map[Direction][]compiledSemanticEffect
-	requestProjection    Value
-	hasCacheProjection   bool
-	hasHistoryProjection bool
-	modelContracts       map[string]compiledWireContract
-	taskContracts        map[string]map[string]packageTaskContracts
-	finalContracts       map[Direction]compiledWireContract
-	modelPolicy          *compiledModelPolicy
-	conversionDefaults   []ConversionRule
-	fieldObservations    map[string]compiledFieldObservation
+	continuation       *compiledContinuation
+	coreVersion        int
+	dslVersion         int
+	effects            map[Direction][]compiledSemanticEffect
+	requestProjection  Value
+	hasCacheProjection bool
+	hasFieldProjection bool
+	modelContracts     map[string]compiledWireContract
+	taskContracts      map[string]map[string]packageTaskContracts
+	finalContracts     map[Direction]compiledWireContract
+	modelPolicy        *compiledModelPolicy
+	conversionDefaults []ConversionRule
+	fieldObservations  map[string]compiledFieldObservation
 }
 
 type compiledSemanticEffect struct {
@@ -33,6 +33,8 @@ type compiledSemanticEffect struct {
 	scope                          string
 	severity                       Severity
 	diagnostic                     *RejectDiagnostic
+	defaultValue                   Value
+	clearField                     func(*Request)
 	conditionReferences            map[string]Expression
 }
 
@@ -336,6 +338,9 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		entry.wirePointer, err = parsePointer(effect.Target)
 		if err != nil {
 			return compiledMapping{}, nil, fmt.Errorf("%s/target: %w", at, err)
+		}
+		if effect.Scope == requestFieldScope {
+			entry.defaultValue = effect.Default
 		}
 		if effect.Kind == "aggregate" {
 			if effect.ValueMapping != nil {

@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-const historyRetentionPath = "/reasoning/historyRetention"
-
 // ProtocolValueMapping declares a finite whole-value representation of one
 // core value. Unmatched names the core parameter that retains other wire values.
 type ProtocolValueMapping struct {

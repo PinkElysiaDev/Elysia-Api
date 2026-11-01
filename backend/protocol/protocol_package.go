@@ -208,7 +208,9 @@ type ProtocolStateIndex struct {
 
 // ProtocolSemanticEffect declares how a program handles a core semantic location.
 // Path always addresses core data and Target addresses wire data. When observes
-// the direction's program input, or one CacheIntent for cache_intents scope.
+// the direction's input, one CacheIntent for cache_intents scope, or the
+// selected Value leaf for request_field scope. Default declares an equivalent
+// target value; it does not authorize deletion of a different selected value.
 // Declarations alone do not prove fidelity.
 type ProtocolSemanticEffect struct {
 	ID           string                   `json:"id"`

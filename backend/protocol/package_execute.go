@@ -48,8 +48,8 @@ func (compiled *Compiled) preparePackageState(direction Direction, state evaluat
 			return err
 		}
 	}
-	if direction == EncodeRequest && compiled.packagePlan.hasHistoryProjection {
-		if err := compiled.checkHistoryDispositions(state, limits, options); err != nil {
+	if direction == EncodeRequest && compiled.packagePlan.hasFieldProjection {
+		if err := compiled.checkRequestFieldDispositions(state, limits, options); err != nil {
 			return err
 		}
 	}
