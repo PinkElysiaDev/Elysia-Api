@@ -81,7 +81,9 @@ Mapping 的 `buffer_text`／`buffer_array` 按固定通道和项目身份保存�
 
 默认规则由目标 Mapping 编译；用户按稳定 ID 整条替换，禁用不产生隐式替代规则。同阶段顺序冲突在编译期拒绝。规则不能关闭外部结构、权限和资源硬约束。签名、加密内容和续传控制继续受来源及 Scope 限制。
 
-`core_controls` 的 `each.select` 仅遍历核心中已定义的 metadata 或 usage 所属位置。局部 `input` 指向当前条目，`root` 仍指向完整核心对象；不通过任意反射查询或重新解析完整正文执行。省略前检查原值，诊断可引用真实来源路径。规则不能改写 Source、Scope、Native 或私有来源凭据。普通 metadata 与辅助帧共用 `event-metadata` 默认规则的完整覆盖／禁用边界。
+`core_controls` 的 `each.select` 遍历核心中已定义的 node、metadata、usage 或请求 tools。局部 `input` 指向当前条目，`root` 仍指向完整核心对象；不通过任意反射查询或重新解析完整正文执行。省略前检查原值，诊断可引用真实来源路径。规则不能改写 Source、Scope、Native 或私有来源凭据。普通 metadata 与辅助帧共用 `event-metadata` 默认规则的完整覆盖／禁用边界。
+
+`tool` 选择仅用于请求，允许更新 `options.strict`、`options.strictDefault` 和 `options.eager_input_streaming`。来源缺省 strict 行为由 Mapping 写入 automatic／disabled，不能从 codec 名称推断。目标 `tool-options` 规则显式解决缺省差异和流式提示；严格模式拒绝已声明的损失，禁用后编码器不补做处置。工具名字、schema 和 Native 不在此选择器的写权限内。
 
 需要补齐目标首帧计数的事件规则显式声明 `frameUsage`。调用入口从当前原始事件批次绑定只读数字观察，按批次顺序合并；未绑定与本帧没有计数是两种状态。观察不保存原始帧、attribution 或 billing 对象。交付占位计数标为 `placeholder`，不能覆盖原始上游用量账本，也不能重新引入此前明确省略的细分字段。
 

@@ -330,6 +330,7 @@ func executePackageMigrationSample(t *testing.T, compiled *p.Compiled, sample p.
 		if !isPackage {
 			migrateFixtureStorage(t, request, compiled.Codec(p.DecodeRequest))
 			migrateFixtureInclude(t, request)
+			migrateFixtureToolDefaults(request, compiled.Codec(p.DecodeRequest))
 		}
 		value, err := p.EncodeValue(request)
 		return value.Bytes(), err
@@ -367,6 +368,24 @@ func executePackageMigrationSample(t *testing.T, compiled *p.Compiled, sample p.
 	default:
 		t.Fatal("unexpected migration direction", sample.Direction)
 		return nil, nil
+	}
+}
+
+// The new core records a source default separately from the original strict value.
+func migrateFixtureToolDefaults(request *p.Request, codec string) {
+	for index := range request.Tools {
+		tool := &request.Tools[index]
+		if tool.Kind != p.FunctionTool || !tool.Options["strict"].IsZero() && !tool.Options["strict"].IsNull() {
+			continue
+		}
+		if tool.Options == nil {
+			tool.Options = p.Object{}
+		}
+		value := "disabled"
+		if codec == Responses {
+			value = "automatic"
+		}
+		tool.Options["strictDefault"] = p.StringValue(value)
 	}
 }
 

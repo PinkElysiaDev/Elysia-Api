@@ -23,6 +23,7 @@ func readCoreEventOutput(*Event, []string) (JSONOutput, error)        { panic("c
 func readCoreEventsOutput([]Event, []string) (JSONOutput, error)      { panic("coreplan generation") }
 func readCoreCacheIntent(CacheIntent, []string) (JSONOutput, error)   { panic("coreplan generation") }
 func readCoreNode(Node, []string) (JSONOutput, error)                 { panic("coreplan generation") }
+func readCoreTool(Tool, []string) (JSONOutput, error)                 { panic("coreplan generation") }
 func readCoreProvenance(Provenance, []string) (JSONOutput, error)     { panic("coreplan generation") }
 func readCoreRequest(Request, []string) (JSONOutput, error)           { panic("coreplan generation") }
 func readCoreClientOutput(ClientOutput, []string) (JSONOutput, error) { panic("coreplan generation") }

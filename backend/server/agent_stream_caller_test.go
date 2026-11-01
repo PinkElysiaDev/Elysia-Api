@@ -667,9 +667,15 @@ func TestAgentPackageResponsesStatelessToolContinuation(t *testing.T) {
 					Store   *bool           `json:"store"`
 					Include []string        `json:"include"`
 					Input   json.RawMessage `json:"input"`
+					Tools   []struct {
+						Strict *bool `json:"strict"`
+					} `json:"tools"`
 				}
 				if err := sonic.ConfigStd.Unmarshal([]byte(body), &request); err != nil {
 					t.Error(err)
+				}
+				if len(request.Tools) != 1 || request.Tools[0].Strict == nil || *request.Tools[0].Strict {
+					t.Error("local Agent tools must preserve disabled schema strictness", body)
 				}
 				if request.Store == nil || *request.Store || len(request.Include) != 1 || request.Include[0] != "reasoning.encrypted_content" {
 					w.Header().Set("Content-Type", "application/json")

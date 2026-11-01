@@ -183,14 +183,16 @@ const (
 
 // Tool defines an available tool. The gateway does not execute client tools.
 type Tool struct {
-	Kind        ToolKind      `json:"kind"`
-	Name        Value         `json:"name,omitzero"`
-	Description Value         `json:"description,omitzero"`
-	InputSchema Value         `json:"inputSchema,omitzero"`
-	Format      Value         `json:"format,omitzero"`
-	Options     Object        `json:"options,omitempty"`
-	Cache       []CacheIntent `json:"cache,omitempty"`
-	Native      *Native       `json:"native,omitempty"`
+	Kind        ToolKind `json:"kind"`
+	Name        Value    `json:"name,omitzero"`
+	Description Value    `json:"description,omitzero"`
+	InputSchema Value    `json:"inputSchema,omitzero"`
+	Format      Value    `json:"format,omitzero"`
+	// Options preserves raw strict and eager_input_streaming hints. strictDefault
+	// records the source's automatic or disabled behavior when strict is missing or null.
+	Options Object        `json:"options,omitempty"`
+	Cache   []CacheIntent `json:"cache,omitempty"`
+	Native  *Native       `json:"native,omitempty"`
 }
 
 // Request has one ordered content history. Parameters are named semantic

@@ -159,7 +159,12 @@
       "schema": {
         "type": "object",
         "allowUnknown": true
-      }
+      },
+      "assertions": [
+        {
+          "ref": "function-tool-options"
+        }
+      ]
     },
     "provider-response": {
       "schema": {
@@ -250,38 +255,8 @@
         {
           "path": "/tool_usage/image_gen/input_tokens",
           "when": {
-            "op": "if",
-            "when": {
-              "op": "ref",
-              "ref": "is-result-envelope"
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage/image_gen/input_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
+            "op": "ref",
+            "ref": "has-image-input-count"
           },
           "schema": {
             "type": "any"
@@ -447,38 +422,8 @@
         {
           "path": "/tool_usage/image_gen/output_tokens",
           "when": {
-            "op": "if",
-            "when": {
-              "op": "ref",
-              "ref": "is-result-envelope"
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage/image_gen/output_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
+            "op": "ref",
+            "ref": "has-image-output-count"
           },
           "schema": {
             "type": "any"
@@ -644,38 +589,8 @@
         {
           "path": "/tool_usage/image_gen/total_tokens",
           "when": {
-            "op": "if",
-            "when": {
-              "op": "ref",
-              "ref": "is-result-envelope"
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage/image_gen/total_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
+            "op": "ref",
+            "ref": "has-image-total-count"
           },
           "schema": {
             "type": "any"
@@ -791,38 +706,8 @@
         {
           "path": "/tool_usage/image_gen/input_tokens",
           "when": {
-            "op": "if",
-            "when": {
-              "op": "ref",
-              "ref": "is-result-envelope"
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage/image_gen/input_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
+            "op": "ref",
+            "ref": "has-image-input-count"
           },
           "schema": {
             "type": "any"
@@ -962,38 +847,8 @@
         {
           "path": "/tool_usage/image_gen/input_tokens",
           "when": {
-            "op": "if",
-            "when": {
-              "op": "ref",
-              "ref": "is-result-envelope"
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage/image_gen/input_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
+            "op": "ref",
+            "ref": "has-image-input-count"
           },
           "schema": {
             "type": "any"
@@ -1068,38 +923,8 @@
         {
           "path": "/tool_usage/image_gen/output_tokens",
           "when": {
-            "op": "if",
-            "when": {
-              "op": "ref",
-              "ref": "is-result-envelope"
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage/image_gen/output_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
+            "op": "ref",
+            "ref": "has-image-output-count"
           },
           "schema": {
             "type": "any"
@@ -1239,38 +1064,8 @@
         {
           "path": "/tool_usage/image_gen/output_tokens",
           "when": {
-            "op": "if",
-            "when": {
-              "op": "ref",
-              "ref": "is-result-envelope"
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage/image_gen/output_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
+            "op": "ref",
+            "ref": "has-image-output-count"
           },
           "schema": {
             "type": "any"
@@ -1345,38 +1140,8 @@
         {
           "path": "/tool_usage/image_gen/total_tokens",
           "when": {
-            "op": "if",
-            "when": {
-              "op": "ref",
-              "ref": "is-result-envelope"
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage/image_gen/total_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
+            "op": "ref",
+            "ref": "has-image-total-count"
           },
           "schema": {
             "type": "any"
@@ -1516,38 +1281,8 @@
         {
           "path": "/tool_usage/image_gen/total_tokens",
           "when": {
-            "op": "if",
-            "when": {
-              "op": "ref",
-              "ref": "is-result-envelope"
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/tool_usage/image_gen/total_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
+            "op": "ref",
+            "ref": "has-image-total-count"
           },
           "schema": {
             "type": "any"
@@ -2782,18 +2517,8 @@
                 "stage": "wire.output"
               },
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "reasoning"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-reasoning-item"
               },
               "each": [
                 {
@@ -2864,18 +2589,8 @@
                 "op": "all",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "reasoning"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-reasoning-item"
                   },
                   {
                     "op": "exists",
@@ -2961,18 +2676,8 @@
                 "op": "all",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "message"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-message-item"
                   },
                   {
                     "op": "exists",
@@ -3011,18 +2716,8 @@
                 ]
               },
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "message"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-message-item"
               }
             },
             {
@@ -3054,18 +2749,8 @@
                 }
               },
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "message"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-message-item"
               }
             },
             {
@@ -3080,18 +2765,8 @@
                 "stage": "wire.output"
               },
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "message"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-message-item"
               },
               "each": [
                 {
@@ -3122,18 +2797,8 @@
                     "op": "any",
                     "items": [
                       {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/type"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "output_text"
-                          }
-                        ]
+                        "op": "ref",
+                        "ref": "is-output-text"
                       },
                       {
                         "op": "equal",
@@ -3178,18 +2843,8 @@
                     "stage": "wire.output"
                   },
                   "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "output_text"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-output-text"
                   }
                 }
               ]
@@ -3386,18 +3041,8 @@
                     }
                   },
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "message"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-message-item"
                   }
                 ]
               }
@@ -3431,18 +3076,8 @@
                         }
                       },
                       {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/type"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "message"
-                          }
-                        ]
+                        "op": "ref",
+                        "ref": "is-message-item"
                       }
                     ]
                   },
@@ -3565,6 +3200,9 @@
         },
         {
           "ref": "request-include"
+        },
+        {
+          "ref": "function-tool-options"
         }
       ]
     },
@@ -4275,18 +3913,8 @@
             {
               "action": "assert",
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/item/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "reasoning"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-reasoning-output"
               },
               "assertions": [
                 {
@@ -4491,18 +4119,8 @@
                 "path": "/output_index"
               },
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/item/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "reasoning"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-reasoning-output"
               },
               "identities": {
                 "id": {
@@ -4772,18 +4390,8 @@
                     "op": "all",
                     "items": [
                       {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/type"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "output_text"
-                          }
-                        ]
+                        "op": "ref",
+                        "ref": "is-output-text"
                       },
                       {
                         "op": "exists",
@@ -4821,18 +4429,8 @@
                     "op": "all",
                     "items": [
                       {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/type"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "output_text"
-                          }
-                        ]
+                        "op": "ref",
+                        "ref": "is-output-text"
                       },
                       {
                         "op": "exists",
@@ -4852,18 +4450,8 @@
                 {
                   "action": "entity_verify",
                   "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "output_text"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-output-text"
                   },
                   "ordinal": {
                     "path": "/content_index",
@@ -4916,18 +4504,8 @@
                     "op": "all",
                     "items": [
                       {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/type"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "refusal"
-                          }
-                        ]
+                        "op": "ref",
+                        "ref": "is-refusal"
                       },
                       {
                         "op": "exists",
@@ -4965,18 +4543,8 @@
                     "op": "all",
                     "items": [
                       {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/type"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "refusal"
-                          }
-                        ]
+                        "op": "ref",
+                        "ref": "is-refusal"
                       },
                       {
                         "op": "exists",
@@ -4996,18 +4564,8 @@
                 {
                   "action": "entity_verify",
                   "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "refusal"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-refusal"
                   },
                   "ordinal": {
                     "path": "/content_index",
@@ -5108,18 +4666,8 @@
             {
               "foreach": "/item/summary",
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/item/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "reasoning"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-reasoning-output"
               },
               "actions": [
                 {
@@ -5192,18 +4740,8 @@
             {
               "foreach": "/item/content",
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/item/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "reasoning"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-reasoning-output"
               },
               "actions": [
                 {
@@ -5285,18 +4823,8 @@
                 }
               },
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/item/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "reasoning"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-reasoning-output"
               },
               "identities": {
                 "id": {
@@ -5362,18 +4890,8 @@
                 }
               },
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/item/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "reasoning"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-reasoning-output"
               },
               "identities": {
                 "id": {
@@ -5566,18 +5084,8 @@
             {
               "action": "entity_start",
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/part/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "output_text"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-output-text-part"
               },
               "ordinal": {
                 "path": "/content_index",
@@ -5643,18 +5151,8 @@
                 "op": "all",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/part/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "output_text"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-output-text-part"
                   },
                   {
                     "op": "exists",
@@ -5692,18 +5190,8 @@
                 "op": "all",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/part/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "output_text"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-output-text-part"
                   },
                   {
                     "op": "exists",
@@ -5723,18 +5211,8 @@
             {
               "action": "entity_start",
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/part/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "refusal"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-refusal-part"
               },
               "ordinal": {
                 "path": "/content_index",
@@ -5800,18 +5278,8 @@
                 "op": "all",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/part/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "refusal"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-refusal-part"
                   },
                   {
                     "op": "exists",
@@ -5849,18 +5317,8 @@
                 "op": "all",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/part/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "refusal"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-refusal-part"
                   },
                   {
                     "op": "exists",
@@ -5950,18 +5408,8 @@
                 "op": "all",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/part/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "output_text"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-output-text-part"
                   },
                   {
                     "op": "exists",
@@ -5996,18 +5444,8 @@
                 "op": "all",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/part/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "output_text"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-output-text-part"
                   },
                   {
                     "op": "exists",
@@ -6045,18 +5483,8 @@
                 "op": "all",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/part/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "output_text"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-output-text-part"
                   },
                   {
                     "op": "exists",
@@ -6091,18 +5519,8 @@
                 "op": "all",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/part/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "output_text"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-output-text-part"
                   },
                   {
                     "op": "exists",
@@ -6122,18 +5540,8 @@
             {
               "action": "entity_finish",
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/part/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "output_text"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-output-text-part"
               },
               "ordinal": {
                 "path": "/content_index",
@@ -6199,18 +5607,8 @@
                 "op": "all",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/part/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "refusal"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-refusal-part"
                   },
                   {
                     "op": "exists",
@@ -6245,18 +5643,8 @@
                 "op": "all",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/part/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "refusal"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-refusal-part"
                   },
                   {
                     "op": "exists",
@@ -6294,18 +5682,8 @@
                 "op": "all",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/part/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "refusal"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-refusal-part"
                   },
                   {
                     "op": "exists",
@@ -6340,18 +5718,8 @@
                 "op": "all",
                 "items": [
                   {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/part/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "refusal"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-refusal-part"
                   },
                   {
                     "op": "exists",
@@ -6371,18 +5739,8 @@
             {
               "action": "entity_finish",
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/part/type"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "refusal"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-refusal-part"
               },
               "ordinal": {
                 "path": "/content_index",
@@ -10198,18 +9556,8 @@
                 {
                   "foreach": "/content",
                   "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "message"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-message-item"
                   },
                   "actions": [
                     {
@@ -10233,18 +9581,8 @@
                         "op": "all",
                         "items": [
                           {
-                            "op": "equal",
-                            "items": [
-                              {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/type"
-                              },
-                              {
-                                "op": "literal",
-                                "value": "output_text"
-                              }
-                            ]
+                            "op": "ref",
+                            "ref": "is-output-text"
                           },
                           {
                             "op": "exists",
@@ -10282,18 +9620,8 @@
                         "op": "all",
                         "items": [
                           {
-                            "op": "equal",
-                            "items": [
-                              {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/type"
-                              },
-                              {
-                                "op": "literal",
-                                "value": "output_text"
-                              }
-                            ]
+                            "op": "ref",
+                            "ref": "is-output-text"
                           },
                           {
                             "op": "exists",
@@ -10313,18 +9641,8 @@
                     {
                       "action": "entity_verify",
                       "when": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/type"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "output_text"
-                          }
-                        ]
+                        "op": "ref",
+                        "ref": "is-output-text"
                       },
                       "ordinal": {
                         "path": "/content_index",
@@ -10378,18 +9696,8 @@
                         "op": "all",
                         "items": [
                           {
-                            "op": "equal",
-                            "items": [
-                              {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/type"
-                              },
-                              {
-                                "op": "literal",
-                                "value": "refusal"
-                              }
-                            ]
+                            "op": "ref",
+                            "ref": "is-refusal"
                           },
                           {
                             "op": "exists",
@@ -10427,18 +9735,8 @@
                         "op": "all",
                         "items": [
                           {
-                            "op": "equal",
-                            "items": [
-                              {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/type"
-                              },
-                              {
-                                "op": "literal",
-                                "value": "refusal"
-                              }
-                            ]
+                            "op": "ref",
+                            "ref": "is-refusal"
                           },
                           {
                             "op": "exists",
@@ -10458,18 +9756,8 @@
                     {
                       "action": "entity_verify",
                       "when": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/type"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "refusal"
-                          }
-                        ]
+                        "op": "ref",
+                        "ref": "is-refusal"
                       },
                       "ordinal": {
                         "path": "/content_index",
@@ -10530,18 +9818,8 @@
                   },
                   "verifyCompleted": true,
                   "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "message"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-message-item"
                   },
                   "entity": "message",
                   "key": {
@@ -10702,18 +9980,8 @@
                 {
                   "foreach": "/summary",
                   "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "reasoning"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-reasoning-item"
                   },
                   "actions": [
                     {
@@ -10788,18 +10056,8 @@
                 {
                   "foreach": "/content",
                   "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "reasoning"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-reasoning-item"
                   },
                   "actions": [
                     {
@@ -10884,18 +10142,8 @@
                     }
                   },
                   "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "reasoning"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-reasoning-item"
                   },
                   "identities": {
                     "id": {
@@ -10962,18 +10210,8 @@
                     }
                   },
                   "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/type"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "reasoning"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-reasoning-item"
                   },
                   "identities": {
                     "id": {
@@ -13626,18 +12864,8 @@
         "op": "all",
         "items": [
           {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "reasoning"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-reasoning-item"
           },
           {
             "op": "has_prefix",
@@ -13665,6 +12893,206 @@
           "path": "/error"
         }
       }
+    },
+    "has-image-input-count": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "is-result-envelope"
+      },
+      "then": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/tool_usage"
+          }
+        },
+        "then": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/tool_usage/image_gen/input_tokens"
+          }
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    "has-image-output-count": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "is-result-envelope"
+      },
+      "then": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/tool_usage"
+          }
+        },
+        "then": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/tool_usage/image_gen/output_tokens"
+          }
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    "has-image-total-count": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "is-result-envelope"
+      },
+      "then": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/tool_usage"
+          }
+        },
+        "then": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/tool_usage/image_gen/total_tokens"
+          }
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    "is-message-item": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/type"
+        },
+        {
+          "op": "literal",
+          "value": "message"
+        }
+      ]
+    },
+    "is-reasoning-item": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/type"
+        },
+        {
+          "op": "literal",
+          "value": "reasoning"
+        }
+      ]
+    },
+    "is-output-text": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/type"
+        },
+        {
+          "op": "literal",
+          "value": "output_text"
+        }
+      ]
+    },
+    "is-refusal": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/type"
+        },
+        {
+          "op": "literal",
+          "value": "refusal"
+        }
+      ]
+    },
+    "is-output-text-part": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/part/type"
+        },
+        {
+          "op": "literal",
+          "value": "output_text"
+        }
+      ]
+    },
+    "is-refusal-part": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/part/type"
+        },
+        {
+          "op": "literal",
+          "value": "refusal"
+        }
+      ]
+    },
+    "is-reasoning-output": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/item/type"
+        },
+        {
+          "op": "literal",
+          "value": "reasoning"
+        }
+      ]
     }
   },
   "constraints": {
@@ -15012,6 +14440,74 @@
           "value": "elysia_continuation_"
         },
         "reason": "gateway carrier identity requires its reserved prefix"
+      }
+    ],
+    "function-tool-options": [
+      {
+        "path": "/tools",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/tools"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "array"
+            }
+          ]
+        },
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "any"
+          }
+        },
+        "each": [
+          {
+            "path": "/strict",
+            "when": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "function"
+                    }
+                  ]
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/strict"
+                  }
+                }
+              ]
+            },
+            "schema": {
+              "type": "boolean",
+              "nullable": true
+            },
+            "code": "invalid_input",
+            "reason": "tool constraint and streaming hints require a boolean or null"
+          }
+        ],
+        "code": "invalid_input",
+        "reason": "tool declarations require an array"
       }
     ]
   }

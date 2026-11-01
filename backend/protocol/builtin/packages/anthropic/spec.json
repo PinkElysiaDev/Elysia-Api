@@ -1090,6 +1090,9 @@
               ]
             }
           }
+        },
+        {
+          "ref": "function-tool-options"
         }
       ]
     },
@@ -6799,6 +6802,9 @@
             "op": "ref",
             "ref": "request-tool-links"
           }
+        },
+        {
+          "ref": "function-tool-options"
         }
       ]
     }
@@ -7318,6 +7324,170 @@
         },
         "code": "invalid_input",
         "reason": "continuation carrier requires an empty thinking wrapper without other fields"
+      }
+    ],
+    "function-tool-options": [
+      {
+        "path": "/tools",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/tools"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "array"
+            }
+          ]
+        },
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "any"
+          }
+        },
+        "each": [
+          {
+            "path": "/strict",
+            "when": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/type"
+                        }
+                      }
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/type"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "custom"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/type"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "function"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/strict"
+                  }
+                }
+              ]
+            },
+            "schema": {
+              "type": "boolean",
+              "nullable": true
+            },
+            "code": "invalid_input",
+            "reason": "tool constraint and streaming hints require a boolean or null"
+          },
+          {
+            "path": "/eager_input_streaming",
+            "when": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/type"
+                        }
+                      }
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/type"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "custom"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/type"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "function"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/eager_input_streaming"
+                  }
+                }
+              ]
+            },
+            "schema": {
+              "type": "boolean",
+              "nullable": true
+            },
+            "code": "invalid_input",
+            "reason": "tool constraint and streaming hints require a boolean or null"
+          }
+        ],
+        "code": "invalid_input",
+        "reason": "tool declarations require an array"
       }
     ]
   }

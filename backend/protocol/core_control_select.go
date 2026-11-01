@@ -50,13 +50,18 @@ func compileControlEach(declaration ProtocolControlEach, compiler *expressionCom
 		local = reflect.TypeFor[ResponseMetadata]()
 	case "node":
 		local = reflect.TypeFor[Node]()
+	case "tool":
+		if outer.whole != reflect.TypeFor[Request]() {
+			return nil, fmt.Errorf("%s/select: only requests declare tools", path)
+		}
+		local = reflect.TypeFor[Tool]()
 	case "usage":
 		if outer.whole == reflect.TypeFor[Request]() {
 			return nil, fmt.Errorf("%s/select: requests have no usage owner", path)
 		}
 		local = reflect.TypeFor[Usage]()
 	default:
-		return nil, fmt.Errorf("%s/select: expected node, metadata or usage", path)
+		return nil, fmt.Errorf("%s/select: expected node, tool, metadata or usage", path)
 	}
 	child := controlCompileScope{whole: outer.whole, expression: outer.expression, canOmit: declaration.Select == "metadata"}
 	child.expression.coreRoot, child.expression.coreInput, child.expression.hasInputScope = outer.whole, local, true
@@ -84,6 +89,9 @@ func (each *compiledControlEach) apply(state evaluation, conversion *CompiledCon
 	}
 	if each.selection == "node" {
 		return each.applyNodes(state, conversion, document, route, rule, sink, owner)
+	}
+	if each.selection == "tool" {
+		return each.applyTools(state, conversion, document.(*Request), route, rule, sink, owner)
 	}
 	changed := false
 	visit := func(items *[]ResponseMetadata, path string) error {

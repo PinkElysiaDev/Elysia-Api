@@ -1817,6 +1817,29 @@
                                   "path": "/strict"
                                 }
                               }
+                            },
+                            {
+                              "op": "object",
+                              "fields": {
+                                "strictDefault": {
+                                  "op": "if",
+                                  "when": {
+                                    "op": "not",
+                                    "source": {
+                                      "op": "present",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "item",
+                                        "path": "/strict"
+                                      }
+                                    }
+                                  },
+                                  "then": {
+                                    "op": "literal",
+                                    "value": "automatic"
+                                  }
+                                }
+                              }
                             }
                           ]
                         },
@@ -1934,73 +1957,147 @@
             "path": "/tools"
           },
           "body": {
-            "op": "choose",
+            "op": "let",
+            "name": "checked-options",
             "source": {
-              "op": "read",
-              "from": "item",
-              "path": "/kind"
+              "op": "ref",
+              "ref": "check-tool-options"
             },
-            "cases": {
-              "function": {
-                "op": "object",
-                "fields": {
-                  "type": {
-                    "op": "literal",
-                    "value": "function"
+            "body": {
+              "op": "choose",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/kind"
+              },
+              "cases": {
+                "function": {
+                  "op": "if",
+                  "when": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "all",
+                        "items": [
+                          {
+                            "op": "not",
+                            "source": {
+                              "op": "present",
+                              "source": {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/options/strict"
+                              }
+                            }
+                          },
+                          {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/options/strictDefault"
+                            }
+                          },
+                          {
+                            "op": "not",
+                            "source": {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/options/strictDefault"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "automatic"
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/options/eager_input_streaming"
+                        }
+                      }
+                    ]
                   },
-                  "name": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/name"
+                  "then": {
+                    "op": "reject",
+                    "path": "/tools",
+                    "reason": "tool options require the declared target disposition",
+                    "diagnostic": {
+                      "code": "unsupported_capability",
+                      "stage": "wire"
+                    }
                   },
-                  "description": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/description"
-                  },
-                  "parameters": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/inputSchema"
-                  },
-                  "strict": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/options/strict"
+                  "otherwise": {
+                    "op": "object",
+                    "fields": {
+                      "type": {
+                        "op": "literal",
+                        "value": "function"
+                      },
+                      "name": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/name"
+                      },
+                      "description": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/description"
+                      },
+                      "parameters": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/inputSchema"
+                      },
+                      "strict": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/options/strict"
+                      }
+                    }
                   }
-                }
-              },
-              "free_text": {
-                "op": "object",
-                "fields": {
-                  "type": {
-                    "op": "literal",
-                    "value": "custom"
-                  },
-                  "name": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/name"
-                  },
-                  "description": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/description"
-                  },
-                  "format": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/format"
+                },
+                "free_text": {
+                  "op": "object",
+                  "fields": {
+                    "type": {
+                      "op": "literal",
+                      "value": "custom"
+                    },
+                    "name": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/name"
+                    },
+                    "description": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/description"
+                    },
+                    "format": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/format"
+                    }
                   }
+                },
+                "server": {
+                  "op": "ref",
+                  "ref": "encode-native-tool"
+                },
+                "opaque": {
+                  "op": "ref",
+                  "ref": "encode-native-tool"
                 }
-              },
-              "server": {
-                "op": "ref",
-                "ref": "encode-native-tool"
-              },
-              "opaque": {
-                "op": "ref",
-                "ref": "encode-native-tool"
               }
             }
           }
@@ -3909,47 +4006,8 @@
               "then": {
                 "op": "project",
                 "source": {
-                  "op": "project",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": ""
-                  },
-                  "policy": "exclude",
-                  "keys": [
-                    "id",
-                    "model",
-                    "status",
-                    "error",
-                    "usage",
-                    "object",
-                    "created",
-                    "created_at",
-                    "output",
-                    "incomplete_details",
-                    "background",
-                    "completed_at",
-                    "frequency_penalty",
-                    "max_output_tokens",
-                    "max_tool_calls",
-                    "metadata",
-                    "parallel_tool_calls",
-                    "presence_penalty",
-                    "prompt_cache_key",
-                    "prompt_cache_retention",
-                    "reasoning",
-                    "safety_identifier",
-                    "service_tier",
-                    "store",
-                    "temperature",
-                    "text",
-                    "tools",
-                    "top_logprobs",
-                    "top_p",
-                    "truncation",
-                    "user",
-                    "output_text"
-                  ]
+                  "op": "ref",
+                  "ref": "decode-response-remainder"
                 },
                 "keys": [
                   "content_filters"
@@ -3957,47 +4015,8 @@
                 "policy": "exclude"
               },
               "otherwise": {
-                "op": "project",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                },
-                "policy": "exclude",
-                "keys": [
-                  "id",
-                  "model",
-                  "status",
-                  "error",
-                  "usage",
-                  "object",
-                  "created",
-                  "created_at",
-                  "output",
-                  "incomplete_details",
-                  "background",
-                  "completed_at",
-                  "frequency_penalty",
-                  "max_output_tokens",
-                  "max_tool_calls",
-                  "metadata",
-                  "parallel_tool_calls",
-                  "presence_penalty",
-                  "prompt_cache_key",
-                  "prompt_cache_retention",
-                  "reasoning",
-                  "safety_identifier",
-                  "service_tier",
-                  "store",
-                  "temperature",
-                  "text",
-                  "tools",
-                  "top_logprobs",
-                  "top_p",
-                  "truncation",
-                  "user",
-                  "output_text"
-                ]
+                "op": "ref",
+                "ref": "decode-response-remainder"
               }
             },
             "keys": [
@@ -8602,24 +8621,8 @@
             }
           },
           {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/reasoning/interleaved"
-              }
-            },
-            "then": {
-              "op": "read",
-              "from": "input",
-              "path": "/reasoning/interleaved"
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
+            "op": "ref",
+            "ref": "is-interleaved-reasoning"
           }
         ]
       },
@@ -17373,24 +17376,8 @@
           "source": {
             "op": "filter",
             "source": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "item",
-                  "path": "/resources"
-                }
-              },
-              "then": {
-                "op": "read",
-                "from": "item",
-                "path": "/resources"
-              },
-              "otherwise": {
-                "op": "array",
-                "items": []
-              }
+              "op": "ref",
+              "ref": "source-item-resources"
             },
             "when": {
               "op": "equal",
@@ -21043,24 +21030,8 @@
                   "source": {
                     "op": "filter",
                     "source": {
-                      "op": "if",
-                      "when": {
-                        "op": "present",
-                        "source": {
-                          "op": "read",
-                          "from": "item",
-                          "path": "/resources"
-                        }
-                      },
-                      "then": {
-                        "op": "read",
-                        "from": "item",
-                        "path": "/resources"
-                      },
-                      "otherwise": {
-                        "op": "array",
-                        "items": []
-                      }
+                      "op": "ref",
+                      "ref": "source-item-resources"
                     },
                     "when": {
                       "op": "equal",
@@ -23234,24 +23205,8 @@
       "source": {
         "op": "filter",
         "source": {
-          "op": "if",
-          "when": {
-            "op": "present",
-            "source": {
-              "op": "read",
-              "from": "item",
-              "path": "/resources"
-            }
-          },
-          "then": {
-            "op": "read",
-            "from": "item",
-            "path": "/resources"
-          },
-          "otherwise": {
-            "op": "array",
-            "items": []
-          }
+          "op": "ref",
+          "ref": "source-item-resources"
         },
         "when": {
           "op": "equal",
@@ -25256,6 +25211,129 @@
           "from": "input",
           "path": "/usage/cache_creation_input_tokens"
         }
+      }
+    },
+    "source-item-resources": {
+      "op": "if",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "item",
+          "path": "/resources"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "item",
+        "path": "/resources"
+      },
+      "otherwise": {
+        "op": "array",
+        "items": []
+      }
+    },
+    "is-interleaved-reasoning": {
+      "op": "if",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/reasoning/interleaved"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "input",
+        "path": "/reasoning/interleaved"
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    "decode-response-remainder": {
+      "op": "project",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": ""
+      },
+      "policy": "exclude",
+      "keys": [
+        "id",
+        "model",
+        "status",
+        "error",
+        "usage",
+        "object",
+        "created",
+        "created_at",
+        "output",
+        "incomplete_details",
+        "background",
+        "completed_at",
+        "frequency_penalty",
+        "max_output_tokens",
+        "max_tool_calls",
+        "metadata",
+        "parallel_tool_calls",
+        "presence_penalty",
+        "prompt_cache_key",
+        "prompt_cache_retention",
+        "reasoning",
+        "safety_identifier",
+        "service_tier",
+        "store",
+        "temperature",
+        "text",
+        "tools",
+        "top_logprobs",
+        "top_p",
+        "truncation",
+        "user",
+        "output_text"
+      ]
+    },
+    "usage-detail-loss": {
+      "op": "literal",
+      "value": "target cannot express this usage detail; original accounting is retained"
+    },
+    "check-tool-options": {
+      "op": "if",
+      "when": {
+        "op": "exists",
+        "source": {
+          "op": "read",
+          "from": "item",
+          "path": "/options"
+        }
+      },
+      "then": {
+        "op": "check_fields",
+        "source": {
+          "op": "read",
+          "from": "item",
+          "path": "/options"
+        },
+        "keys": [
+          "strict",
+          "strictDefault",
+          "eager_input_streaming",
+          "wire:openai_responses"
+        ],
+        "policy": "member",
+        "onUnknown": {
+          "code": "unsupported_capability",
+          "stage": "wire",
+          "pathPrefix": "/tools/options",
+          "reason": "tool option has no declared target mapping"
+        }
+      },
+      "otherwise": {
+        "op": "object",
+        "fields": {}
       }
     }
   },
@@ -29960,6 +30038,9 @@
             "name": "lookup",
             "inputSchema": {
               "type": "object"
+            },
+            "options": {
+              "strictDefault": "automatic"
             }
           }
         ],
@@ -30027,6 +30108,9 @@
             "name": "lookup",
             "inputSchema": {
               "type": "object"
+            },
+            "options": {
+              "strictDefault": "automatic"
             }
           }
         ],
@@ -38792,24 +38876,8 @@
           "op": "all",
           "items": [
             {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/reasoning/interleaved"
-                }
-              },
-              "then": {
-                "op": "read",
-                "from": "input",
-                "path": "/reasoning/interleaved"
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
+              "op": "ref",
+              "ref": "is-interleaved-reasoning"
             },
             {
               "op": "not",
@@ -39983,24 +40051,8 @@
             "op": "all",
             "items": [
               {
-                "op": "if",
-                "when": {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/interleaved"
-                  }
-                },
-                "then": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/reasoning/interleaved"
-                },
-                "otherwise": {
-                  "op": "literal",
-                  "value": false
-                }
+                "op": "ref",
+                "ref": "is-interleaved-reasoning"
               },
               {
                 "op": "not",
@@ -42144,8 +42196,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42185,8 +42237,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42226,8 +42278,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42267,8 +42319,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42308,8 +42360,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42349,8 +42401,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42390,8 +42442,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42431,8 +42483,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42472,8 +42524,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42513,8 +42565,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42554,8 +42606,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42595,8 +42647,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42636,8 +42688,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42677,8 +42729,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42718,8 +42770,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42759,8 +42811,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42800,8 +42852,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               }
@@ -42857,8 +42909,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42898,8 +42950,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42939,8 +42991,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -42980,8 +43032,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -43021,8 +43073,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -43062,8 +43114,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -43103,8 +43155,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -43144,8 +43196,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -43185,8 +43237,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -43226,8 +43278,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -43267,8 +43319,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -43308,8 +43360,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -43349,8 +43401,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -43390,8 +43442,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -43431,8 +43483,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -43472,8 +43524,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               },
@@ -43513,8 +43565,8 @@
                     ]
                   },
                   "reason": {
-                    "op": "literal",
-                    "value": "target cannot express this usage detail; original accounting is retained"
+                    "op": "ref",
+                    "ref": "usage-detail-loss"
                   }
                 }
               }
@@ -44509,6 +44561,281 @@
         },
         "onUnavailable": "degrade"
       }
+    },
+    {
+      "id": "tool-options",
+      "order": 145,
+      "enabled": true,
+      "phase": "request",
+      "steps": [
+        {
+          "each": {
+            "select": "tool",
+            "pathBinding": "tool-path",
+            "steps": [
+              {
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/kind"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "function"
+                      }
+                    ]
+                  }
+                },
+                "stop": true
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "root",
+                          "path": "/source/family"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "elysia-agent"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/options/strict"
+                        }
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/options/strictDefault"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "set": {
+                  "/options/strictDefault": {
+                    "op": "literal",
+                    "value": "disabled"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/options/strict"
+                        }
+                      }
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/options/strictDefault"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "disabled"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "set": {
+                  "/options/strict": {
+                    "op": "literal",
+                    "value": false
+                  },
+                  "/options/strictDefault": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "tool-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "options"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "strict"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "preserve disabled tool constraints explicitly instead of the automatic target default"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/options/eager_input_streaming"
+                      }
+                    },
+                    {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "not",
+                          "source": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "root",
+                                "path": "/parameters/stream"
+                              },
+                              {
+                                "op": "literal",
+                                "value": true
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/options/eager_input_streaming"
+                            },
+                            {
+                              "op": "literal",
+                              "value": null
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "set": {
+                  "/options/eager_input_streaming": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "tool-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "options"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "eager_input_streaming"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "tool input streaming preference has no effect on this request"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/options/eager_input_streaming"
+                  }
+                },
+                "set": {
+                  "/options/eager_input_streaming": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "tool-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "options"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "eager_input_streaming"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express per-tool input streaming timing; input and schema remain intact"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
     }
   ],
   "continuation": {

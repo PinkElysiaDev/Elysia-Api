@@ -123,7 +123,12 @@
           }
         },
         "allowUnknown": true
-      }
+      },
+      "assertions": [
+        {
+          "ref": "function-tool-options"
+        }
+      ]
     },
     "provider-response": {
       "schema": {
@@ -5790,6 +5795,9 @@
         },
         {
           "ref": "request-storage"
+        },
+        {
+          "ref": "function-tool-options"
         }
       ]
     }
@@ -6120,6 +6128,74 @@
           ]
         },
         "reason": "gateway continuation field requires assistant history"
+      }
+    ],
+    "function-tool-options": [
+      {
+        "path": "/tools",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/tools"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "array"
+            }
+          ]
+        },
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "any"
+          }
+        },
+        "each": [
+          {
+            "path": "/function/strict",
+            "when": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "function"
+                    }
+                  ]
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/function/strict"
+                  }
+                }
+              ]
+            },
+            "schema": {
+              "type": "boolean",
+              "nullable": true
+            },
+            "code": "invalid_input",
+            "reason": "tool constraint and streaming hints require a boolean or null"
+          }
+        ],
+        "code": "invalid_input",
+        "reason": "tool declarations require an array"
       }
     ]
   }

@@ -172,6 +172,14 @@ func TestDeclaredNodeSelectionKeepsOwnersAndScope(t *testing.T) {
 }
 
 func TestDeclaredNodeControlWriteBoundary(t *testing.T) {
+	for _, root := range []reflect.Type{reflect.TypeFor[Request](), reflect.TypeFor[Response]()} {
+		for _, field := range []string{"/name", "/inputSchema", "/native", "/options", "/options/future"} {
+			steps := []ProtocolControlStep{{Each: &ProtocolControlEach{Select: "tool", Steps: []ProtocolControlStep{{Set: map[string]Expression{field: {Op: "omit"}}}}}}}
+			if _, err := compileConversionControlSteps(steps, newExpressionCompiler(DefaultLimits(), nil), "/steps", root, false); err == nil {
+				t.Fatal("tool selector granted an undeclared owner or write", root, field)
+			}
+		}
+	}
 	for _, field := range []string{"/source", "/resources", "/native", "/payload", "/children", "/kind"} {
 		steps := []ProtocolControlStep{{Each: &ProtocolControlEach{Select: "node", Steps: []ProtocolControlStep{{Set: map[string]Expression{field: {Op: "omit"}}}}}}}
 		if _, err := compileConversionControlSteps(steps, newExpressionCompiler(DefaultLimits(), nil), "/steps", reflect.TypeFor[Response](), false); err == nil {

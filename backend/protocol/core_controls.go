@@ -79,6 +79,9 @@ func compileTypedControlSetter(root reflect.Type, path string) (func(any, JSONOu
 	if root == reflect.TypeFor[Node]() {
 		return compileNodeControlSetter(path)
 	}
+	if root == reflect.TypeFor[Tool]() {
+		return compileToolControlSetter(path)
+	}
 	return nil, "", fmt.Errorf("control update does not support %s field %s", root.Name(), path)
 }
 

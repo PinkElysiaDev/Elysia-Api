@@ -54,6 +54,9 @@ func validateRequestHints(req *Request) error {
 				return streamIssue(InvalidInput, fmt.Sprintf("/tools/%d/options/strict", i), "tool strict must be a boolean or null")
 			}
 		}
+		if value := tool.Options["strictDefault"]; !value.IsZero() && !value.IsString("automatic") && !value.IsString("disabled") {
+			return streamIssue(InvalidInput, fmt.Sprintf("/tools/%d/options/strictDefault", i), "tool strictness default must be automatic or disabled")
+		}
 	}
 	return requestCaches(req, func(intents *[]CacheIntent, at string) error {
 		for i, intent := range *intents {

@@ -19,7 +19,7 @@ type ProtocolControlStep struct {
 	Omit       bool                          `json:"omit,omitempty"`
 }
 
-// ProtocolControlEach selects fixed typed node, metadata or usage owners. Input is
+// ProtocolControlEach selects typed tools, nodes, metadata or usage. Input is
 // local to the selected value; root remains the complete core document.
 type ProtocolControlEach struct {
 	Select      string                `json:"select"`

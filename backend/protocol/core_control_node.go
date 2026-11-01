@@ -53,18 +53,22 @@ func compileEventResponseAttributeSetter(path string) (func(any, JSONOutput, *va
 }
 
 func setResponseAttribute(response *Response, name string, output JSONOutput, reader *valueReader) error {
+	return setControlObjectField(&response.Attributes, name, output, reader)
+}
+
+func setControlObjectField(target *Object, name string, output JSONOutput, reader *valueReader) error {
 	if output.IsZero() {
-		delete(response.Attributes, name)
+		delete(*target, name)
 		return nil
 	}
 	var value Value
 	if err := assignCoreValue(output, &value, reader); err != nil {
 		return err
 	}
-	if response.Attributes == nil {
-		response.Attributes = Object{}
+	if *target == nil {
+		*target = Object{}
 	}
-	response.Attributes[name] = value
+	(*target)[name] = value
 	return nil
 }
 

@@ -1656,6 +1656,13 @@
                     "path": "/parameters"
                   },
                   "options": {
+                    "op": "merge",
+                    "policy": "reject",
+                    "items": [
+                      {
+                        "op": "let",
+                        "name": "original-options",
+                        "source": {
                     "op": "let",
                     "name": "extra",
                     "source": {
@@ -1704,6 +1711,54 @@
                         }
                       }
                     }
+                  },
+                        "body": {
+                          "op": "if",
+                          "when": {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "name": "original-options",
+                              "path": ""
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "original-options",
+                            "path": ""
+                          },
+                          "otherwise": {
+                        "op": "object",
+                        "fields": {}
+                      }
+                        }
+                      },
+                      {
+                        "op": "object",
+                        "fields": {
+                          "strictDefault": {
+                            "op": "if",
+                            "when": {
+                              "op": "not",
+                              "source": {
+                                "op": "present",
+                                "source": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/strict"
+                                }
+                              }
+                            },
+                            "then": {
+                      "op": "literal",
+                      "value": "disabled"
+                    }
+                          }
+                        }
+                      }
+                    ]
                   }
                 }
               }
@@ -2614,14 +2669,88 @@
           "path": "/tools"
         },
         "body": {
-          "op": "choose",
+          "op": "let",
+          "name": "checked-options",
           "source": {
-            "op": "read",
-            "from": "item",
-            "path": "/kind"
+            "op": "ref",
+            "ref": "check-tool-options"
           },
-          "cases": {
-            "function": {
+          "body": {
+            "op": "choose",
+            "source": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/kind"
+                },
+            "cases": {
+              "function": {
+                "op": "if",
+                "when": {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/options/strict"
+                          }
+                        },
+                        {
+                          "op": "all",
+                          "items": [
+                            {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/options/strictDefault"
+                              }
+                            },
+                            {
+                              "op": "not",
+                              "source": {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "item",
+                                    "path": "/options/strictDefault"
+                                  },
+                                  {
+                      "op": "literal",
+                      "value": "disabled"
+                    }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/options/eager_input_streaming"
+                      }
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "reject",
+                  "path": "/tools",
+                  "reason": "tool options require the declared target disposition",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire"
+                  }
+                },
+                "otherwise": {
               "op": "object",
               "fields": {
                 "functionDeclarations": {
@@ -2676,8 +2805,9 @@
                   ]
                 }
               }
-            },
-            "server": {
+            }
+              },
+              "server": {
               "op": "let",
               "name": "original",
               "source": {
@@ -2719,7 +2849,7 @@
                 ]
               }
             },
-            "opaque": {
+              "opaque": {
               "op": "let",
               "name": "original",
               "source": {
@@ -2760,6 +2890,7 @@
                   }
                 ]
               }
+            }
             }
           }
         }
@@ -16371,6 +16502,42 @@
           ]
         }
       ]
+    },
+    "check-tool-options": {
+      "op": "if",
+      "when": {
+        "op": "exists",
+        "source": {
+          "op": "read",
+          "from": "item",
+          "path": "/options"
+        }
+      },
+      "then": {
+        "op": "check_fields",
+        "source": {
+          "op": "read",
+          "from": "item",
+          "path": "/options"
+        },
+        "keys": [
+          "strict",
+          "strictDefault",
+          "eager_input_streaming",
+          "wire:gemini"
+        ],
+        "policy": "member",
+        "onUnknown": {
+          "code": "unsupported_capability",
+          "stage": "wire",
+          "pathPrefix": "/tools/options",
+          "reason": "tool option has no declared target mapping"
+        }
+      },
+      "otherwise": {
+                        "op": "object",
+                        "fields": {}
+                      }
     }
 },
   "directions": {
@@ -19449,6 +19616,9 @@
             "name": "lookup",
             "inputSchema": {
               "type": "object"
+            },
+            "options": {
+              "strictDefault": "disabled"
             }
           }
         ],
@@ -19529,6 +19699,9 @@
             "name": "lookup",
             "inputSchema": {
               "type": "object"
+            },
+            "options": {
+              "strictDefault": "disabled"
             }
           }
         ],
@@ -36253,6 +36426,307 @@
           }
         }
       ]
+    },
+    {
+      "id": "tool-options",
+      "order": 145,
+      "enabled": true,
+      "phase": "request",
+      "steps": [
+        {
+          "each": {
+            "select": "tool",
+            "pathBinding": "tool-path",
+            "steps": [
+              {
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/kind"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "function"
+                      }
+                    ]
+                  }
+                },
+                "stop": true
+              },
+              {
+                "when": {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/options/strict"
+                        },
+                        {
+                          "op": "literal",
+                          "value": true
+                        }
+                      ]
+                    },
+                    {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "not",
+                          "source": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/options/strict"
+                            }
+                          }
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/options/strictDefault"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "automatic"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "set": {
+                  "/options/strict": {
+                                                  "op": "omit"
+                                                },
+                  "/options/strictDefault": {
+                                                  "op": "omit"
+                                                }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "tool-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "options"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "strict"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot enforce this tool schema strictness; input schema remains intact"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/options/strict"
+                      }
+                    },
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/options/strictDefault"
+                      }
+                    }
+                  ]
+                },
+                "set": {
+                  "/options/strict": {
+                                                  "op": "omit"
+                                                },
+                  "/options/strictDefault": {
+                                                  "op": "omit"
+                                                }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "tool-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "options"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "strict"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "disabled tool strictness matches the target default"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/options/eager_input_streaming"
+                      }
+                    },
+                    {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "not",
+                          "source": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "root",
+                                "path": "/parameters/stream"
+                              },
+                              {
+                          "op": "literal",
+                          "value": true
+                        }
+                            ]
+                          }
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/options/eager_input_streaming"
+                            },
+                            {
+                            "op": "literal",
+                            "value": null
+                          }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "set": {
+                  "/options/eager_input_streaming": {
+                                                  "op": "omit"
+                                                }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "tool-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "options"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "eager_input_streaming"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "tool input streaming preference has no effect on this request"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/options/eager_input_streaming"
+                  }
+                },
+                "set": {
+                  "/options/eager_input_streaming": {
+                                                  "op": "omit"
+                                                }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "tool-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "options"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "eager_input_streaming"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express per-tool input streaming timing; input and schema remain intact"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
     }
-]
+  ]
 }
