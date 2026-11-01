@@ -85,6 +85,10 @@ Mapping 的 `buffer_text`／`buffer_array` 按固定通道和项目身份保存�
 
 `tool` 选择仅用于请求，允许更新 `options.strict`、`options.strictDefault` 和 `options.eager_input_streaming`。来源缺省 strict 行为由 Mapping 写入 automatic／disabled，不能从 codec 名称推断。目标 `tool-options` 规则显式解决缺省差异和流式提示；严格模式拒绝已声明的损失，禁用后编码器不补做处置。工具名字、schema 和 Native 不在此选择器的写权限内。
 
+`tool_result` 复用节点遍历，只授予 payload、status、显式消费 children，以及通过 `childrenPrefix` 插入文本前缀的权限。children 不能被任意替换；名字、callId、Native、资源和属性不可写。`tool-results / 150` 声明对象序列化、文本包装及错误标记。Responses／Anthropic 保留可表达的媒体块；Chat 只接受工具文本，Gemini 当前对象结果不消费媒体或受保护子节点。合并纯文本块前检查其附加语义，不能借拼接删除缓存、引用或扩展。
+
+Gemini 的 error／output 包络由 Mapping 双向表达，独立错误状态在编码时无损进入 error；带保留键的成功对象进入 output，普通文本的 result 包装则必须先执行目标规则。编码不尝试解析 JSON 字符串。开发组合比较规范化已声明的 disabled 与 strict:false；automatic、true 和未知工具选项继续参与比较，不整体忽略 Options。
+
 需要补齐目标首帧计数的事件规则显式声明 `frameUsage`。调用入口从当前原始事件批次绑定只读数字观察，按批次顺序合并；未绑定与本帧没有计数是两种状态。观察不保存原始帧、attribution 或 billing 对象。交付占位计数标为 `placeholder`，不能覆盖原始上游用量账本，也不能重新引入此前明确省略的细分字段。
 
 来源流将普通事件、辅助事件、状态事件和纯传输控制分开声明。辅助／状态事件的权限凭据由成功的外部合同校验产生，绑定来源帧、方向和 Scope，不能通过用户 JSON 伪造。纯传输控制不生成核心事件；辅助 metadata 通过验证后不进入正文收集器；状态通过通用 `control.updated` 保留类型及原始载荷。跨协议省略只能由目标配置列出的 `auxiliary_event`／`control_event` 规则授权，并遵守兼容／严格模式；未知生成载荷不能借此省略。

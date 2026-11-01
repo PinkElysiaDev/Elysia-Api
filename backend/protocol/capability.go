@@ -283,7 +283,7 @@ func (check *capabilityCheck) result(node Node, path string) {
 		check.add(InvalidAssociation, path+"/callId", "", "call already has a result")
 	}
 	check.results[id] = struct{}{}
-	if node.Payload.IsZero() {
+	if node.Payload.IsZero() && len(node.Children) == 0 {
 		check.add(InvalidInput, path+"/payload", "", "tool result payload is missing")
 	}
 }

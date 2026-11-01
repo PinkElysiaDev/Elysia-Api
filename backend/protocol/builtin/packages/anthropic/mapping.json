@@ -4090,6 +4090,13 @@
               }
             },
             "tool_result": {
+              "op": "let",
+              "name": "checked-result",
+              "source": {
+                "op": "ref",
+                "ref": "check-tool-result"
+              },
+              "body": {
               "op": "object",
               "fields": {
                 "type": {
@@ -4131,6 +4138,7 @@
                   "path": "/status/isError"
                 }
               }
+            }
             },
             "reasoning": {
               "op": "if",
@@ -19060,6 +19068,67 @@
                               "op": "object",
                               "fields": {}
                             }
+    },
+    "check-tool-result": {
+      "op": "if",
+      "when": {
+        "op": "any",
+        "items": [
+          {
+                          "op": "literal",
+                          "value": false
+                        },
+          {
+            "op": "all",
+            "items": [
+              {
+                "op": "not",
+                "source": {
+                  "op": "present",
+                  "source": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/children"
+                    }
+                }
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "type",
+                      "source": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/payload"
+                }
+                    },
+                    {
+                      "op": "literal",
+                      "value": "string"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "then": {
+        "op": "reject",
+        "path": "/content",
+        "reason": "tool result requires its declared target disposition",
+        "diagnostic": {
+                  "code": "unsupported_capability",
+                  "stage": "wire"
+                }
+      },
+      "otherwise": {
+                        "op": "literal",
+                        "value": true
+                      }
     }
 },
   "directions": {
@@ -44396,30 +44465,44 @@
                     "op": "any",
                     "items": [
                       {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/kind"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "message"
-                          }
-                        ]
-                      },
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/kind"
+              },
+              {
+                "op": "literal",
+                "value": "message"
+              }
+            ]
+          },
+                      {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/kind"
+              },
+              {
+                "op": "literal",
+                "value": "reasoning"
+              }
+            ]
+          },
                       {
                         "op": "equal",
                         "items": [
                           {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/kind"
-                          },
+                "op": "read",
+                "from": "input",
+                "path": "/kind"
+              },
                           {
                             "op": "literal",
-                            "value": "reasoning"
+                            "value": "tool_call"
                           }
                         ]
                       }
@@ -45540,6 +45623,134 @@
                   "reason": {
                     "op": "literal",
                     "value": "tool input streaming preference has no effect on this request"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "tool-results",
+      "order": 150,
+      "enabled": true,
+      "phase": "request",
+      "steps": [
+        {
+          "each": {
+            "select": "tool_result",
+            "pathBinding": "result-path",
+            "steps": [
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+            "op": "exists",
+            "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/status"
+              }
+          },
+                  "then": {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "project",
+                          "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/status"
+              },
+                          "keys": [
+                            "isError"
+                          ],
+                          "policy": "exclude"
+                        },
+                        {
+                            "op": "literal",
+                            "value": {}
+                          }
+                      ]
+                    }
+                  },
+                  "otherwise": {
+                          "op": "literal",
+                          "value": false
+                        }
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "result-path"
+                    },
+                    "items": [
+                {
+                  "op": "literal",
+                  "value": "status"
+                }
+              ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "tool result status has undeclared fields"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                              "op": "type",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/payload"
+                              }
+                            },
+                    {
+                                "op": "literal",
+                                "value": "object"
+                              }
+                  ]
+                },
+                "set": {
+                  "/payload": {
+                    "op": "stringify_json",
+                    "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/payload"
+                              }
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "result-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "payload"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "structured result serialized as JSON text; payload type changes"
                   }
                 }
               }

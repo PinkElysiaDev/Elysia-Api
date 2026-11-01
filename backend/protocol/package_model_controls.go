@@ -19,7 +19,7 @@ type ProtocolControlStep struct {
 	Omit       bool                          `json:"omit,omitempty"`
 }
 
-// ProtocolControlEach selects typed tools, nodes, metadata or usage. Input is
+// ProtocolControlEach selects typed tools, tool results, nodes, metadata or usage. Input is
 // local to the selected value; root remains the complete core document.
 type ProtocolControlEach struct {
 	Select      string                `json:"select"`
@@ -203,7 +203,10 @@ func compileScopedControlSteps(steps []ProtocolControlStep, compiler *expression
 			step.when = condition
 		}
 		for _, key := range sortedKeys(declaration.Set) {
-			setter, kind, err := compileTypedControlSetter(root, key)
+			if context.isToolResult && key == "/children" && declaration.Set[key].Op != "omit" {
+				return nil, fmt.Errorf("%s/set/%s: tool result content may only be explicitly consumed", at, escapePointer(key))
+			}
+			setter, kind, err := context.compileSetter(root, key)
 			if err != nil {
 				return nil, fmt.Errorf("%s/set/%s: %w", at, escapePointer(key), err)
 			}

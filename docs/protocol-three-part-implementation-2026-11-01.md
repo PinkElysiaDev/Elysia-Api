@@ -238,11 +238,17 @@ Responses JSON 原生协调的基线不再读取当前交付偏好；SSE 仅在�
 
 静态检查曾发现新增错误文字大写问题，修正后复核。代码差异和哈希归档于忽略目录 `phase-seven-storage-archive/`。检查平台为 Windows amd64、Go 1.27.2；本批没有前端变更。真实供应商、正式性能和六目标最终构建尚未执行，不能由上述功能结果推断性能无回退。
 
+## 剩余计划批次 2／3：认证续传与工具处置
+
+认证续传已在 dev.109 提交，见[续传实施记录](protocol-continuation-implementation-2026-11-02.md)。Responses include、Agent 客户端要求、载体交付和宿主认证已接入，仍不代表多段 reasoning 和所有一般布局已完成。
+
+dev.110 的工具 strict／缺省和 eager_input_streaming 配置化见[工具选项记录](protocol-tool-options-implementation-2026-11-02.md)。dev.111 的工具结果对象、文本、错误及媒体处置见[工具结果记录](protocol-tool-results-implementation-2026-11-02.md)。旧生产加载器未切换。
+
 ## 尚未完成的门槛
 
 - 四协议文本的 16 方向 JSON／SSE 主链已通过，Chat 目标 logprobs、Anthropic 混合接续和 Responses 服务端产物已有组件验收；复杂能力的 HTTP/Agent 组合及多消息布局仍需闭合。
-- 四份默认包的完整独立激活证据已齐；组合证据及目标取舍仍需完善。metadata／usage、模型归一化、Gemini historyRetention/safety 已配置化；错误、签名恢复、缓存提示、工具结果、历史布局及客户端交付意图尚需接线。
-- 本轮只读审计定位了后续必须关闭的实际入口缺口：Responses include 未进入客户端续传要求，Agent 的 include 仍在参数区；Gemini 的工具 strict、结果错误状态和结构结果尚无完整处置；Anthropic 多根输出、Gemini 有序输出与多个候选尚需明确区分。单文本矩阵不覆盖这些语义，不构成切换生产的依据。
+- 四份默认包的完整独立激活证据已齐；组合证据及目标取舍仍需完善。metadata／usage、模型归一化、Gemini historyRetention/safety、认证续传、工具选项与结果已有配置声明；缓存提示、一般错误和历史布局尚需闭合。
+- Anthropic 多根输出与多段 reasoning、Gemini 有序输出与多个候选尚需明确区分。复杂媒体工具结果仅覆盖目标已有能力，不能把对象结果能力当作媒体能力，也不能将代表性集成当作所有能力组合的证据。
 - 新资源契约尚未覆盖所有保留状态；默认转换策略仍有供应商 Go 分支。
 - 生产预置仍走旧加载器；旧执行路径、自动修复绑定及旧格式执行尚未退役。
 - 复杂能力实际调用、最终全量/静态/race/页面/六目标验收，以及三版本正式配对性能与火焰图尚未完成。

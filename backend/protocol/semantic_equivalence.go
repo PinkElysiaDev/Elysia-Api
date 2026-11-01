@@ -74,10 +74,43 @@ func comparableWireUsage(usage *Usage) *Usage {
 func equivalentRequest(request *Request) *Request {
 	copy := *request
 	copy.Content = comparableConversation(request.Content)
+	copy.Tools = comparableToolOptions(request.Tools)
 	// Client delivery preferences and upstream accounting controls are hop-local.
 	copy.ClientOutput = nil
 	copy.OutputLimitDefault = false
 	return &copy
+}
+
+// Wire defaults and explicit booleans can express the same tool constraint.
+// Only declared defaults are normalized; unknown options remain in the comparison.
+func comparableToolOptions(tools []Tool) []Tool {
+	result := append([]Tool(nil), tools...)
+	for index := range result {
+		tool := &result[index]
+		if tool.Kind != FunctionTool {
+			continue
+		}
+		options := Object{}
+		for name, value := range tool.Options {
+			options[name] = value
+		}
+		strict, defaultMode := options["strict"], options["strictDefault"]
+		if strict.IsZero() || strict.IsNull() {
+			if defaultMode.IsString("disabled") {
+				delete(options, "strict")
+				delete(options, "strictDefault")
+			}
+		} else if strict.raw == "true" || strict.raw == "false" {
+			if strict.raw == "false" {
+				delete(options, "strict")
+			}
+			if defaultMode.IsString("disabled") || defaultMode.IsString("automatic") {
+				delete(options, "strictDefault")
+			}
+		}
+		tool.Options = options
+	}
+	return result
 }
 
 func equivalentResponse(response *Response, family string) *Response {

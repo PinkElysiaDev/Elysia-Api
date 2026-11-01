@@ -2251,18 +2251,8 @@
       },
       "cases": {
         "text": {
-          "op": "object",
-          "fields": {
-            "type": {
-              "op": "literal",
-              "value": "input_text"
-            },
-            "text": {
-              "op": "read",
-              "from": "item",
-              "path": "/payload"
-            }
-          }
+          "op": "ref",
+          "ref": "encode-input-text"
         },
         "refusal": {
           "op": "object",
@@ -2279,134 +2269,12 @@
           }
         },
         "image": {
-          "op": "object",
-          "fields": {
-            "type": {
-              "op": "literal",
-              "value": "input_image"
-            },
-            "image_url": {
-              "op": "if",
-              "when": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "item",
-                  "path": "/payload/url"
-                }
-              },
-              "then": {
-                "op": "read",
-                "from": "item",
-                "path": "/payload/url"
-              },
-              "otherwise": {
-                "op": "if",
-                "when": {
-                  "op": "exists",
-                  "source": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/payload/data"
-                  }
-                },
-                "then": {
-                  "op": "join",
-                  "items": [
-                    {
-                      "op": "literal",
-                      "value": "data:"
-                    },
-                    {
-                      "op": "read",
-                      "from": "item",
-                      "path": "/payload/mime"
-                    },
-                    {
-                      "op": "literal",
-                      "value": ";base64,"
-                    },
-                    {
-                      "op": "read",
-                      "from": "item",
-                      "path": "/payload/data"
-                    }
-                  ]
-                }
-              }
-            },
-            "detail": {
-              "op": "read",
-              "from": "item",
-              "path": "/payload/detail"
-            },
-            "file_id": {
-              "op": "ref",
-              "ref": "encode-file-resource-id"
-            }
-          }
+          "op": "ref",
+          "ref": "encode-input-image"
         },
         "document": {
-          "op": "object",
-          "fields": {
-            "type": {
-              "op": "literal",
-              "value": "input_file"
-            },
-            "file_data": {
-              "op": "if",
-              "when": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "item",
-                  "path": "/payload/mime"
-                }
-              },
-              "then": {
-                "op": "join",
-                "items": [
-                  {
-                    "op": "literal",
-                    "value": "data:"
-                  },
-                  {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/payload/mime"
-                  },
-                  {
-                    "op": "literal",
-                    "value": ";base64,"
-                  },
-                  {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/payload/data"
-                  }
-                ]
-              },
-              "otherwise": {
-                "op": "read",
-                "from": "item",
-                "path": "/payload/data"
-              }
-            },
-            "file_url": {
-              "op": "read",
-              "from": "item",
-              "path": "/payload/url"
-            },
-            "filename": {
-              "op": "read",
-              "from": "item",
-              "path": "/payload/name"
-            },
-            "file_id": {
-              "op": "ref",
-              "ref": "encode-file-resource-id"
-            }
-          }
+          "op": "ref",
+          "ref": "encode-input-document"
         },
         "tool_call": {
           "op": "ref",
@@ -2513,46 +2381,36 @@
                   "op": "all",
                   "items": [
                     {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "item",
-                          "path": "/codec"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "responses"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "is-item-responses"
                     },
                     {
-                      "op": "equal",
                       "items": [
                         {
-                          "op": "read",
                           "from": "item",
+                          "op": "read",
                           "path": "/location"
                         },
                         {
                           "op": "literal",
                           "value": "content"
                         }
-                      ]
+                      ],
+                      "op": "equal"
                     },
                     {
-                      "op": "equal",
                       "items": [
                         {
-                          "op": "read",
                           "from": "item",
+                          "op": "read",
                           "path": "/name"
                         },
                         {
                           "op": "literal",
                           "value": "logprobs"
                         }
-                      ]
+                      ],
+                      "op": "equal"
                     }
                   ]
                 }
@@ -4608,22 +4466,8 @@
         "body": {
           "op": "if",
           "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "type",
-                "source": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "",
-                  "name": "empty-tool-container"
-                }
-              },
-              {
-                "op": "literal",
-                "value": "object"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-empty-tool-object"
           },
           "then": {
             "op": "all",
@@ -4674,22 +4518,8 @@
                   "body": {
                     "op": "if",
                     "when": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "type",
-                          "source": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "empty-tool-container"
-                          }
-                        },
-                        {
-                          "op": "literal",
-                          "value": "object"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "is-empty-tool-object"
                     },
                     "then": {
                       "op": "all",
@@ -6675,41 +6505,8 @@
             "body": {
               "op": "if",
               "when": {
-                "op": "any",
-                "items": [
-                  {
-                    "op": "integer",
-                    "operation": "lt",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "http-status"
-                      },
-                      {
-                        "op": "literal",
-                        "value": 200
-                      }
-                    ]
-                  },
-                  {
-                    "op": "integer",
-                    "operation": "gte",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "http-status"
-                      },
-                      {
-                        "op": "literal",
-                        "value": 300
-                      }
-                    ]
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-non-success-http-status"
               },
               "then": {
                 "op": "ref",
@@ -6986,19 +6783,19 @@
                       }
                     },
                     {
-                      "op": "equal",
                       "items": [
                         {
-                          "op": "read",
                           "from": "binding",
-                          "path": "",
-                          "name": "error-category"
+                          "name": "error-category",
+                          "op": "read",
+                          "path": ""
                         },
                         {
                           "op": "literal",
                           "value": "model_not_found"
                         }
-                      ]
+                      ],
+                      "op": "equal"
                     },
                     {
                       "op": "equal",
@@ -7379,19 +7176,19 @@
               "otherwise": {
                 "op": "if",
                 "when": {
-                  "op": "equal",
                   "items": [
                     {
-                      "op": "read",
                       "from": "binding",
-                      "path": "",
-                      "name": "error-category"
+                      "name": "error-category",
+                      "op": "read",
+                      "path": ""
                     },
                     {
                       "op": "literal",
                       "value": "model_not_found"
                     }
-                  ]
+                  ],
+                  "op": "equal"
                 },
                 "then": {
                   "op": "literal",
@@ -7660,41 +7457,8 @@
                             }
                           },
                           {
-                            "op": "any",
-                            "items": [
-                              {
-                                "op": "integer",
-                                "operation": "lt",
-                                "items": [
-                                  {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "http-status"
-                                  },
-                                  {
-                                    "op": "literal",
-                                    "value": 200
-                                  }
-                                ]
-                              },
-                              {
-                                "op": "integer",
-                                "operation": "gte",
-                                "items": [
-                                  {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "http-status"
-                                  },
-                                  {
-                                    "op": "literal",
-                                    "value": 300
-                                  }
-                                ]
-                              }
-                            ]
+                            "op": "ref",
+                            "ref": "is-non-success-http-status"
                           }
                         ]
                       },
@@ -7759,19 +7523,19 @@
                           ]
                         },
                         {
-                          "op": "equal",
                           "items": [
                             {
-                              "op": "read",
                               "from": "binding",
-                              "path": "",
-                              "name": "error-category"
+                              "name": "error-category",
+                              "op": "read",
+                              "path": ""
                             },
                             {
                               "op": "literal",
                               "value": "model_not_found"
                             }
-                          ]
+                          ],
+                          "op": "equal"
                         },
                         {
                           "op": "equal",
@@ -8488,20 +8252,8 @@
                   "ref": "model-control-effective-levels"
                 },
                 "when": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "item",
-                      "path": ""
-                    },
-                    {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "sought"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "is-sought-value"
                 }
               },
               "body": {
@@ -10219,18 +9971,18 @@
     "has-progress-extensions": {
       "op": "if",
       "when": {
-        "op": "equal",
         "items": [
           {
-            "op": "read",
             "from": "input",
+            "op": "read",
             "path": "/type"
           },
           {
             "op": "literal",
             "value": "response.in_progress"
           }
-        ]
+        ],
+        "op": "equal"
       },
       "then": {
         "op": "any",
@@ -10704,18 +10456,8 @@
       "source": {
         "op": "if",
         "when": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/type"
-            },
-            {
-              "op": "literal",
-              "value": "response.failed"
-            }
-          ]
+          "op": "ref",
+          "ref": "is-input-response-failed"
         },
         "then": {
           "op": "read",
@@ -10829,18 +10571,8 @@
                   "source": {
                     "op": "if",
                     "when": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/type"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "error"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "is-input-error"
                     },
                     "then": {
                       "op": "project",
@@ -12419,19 +12151,19 @@
                   "then": {
                     "op": "if",
                     "when": {
-                      "op": "equal",
                       "items": [
                         {
-                          "op": "read",
                           "from": "binding",
-                          "path": "/collection",
-                          "name": "target-event"
+                          "name": "target-event",
+                          "op": "read",
+                          "path": "/collection"
                         },
                         {
                           "op": "literal",
                           "value": "summary"
                         }
-                      ]
+                      ],
+                      "op": "equal"
                     },
                     "then": {
                       "op": "read",
@@ -12449,19 +12181,19 @@
                   "otherwise": {
                     "op": "if",
                     "when": {
-                      "op": "equal",
                       "items": [
                         {
-                          "op": "read",
                           "from": "binding",
-                          "path": "/collection",
-                          "name": "target-event"
+                          "name": "target-event",
+                          "op": "read",
+                          "path": "/collection"
                         },
                         {
                           "op": "literal",
                           "value": "summary"
                         }
-                      ]
+                      ],
+                      "op": "equal"
                     },
                     "then": {
                       "op": "read",
@@ -12637,19 +12369,19 @@
                         {
                           "op": "if",
                           "when": {
-                            "op": "equal",
                             "items": [
                               {
-                                "op": "read",
                                 "from": "binding",
-                                "path": "/collection",
-                                "name": "target-event"
+                                "name": "target-event",
+                                "op": "read",
+                                "path": "/collection"
                               },
                               {
                                 "op": "literal",
                                 "value": "summary"
                               }
-                            ]
+                            ],
+                            "op": "equal"
                           },
                           "then": {
                             "op": "object",
@@ -14447,19 +14179,19 @@
                   {
                     "op": "not",
                     "source": {
-                      "op": "equal",
                       "items": [
                         {
-                          "op": "read",
                           "from": "binding",
-                          "path": "",
-                          "name": "body-suffix"
+                          "name": "body-suffix",
+                          "op": "read",
+                          "path": ""
                         },
                         {
                           "op": "literal",
                           "value": ""
                         }
-                      ]
+                      ],
+                      "op": "equal"
                     }
                   },
                   {
@@ -14547,19 +14279,19 @@
               "when": {
                 "op": "not",
                 "source": {
-                  "op": "equal",
                   "items": [
                     {
-                      "op": "read",
                       "from": "binding",
-                      "path": "",
-                      "name": "body-suffix"
+                      "name": "body-suffix",
+                      "op": "read",
+                      "path": ""
                     },
                     {
                       "op": "literal",
                       "value": ""
                     }
-                  ]
+                  ],
+                  "op": "equal"
                 }
               },
               "then": {
@@ -16462,18 +16194,18 @@
           "name": "metadata-suffixes"
         },
         "when": {
-          "op": "equal",
           "items": [
             {
-              "op": "read",
               "from": "item",
+              "op": "read",
               "path": "/name"
             },
             {
               "op": "literal",
               "value": "logprobs"
             }
-          ]
+          ],
+          "op": "equal"
         }
       },
       "body": {
@@ -16655,18 +16387,8 @@
         "when": {
           "op": "not",
           "source": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "item",
-                "path": "/codec"
-              },
-              {
-                "op": "literal",
-                "value": "responses"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-item-responses"
           }
         },
         "then": {
@@ -17132,6 +16854,38 @@
           "body": {
             "op": "ref",
             "ref": "emit-nonempty-object"
+          }
+        },
+        "children": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "type",
+                "source": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/output"
+                }
+              },
+              {
+                "op": "literal",
+                "value": "array"
+              }
+            ]
+          },
+          "then": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "from": "item",
+              "path": "/output"
+            },
+            "body": {
+              "op": "ref",
+              "ref": "decode-block"
+            }
           }
         }
       }
@@ -18278,32 +18032,32 @@
           "op": "all",
           "items": [
             {
-              "op": "equal",
               "items": [
                 {
-                  "op": "read",
                   "from": "item",
+                  "op": "read",
                   "path": "/name"
                 },
                 {
                   "op": "literal",
                   "value": "logprobs"
                 }
-              ]
+              ],
+              "op": "equal"
             },
             {
-              "op": "equal",
               "items": [
                 {
-                  "op": "read",
                   "from": "item",
+                  "op": "read",
                   "path": "/location"
                 },
                 {
                   "op": "literal",
                   "value": "content"
                 }
-              ]
+              ],
+              "op": "equal"
             }
           ]
         }
@@ -18376,18 +18130,18 @@
               "then": {
                 "op": "if",
                 "when": {
-                  "op": "equal",
                   "items": [
                     {
-                      "op": "read",
                       "from": "input",
+                      "op": "read",
                       "path": "/codec"
                     },
                     {
                       "op": "literal",
                       "value": "openai-chat"
                     }
-                  ]
+                  ],
+                  "op": "equal"
                 },
                 "then": {
                   "op": "let",
@@ -18961,18 +18715,8 @@
         "op": "all",
         "items": [
           {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/codec"
-              },
-              {
-                "op": "literal",
-                "value": "responses"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-input-responses"
           },
           {
             "op": "equal",
@@ -19055,18 +18799,18 @@
                       },
                       "cases": {
                         "web_search": {
-                          "op": "equal",
                           "items": [
                             {
-                              "op": "read",
                               "from": "item",
+                              "op": "read",
                               "path": "/value"
                             },
                             {
                               "op": "literal",
                               "value": {}
                             }
-                          ]
+                          ],
+                          "op": "equal"
                         },
                         "image_gen": {
                           "op": "if",
@@ -19113,32 +18857,32 @@
                                       },
                                       "cases": {
                                         "input_tokens_details": {
-                                          "op": "equal",
                                           "items": [
                                             {
-                                              "op": "read",
                                               "from": "item",
+                                              "op": "read",
                                               "path": "/value"
                                             },
                                             {
                                               "op": "literal",
                                               "value": {}
                                             }
-                                          ]
+                                          ],
+                                          "op": "equal"
                                         },
                                         "output_tokens_details": {
-                                          "op": "equal",
                                           "items": [
                                             {
-                                              "op": "read",
                                               "from": "item",
+                                              "op": "read",
                                               "path": "/value"
                                             },
                                             {
                                               "op": "literal",
                                               "value": {}
                                             }
-                                          ]
+                                          ],
+                                          "op": "equal"
                                         }
                                       },
                                       "otherwise": {
@@ -19247,18 +18991,8 @@
           "op": "all",
           "items": [
             {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/codec"
-                },
-                {
-                  "op": "literal",
-                  "value": "responses"
-                }
-              ]
+              "op": "ref",
+              "ref": "is-input-responses"
             },
             {
               "op": "any",
@@ -19651,47 +19385,78 @@
       ]
     },
     "encode-function-result-item": {
-      "op": "object",
-      "fields": {
-        "type": {
-          "op": "if",
-          "when": {
-            "op": "equal",
-            "items": [
-              {
+      "op": "let",
+      "name": "checked-result",
+      "source": {
+        "op": "ref",
+        "ref": "check-tool-result"
+      },
+      "body": {
+        "op": "object",
+        "fields": {
+          "type": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/attributes/inputKind"
+                },
+                {
+                  "op": "literal",
+                  "value": "text"
+                }
+              ]
+            },
+            "then": {
+              "op": "literal",
+              "value": "custom_tool_call_output"
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": "function_call_output"
+            }
+          },
+          "id": {
+            "op": "read",
+            "from": "item",
+            "path": "/id"
+          },
+          "call_id": {
+            "op": "read",
+            "from": "item",
+            "path": "/callId"
+          },
+          "output": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
                 "op": "read",
                 "from": "item",
-                "path": "/attributes/inputKind"
-              },
-              {
-                "op": "literal",
-                "value": "text"
+                "path": "/children"
               }
-            ]
-          },
-          "then": {
-            "op": "literal",
-            "value": "custom_tool_call_output"
-          },
-          "otherwise": {
-            "op": "literal",
-            "value": "function_call_output"
+            },
+            "then": {
+              "op": "map",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/children"
+              },
+              "body": {
+                "op": "ref",
+                "ref": "encode-result-content-block"
+              }
+            },
+            "otherwise": {
+              "op": "read",
+              "from": "item",
+              "path": "/payload"
+            }
           }
-        },
-        "id": {
-          "op": "read",
-          "from": "item",
-          "path": "/id"
-        },
-        "call_id": {
-          "op": "read",
-          "from": "item",
-          "path": "/callId"
-        },
-        "output": {
-          "op": "read",
-          "from": "item",
-          "path": "/payload"
         }
       }
     },
@@ -19724,32 +19489,22 @@
           "op": "all",
           "items": [
             {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "item",
-                  "path": "/codec"
-                },
-                {
-                  "op": "literal",
-                  "value": "responses"
-                }
-              ]
+              "op": "ref",
+              "ref": "is-item-responses"
             },
             {
-              "op": "equal",
               "items": [
                 {
-                  "op": "read",
                   "from": "item",
+                  "op": "read",
                   "path": "/location"
                 },
                 {
                   "op": "literal",
                   "value": "content"
                 }
-              ]
+              ],
+              "op": "equal"
             },
             {
               "op": "equal",
@@ -19816,18 +19571,18 @@
             "kind": {
               "op": "if",
               "when": {
-                "op": "equal",
                 "items": [
                   {
-                    "op": "read",
                     "from": "input",
+                    "op": "read",
                     "path": "/item/type"
                   },
                   {
                     "op": "literal",
                     "value": "custom_tool_call"
                   }
-                ]
+                ],
+                "op": "equal"
               },
               "then": {
                 "op": "literal",
@@ -21808,18 +21563,8 @@
         "op": "all",
         "items": [
           {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "response.output_item.done"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-input-response-output_item-done"
           },
           {
             "op": "equal",
@@ -21864,18 +21609,8 @@
         "op": "all",
         "items": [
           {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "response.output_item.done"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-input-response-output_item-done"
           },
           {
             "op": "equal",
@@ -21920,18 +21655,8 @@
         "op": "all",
         "items": [
           {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "response.output_item.done"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-input-response-output_item-done"
           },
           {
             "op": "equal",
@@ -21976,18 +21701,8 @@
         "op": "all",
         "items": [
           {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "response.output_item.done"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-input-response-output_item-done"
           },
           {
             "op": "equal",
@@ -22703,19 +22418,19 @@
           "when": {
             "op": "not",
             "source": {
-              "op": "equal",
               "items": [
                 {
-                  "op": "read",
                   "from": "binding",
-                  "path": "",
-                  "name": "body-suffix"
+                  "name": "body-suffix",
+                  "op": "read",
+                  "path": ""
                 },
                 {
                   "op": "literal",
                   "value": ""
                 }
-              ]
+              ],
+              "op": "equal"
             }
           },
           "then": {
@@ -23637,18 +23352,18 @@
     "conversion-annotation-body-path": {
       "op": "if",
       "when": {
-        "op": "equal",
         "items": [
           {
-            "op": "read",
             "from": "input",
+            "op": "read",
             "path": "/codec"
           },
           {
             "op": "literal",
             "value": "openai-chat"
           }
-        ]
+        ],
+        "op": "equal"
       },
       "then": {
         "op": "pointer_join",
@@ -23676,32 +23391,22 @@
       "op": "any",
       "items": [
         {
-          "op": "equal",
           "items": [
             {
-              "op": "read",
               "from": "input",
+              "op": "read",
               "path": "/codec"
             },
             {
               "op": "literal",
               "value": "openai-chat"
             }
-          ]
+          ],
+          "op": "equal"
         },
         {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/codec"
-            },
-            {
-              "op": "literal",
-              "value": "responses"
-            }
-          ]
+          "op": "ref",
+          "ref": "is-input-responses"
         }
       ]
     },
@@ -23806,22 +23511,8 @@
     "is-empty-tool-token-counter": {
       "op": "if",
       "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "type",
-            "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "empty-tool-container"
-            }
-          },
-          {
-            "op": "literal",
-            "value": "object"
-          }
-        ]
+        "op": "ref",
+        "ref": "is-empty-tool-object"
       },
       "then": {
         "op": "all",
@@ -24142,18 +23833,18 @@
     "source-tool-input": {
       "op": "if",
       "when": {
-        "op": "equal",
         "items": [
           {
-            "op": "read",
             "from": "input",
+            "op": "read",
             "path": "/item/type"
           },
           {
             "op": "literal",
             "value": "custom_tool_call"
           }
-        ]
+        ],
+        "op": "equal"
       },
       "then": {
         "op": "read",
@@ -24459,19 +24150,19 @@
                 "op": "any",
                 "items": [
                   {
-                    "op": "equal",
                     "items": [
                       {
-                        "op": "read",
                         "from": "binding",
-                        "path": "/effectiveUnknown",
-                        "name": "storage"
+                        "name": "storage",
+                        "op": "read",
+                        "path": "/effectiveUnknown"
                       },
                       {
                         "op": "literal",
                         "value": true
                       }
-                    ]
+                    ],
+                    "op": "equal"
                   },
                   {
                     "op": "all",
@@ -24526,19 +24217,19 @@
           "otherwise": {
             "op": "if",
             "when": {
-              "op": "equal",
               "items": [
                 {
-                  "op": "read",
                   "from": "binding",
-                  "path": "/effectiveUnknown",
-                  "name": "storage"
+                  "name": "storage",
+                  "op": "read",
+                  "path": "/effectiveUnknown"
                 },
                 {
                   "op": "literal",
                   "value": true
                 }
-              ]
+              ],
+              "op": "equal"
             },
             "then": {
               "op": "reject",
@@ -24611,20 +24302,8 @@
           }
         },
         "when": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "item",
-              "path": ""
-            },
-            {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "selected"
-            }
-          ]
+          "op": "ref",
+          "ref": "is-selected-value"
         }
       },
       "body": {
@@ -24651,20 +24330,8 @@
           }
         },
         "when": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "item",
-              "path": ""
-            },
-            {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "selected"
-            }
-          ]
+          "op": "ref",
+          "ref": "is-selected-value"
         }
       },
       "body": {
@@ -24691,20 +24358,8 @@
           }
         },
         "when": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "item",
-              "path": ""
-            },
-            {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "selected"
-            }
-          ]
+          "op": "ref",
+          "ref": "is-selected-value"
         }
       },
       "body": {
@@ -25335,6 +24990,408 @@
         "op": "object",
         "fields": {}
       }
+    },
+    "encode-result-content-block": {
+      "op": "choose",
+      "source": {
+        "op": "read",
+        "from": "item",
+        "path": "/kind"
+      },
+      "cases": {
+        "text": {
+          "op": "ref",
+          "ref": "encode-input-text"
+        },
+        "image": {
+          "op": "ref",
+          "ref": "encode-input-image"
+        },
+        "document": {
+          "op": "ref",
+          "ref": "encode-input-document"
+        }
+      }
+    },
+    "check-tool-result": {
+      "op": "if",
+      "when": {
+        "op": "any",
+        "items": [
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "item",
+              "path": "/status"
+            }
+          },
+          {
+            "op": "all",
+            "items": [
+              {
+                "op": "not",
+                "source": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/children"
+                  }
+                }
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "type",
+                      "source": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/payload"
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": "string"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "then": {
+        "op": "reject",
+        "path": "/content",
+        "reason": "tool result requires its declared target disposition",
+        "diagnostic": {
+          "code": "unsupported_capability",
+          "stage": "wire"
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": true
+      }
+    },
+    "encode-input-text": {
+      "op": "object",
+      "fields": {
+        "type": {
+          "op": "literal",
+          "value": "input_text"
+        },
+        "text": {
+          "op": "read",
+          "from": "item",
+          "path": "/payload"
+        }
+      }
+    },
+    "encode-input-image": {
+      "op": "object",
+      "fields": {
+        "type": {
+          "op": "literal",
+          "value": "input_image"
+        },
+        "image_url": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "item",
+              "path": "/payload/url"
+            }
+          },
+          "then": {
+            "op": "read",
+            "from": "item",
+            "path": "/payload/url"
+          },
+          "otherwise": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/payload/data"
+              }
+            },
+            "then": {
+              "op": "join",
+              "items": [
+                {
+                  "op": "literal",
+                  "value": "data:"
+                },
+                {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/payload/mime"
+                },
+                {
+                  "op": "literal",
+                  "value": ";base64,"
+                },
+                {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/payload/data"
+                }
+              ]
+            }
+          }
+        },
+        "detail": {
+          "op": "read",
+          "from": "item",
+          "path": "/payload/detail"
+        },
+        "file_id": {
+          "op": "ref",
+          "ref": "encode-file-resource-id"
+        }
+      }
+    },
+    "encode-input-document": {
+      "op": "object",
+      "fields": {
+        "type": {
+          "op": "literal",
+          "value": "input_file"
+        },
+        "file_data": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "item",
+              "path": "/payload/mime"
+            }
+          },
+          "then": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "data:"
+              },
+              {
+                "op": "read",
+                "from": "item",
+                "path": "/payload/mime"
+              },
+              {
+                "op": "literal",
+                "value": ";base64,"
+              },
+              {
+                "op": "read",
+                "from": "item",
+                "path": "/payload/data"
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "read",
+            "from": "item",
+            "path": "/payload/data"
+          }
+        },
+        "file_url": {
+          "op": "read",
+          "from": "item",
+          "path": "/payload/url"
+        },
+        "filename": {
+          "op": "read",
+          "from": "item",
+          "path": "/payload/name"
+        },
+        "file_id": {
+          "op": "ref",
+          "ref": "encode-file-resource-id"
+        }
+      }
+    },
+    "is-item-responses": {
+      "items": [
+        {
+          "from": "item",
+          "op": "read",
+          "path": "/codec"
+        },
+        {
+          "op": "literal",
+          "value": "responses"
+        }
+      ],
+      "op": "equal"
+    },
+    "is-sought-value": {
+      "items": [
+        {
+          "from": "item",
+          "op": "read",
+          "path": ""
+        },
+        {
+          "from": "binding",
+          "name": "sought",
+          "op": "read",
+          "path": ""
+        }
+      ],
+      "op": "equal"
+    },
+    "is-input-responses": {
+      "items": [
+        {
+          "from": "input",
+          "op": "read",
+          "path": "/codec"
+        },
+        {
+          "op": "literal",
+          "value": "responses"
+        }
+      ],
+      "op": "equal"
+    },
+    "is-input-response-output_item-done": {
+      "items": [
+        {
+          "from": "input",
+          "op": "read",
+          "path": "/type"
+        },
+        {
+          "op": "literal",
+          "value": "response.output_item.done"
+        }
+      ],
+      "op": "equal"
+    },
+    "is-selected-value": {
+      "items": [
+        {
+          "from": "item",
+          "op": "read",
+          "path": ""
+        },
+        {
+          "from": "binding",
+          "name": "selected",
+          "op": "read",
+          "path": ""
+        }
+      ],
+      "op": "equal"
+    },
+    "is-input-response-failed": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/type"
+        },
+        {
+          "op": "literal",
+          "value": "response.failed"
+        }
+      ]
+    },
+    "is-input-error": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/type"
+        },
+        {
+          "op": "literal",
+          "value": "error"
+        }
+      ]
+    },
+    "tool-result-status-path": {
+      "op": "pointer_join",
+      "source": {
+        "op": "read",
+        "from": "binding",
+        "name": "result-path"
+      },
+      "items": [
+        {
+          "op": "literal",
+          "value": "status"
+        }
+      ]
+    },
+    "is-empty-tool-object": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "type",
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "name": "empty-tool-container",
+            "path": ""
+          }
+        },
+        {
+          "op": "literal",
+          "value": "object"
+        }
+      ]
+    },
+    "is-non-success-http-status": {
+      "op": "any",
+      "items": [
+        {
+          "op": "integer",
+          "operation": "lt",
+          "items": [
+            {
+              "op": "read",
+              "from": "binding",
+              "name": "http-status",
+              "path": ""
+            },
+            {
+              "op": "literal",
+              "value": 200
+            }
+          ]
+        },
+        {
+          "op": "integer",
+          "operation": "gte",
+          "items": [
+            {
+              "op": "read",
+              "from": "binding",
+              "name": "http-status",
+              "path": ""
+            },
+            {
+              "op": "literal",
+              "value": 300
+            }
+          ]
+        }
+      ]
     }
   },
   "directions": {
@@ -25808,19 +25865,19 @@
                 "when": {
                   "op": "if",
                   "when": {
-                    "op": "equal",
                     "items": [
                       {
-                        "op": "read",
                         "from": "binding",
-                        "path": "/effectiveUnknown",
-                        "name": "storage"
+                        "name": "storage",
+                        "op": "read",
+                        "path": "/effectiveUnknown"
                       },
                       {
                         "op": "literal",
                         "value": true
                       }
-                    ]
+                    ],
+                    "op": "equal"
                   },
                   "then": {
                     "op": "all",
@@ -26130,18 +26187,8 @@
                   "when": {
                     "op": "not",
                     "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "item",
-                          "path": "/codec"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "responses"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "is-item-responses"
                     }
                   }
                 },
@@ -26219,18 +26266,18 @@
               "op": "any",
               "items": [
                 {
-                  "op": "equal",
                   "items": [
                     {
-                      "op": "read",
                       "from": "input",
+                      "op": "read",
                       "path": "/type"
                     },
                     {
                       "op": "literal",
                       "value": "response.in_progress"
                     }
-                  ]
+                  ],
+                  "op": "equal"
                 },
                 {
                   "op": "equal",
@@ -26247,32 +26294,12 @@
                   ]
                 },
                 {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/type"
-                    },
-                    {
-                      "op": "literal",
-                      "value": "response.failed"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "is-input-response-failed"
                 },
                 {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/type"
-                    },
-                    {
-                      "op": "literal",
-                      "value": "error"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "is-input-error"
                 }
               ]
             },
@@ -26375,18 +26402,18 @@
               "op": "all",
               "items": [
                 {
-                  "op": "equal",
                   "items": [
                     {
-                      "op": "read",
                       "from": "input",
+                      "op": "read",
                       "path": "/type"
                     },
                     {
                       "op": "literal",
                       "value": "response.in_progress"
                     }
-                  ]
+                  ],
+                  "op": "equal"
                 },
                 {
                   "op": "present",
@@ -26778,18 +26805,18 @@
                                 ]
                               },
                               {
-                                "op": "equal",
                                 "items": [
                                   {
-                                    "op": "read",
                                     "from": "input",
+                                    "op": "read",
                                     "path": "/item/type"
                                   },
                                   {
                                     "op": "literal",
                                     "value": "custom_tool_call"
                                   }
-                                ]
+                                ],
+                                "op": "equal"
                               }
                             ]
                           },
@@ -28455,32 +28482,12 @@
                   "op": "any",
                   "items": [
                     {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/type"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "error"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "is-input-error"
                     },
                     {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/type"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "response.failed"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "is-input-response-failed"
                     }
                   ]
                 },
@@ -28498,32 +28505,12 @@
                     "op": "any",
                     "items": [
                       {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/type"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "error"
-                          }
-                        ]
+                        "op": "ref",
+                        "ref": "is-input-error"
                       },
                       {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/type"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "response.failed"
-                          }
-                        ]
+                        "op": "ref",
+                        "ref": "is-input-response-failed"
                       }
                     ]
                   },
@@ -40194,20 +40181,8 @@
                       ]
                     },
                     "when": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "item",
-                          "path": ""
-                        },
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "sought"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "is-sought-value"
                     }
                   },
                   "body": {
@@ -40302,20 +40277,8 @@
                       }
                     },
                     "when": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "item",
-                          "path": ""
-                        },
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "sought"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "is-sought-value"
                     }
                   },
                   "body": {
@@ -40465,20 +40428,8 @@
                       "ref": "model-disabled-levels"
                     },
                     "when": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "item",
-                          "path": ""
-                        },
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "sought"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "is-sought-value"
                     }
                   },
                   "body": {
@@ -40570,20 +40521,8 @@
                       "ref": "model-between-tool-levels"
                     },
                     "when": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "item",
-                          "path": ""
-                        },
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "sought"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "is-sought-value"
                     }
                   },
                   "body": {
@@ -41123,20 +41062,8 @@
                     }
                   },
                   "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "item",
-                        "path": ""
-                      },
-                      {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "selected"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-selected-value"
                   }
                 },
                 "body": {
@@ -41498,20 +41425,8 @@
                       ]
                     },
                     "when": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "item",
-                          "path": ""
-                        },
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "selected"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "is-selected-value"
                     }
                   },
                   "body": {
@@ -41657,18 +41572,8 @@
             "steps": [
               {
                 "when": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/codec"
-                    },
-                    {
-                      "op": "literal",
-                      "value": "responses"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "is-input-responses"
                 },
                 "stop": true
               },
@@ -41825,18 +41730,8 @@
             "steps": [
               {
                 "when": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/codec"
-                    },
-                    {
-                      "op": "literal",
-                      "value": "responses"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "is-input-responses"
                 },
                 "stop": true
               },
@@ -41993,18 +41888,8 @@
             "steps": [
               {
                 "when": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/codec"
-                    },
-                    {
-                      "op": "literal",
-                      "value": "responses"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "is-input-responses"
                 },
                 "stop": true
               },
@@ -43852,18 +43737,18 @@
             "op": "all",
             "items": [
               {
-                "op": "equal",
                 "items": [
                   {
-                    "op": "read",
                     "from": "input",
+                    "op": "read",
                     "path": "/type"
                   },
                   {
                     "op": "literal",
                     "value": "response.started"
                   }
-                ]
+                ],
+                "op": "equal"
               },
               {
                 "op": "present",
@@ -43908,18 +43793,18 @@
             "op": "all",
             "items": [
               {
-                "op": "equal",
                 "items": [
                   {
-                    "op": "read",
                     "from": "input",
+                    "op": "read",
                     "path": "/type"
                   },
                   {
                     "op": "literal",
                     "value": "response.started"
                   }
-                ]
+                ],
+                "op": "equal"
               },
               {
                 "op": "not",
@@ -43975,18 +43860,18 @@
             "op": "all",
             "items": [
               {
-                "op": "equal",
                 "items": [
                   {
-                    "op": "read",
                     "from": "input",
+                    "op": "read",
                     "path": "/type"
                   },
                   {
                     "op": "literal",
                     "value": "response.started"
                   }
-                ]
+                ],
+                "op": "equal"
               },
               {
                 "op": "present",
@@ -44836,6 +44721,245 @@
           }
         }
       ]
+    },
+    {
+      "id": "tool-results",
+      "order": 150,
+      "enabled": true,
+      "phase": "request",
+      "steps": [
+        {
+          "each": {
+            "select": "tool_result",
+            "pathBinding": "result-path",
+            "steps": [
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/status"
+                    }
+                  },
+                  "then": {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "project",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/status"
+                          },
+                          "keys": [
+                            "isError"
+                          ],
+                          "policy": "exclude"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "ref",
+                    "ref": "tool-result-status-path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "tool result status has undeclared fields"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "type",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/payload"
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": "object"
+                    }
+                  ]
+                },
+                "set": {
+                  "/payload": {
+                    "op": "stringify_json",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/payload"
+                    }
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "result-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "payload"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "structured result serialized as JSON text; payload type changes"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/status/isError"
+                        },
+                        {
+                          "op": "literal",
+                          "value": true
+                        }
+                      ]
+                    },
+                    {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/children"
+                      }
+                    }
+                  ]
+                },
+                "set": {
+                  "/childrenPrefix": {
+                    "op": "literal",
+                    "value": "[Tool error] "
+                  },
+                  "/status": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "ref",
+                    "ref": "tool-result-status-path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "error state represented by a leading text block"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/status/isError"
+                    },
+                    {
+                      "op": "literal",
+                      "value": true
+                    }
+                  ]
+                },
+                "set": {
+                  "/payload": {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "[Tool error] "
+                      },
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/payload"
+                      }
+                    ]
+                  },
+                  "/status": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "ref",
+                    "ref": "tool-result-status-path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "error state represented by the declared text marker"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/status"
+                  }
+                },
+                "set": {
+                  "/status": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "ref",
+                    "ref": "tool-result-status-path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "false error flag normalized to an ordinary result"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
     }
   ],
   "continuation": {
@@ -45211,18 +45335,8 @@
         "when": {
           "op": "if",
           "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
-              },
-              {
-                "op": "literal",
-                "value": "response.output_item.done"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-input-response-output_item-done"
           },
           "then": {
             "op": "with_input",

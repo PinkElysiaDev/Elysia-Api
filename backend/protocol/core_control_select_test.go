@@ -172,6 +172,16 @@ func TestDeclaredNodeSelectionKeepsOwnersAndScope(t *testing.T) {
 }
 
 func TestDeclaredNodeControlWriteBoundary(t *testing.T) {
+	for _, field := range []string{"/id", "/callId", "/name", "/native", "/resources", "/attributes", "/kind"} {
+		steps := []ProtocolControlStep{{Each: &ProtocolControlEach{Select: "tool_result", Steps: []ProtocolControlStep{{Set: map[string]Expression{field: {Op: "omit"}}}}}}}
+		if _, err := compileConversionControlSteps(steps, newExpressionCompiler(DefaultLimits(), nil), "/steps", reflect.TypeFor[Request](), false); err == nil {
+			t.Fatal("tool result selector granted an undeclared write", field)
+		}
+	}
+	content := []ProtocolControlStep{{Each: &ProtocolControlEach{Select: "tool_result", Steps: []ProtocolControlStep{{Set: map[string]Expression{"/children": literalExpression([]any{})}}}}}}
+	if _, err := compileConversionControlSteps(content, newExpressionCompiler(DefaultLimits(), nil), "/steps", reflect.TypeFor[Request](), false); err == nil {
+		t.Fatal("tool result selector permitted manufacturing replacement nodes")
+	}
 	for _, root := range []reflect.Type{reflect.TypeFor[Request](), reflect.TypeFor[Response]()} {
 		for _, field := range []string{"/name", "/inputSchema", "/native", "/options", "/options/future"} {
 			steps := []ProtocolControlStep{{Each: &ProtocolControlEach{Select: "tool", Steps: []ProtocolControlStep{{Set: map[string]Expression{field: {Op: "omit"}}}}}}}

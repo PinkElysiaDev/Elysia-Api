@@ -11,12 +11,20 @@ type controlCompileScope struct {
 	expression                          expressionScope
 	whole                               reflect.Type
 	canSelect, canUseAuxiliary, canOmit bool
+	isToolResult                        bool
 }
 
 type compiledControlEach struct {
 	selection string
 	pathSlot  int
 	steps     []compiledControlStep
+}
+
+func (scope controlCompileScope) compileSetter(root reflect.Type, path string) (func(any, JSONOutput, *valueReader) error, JSONType, error) {
+	if scope.isToolResult {
+		return compileToolResultControlSetter(path)
+	}
+	return compileTypedControlSetter(root, path)
 }
 
 func validateControlStepForm(step ProtocolControlStep, scope controlCompileScope, path string) error {
@@ -48,7 +56,7 @@ func compileControlEach(declaration ProtocolControlEach, compiler *expressionCom
 	switch declaration.Select {
 	case "metadata":
 		local = reflect.TypeFor[ResponseMetadata]()
-	case "node":
+	case "node", "tool_result":
 		local = reflect.TypeFor[Node]()
 	case "tool":
 		if outer.whole != reflect.TypeFor[Request]() {
@@ -61,9 +69,10 @@ func compileControlEach(declaration ProtocolControlEach, compiler *expressionCom
 		}
 		local = reflect.TypeFor[Usage]()
 	default:
-		return nil, fmt.Errorf("%s/select: expected node, tool, metadata or usage", path)
+		return nil, fmt.Errorf("%s/select: expected node, tool, tool_result, metadata or usage", path)
 	}
 	child := controlCompileScope{whole: outer.whole, expression: outer.expression, canOmit: declaration.Select == "metadata"}
+	child.isToolResult = declaration.Select == "tool_result"
 	child.expression.coreRoot, child.expression.coreInput, child.expression.hasInputScope = outer.whole, local, true
 	compiled := &compiledControlEach{selection: declaration.Select, pathSlot: -1}
 	if declaration.PathBinding != "" {
@@ -87,7 +96,7 @@ func (each *compiledControlEach) apply(state evaluation, conversion *CompiledCon
 	if each.selection == "usage" {
 		return each.applyUsage(state, conversion, document, route, rule, sink, owner)
 	}
-	if each.selection == "node" {
+	if each.selection == "node" || each.selection == "tool_result" {
 		return each.applyNodes(state, conversion, document, route, rule, sink, owner)
 	}
 	if each.selection == "tool" {

@@ -75,12 +75,45 @@ func setControlObjectField(target *Object, name string, output JSONOutput, reade
 func (each *compiledControlEach) applyNodes(state evaluation, conversion *CompiledConversion, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, owner *coreControlOptions) (bool, error) {
 	hasChanges := false
 	err := visitControlNodes(state, document, func(node *Node, path string) error {
+		if each.selection == "tool_result" && node.Kind != ToolResultNode {
+			return nil
+		}
 		local := each.local(state, path, func(pointer []string) (JSONOutput, error) { return readCoreNode(*node, pointer) })
 		result, err := applyControlSteps(local, conversion, node, route, rule, sink, each.steps, owner)
 		hasChanges = hasChanges || result.hasChanges
 		return err
 	})
 	return hasChanges, err
+}
+
+func compileToolResultControlSetter(path string) (func(any, JSONOutput, *valueReader) error, JSONType, error) {
+	switch path {
+	case "/payload":
+		return func(document any, output JSONOutput, reader *valueReader) error {
+			return replaceControlValue(output, &document.(*Node).Payload, reader)
+		}, AnyType, nil
+	case "/status":
+		return func(document any, output JSONOutput, reader *valueReader) error {
+			return replaceControlValue(output, &document.(*Node).Status, reader)
+		}, AnyType, nil
+	case "/children":
+		return func(document any, _ JSONOutput, _ *valueReader) error {
+			document.(*Node).Children = nil
+			return nil
+		}, AnyType, nil
+	case "/childrenPrefix":
+		return func(document any, output JSONOutput, _ *valueReader) error {
+			text, err := readPlannedString(output)
+			if err != nil {
+				return err
+			}
+			node := document.(*Node)
+			node.Children = append([]Node{{Kind: TextNode, Payload: StringValue(text)}}, node.Children...)
+			return nil
+		}, StringType, nil
+	default:
+		return nil, "", fmt.Errorf("tool result controls can update only payload, status or content children")
+	}
 }
 
 func visitControlNodes(state evaluation, document any, visit func(*Node, string) error) error {

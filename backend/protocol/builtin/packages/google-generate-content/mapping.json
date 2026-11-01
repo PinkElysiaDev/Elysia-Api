@@ -706,9 +706,188 @@
                               "name": "result-id"
                             },
                             "payload": {
+                              "op": "if",
+                              "when": {
+                                "op": "all",
+                                "items": [
+                                  {
+                                    "op": "exists",
+                                    "source": {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": "/functionResponse/response/error"
+                                    }
+                                  },
+                                  {
+                                    "op": "equal",
+                                    "items": [
+                                      {
+                                        "op": "project",
+                                        "source": {
                               "op": "read",
                               "from": "item",
                               "path": "/functionResponse/response"
+                            },
+                                        "keys": [
+                                          "error"
+                                        ],
+                                        "policy": "exclude"
+                                      },
+                                      {
+                                "op": "literal",
+                                "value": {}
+                              }
+                                    ]
+                                  }
+                                ]
+                              },
+                              "then": {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/functionResponse/response/error"
+                              },
+                              "otherwise": {
+                                "op": "if",
+                                "when": {
+                                  "op": "all",
+                                  "items": [
+                                    {
+                                      "op": "exists",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "item",
+                                        "path": "/functionResponse/response/output"
+                                      }
+                                    },
+                                    {
+                                      "op": "equal",
+                                      "items": [
+                                        {
+                                          "op": "project",
+                                          "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/functionResponse/response"
+                            },
+                                          "keys": [
+                                            "output"
+                                          ],
+                                          "policy": "exclude"
+                                        },
+                                        {
+                                "op": "literal",
+                                "value": {}
+                              }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "then": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/functionResponse/response/output"
+                                },
+                                "otherwise": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/functionResponse/response"
+                            }
+                              }
+                            },
+                            "status": {
+                              "op": "if",
+                              "when": {
+                                "op": "all",
+                                "items": [
+                                  {
+                                    "op": "exists",
+                                    "source": {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": "/functionResponse/response/error"
+                                    }
+                                  },
+                                  {
+                                    "op": "equal",
+                                    "items": [
+                                      {
+                                        "op": "project",
+                                        "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/functionResponse/response"
+                            },
+                                        "keys": [
+                                          "error"
+                                        ],
+                                        "policy": "exclude"
+                                      },
+                                      {
+                                "op": "literal",
+                                "value": {}
+                              }
+                                    ]
+                                  }
+                                ]
+                              },
+                              "then": {
+                                "op": "object",
+                                "fields": {
+                                  "isError": {
+                          "op": "literal",
+                          "value": true
+                        }
+                                }
+                              },
+                              "otherwise": {
+                                "op": "if",
+                                "when": {
+                                  "op": "all",
+                                  "items": [
+                                    {
+                                      "op": "exists",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "item",
+                                        "path": "/functionResponse/response/output"
+                                      }
+                                    },
+                                    {
+                                      "op": "equal",
+                                      "items": [
+                                        {
+                                          "op": "project",
+                                          "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/functionResponse/response"
+                            },
+                                          "keys": [
+                                            "output"
+                                          ],
+                                          "policy": "exclude"
+                                        },
+                                        {
+                                "op": "literal",
+                                "value": {}
+                              }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "then": {
+                                  "op": "object",
+                                  "fields": {
+                                    "isError": {
+                            "op": "literal",
+                            "value": false
+                          }
+                                  }
+                                },
+                                "otherwise": {
+                                                  "op": "omit"
+                                                }
+                              }
                             }
                           }
                         }
@@ -13369,27 +13548,81 @@
               }
             },
             "tool_result": {
-              "op": "object",
-              "fields": {
-                "functionResponse": {
-                  "op": "object",
-                  "fields": {
-                    "name": {
-                      "op": "read",
-                      "from": "item",
-                      "path": "/name"
-                    },
-                    "id": {
+              "op": "let",
+              "name": "checked-result",
+              "source": {
+                "op": "ref",
+                "ref": "check-tool-result"
+              },
+              "body": {
+                "op": "object",
+                "fields": {
+                  "functionResponse": {
+                    "op": "object",
+                    "fields": {
+                      "name": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/name"
+                  },
+                      "id": {
                       "op": "read",
                       "from": "item",
                       "path": "/callId"
                     },
-                    "response": {
-                      "op": "if",
-                      "when": {
-                        "op": "equal",
-                        "items": [
-                          {
+                      "response": {
+                        "op": "if",
+                        "when": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/status/isError"
+                            },
+                            {
+                          "op": "literal",
+                          "value": true
+                        }
+                          ]
+                        },
+                        "then": {
+                          "op": "object",
+                          "fields": {
+                            "error": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/payload"
+                }
+                          }
+                        },
+                        "otherwise": {
+                          "op": "if",
+                          "when": {
+                            "op": "any",
+                            "items": [
+                              {
+                                "op": "exists",
+                                "source": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/payload/error"
+                                }
+                              },
+                              {
+                                "op": "exists",
+                                "source": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/payload/output"
+                                }
+                              },
+                              {
+                                "op": "not",
+                                "source": {
+                                  "op": "equal",
+                                  "items": [
+                                    {
                             "op": "type",
                             "source": {
                               "op": "read",
@@ -13397,24 +13630,31 @@
                               "path": "/payload"
                             }
                           },
-                          {
-                            "op": "literal",
-                            "value": "string"
-                          }
-                        ]
-                      },
-                      "then": {
-                        "op": "parse_json",
-                        "source": {
-                          "op": "read",
-                          "from": "item",
-                          "path": "/payload"
+                                    {
+                          "op": "literal",
+                          "value": "object"
                         }
-                      },
-                      "otherwise": {
-                        "op": "read",
-                        "from": "item",
-                        "path": "/payload"
+                                  ]
+                                }
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "object",
+                            "fields": {
+                              "output": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/payload"
+                }
+                            }
+                          },
+                          "otherwise": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/payload"
+                }
+                        }
                       }
                     }
                   }
@@ -16538,6 +16778,110 @@
                         "op": "object",
                         "fields": {}
                       }
+    },
+    "check-tool-result": {
+      "op": "if",
+      "when": {
+        "op": "any",
+        "items": [
+          {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/children"
+                    }
+                  },
+          {
+            "op": "all",
+            "items": [
+              {
+                "op": "not",
+                "source": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/status"
+                  }
+                }
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/payload"
+                            }
+                          },
+                    {
+                          "op": "literal",
+                          "value": "object"
+                        }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/status"
+              }
+            },
+            "then": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "project",
+                    "source": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/status"
+                    },
+                    "keys": [
+                      "isError"
+                    ],
+                    "policy": "exclude"
+                  },
+                  {
+                                "op": "literal",
+                                "value": {}
+                              }
+                ]
+              }
+            },
+            "otherwise": {
+                            "op": "literal",
+                            "value": false
+                          }
+          }
+        ]
+      },
+      "then": {
+        "op": "reject",
+        "path": "/content",
+        "reason": "tool result requires its declared target disposition",
+        "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire"
+                  }
+      },
+      "otherwise": {
+                          "op": "literal",
+                          "value": true
+                        }
     }
 },
   "directions": {
@@ -36720,6 +37064,325 @@
                   "reason": {
                     "op": "literal",
                     "value": "target cannot express per-tool input streaming timing; input and schema remain intact"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "tool-results",
+      "order": 150,
+      "enabled": true,
+      "phase": "request",
+      "steps": [
+        {
+          "each": {
+            "select": "tool_result",
+            "pathBinding": "result-path",
+            "steps": [
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+            "op": "exists",
+            "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/status"
+              }
+          },
+                  "then": {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "project",
+                          "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/status"
+              },
+                          "keys": [
+                            "isError"
+                          ],
+                          "policy": "exclude"
+                        },
+                        {
+                                "op": "literal",
+                                "value": {}
+                              }
+                      ]
+                    }
+                  },
+                  "otherwise": {
+                            "op": "literal",
+                            "value": false
+                          }
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "result-path"
+                    },
+                    "items": [
+                {
+                  "op": "literal",
+                  "value": "status"
+                }
+              ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "tool result status has undeclared fields"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/children"
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "length",
+                            "source": {
+                              "op": "filter",
+                              "source": {
+                                "op": "if",
+                                "when": {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/children"
+                                  }
+                                },
+                                "then": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/children"
+                                },
+                                "otherwise": {
+                                                    "op": "literal",
+                                                    "value": []
+                                                  }
+                              },
+                              "when": {
+                                "op": "not",
+                                "source": {
+                                  "op": "all",
+                                  "items": [
+                                    {
+                                      "op": "equal",
+                                      "items": [
+                                        {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/kind"
+                },
+                                        {
+                      "op": "literal",
+                      "value": "text"
+                    }
+                                      ]
+                                    },
+                                    {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/payload"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "string"
+                          }
+                        ]
+                      },
+                                    {
+                                      "op": "equal",
+                                      "items": [
+                                        {
+                                          "op": "project",
+                                          "source": {
+                "op": "read",
+                "from": "item",
+                "path": ""
+              },
+                                          "keys": [
+                                            "kind",
+                                            "payload",
+                                            "source",
+                                            "native"
+                                          ],
+                                          "policy": "exclude"
+                                        },
+                                        {
+                                "op": "literal",
+                                "value": {}
+                              }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          {
+                          "op": "literal",
+                          "value": 0
+                        }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "result-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "children"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "Gemini object results require an explicit mapping for media or scoped content"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/children"
+                  }
+                },
+                "set": {
+                  "/payload": {
+                    "op": "join",
+                    "source": {
+                      "op": "map",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/children"
+                      },
+                      "body": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/payload"
+                }
+                    }
+                  },
+                  "/children": {
+                                                  "op": "omit"
+                                                }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "result-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "children"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "text blocks combined into an object result; block boundaries change"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "type",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/payload"
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": "string"
+                    }
+                  ]
+                },
+                "set": {
+                  "/payload": {
+                    "op": "object",
+                    "fields": {
+                      "result": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/payload"
+                      }
+                    }
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "result-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "payload"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "text result wrapped in the declared result field"
                   }
                 }
               }

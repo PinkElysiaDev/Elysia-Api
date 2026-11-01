@@ -2,6 +2,27 @@ package protocol
 
 import "testing"
 
+func TestToolConstraintComparisonKeepsAutomaticAndUnknownIntent(t *testing.T) {
+	compare := func(options Object) Value {
+		return fixtureValue(t, comparableToolOptions([]Tool{{Kind: FunctionTool, Options: options}}))
+	}
+	disabled := Object{"strictDefault": StringValue("disabled")}
+	before := fixtureValue(t, disabled)
+	for _, options := range []Object{nil, {"strict": Value{raw: "false"}}, {"strict": Value{raw: "null"}, "strictDefault": StringValue("disabled")}} {
+		if !equalValues(compare(disabled), compare(options)) {
+			t.Fatal("declared disabled forms differ", options)
+		}
+	}
+	for _, options := range []Object{{"strictDefault": StringValue("automatic")}, {"strict": Value{raw: "true"}}, {"strictDefault": StringValue("disabled"), "future": StringValue("retain")}} {
+		if equalValues(compare(disabled), compare(options)) {
+			t.Fatal("different constraint or unknown option erased", options)
+		}
+	}
+	if fixtureValue(t, disabled) != before {
+		t.Fatal("comparison mutated caller options")
+	}
+}
+
 func TestWireUsageComparisonRetainsMissingZeroAndNonredundantDetails(t *testing.T) {
 	observed := func(count int64) *Counter { return &Counter{Count: count, Origin: ObservedCount} }
 	base := &Usage{Input: observed(10), Output: observed(2), Total: observed(12), CacheRead: observed(4)}
