@@ -19,10 +19,10 @@ type ProtocolControlStep struct {
 	Omit       bool                          `json:"omit,omitempty"`
 }
 
-// ProtocolControlEach selects typed tools, tool results, nodes, metadata or usage. Input is
-// local to the selected value; root remains the complete core document.
+// ProtocolControlEach selects typed tools, tool results, nodes, metadata, usage
+// or error fields. Input is local; root remains the complete core document.
 type ProtocolControlEach struct {
-	Select      string                `json:"select"`
+	Select      string                `json:"select" jsonschema:"enum=node,enum=tool,enum=tool_result,enum=metadata,enum=usage,enum=error"`
 	PathBinding string                `json:"pathBinding,omitempty"`
 	Steps       []ProtocolControlStep `json:"steps"`
 }

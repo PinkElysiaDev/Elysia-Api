@@ -47399,6 +47399,1111 @@
       "enabled": true,
       "phase": "request",
       "use": "request_projection"
+    },
+    {
+      "id": "response-error-details",
+      "order": 225,
+      "enabled": true,
+      "phase": "response",
+      "steps": [
+        {
+          "each": {
+            "select": "error",
+            "pathBinding": "error-path",
+            "steps": [
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/providerType"
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/providerType"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "new_api_error"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "providerType"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "provider error wrapper has no declared target projection"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/providerType"
+                  }
+                },
+                "set": {
+                  "/message": {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/message"
+                      },
+                      {
+                        "op": "literal",
+                        "value": " [upstream type="
+                      },
+                      {
+                        "op": "quote_string",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/providerType"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "]"
+                      }
+                    ]
+                  },
+                  "/providerType": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "providerType"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target has no equivalent provider wrapper; retained in the error message"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/code"
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/code"
+                          },
+                          {
+                            "op": "literal",
+                            "value": null
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/code"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "string"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "invalid",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "code"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "error detail requires a string or null"
+                  },
+                  "code": "invalid_input",
+                  "stage": "evaluate"
+                }
+              },
+              {
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/code"
+                    },
+                    {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  ]
+                },
+                "set": {
+                  "/code": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "code"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "empty error detail carries no field information"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/code"
+                  }
+                },
+                "set": {
+                  "/message": {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/message"
+                      },
+                      {
+                        "op": "literal",
+                        "value": " [upstream code="
+                      },
+                      {
+                        "op": "quote_string",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/code"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "]"
+                      }
+                    ]
+                  },
+                  "/code": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "code"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target has no structured error detail field; preserved in the error message"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/param"
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/param"
+                          },
+                          {
+                            "op": "literal",
+                            "value": null
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/param"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "string"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "invalid",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "param"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "error detail requires a string or null"
+                  },
+                  "code": "invalid_input",
+                  "stage": "evaluate"
+                }
+              },
+              {
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/param"
+                    },
+                    {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  ]
+                },
+                "set": {
+                  "/param": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "param"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "empty error detail carries no field information"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/param"
+                  }
+                },
+                "set": {
+                  "/message": {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/message"
+                      },
+                      {
+                        "op": "literal",
+                        "value": " [upstream param="
+                      },
+                      {
+                        "op": "quote_string",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/param"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "]"
+                      }
+                    ]
+                  },
+                  "/param": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "param"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target has no structured error detail field; preserved in the error message"
+                  }
+                }
+              }
+            ]
+          },
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/error"
+                }
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/source/family"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "claude"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/source/wireVersion"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "v2"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "event-error-details",
+      "order": 225,
+      "enabled": true,
+      "phase": "event",
+      "steps": [
+        {
+          "each": {
+            "select": "error",
+            "pathBinding": "error-path",
+            "steps": [
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/providerType"
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/providerType"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "new_api_error"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "providerType"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "provider error wrapper has no declared target projection"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/providerType"
+                  }
+                },
+                "set": {
+                  "/message": {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/message"
+                      },
+                      {
+                        "op": "literal",
+                        "value": " [upstream type="
+                      },
+                      {
+                        "op": "quote_string",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/providerType"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "]"
+                      }
+                    ]
+                  },
+                  "/providerType": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "providerType"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target has no equivalent provider wrapper; retained in the error message"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/code"
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/code"
+                          },
+                          {
+                            "op": "literal",
+                            "value": null
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/code"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "string"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "invalid",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "code"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "error detail requires a string or null"
+                  },
+                  "code": "invalid_input",
+                  "stage": "evaluate"
+                }
+              },
+              {
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/code"
+                    },
+                    {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  ]
+                },
+                "set": {
+                  "/code": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "code"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "empty error detail carries no field information"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/code"
+                  }
+                },
+                "set": {
+                  "/message": {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/message"
+                      },
+                      {
+                        "op": "literal",
+                        "value": " [upstream code="
+                      },
+                      {
+                        "op": "quote_string",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/code"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "]"
+                      }
+                    ]
+                  },
+                  "/code": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "code"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target has no structured error detail field; preserved in the error message"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/param"
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/param"
+                          },
+                          {
+                            "op": "literal",
+                            "value": null
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/param"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "string"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "invalid",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "param"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "error detail requires a string or null"
+                  },
+                  "code": "invalid_input",
+                  "stage": "evaluate"
+                }
+              },
+              {
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/param"
+                    },
+                    {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  ]
+                },
+                "set": {
+                  "/param": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "param"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "empty error detail carries no field information"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/param"
+                  }
+                },
+                "set": {
+                  "/message": {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/message"
+                      },
+                      {
+                        "op": "literal",
+                        "value": " [upstream param="
+                      },
+                      {
+                        "op": "quote_string",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/param"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "]"
+                      }
+                    ]
+                  },
+                  "/param": {
+                    "op": "omit"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "error-path",
+                      "path": ""
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "param"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target has no structured error detail field; preserved in the error message"
+                  }
+                }
+              }
+            ]
+          },
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/error"
+                    }
+                  },
+                  {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/response/error"
+                    }
+                  }
+                ]
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/source/family"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "claude"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/source/wireVersion"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "v2"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
     }
   ],
   "continuation": {

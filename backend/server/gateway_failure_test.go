@@ -197,3 +197,34 @@ func TestPackageHTTPFailureUsesSourceCoreVersion(t *testing.T) {
 		t.Fatal("declared HTTP error was replaced", declared, err)
 	}
 }
+
+func TestDefaultPackageFailureDetailsDelivery(t *testing.T) {
+	for _, name := range []string{"anthropic", "google-generate-content"} {
+		t.Run(name, func(t *testing.T) {
+			server, _ := newProtocolAdminTestServer(t)
+			packages := seedGatewayPackages(t, server)
+			upstream, ingress := packages["openai-chat"], packages[name]
+			var calls atomic.Int32
+			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				calls.Add(1)
+				writer.Header().Set("Content-Type", "application/json")
+				writer.WriteHeader(http.StatusTooManyRequests)
+				_, _ = writer.Write([]byte(`{"error":{"type":"rate_limit_error","message":"quota","code":"budget_exhausted","param":"model"}}`))
+			}))
+			defer provider.Close()
+			setupGatewayModelWithCapabilities(t, server, upstream, provider.URL, protocol.CapabilitySet{protocol.TextCapability: true, protocol.UsageCapability: true})
+			path := strings.ReplaceAll(ingress.Operations()["generate"].Path, "{model}", "group")
+			request := httptest.NewRequest(http.MethodPost, "/gateway/"+ingress.Identity().DefinitionID+path, strings.NewReader(buildPackageGatewayRequest(name, false)))
+			request.Header.Set("Authorization", "Bearer gateway-test-token")
+			request.Header.Set("Content-Type", "application/json")
+			reply := httptest.NewRecorder()
+			serveTestHTTP(server.engine, reply, request)
+			if reply.Code != http.StatusTooManyRequests || calls.Load() != 1 || !strings.Contains(reply.Body.String(), "budget_exhausted") || !strings.Contains(reply.Body.String(), "model") {
+				t.Fatal("declared failure details or original status were lost", reply.Code, calls.Load(), reply.Body.String())
+			}
+			if err := ingress.ValidateWireOutput(protocol.EncodeResponse, mustProtocolValue(t, reply.Body.String())); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

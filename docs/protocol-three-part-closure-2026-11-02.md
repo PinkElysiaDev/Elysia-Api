@@ -145,3 +145,23 @@ Responses 共享 23 项真实重复的绑定读取，整包 token 从缓存初�
 | closure-cache-defaults-staticcheck | v0.8.2，24 主诊断和 1 关联位置；与 dev.117 多重集逐条相同，退出 1 |
 
 原始失败和修复后的检查均留在忽略目录。前端未改，不重复其检查。尚未开展 B／C 正式性能；本批不宣称性能无回退。对象 aggregate、一般错误、布局、复杂流、入口所有权及生产切换继续待实施。
+
+## 批次 2B：受限错误字段与目标处置（dev.119）
+
+新增 each.select:error，复用当前控制步骤、局部读取、赋值、预算和诊断。选择完整响应错误、事件错误及事件内完整响应错误；写权限仅为 message、code、param、details、providerType，禁止 category、响应状态、事件类型、来源、扩展和整个对象替换。不认识供应商名称或类别，不调用旧错误投影。schema 的选择枚举、操作文档及编辑器帮助同步；Anthropic／Gemini 默认包实际接入该能力。
+
+两个目标以 response-error-details／event-error-details、顺序 225 声明已知 code／param 和 new_api_error wrapper 的消息保留。兼容模式保留细节并诊断结构损失，严格模式拒绝；空字符串按显式规则归一化。其他 wrapper、非法类型和未知扩展继续拒绝。规则禁用后不运行隐式投影。规则只在现存跨协议错误上执行；同协议保留原表示，普通生成结果不解析错误对象。原始错误 category、HTTP 状态、生命周期及主因保持。
+
+必要回归覆盖 JSON、真实源错误帧、终态响应快照、禁用／严格、null／空值、已知 wrapper、非法及未知值、源隔离和编译期写权限。本地网关分别向两个目标交付上游 429，断言状态、消息细节、目标 wire 合同和恰好一次调用；已有流失败交付断言继续验证主因。测试初稿把 HTTP 失败的可缺省核心 status 误写为必须 failed，改为与实际输入状态相等，并保留失败结果的直接断言，没有改变生产状态。
+
+| 检查 | 结果 |
+|---|---|
+| closure-error-details-all | protocol 全量 6.846 秒、builtin 全量 41.150 秒，通过 |
+| closure-error-details-final-guards | 最终无错误／同协议守卫后的错误回归、四包正式证据及两协议失败包络通过，4.240 秒 |
+| closure-error-details-gateway | 本地 HTTP 状态／细节交付及流主因检查通过，5.970 秒 |
+| closure-error-details-race | 选择权限、默认错误、真实网关及流失败相关 race 通过 |
+| closure-error-details-vet | protocol／server vet 通过 |
+| closure-error-details-staticcheck | v0.8.2，24 主诊断及 1 关联位置，多重集与前批相同，退出 1 |
+| closure-error-details-types／lint | 前端类型检查与修改文件 ESLint 通过 |
+
+整包 token：Anthropic 93,456、Gemini 75,135、Chat 99,315、Responses 99,824。限额不变。没有正式性能结论；未知错误语义仍是明确拒绝边界，不宣称所有错误扩展均可跨协议。聚合证明、布局、复杂流、入口所有权、性能及生产退役仍未闭合。

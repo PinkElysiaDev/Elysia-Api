@@ -12,6 +12,7 @@ type controlCompileScope struct {
 	whole                               reflect.Type
 	canSelect, canUseAuxiliary, canOmit bool
 	isToolResult                        bool
+	isError                             bool
 }
 
 type compiledControlEach struct {
@@ -23,6 +24,9 @@ type compiledControlEach struct {
 func (scope controlCompileScope) compileSetter(root reflect.Type, path string) (func(any, JSONOutput, *valueReader) error, JSONType, error) {
 	if scope.isToolResult {
 		return compileToolResultControlSetter(path)
+	}
+	if scope.isError {
+		return compileErrorControlSetter(path)
 	}
 	return compileTypedControlSetter(root, path)
 }
@@ -68,11 +72,17 @@ func compileControlEach(declaration ProtocolControlEach, compiler *expressionCom
 			return nil, fmt.Errorf("%s/select: requests have no usage owner", path)
 		}
 		local = reflect.TypeFor[Usage]()
+	case "error":
+		if outer.whole == reflect.TypeFor[Request]() {
+			return nil, fmt.Errorf("%s/select: requests have no error owner", path)
+		}
+		local = reflect.TypeFor[Object]()
 	default:
-		return nil, fmt.Errorf("%s/select: expected node, tool, tool_result, metadata or usage", path)
+		return nil, fmt.Errorf("%s/select: expected node, tool, tool_result, metadata, usage or error", path)
 	}
 	child := controlCompileScope{whole: outer.whole, expression: outer.expression, canOmit: declaration.Select == "metadata"}
 	child.isToolResult = declaration.Select == "tool_result"
+	child.isError = declaration.Select == "error"
 	child.expression.coreRoot, child.expression.coreInput, child.expression.hasInputScope = outer.whole, local, true
 	compiled := &compiledControlEach{selection: declaration.Select, pathSlot: -1}
 	if declaration.PathBinding != "" {
@@ -93,6 +103,9 @@ func compileControlEach(declaration ProtocolControlEach, compiler *expressionCom
 }
 
 func (each *compiledControlEach) apply(state evaluation, conversion *CompiledConversion, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, owner *coreControlOptions) (bool, error) {
+	if each.selection == "error" {
+		return each.applyErrors(state, conversion, document, route, rule, sink, owner)
+	}
 	if each.selection == "usage" {
 		return each.applyUsage(state, conversion, document, route, rule, sink, owner)
 	}

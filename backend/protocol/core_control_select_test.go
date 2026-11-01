@@ -238,3 +238,16 @@ func TestDeclaredResponseAttributeUpdate(t *testing.T) {
 		t.Fatal("event attribute update invented or skipped a missing response", err)
 	}
 }
+
+func TestDeclaredErrorSelectionPermissions(t *testing.T) {
+	for _, field := range []string{"/category", "/status", "/source", "/wire:private", "", "/code/nested"} {
+		steps := []ProtocolControlStep{{Each: &ProtocolControlEach{Select: "error", Steps: []ProtocolControlStep{{Set: map[string]Expression{field: {Op: "omit"}}}}}}}
+		if _, err := compileConversionControlSteps(steps, newExpressionCompiler(DefaultLimits(), nil), "/steps", reflect.TypeFor[Response](), false); err == nil {
+			t.Fatal("error selector granted an undeclared write", field)
+		}
+	}
+	steps := []ProtocolControlStep{{Each: &ProtocolControlEach{Select: "error", Steps: []ProtocolControlStep{{Set: map[string]Expression{"/code": {Op: "omit"}}}}}}}
+	if _, err := compileConversionControlSteps(steps, newExpressionCompiler(DefaultLimits(), nil), "/steps", reflect.TypeFor[Request](), false); err == nil {
+		t.Fatal("request acquired an error owner")
+	}
+}

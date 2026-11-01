@@ -373,3 +373,14 @@ WireAssertion 的可选 `diagnostic` 复用同一分类结构，并允许静态 
 临时解码允许借用未转义字符串，仅存活于同步比较；输出只有布尔值，不进入流状态。
 Unicode 转义和非法 Unicode 的处理与现有字符串解码一致。操作数和解码文本受字节预算
 约束，成员遍历保留步骤／取消检查。是否需要比较何种协议字段，由 Spec 或 Mapping 决定。
+
+## 错误字段选择
+
+转换控制步骤的 each.select:error 选择 Response.Error，或 Event.Error 与 Event.Response.Error。
+局部 input 读取当前错误，root 读取完整核心对象；pathBinding 返回该错误的实际核心位置。
+缺失或 null 没有条目。现存错误必须为对象，原有未知字段保留；此选择不解析整份请求或正文。
+
+允许更新 message、code、param、details、providerType。不能替换整个错误、修改 category、
+响应状态或事件类型，也不能改写来源、资源或扩展。message 必须仍是字符串。如何验证细节、
+保留结构、转入消息或拒绝，由 Mapping 的普通 when／set／diagnostic 声明，执行器不判断
+供应商或错误类别。严格模式与规则禁用沿用现有完整规则边界。

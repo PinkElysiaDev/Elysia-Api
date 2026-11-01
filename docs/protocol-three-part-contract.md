@@ -144,6 +144,14 @@ dev.117 补齐派生文本一致性：四份目标 Mapping 在保留或省略 Re
 
 enum 可声明 otherwise，只在字符串未命中时执行；省略该分支仍报未映射错误，非字符串不会转入该分支。该分支已用于默认 metadata 字段目录。编译器、schema、操作目录和编辑器使用同一声明。
 
+## 错误字段目标处置（dev.119）
+
+each.select:error 读取完整响应、流错误及终态响应中的当前错误对象，只允许更新 message、code、param、details、providerType。category、响应状态、事件类型、来源和扩展不可写；不能替换整份错误或把失败改成成功。错误字段选择复用控制步骤及诊断，已存在错误才读取局部对象，普通响应不触发此选择。
+
+Anthropic／Gemini Mapping 的 response-error-details、event-error-details（顺序 225）声明跨协议已知 code／param 及 new_api_error wrapper 的处置。字符串细节保留到消息并报告结构损失，严格模式拒绝；空字符串按声明归一化。非法类型、其他 wrapper 和未知扩展不静默删除。OpenAI 目标沿用已有结构化字段编码，同协议保留原表示。禁用规则后目标编码仍拒绝未解决字段，不隐式重做降级。HTTP 状态与流生命周期由宿主和协议合同保留。
+
+这不代表所有错误扩展都已可跨协议：未知 type、details 结构和命名空间扩展必须有明确映射，否则继续拒绝。
+
 ## 认证续传（dev.109）
 
 Responses 的 include 原表示由 `ClientOutput.RawResponsesInclude` 持有；`RequireContinuationState` 表示产生受保护状态时客户端必须获得可继续使用的表示。目标规则只写 `ResponsesIncludeResolved`，不能改写来源原值或撤销续传要求。Agent 可声明原值和要求，本地收集器直接保留资源进入后续轮次。
