@@ -135,6 +135,7 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 			packages := seedGatewayPackages(t, server)
 			upstream := packages[upstreamName]
 			jsonReply, streamReply := buildPackageGatewayReply(t, upstream, false), buildPackageGatewayReply(t, upstream, true)
+			var multiRootReply []byte
 			if upstreamName == "openai-responses" {
 				value, err := protocol.ParseValue(jsonReply)
 				if err != nil {
@@ -146,9 +147,23 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 				}
 				fields["output_text"] = protocol.StringValue("hi")
 				jsonReply = mustEncodedProtocolValue(t, fields).Bytes()
+				var items []protocol.Object
+				for index, text := range []string{"h", "i"} {
+					items = append(items, protocol.Object{
+						"type": protocol.StringValue("message"), "role": protocol.StringValue("assistant"),
+						"id": protocol.StringValue(fmt.Sprintf("r_item_%d", index)), "status": protocol.StringValue("completed"),
+						"content": mustEncodedProtocolValue(t, []protocol.Object{{
+							"type": protocol.StringValue("output_text"), "text": protocol.StringValue(text),
+							"annotations": mustEncodedProtocolValue(t, []protocol.Value{}),
+						}}),
+					})
+				}
+				fields["output"] = mustEncodedProtocolValue(t, items)
+				multiRootReply = mustEncodedProtocolValue(t, fields).Bytes()
 			}
 			var calls atomic.Int32
 			var expectsInstructions atomic.Bool
+			var expectsMultipleRoots atomic.Bool
 			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				calls.Add(1)
 				body, err := io.ReadAll(request.Body)
@@ -197,7 +212,11 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 					_, _ = writer.Write(streamReply)
 				} else {
 					writer.Header().Set("Content-Type", "application/json")
-					_, _ = writer.Write(jsonReply)
+					response := jsonReply
+					if expectsMultipleRoots.Load() {
+						response = multiRootReply
+					}
+					_, _ = writer.Write(response)
 				}
 			}))
 			defer provider.Close()
@@ -214,6 +233,7 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 						ingress := packages[ingressName]
 						path := strings.ReplaceAll(ingress.Operations()[operationName].Path, "{model}", "group")
 						body := buildPackageGatewayRequest(ingressName, isStream)
+						expectsMultipleRoots.Store(upstreamName == "openai-responses" && (ingressName == "anthropic" || ingressName == "google-generate-content"))
 						hasInstructions := ingressName == "openai-chat" && (upstreamName == "anthropic" || upstreamName == "google-generate-content")
 						expectsInstructions.Store(hasInstructions)
 						if hasInstructions {

@@ -299,7 +299,12 @@
       "schema": {
         "type": "object",
         "allowUnknown": true
-      }
+      },
+      "assertions": [
+        {
+          "ref": "single-candidate"
+        }
+      ]
     },
     "client-response": {
       "schema": {
@@ -711,6 +716,9 @@
               ]
             }
           ]
+        },
+        {
+          "ref": "single-candidate"
         }
       ]
     },
@@ -5251,6 +5259,84 @@
           "ref": "has-unique-safety-categories"
         },
         "reason": "only one safety setting is allowed per category"
+      }
+    ],
+    "single-candidate": [
+      {
+        "path": "/candidates",
+        "schema": {
+          "type": "array"
+        },
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/error"
+                }
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates"
+              }
+            }
+          ]
+        },
+        "check": {
+          "op": "let",
+          "name": "output-count",
+          "source": {
+            "op": "length",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            }
+          },
+          "body": {
+            "op": "any",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "output-count"
+                  },
+                  {
+                    "op": "literal",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "output-count"
+                  },
+                  {
+                    "op": "literal",
+                    "value": 1
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "reason": "this protocol package supports one response candidate"
       }
     ]
   }

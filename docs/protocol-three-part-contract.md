@@ -170,6 +170,8 @@ dev.123 增加 group_runs，按声明 role 将相邻选中根放进一个 messag
 
 Anthropic 的 assistant-history／165 选择相邻 assistant message、reasoning、tool_call，保持 thinking／文本／工具顺序及工具结果边界。编码前拒绝未解决的裸 reasoning／tool_call；禁用规则后不暗中组合。已完成的指令分区与普通容器合并继续使用原声明；Chat 一般混合布局、完整响应多根、文本合并、引用偏移和复杂 SSE 布局仍未闭合。
 
+dev.124 的 Anthropic／Gemini response-layout／240 复用 group_runs，将完整响应中的有序 message、text、reasoning、tool_call 根放入单个 assistant 包络；实际改变诊断边界损失。目标编码 effect 检查零个或一个 assistant message，不能在规则禁用后隐式再次布局。候选附带 choiceIndex 等容器属性时拒绝组合，不将独立候选拼接。Gemini Spec 的 single-candidate 命名约束同时检查来源和最终输出，只支持零个或一个候选。Chat 多根及 SSE 状态衔接仍独立待闭合。
+
 ## 工具结果包络（dev.122）
 
 工具结果沿用 payload 与 status，不增加供应商专属核心类型。status.payloadForm=result_envelope 表示 payload 是带独立 error／output 成员及其余数据的结果包络；isError 与 error 成员是否存在一致，显式 null 仍为存在。普通 payload 中恰有同名键不自动获得包络语义；必须由来源 Mapping 声明。未知状态成员或不一致标志拒绝。

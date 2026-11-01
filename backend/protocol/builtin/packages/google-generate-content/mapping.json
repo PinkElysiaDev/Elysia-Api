@@ -18884,6 +18884,207 @@
           }
         }
       ]
+    },
+    "layout-response-root": {
+      "op": "any",
+      "items": [
+        {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/kind"
+                },
+                {
+                  "op": "literal",
+                  "value": "message"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/role"
+                },
+                {
+                  "op": "literal",
+                  "value": "assistant"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/kind"
+            },
+            {
+              "op": "literal",
+              "value": "text"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/kind"
+            },
+            {
+              "op": "literal",
+              "value": "reasoning"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/kind"
+            },
+            {
+              "op": "literal",
+              "value": "tool_call"
+            }
+          ]
+        }
+      ]
+    },
+    "response-layout-valid": {
+      "op": "if",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/content"
+        }
+      },
+      "then": {
+        "op": "all",
+        "items": [
+          {
+            "op": "let",
+            "name": "output-count",
+            "source": {
+              "op": "length",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/content"
+              }
+            },
+            "body": {
+              "op": "any",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "output-count"
+                    },
+                    {
+                      "op": "literal",
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "output-count"
+                    },
+                    {
+                      "op": "literal",
+                      "value": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "length",
+                "source": {
+                  "op": "filter",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content"
+                  },
+                  "when": {
+                    "op": "not",
+                    "source": {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/kind"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "message"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/role"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "assistant"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": true
+      }
     }
   },
   "directions": {
@@ -19778,8 +19979,21 @@
             }
           },
           "reason": "target has no declared encoding for these response attributes; apply the selected target projection"
+        },
+        {
+          "id": "response-layout-required",
+          "kind": "reject",
+          "path": "/content",
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "ref",
+              "ref": "response-layout-valid"
+            }
+          },
+          "reason": "target requires one declared assistant response envelope; independent candidates cannot be combined"
         }
-  ],
+      ],
   "capabilities": {
     "text": true,
     "tools.function": true,
@@ -41468,6 +41682,42 @@
                   "reason": {
                     "op": "literal",
                     "value": "target combines separate instruction roots in one system envelope"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "response-layout",
+      "order": 240,
+      "enabled": true,
+      "phase": "response",
+      "steps": [
+        {
+          "layout": {
+            "operation": "group_runs",
+            "path": "/content",
+            "role": "assistant",
+            "when": {
+              "op": "ref",
+              "ref": "layout-response-root"
+            },
+            "pathBinding": "response-root-path",
+            "steps": [
+              {
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "response-root-path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target places ordered response roots in one assistant envelope; root boundaries change"
                   }
                 }
               }

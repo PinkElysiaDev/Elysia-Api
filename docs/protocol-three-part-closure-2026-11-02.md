@@ -245,3 +245,22 @@ Anthropic Mapping 接入 assistant-history／165：选择 assistant message、re
 | 前端 | 本地 tsc 与编辑器 ESLint 通过 |
 
 Anthropic 整包 token 95,529，限额不变。完整响应多根、Chat 混合布局、UTF-16 引用和复杂 SSE 尚未以本提交宣称闭合；B／C 性能和生产切换仍待完成。
+
+## 批次 3C：完整响应多根与 Gemini 单候选（dev.124）
+
+Anthropic／Gemini response-layout／240 复用 group_runs，将完整响应的有序 message、text、reasoning、tool_call 放进单个 assistant 包络；无需新增 Go 原语。容器语义及独立候选属性不能被合并，结构变化显式诊断，严格模式拒绝。编码 effect 要求零个或一个 assistant message，禁用后拒绝未解决的裸根，不从编码器重复布局。错误响应的 content=null 与无内容不被误当数组；该边界通过已有错误回归发现并修正。
+
+Gemini Spec 新增 single-candidate 具名约束，同时检查来源与最终客户端候选数。当前产品能力支持零个或一个候选，多候选明确拒绝；不取第一个或串联独立回答。Mapping 不再把多个同轮核心根直接编码为多个候选。
+
+必要组件回归检查两个可见 thinking 块、文本和工具的顺序与完整重建，strict、禁用、独立候选拒绝和输入隔离。既有 32 场景真实网关矩阵在 Responses→Anthropic／Gemini 的 JSON 响应中使用两个消息根，保留 output_text 一致性、完整消费、usage、终态和一次上游调用断言。试验中实际复现 Chat 多根输出仍不完整，明确登记为下一批缺口，未放宽断言；本批仅对已接通的两个目标使用复杂夹具。
+
+| 检查 | 结果 |
+|---|---|
+| closure-response-layout-boundary | 双目标布局、单候选和四包正式证据 3.937 秒，通过 |
+| closure-response-layout-gateway-fixed | 错误边界及组件 1.080 秒、32 场景真实网关 10.827 秒，通过 |
+| closure-response-layout-all-final | builtin 最终全量 43.655 秒，通过；此前 protocol 全量 6.834 秒通过，Go 核心未修改 |
+| closure-response-layout-race | builtin 44.107 秒、32 场景网关 123.306 秒，通过，无 race 报告 |
+| closure-response-layout-vet | protocol 全树和 server 通过 |
+| closure-response-layout-staticcheck | v0.8.2，24 主诊断＋1 关联位置，多重集与 dev.123 一致 |
+
+token：Anthropic 95,920、Gemini 77,634、Chat 99,569、Responses 99,841，限额保持。前端本批未变。复杂 SSE、Chat 多根／混合布局、UTF-16、全部入口所有权与 A/B/C 性能仍待完成，未切换生产默认。
