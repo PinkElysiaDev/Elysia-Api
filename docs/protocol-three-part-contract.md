@@ -166,7 +166,9 @@ ProtocolControlStep.layout 支持请求及完整响应 /content 的 stable_parti
 
 Anthropic／Gemini Mapping 显式提供 system-instruction-hoist／140。system 在对话之后上提、developer 角色降为 system、多个根进入同一系统包络均诊断并在严格模式拒绝。容器附属字段没有明确目标表达时拒绝，叶子仍保留缓存、资源及来源。已确认的 Anthropic 同合同内联 system 消息保留；其位置分类来自 Mapping。编码前检查布局已满足，禁用规则后不会隐式再次上提。
 
-本阶段实现稳定分区、普通容器合并和受限角色更新；相邻分组、一般容器展开、文本合并、引用偏移及复杂 SSE 布局仍未闭合。
+dev.123 增加 group_runs，按声明 role 将相邻选中根放进一个 message；普通 message 容器可展开，独立叶子直接移动，未选中根截断。需要展开的容器附属语义拒绝，不复制整树 JSON。单个原 message 保持不变；实际分组首步必须声明边界损失，严格模式拒绝。
+
+Anthropic 的 assistant-history／165 选择相邻 assistant message、reasoning、tool_call，保持 thinking／文本／工具顺序及工具结果边界。编码前拒绝未解决的裸 reasoning／tool_call；禁用规则后不暗中组合。已完成的指令分区与普通容器合并继续使用原声明；Chat 一般混合布局、完整响应多根、文本合并、引用偏移和复杂 SSE 布局仍未闭合。
 
 ## 工具结果包络（dev.122）
 

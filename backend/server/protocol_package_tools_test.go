@@ -79,6 +79,10 @@ func TestPackageGatewayToolResultDisposition(t *testing.T) {
 					if len(wire.Messages) != 2 || wire.Messages[1].Content.Decode(&blocks) != nil || len(blocks) != 1 || blocks[0].Type != "tool_result" || blocks[0].ToolUseID != "call" || !blocks[0].IsError || !blocks[0].Content.IsString(`{"error":{"message":"partial"},"output":{"value":1},"trace":null}`) {
 						t.Error("mixed result lost data or failure state", string(body))
 					}
+					var assistant []struct{ Type, Thinking, Text, ID string }
+					if len(wire.Messages) != 2 || wire.Messages[0].Content.Decode(&assistant) != nil || len(assistant) != 3 || assistant[0].Type != "thinking" || assistant[0].Thinking != "plan" || assistant[1].Type != "text" || assistant[1].Text != "before tool" || assistant[2].Type != "tool_use" || assistant[2].ID != "call" {
+						t.Error("assistant history grouping changed ordered thinking, text or tool", string(body))
+					}
 				}
 				if wire.Stream || request.URL.Query().Get("alt") == "sse" {
 					writer.Header().Set("Content-Type", "text/event-stream")
@@ -89,7 +93,7 @@ func TestPackageGatewayToolResultDisposition(t *testing.T) {
 				}
 			}))
 			defer provider.Close()
-			setupGatewayModelWithCapabilities(t, server, upstream, provider.URL, protocol.CapabilitySet{protocol.TextCapability: true, protocol.UsageCapability: true, protocol.FunctionToolsCapability: true})
+			setupGatewayModelWithCapabilities(t, server, upstream, provider.URL, protocol.CapabilitySet{protocol.TextCapability: true, protocol.UsageCapability: true, protocol.FunctionToolsCapability: true, protocol.ReasoningCapability: true})
 			isToolsCapable := true
 			if _, err := server.store.UpdateModel(t.Context(), "upstream-model", "gateway-source", storage.ModelPatch{ToolsCapable: &isToolsCapable}); err != nil {
 				t.Fatal(err)
@@ -106,7 +110,7 @@ func TestPackageGatewayToolResultDisposition(t *testing.T) {
 				t.Run(operation, func(t *testing.T) {
 					body := fmt.Sprintf(`{"model":"group","max_tokens":32,"stream":%t,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"call","name":"f","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call","content":"result-body","is_error":true}]}]}`, isStream)
 					if name == "anthropic" {
-						body = `{"contents":[{"role":"model","parts":[{"functionCall":{"id":"call","name":"f","args":{}}}]},{"role":"user","parts":[{"functionResponse":{"id":"call","name":"f","response":{"error":{"message":"partial"},"output":{"value":1},"trace":null}}}]}],"generationConfig":{"maxOutputTokens":32}}`
+						body = `{"contents":[{"role":"model","parts":[{"text":"plan","thought":true},{"text":"before tool"}]},{"role":"model","parts":[{"functionCall":{"id":"call","name":"f","args":{}}}]},{"role":"user","parts":[{"functionResponse":{"id":"call","name":"f","response":{"error":{"message":"partial"},"output":{"value":1},"trace":null}}}]}],"generationConfig":{"maxOutputTokens":32}}`
 					}
 					path := strings.ReplaceAll(ingress.Operations()[operation].Path, "{model}", "group")
 					request := httptest.NewRequest(http.MethodPost, "/gateway/"+ingress.Identity().DefinitionID+path, strings.NewReader(body))

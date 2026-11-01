@@ -21158,6 +21158,125 @@
           }
         }
       ]
+    },
+    "layout-assistant-root": {
+      "op": "any",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/kind"
+            },
+            {
+              "op": "literal",
+              "value": "reasoning"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/kind"
+            },
+            {
+              "op": "literal",
+              "value": "tool_call"
+            }
+          ]
+        },
+        {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/kind"
+                },
+                {
+                  "op": "literal",
+                  "value": "message"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/role"
+                },
+                {
+                  "op": "literal",
+                  "value": "assistant"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "request-assistant-layout-valid": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "length",
+          "source": {
+            "op": "filter",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/content"
+            },
+            "when": {
+              "op": "any",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/kind"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "reasoning"
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/kind"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "tool_call"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "op": "literal",
+          "value": 0
+        }
+      ]
     }
   },
   "directions": {
@@ -21709,6 +21828,19 @@
             }
           },
           "reason": "target requires the declared instruction layout before encoding"
+        },
+        {
+          "id": "assistant-layout-required",
+          "kind": "reject",
+          "path": "/content",
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "ref",
+              "ref": "request-assistant-layout-valid"
+            }
+          },
+          "reason": "target requires the declared assistant history grouping before encoding"
         }
       ],
       "capabilities": {
@@ -49632,6 +49764,42 @@
                   "reason": {
                     "op": "literal",
                     "value": "target combines separate instruction roots in one system envelope"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "assistant-history",
+      "order": 165,
+      "enabled": true,
+      "phase": "request",
+      "steps": [
+        {
+          "layout": {
+            "operation": "group_runs",
+            "path": "/content",
+            "role": "assistant",
+            "when": {
+              "op": "ref",
+              "ref": "layout-assistant-root"
+            },
+            "pathBinding": "history-path",
+            "steps": [
+              {
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "history-path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "target places adjacent assistant roots in one message; root boundaries change"
                   }
                 }
               }

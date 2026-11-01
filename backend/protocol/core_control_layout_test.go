@@ -46,6 +46,12 @@ func TestContentLayoutCompileBoundary(t *testing.T) {
 		{"protected-write", ConversionRequest, func(layout *ProtocolContentLayout) {
 			layout.Steps = []ProtocolControlStep{{Set: map[string]Expression{"/native": {Op: "omit"}}}}
 		}},
+		{"group-role", ConversionRequest, func(layout *ProtocolContentLayout) {
+			layout.Operation = "group_runs"
+		}},
+		{"group-boundary", ConversionRequest, func(layout *ProtocolContentLayout) {
+			layout.Operation, layout.Role = "group_runs", "assistant"
+		}},
 		{"combine-update", ConversionRequest, func(layout *ProtocolContentLayout) {
 			layout.Operation = "combine_children"
 			layout.Steps = []ProtocolControlStep{{Set: map[string]Expression{"/role": literalExpression("user")}}}
@@ -61,5 +67,42 @@ func TestContentLayoutCompileBoundary(t *testing.T) {
 				t.Fatal("invalid layout compiled", issues)
 			}
 		})
+	}
+}
+
+func TestDeclaredContentGroupingKeepsRunsAndOwners(t *testing.T) {
+	document := textProtocolPackage(t)
+	document.Mapping.ConversionDefaults = []ProtocolConversionDefault{{ID: "group-history", Order: 165, Enabled: true, Phase: ConversionRequest, Steps: []ProtocolControlStep{{Layout: &ProtocolContentLayout{
+		Operation: "group_runs", Path: "/content", Role: "assistant", PathBinding: "position",
+		When:  Expression{Op: "not", Source: expressionPointer(Expression{Op: "equal", Items: []Expression{readExpression("input", "/role"), literalExpression("user")}})},
+		Steps: []ProtocolControlStep{{Diagnostic: &ProtocolControlDiagnostic{Kind: "degrade", Source: expressionPointer(Expression{Op: "read", From: "binding", Name: "position"}), Reason: literalExpression("root boundaries become one message")}}},
+	}}}}}
+	compiled := compilePackageForTest(t, document)
+	policy := DefaultConversionPolicy(compiled, compiled)
+	conversion, err := ResolveConversion(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := &Request{SchemaVersion: ProtocolCoreVersion, Content: []Node{
+		{Kind: ReasoningNode, Payload: StringValue("thinking"), Resources: []Resource{{Kind: "signature", ID: StringValue("signed")}}},
+		{Kind: MessageNode, Role: StringValue("assistant"), Children: []Node{{Kind: TextNode, Payload: StringValue("first"), Native: &Native{Value: fixtureValue(t, Object{})}}}},
+		{Kind: MessageNode, Role: StringValue("user"), Children: []Node{{Kind: TextNode, Payload: StringValue("barrier")}}},
+		{Kind: ReasoningNode, Payload: StringValue("later")},
+	}}
+	before := fixtureValue(t, request)
+	sink := &DiagnosticSink{}
+	result, err := conversion.Request(t.Context(), request, ConversionContext{Source: compiled.Identity(), Target: compiled.Identity()}, sink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Content) != 3 || len(result.Content[0].Children) != 2 || !result.Content[1].Role.IsString("user") || len(result.Content[2].Children) != 1 || !result.Content[2].Children[0].Payload.IsString("later") {
+		t.Fatal("grouping crossed a barrier or changed run order", result.Content)
+	}
+	if len(result.Content[0].Children[0].Resources) != 1 || result.Content[0].Children[1].Native == nil || len(sink.Issues()) != 3 || fixtureValue(t, request) != before {
+		t.Fatal("grouping changed ownership or hid boundary loss", result.Content, sink.Issues())
+	}
+	request.Content[1].Attributes = Object{"wire:custom": StringValue("retained")}
+	if _, err := conversion.Request(t.Context(), request, ConversionContext{Source: compiled.Identity(), Target: compiled.Identity()}, nil); err == nil {
+		t.Fatal("grouping discarded container semantics")
 	}
 }

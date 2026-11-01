@@ -225,3 +225,23 @@ Responses 提取五组真实重复表达式：可见文本段、output_text meta
 | closure-mixed-results-staticcheck | v0.8.2：原 24 主诊断＋1 关联位置，去行列后多重集无新增或消失，退出 1 |
 
 前端未修改，不重复前端检查。全部原始失败及成功日志位于忽略目录。本批不宣称性能无回退；尚未形成 B，也未切换生产默认。一般布局、多段 reasoning／多根输出、复杂 SSE、全入口所有权、A/B/C 正式性能及旧链退役继续待完成。
+
+## 批次 3B：相邻助手历史分组（dev.123）
+
+layout 增加 group_runs 和声明容器 role；既有 when、路径绑定、诊断、编译槽位及预算继续复用。按相邻选中根构造 message，普通 message 展开子节点，其他叶子移动原节点，未选中根截断。单个 message 不变；需要展开的容器若有身份、状态、metadata、缓存、资源、payload 或未知属性则拒绝。实际分组必须首步无条件声明边界损失，不能同时修改字段。没有需要分组的根时不分配结果切片；发生分组仅复制节点切片，叶子资源、来源及 Native 保留，根 Native 失效。
+
+Anthropic Mapping 接入 assistant-history／165：选择 assistant message、reasoning、tool_call。顺序 160 已属于 history-response-metadata，初稿冲突在编译期拒绝，未引入自动调整顺序。编码 effect 拒绝未分组的裸 reasoning／tool_call；用户禁用规则后不隐式再次布局。公共 schema 自动包含操作和 role，编辑器帮助与原语文档同步。
+
+核心回归覆盖两个相邻段、用户边界、资源／Native 所有权、容器附属语义拒绝及编译约束。默认包回归直接检查多段 thinking、文本、工具与工具结果边界、strict／禁用和输入隔离。既有真实 Gemini→Anthropic 工具调用中增加相邻助手消息，模拟上游检查 thinking→text→tool_use 的顺序，JSON／SSE 完整消费、usage 和一次上游调用断言保留。测试夹具最初缺少声明的 reasoning 能力，修正该夹具后通过，不增加运行兜底。
+
+| 检查 | 结果 |
+|---|---|
+| closure-assistant-group-contract | 编译、核心分组、正式包证据及目标回归：protocol 0.289 秒、builtin 3.604 秒，通过 |
+| closure-assistant-group-gateway-fixed | 真实四目标工具历史 JSON／SSE 通过，14.893 秒 |
+| closure-assistant-group-all | protocol 全量 7.069 秒、builtin 全量 43.943 秒，通过 |
+| closure-assistant-group-race | protocol 3.457 秒、builtin 38.615 秒、server 154.114 秒，通过，无 race 报告 |
+| closure-assistant-group-vet | protocol 全树和 server 通过 |
+| closure-assistant-group-staticcheck | v0.8.2，24 主诊断＋1 关联位置，去行列后多重集与 dev.122 一致 |
+| 前端 | 本地 tsc 与编辑器 ESLint 通过 |
+
+Anthropic 整包 token 95,529，限额不变。完整响应多根、Chat 混合布局、UTF-16 引用和复杂 SSE 尚未以本提交宣称闭合；B／C 性能和生产切换仍待完成。

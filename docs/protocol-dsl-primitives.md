@@ -413,6 +413,11 @@ combine_children 把选中的相邻同 kind、同 role 普通容器的 children 
 拒绝；来源和 Native 不被当作语义载荷，合并后只保留首容器来源并清除该容器 Native。边界
 损失诊断由局部 steps 声明，该操作不能同时更新容器字段，也不能跨过未选中根；不能依赖编码器暗中合并。
 
+group_runs 为每段相邻选中根构造 role 声明的 message 容器。选中的普通 message 展开 children，
+其他叶子按原顺序移动；未选中根截断这一段。实际改变的 run 必须以无条件损失诊断开始，
+局部步骤不能更新字段。单个既有 message 不变，不触发诊断或分配结果；需要展开的容器有身份、
+状态、缓存、资源或其他附属语义时拒绝，不能把这些语义挂到合成容器或任意叶子上。
+
 ```json
 {"layout":{"operation":"stable_partition","path":"/content","when":{"op":"equal","items":[{"op":"read","path":"/role"},{"op":"literal","value":"system"}]}}}
 ```

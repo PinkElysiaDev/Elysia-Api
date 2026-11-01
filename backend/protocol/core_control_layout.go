@@ -12,8 +12,9 @@ import (
 // payloads or granting provenance. Combining children requires plain containers;
 // local steps may change the selected role.
 type ProtocolContentLayout struct {
-	Operation    string                `json:"operation" jsonschema:"enum=stable_partition,enum=combine_children"`
+	Operation    string                `json:"operation" jsonschema:"enum=stable_partition,enum=combine_children,enum=group_runs"`
 	Path         string                `json:"path" jsonschema:"enum=/content"`
+	Role         string                `json:"role,omitempty"`
 	When         Expression            `json:"when"`
 	PathBinding  string                `json:"pathBinding,omitempty"`
 	MovedBinding string                `json:"movedBinding,omitempty"`
@@ -22,6 +23,7 @@ type ProtocolContentLayout struct {
 
 type compiledContentLayout struct {
 	operation           string
+	role                Value
 	when                *compiledOutputPlan
 	steps               []compiledControlStep
 	pathSlot, movedSlot int
@@ -29,13 +31,19 @@ type compiledContentLayout struct {
 }
 
 func compileContentLayout(declaration ProtocolContentLayout, compiler *expressionCompiler, path string, outer controlCompileScope, count *int) (*compiledContentLayout, error) {
-	if !slices.Contains([]string{"stable_partition", "combine_children"}, declaration.Operation) || declaration.Path != "/content" || outer.whole != reflect.TypeFor[Request]() && outer.whole != reflect.TypeFor[Response]() {
+	if !slices.Contains([]string{"stable_partition", "combine_children", "group_runs"}, declaration.Operation) || declaration.Path != "/content" || outer.whole != reflect.TypeFor[Request]() && outer.whole != reflect.TypeFor[Response]() {
 		return nil, fmt.Errorf("%s: content layout requires request or complete response content", path)
+	}
+	if (declaration.Operation == "group_runs") != (declaration.Role != "") {
+		return nil, fmt.Errorf("%s/role: only group_runs requires a container role", path)
 	}
 	local := controlCompileScope{whole: outer.whole, isLayout: true, expression: outer.expression}
 	local.expression.coreRoot, local.expression.coreInput = outer.whole, reflect.TypeFor[Node]()
 	local.expression.hasInputScope = true
 	plan := &compiledContentLayout{operation: declaration.Operation, pathSlot: -1, movedSlot: -1}
+	if declaration.Role != "" {
+		plan.role = StringValue(declaration.Role)
+	}
 	local.expression.bindings = maps.Clone(outer.expression.bindings)
 	if local.expression.bindings == nil {
 		local.expression.bindings = make(map[string]expressionBinding)
@@ -59,13 +67,13 @@ func compileContentLayout(declaration ProtocolContentLayout, compiler *expressio
 		local.expression.bindings[binding.name] = expressionBinding{slot: *binding.slot, result: binding.kind}
 	}
 	var err error
-	if declaration.Operation == "combine_children" {
+	if declaration.Operation == "combine_children" || declaration.Operation == "group_runs" {
 		if len(declaration.Steps) == 0 || declaration.Steps[0].When != nil || declaration.Steps[0].Diagnostic == nil || (declaration.Steps[0].Diagnostic.Kind != "degrade" && declaration.Steps[0].Diagnostic.Kind != "reject") {
-			return nil, fmt.Errorf("%s/steps: combine_children requires an unconditional boundary-loss diagnostic first", path)
+			return nil, fmt.Errorf("%s/steps: container layout requires an unconditional boundary-loss diagnostic first", path)
 		}
 		for _, step := range declaration.Steps {
 			if len(step.Set) != 0 {
-				return nil, fmt.Errorf("%s/steps: combine_children cannot also change container fields", path)
+				return nil, fmt.Errorf("%s/steps: container layout cannot also change container fields", path)
 			}
 		}
 	}
@@ -92,6 +100,9 @@ func (plan *compiledContentLayout) apply(state evaluation, conversion *CompiledC
 	default:
 		panic("compiled content layout received a different core type")
 	}
+	if plan.operation == "group_runs" {
+		return plan.groupRuns(state, conversion, content, native, route, rule, sink, owner)
+	}
 	input := *content
 	var selected []bool
 	var combined []Node
@@ -103,16 +114,8 @@ func (plan *compiledContentLayout) apply(state evaluation, conversion *CompiledC
 			return false, err
 		}
 		node := &input[index]
-		local := state
-		local.input, local.objectReader = Value{}, nil
-		local.inputReader = func(pointer []string) (JSONOutput, error) { return readCoreNode(*node, pointer) }
 		isMoved := index != selectedCount
-		if plan.pathSlot >= 0 {
-			local.bindings[plan.pathSlot] = JSONLeaf(StringValue("/content/" + strconv.Itoa(index)))
-		}
-		if plan.movedSlot >= 0 {
-			local.bindings[plan.movedSlot] = JSONLeaf(coreBoolean(isMoved))
-		}
+		local := plan.local(state, node, index, isMoved)
 		value, err := plan.when.evaluate(local)
 		if err != nil {
 			return false, err
@@ -186,6 +189,18 @@ func (plan *compiledContentLayout) apply(state evaluation, conversion *CompiledC
 		*native = nil
 	}
 	return hasChanges, nil
+}
+
+func (plan *compiledContentLayout) local(state evaluation, node *Node, index int, isMoved bool) evaluation {
+	state.input, state.objectReader = Value{}, nil
+	state.inputReader = func(pointer []string) (JSONOutput, error) { return readCoreNode(*node, pointer) }
+	if plan.pathSlot >= 0 {
+		state.bindings[plan.pathSlot] = JSONLeaf(StringValue("/content/" + strconv.Itoa(index)))
+	}
+	if plan.movedSlot >= 0 {
+		state.bindings[plan.movedSlot] = JSONLeaf(coreBoolean(isMoved))
+	}
+	return state
 }
 
 func isPlainContentContainer(node Node) bool {
