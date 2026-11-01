@@ -54,7 +54,7 @@ func TestHostedToolAccountingDeduplicatesAndHonorsSource(t *testing.T) {
 		`{"type":"response.output_item.done","output_index":1,"item":{"type":"web_search_call"}}`,
 		`{"type":"response.completed","response":{"output":[{"type":"web_search_call"},{"type":"web_search_call"},{"type":"file_search_call"}]}}`,
 	} {
-		if err := observeHostedTools(record, compiled, []byte(wire)); err != nil {
+		if err := observeLegacyHostedTools(record, compiled, []byte(wire)); err != nil {
 			t.Fatal(err)
 		}
 	}

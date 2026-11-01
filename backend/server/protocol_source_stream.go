@@ -70,8 +70,8 @@ func (source *protocolSourceStream) decode(frame protocol.SourceFrame) error {
 	if err != nil {
 		return err
 	}
-	if source.record != nil {
-		if err := observeHostedTools(source.record, source.candidate.compiled, frame.Value.Bytes()); err != nil {
+	if source.record != nil && source.candidate.compiled.CoreVersion() != protocol.ProtocolCoreVersion {
+		if err := observeLegacyHostedTools(source.record, source.candidate.compiled, frame.Value.Bytes()); err != nil {
 			return err
 		}
 	}

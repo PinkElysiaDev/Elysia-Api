@@ -281,7 +281,7 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 			if r.Phase == ConversionWire {
 				return nil, fmt.Errorf("node conditions require a semantic phase")
 			}
-			if !slices.Contains([]NodeKind{MessageNode, TextNode, ImageNode, AudioNode, VideoNode, DocumentNode, ReasoningNode, RefusalNode, ToolCallNode, ToolResultNode, OpaqueNode}, r.Match.NodeKind) {
+			if !slices.Contains([]NodeKind{MessageNode, TextNode, ImageNode, AudioNode, VideoNode, DocumentNode, ReasoningNode, RefusalNode, ToolCallNode, ToolResultNode, ServerToolNode, OpaqueNode}, r.Match.NodeKind) {
 				return nil, fmt.Errorf("unknown conversion node kind %q", r.Match.NodeKind)
 			}
 		}

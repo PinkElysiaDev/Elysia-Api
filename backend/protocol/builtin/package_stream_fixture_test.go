@@ -68,13 +68,13 @@ func encodePackageStream(t *testing.T, compiled *p.Compiled, frames []*p.EventFr
 			}
 		}
 	}
-	for _, frame := range frames {
+	for index, frame := range frames {
 		if !preserve {
 			frame = &p.EventFrame{Events: frame.Events}
 		}
 		values, err := compiled.EncodeFrame(t.Context(), frame, options)
 		if err != nil {
-			t.Fatal("target mapping", err)
+			t.Fatal("target mapping", index, err)
 		}
 		consume(values)
 	}

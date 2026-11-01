@@ -26,10 +26,13 @@ type WireContractSpec struct {
 // positions. Optional fields use an explicit exists condition. Schema may be
 // omitted for a check-only assertion; each always requires an array schema.
 type WireAssertion struct {
-	Path   string          `json:"path"`
+	// Ref calls a named Spec constraint at Path, preserving the document root.
+	// A reference cannot override individual checks in the shared declaration.
+	Ref    string          `json:"ref,omitempty"`
+	Path   string          `json:"path,omitempty"`
 	When   *Expression     `json:"when,omitempty"`
 	Schema *ValueSchema    `json:"schema,omitempty"`
-	Code   IssueCode       `json:"code"`
+	Code   IssueCode       `json:"code,omitempty"`
 	Reason string          `json:"reason,omitempty"`
 	Check  *Expression     `json:"check,omitempty"`
 	Each   []WireAssertion `json:"each,omitempty"`
@@ -43,6 +46,7 @@ type WireAssertion struct {
 }
 
 type compiledWireAssertion struct {
+	group          []compiledWireAssertion
 	path           string
 	pointer        []string
 	when           *compiledOutputPlan
@@ -94,6 +98,7 @@ func compileWireAssertionsInScope(assertions []WireAssertion, path string, scope
 		return nil, fmt.Errorf("%s: exceeds assertion depth or node limit", path)
 	}
 	expressions.nodes += len(assertions)
+	expressions.maximumDepth = max(expressions.maximumDepth, depth)
 	checks := make([]compiledWireAssertion, 0, len(assertions))
 	for index, assertion := range assertions {
 		at := fmt.Sprintf("%s/%d", path, index)
@@ -101,7 +106,20 @@ func compileWireAssertionsInScope(assertions []WireAssertion, path string, scope
 		if err != nil {
 			return nil, locateMappingError(at+"/path", err)
 		}
-		if !slices.Contains([]IssueCode{InvalidInput, UnsupportedCapability, UpstreamContractViolation, InvalidAssociation, ConversionRejected}, assertion.Code) {
+		if assertion.Ref != "" {
+			selected := scope
+			selected.input, err = schemaAtPointer(scope.input, pointer)
+			if err != nil {
+				return nil, locateMappingError(at+"/path", err)
+			}
+			group, err := expressions.compileWireConstraint(assertion, at, selected, depth)
+			if err != nil {
+				return nil, err
+			}
+			checks = append(checks, compiledWireAssertion{group: group, path: assertion.Path, pointer: pointer})
+			continue
+		}
+		if assertion.Code != "" && !slices.Contains([]IssueCode{InvalidInput, UnsupportedCapability, UpstreamContractViolation, InvalidAssociation, ConversionRejected}, assertion.Code) {
 			return nil, fmt.Errorf("%s/code: expected an input, capability, association or wire-contract diagnostic", at)
 		}
 		check := compiledWireAssertion{path: assertion.Path, pointer: pointer, code: assertion.Code, reason: assertion.Reason}
@@ -215,29 +233,35 @@ func (validator *specWireValidator) validateInputView(ctx context.Context, direc
 	}
 	value := view.value
 	if err := validator.schema.validateWithin(ctx, value, "", effectiveLimits, view); err != nil {
-		code := InvalidInput
-		if direction == DecodeResponse || direction == DecodeEvent {
-			code = UpstreamContractViolation
-		} else if direction == EncodeRequest || direction == EncodeResponse || direction == EncodeEvent {
-			code = ConversionRejected
-		}
-		return wireAssertionError(code, mappingErrorPath("", err), "wire document does not match its declared schema", err)
+		return wireAssertionError(wireBoundaryCode(direction), mappingErrorPath("", err), "wire document does not match its declared schema", err)
 	}
 	state := evaluation{ctx: ctx, input: value, root: value, inputView: view, valueReader: &view.borrowed, objectReader: view.objectReader(), budget: &evaluationBudget{limits: effectiveLimits, stepLimit: effectiveLimits.Nodes}}
-	if err := validateWireAssertions(validator.assertions, state, ""); err != nil {
+	if err := validateWireAssertions(validator.assertions, state, "", direction); err != nil {
 		return err
 	}
 	view.validator, view.direction, view.specLimits = validator, direction, effectiveLimits
 	return nil
 }
 
-func validateWireAssertions(assertions []compiledWireAssertion, state evaluation, parentPath string) error {
+func validateWireAssertions(assertions []compiledWireAssertion, state evaluation, parentPath string, direction Direction) error {
 	for _, assertion := range assertions {
+		path := parentPath + assertion.path
+		if assertion.group != nil {
+			selected := state
+			var err error
+			selected.input, err = readValuePointerWithObjectReader(state.input, assertion.pointer, state.valueReader, state.objectReader)
+			if err != nil {
+				return wireAssertionError(wireBoundaryCode(direction), path, "constraint cannot select its declared input", err)
+			}
+			if err := validateWireAssertions(assertion.group, selected, path, direction); err != nil {
+				return err
+			}
+			continue
+		}
 		ctx := state.ctx
 		if err := state.advance(); err != nil {
 			return err
 		}
-		path := parentPath + assertion.path
 		if assertion.when != nil {
 			condition, err := assertion.when.evaluate(state)
 			if err != nil {
@@ -256,7 +280,7 @@ func validateWireAssertions(assertions []compiledWireAssertion, state evaluation
 			err = assertion.validateSchema(ctx, selected, path, state.budget.limits, state.inputView)
 		}
 		if err != nil {
-			return assertion.failure(state, path, err)
+			return assertion.failure(state, path, err, direction)
 		}
 		if assertion.check != nil {
 			selection := state
@@ -275,7 +299,7 @@ func validateWireAssertions(assertions []compiledWireAssertion, state evaluation
 				if errors.As(err, &rejection) {
 					return &ConversionError{cause: err, Issues: []ConversionIssue{rejection.issue(Identity{}, "")}}
 				}
-				return assertion.failure(state, path, err)
+				return assertion.failure(state, path, err, direction)
 			}
 		}
 		if len(assertion.each) != 0 {
@@ -286,7 +310,7 @@ func validateWireAssertions(assertions []compiledWireAssertion, state evaluation
 			for index, item := range items {
 				child := state
 				child.input = item
-				if err := validateWireAssertions(assertion.each, child, path+"/"+strconv.Itoa(index)); err != nil {
+				if err := validateWireAssertions(assertion.each, child, path+"/"+strconv.Itoa(index), direction); err != nil {
 					return err
 				}
 			}
@@ -299,7 +323,7 @@ func wireAssertionError(code IssueCode, path, reason string, cause error) error 
 	return classifiedWireAssertionError(code, "", "wire", path, reason, "", cause)
 }
 
-func (assertion compiledWireAssertion) failure(state evaluation, path string, cause error) error {
+func (assertion compiledWireAssertion) failure(state evaluation, path string, cause error, direction Direction) error {
 	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
 		return cause
 	}
@@ -319,7 +343,22 @@ func (assertion compiledWireAssertion) failure(state evaluation, path string, ca
 		}
 		return classifiedWireAssertionError(diagnostic.Code, diagnostic.Direction, diagnostic.Stage, path, reason, diagnostic.Suggestion, cause)
 	}
-	return wireAssertionError(assertion.code, path, reason, cause)
+	code := assertion.code
+	if code == "" {
+		code = wireBoundaryCode(direction)
+	}
+	return wireAssertionError(code, path, reason, cause)
+}
+
+func wireBoundaryCode(direction Direction) IssueCode {
+	switch direction {
+	case DecodeResponse, DecodeEvent:
+		return UpstreamContractViolation
+	case EncodeRequest, EncodeResponse, EncodeEvent, EncodeUpstreamEvent:
+		return ConversionRejected
+	default:
+		return InvalidInput
+	}
 }
 
 func classifiedWireAssertionError(code IssueCode, direction Direction, stage, path, reason, suggestion string, cause error) error {

@@ -99,14 +99,18 @@ func TestResponsesSeparateToolLedgerPersistedAcrossClientProjection(t *testing.T
 func TestReportedToolCountSurvivesFramesWithoutUsage(t *testing.T) {
 	t.Parallel()
 	compiled := compileFixtureDefinition(t, presetDefinition(t, "openai-responses"))
-	for _, count := range []int64{0, 2} {
-		r := &usageRecord{}
-		updateRecordProtocolUsage(r, &protocol.Usage{Details: map[string]protocol.Counter{"tools.web_search_calls": {Count: count, Origin: protocol.ObservedCount}}})
-		if err := observeHostedTools(r, compiled, []byte(`{"type":"response.in_progress","response":{"id":"r"}}`)); err != nil {
+	for _, counter := range []protocol.Counter{{Count: 0, Origin: protocol.ObservedCount}, {Count: 2, Origin: protocol.ObservedCount}, {Count: 1, Origin: protocol.InferredCount}} {
+		r := &usageRecord{Usage: usageTokenUsage{Estimated: true, EstimatedTokens: 17}, UsageSource: "protocol_estimate"}
+		updateRecordProtocolUsage(r, &protocol.Usage{Details: map[string]protocol.Counter{"tools.web_search_calls": counter}})
+		if err := observeLegacyHostedTools(r, compiled, []byte(`{"type":"response.in_progress","response":{"id":"r"}}`)); err != nil {
 			t.Fatal(err)
 		}
-		if r.BuiltinToolUsage.WebSearchCalls != int(count) {
-			t.Fatal(r.BuiltinToolUsage)
+		if r.BuiltinToolUsage.WebSearchCalls != int(counter.Count) || !r.Usage.Estimated || r.Usage.EstimatedTokens != 17 || r.Usage.TotalTokens != nil || r.UsageSource != "protocol_estimate" {
+			t.Fatal("tool-only usage changed model accounting", r.BuiltinToolUsage, r.Usage, r.UsageSource)
+		}
+		updateRecordProtocolUsage(r, &protocol.Usage{Total: &protocol.Counter{Count: 4, Origin: protocol.ObservedCount}})
+		if r.Usage.Estimated || r.Usage.TotalTokens == nil || *r.Usage.TotalTokens != 4 || r.UsageSource != "protocol_observed" || r.BuiltinToolUsage.WebSearchCalls != int(counter.Count) {
+			t.Fatal("late model usage did not replace its estimate independently", r.BuiltinToolUsage, r.Usage, r.UsageSource)
 		}
 	}
 }

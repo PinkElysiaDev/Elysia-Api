@@ -23,8 +23,10 @@ func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestConte
 	if err != nil {
 		return err
 	}
-	if err := observeHostedTools(record, candidate.compiled, body); err != nil {
-		return err
+	if candidate.compiled.CoreVersion() != protocol.ProtocolCoreVersion {
+		if err := observeLegacyHostedTools(record, candidate.compiled, body); err != nil {
+			return err
+		}
 	}
 	// DecodeResponse has already validated usage arithmetic and capabilities.
 	updateRecordProtocolUsage(record, semantic.Usage)

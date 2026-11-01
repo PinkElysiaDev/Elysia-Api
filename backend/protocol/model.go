@@ -93,6 +93,9 @@ const (
 	RefusalNode    NodeKind = "refusal"
 	ToolCallNode   NodeKind = "tool_call"
 	ToolResultNode NodeKind = "tool_result"
+	// ServerToolNode records execution owned by the upstream provider. It is
+	// never a request for the client or the Agent to execute a local tool.
+	ServerToolNode NodeKind = "server_tool"
 	OpaqueNode     NodeKind = "opaque"
 )
 
@@ -118,7 +121,8 @@ type ToolInput struct {
 	Value Value     `json:"value,omitzero"`
 }
 
-// Resource identifies a provider-scoped file, cache, session or signature.
+// Resource identifies a provider-scoped file, audio, container, cache, session
+// or signature. Inline media bytes are payloads rather than resource handles.
 type Resource struct {
 	Kind  string `json:"kind"`
 	ID    Value  `json:"id"`

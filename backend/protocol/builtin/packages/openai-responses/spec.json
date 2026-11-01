@@ -84,6 +84,39 @@
             "op": "ref",
             "ref": "request-tool-links"
           }
+        },
+        {
+          "path": "/input",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "type",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/input"
+                }
+              },
+              {
+                "op": "literal",
+                "value": "array"
+              }
+            ]
+          },
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "reason": "request input history requires items",
+          "each": [
+            {
+              "ref": "server-output-item"
+            }
+          ]
         }
       ]
     },
@@ -2399,6 +2432,31 @@
           },
           "code": "invalid_input",
           "reason": "output_text conflicts with ordered visible output"
+        },
+        {
+          "path": "/output",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "code": "upstream_contract_violation",
+          "reason": "response output requires items",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/output"
+            }
+          },
+          "each": [
+            {
+              "ref": "server-output-item"
+            }
+          ]
         }
       ]
     },
@@ -3142,6 +3200,9 @@
                   }
                 }
               ]
+            },
+            {
+              "ref": "server-output-item"
             }
           ],
           "when": {
@@ -3461,6 +3522,9 @@
                   }
                 }
               ]
+            },
+            {
+              "ref": "server-output-item"
             }
           ]
         },
@@ -3580,20 +3644,14 @@
             "op": "equal",
             "items": [
               {
-                "op": "stringify_json",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                }
+                "op": "read",
+                "from": "input",
+                "path": ""
               },
               {
-                "op": "stringify_json",
-                "source": {
-                  "op": "read",
-                  "from": "root",
-                  "path": "/item/id"
-                }
+                "op": "read",
+                "from": "root",
+                "path": "/item/id"
               }
             ]
           },
@@ -3628,7 +3686,11 @@
                   "function_call",
                   "custom_tool_call",
                   "message",
-                  "reasoning"
+                  "reasoning",
+                  "web_search_call",
+                  "file_search_call",
+                  "image_generation_call",
+                  "code_interpreter_call"
                 ]
               }
             },
@@ -3665,7 +3727,11 @@
                   "function_call",
                   "custom_tool_call",
                   "message",
-                  "reasoning"
+                  "reasoning",
+                  "web_search_call",
+                  "file_search_call",
+                  "image_generation_call",
+                  "code_interpreter_call"
                 ]
               }
             },
@@ -3743,7 +3809,11 @@
                     "function_call",
                     "custom_tool_call",
                     "message",
-                    "reasoning"
+                    "reasoning",
+                    "web_search_call",
+                    "file_search_call",
+                    "image_generation_call",
+                    "code_interpreter_call"
                   ]
                 }
               },
@@ -4025,6 +4095,9 @@
           },
           "content_logprobs": {
             "keyType": "string"
+          },
+          "interpreter_code": {
+            "keyType": "integer"
           }
         },
         "entities": {
@@ -4152,6 +4225,28 @@
               "refusal"
             ],
             "closeWithParent": true
+          },
+          "interpreter_code": {
+            "namespace": "interpreter_code",
+            "payload": "text",
+            "parentNamespace": "output",
+            "parentEntities": [
+              "hosted_execution"
+            ]
+          },
+          "hosted_execution": {
+            "namespace": "output",
+            "payload": "none",
+            "identities": {
+              "id": {
+                "type": "string",
+                "requiredAt": "start"
+              },
+              "kind": {
+                "type": "string",
+                "requiredAt": "start"
+              }
+            }
           }
         },
         "events": {
@@ -4163,64 +4258,7 @@
               "action": "assert",
               "assertions": [
                 {
-                  "path": "/response/usage/input_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/response/usage/input_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
-                },
-                {
-                  "path": "/response/usage/output_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/response/usage/output_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
-                },
-                {
-                  "path": "/response/usage/total_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/response/usage/total_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
+                  "ref": "response-frame-token-counts"
                 }
               ],
               "when": {
@@ -4238,6 +4276,15 @@
             }
           ],
           "response.output_item.added": [
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "ref": "server-output-item",
+                  "path": "/item"
+                }
+              ]
+            },
             {
               "action": "assert",
               "when": {
@@ -4415,137 +4462,8 @@
               "properties": {
                 "path": "/item",
                 "value": {
-                  "op": "merge",
-                  "policy": "last",
-                  "items": [
-                    {
-                      "op": "object",
-                      "fields": {
-                        "phase": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/item/phase"
-                        },
-                        "metadata": {
-                          "op": "if",
-                          "when": {
-                            "op": "if",
-                            "when": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "type",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/item/metadata"
-                                  }
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": "object"
-                                }
-                              ]
-                            },
-                            "then": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "project",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/item/metadata"
-                                  },
-                                  "keys": [
-                                    "turn_id"
-                                  ],
-                                  "policy": "exclude"
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": {}
-                                }
-                              ]
-                            },
-                            "otherwise": {
-                              "op": "literal",
-                              "value": true
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/item/metadata"
-                          }
-                        },
-                        "internal_chat_message_metadata_passthrough": {
-                          "op": "if",
-                          "when": {
-                            "op": "if",
-                            "when": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "type",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/item/internal_chat_message_metadata_passthrough"
-                                  }
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": "object"
-                                }
-                              ]
-                            },
-                            "then": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "project",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/item/internal_chat_message_metadata_passthrough"
-                                  },
-                                  "keys": [
-                                    "turn_id",
-                                    "create_time"
-                                  ],
-                                  "policy": "exclude"
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": {}
-                                }
-                              ]
-                            },
-                            "otherwise": {
-                              "op": "literal",
-                              "value": true
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/item/internal_chat_message_metadata_passthrough"
-                          }
-                        }
-                      }
-                    },
-                    {
-                      "op": "object",
-                      "fields": {
-                        "status": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/item/status"
-                        }
-                      }
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "frame-message-properties"
                 }
               },
               "childrenNamespace": "content"
@@ -4622,6 +4540,102 @@
                   "policy": "exclude"
                 }
               }
+            },
+            {
+              "action": "entity_start",
+              "entity": "hosted_execution",
+              "key": {
+                "path": "/output_index"
+              },
+              "when": {
+                "op": "ref",
+                "ref": "is-hosted-frame-item"
+              },
+              "identities": {
+                "id": {
+                  "path": "/item/id"
+                },
+                "kind": {
+                  "path": "/item/type"
+                }
+              },
+              "properties": {
+                "path": "/item",
+                "value": {
+                  "op": "object",
+                  "fields": {
+                    "status": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item/status"
+                    },
+                    "snapshot": {
+                      "op": "json_digest",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/item"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "action": "entity_start",
+              "entity": "interpreter_code",
+              "key": {
+                "path": "/output_index"
+              },
+              "parent": {
+                "path": "/output_index"
+              },
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "code_interpreter_call"
+                  }
+                ]
+              },
+              "payload": {
+                "path": "/item/code",
+                "value": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/item/code"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "string"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/code"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                }
+              }
             }
           ],
           "response.function_call_arguments.delta": [
@@ -4660,6 +4674,15 @@
             }
           ],
           "response.output_item.done": [
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "ref": "server-output-item",
+                  "path": "/item"
+                }
+              ]
+            },
             {
               "action": "entity_snapshot",
               "when": {
@@ -4747,105 +4770,15 @@
                   "key": {
                     "path": "/annotations",
                     "value": {
-                      "op": "join",
-                      "items": [
-                        {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "literal",
-                              "value": "output:"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "if",
-                                "when": {
-                                  "op": "present",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "root",
-                                    "path": "/output_index"
-                                  }
-                                },
-                                "then": {
-                                  "op": "read",
-                                  "from": "root",
-                                  "path": "/output_index"
-                                },
-                                "otherwise": {
-                                  "op": "literal",
-                                  "value": 0
-                                }
-                              },
-                              "to": "string"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "literal",
-                          "value": ":"
-                        },
-                        {
-                          "op": "cast",
-                          "source": {
-                            "op": "index"
-                          },
-                          "to": "string"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "output-item-text-identity"
                     }
                   },
                   "parent": {
                     "path": "/annotations",
                     "value": {
-                      "op": "join",
-                      "items": [
-                        {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "literal",
-                              "value": "output:"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "if",
-                                "when": {
-                                  "op": "present",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "root",
-                                    "path": "/output_index"
-                                  }
-                                },
-                                "then": {
-                                  "op": "read",
-                                  "from": "root",
-                                  "path": "/output_index"
-                                },
-                                "otherwise": {
-                                  "op": "literal",
-                                  "value": 0
-                                }
-                              },
-                              "to": "string"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "literal",
-                          "value": ":"
-                        },
-                        {
-                          "op": "cast",
-                          "source": {
-                            "op": "index"
-                          },
-                          "to": "string"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "output-item-text-identity"
                     }
                   },
                   "when": {
@@ -4886,105 +4819,15 @@
                   "key": {
                     "path": "/logprobs",
                     "value": {
-                      "op": "join",
-                      "items": [
-                        {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "literal",
-                              "value": "output:"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "if",
-                                "when": {
-                                  "op": "present",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "root",
-                                    "path": "/output_index"
-                                  }
-                                },
-                                "then": {
-                                  "op": "read",
-                                  "from": "root",
-                                  "path": "/output_index"
-                                },
-                                "otherwise": {
-                                  "op": "literal",
-                                  "value": 0
-                                }
-                              },
-                              "to": "string"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "literal",
-                          "value": ":"
-                        },
-                        {
-                          "op": "cast",
-                          "source": {
-                            "op": "index"
-                          },
-                          "to": "string"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "output-item-text-identity"
                     }
                   },
                   "parent": {
                     "path": "/logprobs",
                     "value": {
-                      "op": "join",
-                      "items": [
-                        {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "literal",
-                              "value": "output:"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "if",
-                                "when": {
-                                  "op": "present",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "root",
-                                    "path": "/output_index"
-                                  }
-                                },
-                                "then": {
-                                  "op": "read",
-                                  "from": "root",
-                                  "path": "/output_index"
-                                },
-                                "otherwise": {
-                                  "op": "literal",
-                                  "value": 0
-                                }
-                              },
-                              "to": "string"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "literal",
-                          "value": ":"
-                        },
-                        {
-                          "op": "cast",
-                          "source": {
-                            "op": "index"
-                          },
-                          "to": "string"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "output-item-text-identity"
                     }
                   },
                   "when": {
@@ -5045,53 +4888,8 @@
                   "key": {
                     "path": "/content_index",
                     "value": {
-                      "op": "join",
-                      "items": [
-                        {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "literal",
-                              "value": "output:"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "if",
-                                "when": {
-                                  "op": "present",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "root",
-                                    "path": "/output_index"
-                                  }
-                                },
-                                "then": {
-                                  "op": "read",
-                                  "from": "root",
-                                  "path": "/output_index"
-                                },
-                                "otherwise": {
-                                  "op": "literal",
-                                  "value": 0
-                                }
-                              },
-                              "to": "string"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "literal",
-                          "value": ":"
-                        },
-                        {
-                          "op": "cast",
-                          "source": {
-                            "op": "index"
-                          },
-                          "to": "string"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "output-item-text-identity"
                     }
                   },
                   "parent": {
@@ -5116,105 +4914,15 @@
                   "key": {
                     "path": "/annotations",
                     "value": {
-                      "op": "join",
-                      "items": [
-                        {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "literal",
-                              "value": "output:"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "if",
-                                "when": {
-                                  "op": "present",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "root",
-                                    "path": "/output_index"
-                                  }
-                                },
-                                "then": {
-                                  "op": "read",
-                                  "from": "root",
-                                  "path": "/output_index"
-                                },
-                                "otherwise": {
-                                  "op": "literal",
-                                  "value": 0
-                                }
-                              },
-                              "to": "string"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "literal",
-                          "value": ":"
-                        },
-                        {
-                          "op": "cast",
-                          "source": {
-                            "op": "index"
-                          },
-                          "to": "string"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "output-item-text-identity"
                     }
                   },
                   "parent": {
                     "path": "/annotations",
                     "value": {
-                      "op": "join",
-                      "items": [
-                        {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "literal",
-                              "value": "output:"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "if",
-                                "when": {
-                                  "op": "present",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "root",
-                                    "path": "/output_index"
-                                  }
-                                },
-                                "then": {
-                                  "op": "read",
-                                  "from": "root",
-                                  "path": "/output_index"
-                                },
-                                "otherwise": {
-                                  "op": "literal",
-                                  "value": 0
-                                }
-                              },
-                              "to": "string"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "literal",
-                          "value": ":"
-                        },
-                        {
-                          "op": "cast",
-                          "source": {
-                            "op": "index"
-                          },
-                          "to": "string"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "output-item-text-identity"
                     }
                   },
                   "when": {
@@ -5255,105 +4963,15 @@
                   "key": {
                     "path": "/logprobs",
                     "value": {
-                      "op": "join",
-                      "items": [
-                        {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "literal",
-                              "value": "output:"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "if",
-                                "when": {
-                                  "op": "present",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "root",
-                                    "path": "/output_index"
-                                  }
-                                },
-                                "then": {
-                                  "op": "read",
-                                  "from": "root",
-                                  "path": "/output_index"
-                                },
-                                "otherwise": {
-                                  "op": "literal",
-                                  "value": 0
-                                }
-                              },
-                              "to": "string"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "literal",
-                          "value": ":"
-                        },
-                        {
-                          "op": "cast",
-                          "source": {
-                            "op": "index"
-                          },
-                          "to": "string"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "output-item-text-identity"
                     }
                   },
                   "parent": {
                     "path": "/logprobs",
                     "value": {
-                      "op": "join",
-                      "items": [
-                        {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "literal",
-                              "value": "output:"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "if",
-                                "when": {
-                                  "op": "present",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "root",
-                                    "path": "/output_index"
-                                  }
-                                },
-                                "then": {
-                                  "op": "read",
-                                  "from": "root",
-                                  "path": "/output_index"
-                                },
-                                "otherwise": {
-                                  "op": "literal",
-                                  "value": 0
-                                }
-                              },
-                              "to": "string"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "literal",
-                          "value": ":"
-                        },
-                        {
-                          "op": "cast",
-                          "source": {
-                            "op": "index"
-                          },
-                          "to": "string"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "output-item-text-identity"
                     }
                   },
                   "when": {
@@ -5414,53 +5032,8 @@
                   "key": {
                     "path": "/content_index",
                     "value": {
-                      "op": "join",
-                      "items": [
-                        {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "literal",
-                              "value": "output:"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "if",
-                                "when": {
-                                  "op": "present",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "root",
-                                    "path": "/output_index"
-                                  }
-                                },
-                                "then": {
-                                  "op": "read",
-                                  "from": "root",
-                                  "path": "/output_index"
-                                },
-                                "otherwise": {
-                                  "op": "literal",
-                                  "value": 0
-                                }
-                              },
-                              "to": "string"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "literal",
-                          "value": ":"
-                        },
-                        {
-                          "op": "cast",
-                          "source": {
-                            "op": "index"
-                          },
-                          "to": "string"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "output-item-text-identity"
                     }
                   },
                   "parent": {
@@ -5539,137 +5112,8 @@
               "properties": {
                 "path": "/item",
                 "value": {
-                  "op": "merge",
-                  "policy": "last",
-                  "items": [
-                    {
-                      "op": "object",
-                      "fields": {
-                        "phase": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/item/phase"
-                        },
-                        "metadata": {
-                          "op": "if",
-                          "when": {
-                            "op": "if",
-                            "when": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "type",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/item/metadata"
-                                  }
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": "object"
-                                }
-                              ]
-                            },
-                            "then": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "project",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/item/metadata"
-                                  },
-                                  "keys": [
-                                    "turn_id"
-                                  ],
-                                  "policy": "exclude"
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": {}
-                                }
-                              ]
-                            },
-                            "otherwise": {
-                              "op": "literal",
-                              "value": true
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/item/metadata"
-                          }
-                        },
-                        "internal_chat_message_metadata_passthrough": {
-                          "op": "if",
-                          "when": {
-                            "op": "if",
-                            "when": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "type",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/item/internal_chat_message_metadata_passthrough"
-                                  }
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": "object"
-                                }
-                              ]
-                            },
-                            "then": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "project",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/item/internal_chat_message_metadata_passthrough"
-                                  },
-                                  "keys": [
-                                    "turn_id",
-                                    "create_time"
-                                  ],
-                                  "policy": "exclude"
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": {}
-                                }
-                              ]
-                            },
-                            "otherwise": {
-                              "op": "literal",
-                              "value": true
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/item/internal_chat_message_metadata_passthrough"
-                          }
-                        }
-                      }
-                    },
-                    {
-                      "op": "object",
-                      "fields": {
-                        "status": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/item/status"
-                        }
-                      }
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "frame-message-properties"
                 }
               },
               "childrenNamespace": "content"
@@ -6033,6 +5477,102 @@
                 }
               },
               "verifyCompleted": false
+            },
+            {
+              "action": "entity_finish",
+              "entity": "interpreter_code",
+              "key": {
+                "path": "/output_index"
+              },
+              "parent": {
+                "path": "/output_index"
+              },
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "code_interpreter_call"
+                  }
+                ]
+              },
+              "payload": {
+                "path": "/item/code",
+                "value": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/item/code"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "string"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/item/code"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": ""
+                  }
+                }
+              }
+            },
+            {
+              "action": "entity_finish",
+              "entity": "hosted_execution",
+              "key": {
+                "path": "/output_index"
+              },
+              "when": {
+                "op": "ref",
+                "ref": "is-hosted-frame-item"
+              },
+              "identities": {
+                "id": {
+                  "path": "/item/id"
+                },
+                "kind": {
+                  "path": "/item/type"
+                }
+              },
+              "properties": {
+                "path": "/item",
+                "value": {
+                  "op": "object",
+                  "fields": {
+                    "status": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/item/status"
+                    },
+                    "snapshot": {
+                      "op": "json_digest",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/item"
+                      }
+                    }
+                  }
+                }
+              }
             }
           ],
           "response.content_part.added": [
@@ -6356,31 +5896,8 @@
               "key": {
                 "path": "/content_index",
                 "value": {
-                  "op": "join",
-                  "items": [
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/output_index"
-                      },
-                      "to": "string"
-                    },
-                    {
-                      "op": "literal",
-                      "value": ":"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/content_index"
-                      },
-                      "to": "string"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "reasoning-content-identity"
                 }
               },
               "parent": {
@@ -6929,31 +6446,8 @@
               "key": {
                 "path": "/content_index",
                 "value": {
-                  "op": "join",
-                  "items": [
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/output_index"
-                      },
-                      "to": "string"
-                    },
-                    {
-                      "op": "literal",
-                      "value": ":"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/content_index"
-                      },
-                      "to": "string"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "reasoning-content-identity"
                 }
               },
               "parent": {
@@ -7335,6 +6829,30 @@
                   },
                   "code": "upstream_contract_violation",
                   "reason": "response update requires its response object"
+                },
+                {
+                  "path": "/response/output",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/response/output"
+                    }
+                  },
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "allowUnknown": true
+                    }
+                  },
+                  "reason": "progress output requires an array of items",
+                  "each": [
+                    {
+                      "ref": "server-output-item"
+                    }
+                  ]
                 },
                 {
                   "path": "/safety_buffering",
@@ -9509,64 +9027,7 @@
               "action": "assert",
               "assertions": [
                 {
-                  "path": "/response/usage/input_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/response/usage/input_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
-                },
-                {
-                  "path": "/response/usage/output_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/response/usage/output_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
-                },
-                {
-                  "path": "/response/usage/total_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/response/usage/total_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
+                  "ref": "response-frame-token-counts"
                 }
               ],
               "when": {
@@ -9932,380 +9393,7 @@
               "action": "assert",
               "assertions": [
                 {
-                  "path": "/background",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/background"
-                    }
-                  },
-                  "schema": {
-                    "type": "boolean",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected bool or null"
-                },
-                {
-                  "path": "/completed_at",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/completed_at"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/frequency_penalty",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/frequency_penalty"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/max_output_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/max_output_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/max_tool_calls",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/max_tool_calls"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/metadata",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/metadata"
-                    }
-                  },
-                  "schema": {
-                    "type": "object",
-                    "nullable": true,
-                    "allowUnknown": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected object or null"
-                },
-                {
-                  "path": "/output_text",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/output_text"
-                    }
-                  },
-                  "schema": {
-                    "type": "string"
-                  },
-                  "code": "invalid_input",
-                  "reason": "output_text requires a string"
-                },
-                {
-                  "path": "/parallel_tool_calls",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/parallel_tool_calls"
-                    }
-                  },
-                  "schema": {
-                    "type": "boolean",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected bool or null"
-                },
-                {
-                  "path": "/presence_penalty",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/presence_penalty"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/prompt_cache_key",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/prompt_cache_key"
-                    }
-                  },
-                  "schema": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null"
-                },
-                {
-                  "path": "/prompt_cache_retention",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/prompt_cache_retention"
-                    }
-                  },
-                  "schema": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null"
-                },
-                {
-                  "path": "/reasoning",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning"
-                    }
-                  },
-                  "schema": {
-                    "type": "object",
-                    "nullable": true,
-                    "allowUnknown": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected object or null"
-                },
-                {
-                  "path": "/safety_identifier",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/safety_identifier"
-                    }
-                  },
-                  "schema": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null"
-                },
-                {
-                  "path": "/service_tier",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/service_tier"
-                    }
-                  },
-                  "schema": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null"
-                },
-                {
-                  "path": "/store",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/store"
-                    }
-                  },
-                  "schema": {
-                    "type": "boolean",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected bool or null"
-                },
-                {
-                  "path": "/temperature",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/temperature"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/text",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/text"
-                    }
-                  },
-                  "schema": {
-                    "type": "object",
-                    "nullable": true,
-                    "allowUnknown": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected object or null"
-                },
-                {
-                  "path": "/tools",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/tools"
-                    }
-                  },
-                  "schema": {
-                    "type": "array",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected array or null"
-                },
-                {
-                  "path": "/top_logprobs",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/top_logprobs"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/top_p",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/top_p"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/truncation",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/truncation"
-                    }
-                  },
-                  "schema": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null"
-                },
-                {
-                  "path": "/user",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/user"
-                    }
-                  },
-                  "schema": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null"
+                  "ref": "stream-error-envelope"
                 }
               ]
             },
@@ -10762,380 +9850,7 @@
               "action": "assert",
               "assertions": [
                 {
-                  "path": "/background",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/background"
-                    }
-                  },
-                  "schema": {
-                    "type": "boolean",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected bool or null"
-                },
-                {
-                  "path": "/completed_at",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/completed_at"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/frequency_penalty",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/frequency_penalty"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/max_output_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/max_output_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/max_tool_calls",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/max_tool_calls"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/metadata",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/metadata"
-                    }
-                  },
-                  "schema": {
-                    "type": "object",
-                    "nullable": true,
-                    "allowUnknown": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected object or null"
-                },
-                {
-                  "path": "/output_text",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/output_text"
-                    }
-                  },
-                  "schema": {
-                    "type": "string"
-                  },
-                  "code": "invalid_input",
-                  "reason": "output_text requires a string"
-                },
-                {
-                  "path": "/parallel_tool_calls",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/parallel_tool_calls"
-                    }
-                  },
-                  "schema": {
-                    "type": "boolean",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected bool or null"
-                },
-                {
-                  "path": "/presence_penalty",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/presence_penalty"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/prompt_cache_key",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/prompt_cache_key"
-                    }
-                  },
-                  "schema": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null"
-                },
-                {
-                  "path": "/prompt_cache_retention",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/prompt_cache_retention"
-                    }
-                  },
-                  "schema": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null"
-                },
-                {
-                  "path": "/reasoning",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning"
-                    }
-                  },
-                  "schema": {
-                    "type": "object",
-                    "nullable": true,
-                    "allowUnknown": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected object or null"
-                },
-                {
-                  "path": "/safety_identifier",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/safety_identifier"
-                    }
-                  },
-                  "schema": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null"
-                },
-                {
-                  "path": "/service_tier",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/service_tier"
-                    }
-                  },
-                  "schema": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null"
-                },
-                {
-                  "path": "/store",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/store"
-                    }
-                  },
-                  "schema": {
-                    "type": "boolean",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected bool or null"
-                },
-                {
-                  "path": "/temperature",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/temperature"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/text",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/text"
-                    }
-                  },
-                  "schema": {
-                    "type": "object",
-                    "nullable": true,
-                    "allowUnknown": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected object or null"
-                },
-                {
-                  "path": "/tools",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/tools"
-                    }
-                  },
-                  "schema": {
-                    "type": "array",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected array or null"
-                },
-                {
-                  "path": "/top_logprobs",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/top_logprobs"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/top_p",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/top_p"
-                    }
-                  },
-                  "schema": {
-                    "type": "number",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected number or null"
-                },
-                {
-                  "path": "/truncation",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/truncation"
-                    }
-                  },
-                  "schema": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null"
-                },
-                {
-                  "path": "/user",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/user"
-                    }
-                  },
-                  "schema": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "invalid response metadata type; expected string or null"
+                  "ref": "stream-error-envelope"
                 }
               ]
             },
@@ -11174,52 +9889,7 @@
               "action": "assert",
               "assertions": [
                 {
-                  "path": "/output_index",
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "stream index must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
-                },
-                {
-                  "path": "/summary_index",
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "stream index must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
-                },
-                {
-                  "path": "/part",
-                  "schema": {
-                    "type": "object",
-                    "required": [
-                      "type",
-                      "text"
-                    ],
-                    "properties": {
-                      "type": {
-                        "type": "string",
-                        "enum": [
-                          "summary_text"
-                        ]
-                      },
-                      "text": {
-                        "type": "string"
-                      }
-                    },
-                    "allowUnknown": true
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "summary part requires summary_text and text"
+                  "ref": "reasoning-summary-part"
                 }
               ]
             },
@@ -11229,31 +9899,8 @@
               "key": {
                 "path": "/summary_index",
                 "value": {
-                  "op": "join",
-                  "items": [
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/output_index"
-                      },
-                      "to": "string"
-                    },
-                    {
-                      "op": "literal",
-                      "value": ":"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/summary_index"
-                      },
-                      "to": "string"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "reasoning-summary-identity"
                 }
               },
               "parent": {
@@ -11319,31 +9966,8 @@
               "key": {
                 "path": "/summary_index",
                 "value": {
-                  "op": "join",
-                  "items": [
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/output_index"
-                      },
-                      "to": "string"
-                    },
-                    {
-                      "op": "literal",
-                      "value": ":"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/summary_index"
-                      },
-                      "to": "string"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "reasoning-summary-identity"
                 }
               },
               "parent": {
@@ -11390,31 +10014,8 @@
               "key": {
                 "path": "/summary_index",
                 "value": {
-                  "op": "join",
-                  "items": [
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/output_index"
-                      },
-                      "to": "string"
-                    },
-                    {
-                      "op": "literal",
-                      "value": ":"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/summary_index"
-                      },
-                      "to": "string"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "reasoning-summary-identity"
                 }
               },
               "parent": {
@@ -11431,52 +10032,7 @@
               "action": "assert",
               "assertions": [
                 {
-                  "path": "/output_index",
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "stream index must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
-                },
-                {
-                  "path": "/summary_index",
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "stream index must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
-                },
-                {
-                  "path": "/part",
-                  "schema": {
-                    "type": "object",
-                    "required": [
-                      "type",
-                      "text"
-                    ],
-                    "properties": {
-                      "type": {
-                        "type": "string",
-                        "enum": [
-                          "summary_text"
-                        ]
-                      },
-                      "text": {
-                        "type": "string"
-                      }
-                    },
-                    "allowUnknown": true
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "summary part requires summary_text and text"
+                  "ref": "reasoning-summary-part"
                 }
               ]
             },
@@ -11486,31 +10042,8 @@
               "key": {
                 "path": "/summary_index",
                 "value": {
-                  "op": "join",
-                  "items": [
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/output_index"
-                      },
-                      "to": "string"
-                    },
-                    {
-                      "op": "literal",
-                      "value": ":"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/summary_index"
-                      },
-                      "to": "string"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "reasoning-summary-identity"
                 }
               },
               "parent": {
@@ -11576,31 +10109,8 @@
               "key": {
                 "path": "/content_index",
                 "value": {
-                  "op": "join",
-                  "items": [
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/output_index"
-                      },
-                      "to": "string"
-                    },
-                    {
-                      "op": "literal",
-                      "value": ":"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/content_index"
-                      },
-                      "to": "string"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "reasoning-content-identity"
                 }
               },
               "parent": {
@@ -11647,31 +10157,8 @@
               "key": {
                 "path": "/content_index",
                 "value": {
-                  "op": "join",
-                  "items": [
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/output_index"
-                      },
-                      "to": "string"
-                    },
-                    {
-                      "op": "literal",
-                      "value": ":"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/content_index"
-                      },
-                      "to": "string"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "reasoning-content-identity"
                 }
               },
               "parent": {
@@ -11714,6 +10201,14 @@
               "indexAs": "output-position",
               "actions": [
                 {
+                  "action": "assert",
+                  "assertions": [
+                    {
+                      "ref": "server-output-item"
+                    }
+                  ]
+                },
+                {
                   "foreach": "/content",
                   "when": {
                     "op": "equal",
@@ -11736,77 +10231,15 @@
                       "key": {
                         "path": "/annotations",
                         "value": {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "join",
-                              "items": [
-                                {
-                                  "op": "literal",
-                                  "value": "output:"
-                                },
-                                {
-                                  "op": "cast",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "output-position"
-                                  },
-                                  "to": "string"
-                                }
-                              ]
-                            },
-                            {
-                              "op": "literal",
-                              "value": ":"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "index"
-                              },
-                              "to": "string"
-                            }
-                          ]
+                          "op": "ref",
+                          "ref": "terminal-output-text-identity"
                         }
                       },
                       "parent": {
                         "path": "/annotations",
                         "value": {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "join",
-                              "items": [
-                                {
-                                  "op": "literal",
-                                  "value": "output:"
-                                },
-                                {
-                                  "op": "cast",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "output-position"
-                                  },
-                                  "to": "string"
-                                }
-                              ]
-                            },
-                            {
-                              "op": "literal",
-                              "value": ":"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "index"
-                              },
-                              "to": "string"
-                            }
-                          ]
+                          "op": "ref",
+                          "ref": "terminal-output-text-identity"
                         }
                       },
                       "when": {
@@ -11847,77 +10280,15 @@
                       "key": {
                         "path": "/logprobs",
                         "value": {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "join",
-                              "items": [
-                                {
-                                  "op": "literal",
-                                  "value": "output:"
-                                },
-                                {
-                                  "op": "cast",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "output-position"
-                                  },
-                                  "to": "string"
-                                }
-                              ]
-                            },
-                            {
-                              "op": "literal",
-                              "value": ":"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "index"
-                              },
-                              "to": "string"
-                            }
-                          ]
+                          "op": "ref",
+                          "ref": "terminal-output-text-identity"
                         }
                       },
                       "parent": {
                         "path": "/logprobs",
                         "value": {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "join",
-                              "items": [
-                                {
-                                  "op": "literal",
-                                  "value": "output:"
-                                },
-                                {
-                                  "op": "cast",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "output-position"
-                                  },
-                                  "to": "string"
-                                }
-                              ]
-                            },
-                            {
-                              "op": "literal",
-                              "value": ":"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "index"
-                              },
-                              "to": "string"
-                            }
-                          ]
+                          "op": "ref",
+                          "ref": "terminal-output-text-identity"
                         }
                       },
                       "when": {
@@ -11978,39 +10349,8 @@
                       "key": {
                         "path": "/content_index",
                         "value": {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "join",
-                              "items": [
-                                {
-                                  "op": "literal",
-                                  "value": "output:"
-                                },
-                                {
-                                  "op": "cast",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "output-position"
-                                  },
-                                  "to": "string"
-                                }
-                              ]
-                            },
-                            {
-                              "op": "literal",
-                              "value": ":"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "index"
-                              },
-                              "to": "string"
-                            }
-                          ]
+                          "op": "ref",
+                          "ref": "terminal-output-text-identity"
                         }
                       },
                       "parent": {
@@ -12036,77 +10376,15 @@
                       "key": {
                         "path": "/annotations",
                         "value": {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "join",
-                              "items": [
-                                {
-                                  "op": "literal",
-                                  "value": "output:"
-                                },
-                                {
-                                  "op": "cast",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "output-position"
-                                  },
-                                  "to": "string"
-                                }
-                              ]
-                            },
-                            {
-                              "op": "literal",
-                              "value": ":"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "index"
-                              },
-                              "to": "string"
-                            }
-                          ]
+                          "op": "ref",
+                          "ref": "terminal-output-text-identity"
                         }
                       },
                       "parent": {
                         "path": "/annotations",
                         "value": {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "join",
-                              "items": [
-                                {
-                                  "op": "literal",
-                                  "value": "output:"
-                                },
-                                {
-                                  "op": "cast",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "output-position"
-                                  },
-                                  "to": "string"
-                                }
-                              ]
-                            },
-                            {
-                              "op": "literal",
-                              "value": ":"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "index"
-                              },
-                              "to": "string"
-                            }
-                          ]
+                          "op": "ref",
+                          "ref": "terminal-output-text-identity"
                         }
                       },
                       "when": {
@@ -12147,77 +10425,15 @@
                       "key": {
                         "path": "/logprobs",
                         "value": {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "join",
-                              "items": [
-                                {
-                                  "op": "literal",
-                                  "value": "output:"
-                                },
-                                {
-                                  "op": "cast",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "output-position"
-                                  },
-                                  "to": "string"
-                                }
-                              ]
-                            },
-                            {
-                              "op": "literal",
-                              "value": ":"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "index"
-                              },
-                              "to": "string"
-                            }
-                          ]
+                          "op": "ref",
+                          "ref": "terminal-output-text-identity"
                         }
                       },
                       "parent": {
                         "path": "/logprobs",
                         "value": {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "join",
-                              "items": [
-                                {
-                                  "op": "literal",
-                                  "value": "output:"
-                                },
-                                {
-                                  "op": "cast",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "output-position"
-                                  },
-                                  "to": "string"
-                                }
-                              ]
-                            },
-                            {
-                              "op": "literal",
-                              "value": ":"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "index"
-                              },
-                              "to": "string"
-                            }
-                          ]
+                          "op": "ref",
+                          "ref": "terminal-output-text-identity"
                         }
                       },
                       "when": {
@@ -12278,39 +10494,8 @@
                       "key": {
                         "path": "/content_index",
                         "value": {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "join",
-                              "items": [
-                                {
-                                  "op": "literal",
-                                  "value": "output:"
-                                },
-                                {
-                                  "op": "cast",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "output-position"
-                                  },
-                                  "to": "string"
-                                }
-                              ]
-                            },
-                            {
-                              "op": "literal",
-                              "value": ":"
-                            },
-                            {
-                              "op": "cast",
-                              "source": {
-                                "op": "index"
-                              },
-                              "to": "string"
-                            }
-                          ]
+                          "op": "ref",
+                          "ref": "terminal-output-text-identity"
                         }
                       },
                       "parent": {
@@ -12863,8 +11048,8 @@
                     "value": {
                       "op": "read",
                       "from": "binding",
-                      "path": "",
-                      "name": "output-position"
+                      "name": "output-position",
+                      "path": ""
                     }
                   },
                   "when": {
@@ -12932,6 +11117,123 @@
                       "path": "/call_id"
                     }
                   }
+                },
+                {
+                  "action": "entity_verify",
+                  "entity": "interpreter_code",
+                  "key": {
+                    "path": "/output_index",
+                    "value": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "output-position"
+                    }
+                  },
+                  "parent": {
+                    "path": "/output_index",
+                    "value": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "output-position"
+                    }
+                  },
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "code_interpreter_call"
+                      }
+                    ]
+                  },
+                  "payload": {
+                    "path": "/code",
+                    "value": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/code"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "string"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/code"
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": ""
+                      }
+                    }
+                  }
+                },
+                {
+                  "action": "entity_verify",
+                  "entity": "hosted_execution",
+                  "key": {
+                    "path": "/output_index",
+                    "value": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "output-position"
+                    }
+                  },
+                  "when": {
+                    "op": "ref",
+                    "ref": "is-hosted-output-item"
+                  },
+                  "identities": {
+                    "id": {
+                      "path": "/id"
+                    },
+                    "kind": {
+                      "path": "/type"
+                    }
+                  },
+                  "properties": {
+                    "path": "/type",
+                    "value": {
+                      "op": "object",
+                      "fields": {
+                        "status": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/status"
+                        },
+                        "snapshot": {
+                          "op": "json_digest",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": ""
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "verifyChildren": [
+                    "interpreter_code"
+                  ]
                 }
               ]
             },
@@ -12939,64 +11241,7 @@
               "action": "assert",
               "assertions": [
                 {
-                  "path": "/response/usage/input_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/response/usage/input_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
-                },
-                {
-                  "path": "/response/usage/output_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/response/usage/output_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
-                },
-                {
-                  "path": "/response/usage/total_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/response/usage/total_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "ref",
-                    "ref": "is-nonnegative-count"
-                  }
+                  "ref": "response-frame-token-counts"
                 }
               ],
               "when": {
@@ -13018,7 +11263,8 @@
                 "message",
                 "reasoning",
                 "custom_tool_call",
-                "function_call"
+                "function_call",
+                "hosted_execution"
               ]
             }
           ],
@@ -13301,69 +11547,15 @@
               "key": {
                 "path": "/annotation",
                 "value": {
-                  "op": "join",
-                  "items": [
-                    {
-                      "op": "literal",
-                      "value": "output:"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/output_index"
-                      },
-                      "to": "string"
-                    },
-                    {
-                      "op": "literal",
-                      "value": ":"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/content_index"
-                      },
-                      "to": "string"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "annotation-item-identity"
                 }
               },
               "parent": {
                 "path": "/annotation",
                 "value": {
-                  "op": "join",
-                  "items": [
-                    {
-                      "op": "literal",
-                      "value": "output:"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/output_index"
-                      },
-                      "to": "string"
-                    },
-                    {
-                      "op": "literal",
-                      "value": ":"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/content_index"
-                      },
-                      "to": "string"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "annotation-item-identity"
                 }
               },
               "implicit": true
@@ -13374,69 +11566,15 @@
               "key": {
                 "path": "/annotation",
                 "value": {
-                  "op": "join",
-                  "items": [
-                    {
-                      "op": "literal",
-                      "value": "output:"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/output_index"
-                      },
-                      "to": "string"
-                    },
-                    {
-                      "op": "literal",
-                      "value": ":"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/content_index"
-                      },
-                      "to": "string"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "annotation-item-identity"
                 }
               },
               "parent": {
                 "path": "/annotation",
                 "value": {
-                  "op": "join",
-                  "items": [
-                    {
-                      "op": "literal",
-                      "value": "output:"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/output_index"
-                      },
-                      "to": "string"
-                    },
-                    {
-                      "op": "literal",
-                      "value": ":"
-                    },
-                    {
-                      "op": "cast",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/content_index"
-                      },
-                      "to": "string"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "annotation-item-identity"
                 }
               },
               "payload": {
@@ -13445,6 +11583,360 @@
               "encoding": "item",
               "offset": {
                 "path": "/annotation_index"
+              }
+            }
+          ],
+          "response.code_interpreter_call_code.delta": [
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true,
+                    "properties": {
+                      "item_id": {
+                        "type": "string"
+                      },
+                      "output_index": {
+                        "type": "integer"
+                      },
+                      "sequence_number": {
+                        "type": "integer"
+                      },
+                      "delta": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "item_id",
+                      "output_index",
+                      "sequence_number",
+                      "delta"
+                    ]
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "invalid hosted output event"
+                }
+              ]
+            },
+            {
+              "action": "entity_snapshot",
+              "entity": "hosted_execution",
+              "key": {
+                "path": "/output_index"
+              },
+              "identities": {
+                "id": {
+                  "path": "/item_id"
+                },
+                "kind": {
+                  "path": "/type",
+                  "value": {
+                    "op": "literal",
+                    "value": "code_interpreter_call"
+                  }
+                }
+              }
+            },
+            {
+              "action": "entity_append",
+              "entity": "interpreter_code",
+              "key": {
+                "path": "/output_index"
+              },
+              "parent": {
+                "path": "/output_index"
+              },
+              "payload": {
+                "path": "/delta"
+              }
+            }
+          ],
+          "response.code_interpreter_call_code.done": [
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true,
+                    "properties": {
+                      "item_id": {
+                        "type": "string"
+                      },
+                      "output_index": {
+                        "type": "integer"
+                      },
+                      "sequence_number": {
+                        "type": "integer"
+                      },
+                      "code": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "item_id",
+                      "output_index",
+                      "sequence_number",
+                      "code"
+                    ]
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "invalid hosted output event"
+                }
+              ]
+            },
+            {
+              "action": "entity_snapshot",
+              "entity": "hosted_execution",
+              "key": {
+                "path": "/output_index"
+              },
+              "identities": {
+                "id": {
+                  "path": "/item_id"
+                },
+                "kind": {
+                  "path": "/type",
+                  "value": {
+                    "op": "literal",
+                    "value": "code_interpreter_call"
+                  }
+                }
+              }
+            },
+            {
+              "action": "entity_snapshot",
+              "entity": "interpreter_code",
+              "key": {
+                "path": "/output_index"
+              },
+              "parent": {
+                "path": "/output_index"
+              },
+              "payload": {
+                "path": "/code"
+              },
+              "sealPayload": true
+            }
+          ],
+          "response.image_generation_call.partial_image": [
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true,
+                    "properties": {
+                      "item_id": {
+                        "type": "string"
+                      },
+                      "output_index": {
+                        "type": "integer"
+                      },
+                      "sequence_number": {
+                        "type": "integer"
+                      },
+                      "partial_image_b64": {
+                        "type": "string"
+                      },
+                      "partial_image_index": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "item_id",
+                      "output_index",
+                      "sequence_number",
+                      "partial_image_b64",
+                      "partial_image_index"
+                    ]
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "invalid hosted output event"
+                }
+              ]
+            },
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "/partial_image_index",
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "partial image index must be nonnegative",
+                  "check": {
+                    "op": "ref",
+                    "ref": "is-nonnegative-count"
+                  }
+                },
+                {
+                  "path": "/background",
+                  "schema": {
+                    "type": "string"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "partial image setting requires a string",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/background"
+                    }
+                  }
+                },
+                {
+                  "path": "/output_format",
+                  "schema": {
+                    "type": "string"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "partial image setting requires a string",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/output_format"
+                    }
+                  }
+                },
+                {
+                  "path": "/quality",
+                  "schema": {
+                    "type": "string"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "partial image setting requires a string",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/quality"
+                    }
+                  }
+                },
+                {
+                  "path": "/size",
+                  "schema": {
+                    "type": "string"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "partial image setting requires a string",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/size"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "action": "entity_snapshot",
+              "entity": "hosted_execution",
+              "key": {
+                "path": "/output_index"
+              },
+              "identities": {
+                "id": {
+                  "path": "/item_id"
+                },
+                "kind": {
+                  "path": "/type",
+                  "value": {
+                    "op": "literal",
+                    "value": "image_generation_call"
+                  }
+                }
+              }
+            }
+          ],
+          "hosted_progress": [
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "ref": "hosted-event-envelope"
+                }
+              ]
+            },
+            {
+              "action": "entity_snapshot",
+              "entity": "hosted_execution",
+              "key": {
+                "path": "/output_index"
+              },
+              "identities": {
+                "id": {
+                  "path": "/item_id"
+                },
+                "kind": {
+                  "path": "/type",
+                  "value": {
+                    "op": "enum",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/type"
+                    },
+                    "values": {
+                      "response.web_search_call.in_progress": "web_search_call",
+                      "response.web_search_call.completed": "web_search_call",
+                      "response.web_search_call.searching": "web_search_call",
+                      "response.file_search_call.in_progress": "file_search_call",
+                      "response.file_search_call.completed": "file_search_call",
+                      "response.file_search_call.searching": "file_search_call",
+                      "response.image_generation_call.in_progress": "image_generation_call",
+                      "response.image_generation_call.completed": "image_generation_call",
+                      "response.image_generation_call.generating": "image_generation_call",
+                      "response.code_interpreter_call.in_progress": "code_interpreter_call",
+                      "response.code_interpreter_call.completed": "code_interpreter_call",
+                      "response.code_interpreter_call.interpreting": "code_interpreter_call"
+                    }
+                  }
+                }
+              },
+              "properties": {
+                "path": "/type",
+                "value": {
+                  "op": "object",
+                  "fields": {
+                    "status": {
+                      "op": "enum",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/type"
+                      },
+                      "values": {
+                        "response.web_search_call.in_progress": "in_progress",
+                        "response.web_search_call.completed": "completed",
+                        "response.web_search_call.searching": "searching",
+                        "response.file_search_call.in_progress": "in_progress",
+                        "response.file_search_call.completed": "completed",
+                        "response.file_search_call.searching": "searching",
+                        "response.image_generation_call.in_progress": "in_progress",
+                        "response.image_generation_call.completed": "completed",
+                        "response.image_generation_call.generating": "generating",
+                        "response.code_interpreter_call.in_progress": "in_progress",
+                        "response.code_interpreter_call.completed": "completed",
+                        "response.code_interpreter_call.interpreting": "interpreting"
+                      }
+                    }
+                  }
+                }
               }
             }
           ]
@@ -13460,9 +11952,20 @@
             "value": "terminal_response"
           },
           "otherwise": {
-            "op": "read",
-            "from": "input",
-            "path": "/type"
+            "op": "if",
+            "when": {
+              "op": "ref",
+              "ref": "is-hosted-progress-event"
+            },
+            "then": {
+              "op": "literal",
+              "value": "hosted_progress"
+            },
+            "otherwise": {
+              "op": "read",
+              "from": "input",
+              "path": "/type"
+            }
           }
         }
       }
@@ -14602,6 +13105,1761 @@
           "ref": "has-response-headers"
         }
       ]
+    },
+    "has-scalar-search-attributes": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "length",
+          "source": {
+            "op": "filter",
+            "source": {
+              "op": "entries",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              }
+            },
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/value"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/value"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "number"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/value"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "boolean"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "literal",
+          "value": 0
+        }
+      ]
+    },
+    "output-item-text-identity": {
+      "op": "join",
+      "items": [
+        {
+          "op": "join",
+          "items": [
+            {
+              "op": "literal",
+              "value": "output:"
+            },
+            {
+              "op": "cast",
+              "source": {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "root",
+                    "path": "/output_index"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "root",
+                  "path": "/output_index"
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": 0
+                }
+              },
+              "to": "string"
+            }
+          ]
+        },
+        {
+          "op": "literal",
+          "value": ":"
+        },
+        {
+          "op": "cast",
+          "source": {
+            "op": "index"
+          },
+          "to": "string"
+        }
+      ]
+    },
+    "terminal-output-text-identity": {
+      "op": "join",
+      "items": [
+        {
+          "op": "join",
+          "items": [
+            {
+              "op": "literal",
+              "value": "output:"
+            },
+            {
+              "op": "cast",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "output-position"
+              },
+              "to": "string"
+            }
+          ]
+        },
+        {
+          "op": "literal",
+          "value": ":"
+        },
+        {
+          "op": "cast",
+          "source": {
+            "op": "index"
+          },
+          "to": "string"
+        }
+      ]
+    },
+    "frame-message-properties": {
+      "op": "merge",
+      "policy": "last",
+      "items": [
+        {
+          "op": "object",
+          "fields": {
+            "phase": {
+              "op": "read",
+              "from": "input",
+              "path": "/item/phase"
+            },
+            "metadata": {
+              "op": "if",
+              "when": {
+                "op": "if",
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "type",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/item/metadata"
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": "object"
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "project",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/item/metadata"
+                      },
+                      "keys": [
+                        "turn_id"
+                      ],
+                      "policy": "exclude"
+                    },
+                    {
+                      "op": "literal",
+                      "value": {}
+                    }
+                  ]
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": true
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "input",
+                "path": "/item/metadata"
+              }
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "op": "if",
+              "when": {
+                "op": "if",
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "type",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/item/internal_chat_message_metadata_passthrough"
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": "object"
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "project",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/item/internal_chat_message_metadata_passthrough"
+                      },
+                      "keys": [
+                        "turn_id",
+                        "create_time"
+                      ],
+                      "policy": "exclude"
+                    },
+                    {
+                      "op": "literal",
+                      "value": {}
+                    }
+                  ]
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": true
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "input",
+                "path": "/item/internal_chat_message_metadata_passthrough"
+              }
+            }
+          }
+        },
+        {
+          "op": "object",
+          "fields": {
+            "status": {
+              "op": "read",
+              "from": "input",
+              "path": "/item/status"
+            }
+          }
+        }
+      ]
+    },
+    "annotation-item-identity": {
+      "op": "join",
+      "items": [
+        {
+          "op": "literal",
+          "value": "output:"
+        },
+        {
+          "op": "cast",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/output_index"
+          },
+          "to": "string"
+        },
+        {
+          "op": "literal",
+          "value": ":"
+        },
+        {
+          "op": "cast",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/content_index"
+          },
+          "to": "string"
+        }
+      ]
+    },
+    "reasoning-content-identity": {
+      "op": "join",
+      "items": [
+        {
+          "op": "cast",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/output_index"
+          },
+          "to": "string"
+        },
+        {
+          "op": "literal",
+          "value": ":"
+        },
+        {
+          "op": "cast",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/content_index"
+          },
+          "to": "string"
+        }
+      ]
+    },
+    "reasoning-summary-identity": {
+      "op": "join",
+      "items": [
+        {
+          "op": "cast",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/output_index"
+          },
+          "to": "string"
+        },
+        {
+          "op": "literal",
+          "value": ":"
+        },
+        {
+          "op": "cast",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/summary_index"
+          },
+          "to": "string"
+        }
+      ]
+    },
+    "is-hosted-frame-item": {
+      "op": "choose",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/item/type"
+      },
+      "cases": {
+        "web_search_call": {
+          "op": "literal",
+          "value": true
+        },
+        "file_search_call": {
+          "op": "literal",
+          "value": true
+        },
+        "image_generation_call": {
+          "op": "literal",
+          "value": true
+        },
+        "code_interpreter_call": {
+          "op": "literal",
+          "value": true
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    "is-hosted-output-item": {
+      "op": "choose",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/type"
+      },
+      "cases": {
+        "web_search_call": {
+          "op": "literal",
+          "value": true
+        },
+        "file_search_call": {
+          "op": "literal",
+          "value": true
+        },
+        "image_generation_call": {
+          "op": "literal",
+          "value": true
+        },
+        "code_interpreter_call": {
+          "op": "literal",
+          "value": true
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    "is-hosted-progress-event": {
+      "op": "choose",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/type"
+      },
+      "cases": {
+        "response.web_search_call.in_progress": {
+          "op": "literal",
+          "value": true
+        },
+        "response.web_search_call.completed": {
+          "op": "literal",
+          "value": true
+        },
+        "response.web_search_call.searching": {
+          "op": "literal",
+          "value": true
+        },
+        "response.file_search_call.in_progress": {
+          "op": "literal",
+          "value": true
+        },
+        "response.file_search_call.completed": {
+          "op": "literal",
+          "value": true
+        },
+        "response.file_search_call.searching": {
+          "op": "literal",
+          "value": true
+        },
+        "response.image_generation_call.in_progress": {
+          "op": "literal",
+          "value": true
+        },
+        "response.image_generation_call.completed": {
+          "op": "literal",
+          "value": true
+        },
+        "response.image_generation_call.generating": {
+          "op": "literal",
+          "value": true
+        },
+        "response.code_interpreter_call.in_progress": {
+          "op": "literal",
+          "value": true
+        },
+        "response.code_interpreter_call.completed": {
+          "op": "literal",
+          "value": true
+        },
+        "response.code_interpreter_call.interpreting": {
+          "op": "literal",
+          "value": true
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
     }
+  },
+  "constraints": {
+    "server-output-item": [
+      {
+        "path": "",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "web_search_call"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "in_progress",
+                "searching",
+                "completed",
+                "failed",
+                "incomplete"
+              ]
+            },
+            "action": {
+              "type": "object",
+              "allowUnknown": true,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "search",
+                    "open_page",
+                    "find_in_page"
+                  ]
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "status"
+          ]
+        },
+        "reason": "invalid web_search_call output item",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/type"
+            },
+            {
+              "op": "literal",
+              "value": "web_search_call"
+            }
+          ]
+        }
+      },
+      {
+        "path": "",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "file_search_call"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "in_progress",
+                "searching",
+                "completed",
+                "failed",
+                "incomplete"
+              ]
+            },
+            "queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "results": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "allowUnknown": true,
+                "properties": {
+                  "file_id": {
+                    "type": "string"
+                  },
+                  "filename": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "score": {
+                    "type": "number"
+                  },
+                  "attributes": {
+                    "type": "object",
+                    "allowUnknown": true,
+                    "properties": {},
+                    "nullable": true
+                  }
+                }
+              },
+              "nullable": true
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "status",
+            "queries"
+          ]
+        },
+        "reason": "invalid file_search_call output item",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/type"
+            },
+            {
+              "op": "literal",
+              "value": "file_search_call"
+            }
+          ]
+        }
+      },
+      {
+        "path": "",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "image_generation_call"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "in_progress",
+                "generating",
+                "completed",
+                "failed"
+              ]
+            },
+            "result": {
+              "type": "string",
+              "nullable": true
+            },
+            "action": {
+              "type": "string",
+              "nullable": true,
+              "enum": [
+                "generate",
+                "edit",
+                "auto"
+              ]
+            },
+            "background": {
+              "type": "string",
+              "nullable": true,
+              "enum": [
+                "transparent",
+                "opaque",
+                "auto"
+              ]
+            },
+            "output_format": {
+              "type": "string",
+              "nullable": true,
+              "enum": [
+                "png",
+                "webp",
+                "jpeg"
+              ]
+            },
+            "quality": {
+              "type": "string",
+              "nullable": true,
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+                "auto"
+              ]
+            },
+            "revised_prompt": {
+              "type": "string",
+              "nullable": true
+            },
+            "size": {
+              "type": "string",
+              "nullable": true
+            },
+            "error": {
+              "type": "object",
+              "allowUnknown": true,
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "message": {
+                  "type": "string"
+                },
+                "param": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "type": {
+                  "type": "string"
+                },
+                "moderation_details": {
+                  "type": "object",
+                  "allowUnknown": true,
+                  "properties": {
+                    "categories": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "moderation_stage": {
+                      "type": "string",
+                      "enum": [
+                        "input",
+                        "output",
+                        "unknown"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "categories",
+                    "moderation_stage"
+                  ]
+                }
+              },
+              "required": [
+                "code",
+                "message",
+                "param",
+                "type"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "status",
+            "result"
+          ]
+        },
+        "reason": "invalid image_generation_call output item",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/type"
+            },
+            {
+              "op": "literal",
+              "value": "image_generation_call"
+            }
+          ]
+        }
+      },
+      {
+        "path": "",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "code_interpreter_call"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "in_progress",
+                "interpreting",
+                "completed",
+                "failed",
+                "incomplete"
+              ]
+            },
+            "code": {
+              "type": "string",
+              "nullable": true
+            },
+            "container_id": {
+              "type": "string"
+            },
+            "outputs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "allowUnknown": true,
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "logs",
+                      "image"
+                    ]
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              },
+              "nullable": true
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "status",
+            "code",
+            "container_id",
+            "outputs"
+          ]
+        },
+        "reason": "invalid code_interpreter_call output item",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/type"
+            },
+            {
+              "op": "literal",
+              "value": "code_interpreter_call"
+            }
+          ]
+        }
+      },
+      {
+        "path": "/action",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "search"
+              ]
+            },
+            "queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "query": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "allowUnknown": true,
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "url"
+                    ]
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "url"
+                ]
+              }
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        "reason": "invalid web search action",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "web_search_call"
+              }
+            ]
+          },
+          "then": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/action/type"
+              },
+              {
+                "op": "literal",
+                "value": "search"
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      },
+      {
+        "path": "/action",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "open_page"
+              ]
+            },
+            "url": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        "reason": "invalid web search action",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "web_search_call"
+              }
+            ]
+          },
+          "then": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/action/type"
+              },
+              {
+                "op": "literal",
+                "value": "open_page"
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      },
+      {
+        "path": "/action",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "find_in_page"
+              ]
+            },
+            "pattern": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          "required": [
+            "type",
+            "pattern"
+          ]
+        },
+        "reason": "invalid web search action",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "web_search_call"
+              }
+            ]
+          },
+          "then": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/action/type"
+              },
+              {
+                "op": "literal",
+                "value": "find_in_page"
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      },
+      {
+        "path": "/results",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "allowUnknown": true
+          }
+        },
+        "reason": "invalid file search results",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "file_search_call"
+              }
+            ]
+          },
+          "then": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/results"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "each": [
+          {
+            "path": "/attributes",
+            "schema": {
+              "type": "object",
+              "allowUnknown": true,
+              "properties": {},
+              "nullable": true
+            },
+            "reason": "file search attributes require scalar values",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/attributes"
+              }
+            },
+            "check": {
+              "op": "ref",
+              "ref": "has-scalar-search-attributes"
+            }
+          }
+        ]
+      },
+      {
+        "path": "/outputs",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "allowUnknown": true
+          }
+        },
+        "reason": "invalid interpreter outputs",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "code_interpreter_call"
+              }
+            ]
+          },
+          "then": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/outputs"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "each": [
+          {
+            "path": "/logs",
+            "schema": {
+              "type": "string"
+            },
+            "reason": "interpreter logs require text",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "logs"
+                }
+              ]
+            }
+          },
+          {
+            "path": "/url",
+            "schema": {
+              "type": "string"
+            },
+            "reason": "interpreter images require a URL",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "image"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "hosted-event-envelope": [
+      {
+        "path": "",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true,
+          "properties": {
+            "item_id": {
+              "type": "string"
+            },
+            "output_index": {
+              "type": "integer"
+            },
+            "sequence_number": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "item_id",
+            "output_index",
+            "sequence_number"
+          ]
+        },
+        "code": "upstream_contract_violation",
+        "reason": "invalid hosted output event"
+      }
+    ],
+    "stream-error-envelope": [
+      {
+        "path": "/background",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/background"
+          }
+        },
+        "schema": {
+          "type": "boolean",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected bool or null"
+      },
+      {
+        "path": "/completed_at",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/completed_at"
+          }
+        },
+        "schema": {
+          "type": "number",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected number or null"
+      },
+      {
+        "path": "/frequency_penalty",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/frequency_penalty"
+          }
+        },
+        "schema": {
+          "type": "number",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected number or null"
+      },
+      {
+        "path": "/max_output_tokens",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/max_output_tokens"
+          }
+        },
+        "schema": {
+          "type": "number",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected number or null"
+      },
+      {
+        "path": "/max_tool_calls",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/max_tool_calls"
+          }
+        },
+        "schema": {
+          "type": "number",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected number or null"
+      },
+      {
+        "path": "/metadata",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/metadata"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "nullable": true,
+          "allowUnknown": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected object or null"
+      },
+      {
+        "path": "/output_text",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/output_text"
+          }
+        },
+        "schema": {
+          "type": "string"
+        },
+        "code": "invalid_input",
+        "reason": "output_text requires a string"
+      },
+      {
+        "path": "/parallel_tool_calls",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/parallel_tool_calls"
+          }
+        },
+        "schema": {
+          "type": "boolean",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected bool or null"
+      },
+      {
+        "path": "/presence_penalty",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/presence_penalty"
+          }
+        },
+        "schema": {
+          "type": "number",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected number or null"
+      },
+      {
+        "path": "/prompt_cache_key",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/prompt_cache_key"
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected string or null"
+      },
+      {
+        "path": "/prompt_cache_retention",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/prompt_cache_retention"
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected string or null"
+      },
+      {
+        "path": "/reasoning",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/reasoning"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "nullable": true,
+          "allowUnknown": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected object or null"
+      },
+      {
+        "path": "/safety_identifier",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/safety_identifier"
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected string or null"
+      },
+      {
+        "path": "/service_tier",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/service_tier"
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected string or null"
+      },
+      {
+        "path": "/store",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/store"
+          }
+        },
+        "schema": {
+          "type": "boolean",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected bool or null"
+      },
+      {
+        "path": "/temperature",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/temperature"
+          }
+        },
+        "schema": {
+          "type": "number",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected number or null"
+      },
+      {
+        "path": "/text",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/text"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "nullable": true,
+          "allowUnknown": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected object or null"
+      },
+      {
+        "path": "/tools",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/tools"
+          }
+        },
+        "schema": {
+          "type": "array",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected array or null"
+      },
+      {
+        "path": "/top_logprobs",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/top_logprobs"
+          }
+        },
+        "schema": {
+          "type": "number",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected number or null"
+      },
+      {
+        "path": "/top_p",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/top_p"
+          }
+        },
+        "schema": {
+          "type": "number",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected number or null"
+      },
+      {
+        "path": "/truncation",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/truncation"
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected string or null"
+      },
+      {
+        "path": "/user",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/user"
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "code": "invalid_input",
+        "reason": "invalid response metadata type; expected string or null"
+      }
+    ],
+    "response-frame-token-counts": [
+      {
+        "path": "/response/usage/input_tokens",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/response/usage/input_tokens"
+          }
+        },
+        "schema": {
+          "type": "integer"
+        },
+        "code": "upstream_contract_violation",
+        "reason": "token count must be a nonnegative integer",
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-count"
+        }
+      },
+      {
+        "path": "/response/usage/output_tokens",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/response/usage/output_tokens"
+          }
+        },
+        "schema": {
+          "type": "integer"
+        },
+        "code": "upstream_contract_violation",
+        "reason": "token count must be a nonnegative integer",
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-count"
+        }
+      },
+      {
+        "path": "/response/usage/total_tokens",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/response/usage/total_tokens"
+          }
+        },
+        "schema": {
+          "type": "integer"
+        },
+        "code": "upstream_contract_violation",
+        "reason": "token count must be a nonnegative integer",
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-count"
+        }
+      }
+    ],
+    "reasoning-summary-part": [
+      {
+        "path": "/output_index",
+        "schema": {
+          "type": "integer"
+        },
+        "code": "upstream_contract_violation",
+        "reason": "stream index must be a nonnegative integer",
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-count"
+        }
+      },
+      {
+        "path": "/summary_index",
+        "schema": {
+          "type": "integer"
+        },
+        "code": "upstream_contract_violation",
+        "reason": "stream index must be a nonnegative integer",
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-count"
+        }
+      },
+      {
+        "path": "/part",
+        "schema": {
+          "type": "object",
+          "required": [
+            "type",
+            "text"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "summary_text"
+              ]
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "allowUnknown": true
+        },
+        "code": "upstream_contract_violation",
+        "reason": "summary part requires summary_text and text"
+      }
+    ]
   }
 }

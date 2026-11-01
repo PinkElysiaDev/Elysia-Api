@@ -80,10 +80,10 @@ func TestWireAssertionReasonUsesFailedContainer(t *testing.T) {
 	compiledAssertion := validator.assertions[0].each[0]
 	cause := errors.New("original validation failure")
 	state := evaluation{ctx: t.Context(), input: parseTestValue(t, `{}`), root: parseTestValue(t, `{"label":"fixture"}`), budget: &evaluationBudget{limits: DefaultLimits()}}
-	if err := compiledAssertion.failure(state, "/items/0/value", cause); !errors.Is(err, cause) {
+	if err := compiledAssertion.failure(state, "/items/0/value", cause, EncodeEvent); !errors.Is(err, cause) {
 		t.Fatal("failed diagnostic expression discarded the original cause", err)
 	}
-	if err := compiledAssertion.failure(state, "/items/0/value", context.Canceled); err != context.Canceled {
+	if err := compiledAssertion.failure(state, "/items/0/value", context.Canceled, EncodeEvent); err != context.Canceled {
 		t.Fatal("diagnostic expression replaced cancellation", err)
 	}
 }

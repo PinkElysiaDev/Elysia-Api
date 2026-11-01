@@ -50,6 +50,11 @@ func (reference compiledReference) matches(scope expressionScope) bool {
 		maps.Equal(reference.trackers, scope.trackerChannels) && maps.Equal(reference.namespaces, scope.outputNamespaces)
 }
 
+func captureReferenceScope(scope expressionScope) compiledReference {
+	return compiledReference{bindings: scope.bindings, stateSlots: scope.stateSlots, indexes: scope.indexes,
+		streamIndexes: scope.streamIndexes, trackers: maps.Clone(scope.trackerChannels), namespaces: scope.outputNamespaces}
+}
+
 func (compiler *expressionCompiler) compileReference(name, path string, scope expressionScope, depth int) (*compiledExpression, error) {
 	definition, exists := compiler.references[name]
 	if !exists || compiler.resolving[name] {
@@ -63,7 +68,7 @@ func (compiler *expressionCompiler) compileReference(name, path string, scope ex
 		}
 		maximumDepth := depth + reference.expansionDepth
 		if maximumDepth > compiler.limits.Depth {
-			return nil, fmt.Errorf("%s: referenced program exceeds expression depth limit", path)
+			return nil, fmt.Errorf("%s: referenced program exceeds expression depth limit (%d/%d)", path, maximumDepth, compiler.limits.Depth)
 		}
 		compiler.maximumDepth = max(compiler.maximumDepth, maximumDepth)
 		compiler.includeReferences(reference.dependencies)
@@ -83,9 +88,8 @@ func (compiler *expressionCompiler) compileReference(name, path string, scope ex
 	if err != nil {
 		return nil, err
 	}
-	reference := compiledReference{expression: compiled, expansionDepth: expansionDepth, dependencies: sortedKeys(dependencies),
-		bindings: scope.bindings, stateSlots: scope.stateSlots, indexes: scope.indexes,
-		streamIndexes: scope.streamIndexes, trackers: maps.Clone(scope.trackerChannels), namespaces: scope.outputNamespaces}
+	reference := captureReferenceScope(scope)
+	reference.expression, reference.expansionDepth, reference.dependencies = compiled, expansionDepth, sortedKeys(dependencies)
 	if compiler.instances == nil {
 		compiler.instances = make(map[referenceContext][]compiledReference)
 	}

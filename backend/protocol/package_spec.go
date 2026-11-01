@@ -15,6 +15,7 @@ type ProtocolSpec struct {
 	WireVersion string                           `json:"wireVersion"`
 	Documents   map[string]WireContractSpec      `json:"documents"`
 	Expressions map[string]Expression            `json:"expressions,omitempty"`
+	Constraints map[string][]WireAssertion       `json:"constraints,omitempty"`
 	Operations  map[string]ProtocolOperationSpec `json:"operations"`
 }
 
@@ -93,6 +94,7 @@ func (spec ProtocolSpec) compile(limits Limits) (compiledProtocolSpec, error) {
 		operationSchemas:  make(map[string]*runtimeValueSchema, len(spec.Operations)),
 	}
 	expressions := newExpressionCompiler(limits, spec.Expressions)
+	expressions.constraints = newWireConstraintCompiler(spec.Constraints)
 	documentCompiler := protocolDocumentCompiler{spec: spec, compiled: &compiled, expressions: expressions, visiting: map[string]bool{}, depths: map[string]int{}}
 	for _, name := range sortedKeys(spec.Documents) {
 		if err := documentCompiler.compile(name, 1); err != nil {
@@ -102,6 +104,11 @@ func (spec ProtocolSpec) compile(limits Limits) (compiledProtocolSpec, error) {
 	for _, name := range sortedKeys(spec.Expressions) {
 		if !expressions.used[name] {
 			return compiledProtocolSpec{}, fmt.Errorf("/spec/expressions/%s: unreachable expression", escapePointer(name))
+		}
+	}
+	for _, name := range sortedKeys(spec.Constraints) {
+		if !expressions.constraints.used[name] {
+			return compiledProtocolSpec{}, fmt.Errorf("/spec/constraints/%s: unreachable constraint", escapePointer(name))
 		}
 	}
 	for _, name := range sortedKeys(spec.Operations) {

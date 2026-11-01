@@ -240,10 +240,7 @@ func (state *packageStreamValidation) finish() error {
 	return nil
 }
 func (state *packageStreamValidation) issue(path, reason string, cause error) error {
-	code := ConversionRejected
-	if state.direction == DecodeEvent {
-		code = UpstreamContractViolation
-	}
+	code := wireBoundaryCode(state.direction)
 	var limit *ResourceLimitError
 	if errors.As(cause, &limit) {
 		code = LimitExceeded

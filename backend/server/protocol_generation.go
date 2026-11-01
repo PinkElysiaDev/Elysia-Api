@@ -135,8 +135,10 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 			return nil, err
 		}
 		if record != nil {
-			if err := observeHostedTools(record, candidate.compiled, body); err != nil {
-				return nil, err
+			if candidate.compiled.CoreVersion() != protocol.ProtocolCoreVersion {
+				if err := observeLegacyHostedTools(record, candidate.compiled, body); err != nil {
+					return nil, err
+				}
 			}
 			updateRecordProtocolUsage(record, result.Usage)
 		}

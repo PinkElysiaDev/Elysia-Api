@@ -21336,6 +21336,144 @@
         "model": "m"
       },
       "sequence": true
+    },
+    {
+      "id": "declared-stream-text-decode",
+      "direction": "decode_event",
+      "capabilities": [
+        "text",
+        "usage"
+      ],
+      "input": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "hi"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": []
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 2,
+            "totalTokenCount": 22,
+            "cachedContentTokenCount": 15
+          }
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "item": {
+            "kind": "text"
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
     }
   ],
   "agent": {

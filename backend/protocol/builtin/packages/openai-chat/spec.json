@@ -162,6 +162,70 @@
               },
               "code": "upstream_contract_violation",
               "reason": "expected JSON object"
+            },
+            {
+              "path": "/message",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "upstream_contract_violation",
+              "reason": "response choice requires a message object"
+            },
+            {
+              "path": "/message/content",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/message/content"
+                }
+              },
+              "schema": {
+                "type": "string",
+                "nullable": true
+              },
+              "code": "upstream_contract_violation",
+              "reason": "response message content does not match its declared output shape"
+            },
+            {
+              "path": "/message/audio",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/message/audio"
+                }
+              },
+              "schema": {
+                "type": "object",
+                "nullable": true,
+                "required": [
+                  "id",
+                  "data",
+                  "expires_at",
+                  "transcript"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "data": {
+                    "type": "string"
+                  },
+                  "expires_at": {
+                    "type": "integer"
+                  },
+                  "transcript": {
+                    "type": "string"
+                  }
+                },
+                "allowUnknown": true
+              },
+              "code": "upstream_contract_violation",
+              "reason": "response message audio does not match its declared output shape"
             }
           ]
         }
@@ -520,6 +584,69 @@
                     "value": "assistant"
                   }
                 ]
+              }
+            },
+            {
+              "path": "/message/content",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/message/content"
+                }
+              },
+              "schema": {
+                "type": "string",
+                "nullable": true
+              },
+              "code": "conversion_rejected",
+              "reason": "response message content does not match its declared output shape",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              }
+            },
+            {
+              "path": "/message/audio",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/message/audio"
+                }
+              },
+              "schema": {
+                "type": "object",
+                "nullable": true,
+                "required": [
+                  "id",
+                  "data",
+                  "expires_at",
+                  "transcript"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "data": {
+                    "type": "string"
+                  },
+                  "expires_at": {
+                    "type": "integer"
+                  },
+                  "transcript": {
+                    "type": "string"
+                  }
+                },
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "response message audio does not match its declared output shape",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
               }
             }
           ],

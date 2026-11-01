@@ -39,7 +39,7 @@ func TestResponsesPackageProgressSourceStream(t *testing.T) {
 		{"metadata-before-created", []string{`{"type":"response.in_progress","response":{"metadata":{"label":"pending"}}}`, progressStart, progressEnd}},
 		{"usage-metadata-tail", []string{progressStart, progressEnd, `{"type":"response.in_progress","sequence_number":11,"response":{"id":"r","usage":{},"service_tier":"default"}}`}},
 		{"ordinary-update-does-not-decode-output", []string{progressStart,
-			`{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","output":42,"error":{"message":"not a failure event"},"usage":{"input_tokens":3}}}`, progressEnd}},
+			`{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","output":[],"error":{"message":"not a failure event"},"usage":{"input_tokens":3}}}`, progressEnd}},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
 			if fixture.name == "hosted-usage" {
@@ -197,6 +197,7 @@ func TestResponsesPackageProgressRejectsInvalidUpdates(t *testing.T) {
 		{"cumulative-and-hosted-usage", []string{`{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","usage":{"output_tokens":2}}}`},
 			`{"type":"response.in_progress","sequence_number":2,"response":{"id":"r","usage":{"output_tokens_details":{"reasoning_tokens":3}},"tool_usage":{"web_search":{"num_requests":null}}}}`},
 		{"hosted-counter", nil, `{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","tool_usage":{"web_search":{"num_requests":-1}}}}`},
+		{"nonarray-output", nil, `{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","output":42}}`},
 		{"invalid-usage-tail", []string{progressEnd}, `{"type":"response.in_progress","sequence_number":11,"response":{"id":"r","usage":{"output_tokens":null}}}`},
 		{"metadata-after-terminal", []string{progressEnd}, `{"type":"response.in_progress","sequence_number":11,"response":{"id":"r","metadata":{"label":"late"}}}`},
 	} {

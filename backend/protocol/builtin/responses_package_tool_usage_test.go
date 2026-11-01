@@ -1,7 +1,6 @@
 package builtin
 
 import (
-	"bytes"
 	"errors"
 	"strings"
 	"testing"
@@ -35,12 +34,17 @@ func TestResponsesPackageToolUsage(t *testing.T) {
 				want, _ := p.EncodeValue(oldResponse)
 				got, _ := p.EncodeValue(newResponse)
 				checkPackageMigration(t, want.Bytes(), got.Bytes(), nil, nil, packageMigrationGap{})
-				oldResponse.SchemaVersion = legacy.CoreVersion()
-				oldResponse.Native, newResponse.Native = nil, nil
-				oldWire, oldErr := legacy.EncodeResponse(t.Context(), oldResponse, p.EvaluationContext{})
+				newResponse.Native = nil
 				newWire, newErr := draft.EncodeResponse(t.Context(), newResponse, p.EvaluationContext{})
-				if oldErr != nil || newErr != nil || !bytes.Equal(oldWire, newWire) {
-					t.Fatalf("hosted-tool ledger reconstruction changed: old=%s new=%s errors=%v / %v", oldWire, newWire, oldErr, newErr)
+				if newErr != nil {
+					t.Fatal(newErr)
+				}
+				// Required output envelopes are explicit; a tool-only ledger must
+				// not manufacture an empty model-usage object.
+				expected := strings.Replace(raw, `"id":"r"`, `"id":"r","object":"response"`, 1)
+				expected = strings.Replace(expected, `"text":"OK"`, `"text":"OK","annotations":[]`, 1)
+				if !equalAgentMigrationValues(t, testValue(t, string(newWire)), testValue(t, expected)) {
+					t.Fatalf("reported tool/model ledgers or output changed: expected=%s actual=%s", expected, newWire)
 				}
 			}
 		})

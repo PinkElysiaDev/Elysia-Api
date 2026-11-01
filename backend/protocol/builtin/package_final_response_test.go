@@ -67,7 +67,8 @@ func chatFinalResponseCases() []finalWireCase {
 	return []finalWireCase{
 		{"message", response, acceptedFinalWire},
 		{"error-bypasses-success", `{"error":{},"object":false,"choices":null}`, acceptedFinalWire},
-		{"unknown-message-field", edit(`"content":null`, `"content":42,"vendor":true`), acceptedFinalWire},
+		{"unknown-message-field", edit(`"content":null`, `"content":null,"vendor":true`), acceptedFinalWire},
+		{"invalid-content-with-extension", edit(`"content":null`, `"content":42,"vendor":true`), "/choices/0/message/content"},
 		{"null-error", edit(`"id":"r"`, `"error":null,"id":"r"`), acceptedFinalWire},
 		{"whitespace-string", edit(`"id":"r"`, `"id":" "`), acceptedFinalWire},
 		{"object-before-id", edit(`"id":"r","object":"chat.completion"`, `"id":null,"object":"other"`), "/object"},

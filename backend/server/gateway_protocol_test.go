@@ -118,6 +118,11 @@ var fixturePresetReports sync.Map
 
 func setupGatewayModel(t *testing.T, server *Server, upstream *protocol.Compiled, url string) {
 	t.Helper()
+	setupGatewayModelWithCapabilities(t, server, upstream, url, upstream.DeclaredCapabilities())
+}
+
+func setupGatewayModelWithCapabilities(t *testing.T, server *Server, upstream *protocol.Compiled, url string, capabilities protocol.CapabilitySet) {
+	t.Helper()
 	source := storage.ModelSource{ID: "gateway-source", Name: "gateway-source", BaseURL: url, Platform: "custom:" + upstream.Identity().DefinitionID, Enabled: true}
 	if err := server.store.UpsertSource(t.Context(), source); err != nil {
 		t.Fatal(err)
@@ -138,7 +143,7 @@ func setupGatewayModel(t *testing.T, server *Server, upstream *protocol.Compiled
 			transports = append(transports, operation.Transport)
 		}
 	}
-	binding := storage.ProtocolBinding{Kind: "source", SourceID: source.ID, Binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: transports}}
+	binding := storage.ProtocolBinding{Kind: "source", SourceID: source.ID, Binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: capabilities, Transports: transports}}
 	binding.Combinations = verifyFixtureBinding(t, server, binding)
 	if err := server.store.SaveProtocolBinding(t.Context(), binding); err != nil {
 		t.Fatal(err)

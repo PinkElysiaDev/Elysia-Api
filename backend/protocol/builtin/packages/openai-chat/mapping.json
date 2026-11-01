@@ -4252,6 +4252,20 @@
                             "value": "refusal"
                           }
                         ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/kind"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "audio"
+                          }
+                        ]
                       }
                     ]
                   }
@@ -4515,6 +4529,10 @@
                 "path": "/0/payload",
                 "name": "refusals"
               }
+            },
+            "audio": {
+              "op": "ref",
+              "ref": "encode-response-audio"
             }
           }
         },
@@ -6949,7 +6967,8 @@
                           "refusal",
                           "cache_control",
                           "tool_call_id",
-                          "name"
+                          "name",
+                          "audio"
                         ]
                       },
                       "body": {
@@ -7035,7 +7054,8 @@
                           "tool_calls",
                           "reasoning_content",
                           "refusal",
-                          "cache_control"
+                          "cache_control",
+                          "audio"
                         ]
                       },
                       "body": {
@@ -7386,6 +7406,40 @@
                                 "path": "/refusal",
                                 "name": "message"
                               }
+                            }
+                          }
+                        ]
+                      },
+                      "otherwise": {
+                        "op": "array",
+                        "items": []
+                      }
+                    },
+                    {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/audio",
+                          "name": "message"
+                        }
+                      },
+                      "then": {
+                        "op": "array",
+                        "items": [
+                          {
+                            "op": "visit",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/audio",
+                              "name": "message"
+                            },
+                            "body": {
+                              "op": "ref",
+                              "ref": "decode-response-audio"
                             }
                           }
                         ]
@@ -23878,6 +23932,359 @@
           "name": "choice-probabilities"
         }
       }
+    },
+    "decode-response-audio": {
+      "op": "let",
+      "name": "audio-source",
+      "source": {
+        "op": "capture_source",
+        "source": {
+          "op": "read",
+          "from": "item",
+          "path": ""
+        }
+      },
+      "body": {
+        "op": "object",
+        "fields": {
+          "kind": {
+            "op": "literal",
+            "value": "audio"
+          },
+          "payload": {
+            "op": "object",
+            "fields": {
+              "data": {
+                "op": "read",
+                "from": "item",
+                "path": "/data"
+              }
+            }
+          },
+          "resources": {
+            "op": "array",
+            "items": [
+              {
+                "op": "object",
+                "fields": {
+                  "kind": {
+                    "op": "literal",
+                    "value": "audio"
+                  },
+                  "id": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/id"
+                  },
+                  "scope": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/scope",
+                    "name": "audio-source"
+                  }
+                }
+              }
+            ]
+          },
+          "attributes": {
+            "op": "let",
+            "name": "audio-extra",
+            "source": {
+              "op": "project",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": ""
+              },
+              "keys": [
+                "id",
+                "data",
+                "expires_at",
+                "transcript"
+              ],
+              "policy": "exclude"
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "transcript": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/transcript"
+                },
+                "expiresAt": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/expires_at"
+                },
+                "wire:openai_chat": {
+                  "op": "if",
+                  "when": {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "audio-extra"
+                        },
+                        {
+                          "op": "object",
+                          "fields": {}
+                        }
+                      ]
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "audio-extra"
+                  }
+                }
+              }
+            }
+          },
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "path": "",
+            "name": "audio-source"
+          },
+          "native": {
+            "op": "capture_native",
+            "source": {
+              "op": "read",
+              "from": "item",
+              "path": ""
+            }
+          }
+        }
+      }
+    },
+    "encode-response-audio": {
+      "op": "let",
+      "name": "audio-items",
+      "source": {
+        "op": "filter",
+        "source": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "item",
+              "path": "/children"
+            }
+          },
+          "then": {
+            "op": "read",
+            "from": "item",
+            "path": "/children"
+          },
+          "otherwise": {
+            "op": "array",
+            "items": []
+          }
+        },
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "item",
+              "path": "/kind"
+            },
+            {
+              "op": "literal",
+              "value": "audio"
+            }
+          ]
+        }
+      },
+      "body": {
+        "op": "if",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "path": "/0",
+            "name": "audio-items"
+          }
+        },
+        "then": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "/1",
+              "name": "audio-items"
+            }
+          },
+          "then": {
+            "op": "reject",
+            "path": "/content",
+            "reason": "one Chat message cannot represent multiple generated audio artifacts",
+            "diagnostic": {
+              "code": "unsupported_capability",
+              "stage": "evaluate"
+            }
+          },
+          "otherwise": {
+            "op": "let",
+            "name": "audio-item",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "/0",
+              "name": "audio-items"
+            },
+            "body": {
+              "op": "let",
+              "name": "audio-resources",
+              "source": {
+                "op": "filter",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/resources",
+                      "name": "audio-item"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/resources",
+                    "name": "audio-item"
+                  },
+                  "otherwise": {
+                    "op": "array",
+                    "items": []
+                  }
+                },
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/kind"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "audio"
+                    }
+                  ]
+                }
+              },
+              "body": {
+                "op": "if",
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/0",
+                        "name": "audio-resources"
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/1",
+                          "name": "audio-resources"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "merge",
+                  "policy": "reject",
+                  "items": [
+                    {
+                      "op": "object",
+                      "fields": {
+                        "id": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/0/id",
+                          "name": "audio-resources"
+                        },
+                        "data": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/payload/data",
+                          "name": "audio-item"
+                        },
+                        "transcript": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/attributes/transcript",
+                          "name": "audio-item"
+                        },
+                        "expires_at": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/attributes/expiresAt",
+                          "name": "audio-item"
+                        }
+                      }
+                    },
+                    {
+                      "op": "if",
+                      "when": {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/attributes/wire:openai_chat",
+                          "name": "audio-item"
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/attributes/wire:openai_chat",
+                        "name": "audio-item"
+                      },
+                      "otherwise": {
+                        "op": "object",
+                        "fields": {}
+                      }
+                    }
+                  ]
+                },
+                "otherwise": {
+                  "op": "reject",
+                  "path": "/content",
+                  "reason": "generated Chat audio requires one scoped audio reference",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "evaluate"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
 },
   "directions": {
@@ -24243,9 +24650,7 @@
     "cache.keys": true,
     "cache.retention": true,
     "cache.options": true,
-    "images": true,
     "audio": true,
-    "documents": true,
     "reasoning": true
   }
 },
@@ -24337,9 +24742,7 @@
     "cache.keys": true,
     "cache.retention": true,
     "cache.options": true,
-    "images": true,
     "audio": true,
-    "documents": true,
     "reasoning": true
   }
 ,
@@ -34842,6 +35245,373 @@
             }
           },
           "created": 1
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "declared-generated-audio-decode",
+      "direction": "decode_response",
+      "capabilities": [
+        "audio"
+      ],
+      "input": {
+        "id": "chatcmpl_fixture_audio",
+        "object": "chat.completion",
+        "created": 1793481600,
+        "model": "audio-fixture",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": null,
+              "refusal": null,
+              "audio": {
+                "id": "audio_fixture",
+                "data": "YQ==",
+                "expires_at": 1793485200,
+                "transcript": "hello"
+              }
+            },
+            "finish_reason": "stop",
+            "logprobs": null
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 8,
+          "completion_tokens": 4,
+          "total_tokens": 12
+        }
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "id": "chatcmpl_fixture_audio",
+        "model": "audio-fixture",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": null
+              },
+              {
+                "kind": "audio",
+                "payload": {
+                  "data": "YQ=="
+                },
+                "resources": [
+                  {
+                    "kind": "audio",
+                    "id": "audio_fixture",
+                    "scope": {
+                      "provider": "fixture",
+                      "account": "fixture",
+                      "model": "audio-fixture"
+                    }
+                  }
+                ],
+                "attributes": {
+                  "transcript": "hello",
+                  "expiresAt": 1793485200
+                },
+                "source": {
+                  "protocol": {
+                    "family": "openai_chat",
+                    "wireVersion": "v2",
+                    "definitionId": "openai-chat-completions",
+                    "revision": "2.2.7"
+                  },
+                  "direction": "decode_response",
+                  "path": "/choices/0/message/audio",
+                  "scope": {
+                    "provider": "fixture",
+                    "account": "fixture",
+                    "model": "audio-fixture"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop",
+          "created_at": 1793481600
+        },
+        "usage": {
+          "input": {
+            "count": 8,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 4,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 12,
+            "origin": "observed"
+          }
+        }
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "audio-fixture"
+      }
+    },
+    {
+      "id": "declared-generated-audio-encode",
+      "direction": "encode_response",
+      "capabilities": [
+        "audio"
+      ],
+      "input": {
+        "schemaVersion": 2,
+        "id": "chatcmpl_fixture_audio",
+        "model": "audio-fixture",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": null
+              },
+              {
+                "kind": "audio",
+                "payload": {
+                  "data": "YQ=="
+                },
+                "resources": [
+                  {
+                    "kind": "audio",
+                    "id": "audio_fixture",
+                    "scope": {
+                      "provider": "fixture",
+                      "account": "fixture",
+                      "model": "audio-fixture"
+                    }
+                  }
+                ],
+                "attributes": {
+                  "transcript": "hello",
+                  "expiresAt": 1793485200
+                },
+                "source": {
+                  "protocol": {
+                    "family": "openai_chat",
+                    "wireVersion": "v2",
+                    "definitionId": "openai-chat-completions",
+                    "revision": "2.2.7"
+                  },
+                  "direction": "decode_response",
+                  "path": "/choices/0/message/audio",
+                  "scope": {
+                    "provider": "fixture",
+                    "account": "fixture",
+                    "model": "audio-fixture"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop",
+          "created_at": 1793481600
+        },
+        "usage": {
+          "input": {
+            "count": 8,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 4,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 12,
+            "origin": "observed"
+          }
+        }
+      },
+      "expected": {
+        "id": "chatcmpl_fixture_audio",
+        "object": "chat.completion",
+        "created": 1793481600,
+        "model": "audio-fixture",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": null,
+              "audio": {
+                "id": "audio_fixture",
+                "data": "YQ==",
+                "expires_at": 1793485200,
+                "transcript": "hello"
+              }
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 8,
+          "completion_tokens": 4,
+          "total_tokens": 12
+        }
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "audio-fixture"
+      }
+    },
+    {
+      "id": "declared-stream-text-decode",
+      "direction": "decode_event",
+      "capabilities": [
+        "text",
+        "usage"
+      ],
+      "input": [
+        {
+          "id": "r",
+          "model": "m",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "role": "assistant",
+                "content": "hi"
+              }
+            }
+          ],
+          "created": 1,
+          "object": "chat.completion.chunk"
+        },
+        {
+          "choices": [
+            {
+              "index": 0,
+              "delta": {},
+              "finish_reason": "stop"
+            }
+          ],
+          "created": 1,
+          "object": "chat.completion.chunk",
+          "id": "r",
+          "model": "m"
+        },
+        {
+          "choices": [],
+          "usage": {
+            "prompt_tokens": 20,
+            "completion_tokens": 2,
+            "total_tokens": 22,
+            "prompt_tokens_details": {
+              "cached_tokens": 15
+            }
+          },
+          "created": 1,
+          "object": "chat.completion.chunk",
+          "id": "r",
+          "model": "m"
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "item": {
+            "kind": "text"
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop",
+              "created_at": 1
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
         }
       ],
       "context": {

@@ -10,7 +10,7 @@ func collectedContainers(nodes []Node) []Node {
 		n.Native, n.Source = nil, nil
 		n.Metadata = comparableMetadata(n.Metadata)
 		n.Children = collectedContainers(n.Children)
-		if n.Kind != MessageNode {
+		if n.Kind != MessageNode && n.Kind != ServerToolNode {
 			n.ID, n.Status = Value{}, Value{}
 		}
 		if n.ReasoningContent != nil {

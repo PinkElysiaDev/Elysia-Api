@@ -27421,6 +27421,316 @@
         "model": "m"
       },
       "sequence": true
+    },
+    {
+      "id": "declared-history-retention-decode",
+      "direction": "decode_request",
+      "capabilities": [
+        "reasoning.history_retention"
+      ],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "hello"
+              }
+            ]
+          }
+        ],
+        "max_tokens": 10,
+        "context_management": {
+          "edits": [
+            {
+              "type": "clear_thinking_20251015",
+              "keep": "all"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        },
+        "reasoning": {
+          "historyRetention": "all"
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "declared-history-retention-encode",
+      "direction": "encode_request",
+      "capabilities": [
+        "reasoning.history_retention"
+      ],
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        },
+        "reasoning": {
+          "historyRetention": "all"
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "hello"
+              }
+            ]
+          }
+        ],
+        "max_tokens": 10,
+        "context_management": {
+          "edits": [
+            {
+              "type": "clear_thinking_20251015",
+              "keep": "all"
+            }
+          ]
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "declared-stream-text-decode",
+      "direction": "decode_event",
+      "capabilities": [
+        "text",
+        "usage"
+      ],
+      "input": [
+        {
+          "type": "message_start",
+          "message": {
+            "id": "r",
+            "model": "m",
+            "content": [],
+            "usage": {
+              "input_tokens": 0,
+              "output_tokens": 0
+            },
+            "type": "message",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null
+          }
+        },
+        {
+          "type": "content_block_start",
+          "index": 0,
+          "content_block": {
+            "type": "text",
+            "text": ""
+          }
+        },
+        {
+          "type": "content_block_delta",
+          "index": 0,
+          "delta": {
+            "type": "text_delta",
+            "text": "hi"
+          }
+        },
+        {
+          "type": "content_block_stop",
+          "index": 0
+        },
+        {
+          "type": "message_delta",
+          "delta": {
+            "stop_reason": "end_turn"
+          },
+          "usage": {
+            "input_tokens": 5,
+            "output_tokens": 2,
+            "cache_read_input_tokens": 15
+          }
+        },
+        {
+          "type": "message_stop"
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 0,
+              "origin": "inferred"
+            },
+            "details": {
+              "uncached_input_tokens": {
+                "count": 0,
+                "origin": "observed"
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "item:0",
+          "index": 0,
+          "item": {
+            "kind": "text",
+            "payload": "",
+            "source": {}
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "item:0",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "item:0",
+          "index": 0
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "inferred"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            },
+            "details": {
+              "uncached_input_tokens": {
+                "count": 5,
+                "origin": "observed"
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
     }
   ],
   "agent": {

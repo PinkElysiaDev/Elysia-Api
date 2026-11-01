@@ -81,7 +81,7 @@ func (frame *streamActionFrame) consume(actions []compiledPackageStreamEvent, in
 			}
 			var err error
 			if action.isAssertion {
-				err = validateWireAssertions(action.assertions, input, path)
+				err = validateWireAssertions(action.assertions, input, path, frame.state.direction)
 			} else {
 				err = frame.stageSlots(action.updates, input)
 			}

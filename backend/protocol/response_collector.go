@@ -22,6 +22,7 @@ type ResponseCollector struct {
 	topKeys                                     []string
 	ordinals                                    []int
 	containers                                  bool
+	hasServerTools                              bool
 	texts                                       map[string]*collectedText
 	metadata                                    map[string]int
 	metadataDeltas                              map[string][]*collectedMetadata
@@ -41,7 +42,12 @@ type collectedText struct {
 func (collector *ResponseCollector) materializeText(key string) {
 	text := collector.texts[key]
 	if text != nil && text.dirty {
-		collector.item(key).Payload = StringValue(text.String())
+		item := collector.item(key)
+		if item.Kind == ServerToolNode {
+			item.Input.Value = StringValue(text.String())
+		} else {
+			item.Payload = StringValue(text.String())
+		}
 		text.dirty = false
 	}
 }
@@ -97,6 +103,9 @@ func (collector *ResponseCollector) CompletedNode(event Event) (Node, int, bool)
 	}
 	collector.materializeText(key)
 	collector.materializeItemMetadata(key)
+	if node.Kind == ServerToolNode {
+		return cloneServerTool(node), ordinal, true
+	}
 	return CanonicalReasoning(cloneNodes([]Node{*node})[0]), ordinal, true
 }
 
@@ -171,6 +180,7 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 			collector.materializeMetadata()
 			id, metadata := collector.response.ID, collector.response.Metadata
 			collector.response = *event.Response
+			collector.ownServerResponseContent()
 			if collector.response.ID.IsZero() {
 				collector.response.ID = id
 			}
@@ -211,6 +221,7 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 			content, id, model := collector.response.Content, collector.response.ID, collector.response.Model
 			attributes, metadata := collector.response.Attributes, collector.response.Metadata
 			collector.response = *event.Response
+			collector.ownServerResponseContent()
 			collector.response.Attributes = copyObject(attributes)
 			for key, value := range event.Response.Attributes {
 				collector.response.Attributes[key] = value
@@ -293,7 +304,9 @@ func collectedOutput(nodes []Node) []Node {
 		node.Native = nil
 		node.Source = nil
 		node.Metadata = comparableMetadata(node.Metadata)
-		node.ID, node.Status = Value{}, Value{}
+		if node.Kind != ServerToolNode {
+			node.ID, node.Status = Value{}, Value{}
+		}
 		node.Children = comparableNodes(node.Children)
 		if node.ReasoningContent != nil {
 			node.ReasoningContent = comparableNodes(node.ReasoningContent)
@@ -311,28 +324,14 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 	if err != nil {
 		return "", "", err
 	}
+	if collector.replay.items[key].kind == ServerToolNode {
+		return collector.collectServerTool(key, event)
+	}
 	if event.Type == ItemStarted {
-		parent := collector.replay.items[key].parent
 		node := *event.Item
 		node.Children = cloneNodes(node.Children)
 		node.ReasoningContent = cloneNodes(node.ReasoningContent)
-		if parent == "" {
-			collector.items[key] = collectedPosition{index: len(collector.response.Content)}
-			for len(collector.topKeys) < len(collector.response.Content) {
-				collector.topKeys = append(collector.topKeys, "")
-			}
-			collector.topKeys = append(collector.topKeys, key)
-			collector.response.Content = append(collector.response.Content, node)
-		} else {
-			parentNode := collector.item(parent)
-			children := &parentNode.Children
-			if event.Collection == "reasoning_content" {
-				children = &parentNode.ReasoningContent
-			}
-			collector.items[key] = collectedPosition{parent: parent, collection: event.Collection, index: len(*children)}
-			*children = append(*children, node)
-		}
-		collector.containers = collector.containers || event.Item.Kind == MessageNode
+		collector.registerItem(key, event, node)
 		collector.texts[key] = &collectedText{}
 	}
 	item := collector.item(key)
@@ -451,6 +450,27 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 		item.Input = &ToolInput{Kind: item.Input.Kind, Value: input}
 	}
 	return item.Kind, "", nil
+}
+
+func (collector *ResponseCollector) registerItem(key string, event Event, node Node) {
+	parent := collector.replay.items[key].parent
+	if parent == "" {
+		collector.items[key] = collectedPosition{index: len(collector.response.Content)}
+		for len(collector.topKeys) < len(collector.response.Content) {
+			collector.topKeys = append(collector.topKeys, "")
+		}
+		collector.topKeys = append(collector.topKeys, key)
+		collector.response.Content = append(collector.response.Content, node)
+	} else {
+		parentNode := collector.item(parent)
+		children := &parentNode.Children
+		if event.Collection == "reasoning_content" {
+			children = &parentNode.ReasoningContent
+		}
+		collector.items[key] = collectedPosition{parent: parent, collection: event.Collection, index: len(*children)}
+		*children = append(*children, node)
+	}
+	collector.containers = collector.containers || node.Kind == MessageNode
 }
 
 func (collector *ResponseCollector) accountItemMetadata(key string, node Node) error {

@@ -165,6 +165,9 @@ func (replay *EventReplay) consumeItem(event Event) error {
 	if item.kind == ToolCallNode {
 		return replay.consumeTool(key, item, event)
 	}
+	if item.kind == ServerToolNode {
+		return replay.consumeServerTool(key, item, event)
+	}
 	if event.Item != nil && item.reasoningForm != "" {
 		if err := replay.trackReasoningSnapshot(key, item, event.Item); err != nil {
 			return err
@@ -331,7 +334,7 @@ func (replay *EventReplay) itemKey(event Event) (string, error) {
 
 func (replay *EventReplay) completeTools() error {
 	for key, item := range replay.items {
-		if (item.kind == MessageNode || item.reasoningForm != "") && !item.isFinished {
+		if (item.kind == MessageNode || item.kind == ServerToolNode || item.reasoningForm != "") && !item.isFinished {
 			return streamIssue(UpstreamContractViolation, "/itemId", "response finished before its container")
 		}
 		if item.kind == ToolCallNode && (item.callID == "" || item.name == "") {

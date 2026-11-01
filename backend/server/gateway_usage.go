@@ -90,7 +90,10 @@ func updateRecordProtocolUsage(record *usageRecord, usage *protocol.Usage) {
 	}
 	record.Usage.InputTokens, record.Usage.OutputTokens, record.Usage.TotalTokens, record.Usage.CacheHitTokens = count(usage.Input), count(usage.Output), count(usage.Total), count(usage.CacheRead)
 	record.Usage.CacheCreationTokens = count(usage.CacheCreation)
-	record.Usage.Estimated, record.UsageSource = false, "protocol_observed"
+	// Tool counters alone provide no observed model token count.
+	if usage.Input != nil || usage.Output != nil || usage.Total != nil || usage.CacheRead != nil || usage.CacheCreation != nil {
+		record.Usage.Estimated, record.UsageSource = false, "protocol_observed"
+	}
 	record.UsageDetail.InputTokens, record.UsageDetail.OutputTokens, record.UsageDetail.TotalTokens = count(usage.Input), count(usage.Output), count(usage.Total)
 	record.UsageDetail.CachedInputTokens, record.UsageDetail.CacheCreationInputTokens = count(usage.CacheRead), count(usage.CacheCreation)
 	for _, entry := range []struct {
@@ -125,7 +128,7 @@ func updateRecordProtocolUsage(record *usageRecord, usage *protocol.Usage) {
 	// ProtocolUsage retains its inferred origin independently of token estimates.
 }
 
-func observeHostedTools(record *usageRecord, compiled *protocol.Compiled, body []byte) error {
+func observeLegacyHostedTools(record *usageRecord, compiled *protocol.Compiled, body []byte) error {
 	if record.hostedTools == nil {
 		record.hostedTools = builtin.NewToolAccounting(compiled.ResourceLimits().StateItems)
 	}

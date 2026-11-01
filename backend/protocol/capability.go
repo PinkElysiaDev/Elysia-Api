@@ -56,6 +56,9 @@ func CheckToolAssociations(nodes []Node, limits Limits) []ConversionIssue {
 				return
 			}
 			at := fmt.Sprintf("%s/%d", path, i)
+			if n.Kind == ServerToolNode {
+				continue // Upstream execution cannot authorize a client result.
+			}
 			if n.Kind == ToolCallNode {
 				check.call(n, at)
 			}
@@ -127,7 +130,7 @@ func CheckRequest(request *Request, target Target, limits Limits) []ConversionIs
 		}
 		check.cache(tool.Cache, path+"/cache")
 	}
-	check.content(request.Content, "/content", 1)
+	check.content(request.Content, "/content", 1, false)
 	check.cache(request.Cache, "/cache")
 	check.resources(request.Resources, "/resources")
 	return check.issues
@@ -162,7 +165,7 @@ func (check *capabilityCheck) native(native *Native, path string) {
 	}
 }
 
-func (check *capabilityCheck) content(nodes []Node, path string, depth int) {
+func (check *capabilityCheck) content(nodes []Node, path string, depth int, isServerArtifact bool) {
 	if depth > check.limits.Depth {
 		check.add(LimitExceeded, path, "", "content nesting exceeds configured limit")
 		return
@@ -174,6 +177,10 @@ func (check *capabilityCheck) content(nodes []Node, path string, depth int) {
 			return
 		}
 		location := fmt.Sprintf("%s/%d", path, index)
+		if isServerArtifact && (node.Kind == ToolCallNode || node.Kind == ToolResultNode || node.Kind == ServerToolNode) {
+			check.add(InvalidInput, location+"/kind", ServerToolsCapability, "server artifacts cannot contain tool executions or client calls and results")
+			continue
+		}
 		check.metadataSnapshot(node.Metadata, location+"/metadata")
 		switch node.Kind {
 		case MessageNode:
@@ -207,6 +214,8 @@ func (check *capabilityCheck) content(nodes []Node, path string, depth int) {
 			check.call(node, location)
 		case ToolResultNode:
 			check.result(node, location)
+		case ServerToolNode:
+			check.serverTool(node, location)
 		case OpaqueNode:
 			check.require(NativeExtensionsCapability, location)
 			check.native(node.Native, location)
@@ -225,10 +234,10 @@ func (check *capabilityCheck) content(nodes []Node, path string, depth int) {
 					check.add(InvalidInput, fmt.Sprintf("%s/reasoningContent/%d", location, i), ReasoningCapability, "visible reasoning parts must contain string text")
 				}
 			}
-			check.content(node.ReasoningContent, location+"/reasoningContent", depth+1)
+			check.content(node.ReasoningContent, location+"/reasoningContent", depth+1, isServerArtifact)
 		}
 		if len(node.Children) > 0 {
-			check.content(node.Children, location+"/children", depth+1)
+			check.content(node.Children, location+"/children", depth+1, isServerArtifact || node.Kind == ServerToolNode)
 		}
 	}
 }
@@ -343,6 +352,14 @@ func (check *capabilityCheck) resources(resources []Resource, path string) {
 			check.require(SessionsCapability, location)
 		case "file", "file_id":
 			check.require(DocumentsCapability, location)
+		case "audio", "container":
+			if check.target.coreSchemaVersion() != ProtocolCoreVersion {
+				check.add(InvalidInput, location+"/kind", "", "this resource kind requires core schemaVersion 2")
+			} else if resource.Kind == "audio" {
+				check.require(AudioCapability, location)
+			} else {
+				check.require(ServerToolsCapability, location)
+			}
 		case "cache":
 			check.require(CacheResourcesCapability, location)
 		default:

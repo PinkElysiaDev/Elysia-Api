@@ -48,17 +48,21 @@ func (compiler *protocolDocumentCompiler) compile(name string, depth int) error 
 	}
 
 	references := map[string]Expression{}
+	constraints := map[string][]WireAssertion{}
 	compiler.expressions.mappingReferences = references
+	compiler.expressions.constraints.references = constraints
 	contract, resolved, err := compiler.compileContract(document, path)
 	compiler.expressions.mappingReferences = nil
+	compiler.expressions.constraints.references = nil
 	if err != nil {
 		return err
 	}
 	identity, err := EncodeValue(struct {
-		Document   WireContractSpec      `json:"document"`
-		BaseHash   string                `json:"baseHash,omitempty"`
-		References map[string]Expression `json:"references"`
-	}{document, compiler.compiled.documentHashes[document.Base], references})
+		Document    WireContractSpec           `json:"document"`
+		BaseHash    string                     `json:"baseHash,omitempty"`
+		References  map[string]Expression      `json:"references"`
+		Constraints map[string][]WireAssertion `json:"constraints,omitempty"`
+	}{document, compiler.compiled.documentHashes[document.Base], references, constraints})
 	if err != nil {
 		return err
 	}

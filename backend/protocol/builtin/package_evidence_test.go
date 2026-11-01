@@ -25,9 +25,9 @@ func TestBuiltinPackageEvidence(t *testing.T) {
 			if len(document.Mapping.Samples) == 0 {
 				t.Fatal("package has no authored generation evidence")
 			}
-			samples := make(map[string]bool, len(document.Mapping.Samples))
+			samples := make(map[string]struct{}, len(document.Mapping.Samples))
 			for _, sample := range document.Mapping.Samples {
-				samples[sample.ID] = false
+				samples[sample.ID] = struct{}{}
 			}
 			if name == "anthropic" {
 				for original, fixture := range anthropicComponentResponseSamples {
@@ -40,20 +40,11 @@ func TestBuiltinPackageEvidence(t *testing.T) {
 				}
 			}
 			report := p.Verify(t.Context(), compiled)
-			for _, check := range report.Checks {
-				if _, exists := samples[check.SampleID]; exists {
-					samples[check.SampleID] = check.Passed
-				}
-			}
-			for id, isPassed := range samples {
-				if !isPassed {
-					t.Errorf("authored fixture %s failed verification", id)
-				}
-			}
-			if t.Failed() {
+			if !report.Passed {
 				for _, issue := range report.Issues {
 					t.Log(issue)
 				}
+				t.Fatal("default package did not satisfy activation evidence")
 			}
 		})
 	}

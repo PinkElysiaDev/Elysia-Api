@@ -59,6 +59,7 @@ type expressionCompiler struct {
 	resolving         map[string]bool
 	used              map[string]bool
 	mappingReferences map[string]Expression
+	constraints       *wireConstraintCompiler
 }
 
 func newExpressionCompiler(limits Limits, references map[string]Expression) *expressionCompiler {
@@ -122,7 +123,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	compiler.nodes++
 	compiler.maximumDepth = max(compiler.maximumDepth, depth)
 	if depth > compiler.limits.Depth || compiler.nodes > compiler.limits.Nodes {
-		return nil, fmt.Errorf("%s exceeds expression depth or node limit", path)
+		return nil, fmt.Errorf("%s exceeds expression depth or node limit (depth %d/%d, nodes %d/%d)", path, depth, compiler.limits.Depth, compiler.nodes, compiler.limits.Nodes)
 	}
 	var operation *OperationInfo
 	for index := range expressionOperations {

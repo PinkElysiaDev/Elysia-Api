@@ -58,6 +58,7 @@ func (compiler *packageStreamCompiler) compileCheckAction(spec ProtocolStreamAct
 func assertionBindingSlots(assertions []compiledWireAssertion) int {
 	slots := 0
 	for _, assertion := range assertions {
+		slots = max(slots, assertionBindingSlots(assertion.group))
 		for _, plan := range []*compiledOutputPlan{assertion.when, assertion.check, assertion.reasonPlan} {
 			if plan != nil {
 				slots = max(slots, plan.bindingSlots)

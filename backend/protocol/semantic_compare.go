@@ -202,6 +202,8 @@ func (evidence *capabilityEvidence) nodes(nodes []Node) {
 			evidence.observed[ReasoningCapability] = true
 		case OpaqueNode:
 			evidence.observed[NativeExtensionsCapability] = true
+		case ServerToolNode:
+			evidence.observed[ServerToolsCapability] = true
 		case ToolCallNode:
 			if node.Input != nil && node.Input.Kind == JSONInput {
 				evidence.observed[FunctionToolsCapability] = true
@@ -249,6 +251,10 @@ func (evidence *capabilityEvidence) resources(resources []Resource) {
 			evidence.observed[CacheResourcesCapability] = true
 		case "file", "file_id":
 			evidence.observed[DocumentsCapability] = true
+		case "audio":
+			evidence.observed[AudioCapability] = true
+		case "container":
+			evidence.observed[ServerToolsCapability] = true
 		}
 	}
 }

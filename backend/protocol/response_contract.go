@@ -16,7 +16,7 @@ func CheckResponse(response *Response, target Target, limits Limits) []Conversio
 		return check.issues
 	}
 	check.metadataSnapshot(response.Metadata, "/metadata")
-	check.content(response.Content, "/content", 1)
+	check.content(response.Content, "/content", 1, false)
 	check.usage(response.Usage, "/usage")
 	return check.issues
 }
@@ -151,8 +151,14 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 		if event.ItemID.IsZero() && event.CallID.IsZero() && event.Index == nil {
 			check.add(InvalidAssociation, "/itemId", "", "item events require a stable item, call or index identity")
 		}
-		if event.Type == ItemDelta && event.Delta.IsZero() {
-			check.add(InvalidInput, "/delta", "", "delta event requires a payload")
+		if event.Type == ItemDelta {
+			if event.Item != nil && event.Item.Kind == ServerToolNode {
+				if !event.Delta.IsZero() {
+					check.add(InvalidInput, "/delta", ServerToolsCapability, "server progress cannot also contain input text")
+				}
+			} else if event.Delta.IsZero() {
+				check.add(InvalidInput, "/delta", "", "delta event requires a payload")
+			}
 		}
 	case UsageUpdated:
 		if event.Usage == nil {
@@ -198,7 +204,9 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 	}
 	check.usage(event.Usage, "/usage")
 	if event.Item != nil {
-		if event.Item.Kind == ToolCallNode && event.Type != ItemFinished {
+		if event.Item.Kind == ServerToolNode && event.Type == ItemDelta {
+			check.serverToolHeader(*event.Item, "/item")
+		} else if event.Item.Kind == ToolCallNode && event.Type != ItemFinished {
 			check.metadataSnapshot(event.Item.Metadata, "/item/metadata")
 			if event.Item.Input == nil || (event.Item.Input.Kind != JSONInput && event.Item.Input.Kind != TextInput) {
 				check.add(InvalidInput, "/item/input/kind", "", "streamed tool item requires an input kind")
@@ -210,7 +218,7 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 			check.cache(event.Item.Cache, "/item/cache")
 			check.resources(event.Item.Resources, "/item/resources")
 		} else if event.Item.Kind != ToolResultNode {
-			check.content([]Node{*event.Item}, "/item", 1)
+			check.content([]Node{*event.Item}, "/item", 1, false)
 		}
 	}
 	if event.Response != nil {
