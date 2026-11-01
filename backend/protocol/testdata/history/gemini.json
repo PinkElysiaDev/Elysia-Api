@@ -425,6 +425,15 @@
         "request": "encode_request",
         "response": "decode_response"
       }
-    }
+    },
+    "conversionDefaults": [
+      {
+        "id": "request-projection",
+        "order": 130,
+        "enabled": true,
+        "phase": "request",
+        "use": "request_projection"
+      }
+    ]
   }
 }

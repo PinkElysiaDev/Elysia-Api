@@ -66,3 +66,49 @@ func TestPointerJoinEscapesOnlySegments(t *testing.T) {
 		t.Fatal("invalid pointer prefix accepted")
 	}
 }
+
+func TestPackageConversionProgramsRequireExplicitDefaults(t *testing.T) {
+	document := noCachePackage(t)
+	document.Mapping.ModelPolicy = &ProtocolModelPolicy{
+		Reasoning: literalExpression(ReasoningCapabilities{Kind: "none"}),
+		Steps:     []ProtocolControlStep{{Set: map[string]Expression{"/parameters/model-rule": literalExpression(true)}}},
+	}
+	document.Mapping.ConversionDefaults = nil
+	compiled := compilePackageForTest(t, document)
+	if rules := DefaultConversionPolicy(compiled, compiled).Rules; len(rules) != 0 {
+		t.Fatal("undeclared programs became default rules", rules)
+	}
+	document.Mapping.ConversionDefaults = []ProtocolConversionDefault{
+		{ID: "cache-selection", Order: 120, Enabled: true, Phase: ConversionRequest, Use: "request_projection"},
+		{ID: "model-selection", Order: 180, Enabled: false, Phase: ConversionRequest, Use: "model_policy"},
+	}
+	compiled = compilePackageForTest(t, document)
+	policy := DefaultConversionPolicy(compiled, compiled)
+	if len(policy.Rules) != 2 || policy.Rules[0].ID != "cache-selection" || policy.Rules[0].Order != 120 || policy.Rules[1].Enabled {
+		t.Fatal("configuration did not own program identity, order and enablement", policy.Rules)
+	}
+	conversion, err := ResolveConversion(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := &Request{SchemaVersion: ProtocolCoreVersion, Cache: []CacheIntent{{Kind: "breakpoint", Value: fixtureValue(t, map[string]any{"type": "ephemeral"})}}}
+	result, err := conversion.Request(t.Context(), request, ConversionContext{Source: compiled.Identity(), Target: compiled.Identity()}, nil)
+	if err != nil || len(result.Cache) != 0 || len(result.Parameters) != 0 || len(request.Cache) != 1 {
+		t.Fatal("disabled model program ran or cache selection mutated its caller", result, err)
+	}
+	for _, declaration := range []ProtocolConversionDefault{
+		{Use: "unknown", Phase: ConversionRequest},
+		{Use: "model_policy", Phase: ConversionResponse},
+		{Use: "model_policy", Phase: ConversionRequest, Steps: []ProtocolControlStep{{Stop: true}}},
+	} {
+		declaration.ID, declaration.Order, declaration.Enabled = "invalid-program", 10, true
+		document.Mapping.ConversionDefaults = []ProtocolConversionDefault{declaration}
+		compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result, issues := compiler.CompilePackage(fixtureValue(t, document).Bytes()); result != nil || IssuesError(issues) == nil {
+			t.Fatal("invalid program declaration compiled", declaration, issues)
+		}
+	}
+}

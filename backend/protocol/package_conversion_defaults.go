@@ -7,6 +7,8 @@ import (
 
 // ProtocolConversionDefault declares one complete overridable target rule.
 type ProtocolConversionDefault struct {
+	// Use binds a declared request program instead of local control steps.
+	Use        string                        `json:"use,omitempty" jsonschema:"enum=request_projection,enum=model_policy"`
 	Recovery   *ProtocolRecoveryDisposition  `json:"recovery,omitempty"`
 	ID         string                        `json:"id"`
 	Order      int                           `json:"order"`
@@ -61,6 +63,14 @@ func (compiled *Compiled) compileConversionDefaults(mapping ProtocolMapping, com
 			return fmt.Errorf("%s/order: ambiguous rule order", path)
 		}
 		orders[order] = declaration.Enabled || orders[order]
+		if declaration.Use != "" {
+			rule, err := compiled.bindConversionDefault(declaration)
+			if err != nil {
+				return locateMappingError(path, err)
+			}
+			compiled.packagePlan.conversionDefaults = append(compiled.packagePlan.conversionDefaults, rule)
+			continue
+		}
 		if declaration.Recovery != nil {
 			rule, err := compiled.compileRecoveryDefault(declaration, compiler)
 			if err != nil {
@@ -131,6 +141,29 @@ func (compiled *Compiled) compileConversionDefaults(mapping ProtocolMapping, com
 		compiled.packagePlan.conversionDefaults = append(compiled.packagePlan.conversionDefaults, rule)
 	}
 	return compiled.compileFieldObservations(mapping.FieldObservations)
+}
+
+func (compiled *Compiled) bindConversionDefault(declaration ProtocolConversionDefault) (ConversionRule, error) {
+	rule := ConversionRule{ID: declaration.ID, Order: declaration.Order, Enabled: declaration.Enabled, Phase: declaration.Phase}
+	if declaration.Phase != ConversionRequest || declaration.Match != (ConversionMatch{}) || declaration.Steps != nil || declaration.Recovery != nil || declaration.Auxiliary != nil || declaration.Control != nil || declaration.Collection || declaration.FrameUsage {
+		return rule, fmt.Errorf("use requires a standalone request rule")
+	}
+	switch declaration.Use {
+	case "request_projection":
+		if compiled.packagePlan.requestProjection.IsZero() {
+			return rule, fmt.Errorf("request_projection requires declared request dispositions")
+		}
+		rule.Action, rule.Value = "request_projection", compiled.packagePlan.requestProjection
+	case "model_policy":
+		model := compiled.packagePlan.modelPolicy
+		if model == nil || model.conversion.IsZero() {
+			return rule, fmt.Errorf("model_policy requires declared target model steps")
+		}
+		rule.Action, rule.Value = "model_controls", model.conversion
+	default:
+		return rule, fmt.Errorf("unknown conversion program %q", declaration.Use)
+	}
+	return rule, nil
 }
 
 func coreControlRoot(phase ConversionPhase) (reflect.Type, error) {
@@ -274,6 +307,21 @@ func (compiled *Compiled) defaultConversionRules(phase ConversionPhase) []Conver
 	for _, rule := range compiled.packagePlan.conversionDefaults {
 		if rule.Phase == phase {
 			rules = append(rules, rule)
+		}
+	}
+	return rules
+}
+
+func (compiled *Compiled) defaultRequestConversionRules(source *Compiled) []ConversionRule {
+	rules := compiled.defaultConversionRules(ConversionRequest)
+	if source == nil || source.packagePlan == nil || source.packagePlan.modelPolicy == nil || source.packagePlan.modelPolicy.normalization == nil {
+		return rules
+	}
+	for index := range rules {
+		if rules[index].Action == "model_controls" {
+			options := compiled.packagePlan.modelPolicy.options
+			options.Source = source.packagePlan.modelPolicy.normalization
+			rules[index].Value, _ = EncodeValue(options)
 		}
 	}
 	return rules

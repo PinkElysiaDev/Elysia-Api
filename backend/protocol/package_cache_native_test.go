@@ -53,6 +53,7 @@ func TestPackageCacheNativeKeepsOriginalDispositionEvidence(t *testing.T) {
 	document := cacheOwnerPackage(t)
 	dispositions := noCachePackage(t)
 	document.Mapping.Expressions = dispositions.Mapping.Expressions
+	document.Mapping.ConversionDefaults = dispositions.Mapping.ConversionDefaults
 	entry := document.Mapping.Directions[EncodeRequest]
 	entry.Effects = append(entry.Effects, dispositions.Mapping.Directions[EncodeRequest].Effects[2:]...)
 	document.Mapping.Directions[EncodeRequest] = entry

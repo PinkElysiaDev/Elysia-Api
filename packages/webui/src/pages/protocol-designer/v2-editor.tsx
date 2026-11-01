@@ -508,6 +508,11 @@ export function ProtocolV2Editor({
                     <p className="text-xs text-muted-foreground">两份源一并保存、验证和启用。</p>
                   </div>
                 )}
+                {isPackage && key === 'mapping' && (
+                  <p className="text-xs text-muted-foreground">
+                    conversionDefaults 使用 use: request_projection 或 model_policy 绑定已声明程序；ID、顺序和启用状态由本规则指定。
+                  </p>
+                )}
                 <label className="block space-y-1.5 text-xs font-medium text-foreground">
                   <span>{label} JSON</span>
                   <Textarea

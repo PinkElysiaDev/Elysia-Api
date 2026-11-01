@@ -45758,6 +45758,13 @@
           }
         }
       ]
+    },
+    {
+      "id": "reasoning-controls",
+      "order": 175,
+      "enabled": true,
+      "phase": "request",
+      "use": "model_policy"
     }
   ],
   "continuation": {

@@ -49,23 +49,11 @@ func (s *Service) ResolvePreviewConversion(route ConversionContext, phase Conver
 func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 	p := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "engine-default", Name: "引擎默认", Mode: "compatible", Rules: []ConversionRule{},
 		Continuation: &ContinuationSettings{ClientCarrier: true, Persist: true, RetentionSeconds: 7 * 24 * 3600, TurnsPerSession: 64, MaxBytes: 512 << 20, RecordBytes: 8 << 20}}
-	p.Rules = append(p.Rules, upstream.defaultConversionRules(ConversionRequest)...)
+	p.Rules = append(p.Rules, upstream.defaultRequestConversionRules(ingress)...)
 	p.Rules = append(p.Rules, ingress.defaultConversionRules(ConversionResponse)...)
 	p.Rules = append(p.Rules, ingress.defaultConversionRules(ConversionEvent)...)
 	if chatResponseModelPair(ingress, upstream) {
 		p.Rules = append(p.Rules, ConversionRule{ID: "chat-response-model", Order: 205, Enabled: true, Phase: ConversionResponse, Action: "chat_response_model"})
-	}
-	if upstream != nil && upstream.packagePlan != nil && !upstream.packagePlan.requestProjection.IsZero() {
-		p.Rules = append(p.Rules, ConversionRule{ID: "request-projection", Order: 130, Enabled: true, Phase: ConversionRequest, Action: "request_projection", Value: upstream.packagePlan.requestProjection})
-	}
-	if upstream != nil && upstream.packagePlan != nil && upstream.packagePlan.modelPolicy != nil && !upstream.packagePlan.modelPolicy.conversion.IsZero() {
-		value := upstream.packagePlan.modelPolicy.conversion
-		if ingress != nil && ingress.packagePlan != nil && ingress.packagePlan.modelPolicy != nil && ingress.packagePlan.modelPolicy.normalization != nil {
-			options := upstream.packagePlan.modelPolicy.options
-			options.Source = ingress.packagePlan.modelPolicy.normalization
-			value, _ = EncodeValue(options)
-		}
-		p.Rules = append(p.Rules, ConversionRule{ID: "reasoning-controls", Order: 175, Enabled: true, Phase: ConversionRequest, Action: "model_controls", Value: value})
 	}
 	if upstream.Codec(DecodeEvent) == "openai-chat" && knownConversionCodec(ingress.Codec(EncodeEvent)) {
 		p.Rules = append(p.Rules, ConversionRule{ID: "chat-stream-identity", Order: 100, Enabled: true, Phase: ConversionSourceEvent, Action: "chat_stream_identity"})

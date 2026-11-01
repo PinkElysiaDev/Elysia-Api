@@ -25,6 +25,7 @@ func noCachePackage(t *testing.T) ProtocolPackage {
 		ProtocolSemanticEffect{ID: "empty-cache", Kind: "default", Scope: cacheIntentScope, Default: Value{raw: "null"}, When: expressionPointer(literalExpression(true)), Reason: "empty cache hint has no target effect"},
 		ProtocolSemanticEffect{ID: "cache-hint", Kind: "drop", Scope: cacheIntentScope, Severity: SeverityInfo, When: &Expression{Op: "ref", Ref: "known-cache-hint"}, Reason: "target has no cache breakpoint representation"})
 	document.Mapping.Directions[EncodeRequest] = entry
+	document.Mapping.ConversionDefaults = []ProtocolConversionDefault{{ID: "request-projection", Order: 130, Enabled: true, Phase: ConversionRequest, Use: "request_projection"}}
 	return document
 }
 

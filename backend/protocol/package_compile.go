@@ -126,9 +126,6 @@ func (compiler *Compiler) compilePackage(document ProtocolPackage) (*Compiled, [
 			}
 		}
 	}
-	if err := compiled.bindRequestProjection(document); err != nil {
-		return nil, definitionIssues(compiled.identity, "/mapping/directions/encode_request/effects", err)
-	}
 	return compiled, nil
 }
 

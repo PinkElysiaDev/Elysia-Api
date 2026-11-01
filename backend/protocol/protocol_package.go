@@ -371,6 +371,9 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 	if err := compiled.compileModelPolicy(mapping.ModelPolicy, expressions); err != nil {
 		return nil, err
 	}
+	if err := compiled.bindRequestProjection(document); err != nil {
+		return nil, locateMappingError("/mapping/directions/encode_request/effects", err)
+	}
 	if err := compiled.compileConversionDefaults(mapping, expressions); err != nil {
 		return nil, err
 	}
