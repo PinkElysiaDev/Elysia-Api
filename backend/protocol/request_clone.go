@@ -20,18 +20,7 @@ func (request *Request) Clone() *Request {
 		value := *request.Reasoning
 		copy.Reasoning = &value
 	}
-	if request.ClientOutput != nil {
-		output := *request.ClientOutput
-		if output.IncludeUsage != nil {
-			value := *output.IncludeUsage
-			output.IncludeUsage = &value
-		}
-		if output.ResponsesStorage != nil {
-			value := *output.ResponsesStorage
-			output.ResponsesStorage = &value
-		}
-		copy.ClientOutput = &output
-	}
+	copy.ClientOutput = cloneClientOutput(request.ClientOutput)
 	copy.Cache = append([]CacheIntent(nil), request.Cache...)
 	copy.Resources = append([]Resource(nil), request.Resources...)
 	copy.Content = cloneNodes(request.Content)
@@ -42,6 +31,22 @@ func (request *Request) Clone() *Request {
 			copy.Tools[index].Cache = append([]CacheIntent(nil), tool.Cache...)
 			copy.Tools[index].Options = maps.Clone(tool.Options)
 		}
+	}
+	return &copy
+}
+
+func cloneClientOutput(output *ClientOutput) *ClientOutput {
+	if output == nil {
+		return nil
+	}
+	copy := *output
+	if output.IncludeUsage != nil {
+		value := *output.IncludeUsage
+		copy.IncludeUsage = &value
+	}
+	if output.ResponsesStorage != nil {
+		value := *output.ResponsesStorage
+		copy.ResponsesStorage = &value
 	}
 	return &copy
 }

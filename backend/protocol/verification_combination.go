@@ -481,27 +481,34 @@ func verifyRequestCombination(ctx context.Context, ingress, upstream *Compiled, 
 	if err != nil {
 		return err
 	}
-	if conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion); conversion != nil {
-		route := conversion.VerificationRoute(ingress.Identity(), upstream.Identity(), HTTPJSON)
+	conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion)
+	var route ConversionContext
+	if conversion != nil {
+		route = conversion.VerificationRoute(ingress.Identity(), upstream.Identity(), HTTPJSON).WithOperation(options)
 		route.Scope = options.Scope
 		request, err = conversion.Request(ctx, request, route, verificationDiagnostics(ctx))
 		if err != nil {
 			return err
 		}
 	}
-	wire, err := upstream.EncodeRequest(ctx, request, options)
+	options.ClientOutput = request.ClientOutput
+	wire, err := upstream.EncodeRequestValue(ctx, request, options)
 	if err != nil {
 		return err
 	}
-	if v, e := ParseValue(wire); e != nil {
-		return e
-	} else if e = upstream.ValidateWireOutput(EncodeRequest, v); e != nil {
-		return e
+	if conversion.HasPhase(ConversionWire) {
+		wire, err = conversion.ApplyValue(ctx, ConversionWire, wire, route, verificationDiagnostics(ctx))
+		if err != nil {
+			return err
+		}
+	}
+	if err := upstream.ValidateRequestOutput(ctx, wire, options); err != nil {
+		return err
 	}
 	for _, name := range sortedKeys(upstream.operations) {
 		operation := upstream.operations[name]
 		if operation.Kind == "generate" || operation.Kind == "submit" {
-			if err := upstream.CheckOperationInput(ctx, name, wire); err != nil {
+			if err := upstream.CheckOperationValueInput(ctx, name, wire); err != nil {
 				return err
 			}
 		}
@@ -509,7 +516,7 @@ func verifyRequestCombination(ctx context.Context, ingress, upstream *Compiled, 
 	if !upstream.Supports(DecodeRequest) {
 		return nil
 	}
-	decoded, err := upstream.DecodeRequest(ctx, wire, options)
+	decoded, err := upstream.DecodeRequestValue(ctx, wire, options)
 	if err != nil {
 		return err
 	}

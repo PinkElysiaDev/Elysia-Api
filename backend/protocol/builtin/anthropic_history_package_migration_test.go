@@ -35,6 +35,7 @@ func TestAnthropicPackageHistoryOwner(t *testing.T) {
 			// Everything outside this explicit move stays in the byte comparison.
 			expected := original.Clone()
 			expected.SchemaVersion = p.ProtocolCoreVersion
+			migrateFixtureStorage(t, expected, Anthropic)
 			if expected.Reasoning == nil {
 				expected.Reasoning = &p.ReasoningIntent{}
 			}

@@ -327,6 +327,9 @@ func executePackageMigrationSample(t *testing.T, compiled *p.Compiled, sample p.
 		// Version 2 is the new core contract. All business fields and Native
 		// evidence remain in the comparison, including number spelling.
 		request.SchemaVersion = p.ProtocolCoreVersion
+		if !isPackage {
+			migrateFixtureStorage(t, request, compiled.Codec(p.DecodeRequest))
+		}
 		value, err := p.EncodeValue(request)
 		return value.Bytes(), err
 	case p.EncodeRequest:
@@ -336,6 +339,10 @@ func executePackageMigrationSample(t *testing.T, compiled *p.Compiled, sample p.
 		}
 		if isPackage {
 			request.SchemaVersion = p.ProtocolCoreVersion
+			if !request.Parameters["store"].IsZero() {
+				codec := map[string]string{"openai_chat": Chat, "openai_responses": Responses}[compiled.Identity().Family]
+				migrateFixtureStorage(t, &request, codec)
+			}
 		}
 		return compiled.EncodeRequest(t.Context(), &request, options)
 	case p.DecodeResponse:
@@ -359,6 +366,36 @@ func executePackageMigrationSample(t *testing.T, compiled *p.Compiled, sample p.
 		t.Fatal("unexpected migration direction", sample.Direction)
 		return nil, nil
 	}
+}
+
+// Historical fixtures retain their original wire expectation. Move their known
+// storage field into the new owner explicitly, rather than ignoring ClientOutput.
+func migrateFixtureStorage(t *testing.T, request *p.Request, codec string) {
+	t.Helper()
+	storage := &p.ResponsesStorageIntent{SourceCodec: codec}
+	switch codec {
+	case Chat, Responses:
+		storage.Raw = request.Parameters["store"]
+		storage.Requested = codec == Responses
+		storage.RequestedUnknown = storage.Raw.IsNull()
+		storage.EffectiveUnknown = true
+		if !storage.Raw.IsZero() {
+			storage.Requested = false
+			if !storage.Raw.IsNull() {
+				if err := storage.Raw.Decode(&storage.Requested); err != nil {
+					t.Fatal("legacy storage fixture is not a boolean or null", err)
+				}
+			}
+		}
+		delete(request.Parameters, "store")
+	case Anthropic, Gemini:
+	default:
+		t.Fatal("fixture has no declared storage contract", codec)
+	}
+	if request.ClientOutput == nil {
+		request.ClientOutput = &p.ClientOutput{}
+	}
+	request.ClientOutput.ResponsesStorage = storage
 }
 
 func migrationError(err error) string {

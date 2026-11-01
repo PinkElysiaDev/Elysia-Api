@@ -78,22 +78,25 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	}
 	options.InterleavedThinking, options.Scope = protocol.OperationInterleavedThinking(candidate.operation), candidate.scope
 	options.State, options.Diagnostics = protocol.NewEvaluationState(), &protocol.DiagnosticSink{}
+	options.ClientOutput = request.ClientOutput
 	defer options.State.Release()
 	defer func() {
 		if record != nil {
 			record.appendConversionIssues(options.Diagnostics.Issues())
 		}
 	}()
-	body, err := candidate.compiled.EncodeRequest(ctx, request, options)
+	wire, err := candidate.compiled.EncodeRequestValue(ctx, request, options)
 	if err != nil {
 		return nil, err
 	}
-	if err := candidate.compiled.CheckOperationInput(ctx, candidate.operationName, body); err != nil {
+	wire, err = candidate.finalizeRequestWire(ctx, wire, candidate.conversionContext(candidate.compiled, false).WithOperation(options), options)
+	if err != nil {
 		return nil, err
 	}
 	if record != nil {
-		record.OutgoingBody = record.sanitizeBody(body)
+		record.OutgoingBody = record.sanitizeBodyText(wire.JSONString())
 	}
+	body := wire.Bytes()
 	outboundBody := body
 	response, err := s.protocolTransport.SendProtocolRequest(ctx, candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Identifier()})
 	if err != nil {

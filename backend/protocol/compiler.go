@@ -129,6 +129,7 @@ func NewCompiler(limits Limits, modules []Module, features []string) (*Compiler,
 type compiledMapping struct {
 	preservesDynamicNative bool
 	nativeWhen             *compiledOutputPlan
+	finalCheck             *compiledOutputPlan
 	streamObserver         *compiledOutputPlan
 	capabilities           CapabilitySet
 	module                 Module
@@ -168,6 +169,7 @@ type Compiled struct {
 	taskMappings       map[string]map[string]compiledMapping
 	modelMappings      map[string]compiledMapping
 	agentMapping       *compiledMapping
+	agentClientOutput  []compiledAgentOutputField
 	agentEfforts       []string
 	agentToolResults   InputKind
 	packagePlan        *compiledPackagePlan

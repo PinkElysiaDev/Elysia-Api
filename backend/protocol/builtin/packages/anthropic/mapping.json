@@ -17960,7 +17960,17 @@
             ]
           }
         ]
+      },
+    "decode-client-output": {
+      "op": "literal",
+      "value": {
+        "responsesStorage": {
+          "sourceCodec": "anthropic",
+          "requested": false,
+          "effective": false
+        }
       }
+    }
 },
   "directions": {
     "decode_request": {
@@ -18004,6 +18014,10 @@
           "reasoning": {
             "op": "ref",
             "ref": "decode-request-reasoning"
+          },
+          "clientOutput": {
+            "op": "ref",
+            "ref": "decode-client-output"
           }
         }
       },
@@ -18211,7 +18225,46 @@
               "path": "/parameters/store"
             }
           },
-          "reason": "response storage intent requires the selected target projection before encoding"
+          "reason": "legacy storage parameter has no mapping; use clientOutput.responsesStorage"
+        },
+        {
+          "id": "response-storage-effective",
+          "kind": "reject",
+          "path": "/clientOutput/responsesStorage",
+          "when": {
+            "op": "any",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/clientOutput/responsesStorage/effectiveUnknown"
+                  },
+                  {
+                    "op": "literal",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/clientOutput/responsesStorage/effective"
+                  },
+                  {
+                    "op": "literal",
+                    "value": true
+                  }
+                ]
+              }
+            ]
+          },
+          "reason": "target requires a resolved response storage intent without response retrieval storage"
         }
       ],
       "capabilities": {
@@ -23943,6 +23996,13 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "context": {
@@ -24008,6 +24068,13 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "expected": {
@@ -24140,6 +24207,13 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "context": {
@@ -24274,6 +24348,13 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "expected": {
@@ -24775,6 +24856,13 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "context": {
@@ -24884,6 +24972,13 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "expected": {
@@ -24968,6 +25063,13 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "context": {
@@ -25040,6 +25142,13 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "expected": {
@@ -25114,6 +25223,13 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "context": {
@@ -25186,6 +25302,13 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "expected": {
@@ -25288,6 +25411,13 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "context": {
@@ -25388,6 +25518,13 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "expected": {
@@ -25494,6 +25631,13 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "context": {
@@ -25595,6 +25739,13 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "expected": {
@@ -25930,6 +26081,13 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "context": {
@@ -26058,6 +26216,13 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "expected": {
@@ -26403,6 +26568,13 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "context": {
@@ -26529,6 +26701,13 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "expected": {
@@ -28737,6 +28916,13 @@
         },
         "reasoning": {
           "historyRetention": "all"
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "context": {
@@ -28775,6 +28961,13 @@
         },
         "reasoning": {
           "historyRetention": "all"
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
         }
       },
       "expected": {
@@ -29116,7 +29309,13 @@
           },
           "stream": false
         },
-        "model": "claude-opus-4-6"
+        "model": "claude-opus-4-6",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-thinking-disabled-stream",
@@ -29133,7 +29332,14 @@
           },
           "stream": true
         },
-        "model": "claude-opus-4-6"
+        "model": "claude-opus-4-6",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-default",
@@ -29153,7 +29359,13 @@
           },
           "stream": false
         },
-        "model": "claude-opus-4-6"
+        "model": "claude-opus-4-6",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-default-stream",
@@ -29173,7 +29385,14 @@
           },
           "stream": true
         },
-        "model": "claude-opus-4-6"
+        "model": "claude-opus-4-6",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-low",
@@ -29193,7 +29412,13 @@
           },
           "stream": false
         },
-        "model": "claude-opus-4-6"
+        "model": "claude-opus-4-6",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-low-stream",
@@ -29213,7 +29438,14 @@
           },
           "stream": true
         },
-        "model": "claude-opus-4-6"
+        "model": "claude-opus-4-6",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-medium",
@@ -29233,7 +29465,13 @@
           },
           "stream": false
         },
-        "model": "claude-opus-4-6"
+        "model": "claude-opus-4-6",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-medium-stream",
@@ -29253,7 +29491,14 @@
           },
           "stream": true
         },
-        "model": "claude-opus-4-6"
+        "model": "claude-opus-4-6",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-high",
@@ -29273,7 +29518,13 @@
           },
           "stream": false
         },
-        "model": "claude-opus-4-6"
+        "model": "claude-opus-4-6",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-high-stream",
@@ -29293,7 +29544,14 @@
           },
           "stream": true
         },
-        "model": "claude-opus-4-6"
+        "model": "claude-opus-4-6",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-max",
@@ -29313,7 +29571,13 @@
           },
           "stream": false
         },
-        "model": "claude-opus-4-6"
+        "model": "claude-opus-4-6",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-max-stream",
@@ -29333,7 +29597,14 @@
           },
           "stream": true
         },
-        "model": "claude-opus-4-6"
+        "model": "claude-opus-4-6",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-adaptive",
@@ -29353,7 +29624,13 @@
           },
           "stream": false
         },
-        "model": "claude-opus-4-6"
+        "model": "claude-opus-4-6",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-adaptive-stream",
@@ -29373,10 +29650,26 @@
           },
           "stream": true
         },
-        "model": "claude-opus-4-6"
+        "model": "claude-opus-4-6",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       }
     ],
-    "toolResults": "text"
+    "toolResults": "text",
+    "clientOutput": {
+      "responsesStorage": {
+        "op": "literal",
+        "value": {
+          "requested": false,
+          "effective": false
+        }
+      }
+    }
   },
   "modelSamples": [
     {
@@ -43524,32 +43817,35 @@
       "steps": [
         {
           "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": "/parameters/store"
-              },
-              {
-                          "op": "literal",
-                          "value": false
-                        }
-            ]
-          },
-          "set": {
-            "/parameters/store": {
-              "op": "omit"
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/store"
             }
           },
           "diagnostic": {
-            "kind": "normalize",
+            "kind": "reject",
             "path": "/parameters/store",
             "reason": {
               "op": "literal",
-              "value": "explicit store=false matches the target API without a generated-response retrieval store"
+              "value": "legacy storage parameter has no mapping; use clientOutput.responsesStorage"
             }
           }
+        },
+        {
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/clientOutput/responsesStorage"
+              }
+            }
+          },
+          "stop": true
         },
         {
           "when": {
@@ -43561,12 +43857,12 @@
                   {
                     "op": "read",
                     "from": "input",
-                    "path": "/parameters/store"
+                    "path": "/clientOutput/responsesStorage/requestedUnknown"
                   },
                   {
-                        "op": "literal",
-                        "value": true
-                      }
+                    "op": "literal",
+                    "value": true
+                  }
                 ]
               },
               {
@@ -43575,22 +43871,45 @@
                   {
                     "op": "read",
                     "from": "input",
-                    "path": "/parameters/store"
+                    "path": "/clientOutput/responsesStorage/requested"
                   },
                   {
-                          "op": "literal",
-                          "value": null
-                        }
+                    "op": "literal",
+                    "value": true
+                  }
                 ]
               }
             ]
           },
           "diagnostic": {
-            "kind": "reject",
-            "path": "/parameters/store",
+            "kind": "degrade",
+            "path": "/clientOutput/responsesStorage",
             "reason": {
               "op": "literal",
-              "value": "target cannot provide requested or default response retrieval storage"
+              "value": "target cannot provide the source API response retrieval contract; proceeding without response retrieval storage"
+            }
+          },
+          "set": {
+            "/clientOutput/responsesStorage/effective": {
+              "op": "literal",
+              "value": false
+            },
+            "/clientOutput/responsesStorage/effectiveUnknown": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "stop": true
+        },
+        {
+          "set": {
+            "/clientOutput/responsesStorage/effective": {
+              "op": "literal",
+              "value": false
+            },
+            "/clientOutput/responsesStorage/effectiveUnknown": {
+              "op": "literal",
+              "value": false
             }
           }
         }

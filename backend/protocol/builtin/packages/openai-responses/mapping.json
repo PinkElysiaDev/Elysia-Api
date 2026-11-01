@@ -578,11 +578,6 @@
                 "from": "input",
                 "path": "/metadata"
               },
-              "store": {
-                "op": "read",
-                "from": "input",
-                "path": "/store"
-              },
               "user": {
                 "op": "read",
                 "from": "input",
@@ -794,12 +789,8 @@
             "mode": {
               "op": "if",
               "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/reasoning/effort"
-                }
+                "op": "ref",
+                "ref": "model-has-requested-effort"
               },
               "then": {
                 "op": "if",
@@ -835,12 +826,8 @@
             "effortScope": {
               "op": "if",
               "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/reasoning/effort"
-                }
+                "op": "ref",
+                "ref": "model-has-requested-effort"
               },
               "then": {
                 "op": "literal",
@@ -880,12 +867,8 @@
             {
               "op": "if",
               "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/responses_reasoning"
-                }
+                "op": "ref",
+                "ref": "model-has-legacy-reasoning"
               },
               "then": {
                 "op": "read",
@@ -3322,11 +3305,6 @@
           "from": "input",
           "path": "/parameters/metadata"
         },
-        "store": {
-          "op": "read",
-          "from": "input",
-          "path": "/parameters/store"
-        },
         "user": {
           "op": "ref",
           "ref": "encode-user"
@@ -3654,6 +3632,10 @@
             "from": "input",
             "path": "/content/0/children/0/payload"
           }
+        },
+        "store": {
+          "op": "ref",
+          "ref": "encode-request-storage"
         }
       }
     },
@@ -6366,38 +6348,8 @@
                     }
                   },
                   "resources": {
-                    "op": "if",
-                    "when": {
-                      "op": "exists",
-                      "source": {
-                        "op": "read",
-                        "from": "item",
-                        "path": "/file_id"
-                      }
-                    },
-                    "then": {
-                      "op": "array",
-                      "items": [
-                        {
-                          "op": "object",
-                          "fields": {
-                            "kind": {
-                              "op": "literal",
-                              "value": "file_id"
-                            },
-                            "id": {
-                              "op": "read",
-                              "from": "item",
-                              "path": "/file_id"
-                            },
-                            "scope": {
-                              "op": "object",
-                              "fields": {}
-                            }
-                          }
-                        }
-                      ]
-                    }
+                    "op": "ref",
+                    "ref": "decode-file-resource"
                   },
                   "attributes": {
                     "op": "let",
@@ -6507,38 +6459,8 @@
                     }
                   },
                   "resources": {
-                    "op": "if",
-                    "when": {
-                      "op": "exists",
-                      "source": {
-                        "op": "read",
-                        "from": "item",
-                        "path": "/file_id"
-                      }
-                    },
-                    "then": {
-                      "op": "array",
-                      "items": [
-                        {
-                          "op": "object",
-                          "fields": {
-                            "kind": {
-                              "op": "literal",
-                              "value": "file_id"
-                            },
-                            "id": {
-                              "op": "read",
-                              "from": "item",
-                              "path": "/file_id"
-                            },
-                            "scope": {
-                              "op": "object",
-                              "fields": {}
-                            }
-                          }
-                        }
-                      ]
-                    }
+                    "op": "ref",
+                    "ref": "decode-file-resource"
                   },
                   "attributes": {
                     "op": "let",
@@ -8545,6 +8467,10 @@
               "from": "binding",
               "path": "/error",
               "name": "completed-envelope"
+            },
+            "store": {
+              "op": "ref",
+              "ref": "client-response-storage"
             }
           }
         }
@@ -8665,17 +8591,8 @@
         "op": "all",
         "items": [
           {
-            "op": "equal",
-            "items": [
-              {
-                "op": "ref",
-                "ref": "reasoning-mode"
-              },
-              {
-                "op": "literal",
-                "value": "disabled"
-              }
-            ]
+            "op": "ref",
+            "ref": "model-is-reasoning-disabled"
           },
           {
             "op": "not",
@@ -9088,33 +9005,14 @@
           }
         },
         "effort": {
-          "op": "if",
-          "when": {
-            "op": "present",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/parameters/responses_reasoning"
-            }
-          },
-          "then": {
-            "op": "read",
-            "from": "input",
-            "path": "/parameters/responses_reasoning/effort"
-          },
-          "otherwise": {
-            "op": "omit"
-          }
+          "op": "ref",
+          "ref": "requested-reasoning-effort"
         },
         "summary": {
           "op": "if",
           "when": {
-            "op": "present",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/parameters/responses_reasoning"
-            }
+            "op": "ref",
+            "ref": "model-has-legacy-reasoning"
           },
           "then": {
             "op": "read",
@@ -9130,23 +9028,8 @@
           "when": {
             "op": "present",
             "source": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/responses_reasoning"
-                }
-              },
-              "then": {
-                "op": "read",
-                "from": "input",
-                "path": "/parameters/responses_reasoning/effort"
-              },
-              "otherwise": {
-                "op": "omit"
-              }
+              "op": "ref",
+              "ref": "requested-reasoning-effort"
             }
           },
           "then": {
@@ -9162,23 +9045,8 @@
           "when": {
             "op": "present",
             "source": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/responses_reasoning"
-                }
-              },
-              "then": {
-                "op": "read",
-                "from": "input",
-                "path": "/parameters/responses_reasoning/effort"
-              },
-              "otherwise": {
-                "op": "omit"
-              }
+              "op": "ref",
+              "ref": "requested-reasoning-effort"
             }
           },
           "then": {
@@ -9187,23 +9055,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/parameters/responses_reasoning"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/parameters/responses_reasoning/effort"
-                  },
-                  "otherwise": {
-                    "op": "omit"
-                  }
+                  "op": "ref",
+                  "ref": "requested-reasoning-effort"
                 },
                 {
                   "op": "literal",
@@ -10237,16 +10090,8 @@
             "node": {
               "op": "project",
               "source": {
-                "op": "visit",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/part"
-                },
-                "body": {
-                  "op": "ref",
-                  "ref": "decode-stream-content-part"
-                }
+                "op": "ref",
+                "ref": "decode-current-content-part"
               },
               "keys": [
                 "payload"
@@ -11813,16 +11658,8 @@
           "node": {
             "op": "project",
             "source": {
-              "op": "visit",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/part"
-              },
-              "body": {
-                "op": "ref",
-                "ref": "decode-stream-content-part"
-              }
+              "op": "ref",
+              "ref": "decode-current-content-part"
             },
             "keys": [
               "payload"
@@ -13352,19 +13189,8 @@
                   "op": "all",
                   "items": [
                     {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/kind",
-                          "name": "target-item"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "server_tool"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "is-target-server-tool"
                     },
                     {
                       "op": "present",
@@ -13378,19 +13204,8 @@
                     {
                       "op": "not",
                       "source": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/type",
-                            "name": "target-event"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "item.delta"
-                          }
-                        ]
+                        "op": "ref",
+                        "ref": "is-target-item-delta"
                       }
                     }
                   ]
@@ -13503,36 +13318,14 @@
     "initialize-target-buffers": {
       "op": "if",
       "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "binding",
-            "path": "/kind",
-            "name": "target-item"
-          },
-          {
-            "op": "literal",
-            "value": "server_tool"
-          }
-        ]
+        "op": "ref",
+        "ref": "is-target-server-tool"
       },
       "then": {
         "op": "if",
         "when": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "binding",
-              "path": "/inputKind",
-              "name": "target-item"
-            },
-            {
-              "op": "literal",
-              "value": "text"
-            }
-          ]
+          "op": "ref",
+          "ref": "is-target-text-input"
         },
         "then": {
           "op": "buffer_text",
@@ -13619,19 +13412,8 @@
     "append-target-body": {
       "op": "if",
       "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "binding",
-            "path": "/kind",
-            "name": "target-item"
-          },
-          {
-            "op": "literal",
-            "value": "server_tool"
-          }
-        ]
+        "op": "ref",
+        "ref": "is-target-server-tool"
       },
       "then": {
         "op": "ref",
@@ -13640,19 +13422,8 @@
       "otherwise": {
         "op": "if",
         "when": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "binding",
-              "path": "/kind",
-              "name": "target-item"
-            },
-            {
-              "op": "literal",
-              "value": "tool_call"
-            }
-          ]
+          "op": "ref",
+          "ref": "is-target-tool-call"
         },
         "then": {
           "op": "buffer_text",
@@ -13691,19 +13462,8 @@
                 "text": {
                   "op": "if",
                   "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/type",
-                        "name": "target-event"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "item.delta"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-target-item-delta"
                   },
                   "then": {
                     "op": "read",
@@ -13760,19 +13520,8 @@
                 "snapshot": {
                   "op": "not",
                   "source": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/type",
-                        "name": "target-event"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "item.delta"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-target-item-delta"
                   }
                 },
                 "done": {
@@ -13800,19 +13549,8 @@
           "otherwise": {
             "op": "if",
             "when": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/type",
-                  "name": "target-event"
-                },
-                {
-                  "op": "literal",
-                  "value": "item.delta"
-                }
-              ]
+              "op": "ref",
+              "ref": "is-target-item-delta"
             },
             "then": {
               "op": "buffer_text",
@@ -13871,19 +13609,8 @@
     "update-target-metadata": {
       "op": "if",
       "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "binding",
-            "path": "/kind",
-            "name": "target-item"
-          },
-          {
-            "op": "literal",
-            "value": "server_tool"
-          }
-        ]
+        "op": "ref",
+        "ref": "is-target-server-tool"
       },
       "then": {
         "op": "object",
@@ -14047,19 +13774,8 @@
                       "op": "all",
                       "items": [
                         {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/type",
-                              "name": "target-event"
-                            },
-                            {
-                              "op": "literal",
-                              "value": "item.delta"
-                            }
-                          ]
+                          "op": "ref",
+                          "ref": "is-target-item-delta"
                         },
                         {
                           "op": "equal",
@@ -14387,60 +14103,24 @@
               "when": {
                 "op": "not",
                 "source": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/kind",
-                      "name": "target-item"
-                    },
-                    {
-                      "op": "literal",
-                      "value": "refusal"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "is-target-refusal"
                 }
               },
               "then": {
-                "op": "buffer_text",
-                "name": "body",
-                "source": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/key",
-                  "name": "target-item"
-                },
-                "operation": "read"
+                "op": "ref",
+                "ref": "target-item-body"
               }
             },
             "refusal": {
               "op": "if",
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/kind",
-                    "name": "target-item"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "refusal"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-target-refusal"
               },
               "then": {
-                "op": "buffer_text",
-                "name": "body",
-                "source": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/key",
-                  "name": "target-item"
-                },
-                "operation": "read"
+                "op": "ref",
+                "ref": "target-item-body"
               }
             },
             "annotations": {
@@ -14550,19 +14230,8 @@
           "when": {
             "op": "not",
             "source": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/kind",
-                  "name": "target-item"
-                },
-                {
-                  "op": "literal",
-                  "value": "refusal"
-                }
-              ]
+              "op": "ref",
+              "ref": "is-target-refusal"
             }
           },
           "then": {
@@ -14573,19 +14242,8 @@
         "refusal": {
           "op": "if",
           "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "binding",
-                "path": "/kind",
-                "name": "target-item"
-              },
-              {
-                "op": "literal",
-                "value": "refusal"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-target-refusal"
           },
           "then": {
             "op": "literal",
@@ -14949,19 +14607,8 @@
                 "type": {
                   "op": "if",
                   "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/inputKind",
-                        "name": "target-item"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "text"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-target-text-input"
                   },
                   "then": {
                     "op": "literal",
@@ -14987,30 +14634,12 @@
                 "input": {
                   "op": "if",
                   "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/inputKind",
-                        "name": "target-item"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "text"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-target-text-input"
                   },
                   "then": {
-                    "op": "buffer_text",
-                    "name": "body",
-                    "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/key",
-                      "name": "target-item"
-                    },
-                    "operation": "read"
+                    "op": "ref",
+                    "ref": "target-item-body"
                   }
                 },
                 "arguments": {
@@ -15031,15 +14660,8 @@
                     ]
                   },
                   "then": {
-                    "op": "buffer_text",
-                    "name": "body",
-                    "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/key",
-                      "name": "target-item"
-                    },
-                    "operation": "read"
+                    "op": "ref",
+                    "ref": "target-item-body"
                   }
                 }
               }
@@ -15086,19 +14708,8 @@
             "status": {
               "op": "if",
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/kind",
-                    "name": "target-item"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "server_tool"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-target-server-tool"
               },
               "then": {
                 "op": "read",
@@ -15295,19 +14906,8 @@
     "emit-target-delta": {
       "op": "if",
       "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "binding",
-            "path": "/kind",
-            "name": "target-item"
-          },
-          {
-            "op": "literal",
-            "value": "server_tool"
-          }
-        ]
+        "op": "ref",
+        "ref": "is-target-server-tool"
       },
       "then": {
         "op": "ref",
@@ -15337,19 +14937,8 @@
                 {
                   "op": "not",
                   "source": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/kind",
-                        "name": "target-item"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "tool_call"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-target-tool-call"
                   }
                 }
               ]
@@ -15483,36 +15072,14 @@
                   {
                     "op": "if",
                     "when": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/kind",
-                          "name": "target-item"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "tool_call"
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "is-target-tool-call"
                     },
                     "then": {
                       "op": "if",
                       "when": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/inputKind",
-                            "name": "target-item"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "text"
-                          }
-                        ]
+                        "op": "ref",
+                        "ref": "is-target-text-input"
                       },
                       "then": {
                         "op": "object",
@@ -15640,39 +15207,8 @@
                       "otherwise": {
                         "op": "if",
                         "when": {
-                          "op": "any",
-                          "items": [
-                            {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "/collection",
-                                  "name": "target-item"
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": "reasoning_content"
-                                }
-                              ]
-                            },
-                            {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "/kind",
-                                  "name": "target-item"
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": "reasoning"
-                                }
-                              ]
-                            }
-                          ]
+                          "op": "ref",
+                          "ref": "target-reasoning-content"
                         },
                         "then": {
                           "op": "object",
@@ -15716,19 +15252,8 @@
                         "otherwise": {
                           "op": "if",
                           "when": {
-                            "op": "equal",
-                            "items": [
-                              {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "/kind",
-                                "name": "target-item"
-                              },
-                              {
-                                "op": "literal",
-                                "value": "refusal"
-                              }
-                            ]
+                            "op": "ref",
+                            "ref": "is-target-refusal"
                           },
                           "then": {
                             "op": "object",
@@ -15902,54 +15427,16 @@
                     "name": "target-item"
                   },
                   "text": {
-                    "op": "buffer_text",
-                    "name": "body",
-                    "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/key",
-                      "name": "target-item"
-                    },
-                    "operation": "read"
+                    "op": "ref",
+                    "ref": "target-item-body"
                   }
                 }
               },
               "otherwise": {
                 "op": "if",
                 "when": {
-                  "op": "any",
-                  "items": [
-                    {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/collection",
-                          "name": "target-item"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "reasoning_content"
-                        }
-                      ]
-                    },
-                    {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/kind",
-                          "name": "target-item"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "reasoning"
-                        }
-                      ]
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "target-reasoning-content"
                 },
                 "then": {
                   "op": "object",
@@ -15983,34 +15470,16 @@
                       "name": "target-item"
                     },
                     "text": {
-                      "op": "buffer_text",
-                      "name": "body",
-                      "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/key",
-                        "name": "target-item"
-                      },
-                      "operation": "read"
+                      "op": "ref",
+                      "ref": "target-item-body"
                     }
                   }
                 },
                 "otherwise": {
                   "op": "if",
                   "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/kind",
-                        "name": "target-item"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "refusal"
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "is-target-refusal"
                   },
                   "then": {
                     "op": "object",
@@ -16044,15 +15513,8 @@
                         "name": "target-item"
                       },
                       "refusal": {
-                        "op": "buffer_text",
-                        "name": "body",
-                        "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/key",
-                          "name": "target-item"
-                        },
-                        "operation": "read"
+                        "op": "ref",
+                        "ref": "target-item-body"
                       }
                     }
                   },
@@ -16088,15 +15550,8 @@
                         "name": "target-item"
                       },
                       "text": {
-                        "op": "buffer_text",
-                        "name": "body",
-                        "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/key",
-                          "name": "target-item"
-                        },
-                        "operation": "read"
+                        "op": "ref",
+                        "ref": "target-item-body"
                       },
                       "logprobs": {
                         "op": "if",
@@ -16277,19 +15732,8 @@
             {
               "op": "if",
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/kind",
-                    "name": "target-item"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "server_tool"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-target-server-tool"
               },
               "then": {
                 "op": "ref",
@@ -16318,19 +15762,8 @@
               "otherwise": {
                 "op": "if",
                 "when": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/kind",
-                      "name": "target-item"
-                    },
-                    {
-                      "op": "literal",
-                      "value": "tool_call"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "is-target-tool-call"
                 },
                 "then": {
                   "op": "array",
@@ -16338,19 +15771,8 @@
                     {
                       "op": "if",
                       "when": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/inputKind",
-                            "name": "target-item"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "text"
-                          }
-                        ]
+                        "op": "ref",
+                        "ref": "is-target-text-input"
                       },
                       "then": {
                         "op": "object",
@@ -16378,15 +15800,8 @@
                             "name": "target-item"
                           },
                           "input": {
-                            "op": "buffer_text",
-                            "name": "body",
-                            "source": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/key",
-                              "name": "target-item"
-                            },
-                            "operation": "read"
+                            "op": "ref",
+                            "ref": "target-item-body"
                           }
                         }
                       },
@@ -16416,15 +15831,8 @@
                             "name": "target-item"
                           },
                           "arguments": {
-                            "op": "buffer_text",
-                            "name": "body",
-                            "source": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/key",
-                              "name": "target-item"
-                            },
-                            "operation": "read"
+                            "op": "ref",
+                            "ref": "target-item-body"
                           }
                         }
                       }
@@ -16516,19 +15924,8 @@
       "otherwise": {
         "op": "if",
         "when": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "binding",
-              "path": "/kind",
-              "name": "target-item"
-            },
-            {
-              "op": "literal",
-              "value": "tool_call"
-            }
-          ]
+          "op": "ref",
+          "ref": "is-target-tool-call"
         },
         "then": {
           "op": "all",
@@ -17182,160 +16579,175 @@
       "name": "response-envelope",
       "source": {
         "op": "merge",
-        "policy": "reject",
+        "policy": "last",
         "items": [
           {
-            "op": "object",
-            "fields": {
-              "id": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "response-id"
-              },
-              "object": {
-                "op": "literal",
-                "value": "response"
-              },
-              "created_at": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "created-at"
-              },
-              "model": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "model-id"
-              },
-              "status": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "response-status"
-              },
-              "output": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "response-output"
-              },
-              "usage": {
-                "op": "let",
-                "name": "usage-envelope",
-                "source": {
-                  "op": "object",
-                  "fields": {
-                    "usage": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "response-usage"
-                    }
-                  }
-                },
-                "body": {
-                  "op": "ref",
-                  "ref": "encode-stream-usage-fields"
-                }
-              },
-              "incomplete_details": {
-                "op": "if",
-                "when": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "response-status"
-                    },
-                    {
-                      "op": "literal",
-                      "value": "incomplete"
-                    }
-                  ]
-                },
-                "then": {
-                  "op": "object",
-                  "fields": {
-                    "reason": {
-                      "op": "choose",
-                      "source": {
-                        "op": "read",
-                        "from": "state",
-                        "path": "/attributes/finishReason"
-                      },
-                      "cases": {
-                        "length": {
-                          "op": "literal",
-                          "value": "max_output_tokens"
-                        },
-                        "content_filter": {
-                          "op": "literal",
-                          "value": "content_filter"
+            "op": "merge",
+            "policy": "reject",
+            "items": [
+              {
+                "op": "object",
+                "fields": {
+                  "id": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "response-id"
+                  },
+                  "object": {
+                    "op": "literal",
+                    "value": "response"
+                  },
+                  "created_at": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "created-at"
+                  },
+                  "model": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "model-id"
+                  },
+                  "status": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "response-status"
+                  },
+                  "output": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "response-output"
+                  },
+                  "usage": {
+                    "op": "let",
+                    "name": "usage-envelope",
+                    "source": {
+                      "op": "object",
+                      "fields": {
+                        "usage": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "response-usage"
                         }
-                      },
-                      "otherwise": {
-                        "op": "reject",
-                        "path": "/response/attributes/finishReason",
-                        "reason": "incomplete response requires a declared cause",
-                        "diagnostic": {
-                          "code": "unsupported_capability",
-                          "stage": "evaluate"
+                      }
+                    },
+                    "body": {
+                      "op": "ref",
+                      "ref": "encode-stream-usage-fields"
+                    }
+                  },
+                  "incomplete_details": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "response-status"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "incomplete"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "object",
+                      "fields": {
+                        "reason": {
+                          "op": "choose",
+                          "source": {
+                            "op": "read",
+                            "from": "state",
+                            "path": "/attributes/finishReason"
+                          },
+                          "cases": {
+                            "length": {
+                              "op": "literal",
+                              "value": "max_output_tokens"
+                            },
+                            "content_filter": {
+                              "op": "literal",
+                              "value": "content_filter"
+                            }
+                          },
+                          "otherwise": {
+                            "op": "reject",
+                            "path": "/response/attributes/finishReason",
+                            "reason": "incomplete response requires a declared cause",
+                            "diagnostic": {
+                              "code": "unsupported_capability",
+                              "stage": "evaluate"
+                            }
+                          }
                         }
                       }
                     }
                   }
                 }
-              }
-            }
-          },
-          {
-            "op": "from_entries",
-            "source": {
-              "op": "map",
-              "source": {
-                "op": "index_values",
-                "name": "targetResponseMetadata"
               },
-              "body": {
-                "op": "object",
-                "fields": {
-                  "key": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/name"
+              {
+                "op": "from_entries",
+                "source": {
+                  "op": "map",
+                  "source": {
+                    "op": "index_values",
+                    "name": "targetResponseMetadata"
                   },
-                  "value": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/value"
+                  "body": {
+                    "op": "object",
+                    "fields": {
+                      "key": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/name"
+                      },
+                      "value": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/value"
+                      }
+                    }
                   }
+                },
+                "policy": "reject"
+              },
+              {
+                "op": "if",
+                "when": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "state",
+                    "path": "/attributes/wire:openai_responses"
+                  }
+                },
+                "then": {
+                  "op": "read",
+                  "from": "state",
+                  "path": "/attributes/wire:openai_responses"
+                },
+                "otherwise": {
+                  "op": "object",
+                  "fields": {}
                 }
               }
-            },
-            "policy": "reject"
+            ]
           },
           {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "state",
-                "path": "/attributes/wire:openai_responses"
+            "op": "object",
+            "fields": {
+              "store": {
+                "op": "ref",
+                "ref": "client-response-storage"
               }
-            },
-            "then": {
-              "op": "read",
-              "from": "state",
-              "path": "/attributes/wire:openai_responses"
-            },
-            "otherwise": {
-              "op": "object",
-              "fields": {}
             }
           }
         ]
@@ -18415,24 +17827,8 @@
         "summary": {
           "op": "map",
           "source": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "item",
-                "path": "/children"
-              }
-            },
-            "then": {
-              "op": "read",
-              "from": "item",
-              "path": "/children"
-            },
-            "otherwise": {
-              "op": "array",
-              "items": []
-            }
+            "op": "ref",
+            "ref": "item-children"
           },
           "body": {
             "op": "object",
@@ -18645,23 +18041,8 @@
               "ref": "stream-output-key"
             },
             "index": {
-              "op": "let",
-              "name": "registered-item",
-              "source": {
-                "op": "recall",
-                "name": "parts",
-                "source": {
-                  "op": "ref",
-                  "ref": "stream-content-key"
-                },
-                "policy": "reject"
-              },
-              "body": {
-                "op": "read",
-                "from": "binding",
-                "path": "/position",
-                "name": "registered-item"
-              }
+              "op": "ref",
+              "ref": "source-content-position"
             },
             "delta": {
               "op": "read",
@@ -18719,23 +18100,8 @@
                 "ref": "stream-output-key"
               },
               "index": {
-                "op": "let",
-                "name": "registered-item",
-                "source": {
-                  "op": "recall",
-                  "name": "parts",
-                  "source": {
-                    "op": "ref",
-                    "ref": "stream-content-key"
-                  },
-                  "policy": "reject"
-                },
-                "body": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/position",
-                  "name": "registered-item"
-                }
+                "op": "ref",
+                "ref": "source-content-position"
               },
               "item": {
                 "op": "ref",
@@ -18774,39 +18140,8 @@
       "otherwise": {
         "op": "if",
         "when": {
-          "op": "any",
-          "items": [
-            {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/collection",
-                  "name": "target-item"
-                },
-                {
-                  "op": "literal",
-                  "value": "reasoning_content"
-                }
-              ]
-            },
-            {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/kind",
-                  "name": "target-item"
-                },
-                {
-                  "op": "literal",
-                  "value": "reasoning"
-                }
-              ]
-            }
-          ]
+          "op": "ref",
+          "ref": "target-reasoning-content"
         },
         "then": {
           "op": "literal",
@@ -18815,19 +18150,8 @@
         "otherwise": {
           "op": "if",
           "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "binding",
-                "path": "/kind",
-                "name": "target-item"
-              },
-              {
-                "op": "literal",
-                "value": "refusal"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-target-refusal"
           },
           "then": {
             "op": "literal",
@@ -18966,19 +18290,8 @@
                           "tool_call": {
                             "op": "if",
                             "when": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "/inputKind",
-                                  "name": "target-item"
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": "text"
-                                }
-                              ]
+                              "op": "ref",
+                              "ref": "is-target-text-input"
                             },
                             "then": {
                               "op": "object",
@@ -21191,38 +20504,8 @@
           }
         },
         "resources": {
-          "op": "if",
-          "when": {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "item",
-              "path": "/file_id"
-            }
-          },
-          "then": {
-            "op": "array",
-            "items": [
-              {
-                "op": "object",
-                "fields": {
-                  "kind": {
-                    "op": "literal",
-                    "value": "file_id"
-                  },
-                  "id": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/file_id"
-                  },
-                  "scope": {
-                    "op": "object",
-                    "fields": {}
-                  }
-                }
-              }
-            ]
-          }
+          "op": "ref",
+          "ref": "decode-file-resource"
         },
         "attributes": {
           "op": "let",
@@ -22223,24 +21506,8 @@
                   "then": {
                     "op": "map",
                     "source": {
-                      "op": "if",
-                      "when": {
-                        "op": "present",
-                        "source": {
-                          "op": "read",
-                          "from": "item",
-                          "path": "/children"
-                        }
-                      },
-                      "then": {
-                        "op": "read",
-                        "from": "item",
-                        "path": "/children"
-                      },
-                      "otherwise": {
-                        "op": "array",
-                        "items": []
-                      }
+                      "op": "ref",
+                      "ref": "item-children"
                     },
                     "body": {
                       "op": "ref",
@@ -22504,24 +21771,8 @@
                   "then": {
                     "op": "map",
                     "source": {
-                      "op": "if",
-                      "when": {
-                        "op": "present",
-                        "source": {
-                          "op": "read",
-                          "from": "item",
-                          "path": "/children"
-                        }
-                      },
-                      "then": {
-                        "op": "read",
-                        "from": "item",
-                        "path": "/children"
-                      },
-                      "otherwise": {
-                        "op": "array",
-                        "items": []
-                      }
+                      "op": "ref",
+                      "ref": "item-children"
                     },
                     "body": {
                       "op": "ref",
@@ -22619,12 +21870,8 @@
     "reasoning-effort": {
       "op": "if",
       "when": {
-        "op": "present",
-        "source": {
-          "op": "read",
-          "from": "input",
-          "path": "/reasoning/effort"
-        }
+        "op": "ref",
+        "ref": "model-has-requested-effort"
       },
       "then": {
         "op": "read",
@@ -22797,24 +22044,8 @@
             "op": "equal",
             "items": [
               {
-                "op": "if",
-                "when": {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/children"
-                  }
-                },
-                "then": {
-                  "op": "read",
-                  "from": "item",
-                  "path": "/children"
-                },
-                "otherwise": {
-                  "op": "array",
-                  "items": []
-                }
+                "op": "ref",
+                "ref": "item-children"
               },
               {
                 "op": "array",
@@ -22863,24 +22094,8 @@
             "source": {
               "op": "group_runs",
               "source": {
-                "op": "if",
-                "when": {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/children"
-                  }
-                },
-                "then": {
-                  "op": "read",
-                  "from": "item",
-                  "path": "/children"
-                },
-                "otherwise": {
-                  "op": "array",
-                  "items": []
-                }
+                "op": "ref",
+                "ref": "item-children"
               },
               "when": {
                 "op": "ref",
@@ -23573,13 +22788,8 @@
       "op": "let",
       "name": "registered-item",
       "source": {
-        "op": "recall",
-        "name": "items",
-        "source": {
-          "op": "ref",
-          "ref": "stream-output-index"
-        },
-        "policy": "reject"
+        "op": "ref",
+        "ref": "source-output-item"
       },
       "body": {
         "op": "let",
@@ -23687,13 +22897,8 @@
         "op": "let",
         "name": "previous-item",
         "source": {
-          "op": "recall",
-          "name": "items",
-          "source": {
-            "op": "ref",
-            "ref": "stream-output-index"
-          },
-          "policy": "reject"
+          "op": "ref",
+          "ref": "source-output-item"
         },
         "body": {
           "op": "remember",
@@ -23871,19 +23076,8 @@
         {
           "op": "if",
           "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "binding",
-                "path": "/inputKind",
-                "name": "target-item"
-              },
-              {
-                "op": "literal",
-                "value": "text"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-target-text-input"
           },
           "then": {
             "op": "object",
@@ -23913,15 +23107,8 @@
                       ]
                     },
                     "then": {
-                      "op": "buffer_text",
-                      "name": "body",
-                      "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/key",
-                        "name": "target-item"
-                      },
-                      "operation": "read"
+                      "op": "ref",
+                      "ref": "target-item-body"
                     }
                   }
                 }
@@ -23938,19 +23125,8 @@
     "append-server-body": {
       "op": "if",
       "when": {
-        "op": "equal",
-        "items": [
-          {
-            "op": "read",
-            "from": "binding",
-            "path": "/inputKind",
-            "name": "target-item"
-          },
-          {
-            "op": "literal",
-            "value": "text"
-          }
-        ]
+        "op": "ref",
+        "ref": "is-target-text-input"
       },
       "then": {
         "op": "if",
@@ -24128,19 +23304,8 @@
         "op": "all",
         "items": [
           {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "binding",
-                "path": "/inputKind",
-                "name": "target-item"
-              },
-              {
-                "op": "literal",
-                "value": "text"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-target-text-input"
           },
           {
             "op": "not",
@@ -24225,15 +23390,8 @@
                   "name": "target-item"
                 },
                 "code": {
-                  "op": "buffer_text",
-                  "name": "body",
-                  "source": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/key",
-                    "name": "target-item"
-                  },
-                  "operation": "read"
+                  "op": "ref",
+                  "ref": "target-item-body"
                 }
               }
             }
@@ -24317,19 +23475,8 @@
             "op": "all",
             "items": [
               {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/type",
-                    "name": "target-event"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "item.delta"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-target-item-delta"
               },
               {
                 "op": "present",
@@ -24622,13 +23769,8 @@
         "op": "let",
         "name": "parent-item",
         "source": {
-          "op": "recall",
-          "name": "items",
-          "source": {
-            "op": "ref",
-            "ref": "stream-output-index"
-          },
-          "policy": "reject"
+          "op": "ref",
+          "ref": "source-output-item"
         },
         "body": {
           "op": "equal",
@@ -24657,19 +23799,8 @@
         {
           "op": "not",
           "source": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "binding",
-                "path": "/kind",
-                "name": "target-item"
-              },
-              {
-                "op": "literal",
-                "value": "server_tool"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-target-server-tool"
           }
         },
         {
@@ -24678,19 +23809,8 @@
             "op": "any",
             "items": [
               {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/kind",
-                    "name": "target-item"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "tool_call"
-                  }
-                ]
+                "op": "ref",
+                "ref": "is-target-tool-call"
               },
               {
                 "op": "ref",
@@ -24840,47 +23960,18 @@
       "source": {
         "op": "if",
         "when": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "read",
-              "from": "binding",
-              "path": "/kind",
-              "name": "target-item"
-            },
-            {
-              "op": "literal",
-              "value": "server_tool"
-            }
-          ]
+          "op": "ref",
+          "ref": "is-target-server-tool"
         },
         "then": {
           "op": "if",
           "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "binding",
-                "path": "/inputKind",
-                "name": "target-item"
-              },
-              {
-                "op": "literal",
-                "value": "text"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-target-text-input"
           },
           "then": {
-            "op": "buffer_text",
-            "name": "body",
-            "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "/key",
-              "name": "target-item"
-            },
-            "operation": "read"
+            "op": "ref",
+            "ref": "target-item-body"
           },
           "otherwise": {
             "op": "literal",
@@ -24888,15 +23979,8 @@
           }
         },
         "otherwise": {
-          "op": "buffer_text",
-          "name": "body",
-          "source": {
-            "op": "read",
-            "from": "binding",
-            "path": "/key",
-            "name": "target-item"
-          },
-          "operation": "read"
+          "op": "ref",
+          "ref": "target-item-body"
         }
       },
       "body": {
@@ -24905,19 +23989,8 @@
         "source": {
           "op": "if",
           "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "binding",
-                "path": "/kind",
-                "name": "target-item"
-              },
-              {
-                "op": "literal",
-                "value": "server_tool"
-              }
-            ]
+            "op": "ref",
+            "ref": "is-target-server-tool"
           },
           "then": {
             "op": "array",
@@ -25573,6 +24646,616 @@
         "op": "array",
         "items": []
       }
+    },
+    "source-output-item": {
+      "op": "recall",
+      "name": "items",
+      "source": {
+        "op": "ref",
+        "ref": "stream-output-index"
+      },
+      "policy": "reject"
+    },
+    "target-item-body": {
+      "op": "buffer_text",
+      "name": "body",
+      "source": {
+        "op": "read",
+        "from": "binding",
+        "path": "/key",
+        "name": "target-item"
+      },
+      "operation": "read"
+    },
+    "is-target-server-tool": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "binding",
+          "path": "/kind",
+          "name": "target-item"
+        },
+        {
+          "op": "literal",
+          "value": "server_tool"
+        }
+      ]
+    },
+    "is-target-text-input": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "binding",
+          "path": "/inputKind",
+          "name": "target-item"
+        },
+        {
+          "op": "literal",
+          "value": "text"
+        }
+      ]
+    },
+    "is-target-refusal": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "binding",
+          "path": "/kind",
+          "name": "target-item"
+        },
+        {
+          "op": "literal",
+          "value": "refusal"
+        }
+      ]
+    },
+    "is-target-tool-call": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "binding",
+          "path": "/kind",
+          "name": "target-item"
+        },
+        {
+          "op": "literal",
+          "value": "tool_call"
+        }
+      ]
+    },
+    "is-target-item-delta": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "read",
+          "from": "binding",
+          "path": "/type",
+          "name": "target-event"
+        },
+        {
+          "op": "literal",
+          "value": "item.delta"
+        }
+      ]
+    },
+    "item-children": {
+      "op": "if",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "item",
+          "path": "/children"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "item",
+        "path": "/children"
+      },
+      "otherwise": {
+        "op": "array",
+        "items": []
+      }
+    },
+    "decode-file-resource": {
+      "op": "if",
+      "when": {
+        "op": "exists",
+        "source": {
+          "op": "read",
+          "from": "item",
+          "path": "/file_id"
+        }
+      },
+      "then": {
+        "op": "array",
+        "items": [
+          {
+            "op": "object",
+            "fields": {
+              "kind": {
+                "op": "literal",
+                "value": "file_id"
+              },
+              "id": {
+                "op": "read",
+                "from": "item",
+                "path": "/file_id"
+              },
+              "scope": {
+                "op": "object",
+                "fields": {}
+              }
+            }
+          }
+        ]
+      }
+    },
+    "source-content-position": {
+      "op": "let",
+      "name": "registered-item",
+      "source": {
+        "op": "recall",
+        "name": "parts",
+        "source": {
+          "op": "ref",
+          "ref": "stream-content-key"
+        },
+        "policy": "reject"
+      },
+      "body": {
+        "op": "read",
+        "from": "binding",
+        "path": "/position",
+        "name": "registered-item"
+      }
+    },
+    "source-summary-position": {
+      "op": "let",
+      "name": "registered-part",
+      "source": {
+        "op": "recall",
+        "name": "parts",
+        "source": {
+          "op": "ref",
+          "ref": "stream-summary-key"
+        },
+        "policy": "reject"
+      },
+      "body": {
+        "op": "read",
+        "from": "binding",
+        "path": "/position",
+        "name": "registered-part"
+      }
+    },
+    "source-output-position": {
+      "op": "let",
+      "name": "registered-item",
+      "source": {
+        "op": "ref",
+        "ref": "source-output-item"
+      },
+      "body": {
+        "op": "read",
+        "from": "binding",
+        "path": "/position",
+        "name": "registered-item"
+      }
+    },
+    "requested-reasoning-effort": {
+      "op": "if",
+      "when": {
+        "op": "ref",
+        "ref": "model-has-legacy-reasoning"
+      },
+      "then": {
+        "op": "read",
+        "from": "input",
+        "path": "/parameters/responses_reasoning/effort"
+      },
+      "otherwise": {
+        "op": "omit"
+      }
+    },
+    "source-tool-input": {
+      "op": "if",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "read",
+            "from": "input",
+            "path": "/item/type"
+          },
+          {
+            "op": "literal",
+            "value": "custom_tool_call"
+          }
+        ]
+      },
+      "then": {
+        "op": "read",
+        "from": "input",
+        "path": "/item/input"
+      },
+      "otherwise": {
+        "op": "read",
+        "from": "input",
+        "path": "/item/arguments"
+      }
+    },
+    "decode-current-content-part": {
+      "op": "visit",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/part"
+      },
+      "body": {
+        "op": "ref",
+        "ref": "decode-stream-content-part"
+      }
+    },
+    "target-reasoning-content": {
+      "op": "any",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "binding",
+              "path": "/collection",
+              "name": "target-item"
+            },
+            {
+              "op": "literal",
+              "value": "reasoning_content"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "binding",
+              "path": "/kind",
+              "name": "target-item"
+            },
+            {
+              "op": "literal",
+              "value": "reasoning"
+            }
+          ]
+        }
+      ]
+    },
+    "model-requested-budget": {
+      "op": "if",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/reasoning/budget"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "input",
+        "path": "/reasoning/budget"
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": 0
+      }
+    },
+    "model-has-requested-effort": {
+      "op": "present",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/reasoning/effort"
+      }
+    },
+    "model-is-reasoning-disabled": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "ref",
+          "ref": "reasoning-mode"
+        },
+        {
+          "op": "literal",
+          "value": "disabled"
+        }
+      ]
+    },
+    "model-reasoning-kind-unknown": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "ref",
+          "ref": "target-model-reasoning-kind"
+        },
+        {
+          "op": "literal",
+          "value": "unknown"
+        }
+      ]
+    },
+    "model-has-legacy-reasoning": {
+      "op": "present",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/parameters/responses_reasoning"
+      }
+    },
+    "decode-storage-intent": {
+      "op": "object",
+      "fields": {
+        "sourceCodec": {
+          "op": "literal",
+          "value": "responses"
+        },
+        "raw": {
+          "op": "read",
+          "from": "input",
+          "path": "/store"
+        },
+        "requested": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/store"
+            }
+          },
+          "then": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/store"
+              },
+              {
+                "op": "literal",
+                "value": true
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": true
+          }
+        },
+        "requestedUnknown": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/store"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "null"
+            }
+          ]
+        },
+        "effective": {
+          "op": "literal",
+          "value": false
+        },
+        "effectiveUnknown": {
+          "op": "literal",
+          "value": true
+        }
+      }
+    },
+    "decode-client-output": {
+      "op": "object",
+      "fields": {
+        "responsesStorage": {
+          "op": "ref",
+          "ref": "decode-storage-intent"
+        }
+      }
+    },
+    "encode-request-storage": {
+      "op": "let",
+      "name": "storage",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/clientOutput/responsesStorage"
+      },
+      "body": {
+        "op": "if",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "path": "",
+            "name": "storage"
+          }
+        },
+        "then": {
+          "op": "if",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/sourceCodec",
+                    "name": "storage"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "responses"
+                  }
+                ]
+              },
+              {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/effectiveUnknown",
+                        "name": "storage"
+                      },
+                      {
+                        "op": "literal",
+                        "value": true
+                      }
+                    ]
+                  },
+                  {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/requestedUnknown",
+                              "name": "storage"
+                            },
+                            {
+                              "op": "literal",
+                              "value": true
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/requested",
+                            "name": "storage"
+                          },
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/effective",
+                            "name": "storage"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "then": {
+            "op": "read",
+            "from": "binding",
+            "path": "/raw",
+            "name": "storage"
+          },
+          "otherwise": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "/effectiveUnknown",
+                  "name": "storage"
+                },
+                {
+                  "op": "literal",
+                  "value": true
+                }
+              ]
+            },
+            "then": {
+              "op": "reject",
+              "path": "/clientOutput/responsesStorage",
+              "reason": "target response storage intent requires a declared disposition",
+              "diagnostic": {
+                "code": "unsupported_capability",
+                "stage": "wire"
+              }
+            },
+            "otherwise": {
+              "op": "read",
+              "from": "binding",
+              "path": "/effective",
+              "name": "storage"
+            }
+          }
+        }
+      }
+    },
+    "client-response-storage": {
+      "op": "if",
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "runtime",
+              "path": "/clientOutput/responsesStorage"
+            }
+          },
+          {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "runtime",
+                  "path": "/clientOutput/responsesStorage/effectiveUnknown"
+                },
+                {
+                  "op": "literal",
+                  "value": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "then": {
+        "op": "read",
+        "from": "runtime",
+        "path": "/clientOutput/responsesStorage/effective"
+      }
     }
   },
   "directions": {
@@ -25753,6 +25436,10 @@
           "reasoning": {
             "op": "ref",
             "ref": "decode-reasoning"
+          },
+          "clientOutput": {
+            "op": "ref",
+            "ref": "decode-client-output"
           }
         }
       },
@@ -25901,6 +25588,20 @@
             "ref": "has-foreign-wire-owner"
           },
           "reason": "foreign protocol-specific owner requires an explicit mapping"
+        },
+        {
+          "id": "legacy-storage-owner",
+          "kind": "reject",
+          "path": "/parameters/store",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/store"
+            }
+          },
+          "reason": "storage intent belongs to clientOutput.responsesStorage"
         }
       ],
       "capabilities": {
@@ -25919,7 +25620,144 @@
         "reasoning": true,
         "reasoning.encrypted": true
       },
-      "finalDocument": "upstream-request"
+      "finalDocument": "upstream-request",
+      "finalCheck": {
+        "op": "let",
+        "name": "storage",
+        "source": {
+          "op": "read",
+          "from": "runtime",
+          "path": "/clientOutput/responsesStorage"
+        },
+        "body": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "storage"
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/effectiveUnknown",
+                    "name": "storage"
+                  },
+                  {
+                    "op": "literal",
+                    "value": true
+                  }
+                ]
+              },
+              "then": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/sourceCodec",
+                        "name": "storage"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "responses"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/store"
+                      },
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/raw",
+                        "name": "storage"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "if",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/store"
+                  }
+                },
+                "then": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/store"
+                    },
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/effective",
+                      "name": "storage"
+                    }
+                  ]
+                },
+                "otherwise": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/effective",
+                      "name": "storage"
+                    },
+                    {
+                      "op": "literal",
+                      "value": true
+                    }
+                  ]
+                }
+              }
+            },
+            "then": {
+              "op": "literal",
+              "value": true
+            },
+            "otherwise": {
+              "op": "reject",
+              "path": "/store",
+              "reason": "final storage instruction differs from the prepared target intent",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire"
+              }
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": true
+          }
+        }
+      }
     },
     "decode_response": {
       "document": "provider-response",
@@ -26700,35 +26538,15 @@
                               "ref": "stream-output-key"
                             },
                             "index": {
-                              "op": "let",
-                              "name": "registered-item",
-                              "source": {
-                                "op": "recall",
-                                "name": "items",
-                                "source": {
-                                  "op": "ref",
-                                  "ref": "stream-output-index"
-                                },
-                                "policy": "reject"
-                              },
-                              "body": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "/position",
-                                "name": "registered-item"
-                              }
+                              "op": "ref",
+                              "ref": "source-output-position"
                             },
                             "item": {
                               "op": "let",
                               "name": "registered-item",
                               "source": {
-                                "op": "recall",
-                                "name": "items",
-                                "source": {
-                                  "op": "ref",
-                                  "ref": "stream-output-index"
-                                },
-                                "policy": "reject"
+                                "op": "ref",
+                                "ref": "source-output-item"
                               },
                               "body": {
                                 "op": "read",
@@ -26782,31 +26600,8 @@
                           {
                             "op": "present",
                             "source": {
-                              "op": "if",
-                              "when": {
-                                "op": "equal",
-                                "items": [
-                                  {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/item/type"
-                                  },
-                                  {
-                                    "op": "literal",
-                                    "value": "custom_tool_call"
-                                  }
-                                ]
-                              },
-                              "then": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/item/input"
-                              },
-                              "otherwise": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/item/arguments"
-                              }
+                              "op": "ref",
+                              "ref": "source-tool-input"
                             }
                           },
                           {
@@ -26815,31 +26610,8 @@
                               "op": "equal",
                               "items": [
                                 {
-                                  "op": "if",
-                                  "when": {
-                                    "op": "equal",
-                                    "items": [
-                                      {
-                                        "op": "read",
-                                        "from": "input",
-                                        "path": "/item/type"
-                                      },
-                                      {
-                                        "op": "literal",
-                                        "value": "custom_tool_call"
-                                      }
-                                    ]
-                                  },
-                                  "then": {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/item/input"
-                                  },
-                                  "otherwise": {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/item/arguments"
-                                  }
+                                  "op": "ref",
+                                  "ref": "source-tool-input"
                                 },
                                 {
                                   "op": "literal",
@@ -26873,31 +26645,8 @@
                                 "ref": "stream-output-key"
                               },
                               "delta": {
-                                "op": "if",
-                                "when": {
-                                  "op": "equal",
-                                  "items": [
-                                    {
-                                      "op": "read",
-                                      "from": "input",
-                                      "path": "/item/type"
-                                    },
-                                    {
-                                      "op": "literal",
-                                      "value": "custom_tool_call"
-                                    }
-                                  ]
-                                },
-                                "then": {
-                                  "op": "read",
-                                  "from": "input",
-                                  "path": "/item/input"
-                                },
-                                "otherwise": {
-                                  "op": "read",
-                                  "from": "input",
-                                  "path": "/item/arguments"
-                                }
+                                "op": "ref",
+                                "ref": "source-tool-input"
                               }
                             }
                           }
@@ -26933,23 +26682,8 @@
                           "ref": "stream-output-key"
                         },
                         "index": {
-                          "op": "let",
-                          "name": "registered-item",
-                          "source": {
-                            "op": "recall",
-                            "name": "items",
-                            "source": {
-                              "op": "ref",
-                              "ref": "stream-output-index"
-                            },
-                            "policy": "reject"
-                          },
-                          "body": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/position",
-                            "name": "registered-item"
-                          }
+                          "op": "ref",
+                          "ref": "source-output-position"
                         },
                         "delta": {
                           "op": "read",
@@ -26967,13 +26701,8 @@
                       "op": "let",
                       "name": "registered-item",
                       "source": {
-                        "op": "recall",
-                        "name": "items",
-                        "source": {
-                          "op": "ref",
-                          "ref": "stream-output-index"
-                        },
-                        "policy": "reject"
+                        "op": "ref",
+                        "ref": "source-output-item"
                       },
                       "body": {
                         "op": "object",
@@ -27076,13 +26805,8 @@
                       "op": "let",
                       "name": "registered-item",
                       "source": {
-                        "op": "recall",
-                        "name": "items",
-                        "source": {
-                          "op": "ref",
-                          "ref": "stream-output-index"
-                        },
-                        "policy": "reject"
+                        "op": "ref",
+                        "ref": "source-output-item"
                       },
                       "body": {
                         "op": "let",
@@ -27240,23 +26964,8 @@
                                 "ref": "stream-output-key"
                               },
                               "index": {
-                                "op": "let",
-                                "name": "registered-item",
-                                "source": {
-                                  "op": "recall",
-                                  "name": "items",
-                                  "source": {
-                                    "op": "ref",
-                                    "ref": "stream-output-index"
-                                  },
-                                  "policy": "reject"
-                                },
-                                "body": {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "/position",
-                                  "name": "registered-item"
-                                }
+                                "op": "ref",
+                                "ref": "source-output-position"
                               },
                               "item": {
                                 "op": "with_index",
@@ -27321,35 +27030,12 @@
                             "ref": "stream-output-key"
                           },
                           "index": {
-                            "op": "let",
-                            "name": "registered-item",
-                            "source": {
-                              "op": "recall",
-                              "name": "parts",
-                              "source": {
-                                "op": "ref",
-                                "ref": "stream-content-key"
-                              },
-                              "policy": "reject"
-                            },
-                            "body": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/position",
-                              "name": "registered-item"
-                            }
+                            "op": "ref",
+                            "ref": "source-content-position"
                           },
                           "item": {
-                            "op": "visit",
-                            "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/part"
-                            },
-                            "body": {
-                              "op": "ref",
-                              "ref": "decode-stream-content-part"
-                            }
+                            "op": "ref",
+                            "ref": "decode-current-content-part"
                           },
                           "collection": {
                             "op": "ref",
@@ -27411,23 +27097,8 @@
                             "ref": "stream-output-key"
                           },
                           "index": {
-                            "op": "let",
-                            "name": "registered-item",
-                            "source": {
-                              "op": "recall",
-                              "name": "parts",
-                              "source": {
-                                "op": "ref",
-                                "ref": "stream-content-key"
-                              },
-                              "policy": "reject"
-                            },
-                            "body": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/position",
-                              "name": "registered-item"
-                            }
+                            "op": "ref",
+                            "ref": "source-content-position"
                           },
                           "item": {
                             "op": "merge",
@@ -27490,16 +27161,8 @@
                       "op": "let",
                       "name": "new-part",
                       "source": {
-                        "op": "visit",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/part"
-                        },
-                        "body": {
-                          "op": "ref",
-                          "ref": "decode-stream-content-part"
-                        }
+                        "op": "ref",
+                        "ref": "decode-current-content-part"
                       },
                       "body": {
                         "op": "let",
@@ -27881,35 +27544,12 @@
                             "value": "summary"
                           },
                           "index": {
-                            "op": "let",
-                            "name": "registered-part",
-                            "source": {
-                              "op": "recall",
-                              "name": "parts",
-                              "source": {
-                                "op": "ref",
-                                "ref": "stream-summary-key"
-                              },
-                              "policy": "reject"
-                            },
-                            "body": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/position",
-                              "name": "registered-part"
-                            }
+                            "op": "ref",
+                            "ref": "source-summary-position"
                           },
                           "item": {
-                            "op": "visit",
-                            "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/part"
-                            },
-                            "body": {
-                              "op": "ref",
-                              "ref": "decode-stream-content-part"
-                            }
+                            "op": "ref",
+                            "ref": "decode-current-content-part"
                           }
                         }
                       }
@@ -27947,23 +27587,8 @@
                           "value": "summary"
                         },
                         "index": {
-                          "op": "let",
-                          "name": "registered-part",
-                          "source": {
-                            "op": "recall",
-                            "name": "parts",
-                            "source": {
-                              "op": "ref",
-                              "ref": "stream-summary-key"
-                            },
-                            "policy": "reject"
-                          },
-                          "body": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/position",
-                            "name": "registered-part"
-                          }
+                          "op": "ref",
+                          "ref": "source-summary-position"
                         },
                         "delta": {
                           "op": "read",
@@ -28017,23 +27642,8 @@
                             "value": "summary"
                           },
                           "index": {
-                            "op": "let",
-                            "name": "registered-part",
-                            "source": {
-                              "op": "recall",
-                              "name": "parts",
-                              "source": {
-                                "op": "ref",
-                                "ref": "stream-summary-key"
-                              },
-                              "policy": "reject"
-                            },
-                            "body": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/position",
-                              "name": "registered-part"
-                            }
+                            "op": "ref",
+                            "ref": "source-summary-position"
                           },
                           "item": {
                             "op": "ref",
@@ -28087,35 +27697,12 @@
                             "value": "summary"
                           },
                           "index": {
-                            "op": "let",
-                            "name": "registered-part",
-                            "source": {
-                              "op": "recall",
-                              "name": "parts",
-                              "source": {
-                                "op": "ref",
-                                "ref": "stream-summary-key"
-                              },
-                              "policy": "reject"
-                            },
-                            "body": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/position",
-                              "name": "registered-part"
-                            }
+                            "op": "ref",
+                            "ref": "source-summary-position"
                           },
                           "item": {
-                            "op": "visit",
-                            "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/part"
-                            },
-                            "body": {
-                              "op": "ref",
-                              "ref": "decode-stream-content-part"
-                            }
+                            "op": "ref",
+                            "ref": "decode-current-content-part"
                           }
                         }
                       }
@@ -28153,23 +27740,8 @@
                           "ref": "stream-output-key"
                         },
                         "index": {
-                          "op": "let",
-                          "name": "registered-item",
-                          "source": {
-                            "op": "recall",
-                            "name": "items",
-                            "source": {
-                              "op": "ref",
-                              "ref": "stream-output-index"
-                            },
-                            "policy": "reject"
-                          },
-                          "body": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/position",
-                            "name": "registered-item"
-                          }
+                          "op": "ref",
+                          "ref": "source-output-position"
                         },
                         "delta": {
                           "op": "read",
@@ -28184,13 +27756,8 @@
                   "op": "let",
                   "name": "registered-item",
                   "source": {
-                    "op": "recall",
-                    "name": "items",
-                    "source": {
-                      "op": "ref",
-                      "ref": "stream-output-index"
-                    },
-                    "policy": "reject"
+                    "op": "ref",
+                    "ref": "source-output-item"
                   },
                   "body": {
                     "op": "array",
@@ -28416,13 +27983,8 @@
                   "op": "let",
                   "name": "registered-item",
                   "source": {
-                    "op": "recall",
-                    "name": "items",
-                    "source": {
-                      "op": "ref",
-                      "ref": "stream-output-index"
-                    },
-                    "policy": "reject"
+                    "op": "ref",
+                    "ref": "source-output-item"
                   },
                   "body": {
                     "op": "array",
@@ -28466,13 +28028,8 @@
                   "op": "let",
                   "name": "registered-item",
                   "source": {
-                    "op": "recall",
-                    "name": "items",
-                    "source": {
-                      "op": "ref",
-                      "ref": "stream-output-index"
-                    },
-                    "policy": "reject"
+                    "op": "ref",
+                    "ref": "source-output-item"
                   },
                   "body": {
                     "op": "array",
@@ -28584,13 +28141,8 @@
                   "op": "let",
                   "name": "registered-item",
                   "source": {
-                    "op": "recall",
-                    "name": "items",
-                    "source": {
-                      "op": "ref",
-                      "ref": "stream-output-index"
-                    },
-                    "policy": "reject"
+                    "op": "ref",
+                    "ref": "source-output-item"
                   },
                   "body": {
                     "op": "array",
@@ -29975,22 +29527,92 @@
       },
       "nativeReplay": "original_frame",
       "nativeWhen": {
-        "op": "any",
+        "op": "all",
         "items": [
           {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/headers"
-            }
+            "op": "any",
+            "items": [
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/headers"
+                }
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/sequence_number"
+                }
+              }
+            ]
           },
           {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/sequence_number"
+            "op": "if",
+            "when": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "runtime",
+                        "path": "/clientOutput/responsesStorage"
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "runtime",
+                            "path": "/clientOutput/responsesStorage/effectiveUnknown"
+                          },
+                          {
+                            "op": "literal",
+                            "value": true
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/response"
+                  }
+                }
+              ]
+            },
+            "then": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/response/store"
+                },
+                {
+                  "op": "read",
+                  "from": "runtime",
+                  "path": "/clientOutput/responsesStorage/effective"
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": true
             }
           }
         ]
@@ -30035,6 +29657,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -30100,6 +29730,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -30209,6 +29847,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -30320,6 +29966,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -30782,6 +30436,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -30861,6 +30523,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -30942,6 +30612,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -31023,6 +30701,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -31098,6 +30784,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -31171,6 +30865,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -31237,6 +30939,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -31304,6 +31014,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -31372,6 +31090,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -31442,6 +31168,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -31548,6 +31282,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -31655,6 +31397,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -31765,6 +31515,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -31862,6 +31620,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -32121,6 +31887,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -32234,6 +32008,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -32601,6 +32383,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -32741,6 +32531,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -33180,8 +32978,16 @@
           }
         ],
         "parameters": {
-          "max_output_tokens": 10,
-          "store": false
+          "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true,
+            "raw": false
+          }
         }
       },
       "context": {
@@ -33273,6 +33079,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "responses",
+            "requested": true,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -36807,10 +36621,6 @@
               "path": "/stream",
               "required": true
             },
-            "store": {
-              "op": "literal",
-              "value": false
-            },
             "responses_include": {
               "op": "literal",
               "value": [
@@ -36887,12 +36697,17 @@
             "mode": "disabled"
           },
           "stream": false,
-          "store": false,
           "responses_include": [
             "reasoning.encrypted_content"
           ]
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-thinking-disabled-stream",
@@ -36908,12 +36723,18 @@
             "mode": "disabled"
           },
           "stream": true,
-          "store": false,
           "responses_include": [
             "reasoning.encrypted_content"
           ]
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-default",
@@ -36932,12 +36753,17 @@
             "summary": "auto"
           },
           "stream": false,
-          "store": false,
           "responses_include": [
             "reasoning.encrypted_content"
           ]
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-default-stream",
@@ -36956,12 +36782,18 @@
             "summary": "auto"
           },
           "stream": true,
-          "store": false,
           "responses_include": [
             "reasoning.encrypted_content"
           ]
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-low",
@@ -36980,12 +36812,17 @@
             "summary": "auto"
           },
           "stream": false,
-          "store": false,
           "responses_include": [
             "reasoning.encrypted_content"
           ]
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-low-stream",
@@ -37004,12 +36841,18 @@
             "summary": "auto"
           },
           "stream": true,
-          "store": false,
           "responses_include": [
             "reasoning.encrypted_content"
           ]
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-medium",
@@ -37028,12 +36871,17 @@
             "summary": "auto"
           },
           "stream": false,
-          "store": false,
           "responses_include": [
             "reasoning.encrypted_content"
           ]
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-medium-stream",
@@ -37052,12 +36900,18 @@
             "summary": "auto"
           },
           "stream": true,
-          "store": false,
           "responses_include": [
             "reasoning.encrypted_content"
           ]
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-high",
@@ -37076,12 +36930,17 @@
             "summary": "auto"
           },
           "stream": false,
-          "store": false,
           "responses_include": [
             "reasoning.encrypted_content"
           ]
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-high-stream",
@@ -37100,12 +36959,18 @@
             "summary": "auto"
           },
           "stream": true,
-          "store": false,
           "responses_include": [
             "reasoning.encrypted_content"
           ]
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-xhigh",
@@ -37124,12 +36989,17 @@
             "summary": "auto"
           },
           "stream": false,
-          "store": false,
           "responses_include": [
             "reasoning.encrypted_content"
           ]
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-xhigh-stream",
@@ -37148,15 +37018,36 @@
             "summary": "auto"
           },
           "stream": true,
-          "store": false,
           "responses_include": [
             "reasoning.encrypted_content"
           ]
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       }
     ],
-    "toolResults": "text"
+    "toolResults": "text",
+    "clientOutput": {
+      "responsesStorage": {
+        "op": "object",
+        "fields": {
+          "requested": {
+            "op": "literal",
+            "value": false
+          },
+          "effective": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      }
+    }
   },
   "modelSamples": [
     {
@@ -38341,17 +38232,8 @@
               "path": "/isSameWire"
             },
             {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "ref",
-                  "ref": "target-model-reasoning-kind"
-                },
-                {
-                  "op": "literal",
-                  "value": "unknown"
-                }
-              ]
+              "op": "ref",
+              "ref": "model-reasoning-kind-unknown"
             },
             {
               "op": "not",
@@ -38370,17 +38252,8 @@
           "op": "all",
           "items": [
             {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "ref",
-                  "ref": "reasoning-mode"
-                },
-                {
-                  "op": "literal",
-                  "value": "disabled"
-                }
-              ]
+              "op": "ref",
+              "ref": "model-is-reasoning-disabled"
             },
             {
               "op": "not",
@@ -38402,17 +38275,8 @@
               "op": "any",
               "items": [
                 {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "ref",
-                      "ref": "target-model-reasoning-kind"
-                    },
-                    {
-                      "op": "literal",
-                      "value": "unknown"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "model-reasoning-kind-unknown"
                 },
                 {
                   "op": "not",
@@ -38485,17 +38349,8 @@
               ]
             },
             {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "ref",
-                  "ref": "reasoning-mode"
-                },
-                {
-                  "op": "literal",
-                  "value": "disabled"
-                }
-              ]
+              "op": "ref",
+              "ref": "model-is-reasoning-disabled"
             },
             {
               "op": "any",
@@ -38503,12 +38358,8 @@
                 {
                   "op": "not",
                   "source": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/effort"
-                    }
+                    "op": "ref",
+                    "ref": "model-has-requested-effort"
                   }
                 },
                 {
@@ -38602,17 +38453,8 @@
               "op": "any",
               "items": [
                 {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "ref",
-                      "ref": "target-model-reasoning-kind"
-                    },
-                    {
-                      "op": "literal",
-                      "value": "unknown"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "model-reasoning-kind-unknown"
                 },
                 {
                   "op": "equal",
@@ -38649,12 +38491,8 @@
                   }
                 },
                 {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/effort"
-                  }
+                  "op": "ref",
+                  "ref": "model-has-requested-effort"
                 },
                 {
                   "op": "present",
@@ -38751,12 +38589,8 @@
           "op": "all",
           "items": [
             {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/reasoning/effort"
-              }
+              "op": "ref",
+              "ref": "model-has-requested-effort"
             },
             {
               "op": "not",
@@ -38985,24 +38819,8 @@
               "operation": "gt",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/budget"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/budget"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": 0
-                  }
+                  "op": "ref",
+                  "ref": "model-requested-budget"
                 },
                 {
                   "op": "literal",
@@ -39011,12 +38829,8 @@
               ]
             },
             {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/reasoning/effort"
-              }
+              "op": "ref",
+              "ref": "model-has-requested-effort"
             }
           ]
         },
@@ -39053,24 +38867,8 @@
               "operation": "gt",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/budget"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/budget"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": 0
-                  }
+                  "op": "ref",
+                  "ref": "model-requested-budget"
                 },
                 {
                   "op": "literal",
@@ -39107,24 +38905,8 @@
                       "operation": "lte",
                       "items": [
                         {
-                          "op": "if",
-                          "when": {
-                            "op": "present",
-                            "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/reasoning/budget"
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/reasoning/budget"
-                          },
-                          "otherwise": {
-                            "op": "literal",
-                            "value": 0
-                          }
+                          "op": "ref",
+                          "ref": "model-requested-budget"
                         },
                         {
                           "op": "literal",
@@ -39143,24 +38925,8 @@
                         "operation": "lte",
                         "items": [
                           {
-                            "op": "if",
-                            "when": {
-                              "op": "present",
-                              "source": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/reasoning/budget"
-                              }
-                            },
-                            "then": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/reasoning/budget"
-                            },
-                            "otherwise": {
-                              "op": "literal",
-                              "value": 0
-                            }
+                            "op": "ref",
+                            "ref": "model-requested-budget"
                           },
                           {
                             "op": "literal",
@@ -39197,24 +38963,8 @@
                 "op": "cast",
                 "to": "string",
                 "source": {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/budget"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/budget"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": 0
-                  }
+                  "op": "ref",
+                  "ref": "model-requested-budget"
                 }
               },
               {
@@ -39228,24 +38978,8 @@
                   "operation": "lte",
                   "items": [
                     {
-                      "op": "if",
-                      "when": {
-                        "op": "present",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/reasoning/budget"
-                        }
-                      },
-                      "then": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/reasoning/budget"
-                      },
-                      "otherwise": {
-                        "op": "literal",
-                        "value": 0
-                      }
+                      "op": "ref",
+                      "ref": "model-requested-budget"
                     },
                     {
                       "op": "literal",
@@ -39264,24 +38998,8 @@
                     "operation": "lte",
                     "items": [
                       {
-                        "op": "if",
-                        "when": {
-                          "op": "present",
-                          "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/reasoning/budget"
-                          }
-                        },
-                        "then": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/reasoning/budget"
-                        },
-                        "otherwise": {
-                          "op": "literal",
-                          "value": 0
-                        }
+                        "op": "ref",
+                        "ref": "model-requested-budget"
                       },
                       {
                         "op": "literal",
@@ -39365,25 +39083,12 @@
               }
             },
             {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "ref",
-                  "ref": "reasoning-mode"
-                },
-                {
-                  "op": "literal",
-                  "value": "disabled"
-                }
-              ]
+              "op": "ref",
+              "ref": "model-is-reasoning-disabled"
             },
             {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/reasoning/effort"
-              }
+              "op": "ref",
+              "ref": "model-has-requested-effort"
             },
             {
               "op": "not",
@@ -39424,17 +39129,8 @@
               }
             },
             {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "ref",
-                  "ref": "reasoning-mode"
-                },
-                {
-                  "op": "literal",
-                  "value": "disabled"
-                }
-              ]
+              "op": "ref",
+              "ref": "model-is-reasoning-disabled"
             }
           ]
         },
@@ -39493,12 +39189,8 @@
               ]
             },
             {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/reasoning/effort"
-              }
+              "op": "ref",
+              "ref": "model-has-requested-effort"
             }
           ]
         },
@@ -39538,12 +39230,8 @@
             {
               "op": "not",
               "source": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/reasoning/effort"
-                }
+                "op": "ref",
+                "ref": "model-has-requested-effort"
               }
             },
             {
@@ -39636,12 +39324,8 @@
           "op": "all",
           "items": [
             {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/reasoning/effort"
-              }
+              "op": "ref",
+              "ref": "model-has-requested-effort"
             },
             {
               "op": "not",
@@ -39796,12 +39480,8 @@
             {
               "op": "not",
               "source": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/reasoning/effort"
-                }
+                "op": "ref",
+                "ref": "model-has-requested-effort"
               }
             },
             {
@@ -39899,12 +39579,8 @@
               ]
             },
             {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/reasoning/effort"
-              }
+              "op": "ref",
+              "ref": "model-has-requested-effort"
             }
           ]
         },
@@ -39978,12 +39654,8 @@
             {
               "op": "not",
               "source": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/reasoning/effort"
-                }
+                "op": "ref",
+                "ref": "model-has-requested-effort"
               }
             },
             {
@@ -40062,12 +39734,8 @@
                   "effortScope": {
                     "op": "if",
                     "when": {
-                      "op": "present",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/reasoning/effort"
-                      }
+                      "op": "ref",
+                      "ref": "model-has-requested-effort"
                     },
                     "then": {
                       "op": "literal",
@@ -40553,26 +40221,13 @@
             {
               "op": "not",
               "source": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "ref",
-                    "ref": "target-model-reasoning-kind"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "unknown"
-                  }
-                ]
+                "op": "ref",
+                "ref": "model-reasoning-kind-unknown"
               }
             },
             {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/reasoning/effort"
-              }
+              "op": "ref",
+              "ref": "model-has-requested-effort"
             },
             {
               "op": "not",
@@ -40674,17 +40329,8 @@
             {
               "op": "not",
               "source": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "ref",
-                    "ref": "target-model-reasoning-kind"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "unknown"
-                  }
-                ]
+                "op": "ref",
+                "ref": "model-reasoning-kind-unknown"
               }
             },
             {
@@ -40750,31 +40396,13 @@
             {
               "op": "not",
               "source": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "ref",
-                    "ref": "target-model-reasoning-kind"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "unknown"
-                  }
-                ]
+                "op": "ref",
+                "ref": "model-reasoning-kind-unknown"
               }
             },
             {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "ref",
-                  "ref": "reasoning-mode"
-                },
-                {
-                  "op": "literal",
-                  "value": "disabled"
-                }
-              ]
+              "op": "ref",
+              "ref": "model-is-reasoning-disabled"
             },
             {
               "op": "not",
@@ -40928,17 +40556,8 @@
             {
               "op": "not",
               "source": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "ref",
-                    "ref": "target-model-reasoning-kind"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "unknown"
-                  }
-                ]
+                "op": "ref",
+                "ref": "model-reasoning-kind-unknown"
               }
             },
             {
@@ -41074,31 +40693,13 @@
             {
               "op": "not",
               "source": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "ref",
-                    "ref": "target-model-reasoning-kind"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "unknown"
-                  }
-                ]
+                "op": "ref",
+                "ref": "model-reasoning-kind-unknown"
               }
             },
             {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "ref",
-                  "ref": "reasoning-mode"
-                },
-                {
-                  "op": "literal",
-                  "value": "disabled"
-                }
-              ]
+              "op": "ref",
+              "ref": "model-is-reasoning-disabled"
             },
             {
               "op": "not",
@@ -41185,12 +40786,8 @@
         "when": {
           "op": "if",
           "when": {
-            "op": "present",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/parameters/responses_reasoning"
-            }
+            "op": "ref",
+            "ref": "model-has-legacy-reasoning"
           },
           "then": {
             "op": "all",
@@ -41274,12 +40871,8 @@
         "when": {
           "op": "if",
           "when": {
-            "op": "present",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/parameters/responses_reasoning"
-            }
+            "op": "ref",
+            "ref": "model-has-legacy-reasoning"
           },
           "then": {
             "op": "all",
@@ -41401,12 +40994,8 @@
           "then": {
             "op": "if",
             "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/parameters/responses_reasoning"
-              }
+              "op": "ref",
+              "ref": "model-has-legacy-reasoning"
             },
             "then": {
               "op": "let",
@@ -41488,12 +41077,8 @@
           "then": {
             "op": "if",
             "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/parameters/responses_reasoning"
-              }
+              "op": "ref",
+              "ref": "model-has-legacy-reasoning"
             },
             "then": {
               "op": "let",
@@ -42186,12 +41771,8 @@
           "op": "all",
           "items": [
             {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/parameters/responses_reasoning"
-              }
+              "op": "ref",
+              "ref": "model-has-legacy-reasoning"
             },
             {
               "op": "not",
@@ -42255,12 +41836,8 @@
           "/parameters/responses_reasoning": {
             "op": "if",
             "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/parameters/responses_reasoning"
-              }
+              "op": "ref",
+              "ref": "model-has-legacy-reasoning"
             },
             "then": {
               "op": "let",
@@ -44938,6 +44515,150 @@
                 }
               }
             ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "responses-storage",
+      "order": 190,
+      "enabled": true,
+      "phase": "request",
+      "steps": [
+        {
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/clientOutput/responsesStorage"
+              }
+            }
+          },
+          "stop": true
+        },
+        {
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/clientOutput/responsesStorage/sourceCodec"
+              },
+              {
+                "op": "literal",
+                "value": "responses"
+              }
+            ]
+          },
+          "set": {
+            "/clientOutput/responsesStorage/effective": {
+              "op": "read",
+              "from": "input",
+              "path": "/clientOutput/responsesStorage/requested"
+            },
+            "/clientOutput/responsesStorage/effectiveUnknown": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/clientOutput/responsesStorage/requestedUnknown"
+                },
+                {
+                  "op": "literal",
+                  "value": true
+                }
+              ]
+            }
+          },
+          "stop": true
+        },
+        {
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/clientOutput/responsesStorage/requestedUnknown"
+              },
+              {
+                "op": "literal",
+                "value": true
+              }
+            ]
+          },
+          "diagnostic": {
+            "kind": "degrade",
+            "path": "/store",
+            "reason": {
+              "op": "literal",
+              "value": "source storage intent is unspecified; target instructions explicitly disable response storage"
+            }
+          },
+          "set": {
+            "/clientOutput/responsesStorage/effective": {
+              "op": "literal",
+              "value": false
+            },
+            "/clientOutput/responsesStorage/effectiveUnknown": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "stop": true
+        },
+        {
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/clientOutput/responsesStorage/requested"
+              },
+              {
+                "op": "literal",
+                "value": true
+              }
+            ]
+          },
+          "diagnostic": {
+            "kind": "degrade",
+            "path": "/store",
+            "reason": {
+              "op": "literal",
+              "value": "response storage remains enabled but the target API has a different retrieval contract"
+            }
+          },
+          "set": {
+            "/clientOutput/responsesStorage/effective": {
+              "op": "read",
+              "from": "input",
+              "path": "/clientOutput/responsesStorage/requested"
+            },
+            "/clientOutput/responsesStorage/effectiveUnknown": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "stop": true
+        },
+        {
+          "set": {
+            "/clientOutput/responsesStorage/effective": {
+              "op": "read",
+              "from": "input",
+              "path": "/clientOutput/responsesStorage/requested"
+            },
+            "/clientOutput/responsesStorage/effectiveUnknown": {
+              "op": "literal",
+              "value": false
+            }
           }
         }
       ]

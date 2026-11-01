@@ -558,6 +558,11 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 		replay = &view
 		switch direction {
 		case EncodeResponse:
+			if replay.packagePlan != nil {
+				// The baseline describes the original wire. Caller preferences
+				// belong only to the already-rendered current response.
+				options.ClientOutput = nil
+			}
 			response, err := compiled.DecodeResponse(ctx, original.Bytes(), options)
 			if err != nil {
 				return Value{}, err

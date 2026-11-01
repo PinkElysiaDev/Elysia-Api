@@ -213,11 +213,36 @@ Chat 的父结束仍等待全部子项完成。文本、拒绝、可见 thinking
 
 代码差异与文件哈希保存在忽略目录 `phase-six-usage-archive/`。四包 JSON token 计数分别为 Chat 91,608、Responses 99,710、Anthropic 83,863、Gemini 66,881，未提高限额。上述受限测试环境用于功能验证，不替代正式性能、全项目最终验收或六目标构建。
 
+## 第六阶段 B／剩余计划批次 1：存储意图与最终出站
+
+`dev.108` 的四份默认 Mapping 将已识别的 `store` 迁到 `ClientOutput.ResponsesStorage`。来源事实与目标决定分开，普通参数区不再双写；编码拒绝遗留 `/parameters/store`，不保留读取兜底。稳定 `responses-storage / 190` 规则处理兼容降级和严格拒绝，禁用后不隐式重做。OpenAI 缺省由配置分别声明 false/true，null 不再冒充缺省；A/G 的未知 `wire.store` 保持原生扩展。
+
+Agent 的固定字段输出声明、完整预览及样例已接入；CollectUsage 仍由宿主控制。历史差分夹具按明确的新存储合同迁移预期表示，不整体忽略 ClientOutput、不修改原 wire 期望。现有 Responses include 暂留原参数路径，其客户端要求和认证恢复属于下一批。
+
+`ValidateRequestOutput` 与 `encode_request.finalCheck` 检查实际最终 wire；网关和 Agent 共用最终发送准备，预览和组合验证接入同一检查，组合证据不再漏掉请求 wire 规则。该检查与最终 Spec 共用读取和资源度量；普通请求不新增完整解码，真正 wire 修改后保留原路由复核。Agent 日志复用已编码 JSON 字符串后才生成传输字节。
+
+Responses JSON 原生协调的基线不再读取当前交付偏好；SSE 仅在原包络 store 符合有效决定时原生重放。实际出站 stateless 和返回客户端的 store 均经模拟上游调用验证，不宣称能够证明供应商实际持久化行为。
+
+阶段验证中修正了过期的核心样例表示及两个新夹具：流式测试需消费 Finalize 尾帧，模型策略测试需提供真实声明的模型名。没有放宽协议权限、关联、来源或最终 wire 检查。
+
+全量检查另外发现 Agent 用新用户指令替代待审批工具时缺少取消结果，已独立修复并提交 `0a81c8e`，详见 [修复记录](agent-superseded-approval-2026-11-01.md)。最终出站关联检查保持启用。
+
+| 验证记录 | 结果与范围 |
+|---|---|
+| `phase-seven-go-all` | server 之外全部 Go 包通过；server 唯一失败为上述 Agent 历史缺口 |
+| `phase-seven-server-final` | 修复后 Agent、server 全量通过；结合未变化的其余包结果，本批 Go 全量完成 |
+| `phase-seven-storage-race` | 核心、四包 storage、真实网关 JSON/SSE、Agent 两轮及 wire 冲突拒绝通过，约 401 秒 |
+| `phase-seven-agent-supersede-race` | Agent 新轮次、审批恢复、持久化失败和 A2A 替代相关 race 通过 |
+| `phase-seven-vet-final` | 全量 vet 通过 |
+| `phase-seven-staticcheck-confirm` | 固定 v0.8.2：24 条存量诊断，新增／移除均为零；退出 1 |
+
+静态检查曾发现新增错误文字大写问题，修正后复核。代码差异和哈希归档于忽略目录 `phase-seven-storage-archive/`。检查平台为 Windows amd64、Go 1.27.2；本批没有前端变更。真实供应商、正式性能和六目标最终构建尚未执行，不能由上述功能结果推断性能无回退。
+
 ## 尚未完成的门槛
 
 - 四协议文本的 16 方向 JSON／SSE 主链已通过，Chat 目标 logprobs、Anthropic 混合接续和 Responses 服务端产物已有组件验收；复杂能力的 HTTP/Agent 组合及多消息布局仍需闭合。
 - 四份默认包的完整独立激活证据已齐；组合证据及目标取舍仍需完善。metadata／usage、模型归一化、Gemini historyRetention/safety 已配置化；错误、签名恢复、缓存提示、工具结果、历史布局及客户端交付意图尚需接线。
-- 本轮只读审计定位了后续必须关闭的实际入口缺口：Responses include 未进入客户端续传要求，Agent 仍在参数区表达 store/include；Gemini 的工具 strict、结果错误状态和结构结果尚无完整处置；Anthropic 多根输出、Gemini 有序输出与多个候选尚需明确区分。单文本矩阵不覆盖这些语义，不构成切换生产的依据。
+- 本轮只读审计定位了后续必须关闭的实际入口缺口：Responses include 未进入客户端续传要求，Agent 的 include 仍在参数区；Gemini 的工具 strict、结果错误状态和结构结果尚无完整处置；Anthropic 多根输出、Gemini 有序输出与多个候选尚需明确区分。单文本矩阵不覆盖这些语义，不构成切换生产的依据。
 - 新资源契约尚未覆盖所有保留状态；默认转换策略仍有供应商 Go 分支。
 - 生产预置仍走旧加载器；旧执行路径、自动修复绑定及旧格式执行尚未退役。
 - 复杂能力实际调用、最终全量/静态/race/页面/六目标验收，以及三版本正式配对性能与火焰图尚未完成。

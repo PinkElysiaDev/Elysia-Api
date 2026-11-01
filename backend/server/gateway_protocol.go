@@ -220,26 +220,9 @@ func (s *Server) forwardGateway(ctx context.Context, c *app.RequestContext, reco
 			return &gatewayFailure{http.StatusBadRequest, err}
 		}
 	}
-	if candidate.conversion.HasPhase(protocol.ConversionWire) {
-		wireValue, err = candidate.conversion.ApplyValue(ctx, protocol.ConversionWire, wireValue, candidate.conversionContext(plan.ingress, false), options.Diagnostics)
-		if err != nil {
-			return &gatewayFailure{http.StatusBadRequest, err}
-		}
-		decoded, e := candidate.compiled.DecodeRequestValue(ctx, wireValue, options)
-		if e != nil {
-			return &gatewayFailure{http.StatusBadRequest, e}
-		}
-		if e = protocol.IssuesError(protocol.CheckRoute(decoded, candidate.compiled, candidate.binding, candidate.scope, candidate.operation.Transport)); e != nil {
-			return &gatewayFailure{http.StatusBadRequest, e}
-		}
-	}
-	if e := candidate.compiled.CheckRequestBody(ctx, wireValue); e != nil {
-		return &gatewayFailure{http.StatusBadRequest, e}
-	} else if e = candidate.compiled.ValidateWireOutput(protocol.EncodeRequest, wireValue); e != nil {
-		return e
-	}
-	if err := candidate.compiled.CheckOperationValueInput(ctx, candidate.operationName, wireValue); err != nil {
-		return &gatewayFailure{http.StatusBadRequest, err}
+	wireValue, err = candidate.finalizeRequestWire(ctx, wireValue, candidate.conversionContext(plan.ingress, false).WithOperation(options), options)
+	if err != nil {
+		return err
 	}
 	responseRoute, err := candidate.conversionContext(plan.ingress, true).WithRequestModelOrigin(plan.ingress, candidate.compiled, wireValue)
 	if err != nil {

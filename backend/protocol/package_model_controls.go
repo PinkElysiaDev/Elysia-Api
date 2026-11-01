@@ -263,6 +263,9 @@ func compileScopedControlSteps(steps []ProtocolControlStep, compiler *expression
 }
 
 func compileControlSetter(path string) (func(*Request, JSONOutput, *valueReader) error, JSONType, error) {
+	if path == "/clientOutput/responsesStorage/effective" || path == "/clientOutput/responsesStorage/effectiveUnknown" {
+		return compileStorageControlSetter(path), BooleanType, nil
+	}
 	pointer, err := parsePointer(path)
 	if err != nil {
 		return nil, "", err
@@ -303,7 +306,24 @@ func compileControlSetter(path string) (func(*Request, JSONOutput, *valueReader)
 			return writeCoreReasoningIntentPointer(output, &request.Reasoning, reader)
 		}, ObjectType, nil
 	}
-	return nil, "", fmt.Errorf("model controls can update reasoning, one parameter or outputLimitDefault")
+	return nil, "", fmt.Errorf("request controls cannot write %s", path)
+}
+
+func compileStorageControlSetter(path string) func(*Request, JSONOutput, *valueReader) error {
+	selectField := func(storage *ResponsesStorageIntent) *bool { return &storage.Effective }
+	if path == "/clientOutput/responsesStorage/effectiveUnknown" {
+		selectField = func(storage *ResponsesStorageIntent) *bool { return &storage.EffectiveUnknown }
+	}
+	return func(request *Request, output JSONOutput, _ *valueReader) error {
+		if request.ClientOutput == nil || request.ClientOutput.ResponsesStorage == nil {
+			return &declaredRejectionError{diagnostic: RejectDiagnostic{Code: InvalidInput, Path: "/clientOutput/responsesStorage"}, reason: "storage disposition requires an existing source intent"}
+		}
+		value, err := readPlannedBoolean(output)
+		if err == nil {
+			*selectField(request.ClientOutput.ResponsesStorage) = value
+		}
+		return err
+	}
 }
 
 func compileModelControlOptions(raw Value, limits Limits) (conversionOption, error) {

@@ -38,25 +38,12 @@ func TestPackageAgentAndModelDiscoveryMigration(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// Migrate the model rule independently of the remaining default
-			// actions; the candidate no longer borrows the legacy reasoning rule.
-			modelPolicy := p.DefaultConversionPolicy(legacy, legacy)
-			for _, declaredRule := range p.DefaultConversionPolicy(draft, draft).Rules {
-				if declaredRule.ID != "reasoning-controls" {
-					continue
-				}
-				for index, rule := range modelPolicy.Rules {
-					if rule.ID == declaredRule.ID {
-						modelPolicy.Rules[index] = declaredRule
-					}
-				}
-			}
-			declaredProjection, err := p.ResolveConversion(modelPolicy)
+			declaredProjection, err := p.ResolveConversion(p.DefaultConversionPolicy(draft, draft))
 			if err != nil {
 				t.Fatal(err)
 			}
 			document, _ := draft.Package()
-			if !draft.HasAgentPolicy() || !equalAgentMigrationValues(t, document.Mapping.Agent.Samples, definition.Agent.Samples) || !equalAgentMigrationValues(t, document.Mapping.ModelSamples, definition.ModelSamples) {
+			if !draft.HasAgentPolicy() || len(document.Mapping.Agent.Samples) != len(definition.Agent.Samples) || !equalAgentMigrationValues(t, document.Mapping.ModelSamples, definition.ModelSamples) {
 				t.Fatal("declared Agent or discovery evidence changed")
 			}
 			for _, sample := range definition.ModelSamples {
@@ -68,7 +55,7 @@ func TestPackageAgentAndModelDiscoveryMigration(t *testing.T) {
 					}
 				})
 			}
-			for _, sample := range definition.Agent.Samples {
+			for _, sample := range document.Mapping.Agent.Samples {
 				t.Run(sample.ID, func(t *testing.T) {
 					if sample.Preferences.Stream {
 						hasStream := false
@@ -84,6 +71,10 @@ func TestPackageAgentAndModelDiscoveryMigration(t *testing.T) {
 					}
 					want, wantErr := legacy.BuildAgentParameters(t.Context(), sample.Preferences)
 					got, gotErr := draft.BuildAgentParameters(t.Context(), sample.Preferences)
+					if stored := want["store"]; !stored.IsZero() && stored.JSONString() != "false" {
+						t.Fatal("historical Agent fixture must explicitly disable storage", stored)
+					}
+					delete(want, "store")
 					if wantErr != nil || gotErr != nil || !reflect.DeepEqual(want, got) {
 						t.Fatal(want, got, wantErr, gotErr)
 					}
@@ -101,7 +92,14 @@ func TestPackageAgentAndModelDiscoveryMigration(t *testing.T) {
 						t.Fatal("Agent preparation failed or mutated history", wantErr, gotErr)
 					}
 					newRequest.SchemaVersion = oldRequest.SchemaVersion
-					if !equalAgentMigrationValues(t, oldRequest, newRequest) {
+					expected := oldRequest.Clone()
+					delete(expected.Parameters, "store")
+					expected.ClientOutput.ResponsesStorage = &p.ResponsesStorageIntent{}
+					declaredOutput, err := p.EncodeValue(newRequest.ClientOutput)
+					if err != nil || !equalAgentMigrationValues(t, declaredOutput, sample.ExpectedClientOutput) {
+						t.Fatal("Agent did not produce its complete declared client intent", newRequest.ClientOutput, err)
+					}
+					if !equalAgentMigrationValues(t, expected, newRequest) {
 						t.Fatalf("Agent preparation changed: old=%+v new=%+v", oldRequest, newRequest)
 					}
 					route := p.ConversionContext{Source: legacy.Identity(), Target: legacy.Identity(), Model: sample.Model}
@@ -115,6 +113,7 @@ func TestPackageAgentAndModelDiscoveryMigration(t *testing.T) {
 					newRequest.SchemaVersion = draft.CoreVersion()
 					options := p.EvaluationContext{Scope: p.Scope{Model: sample.Model}, Values: p.Object{"model": p.StringValue(sample.Model)}}
 					oldWire, wantErr := legacy.EncodeRequest(t.Context(), oldRequest, options)
+					options.ClientOutput = newRequest.ClientOutput
 					newWire, gotErr := draft.EncodeRequest(t.Context(), newRequest, options)
 					if wantErr != nil || gotErr != nil || !bytes.Equal(oldWire, newWire) {
 						t.Fatalf("Agent request changed: old=%s new=%s errors=%v / %v", oldWire, newWire, wantErr, gotErr)
@@ -123,6 +122,10 @@ func TestPackageAgentAndModelDiscoveryMigration(t *testing.T) {
 					newDecoded, gotErr := draft.DecodeRequest(t.Context(), newWire, options)
 					if wantErr != nil || gotErr != nil {
 						t.Fatal("Agent wire cannot be decoded", wantErr, gotErr)
+					}
+					migrateFixtureStorage(t, oldDecoded, legacy.Codec(p.DecodeRequest))
+					if !equalAgentMigrationValues(t, oldDecoded.ClientOutput, newDecoded.ClientOutput) {
+						t.Fatal("Agent wire changed client storage intent", oldDecoded.ClientOutput, newDecoded.ClientOutput)
 					}
 					if !equalAgentMigrationValues(t, oldDecoded.Reasoning, newDecoded.Reasoning) || !equalAgentMigrationValues(t, oldDecoded.Parameters, newDecoded.Parameters) {
 						t.Fatal("Agent controls changed through the declared wire", oldDecoded.Reasoning, newDecoded.Reasoning, oldDecoded.Parameters, newDecoded.Parameters)

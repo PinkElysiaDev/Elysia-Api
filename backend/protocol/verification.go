@@ -78,7 +78,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 			report.Checks = append(report.Checks, check)
 			continue
 		}
-		if (sample.Direction == EncodeRequest || sample.Direction == EncodeResponse) && compiled.packagePlan != nil {
+		if sample.Direction == EncodeResponse && compiled.packagePlan != nil {
 			// A component can encode a partial envelope. Activation evidence must
 			// also satisfy the explicitly declared final delivery contract.
 			if _, hasFinalDocument := compiled.packagePlan.finalContracts[sample.Direction]; hasFinalDocument {
@@ -210,10 +210,10 @@ func executeVerificationSample(ctx context.Context, compiled *Compiled, sample S
 			return result, failure
 		}
 		result.semantic = request
-		var body []byte
-		body, err = compiled.EncodeRequest(ctx, request, options)
+		options.ClientOutput = request.ClientOutput
+		result.output, err = compiled.EncodeRequestValue(ctx, request, options)
 		if err == nil {
-			result.output, err = ParseValue(body)
+			err = compiled.ValidateRequestOutput(ctx, result.output, options)
 		}
 	case DecodeResponse:
 		result.semantic, err = compiled.DecodeResponse(ctx, sample.Input.Bytes(), options)

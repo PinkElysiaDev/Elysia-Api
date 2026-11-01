@@ -85,6 +85,9 @@
             "op": "ref",
             "ref": "request-tool-source-links"
           }
+        },
+        {
+          "ref": "request-storage"
         }
       ]
     },
@@ -5625,6 +5628,9 @@
             "op": "ref",
             "ref": "request-tool-links"
           }
+        },
+        {
+          "ref": "request-storage"
         }
       ]
     }
@@ -5836,5 +5842,25 @@
       },
       "policy": "key"
     }
+  },
+  "constraints": {
+    "request-storage": [
+      {
+        "path": "/store",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/store"
+          }
+        },
+        "schema": {
+          "type": "boolean",
+          "nullable": true
+        },
+        "reason": "store must be a boolean or null"
+      }
+    ]
   }
 }

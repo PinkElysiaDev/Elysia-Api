@@ -117,6 +117,9 @@
               "ref": "server-output-item"
             }
           ]
+        },
+        {
+          "ref": "request-storage"
         }
       ]
     },
@@ -3557,6 +3560,9 @@
             "op": "ref",
             "ref": "request-tool-links"
           }
+        },
+        {
+          "ref": "request-storage"
         }
       ]
     },
@@ -14859,6 +14865,24 @@
         },
         "code": "upstream_contract_violation",
         "reason": "summary part requires summary_text and text"
+      }
+    ],
+    "request-storage": [
+      {
+        "path": "/store",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/store"
+          }
+        },
+        "schema": {
+          "type": "boolean",
+          "nullable": true
+        },
+        "reason": "store must be a boolean or null"
       }
     ]
   }

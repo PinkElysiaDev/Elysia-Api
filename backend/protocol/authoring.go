@@ -79,7 +79,11 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 		var preferences AgentPreferences
 		err = decodeContract(input.Input.Bytes(), &preferences)
 		if err == nil {
-			semantic, err = compiled.BuildAgentParameters(ctx, preferences)
+			if compiled.packagePlan != nil {
+				semantic, err = compiled.prepareAgentSettings(ctx, preferences, nil)
+			} else {
+				semantic, err = compiled.BuildAgentParameters(ctx, preferences)
+			}
 		}
 		if err == nil {
 			output, err = EncodeValue(semantic)
@@ -148,7 +152,7 @@ func (service *Service) Preview(ctx context.Context, raw []byte, direction Direc
 	if err != nil {
 		return PreviewResult{Issues: sampleIssues(compiled, sample, "/preview", err)}
 	}
-	if direction == EncodeResponse || direction == EncodeRequest {
+	if direction == EncodeResponse {
 		err = compiled.ValidateWireOutput(direction, result.output)
 	}
 	if direction == EncodeEvent {

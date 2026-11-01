@@ -25,12 +25,18 @@ type AgentConfig struct {
 	Samples         []AgentSample `json:"samples"`
 }
 
-// AgentSample asserts a settings-to-parameters policy and its wire preservation.
+// AgentSample asserts prepared parameters, client delivery intent and wire preservation.
 type AgentSample struct {
-	ID          string           `json:"id"`
-	Model       string           `json:"model,omitempty"`
-	Preferences AgentPreferences `json:"preferences"`
-	Expected    Value            `json:"expected"`
+	ID                   string           `json:"id"`
+	Model                string           `json:"model,omitempty"`
+	Preferences          AgentPreferences `json:"preferences"`
+	Expected             Value            `json:"expected"`
+	ExpectedClientOutput Value            `json:"expectedClientOutput,omitzero"`
+}
+
+type agentPreparation struct {
+	Parameters   Object        `json:"parameters"`
+	ClientOutput *ClientOutput `json:"clientOutput"`
 }
 
 // AgentIdentity marks locally authored history independently of any provider.
@@ -103,15 +109,14 @@ func (compiled *Compiled) BuildAgentRequest(ctx context.Context, request Request
 	if request.Source != AgentIdentity() {
 		return nil, streamIssue(InvalidInput, "/source", "Agent request requires the local author identity")
 	}
-	parameters, err := compiled.BuildAgentParameters(ctx, preferences)
+	prepared, err := compiled.prepareAgentSettings(ctx, preferences, request.ClientOutput)
 	if err != nil {
 		return nil, err
 	}
-	request.Parameters = parameters
+	request.Parameters, request.ClientOutput = prepared.Parameters, prepared.ClientOutput
 	if err := compiled.normalizeAgentReasoning(&request); err != nil {
 		return nil, err
 	}
-	request.ClientOutput = &ClientOutput{CollectUsage: preferences.Stream}
 	resultKind := compiled.agentToolResults
 	var prepare func([]Node) ([]Node, error)
 	prepare = func(nodes []Node) ([]Node, error) {
@@ -143,14 +148,22 @@ func (compiled *Compiled) BuildAgentRequest(ctx context.Context, request Request
 // BuildAgentParameters applies the verified author's policy without naming a
 // preset or wire family. An undeclared effort is an error, never a downgrade.
 func (compiled *Compiled) BuildAgentParameters(ctx context.Context, preferences AgentPreferences) (Object, error) {
+	input, err := compiled.agentPreferencesInput(preferences)
+	if err != nil {
+		return nil, err
+	}
+	return compiled.executeAgentParameters(ctx, input)
+}
+
+func (compiled *Compiled) agentPreferencesInput(preferences AgentPreferences) (Value, error) {
 	if compiled.agentMapping == nil {
-		return nil, streamIssue(UnsupportedCapability, "/agent", "protocol has no verified native Agent parameter policy")
+		return Value{}, streamIssue(UnsupportedCapability, "/agent", "protocol has no verified native Agent parameter policy")
 	}
 	if preferences.MaxOutputTokens <= 0 {
-		return nil, streamIssue(InvalidInput, "/agent/maxOutputTokens", "Agent requires a positive output budget")
+		return Value{}, streamIssue(InvalidInput, "/agent/maxOutputTokens", "Agent requires a positive output budget")
 	}
 	if preferences.ThinkingEnabled && !slices.Contains(compiled.agentEfforts, preferences.ThinkingEffort) {
-		return nil, streamIssue(UnsupportedCapability, "/agent/thinkingEffort", "protocol does not declare the selected Agent thinking effort")
+		return Value{}, streamIssue(UnsupportedCapability, "/agent/thinkingEffort", "protocol does not declare the selected Agent thinking effort")
 	}
 	hasTransport := false
 	for _, operation := range compiled.operations {
@@ -158,13 +171,14 @@ func (compiled *Compiled) BuildAgentParameters(ctx context.Context, preferences 
 		hasTransport = hasTransport || (operation.Kind == "generate" && operation.Transport != WebSocket && isStream == preferences.Stream)
 	}
 	if !hasTransport {
-		return nil, streamIssue(UnsupportedCapability, "/agent/stream", "protocol does not declare the selected Agent generation transport")
+		return Value{}, streamIssue(UnsupportedCapability, "/agent/stream", "protocol does not declare the selected Agent generation transport")
 	}
-	input, err := EncodeValue(preferences)
-	if err != nil {
-		return nil, err
-	}
+	return EncodeValue(preferences)
+}
+
+func (compiled *Compiled) executeAgentParameters(ctx context.Context, input Value) (Object, error) {
 	var output Value
+	var err error
 	if compiled.packagePlan != nil {
 		output, err = compiled.executePackageOperationPlan(ctx, *compiled.agentMapping, EncodeRequest, "/mapping/agent/parameters", input, Value{raw: "null"}, compiledWireContract{}, compiledWireContract{}, EvaluationContext{})
 	} else {
@@ -174,6 +188,40 @@ func (compiled *Compiled) BuildAgentParameters(ctx context.Context, preferences 
 		return nil, err
 	}
 	return output.ReadObject()
+}
+
+func (compiled *Compiled) prepareAgentSettings(ctx context.Context, preferences AgentPreferences, current *ClientOutput) (agentPreparation, error) {
+	input, err := compiled.agentPreferencesInput(preferences)
+	if err != nil {
+		return agentPreparation{}, err
+	}
+	parameters, err := compiled.executeAgentParameters(ctx, input)
+	if err != nil {
+		return agentPreparation{}, err
+	}
+	output := cloneClientOutput(current)
+	if output == nil {
+		output = &ClientOutput{}
+	}
+	if len(compiled.agentClientOutput) > 0 {
+		view := newInputView(input)
+		state := evaluation{ctx: ctx, input: input, root: input, inputView: view, valueReader: &view.owned, objectReader: view.objectReader(), budget: &evaluationBudget{limits: compiled.limits, stepLimit: compiled.limits.Nodes}}
+		for _, field := range compiled.agentClientOutput {
+			value, err := field.program.build(state)
+			if err == nil && !value.output.IsZero() {
+				err = field.set(output, value.output, state.valueReader)
+			}
+			if err != nil {
+				return agentPreparation{}, compiled.mappingError(EncodeRequest, locateMappingError(field.program.expression.path, err))
+			}
+		}
+	}
+	// Billing collection belongs to the host, outside the declared field set.
+	output.CollectUsage = preferences.Stream
+	if err := checkSemanticValue(output, compiled.limits); err != nil {
+		return agentPreparation{}, compiled.mappingError(EncodeRequest, err)
+	}
+	return agentPreparation{Parameters: parameters, ClientOutput: output}, nil
 }
 
 func verifyAgentSamples(ctx context.Context, compiled *Compiled, report *VerificationReport) {
@@ -188,16 +236,23 @@ func verifyAgentSamples(ctx context.Context, compiled *Compiled, report *Verific
 	hasStream := false
 	covered := map[string]bool{}
 	for _, sample := range compiled.verificationAgentSamples() {
-		parameters, err := compiled.BuildAgentParameters(ctx, sample.Preferences)
+		prepared, err := compiled.prepareAgentSettings(ctx, sample.Preferences, nil)
 		if err == nil {
-			actual, encodeErr := EncodeValue(parameters)
+			actual, encodeErr := EncodeValue(prepared.Parameters)
 			err = encodeErr
 			if err == nil && !equalValues(actual, sample.Expected) {
 				err = fmt.Errorf("agent parameters differ from the declared expectation")
 			}
 		}
+		if err == nil && !sample.ExpectedClientOutput.IsZero() {
+			actual, encodeErr := EncodeValue(prepared.ClientOutput)
+			err = encodeErr
+			if err == nil && !equalValues(actual, sample.ExpectedClientOutput) {
+				err = fmt.Errorf("agent client output differs from the declared expectation")
+			}
+		}
 		if err == nil {
-			err = verifyAgentParameterWire(ctx, compiled, parameters, sample.Model)
+			err = verifyAgentParameterWire(ctx, compiled, prepared, sample.Model)
 		}
 		report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: EncodeRequest, Passed: err == nil})
 		if err != nil {
@@ -227,7 +282,7 @@ func verifyAgentSamples(ctx context.Context, compiled *Compiled, report *Verific
 	}
 }
 
-func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, parameters Object, model string) error {
+func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, prepared agentPreparation, model string) error {
 	for _, sample := range compiled.verificationSamples() {
 		if sample.Direction != DecodeRequest || sample.ExpectedIssue != "" {
 			continue
@@ -237,7 +292,8 @@ func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, parameter
 		if err != nil {
 			return err
 		}
-		request.Native, request.Reasoning, request.Parameters = nil, nil, parameters
+		request.Native, request.Reasoning, request.Parameters = nil, nil, prepared.Parameters
+		request.ClientOutput = prepared.ClientOutput
 		if model != "" {
 			request.Model = StringValue(model)
 			options.Scope.Model = model
@@ -254,11 +310,15 @@ func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, parameter
 		if err != nil {
 			return err
 		}
-		encoded, err := compiled.EncodeRequest(ctx, request, options)
+		options.ClientOutput = request.ClientOutput
+		encoded, err := compiled.EncodeRequestValue(ctx, request, options)
 		if err != nil {
 			return err
 		}
-		decoded, err := compiled.DecodeRequest(ctx, encoded, options)
+		if err := compiled.ValidateRequestOutput(ctx, encoded, options); err != nil {
+			return err
+		}
+		decoded, err := compiled.DecodeRequestValue(ctx, encoded, options)
 		if err != nil {
 			return err
 		}
@@ -280,7 +340,7 @@ func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, parameter
 			if !equalValues(before, after) {
 				return fmt.Errorf("agent parameters or reasoning changed through the declared wire")
 			}
-			return verifyAgentToolResult(ctx, compiled, decoded.Model, request.Parameters, request.Reasoning, options)
+			return verifyAgentToolResult(ctx, compiled, decoded.Model, request.Parameters, request.Reasoning, request.ClientOutput, options)
 		}
 		beforeParams, err := ReasoningParameters(request, compiled.Codec(EncodeRequest))
 		if err != nil {
@@ -295,30 +355,34 @@ func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, parameter
 		if !equalValues(before, after) {
 			return fmt.Errorf("agent parameters are lost or changed by the wire adapter")
 		}
-		return verifyAgentToolResult(ctx, compiled, decoded.Model, beforeParams, nil, options)
+		return verifyAgentToolResult(ctx, compiled, decoded.Model, beforeParams, nil, request.ClientOutput, options)
 	}
 	return fmt.Errorf("agent policy requires a positive request fixture")
 }
 
-func verifyAgentToolResult(ctx context.Context, compiled *Compiled, model Value, parameters Object, reasoning *ReasoningIntent, options EvaluationContext) error {
+func verifyAgentToolResult(ctx context.Context, compiled *Compiled, model Value, parameters Object, reasoning *ReasoningIntent, clientOutput *ClientOutput, options EvaluationContext) error {
 	arguments, _ := ParseValue([]byte(`{"value":9007199254740993}`))
 	payload, _ := ParseValue([]byte(`{"ok":false,"data":{"value":9007199254740993,"empty":null}}`))
 	if compiled.agentToolResults == TextInput {
 		payload = StringValue(string(payload.Bytes()))
 	}
 	schema, _ := ParseValue([]byte(`{"type":"object"}`))
-	request := &Request{SchemaVersion: compiled.CoreVersion(), Model: model, Parameters: parameters, Reasoning: reasoning,
+	request := &Request{SchemaVersion: compiled.CoreVersion(), Model: model, Parameters: parameters, Reasoning: reasoning, ClientOutput: clientOutput,
 		Tools: []Tool{{Kind: FunctionTool, Name: StringValue("agent_verify"), InputSchema: schema}},
 		Content: []Node{
 			{Kind: MessageNode, Role: StringValue("user"), Children: []Node{{Kind: TextNode, Payload: StringValue("verify Agent tool history")}}},
 			{Kind: MessageNode, Role: StringValue("assistant"), Children: []Node{{Kind: ToolCallNode, Name: StringValue("agent_verify"), CallID: StringValue("agent_verify_call"), Input: &ToolInput{Kind: JSONInput, Value: arguments}}}},
 			{Kind: ToolResultNode, Name: StringValue("agent_verify"), CallID: StringValue("agent_verify_call"), Payload: payload},
 		}}
-	wire, err := compiled.EncodeRequest(ctx, request, options)
+	wire, err := compiled.EncodeRequestValue(ctx, request, options)
 	if err != nil {
 		return err
 	}
-	decoded, err := compiled.DecodeRequest(ctx, wire, options)
+	options.ClientOutput = request.ClientOutput
+	if err := compiled.ValidateRequestOutput(ctx, wire, options); err != nil {
+		return err
+	}
+	decoded, err := compiled.DecodeRequestValue(ctx, wire, options)
 	if err != nil {
 		return err
 	}

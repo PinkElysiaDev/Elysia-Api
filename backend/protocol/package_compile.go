@@ -171,7 +171,7 @@ func (compiled *Compiled) bindPackageIdentity(document ProtocolPackage) error {
 	return nil
 }
 
-func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Direction, wire WireContractSpec, documentHashes map[string]string, outputNamespaces map[string]int, compiler *expressionCompiler, coreVersion, dslVersion int) (compiledMapping, []compiledSemanticEffect, error) {
+func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Direction, wire, finalWire WireContractSpec, documentHashes map[string]string, outputNamespaces map[string]int, compiler *expressionCompiler, coreVersion, dslVersion int) (compiledMapping, []compiledSemanticEffect, error) {
 	path := "/mapping/directions/" + string(direction)
 	if err := validateNativeReplayMode(mapping, direction, path); err != nil {
 		return compiledMapping{}, nil, err
@@ -211,6 +211,20 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 			return compiledMapping{}, nil, fmt.Errorf("%s/nativeWhen: requires a boolean frame predicate", path)
 		}
 		nativeWhen = predicate
+	}
+	var finalCheck *compiledOutputPlan
+	if mapping.FinalCheck != nil {
+		if direction != EncodeRequest {
+			return compiledMapping{}, nil, fmt.Errorf("%s/finalCheck: requires request encoding", path)
+		}
+		check, err := compiler.compilePlan(*mapping.FinalCheck, path+"/finalCheck", expressionScope{input: finalWire.Schema, root: finalWire.Schema, isWireContract: true, canReadClientOutput: true}, 1)
+		if err != nil {
+			return compiledMapping{}, nil, err
+		}
+		if !isAssignable(check.expression.result, BooleanType) {
+			return compiledMapping{}, nil, fmt.Errorf("%s/finalCheck: requires a boolean request predicate", path)
+		}
+		finalCheck = check
 	}
 	indexes, err := compilePackageIndexes(mapping.Indexes, direction, path+"/indexes", compiler.limits, &scope)
 	if err != nil {
@@ -390,6 +404,7 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	return compiledMapping{
 		preservesDynamicNative: mapping.NativeReplay == "original_frame",
 		nativeWhen:             nativeWhen,
+		finalCheck:             finalCheck,
 		outputPlan:             plan, definitionHash: hashValue(identity), streamState: streamState, streamFinalizer: finalizer, streamObserver: observer,
 		isEventBatch:      mapping.IsEventBatch,
 		canDeferEvents:    mapping.CanDeferEvents,

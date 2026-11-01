@@ -157,37 +157,134 @@ func TestPackageDeclaredStatelessStorage(t *testing.T) {
 	for _, name := range []string{"anthropic", "google-generate-content"} {
 		t.Run(name, func(t *testing.T) {
 			target := compileBuiltinPackage(t, name)
-			conversion, err := p.ResolveConversion(declaredRulePolicy(t, source, target, "responses-storage", "strict"))
+			route := p.ConversionContext{Source: source.Identity(), Target: target.Identity()}
+			request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Model: p.StringValue("model"),
+				Content:    []p.Node{{Kind: p.MessageNode, Role: p.StringValue("user"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("hello")}}}},
+				Parameters: p.Object{"max_output_tokens": testValue(t, `10`)}}
+			for _, mode := range []string{"compatible", "strict"} {
+				policy := declaredRulePolicy(t, source, target, "responses-storage", mode)
+				conversion, err := p.ResolveConversion(policy)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, raw := range []string{`false`, `true`, `null`} {
+					t.Run(mode+"/"+raw, func(t *testing.T) {
+						input := request.Clone()
+						intent := &p.ResponsesStorageIntent{SourceCodec: "responses", Raw: testValue(t, raw), Requested: raw == `true`, Effective: raw == `true`, RequestedUnknown: raw == `null`, EffectiveUnknown: raw == `null`}
+						input.ClientOutput = &p.ClientOutput{ResponsesStorage: intent}
+						before, _ := p.EncodeValue(input)
+						sink := &p.DiagnosticSink{}
+						projected, err := conversion.Request(t.Context(), input, route, sink)
+						after, _ := p.EncodeValue(input)
+						if before != after {
+							t.Fatal("storage projection mutated caller intent")
+						}
+						if mode == "strict" && raw != `false` {
+							var failure *p.ConversionError
+							if !errors.As(err, &failure) || failure.Issues[0].RuleID != "responses-storage" || failure.Issues[0].Code != p.ConversionRejected {
+								t.Fatal("strict storage loss did not reject with its declared rule", err)
+							}
+							return
+						}
+						if err != nil {
+							t.Fatal(err)
+						}
+						want := *intent
+						want.Effective, want.EffectiveUnknown = false, false
+						if projected.ClientOutput.ResponsesStorage == intent || *projected.ClientOutput.ResponsesStorage != want {
+							t.Fatal("target changed source facts or retained a mutable caller owner", projected.ClientOutput)
+						}
+						issues := sink.Issues()
+						if raw == `false` {
+							if len(issues) != 0 {
+								t.Fatal("stateless intent was treated as lossy", issues)
+							}
+						} else if len(issues) != 1 || issues[0].Code != p.ConversionDegraded || issues[0].RuleID != "responses-storage" || issues[0].PolicyHash != conversion.Hash || issues[0].Path != "/clientOutput/responsesStorage" {
+							t.Fatal("storage loss did not retain diagnostic attribution", issues)
+						}
+						wire, err := target.EncodeRequest(t.Context(), projected, p.EvaluationContext{})
+						if err != nil {
+							t.Fatal("resolved storage intent did not encode", err)
+						}
+						var body p.Object
+						if err := testValue(t, string(wire)).Decode(&body); err != nil || !body["store"].IsZero() {
+							t.Fatal("target invented a response storage field", string(wire), err)
+						}
+					})
+				}
+			}
+			policy := declaredRulePolicy(t, source, target, "responses-storage", "compatible")
+			policy.Rules[0].Enabled = false
+			disabled, err := p.ResolveConversion(policy)
 			if err != nil {
 				t.Fatal(err)
 			}
-			request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Model: p.StringValue("model"),
-				Content:    []p.Node{{Kind: p.MessageNode, Role: p.StringValue("user"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("hello")}}}},
-				Parameters: p.Object{"max_output_tokens": testValue(t, `10`), "store": testValue(t, `false`)}}
-			route := p.ConversionContext{Source: source.Identity(), Target: target.Identity()}
-			sink := &p.DiagnosticSink{}
-			projected, err := conversion.Request(t.Context(), request, route, sink)
-			if err != nil || !projected.Parameters["store"].IsZero() || request.Parameters["store"].IsZero() {
-				t.Fatal("explicit stateless intent was lost or mutated its caller", projected, err)
-			}
-			if issues := sink.Issues(); len(issues) != 1 || issues[0].Code != p.ConversionNormalized || issues[0].RuleID != "responses-storage" {
-				t.Fatal("equivalent stateless delivery was treated as lossy", issues)
-			}
-			if _, err := target.EncodeRequest(t.Context(), projected, p.EvaluationContext{}); err != nil {
-				t.Fatal("declared stateless projection did not encode", err)
-			}
-			if _, err := target.EncodeRequest(t.Context(), request, p.EvaluationContext{}); err == nil {
-				t.Fatal("encoding bypassed the disabled storage disposition")
-			}
-			for _, unsupported := range []string{`true`, `null`} {
-				request.Parameters["store"] = testValue(t, unsupported)
-				if _, err := conversion.Request(t.Context(), request, route, nil); err == nil {
-					t.Fatal("retrieval storage was silently discarded", unsupported)
+			for _, intent := range []p.ResponsesStorageIntent{{Requested: true, Effective: true}, {RequestedUnknown: true, EffectiveUnknown: true}, {EffectiveUnknown: true}} {
+				input := request.Clone()
+				input.ClientOutput = &p.ClientOutput{ResponsesStorage: &intent}
+				projected, err := disabled.Request(t.Context(), input, route, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := target.EncodeRequest(t.Context(), projected, p.EvaluationContext{}); err == nil {
+					t.Fatal("encoder silently resolved storage after its rule was disabled", intent)
 				}
 			}
-			delete(request.Parameters, "store")
-			if projected, err := conversion.Request(t.Context(), request, route, nil); err != nil || !projected.Parameters["store"].IsZero() {
-				t.Fatal("absent intent was replaced by a default", projected, err)
+			policy.Rules[0].Enabled = true
+			conversion, err := p.ResolveConversion(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			projected, err := conversion.Request(t.Context(), request, route, nil)
+			if err != nil || projected.ClientOutput.ResponsesStorage != nil {
+				t.Fatal("undeclared storage intent was fabricated", projected, err)
+			}
+			for _, raw := range []string{`false`, `true`, `null`} {
+				input := request.Clone()
+				input.Parameters["store"] = testValue(t, raw)
+				if _, err := conversion.Request(t.Context(), input, route, nil); err == nil {
+					t.Fatal("legacy storage owner was silently interpreted", raw)
+				}
+				if _, err := target.EncodeRequest(t.Context(), input, p.EvaluationContext{}); err == nil {
+					t.Fatal("legacy storage owner bypassed the single-owner encoding boundary", raw)
+				}
+			}
+		})
+	}
+}
+
+func TestPackageStatelessStorageSource(t *testing.T) {
+	for _, fixture := range []struct{ name, codec, wireOwner, wire string }{
+		{"anthropic", "anthropic", "wire:claude", `{"model":"m","max_tokens":10,"messages":[{"role":"user","content":"hello"}],"store":{"n":9007199254740993,"null":null}}`},
+		{"google-generate-content", "gemini", "wire:gemini", `{"contents":[{"role":"user","parts":[{"text":"hello"}]}],"store":{"n":9007199254740993,"null":null}}`},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			compiled := compileBuiltinPackage(t, fixture.name)
+			options := p.EvaluationContext{Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}, Values: p.Object{"model": p.StringValue("m")}}
+			request, err := compiled.DecodeRequest(t.Context(), []byte(fixture.wire), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := p.ResponsesStorageIntent{SourceCodec: fixture.codec}
+			if request.ClientOutput == nil || request.ClientOutput.ResponsesStorage == nil || *request.ClientOutput.ResponsesStorage != want || !request.Parameters["store"].IsZero() {
+				t.Fatal("source storage owner does not match the API contract", request.ClientOutput, request.Parameters)
+			}
+			var extension p.Object
+			if err := request.Parameters[fixture.wireOwner].Decode(&extension); err != nil || extension["store"].IsZero() {
+				t.Fatal("unknown wire store was mistaken for a supported storage instruction", request.Parameters, err)
+			}
+			native, err := compiled.EncodeRequest(t.Context(), request, options)
+			if err != nil || string(native) != fixture.wire {
+				t.Fatal("source owner changed unchanged native bytes", string(native), err)
+			}
+			request.Native = nil
+			rebuilt, err := compiled.EncodeRequest(t.Context(), request, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var body p.Object
+			if err := testValue(t, string(rebuilt)).Decode(&body); err != nil || body["store"] != extension["store"] {
+				t.Fatal("reconstruction lost an unknown native extension", string(rebuilt), err)
 			}
 		})
 	}

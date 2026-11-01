@@ -479,11 +479,6 @@
                 "from": "input",
                 "path": "/metadata"
               },
-              "store": {
-                "op": "read",
-                "from": "input",
-                "path": "/store"
-              },
               "user": {
                 "op": "read",
                 "from": "input",
@@ -793,39 +788,32 @@
   }
 },
     "decode-client-output": {
-      "op": "if",
-      "when": {
-        "op": "exists",
-        "source": {
+      "op": "object",
+      "fields": {
+        "rawStreamOptions": {
           "op": "read",
           "from": "input",
           "path": "/stream_options"
-        }
-      },
-      "then": {
-        "op": "object",
-        "fields": {
-          "rawStreamOptions": {
-            "op": "read",
-            "from": "input",
-            "path": "/stream_options"
-          },
-          "includeUsage": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/stream_options"
-              }
-            },
-            "then": {
+        },
+        "includeUsage": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
               "op": "read",
               "from": "input",
-              "path": "/stream_options/include_usage"
+              "path": "/stream_options"
             }
+          },
+          "then": {
+            "op": "read",
+            "from": "input",
+            "path": "/stream_options/include_usage"
           }
+        },
+        "responsesStorage": {
+          "op": "ref",
+          "ref": "decode-storage-intent"
         }
       }
     },
@@ -7815,11 +7803,6 @@
               "from": "input",
               "path": "/parameters/metadata"
             },
-            "store": {
-              "op": "read",
-              "from": "input",
-              "path": "/parameters/store"
-            },
             "user": {
               "op": "ref",
               "ref": "encode-user"
@@ -7848,6 +7831,10 @@
               "op": "read",
               "from": "input",
               "path": "/parameters/logit_bias"
+            },
+            "store": {
+              "op": "ref",
+              "ref": "encode-request-storage"
             }
           }
         },
@@ -26623,6 +26610,217 @@
           "value": 0
         }
       }
+    },
+    "decode-storage-intent": {
+      "op": "object",
+      "fields": {
+        "sourceCodec": {
+          "op": "literal",
+          "value": "openai-chat"
+        },
+        "raw": {
+          "op": "read",
+          "from": "input",
+          "path": "/store"
+        },
+        "requested": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/store"
+            }
+          },
+          "then": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/store"
+              },
+              {
+                "op": "literal",
+                "value": true
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "requestedUnknown": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/store"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "null"
+            }
+          ]
+        },
+        "effective": {
+          "op": "literal",
+          "value": false
+        },
+        "effectiveUnknown": {
+          "op": "literal",
+          "value": true
+        }
+      }
+    },
+    "encode-request-storage": {
+      "op": "let",
+      "name": "storage",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/clientOutput/responsesStorage"
+      },
+      "body": {
+        "op": "if",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "path": "",
+            "name": "storage"
+          }
+        },
+        "then": {
+          "op": "if",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/sourceCodec",
+                    "name": "storage"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "openai-chat"
+                  }
+                ]
+              },
+              {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/effectiveUnknown",
+                        "name": "storage"
+                      },
+                      {
+                        "op": "literal",
+                        "value": true
+                      }
+                    ]
+                  },
+                  {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/requestedUnknown",
+                              "name": "storage"
+                            },
+                            {
+                              "op": "literal",
+                              "value": true
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/requested",
+                            "name": "storage"
+                          },
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/effective",
+                            "name": "storage"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "then": {
+            "op": "read",
+            "from": "binding",
+            "path": "/raw",
+            "name": "storage"
+          },
+          "otherwise": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "/effectiveUnknown",
+                  "name": "storage"
+                },
+                {
+                  "op": "literal",
+                  "value": true
+                }
+              ]
+            },
+            "then": {
+              "op": "reject",
+              "path": "/clientOutput/responsesStorage",
+              "reason": "target response storage intent requires a declared disposition",
+              "diagnostic": {
+                "code": "unsupported_capability",
+                "stage": "wire"
+              }
+            },
+            "otherwise": {
+              "op": "read",
+              "from": "binding",
+              "path": "/effective",
+              "name": "storage"
+            }
+          }
+        }
+      }
     }
 },
   "directions": {
@@ -26921,6 +27119,20 @@
             "ref": "has-foreign-wire-owner"
           },
           "reason": "foreign protocol-specific owner requires an explicit mapping"
+        },
+        {
+          "id": "legacy-storage-owner",
+          "kind": "reject",
+          "path": "/parameters/store",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/store"
+            }
+          },
+          "reason": "storage intent belongs to clientOutput.responsesStorage"
         }
       ],
       "capabilities": {
@@ -26937,7 +27149,144 @@
         "reasoning": true
       }
     ,
-"finalDocument": "upstream-request"
+"finalDocument": "upstream-request",
+      "finalCheck": {
+        "op": "let",
+        "name": "storage",
+        "source": {
+          "op": "read",
+          "from": "runtime",
+          "path": "/clientOutput/responsesStorage"
+        },
+        "body": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "storage"
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/effectiveUnknown",
+                    "name": "storage"
+                  },
+                  {
+                    "op": "literal",
+                    "value": true
+                  }
+                ]
+              },
+              "then": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/sourceCodec",
+                        "name": "storage"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "openai-chat"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/store"
+                      },
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "/raw",
+                        "name": "storage"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "if",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/store"
+                  }
+                },
+                "then": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/store"
+                    },
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/effective",
+                      "name": "storage"
+                    }
+                  ]
+                },
+                "otherwise": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "/effective",
+                      "name": "storage"
+                    },
+                    {
+                      "op": "literal",
+                      "value": false
+                    }
+                  ]
+                }
+              }
+            },
+            "then": {
+              "op": "literal",
+              "value": true
+            },
+            "otherwise": {
+              "op": "reject",
+              "path": "/store",
+              "reason": "final storage instruction differs from the prepared target intent",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire"
+              }
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": true
+          }
+        }
+      }
 },
     "decode_response": {
   "document": "provider-response",
@@ -34175,6 +34524,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -34235,6 +34592,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -34350,6 +34715,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -34472,6 +34845,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -34944,6 +35325,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -35018,6 +35407,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -35089,6 +35486,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -35165,6 +35570,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -35231,6 +35644,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -35300,6 +35721,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -35371,6 +35800,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -35442,6 +35879,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -35515,6 +35960,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -35587,6 +36040,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -35681,6 +36142,14 @@
         ],
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "context": {
@@ -35774,6 +36243,14 @@
         },
         "parameters": {
           "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true
+          }
         }
       },
       "expected": {
@@ -36145,8 +36622,16 @@
           }
         ],
         "parameters": {
-          "max_output_tokens": 10,
-          "store": false
+          "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "openai-chat",
+            "requested": false,
+            "effective": false,
+            "effectiveUnknown": true,
+            "raw": false
+          }
         }
       },
       "context": {
@@ -37591,10 +38076,6 @@
               "op": "read",
               "path": "/stream",
               "required": true
-            },
-            "store": {
-              "op": "literal",
-              "value": false
             }
           }
         },
@@ -37661,10 +38142,15 @@
           "reasoning": {
             "mode": "disabled"
           },
-          "stream": false,
-          "store": false
+          "stream": false
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-thinking-disabled-stream",
@@ -37679,10 +38165,16 @@
           "reasoning": {
             "mode": "disabled"
           },
-          "stream": true,
-          "store": false
+          "stream": true
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-default",
@@ -37699,10 +38191,15 @@
             "effort": "medium",
             "effortScope": "reasoning"
           },
-          "stream": false,
-          "store": false
+          "stream": false
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-default-stream",
@@ -37719,10 +38216,16 @@
             "effort": "medium",
             "effortScope": "reasoning"
           },
-          "stream": true,
-          "store": false
+          "stream": true
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-low",
@@ -37739,10 +38242,15 @@
             "effort": "low",
             "effortScope": "reasoning"
           },
-          "stream": false,
-          "store": false
+          "stream": false
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-low-stream",
@@ -37759,10 +38267,16 @@
             "effort": "low",
             "effortScope": "reasoning"
           },
-          "stream": true,
-          "store": false
+          "stream": true
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-medium",
@@ -37779,10 +38293,15 @@
             "effort": "medium",
             "effortScope": "reasoning"
           },
-          "stream": false,
-          "store": false
+          "stream": false
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-medium-stream",
@@ -37799,10 +38318,16 @@
             "effort": "medium",
             "effortScope": "reasoning"
           },
-          "stream": true,
-          "store": false
+          "stream": true
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-high",
@@ -37819,10 +38344,15 @@
             "effort": "high",
             "effortScope": "reasoning"
           },
-          "stream": false,
-          "store": false
+          "stream": false
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-high-stream",
@@ -37839,10 +38369,16 @@
             "effort": "high",
             "effortScope": "reasoning"
           },
-          "stream": true,
-          "store": false
+          "stream": true
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       },
       {
         "id": "agent-effort-xhigh",
@@ -37859,10 +38395,15 @@
             "effort": "xhigh",
             "effortScope": "reasoning"
           },
-          "stream": false,
-          "store": false
+          "stream": false
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          }
+        }
       },
       {
         "id": "agent-effort-xhigh-stream",
@@ -37879,13 +38420,34 @@
             "effort": "xhigh",
             "effortScope": "reasoning"
           },
-          "stream": true,
-          "store": false
+          "stream": true
         },
-        "model": "gpt-5.4"
+        "model": "gpt-5.4",
+        "expectedClientOutput": {
+          "responsesStorage": {
+            "requested": false,
+            "effective": false
+          },
+          "collectUsage": true
+        }
       }
     ],
-    "toolResults": "text"
+    "toolResults": "text",
+    "clientOutput": {
+      "responsesStorage": {
+        "op": "object",
+        "fields": {
+          "requested": {
+            "op": "literal",
+            "value": false
+          },
+          "effective": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      }
+    }
   },
   "modelSamples": [
     {
@@ -49198,6 +49760,150 @@
                 }
               }
             ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "responses-storage",
+      "order": 190,
+      "enabled": true,
+      "phase": "request",
+      "steps": [
+        {
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/clientOutput/responsesStorage"
+              }
+            }
+          },
+          "stop": true
+        },
+        {
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/clientOutput/responsesStorage/sourceCodec"
+              },
+              {
+                "op": "literal",
+                "value": "openai-chat"
+              }
+            ]
+          },
+          "set": {
+            "/clientOutput/responsesStorage/effective": {
+              "op": "read",
+              "from": "input",
+              "path": "/clientOutput/responsesStorage/requested"
+            },
+            "/clientOutput/responsesStorage/effectiveUnknown": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/clientOutput/responsesStorage/requestedUnknown"
+                },
+                {
+                  "op": "literal",
+                  "value": true
+                }
+              ]
+            }
+          },
+          "stop": true
+        },
+        {
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/clientOutput/responsesStorage/requestedUnknown"
+              },
+              {
+                "op": "literal",
+                "value": true
+              }
+            ]
+          },
+          "diagnostic": {
+            "kind": "degrade",
+            "path": "/store",
+            "reason": {
+              "op": "literal",
+              "value": "source storage intent is unspecified; target instructions explicitly disable response storage"
+            }
+          },
+          "set": {
+            "/clientOutput/responsesStorage/effective": {
+              "op": "literal",
+              "value": false
+            },
+            "/clientOutput/responsesStorage/effectiveUnknown": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "stop": true
+        },
+        {
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/clientOutput/responsesStorage/requested"
+              },
+              {
+                "op": "literal",
+                "value": true
+              }
+            ]
+          },
+          "diagnostic": {
+            "kind": "degrade",
+            "path": "/store",
+            "reason": {
+              "op": "literal",
+              "value": "response storage remains enabled but the target API has a different retrieval contract"
+            }
+          },
+          "set": {
+            "/clientOutput/responsesStorage/effective": {
+              "op": "read",
+              "from": "input",
+              "path": "/clientOutput/responsesStorage/requested"
+            },
+            "/clientOutput/responsesStorage/effectiveUnknown": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "stop": true
+        },
+        {
+          "set": {
+            "/clientOutput/responsesStorage/effective": {
+              "op": "read",
+              "from": "input",
+              "path": "/clientOutput/responsesStorage/requested"
+            },
+            "/clientOutput/responsesStorage/effectiveUnknown": {
+              "op": "literal",
+              "value": false
+            }
           }
         }
       ]

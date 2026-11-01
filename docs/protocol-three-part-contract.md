@@ -51,6 +51,12 @@ Mapping 的 `buffer_text`／`buffer_array` 按固定通道和项目身份保存�
 
 `nativeWhen` 可以只读本次请求的 `runtime.clientOutput`，据客户端展示偏好选择原生交付或语义编码；不能读取其他运行时元数据、流状态或交付位置。usage 收集是网关策略，客户端是否展示 usage 是独立意图。完整请求转换统一填充收集设置及缺省展示设置，显式的 `includeUsage:false` 不被缺省值覆盖；单阶段预览不重复执行完整请求转换。
 
+`encode_request.finalCheck` 是最终 wire 与客户端意图的只读检查。它读取 `input/root` 和 `runtime.clientOutput`，不能访问流状态或执行身份。在原生协调、请求 wire 规则之后，由 `ValidateRequestOutput` 与最终 Spec 共用当前输入视图执行一次；基础 `EncodeRequestValue` 只返回编码结果。网关、Agent 收集、预览及独立／组合验证共同使用该边界。实际 wire 修改后的路由权限复核仍独立保留，普通请求不额外解码。
+
+`ClientOutput.ResponsesStorage` 是 API 对象存储意图的唯一所有者。来源写 Raw、Requested、RequestedUnknown 和 SourceCodec，目标规则仅写 Effective／EffectiveUnknown。Chat 缺省 false，Responses 缺省 true，显式 null 保持未知；两者来源解码时目标决定尚未知。Anthropic／Gemini 无对应对象存储请求，来源声明 false；它不表示供应商不保留日志。同合同直接编码保留 Raw，已明确改变的有效决定覆盖 Raw；跨合同的有效决定必须由所选规则处理，编码器不重复执行被禁用的降级。未知 `wire:*.store` 仍是扩展，不能混同于已识别意图。
+
+`mapping.agent.clientOutput` 使用固定字段名到 Expression 的映射，可声明 includeUsage、rawStreamOptions、rawResponsesInclude 和 responsesStorage，不能写宿主计量 CollectUsage。完整 Agent 准备保留未声明的调用者字段，声明的 storage 替换为新的完整意图；本地 Agent 的 storage 为 false，SourceCodec 留空。样例的 `expectedClientOutput` 检查完整结果，包含宿主生成的流式 CollectUsage；v4 Agent 预览返回 parameters 和 clientOutput 两部分。参数单独读取不执行客户端输出策略。
+
 需要生成输出身份的 Mapping 从 `/operation/id`、`/operation/startedAt` 读取调用者绑定的一轮执行元数据。网关复用请求记录；离线验证使用明确的合成值。DSL 不产生随机身份，也不使用缺失时的常量兜底。
 
 任务 Mapping 仅获准读取上述两项执行事实；持久任务复用本地任务 ID 和创建时间，轮询、恢复及读取结果不会重新生成身份。health 预检与实际发送共享同一次执行事实。纯字段读取、模型目录解析和 Agent 参数策略不为此制造调用身份。

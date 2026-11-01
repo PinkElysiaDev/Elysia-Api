@@ -161,7 +161,10 @@ type ProtocolDirectionMapping struct {
 	// FinalDocument optionally selects a separate delivery contract for request,
 	// response or event output. The rendering document still validates its output.
 	// Document continues to constrain construction and native reconciliation.
-	FinalDocument  string                        `json:"finalDocument,omitempty"`
+	FinalDocument string `json:"finalDocument,omitempty"`
+	// FinalCheck observes the final request wire and caller intent after all edits.
+	// It cannot mutate either input or access stream state.
+	FinalCheck     *Expression                   `json:"finalCheck,omitempty"`
 	IsEventBatch   bool                          `json:"eventBatch,omitempty"`
 	CanDeferEvents bool                          `json:"deferEvents,omitempty"`
 	IsFrameBatch   bool                          `json:"frameBatch,omitempty"`
@@ -335,7 +338,11 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 		if stream := compiled.selectFinalWireContract(direction).packageStream; stream != nil {
 			outputNamespaces = stream.namespaceSlots
 		}
-		program, effects, err := compileProtocolProgram(entry, direction, wire, wireSpec.documentHashes, outputNamespaces, expressions, mapping.CoreVersion, mapping.DSLVersion)
+		finalWire := wire
+		if entry.FinalDocument != "" {
+			finalWire = wireSpec.resolvedDocuments[entry.FinalDocument]
+		}
+		program, effects, err := compileProtocolProgram(entry, direction, wire, finalWire, wireSpec.documentHashes, outputNamespaces, expressions, mapping.CoreVersion, mapping.DSLVersion)
 		if err != nil {
 			return nil, err
 		}
