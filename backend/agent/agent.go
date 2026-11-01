@@ -346,8 +346,13 @@ func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHa
 		e.failTurn(ctx, sessionID, events, "读取会话失败: 存储返回空会话")
 		return
 	}
-	// 新轮次作废旧审批；审批恢复路径随后自行清理。
-	e.setStatus(ctx, sessionID, StatusRunning, resume == nil, events)
+	// Only a waiting snapshot owns unexecuted calls. An idle session may retain
+	// stale pending data after a failed clear of an already executed approval.
+	var pending *PendingAction
+	if resume == nil && session.Status == StatusWaitingApproval {
+		pending = session.PendingAction
+	}
+	e.setStatus(ctx, sessionID, StatusRunning, resume == nil && pending == nil, events)
 
 	// 新轮次开始前快照当前草稿：还原点单槽覆盖，用户可回滚到上一轮修改前。
 	if resume == nil && len(session.DraftConfig) > 0 {
@@ -357,18 +362,11 @@ func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHa
 		}
 	}
 
-	if e.appendUserMessage(ctx, sessionID, session, input, events) {
-		return
-	}
-
-	conversation, seqs, err := e.loadConversation(ctx, session)
+	conversation, err := e.prepareTurnHistory(ctx, session, input, pending, events)
 	if err != nil {
 		e.failTurn(ctx, sessionID, events, err.Error())
 		return
 	}
-	// 摘要压缩只在轮首做：此刻消息 seq 与对话元素仍一一对应，切点边界可以
-	// 精确落库；轮内涨破水位由 prepareContext 的微压缩兜底。
-	conversation = e.maybeSummarize(ctx, sessionID, session, conversation, seqs, events)
 
 	// 审批恢复：记录裁决、（可选）补充测试凭证、执行或拒绝待定动作。
 	if resume != nil {
@@ -392,16 +390,60 @@ func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHa
 	e.modelLoop(ctx, sessionID, session, handle, conversation, started, events)
 }
 
-// appendUserMessage 把本轮用户输入落库并回传事件；首条文本同时充当会话
-// 标题。返回 true 表示写入失败、轮次已按失败收尾。
-func (e *Engine) appendUserMessage(ctx context.Context, sessionID string, session *Session, input *UserContent, events chan Event) bool {
+// prepareTurnHistory closes superseded calls before adding the next user message.
+// Failed tool-result writes retain the existing redacted in-memory model copy.
+func (e *Engine) prepareTurnHistory(ctx context.Context, session *Session, input *UserContent, pending *PendingAction, events chan Event) ([]conversationTurn, error) {
+	if pending == nil {
+		if _, err := e.appendUserMessage(ctx, session.ID, session, input, events); err != nil {
+			return nil, err
+		}
+	}
+	conversation, seqs, err := e.loadConversation(ctx, session)
+	if err != nil {
+		return nil, err
+	}
+	// Retire the actionable approval before publishing synthetic receipts. A
+	// failed retirement must not start a new model turn or execute the old calls.
+	if pending != nil {
+		if err := e.store.UpdateSessionState(ctx, session.ID, SessionStateUpdate{ClearPending: true}); err != nil {
+			return nil, fmt.Errorf("清除已替代审批失败: %w", err)
+		}
+	}
+	// Only loaded history has durable sequence boundaries. Supersession adds
+	// its cancellation receipts and new message after this one summary pass.
+	conversation = e.maybeSummarize(ctx, session.ID, session, conversation, seqs, events)
+	if pending == nil {
+		return conversation, nil
+	}
+	for _, call := range pending.Calls {
+		info := deniedToolResult(call, "新轮次已替代待批操作；该调用未执行，如仍需要请重新发起")
+		conversation = e.appendToolResult(ctx, session.ID, conversation, info, e.opts.ToolResultModelLimit, events)
+	}
+	seq, err := e.appendUserMessage(ctx, session.ID, session, input, events)
+	if err != nil {
+		return nil, err
+	}
+	if seq != 0 {
+		message, err := e.renderUserTurn(session, input)
+		if err != nil {
+			return nil, fmt.Errorf("用户消息 #%d 渲染失败: %w", seq, err)
+		}
+		if len(message.Content) > 0 {
+			conversation = append(conversation, message)
+		}
+	}
+	return conversation, nil
+}
+
+// appendUserMessage persists and publishes user input. A zero sequence means
+// no message was added; the first text also supplies an untitled session name.
+func (e *Engine) appendUserMessage(ctx context.Context, sessionID string, session *Session, input *UserContent, events chan Event) (int, error) {
 	if input == nil || (strings.TrimSpace(input.Text) == "" && len(input.Documents) == 0) {
-		return false
+		return 0, nil
 	}
 	seq, err := e.store.AppendMessage(ctx, sessionID, RoleUser, *input, "", nil)
 	if err != nil {
-		e.failTurn(ctx, sessionID, events, fmt.Sprintf("写入用户消息失败: %v", err))
-		return true
+		return 0, fmt.Errorf("写入用户消息失败: %w", err)
 	}
 	if encoded, err := sonic.ConfigStd.Marshal(*input); err == nil {
 		emitEvent(events, Event{Type: EventMessage, Message: &Message{Seq: seq, Role: RoleUser, Content: encoded, CreatedAt: time.Now()}})
@@ -412,7 +454,15 @@ func (e *Engine) appendUserMessage(ctx context.Context, sessionID string, sessio
 			session.Title = title
 		}
 	}
-	return false
+	return seq, nil
+}
+
+func (e *Engine) renderUserTurn(session *Session, content *UserContent) (conversationTurn, error) {
+	parts, err := e.render.RenderUserContent(metaFromSession(session), content)
+	if err != nil || len(parts) == 0 {
+		return conversationTurn{}, err
+	}
+	return conversationTurn{Role: RoleUser, Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue(RoleUser), Children: parts}}}, nil
 }
 
 // resumablePending 报告待批动作能否被 ResumeApproval 消费：审批型必须有
@@ -1337,13 +1387,12 @@ func (e *Engine) loadConversation(ctx context.Context, session *Session) ([]conv
 			if err := sonic.ConfigStd.Unmarshal(message.Content, &content); err != nil {
 				return nil, nil, fmt.Errorf("用户消息 #%d 解析失败: %w", message.Seq, err)
 			}
-			meta := metaFromSession(session)
-			parts, err := e.render.RenderUserContent(meta, &content)
+			turn, err := e.renderUserTurn(session, &content)
 			if err != nil {
 				return nil, nil, fmt.Errorf("用户消息 #%d 渲染失败: %w", message.Seq, err)
 			}
-			if len(parts) > 0 {
-				add(message.Seq, conversationTurn{Role: RoleUser, Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue(RoleUser), Children: parts}}})
+			if len(turn.Content) > 0 {
+				add(message.Seq, turn)
 			}
 		case RoleAssistant:
 			var content AssistantContent
